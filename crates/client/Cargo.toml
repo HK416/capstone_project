@@ -8,3 +8,18 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+# 로그 인터페이스 라이브러리
+# License: MIT or Apache-2.0
+log = "0.4"
+
+# 로그 출력 라이브러리 
+# License: MIT or Apache-2.0
+env_logger = "0.11"
+
+# Google의 SwissTable hash map 라이브러리
+# License: MIT or Apache-2.0
+hashbrown = "0.14"
+
+# 윈도우 생성 라이브러리
+# License: Apache-2.0
+winit = "0.30"
