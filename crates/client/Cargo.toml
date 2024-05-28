@@ -16,6 +16,10 @@ log = "0.4"
 # License: MIT or Apache-2.0
 env_logger = "0.11"
 
+# 에러 타입을 쉽게 만들어주는 라이브러리
+# License: MIT or Apache-2.0
+thiserror = "1.0"
+
 # Google의 SwissTable hash map 라이브러리
 # License: MIT or Apache-2.0
 hashbrown = "0.14"
