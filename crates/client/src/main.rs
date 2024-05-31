@@ -4,10 +4,10 @@ mod error;
 use self::app::App;
 use winit::event_loop::EventLoop;
 
-/// 64bit `Windows`, `Linux`, `macOS` 플랫폼의
+/// 64bit `Windows`, `macOS` 플랫폼의
 /// 애플리케이션 진입점 입니다.
 #[cfg(target_pointer_width = "64")]
-#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
     // 로그 시스템을 초기화 합니다.
     env_logger::init();

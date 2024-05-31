@@ -4,6 +4,7 @@
 use thiserror::Error;
 use winit::error::OsError;
 use winit::error::EventLoopError;
+use winit::window::Window;
 
 
 
@@ -15,4 +16,33 @@ pub enum AppError {
 
     #[error("An event loop error occurred for the following reasons:{0}")]
     EventLoop(#[from] EventLoopError),
+}
+
+
+
+/// 에러 메시지를 출력하는 대화 상자를 화면에 표시합니다.
+/// 
+/// ※ 이 함수는 메인 스레드에서 실행되어야 하며, 스레드를 멈춥니다.
+/// 
+#[inline]
+pub fn show_error_msg(title: &str, text: &str, owner_window: Option<&Window>) {
+    impl_show_error_msg(title, text, owner_window)
+}
+
+/// `Windows`, `macOS`에서 에러 메시지를 출력하는 대화 상자 구현입니다.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn impl_show_error_msg(title: &str, text: &str, owner_window: Option<&Window>) {
+    use native_dialog::MessageDialog;
+    use native_dialog::MessageType;
+
+    let mut dialog = MessageDialog::new()
+        .set_title(title)
+        .set_text(text)
+        .set_type(MessageType::Error);
+
+    if let Some(window) = owner_window {
+        dialog = dialog.set_owner(window);
+    }
+
+    dialog.show_alert().unwrap();
 }
