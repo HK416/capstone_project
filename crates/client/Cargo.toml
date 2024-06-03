@@ -28,9 +28,18 @@ hashbrown = "0.14"
 # License: Apache-2.0
 winit = { version = "0.30", features = ["rwh_05"] }
 
+# 크로스 플랫폼 렌더링 라이브러리 
+# License: MIT or Apache-2.0
+wgpu = "0.20"
 
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 # 사용 플랫폼: Windows, macOS
 # 시스템 대화 상자를 화면에 표시하는 라이브러리
 # License: MIT or Apache-2.0
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 native-dialog = "0.7"
+
+# 사용 플랫폼: Windows, macOS
+# 동기화를 위한 스레드 blocking 라이브러리
+# License: MIT or Apache-2.0
+pollster = "0.3"

@@ -11,11 +11,20 @@ use winit::window::Window;
 /// 클라이언트 애플리케이션에서 발생할 수 있는 에러 목록입니다.
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("A system error occurred for the following reasons:{0}")]
+    #[error("A system error occurred for the following reasons: {0}")]
     System(#[from] OsError),
 
-    #[error("An event loop error occurred for the following reasons:{0}")]
+    #[error("An event loop error occurred for the following reasons: {0}")]
     EventLoop(#[from] EventLoopError),
+
+    #[error("No suitable adapter.")]
+    NoSuitableAdapter,
+    
+    #[error("Surface creation failed for the following reasons: {0}")]
+    SurfaceCreationFailed(#[from] wgpu::CreateSurfaceError),
+
+    #[error("Device creation failed for the following reasons: {0}")]
+    DeviceCreationFailed(#[from] wgpu::RequestDeviceError),
 }
 
 
