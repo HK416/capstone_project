@@ -12,7 +12,9 @@ use std::process;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::marker::PhantomData;
+use framework::timer::GameTimer;
 use winit::application::ApplicationHandler;
+use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
 use winit::event_loop::ActiveEventLoop;
@@ -108,6 +110,9 @@ impl Default for AppBuilder {
 /// 클라이언트 애플리케이션을 관리합니다.
 #[derive(Debug)]
 pub struct App<T: 'static> {
+    /// 특정 시각의 경과 시간을 측정하는 타이머 입니다.
+    timer: GameTimer,
+
     /// 렌더링 컨텍스트 입니다.
     context: Arc<DrawContext>,
 
@@ -122,12 +127,16 @@ pub struct App<T: 'static> {
 }
 
 impl<T: 'static> App<T> {
+    /// 애플리케이션 타이틀 문자열 입니댜.
+    pub const APP_TITLE: &'static str = "Hello to Halo!";
+
     /// 애플리케이션 이벤트 루프를 실행합니다.
     async fn run(builder: AppBuilder, event_loop: EventLoop<T>) -> Result<(), AppError> {
         let context = DrawContext::new(builder.enable_debug_layer).await?;
         let device = DrawDevice::new(&context.adapter).await?;
 
         let mut app = App {
+            timer: GameTimer::default(),
             context,
             device,
             surface: None,
@@ -138,6 +147,32 @@ impl<T: 'static> App<T> {
         event_loop.run_app(&mut app).map_err(|e| AppError::from(e))
     }
 
+    /// 애플리케이션이 최초로 시작되었을 때 호출되는 함수입니다.
+    /// 
+    /// ※ 타이머의 초기화 또는 첫 번째 장면의 초기화를 여기서 진행합니다.
+    /// 
+    fn on_create(&mut self, event_loop: &ActiveEventLoop) {
+        log::debug!("애플리케이션 초기화 수행...");
+
+        // 타이머 초기화
+        self.timer.reset();
+    }
+
+    /// 애플리케이션이 갱신해야 할 때 호출되는 함수입니다.
+    /// 
+    /// ※ 현재 장면의 갱신을 여기서 진행합니다.
+    /// 
+    fn on_update(&mut self, event_loop: &ActiveEventLoop, surface: &DrawSurface) {
+        log::debug!("애플리케이션 갱신 수행...");
+
+        let frame_rate = self.timer.frame_rate();
+        surface.window.set_title(&format!("{} (FPS:{})", Self::APP_TITLE, frame_rate))
+    }
+
+    fn on_destroy(&mut self, event_loop: &ActiveEventLoop) {
+        log::debug!("애플리케이션 정리 수행...");
+    }
+
     /// 애플리케이션에 새로운 윈도우를 추가합니다.
     /// 
     /// ※ 사용하는 윈도우는 1개이지만, 운영체제에 따라 이 함수를 여러번 호출할 수 있습니다. (예: Android)
@@ -145,7 +180,7 @@ impl<T: 'static> App<T> {
     fn regist_window(&mut self, event_loop: &ActiveEventLoop) -> Result<Weak<Window>, AppError> { 
         #[allow(unused_mut)]
         let mut attributes = Window::default_attributes()
-            .with_title("Hello to Halo")
+            .with_title(Self::APP_TITLE)
             .with_visible(true)
             .with_resizable(false);
 
@@ -168,6 +203,18 @@ impl<T: 'static> App<T> {
 }
 
 impl<T: 'static> ApplicationHandler<T> for App<T> {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        // 경과 시간을 측정합니다.
+        match cause {
+            StartCause::Init => self.on_create(event_loop),
+            _ => self.timer.tick(),
+        };
+    }
+
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+        self.on_destroy(event_loop);
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         log::info!("resumed 호출됨!");
         
@@ -226,7 +273,10 @@ impl<T: 'static> ApplicationHandler<T> for App<T> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        if let Some(surface) = &self.surface {
+        if let Some(surface) = self.surface.clone() {
+            // 업데이트 함수 호출
+            self.on_update(event_loop, &surface);
+
             // 등록된 윈도우가 존재할 경우 윈도우를 갱신한다.
             surface.window.request_redraw();
         } else {
