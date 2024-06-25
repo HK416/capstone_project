@@ -1,8 +1,9 @@
 mod app;
+mod cmd;
 mod error;
 mod render;
 
-use self::app::AppBuilder;
+use self::cmd::parse_command_line_args;
 
 /// 64bit `Windows`, `macOS` 플랫폼의
 /// 애플리케이션 진입점 입니다.
@@ -14,5 +15,7 @@ fn main() {
     log::info!("클라이언트 애플리케이션 실행...");
 
     // `winit` 이벤트 루프를 생성하고 애플리케이션을 실행합니다.
-    AppBuilder::new().build_and_run();
+    parse_command_line_args()
+        .set_title("Hello to Halo!")
+        .build_and_run();
 }

@@ -7,7 +7,9 @@ use super::render::DrawContext;
 use super::render::DrawSurface;
 use super::render::DrawDevice;
 
+use std::num::NonZeroUsize;
 use std::panic;
+use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -18,61 +20,136 @@ use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
 use winit::event_loop::ActiveEventLoop;
+use winit::window::Icon;
 use winit::window::Window;
 use winit::window::WindowId;
 
 
+/// 기본 애플리케이션 타이틀 문자열 입니다.
+const DEF_TITLE_STR: &'static str = "Hello, World";
 
-/// 클라이언트 애플리케이션을 생성하는 빌더입니다.
-pub struct AppBuilder {
+
+
+/// 애플리케이션을 실행할 때 사용할 옵션 목록입니다.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
+pub struct AppOptions {
+    /// 애플리케이션에서 사용 가능한 최대 스레드의 갯수 입니다.
+    /// 
+    /// ※ 기본 값은 현재 시스템의 물리적 코어의 갯수입니다.
+    /// 
+    pub num_threads: NonZeroUsize,
+
     /// 현재 프레임 레이트 표시 여부입니다.
     /// 
     /// ※ Debug 모드의 경우 기본 값은 `true` 입니다.
     /// 
-    show_frame_rate: bool,
+    pub show_frame_rate: bool, 
 
     /// 렌더러의 디버깅 레이어 활성화 여부입니다.
     /// 
     /// ※ Debug 모드의 경우 기본 값은 `true` 입니다.
     /// 
-    enable_debug_layer: bool,
+    pub enable_debug_layer: bool, 
+
+    /// 애플리케이션 창의 전체 화면 여부입니다.
+    /// 
+    /// ※ 기본 값은 `false` 입니다.
+    /// 
+    pub fullscreen: bool, 
+
+    /// 애플리케이션 창의 크기 조절 여부입니다.
+    /// 
+    /// ※ 기본 값은 `false` 입니다.
+    /// 
+    pub resizable: bool,
+}
+
+impl Default for AppOptions {
+    #[inline(always)]
+    fn default() -> Self {
+        Self { 
+            num_threads: NonZeroUsize::new(num_cpus::get_physical()).unwrap(), 
+            show_frame_rate: if cfg!(debug_assert) { true } else { false }, 
+            enable_debug_layer: if cfg!(debug_assert) { true } else { false }, 
+            fullscreen: false, 
+            resizable: false 
+        }
+    }
+}
+
+
+
+/// 클라이언트 애플리케이션을 생성하는 빌더입니다.
+pub struct AppBuilder {
+    /// 애플리케이션 생성 옵션입니다.
+    pub options: AppOptions,
+
+    /// 애플리케이션의 실행 디렉토리 경로 입니다.
+    pub current_dir: PathBuf,
+
+    /// 애플리케이션 타이틀 문자열 입니다.
+    /// 
+    /// ※ 기본 값은 `DEF_TITLE_STR` 입니다.
+    /// 
+    pub title: String,
+
+    /// 애플리케이션 아이콘 이미지 입니다.
+    /// 
+    /// ※ 기본 값은 `None` 입니다.
+    /// 
+    pub icon: Option<Icon>,
 }
 
 impl AppBuilder {
     /// 애플리케이션 빌더를 생성합니다.
+    #[inline]
     #[must_use]
-    #[inline(always)]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new<P: Into<PathBuf>>(current_dir: P) -> Self {
+        Self { 
+            options: AppOptions::default(), 
+            current_dir: current_dir.into(), 
+            title: DEF_TITLE_STR.to_string(), 
+            icon: None 
+        }
     }
 
-    /// 창에 현재 프레임 레이트 표시를 설정합니다.
+    /// 애플리케이션 타이틀 문자열을 설정합니다.
     #[inline]
     #[must_use]
     #[allow(unused)]
-    pub fn set_show_frame_rate(mut self, show: bool) -> Self {
-        self.show_frame_rate = show;
+    pub fn set_title<S: Into<String>>(mut self, title: S) -> Self {
+        self.title = title.into();
         self
     }
 
-    /// 렌더러의 디버깅 레이어 활성화를 설정합니다.
+    /// 애플리케이션 아이콘 파일 경로를 설정합니다.
     #[inline]
     #[must_use]
     #[allow(unused)]
-    pub fn set_enable_debug_layer(mut self, enable: bool) -> Self {
-        self.enable_debug_layer = enable;
+    pub fn set_icon<I: Into<Icon>>(mut self, icon: I) -> Self {
+        self.icon = Some(icon.into());
         self
     }
 
     /// 애플리케이션을 빌드하고 실행합니다.
     #[inline]
     pub fn build_and_run(self) {
+        log::info!("----------애플리케이션 옵션 정보----------");
+        log::info!("• 애플리케이션 타이틀: {:?}", self.title);
+        log::info!("• 애플리케이션 아이콘 경로: {:?}", self.icon);
+        log::info!("• 실행 가능한 스레드 수: {}", self.options.num_threads);
+        log::info!("• 프레임 레이트 표시: {}", self.options.show_frame_rate);
+        log::info!("• 렌더러 디버깅 레이어 활성화: {}", self.options.enable_debug_layer);
+        log::info!("• 전체 화면 모드: {}", self.options.fullscreen);
+        log::info!("• 창 크기 조절: {}", self.options.resizable);
+        log::info!("");
+
         // 애플리케이션 이벤트 루프를 생성합니다.
         let event_loop: EventLoop<()> = match EventLoop::with_user_event().build() {
             Ok(event_loop) => event_loop,
             Err(err) => {
                 show_error_msg(
-                    "Application build failed", 
+                    "Application initialize failed", 
                     &AppError::from(err).to_string(), 
                     None
                 );
@@ -82,9 +159,17 @@ impl AppBuilder {
 
         // 애플리케이션 이벤트 루프를 실행합니다.
         #[cfg(not(target_arch = "wasm32"))] {
-            if let Err(err) = pollster::block_on(App::run(self, event_loop)) {
+            let result = pollster::block_on(App::run(
+                self.current_dir, 
+                self.title, 
+                self.icon, 
+                self.options, 
+                event_loop
+            ));
+            
+            if let Err(err) = result {
                 show_error_msg(
-                    "Application running failed", 
+                    "Application launching failed", 
                     &AppError::from(err).to_string(), 
                     None
                 );
@@ -94,22 +179,23 @@ impl AppBuilder {
     }
 }
 
-impl Default for AppBuilder {
-    #[must_use]
-    #[inline(always)]
-    fn default() -> Self {
-        Self { 
-            show_frame_rate: if cfg!(debug_assert) { true } else { false },
-            enable_debug_layer: if cfg!(debug_assert) { true } else { false }, 
-        }
-    }
-}
-
 
 
 /// 클라이언트 애플리케이션을 관리합니다.
 #[derive(Debug)]
 pub struct App<T: 'static> {
+    /// 현재 애플리케이션 실행 경로 입니다.
+    current_dir: PathBuf,
+
+    /// 애플리케이션 타이틀 문자열 입니다.
+    title: String,
+
+    /// 애플리케이션 아이콘 이미지 입니다.
+    icon: Option<Icon>,
+
+    /// 애플리케이션 옵션 입니다.
+    options: AppOptions,
+
     /// 특정 시각의 경과 시간을 측정하는 타이머 입니다.
     timer: GameTimer,
 
@@ -127,16 +213,24 @@ pub struct App<T: 'static> {
 }
 
 impl<T: 'static> App<T> {
-    /// 애플리케이션 타이틀 문자열 입니댜.
-    pub const APP_TITLE: &'static str = "Hello to Halo!";
-
     /// 애플리케이션 이벤트 루프를 실행합니다.
-    async fn run(builder: AppBuilder, event_loop: EventLoop<T>) -> Result<(), AppError> {
-        let context = DrawContext::new(builder.enable_debug_layer).await?;
+    async fn run(
+        current_dir: PathBuf, 
+        title: String,
+        icon: Option<Icon>,
+        options: AppOptions,
+        event_loop: EventLoop<T>
+    ) -> Result<(), AppError> {
+        let timer = GameTimer::default();
+        let context = DrawContext::new(options.enable_debug_layer).await?;
         let device = DrawDevice::new(&context.adapter).await?;
 
         let mut app = App {
-            timer: GameTimer::default(),
+            current_dir,
+            title,
+            icon,
+            options,
+            timer,
             context,
             device,
             surface: None,
@@ -164,9 +258,6 @@ impl<T: 'static> App<T> {
     /// 
     fn on_update(&mut self, event_loop: &ActiveEventLoop, surface: &DrawSurface) {
         log::debug!("애플리케이션 갱신 수행...");
-
-        let frame_rate = self.timer.frame_rate();
-        surface.window.set_title(&format!("{} (FPS:{})", Self::APP_TITLE, frame_rate))
     }
 
     fn on_destroy(&mut self, event_loop: &ActiveEventLoop) {
@@ -180,9 +271,10 @@ impl<T: 'static> App<T> {
     fn regist_window(&mut self, event_loop: &ActiveEventLoop) -> Result<Weak<Window>, AppError> { 
         #[allow(unused_mut)]
         let mut attributes = Window::default_attributes()
-            .with_title(Self::APP_TITLE)
-            .with_visible(true)
-            .with_resizable(false);
+            .with_title(&self.title)
+            .with_window_icon(self.icon.clone())
+            .with_visible(false)
+            .with_resizable(self.options.resizable);
 
         // 창을 생성합니다.
         let window: Arc<Window> = event_loop
@@ -190,13 +282,18 @@ impl<T: 'static> App<T> {
             .map_err(|e| AppError::from(e))?
             .into();
         log::info!("Created new window (ID: {:?})", window.id());
-        
+
+        // TODO: 전체 화면 동작 구현.
+
         // 렌더링 표면을 생성합니다.
         self.surface = DrawSurface::new(
             window.clone(), 
             &self.context.instance, 
             &self.context.adapter
         )?.into();
+
+        // 창을 표시합니다.
+        window.set_visible(true);
         
         Ok(Arc::downgrade(&window))
     }
@@ -266,7 +363,7 @@ impl<T: 'static> ApplicationHandler<T> for App<T> {
                 
             },
             WindowEvent::CloseRequested => {
-                return event_loop.exit();
+                drop(self.surface.take());
             },
             _ => { /* empty */ }
         };
