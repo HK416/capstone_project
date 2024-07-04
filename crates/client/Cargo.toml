@@ -16,6 +16,10 @@ num_cpus = "1.16"
 # License: MIT or Apache-2.0
 lazy_static = "1.5"
 
+# bit 수준 Flag를 생성하는 라이브러리
+# License: MIT or Apache-2.0
+bitflags = "2.6"
+
 # 로그 인터페이스 라이브러리
 # License: MIT or Apache-2.0
 log = "0.4"
