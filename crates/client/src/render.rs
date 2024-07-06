@@ -1,167 +1,117 @@
-//! 렌더링과 관련된 코드를 작성합니다.
-//! 
-
-use super::error::AppError;
+use crate::error::AppError;
 
 use std::sync::Arc;
+use std::sync::OnceLock;
 use winit::window::Window;
 
+static SWAPCHAIN_FORMAT: OnceLock<wgpu::TextureFormat> = OnceLock::new();
 
 
-/// 렌더러의 실행 가능 플랫폼 목록 입니다.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Platform {
-    Unknown,
-    Windows,
-    MacOS,
+
+/// `wgpu` 렌더러 객체들을 생성합니다.
+#[inline]
+pub async fn create_renderer(enable_debug_layer: bool) -> Result<(Arc<wgpu::Instance>, Arc<wgpu::Adapter>, Arc<wgpu::Device>, Arc<wgpu::Queue>), AppError> {
+    let instance = create_wgpu_instance(enable_debug_layer);
+    let adapter = create_wgpu_adapter(&instance).await?;
+    let (device, queue) = create_wgpu_device_and_queue(&adapter).await?;
+    Ok((instance, adapter, device, queue))
 }
 
-impl Default for Platform {
-    #[inline]
-    fn default() -> Self {
-        if cfg!(target_os = "windows") {
-            Platform::Windows
-        } else if cfg!(target_os = "macos") {
-            Platform::MacOS
-        } else {
-            Platform::Unknown
+/// `wgpu` 렌더링 인스턴스를 생성합니다.
+fn create_wgpu_instance(enable_debug_layer: bool) -> Arc<wgpu::Instance> {
+    let mut instance_desc = wgpu::InstanceDescriptor::default();
+    if enable_debug_layer {
+        instance_desc.flags = wgpu::InstanceFlags::debugging();
+    }
+
+    #[cfg(target_os = "windows")] {
+        instance_desc.backends = wgpu::Backends::DX12;
+        instance_desc.dx12_shader_compiler = wgpu::util::dx12_shader_compiler_from_env()
+            .unwrap_or_default();
+    }
+    #[cfg(target_os = "macos")] {
+        instance_desc.backends = wgpu::Backends::METAL;
+    }
+
+    Arc::new(wgpu::Instance::new(instance_desc))
+}
+
+/// `wgpu` 장치 어뎁터를 생성합니다.
+async fn create_wgpu_adapter(instance: &wgpu::Instance) -> Result<Arc<wgpu::Adapter>, AppError> {
+    instance.request_adapter(
+        &wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: None,
         }
+    ).await
+    .map_or(Err(AppError::NoSuitableAdapter), |adapter| Ok(Arc::new(adapter)))
+}
+
+/// `wgpu` 논리적 장치와 명령 대기열을 생성합니다.
+async fn create_wgpu_device_and_queue(adapter: &wgpu::Adapter) -> Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>), AppError> {
+    adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: None,
+            required_features: wgpu::Features::TEXTURE_COMPRESSION_BC, 
+            required_limits: wgpu::Limits::downlevel_defaults()
+                .using_resolution(adapter.limits()),
+        }, 
+        None
+    ).await
+    .map(|(device, queue)| (Arc::new(device), Arc::new(queue)))
+    .map_err(|e| AppError::from(e))
+}
+
+
+
+/// `wgpu` 장치 표면을 생성합니다.
+#[allow(unused_must_use)]
+pub fn create_wgpu_surface(window: Arc<Window>, instance: &wgpu::Instance, adapter: &wgpu::Adapter) -> Result<Arc<wgpu::Surface<'static>>, AppError> {
+    let surface = instance.create_surface(
+        wgpu::SurfaceTarget::from(window.clone())
+    )
+    .map(|surface| Arc::new(surface))
+    .map_err(|e| AppError::from(e))?;
+
+    if !adapter.is_surface_supported(&surface) {
+        return Err(AppError::NoSuitableAdapter);
     }
+
+    let format = surface.get_capabilities(&adapter)
+        .formats
+        .first()
+        .cloned()
+        .unwrap();
+
+    log::info!("스왑체인 텍스처 포맷: {:?}", format);
+    SWAPCHAIN_FORMAT.set(format);
+
+    Ok(surface)
 }
 
-
-
-/// `wgpu` 렌더링 컨텍스트 입니다.
-/// 
-/// [`Instance`](wgpu::Instance), [`Adapter`](wgpu::Adapter)를 가지고 있습니다.
-/// 
-#[derive(Debug)]
-pub struct DrawContext {
-    pub instance: wgpu::Instance,
-    pub adapter: wgpu::Adapter,
+/// 현재 스왑체인 텍스처 포맷을 가져옵니다.
+#[inline]
+pub fn get_swapchain_format() -> wgpu::TextureFormat {
+    SWAPCHAIN_FORMAT.get()
+        .cloned()
+        .unwrap_or(wgpu::TextureFormat::Bgra8Unorm)
 }
 
-impl DrawContext {
-    /// `wgpu`의 렌더링 컨텍스트를 생성합니다.
-    /// 
-    /// ※ `Windows`의 경우 `DX12`, `macOS`의 경우 `Metal` API를 백엔드로 사용하도록 설정됩니다.
-    /// 
-    pub async fn new(enable_debug_layer: bool) -> Result<Arc<Self>, AppError> {
-        // `wgpu` 인스턴스를 생성합니다.
-        let instance = wgpu::Instance::new(
-            wgpu::InstanceDescriptor {
-                backends: match Platform::default() {
-                    Platform::Windows => wgpu::Backends::DX12,
-                    Platform::MacOS => wgpu::Backends::METAL,
-                    Platform::Unknown => wgpu::Backends::PRIMARY
-                },
-                flags: match enable_debug_layer { 
-                    true => wgpu::InstanceFlags::debugging(),
-                    false => wgpu::InstanceFlags::default()
-                },
-                dx12_shader_compiler: wgpu::util::dx12_shader_compiler_from_env()
-                    .unwrap_or_default(),
-                gles_minor_version: wgpu::Gles3MinorVersion::Automatic
-            }
-        );
-
-        // `wgpu` 장치 어뎁터를 생성합니다.
-        let adapter = instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance, 
-                force_fallback_adapter: false,
-                compatible_surface: None,
-            }
-        ).await
-        .ok_or(AppError::NoSuitableAdapter)?;
-
-        Ok(Self { instance, adapter }.into())
-    }
-}
-
-
-
-/// `wgpu` 렌더링 표면 입니다.
-/// 
-/// [`Window`](winit::window::Window), [`Surface`](wgpu::Surface)를 가지고 있습니다.
-/// 
-#[derive(Debug)]
-pub struct DrawSurface {
-    pub window: Arc<Window>, 
-    pub surface: wgpu::Surface<'static>, 
-    pub swapchain_format: wgpu::TextureFormat,
-}
-
-impl DrawSurface {
-    /// `wgpu`의 렌더링 표면을 생성합니다.
-    pub fn new(
-        window: Arc<Window>, 
-        instance: &wgpu::Instance,
-        adapter: &wgpu::Adapter
-    ) -> Result<Arc<Self>, AppError> {
-        // 주어진 윈도우로부터 `wgpu` 렌더링 표면을 생성합니다.
-        let surface = instance.create_surface(
-            wgpu::SurfaceTarget::from(window.clone())
-        ).map_err(|e| AppError::from(e))?;
-
-        // 생성된 `wgpu` 표면이 장치 어뎁터랑 호환되는지 확인합니다.
-        if !adapter.is_surface_supported(&surface) {
-            return Err(AppError::NoSuitableAdapter);
+/// 스왑체인을 설정합니다.
+#[inline]
+pub fn config_swapchain(width: u32, height: u32, device: &wgpu::Device, surface: &wgpu::Surface<'_>) {
+    surface.configure(
+        device, 
+        &wgpu::SurfaceConfiguration {
+            width, 
+            height, 
+            format: get_swapchain_format(),
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            present_mode: wgpu::PresentMode::AutoVsync, 
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT, 
+            desired_maximum_frame_latency: 2,
+            view_formats: vec![],
         }
-
-        // 렌더링 표면의 텍스처 포맷을 가져옵니다.
-        let swapchain_format = surface.get_capabilities(adapter)
-            .formats
-            .first()
-            .cloned()
-            .unwrap();
-        log::info!("스왑체인 텍스처 포맷: {:?}", swapchain_format);
-
-        Ok(Self { window, surface, swapchain_format }.into())
-    }
-
-    pub fn config_swapchain(&self, width: u32, height: u32, device: &wgpu::Device) {
-        self.surface.configure(
-            device, 
-            &wgpu::SurfaceConfiguration {
-                width,
-                height,
-                format: self.swapchain_format,
-                alpha_mode: wgpu::CompositeAlphaMode::Auto,
-                present_mode: wgpu::PresentMode::AutoVsync,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                desired_maximum_frame_latency: 2,
-                view_formats: vec![],
-            }
-        )
-    }
-}
-
-
-
-/// `wgpu` 렌더링 장치 입니다.
-/// 
-/// [`Device`](wgpu::Device), [`Queue`](wgpu::Queue)를 가지고 있습니다.
-/// 
-#[derive(Debug)]
-pub struct DrawDevice {
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-}
-
-impl DrawDevice {
-    pub async fn new(adapter: &wgpu::Adapter) -> Result<Arc<Self>, AppError> {
-        let (device, queue) = adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("Graphics Device"), 
-                required_features: wgpu::Features::TEXTURE_COMPRESSION_BC,
-                required_limits: wgpu::Limits::downlevel_defaults()
-                    .using_resolution(adapter.limits()),
-            }, 
-            None
-        ).await
-        .map_err(|e| AppError::from(e))?;
-        
-        Ok(Self { device, queue }.into())
-    }
+    )
 }

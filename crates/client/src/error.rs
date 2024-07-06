@@ -1,6 +1,3 @@
-//! 클라이언트 애플리케이션에서 발생할 수 있는 오류와 관련된 코드를 작성합니다.
-//! 
-
 use thiserror::Error;
 use winit::error::OsError;
 use winit::error::EventLoopError;
@@ -17,9 +14,18 @@ pub enum AppError {
     #[error("An event loop error occurred for the following reasons: {0}")]
     EventLoop(#[from] EventLoopError),
 
+    #[error("The following error occurred while parsing the command line: {0}")]
+    CommandLine(String),
+
+    #[error("No suitable resolution.")]
+    NoSuitableResolution,
+
     #[error("No suitable adapter.")]
     NoSuitableAdapter,
     
+    #[error("Surface runtime error occurred for the following reasons: {0}")]
+    SurfaceError(#[from] wgpu::SurfaceError),
+
     #[error("Surface creation failed for the following reasons: {0}")]
     SurfaceCreationFailed(#[from] wgpu::CreateSurfaceError),
 
@@ -34,8 +40,12 @@ pub enum AppError {
 /// ※ 이 함수는 메인 스레드에서 실행되어야 하며, 스레드를 멈춥니다.
 /// 
 #[inline]
-pub fn show_error_msg(title: &str, text: &str, owner_window: Option<&Window>) {
-    impl_show_error_msg(title, text, owner_window)
+pub fn show_error_msg<T: AsRef<str>, S: AsRef<str>>(
+    title: T, 
+    text: S, 
+    owner_window: Option<&Window>
+) {
+    impl_show_error_msg(title.as_ref(), text.as_ref(), owner_window)
 }
 
 /// `Windows`, `macOS`에서 에러 메시지를 출력하는 대화 상자 구현입니다.
