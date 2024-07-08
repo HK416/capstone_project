@@ -34,6 +34,10 @@ thiserror = "1.0"
 # License: MIT or Apache-2.0
 hashbrown = "0.14"
 
+# Entity Component System (ECS) 라이브러리
+# License: MIT or Apache-2.0
+hecs = "0.10"
+
 # 윈도우 생성 라이브러리
 # License: Apache-2.0
 winit = { version = "0.30", features = ["rwh_05"] }
