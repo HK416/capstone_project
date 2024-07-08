@@ -1,21 +1,26 @@
 pub mod builder;
 pub mod cmd;
 pub mod config;
+pub mod delegate;
 pub mod dpi;
 pub mod event;
 pub mod flag;
 pub mod locale;
 
 use self::builder::AppBuilder;
+use self::dpi::Dpi;
+use self::delegate::AppDelegate;
 use self::event::AppEvent;
 use self::flag::AppFlags;
 use self::locale::AppLocale;
-use self::dpi::Dpi;
 use crate::error::AppError;
+use crate::scene::manager::SceneManager;
 
 use std::fmt;
 use std::sync::Arc;
+use std::path::Path;
 use std::path::PathBuf;
+use std::cell::RefCell;
 use framework::timer::GameTimer;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -33,14 +38,20 @@ use winit::window::WindowId;
 
 /// 애플리케이션 인터페이스 `trait` 입니다.
 pub trait Application : fmt::Debug {
+    /// 애플리케이션에서 사용 가능한 최대 스레드 갯수를 반환합니다.
+    fn get_num_threads(&self) -> usize;
+
+    /// 애플리케이션 실행 디렉토리 경로를 빌려옵니다.
+    fn ref_current_dir(&self) -> &Path;
+
+    /// 애플리케이션 생성 플래그를 반환합니다.
+    fn get_flags(&self) -> AppFlags;
+
     /// 애플리케이션 표시 언어를 빌려옵니다.
     fn ref_locale(&self) -> &Option<AppLocale>;
 
     /// 애플리케이션 타이머를 빌려옵니다.
     fn ref_timer(&self) -> &GameTimer;
-
-    /// 애플리케이션 창을 빌려옵니다.
-    fn ref_window(&self) -> &Option<Arc<Window>>;
 
     /// `wgpu` 렌더러의 인스턴스를 빌려옵니다.
     fn ref_render_instance(&self) -> &Arc<wgpu::Instance>;
@@ -53,9 +64,6 @@ pub trait Application : fmt::Debug {
 
     /// `wgpu` 렌더러의 명령 대기열을 빌려옵니다.
     fn ref_render_queue(&self) -> &Arc<wgpu::Queue>;
-
-    /// `wgpu` 렌더러의 표면을 빌려옵니다.
-    fn ref_render_surface(&self) -> &Option<Arc<wgpu::Surface<'static>>>;
 }
 
 
@@ -88,6 +96,10 @@ pub struct App {
     /// <b>현재</b> 애플리케이션 창의 전체화면 여부입니다.
     fullscreen: bool,
 
+    delegate: RefCell<Box<dyn AppDelegate>>,
+
+    /// 게임 장면의 관리자 입니다.
+    scene_manager: RefCell<SceneManager>,
 
     /// 특정 시각의 경과 시간을 측정하는 타이머 입니다.
     timer: GameTimer,
@@ -135,6 +147,8 @@ impl App {
             icon: builder.icon, 
             dpi: builder.dpi.unwrap_or(Dpi::W3840H2160), 
             fullscreen: builder.fullscreen, 
+            delegate: RefCell::new(builder.delegate),
+            scene_manager: RefCell::new(SceneManager::new(builder.start_scene)),
             timer: GameTimer::default(), 
             instance, 
             adapter, 
@@ -228,15 +242,27 @@ impl App {
 
 impl App {
     /// 애플리케이션이 최초 초기화 될 때 한번만 호출되는 함수입니다.
-    fn on_start(&mut self, _event_loop: &ActiveEventLoop) -> Result<(), AppError> {
+    fn on_init(&mut self, event_loop: &ActiveEventLoop) -> Result<(), AppError> {
         // 애플리케이션 타이머를 초기화 합니다.
         self.timer.reset();
+        
+        // 게임 장면을 갱신합니다.
+        self.scene_manager.borrow_mut().update(self)?;
+
+        // 애플리케이션 `delegate`를 호출합니다.
+        self.delegate.borrow_mut().on_application_launching(self, event_loop)?;
 
         Ok(())
     }
 
-    /// 애플리케이션이 종료될 때 호출되는 함수입니다.
-    fn on_end(&mut self, _event_loop: &ActiveEventLoop) -> Result<(), AppError> {
+    /// 애플리케이션이 종료될 때 한번만 호출되는 함수입니다.
+    fn on_cleanup(&mut self, event_loop: &ActiveEventLoop) -> Result<(), AppError> {
+        // 애플리케이션 `delegate`를 호출합니다.
+        self.delegate.borrow_mut().on_application_finish(self, event_loop)?;
+
+        // 게임 장면을 정리합니다.
+        self.scene_manager.borrow_mut().clear(self)?;
+
         Ok(())
     }
 
@@ -244,21 +270,13 @@ impl App {
     /// 
     /// 애플리케이션을 종료하려는 경우 `true`를 반환해야 합니다.
     /// 
-    fn on_close(
-        &mut self, 
-        _window: &Arc<Window>, 
-        _surface: &Arc<wgpu::Surface>
-    ) -> Result<bool, AppError> {
-        Ok(true)
+    #[inline]
+    fn on_close(&mut self) -> Result<bool, AppError> {
+        self.scene_manager.borrow_mut().handle_close_request(self)
     }
 
     /// 애플리케이션 창의 크기가 변경될 때 호출되는 함수입니다.
-    fn on_resized(
-        &mut self, 
-        size: PhysicalSize<u32>, 
-        _window: &Arc<Window>, 
-        surface: &Arc<wgpu::Surface>
-    ) -> Result<(), AppError> {
+    fn on_resized(&mut self, size: PhysicalSize<u32>, surface: &Arc<wgpu::Surface>) -> Result<(), AppError> {
         use crate::render::config_swapchain;
         
         // 애플리케이션 창의 가로 또는 세로 크기가 0인 경우 함수 실행을 생략합니다.
@@ -271,6 +289,9 @@ impl App {
 
         // 변경된 크기로 스왑체인을 설정합니다.
         config_swapchain(size.width, size.height, &self.device, &surface);
+
+        // 현재 게임 장면의 콜백 함수를 호출합니다.
+        self.scene_manager.borrow_mut().handle_window_resized(size, self)?;
 
         Ok(())
     }
@@ -334,6 +355,24 @@ impl App {
 impl Application for App {
     #[inline]
     #[must_use]
+    fn get_num_threads(&self) -> usize {
+        self.num_threads
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_current_dir(&self) -> &Path {
+        &self.current_dir
+    }
+
+    #[inline]
+    #[must_use]
+    fn get_flags(&self) -> AppFlags {
+        self.flags
+    }
+
+    #[inline]
+    #[must_use]
     fn ref_locale(&self) -> &Option<AppLocale> {
         &self.locale
     }
@@ -342,12 +381,6 @@ impl Application for App {
     #[must_use]
     fn ref_timer(&self) -> &GameTimer {
         &self.timer
-    }
-
-    #[inline]
-    #[must_use]
-    fn ref_window(&self) -> &Option<Arc<Window>> {
-        &self.window
     }
 
     #[inline]
@@ -373,12 +406,6 @@ impl Application for App {
     fn ref_render_queue(&self) -> &Arc<wgpu::Queue> {
         &self.queue
     }
-
-    #[inline]
-    #[must_use]
-    fn ref_render_surface(&self) -> &Option<Arc<wgpu::Surface<'static>>> {
-        &self.surface
-    }
 }
 
 impl ApplicationHandler<AppEvent> for App {
@@ -387,7 +414,7 @@ impl ApplicationHandler<AppEvent> for App {
 
         if cause == StartCause::Init {
             // 애플리케이션 콜백 함수를 호출합니다.
-            if let Err(e) = self.on_start(event_loop) {
+            if let Err(e) = self.on_init(event_loop) {
                 show_error_msg(
                     "Application initialization failure", 
                     e.to_string(), 
@@ -453,7 +480,7 @@ impl ApplicationHandler<AppEvent> for App {
         use std::process::exit;
 
         // 애플리케이션 콜백 함수를 호출합니다.
-        if let Err(e) = self.on_end(event_loop) {
+        if let Err(e) = self.on_cleanup(event_loop) {
             show_error_msg(
                 "Application runtime error", 
                 e.to_string(), 
@@ -475,13 +502,13 @@ impl ApplicationHandler<AppEvent> for App {
         }
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppEvent) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: AppEvent) {
         /* empty */
     }
 
     fn window_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         window_id: WindowId,
         event: WindowEvent,
     ) {
@@ -503,13 +530,9 @@ impl ApplicationHandler<AppEvent> for App {
 
         // 애플리케이션 창 이벤트를 처리합니다.
         if let Err(e) = match event {
-            WindowEvent::Resized(size) => {
-                self.on_resized(size, &window, &surface)
-            },
-            WindowEvent::RedrawRequested => {
-                self.on_draw(&window, &surface)
-            },
-            WindowEvent::CloseRequested => match self.on_close(&window, &surface) {
+            WindowEvent::Resized(size) => self.on_resized(size, &surface),
+            WindowEvent::RedrawRequested => self.on_draw(&window, &surface),
+            WindowEvent::CloseRequested => match self.on_close() {
                 Ok(exiting) => {
                     if exiting {
                         drop(self.window.take());

@@ -6,6 +6,10 @@ use crate::error::AppError;
 use std::fmt;
 use std::collections::VecDeque;
 use hecs::World;
+use winit::dpi::PhysicalSize;
+
+/// 게임 장면 관리자의 기본 `capacity` 입니다.
+pub const DEF_CAPACITY: usize = 16;
 
 /// 고정 시간 갱신 함수에서 사용되는 경과 시간입니다.
 /// 초당 60번의 횟수로 갱신합니다.
@@ -40,15 +44,14 @@ impl SceneManager {
     #[must_use]
     pub fn new(start_scene: Box<dyn GameScene>) -> Self {
         Self { 
-            scene_stack: VecDeque::with_capacity(16), 
+            scene_stack: VecDeque::with_capacity(DEF_CAPACITY), 
             control_flow: Some(ControlFlow::Push(start_scene)),
             elapsed_time_sec: 0.0, 
             world: World::new() 
         }
     }
 
-    /// 게임 장면 관리자의 제어자를 설정합니다.
-    /// 이미 설정된 값이 있는 경우 그 값을 반환합니다.
+    /// 게임 장면 관리자의 제어자를 설정합니다. 이미 설정된 값이 있는 경우 그 값을 반환합니다.
     /// 
     /// <b>주의: 설정된 값은 즉시 반영되지 않습니다.</b>
     /// 
@@ -57,28 +60,41 @@ impl SceneManager {
         self.control_flow.replace(control_flow)
     }
 
-    /// 게임 장면 관리자를 실행합니다.
-    pub fn run(&mut self, app: &dyn Application) -> Result<(), AppError> {
-        // 현재 게임 장면이 존재할 경우 갱신합니다.
+    /// 애플리케이션 창의 종료 버튼이 눌린 것을 처리합니다.
+    /// 
+    /// 애플리케이션을 종료하고자 하는 경우 `true`를 반환해야 합니다.
+    /// 
+    pub fn handle_close_request(&mut self, app: &dyn Application) -> Result<bool, AppError> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
-            let timer = app.ref_timer();
-            let elapsed_time_sec = timer.elapsed_time_sec();
-            
-            // 변동 시간 갱신 함수를 호출합니다.
-            scene.on_update(&mut self.world, app, elapsed_time_sec)?;
-
-            // 경과 시간을 갱신합니다.
-            self.elapsed_time_sec += elapsed_time_sec;
-            
-            // 고정 시간 갱신 함수를 호출합니다.
-            let mut update_count = 0;
-            while self.elapsed_time_sec >= FIXED_TIME_SEC && update_count < MAX_FIXED_UPDATE {
-                scene.on_fixed_update(&mut self.world, app, FIXED_TIME_SEC)?;
-                self.elapsed_time_sec -= FIXED_TIME_SEC;
-                update_count += 1;
-            }
+            return scene.on_close(app);
         }
 
+        Ok(true)
+    }
+
+    /// 애플리케이션 창의 크기가 변경된 것을 처리합니다.
+    pub fn handle_window_resized(&mut self, size: PhysicalSize<u32>, app: &dyn Application) -> Result<(), AppError> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_resized(size, &mut self.world, app);
+        }
+
+        Ok(())
+    }
+
+    /// 게임 장면 관리자를 정리합니다.
+    pub fn clear(&mut self, app: &dyn Application) -> Result<(), AppError> {
+        // `stack`의 모든 게임 장면을 정리하고, 제거합니다.
+        while let Some(mut old_scene) = self.scene_stack.pop_back() {
+            old_scene.on_exit(&mut self.world, app)?;
+        }
+
+        Ok(())
+    }
+
+    /// 게임 장면 관리자를 갱신합니다. 제어자에 따라 `stack`을 갱신합니다.
+    pub fn update(&mut self, app: &dyn Application) -> Result<(), AppError> {
         // 장면 관리자의 제어자가 존재할 경우 장면 관리자를 갱신합니다.
         if let Some(control_flow) = self.control_flow.take() {
             match control_flow {
@@ -121,7 +137,30 @@ impl SceneManager {
                 },
             }
         }
+        Ok(())
+    }
 
+    /// 게임 장면 관리자를 실행합니다. `stack`의 최상위 게임 장면이 갱신됩니다.
+    pub fn run(&mut self, app: &dyn Application) -> Result<(), AppError> {
+        // 현재 게임 장면이 존재할 경우 갱신합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            let timer = app.ref_timer();
+            let elapsed_time_sec = timer.elapsed_time_sec();
+            
+            // 변동 시간 갱신 함수를 호출합니다.
+            scene.on_update(&mut self.world, app, elapsed_time_sec)?;
+
+            // 경과 시간을 갱신합니다.
+            self.elapsed_time_sec += elapsed_time_sec;
+            
+            // 고정 시간 갱신 함수를 호출합니다.
+            let mut update_count = 0;
+            while self.elapsed_time_sec >= FIXED_TIME_SEC && update_count < MAX_FIXED_UPDATE {
+                scene.on_fixed_update(&mut self.world, app, FIXED_TIME_SEC)?;
+                self.elapsed_time_sec -= FIXED_TIME_SEC;
+                update_count += 1;
+            }
+        }
         Ok(())
     }
 }

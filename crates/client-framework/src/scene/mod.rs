@@ -6,6 +6,7 @@ use crate::error::AppError;
 
 use std::fmt;
 use hecs::World;
+use winit::dpi::PhysicalSize;
 
 
 
@@ -25,6 +26,23 @@ pub trait GameScene : fmt::Debug {
     fn on_exit(&mut self, world: &mut World, app: &dyn Application) -> Result<(), AppError> {
         log::info!("Exiting the {:?} scene.", self);
         Ok(())
+    }
+
+    /// 애플리케이션 창의 크기가 변경되었을 경우 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_resized(&mut self, size: PhysicalSize<u32>, world: &mut World, app: &dyn Application) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 종료 버튼이 눌렸을 때 호출되는 콜백 함수입니다.
+    /// 
+    /// 애플리케이션 종료를 원할 경우 `true`를 반환해야 합니다.
+    /// 
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_close(&mut self, app: &dyn Application) -> Result<bool, AppError> {
+        Ok(true)
     }
 
     /// 애플리케이션이 일시정지 될 때 호출되는 콜백 함수입니다.

@@ -1,6 +1,10 @@
+
 use super::App;
+use super::delegate::AppDelegate;
+use super::delegate::DefaultDelegate;
 use super::flag::AppFlags;
 use super::dpi::Dpi;
+use crate::scene::GameScene;
 
 use std::num::NonZeroUsize;
 use winit::window::Icon;
@@ -8,8 +12,17 @@ use winit::window::Icon;
 
 
 /// 애플리케이션을 생성하는 빌더 입니다.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AppBuilder {
+    /// 게임 시작 장면입니다.
+    pub start_scene: Box<dyn GameScene>,
+
+    /// 애플리케이션 `delegate` 입니다.
+    /// 
+    /// ※ 기본 값은 [`DefaultDelegate`] 입니다.
+    /// 
+    pub delegate: Box<dyn AppDelegate>,
+
     /// 애플리케이션 창 타이틀 문자열 입니다.
     /// 
     /// ※ 기본 값은 `"Hello, World!"` 입니다.
@@ -51,13 +64,30 @@ impl AppBuilder {
     /// 애플리케이션 빌더를 생성합니다.
     #[must_use]
     #[inline(always)]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(start_scene: Box<dyn GameScene>) -> Self {
+        Self { 
+            start_scene,
+            delegate: Box::new(DefaultDelegate), 
+            title: "Hello, World!".to_string(), 
+            icon: None, 
+            dpi: None, 
+            fullscreen: true, 
+            num_threads: num_cpus::get_physical(), 
+            flags: AppFlags::default() 
+        }
     }
 }
 
 #[allow(unused)]
 impl AppBuilder {
+    /// 애플리케이션 `delegate`를 설정합니다.
+    #[inline]
+    #[must_use]
+    pub fn set_delegate(mut self, delegate: Box<dyn AppDelegate>) -> Self {
+        self.delegate = delegate;
+        self
+    }
+
     /// 애플리케이션 창 타이틀 문자열을 설정합니다.
     #[inline]
     #[must_use]
@@ -120,20 +150,5 @@ impl AppBuilder {
     #[inline(always)]
     pub fn build_and_run(self) {
         App::run(self)
-    }
-}
-
-impl Default for AppBuilder {
-    #[must_use]
-    #[inline(always)]
-    fn default() -> Self {
-        Self { 
-            title: "Hello, World!".to_string(), 
-            icon: None, 
-            dpi: None, 
-            fullscreen: true, 
-            num_threads: num_cpus::get_physical(), 
-            flags: AppFlags::default() 
-        }
     }
 }
