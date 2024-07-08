@@ -1,6 +1,6 @@
-use crate::core::app::App;
-use crate::core::app::flag::AppFlags;
-use crate::core::dpi::Dpi;
+use super::App;
+use super::flag::AppFlags;
+use super::dpi::Dpi;
 
 use std::num::NonZeroUsize;
 use winit::window::Icon;

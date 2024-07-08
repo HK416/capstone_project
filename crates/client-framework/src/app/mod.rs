@@ -1,14 +1,16 @@
 pub mod builder;
+pub mod cmd;
 pub mod config;
+pub mod dpi;
 pub mod event;
 pub mod flag;
 pub mod locale;
 
-use crate::core::app::builder::AppBuilder;
-use crate::core::app::event::AppEvent;
-use crate::core::app::flag::AppFlags;
-use crate::core::app::locale::AppLocale;
-use crate::core::dpi::Dpi;
+use self::builder::AppBuilder;
+use self::event::AppEvent;
+use self::flag::AppFlags;
+use self::locale::AppLocale;
+use self::dpi::Dpi;
 use crate::error::AppError;
 
 use std::sync::Arc;
@@ -84,7 +86,7 @@ pub struct App {
 impl App {
     /// 애플리케이션을 생성합니다.
     async fn new(builder: AppBuilder) -> Result<Self, AppError> {
-        use crate::core::cmd::parse_command_line_args;
+        use self::cmd::parse_command_line_args;
         use crate::render::create_renderer;
 
         // 명령줄 인수를 구문 분석 하고, 현재 애플리케이션 실행 디렉토리 경로를 가져옵니다.
@@ -165,7 +167,7 @@ impl App {
 impl App {
     /// 숨겨져 있는 애플리케이션 창을 생성합니다.
     fn create_hide_window(&mut self, event_loop: &ActiveEventLoop) -> Result<Window, AppError> {
-        use crate::core::dpi::find_maximize_dpi;
+        use self::dpi::find_maximize_dpi;
 
         // 애플리케이션에서 사용 가능한 최대 해상도를 찾습니다.
         let maximize_dpi = find_maximize_dpi(event_loop)
