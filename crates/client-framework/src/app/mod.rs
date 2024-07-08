@@ -13,6 +13,7 @@ use self::locale::AppLocale;
 use self::dpi::Dpi;
 use crate::error::AppError;
 
+use std::fmt;
 use std::sync::Arc;
 use std::path::PathBuf;
 use framework::timer::GameTimer;
@@ -27,6 +28,35 @@ use winit::window::Window;
 use winit::event_loop::EventLoop;
 use winit::window::WindowButtons;
 use winit::window::WindowId;
+
+
+
+/// 애플리케이션 인터페이스 `trait` 입니다.
+pub trait Application : fmt::Debug {
+    /// 애플리케이션 표시 언어를 빌려옵니다.
+    fn ref_locale(&self) -> &Option<AppLocale>;
+
+    /// 애플리케이션 타이머를 빌려옵니다.
+    fn ref_timer(&self) -> &GameTimer;
+
+    /// 애플리케이션 창을 빌려옵니다.
+    fn ref_window(&self) -> &Option<Arc<Window>>;
+
+    /// `wgpu` 렌더러의 인스턴스를 빌려옵니다.
+    fn ref_render_instance(&self) -> &Arc<wgpu::Instance>;
+
+    /// `wgpu` 렌더러의 장치 어뎁터를 빌려옵니다.
+    fn ref_render_adapter(&self) -> &Arc<wgpu::Adapter>;
+
+    /// `wgpu` 렌더러의 논리적 장치를 빌려옵니다.
+    fn ref_render_device(&self) -> &Arc<wgpu::Device>;
+
+    /// `wgpu` 렌더러의 명령 대기열을 빌려옵니다.
+    fn ref_render_queue(&self) -> &Arc<wgpu::Queue>;
+
+    /// `wgpu` 렌더러의 표면을 빌려옵니다.
+    fn ref_render_surface(&self) -> &Option<Arc<wgpu::Surface<'static>>>;
+}
 
 
 
@@ -298,6 +328,56 @@ impl App {
         framebuffer.present();
 
         Ok(())
+    }
+}
+
+impl Application for App {
+    #[inline]
+    #[must_use]
+    fn ref_locale(&self) -> &Option<AppLocale> {
+        &self.locale
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_timer(&self) -> &GameTimer {
+        &self.timer
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_window(&self) -> &Option<Arc<Window>> {
+        &self.window
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_render_instance(&self) -> &Arc<wgpu::Instance> {
+        &self.instance
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_render_adapter(&self) -> &Arc<wgpu::Adapter> {
+        &self.adapter
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_render_device(&self) -> &Arc<wgpu::Device> {
+        &self.device
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_render_queue(&self) -> &Arc<wgpu::Queue> {
+        &self.queue
+    }
+
+    #[inline]
+    #[must_use]
+    fn ref_render_surface(&self) -> &Option<Arc<wgpu::Surface<'static>>> {
+        &self.surface
     }
 }
 
