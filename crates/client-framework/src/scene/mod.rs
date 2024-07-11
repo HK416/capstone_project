@@ -16,7 +16,7 @@ pub trait GameScene : fmt::Debug {
     #[inline]
     #[allow(unused_variables)]
     fn on_enter(&mut self, world: &mut World, app: &dyn Application) -> Result<(), AppError> {
-        log::info!("Entering the {:?} scene.", self);
+        log::info!("게임 장면({:?})에 진입함...", self);
         Ok(())
     }
 
@@ -24,7 +24,7 @@ pub trait GameScene : fmt::Debug {
     #[inline]
     #[allow(unused_variables)]
     fn on_exit(&mut self, world: &mut World, app: &dyn Application) -> Result<(), AppError> {
-        log::info!("Exiting the {:?} scene.", self);
+        log::info!("게임 장면({:?})에 빠져나옴...", self);
         Ok(())
     }
 
@@ -49,7 +49,7 @@ pub trait GameScene : fmt::Debug {
     #[inline]
     #[allow(unused_variables)]
     fn on_pause(&mut self, world: &mut World, app: &dyn Application) -> Result<(), AppError> {
-        log::info!("Pausing the {:?} scene.", self);
+        log::info!("게임 장면({:?})이 일시 정지 됨...", self);
         Ok(())
     }
 
@@ -57,7 +57,7 @@ pub trait GameScene : fmt::Debug {
     #[inline]
     #[allow(unused_variables)]
     fn on_resume(&mut self, world: &mut World, app: &dyn Application) -> Result<(), AppError> {
-        log::info!("Resuming the {:?} scene.", self);
+        log::info!("게임 장면({:?})이 재개 됨...", self);
         Ok(())
     }
 
@@ -82,6 +82,19 @@ pub trait GameScene : fmt::Debug {
         app: &dyn Application, 
         elapsed_time_sec: f32
     ) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    /// 게임 장면이 그려져야 할 떄 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_draw(
+        &self, 
+        world: &World, 
+        app: &dyn Application, 
+        surface: &wgpu::Surface
+    ) -> Result<(), AppError> {
+        log::warn!("게임 장면이 그려지고 있지 않습니다!");
         Ok(())
     }
 

@@ -1,4 +1,4 @@
-
+use std::fmt;
 use std::thread;
 use client_framework::app::builder::AppBuilder;
 use client_framework::scene::GameScene;
@@ -28,7 +28,13 @@ fn main() {
 }
 
 
-#[derive(Debug)]
 pub struct TestScene { }
 
 impl GameScene for TestScene { }
+
+impl fmt::Debug for TestScene {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(TestScene))
+    }
+}

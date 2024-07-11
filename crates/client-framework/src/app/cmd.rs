@@ -1,6 +1,8 @@
+use crate::app_error;
+use crate::error::AppError;
+use crate::error::CommandError;
 use super::builder::AppBuilder;
 use super::flag::AppFlags;
-use crate::error::AppError;
 
 use std::env::{self, Args};
 use std::path::Path;
@@ -27,12 +29,10 @@ fn num_threads(args: &mut Args, builder: AppBuilder) -> Result<AppBuilder, AppEr
     use std::num::NonZeroUsize;
 
     // 스레드의 갯수를 구문 분석 합니다.
-    let argument = args.next().ok_or(AppError::CommandLine(
-        format!("Not enough command line arguments!")
-    ))?;
-    let num_threads: usize = argument.parse().map_err(|e| AppError::CommandLine(
-        format!("Parsing the number of threads failed for the following reasons: {}", e)
-    ))?;
+    let argument = args.next()
+        .ok_or(app_error!(CommandError::NotEnough))?;
+    let num_threads: usize = argument.parse()
+        .map_err(|e| app_error!(CommandError::ParsingIntFailure(e)))?;
 
     // 스레드의 갯수를 설정합니다.
     // safety: `num_threads`는 항상 1보다 큼.
@@ -67,25 +67,21 @@ fn enable_debug_layer(_: &mut Args, builder: AppBuilder) -> Result<AppBuilder, A
 /// 
 #[must_use]
 #[allow(unused_mut)]
-pub fn parse_command_line_args(
-    mut builder: AppBuilder
-) -> Result<(AppBuilder, PathBuf), AppError> {
+pub fn parse_command_line_args(mut builder: AppBuilder) -> Result<(AppBuilder, PathBuf), AppError> {
     // 현재 애플리케이션 실행 디렉토리 경로를 가져옵니다.
     let mut args = env::args();
-    let argument = args.next().ok_or(AppError::CommandLine(
-        format!("Command line arguments are empty!")
-    ))?;
+    let argument = args.next()
+        .ok_or(app_error!(CommandError::EmptyCommand))?;
     let path = Path::new(&argument);
-    let path = path.parent().ok_or(AppError::CommandLine(
-        format!("Application execution directory path not found!")
-    ))?.to_path_buf();
+    let path = path.parent()
+        .ok_or(app_error!(CommandError::RootPathNotFound))?
+        .to_path_buf();
 
     #[cfg(feature = "command-line-args")] {
         while let Some(argument) = args.next() {
             // 해당 명령줄 인수에 대한 명령어 함수를 가져옵니다.
-            let func = MAP.get(argument.as_str()).ok_or(AppError::CommandLine(
-                format!("Invalid command line argument!")
-            ))?;
+            let func = MAP.get(argument.as_str())
+                .ok_or(app_error!(CommandError::InvalidCommand))?;
 
             // 명령어 함수를 실행합니다.
             builder = func(&mut args, builder)?;

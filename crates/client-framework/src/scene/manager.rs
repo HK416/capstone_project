@@ -4,6 +4,7 @@ use crate::app::Application;
 use crate::error::AppError;
 
 use std::fmt;
+use std::sync::Arc;
 use std::collections::VecDeque;
 use hecs::World;
 use winit::dpi::PhysicalSize;
@@ -60,29 +61,6 @@ impl SceneManager {
         self.control_flow.replace(control_flow)
     }
 
-    /// 애플리케이션 창의 종료 버튼이 눌린 것을 처리합니다.
-    /// 
-    /// 애플리케이션을 종료하고자 하는 경우 `true`를 반환해야 합니다.
-    /// 
-    pub fn handle_close_request(&mut self, app: &dyn Application) -> Result<bool, AppError> {
-        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
-        if let Some(scene) = self.scene_stack.back_mut() {
-            return scene.on_close(app);
-        }
-
-        Ok(true)
-    }
-
-    /// 애플리케이션 창의 크기가 변경된 것을 처리합니다.
-    pub fn handle_window_resized(&mut self, size: PhysicalSize<u32>, app: &dyn Application) -> Result<(), AppError> {
-        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
-        if let Some(scene) = self.scene_stack.back_mut() {
-            return scene.on_resized(size, &mut self.world, app);
-        }
-
-        Ok(())
-    }
-
     /// 게임 장면 관리자를 정리합니다.
     pub fn clear(&mut self, app: &dyn Application) -> Result<(), AppError> {
         // `stack`의 모든 게임 장면을 정리하고, 제거합니다.
@@ -137,11 +115,67 @@ impl SceneManager {
                 },
             }
         }
+
         Ok(())
     }
 
-    /// 게임 장면 관리자를 실행합니다. `stack`의 최상위 게임 장면이 갱신됩니다.
-    pub fn run(&mut self, app: &dyn Application) -> Result<(), AppError> {
+    /// 게임 장면이 비어있는 경우 `true`를 반환합니다.
+    #[inline]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.scene_stack.is_empty()
+    }
+}
+
+impl SceneManager {
+    /// 애플리케이션이 일시 정지된 것을 처리합니다.
+    pub fn scene_handle_paused(&mut self, app: &dyn Application) -> Result<(), AppError> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_pause(&mut self.world, app);
+        }
+        Ok(())
+    }
+
+    /// 애플리케이션이 재개된 것을 처리합니다.
+    pub fn scene_handle_resumed(&mut self, app: &dyn Application) -> Result<(), AppError> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_resume(&mut self.world, app);
+        }
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 종료 버튼이 눌린 것을 처리합니다.
+    /// 
+    /// ※ 애플리케이션을 종료하고자 하는 경우 `true`를 반환해야 합니다.
+    /// 
+    pub fn scene_handle_close_request(&mut self, app: &dyn Application) -> Result<bool, AppError> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_close(app);
+        }
+        Ok(true)
+    }
+
+    /// 애플리케이션 창의 크기가 변경된 것을 처리합니다.
+    pub fn scene_handle_window_resized(&mut self, size: PhysicalSize<u32>, app: &dyn Application) -> Result<(), AppError> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_resized(size, &mut self.world, app);
+        }
+        Ok(())
+    }
+
+    /// 게임 장면 관리자에 있는 게임 장면을 갱신합니다. `stack`의 최상위 게임 장면이 갱신됩니다.
+    /// 
+    /// 게임 장면의 갱신은 두 가지로 나뉘어 있습니다.
+    /// - 변동 시간 간격 게임 장면 갱신
+    /// - 고정 시간 간격 게임 장면 갱신
+    /// 
+    /// 고정 시간 간격 게임 장면 갱신의 경우 1/60초 간격의 갱신이 이뤄집니다.
+    /// 
+    pub fn scene_update(&mut self, app: &dyn Application) -> Result<(), AppError> {
         // 현재 게임 장면이 존재할 경우 갱신합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             let timer = app.ref_timer();
@@ -150,17 +184,46 @@ impl SceneManager {
             // 변동 시간 갱신 함수를 호출합니다.
             scene.on_update(&mut self.world, app, elapsed_time_sec)?;
 
-            // 경과 시간을 갱신합니다.
+            // 총 경과 시간을 갱신합니다.
             self.elapsed_time_sec += elapsed_time_sec;
             
             // 고정 시간 갱신 함수를 호출합니다.
+            // 이떄 최대 횟수를 초과할 경우 (예를 들어 심각한 프레임 저하가 발생한 경우) 변동 시간 간격으로 갱신됩니다.
             let mut update_count = 0;
             while self.elapsed_time_sec >= FIXED_TIME_SEC && update_count < MAX_FIXED_UPDATE {
                 scene.on_fixed_update(&mut self.world, app, FIXED_TIME_SEC)?;
                 self.elapsed_time_sec -= FIXED_TIME_SEC;
                 update_count += 1;
             }
+
+            if self.elapsed_time_sec >= FIXED_TIME_SEC {
+                scene.on_fixed_update(&mut self.world, app, self.elapsed_time_sec)?;
+                self.elapsed_time_sec = 0.0;
+            }
         }
+
+        Ok(())
+    }
+
+    /// 게임 장면 관리자에 있는 게임 장면을 그립니다.
+    /// 
+    /// 게임 장면이 <b>투명</b>할 경우 하위 게임 장면도 그려집니다.
+    /// 
+    pub fn scene_draw(&self, app: &dyn Application, surface: &Arc<wgpu::Surface>) -> Result<(), AppError> {
+        // 그려질 게임 장면들을 수집합니다.
+        let mut stack = VecDeque::with_capacity(DEF_CAPACITY);
+        for scene in self.scene_stack.iter().rev() {
+            stack.push_back(scene);
+            if !scene.transparents() {
+                break;
+            }
+        }
+
+        // 수집된 게임 장면을 그립니다.
+        while let Some(scene) = stack.pop_back() {
+            scene.on_draw(&self.world, app, surface)?;
+        }
+
         Ok(())
     }
 }

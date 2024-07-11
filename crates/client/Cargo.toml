@@ -1,11 +1,13 @@
 [package]
 name = "client"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
 authors.workspace = true
 publish.workspace = true
+
+
 
 [dependencies]
 # 로그 인터페이스 라이브러리
@@ -16,8 +18,16 @@ log = "0.4"
 # License: MIT or Apache-2.0
 env_logger = "0.11"
 
+# byte 캐스팅 라이브러리
+# License: Zlib or Apache-2.0 or MIT
+bytemuck = { version = "1.16", features = ["derive"] }
+
+# 이미지 로드 라이브러리
+# License: MIT or Apache-2.0
+image = "0.25"
+
 # 자체 프레임워크 라이브러리 (Client)
-client-framework = { path = "../client-framework", version = "0.1" }
+client-framework = { path = "../client-framework", version = "0.2" }
 
 # 자체 프레임워크 라이브러리
 framework = { path = "../framework", version = "0.1" }
@@ -29,3 +39,9 @@ default = ["command-line-args"]
 
 # 명령줄 인수를 허용합니다.
 command-line-args = []
+
+
+
+[[example]]
+name = "cube"
+path = "./examples/cube/main.rs"
