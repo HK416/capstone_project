@@ -235,7 +235,7 @@ impl App {
             self.timer.reset();
 
             // 게임 장면을 갱신합니다.
-            let result = self.scene_manager.borrow_mut().update(self);
+            let result = self.scene_manager.borrow_mut().update(window, self);
             if let Err(e) = result {
                 handle_error!("Application launching failure", e, Some(window));
             }
@@ -309,10 +309,11 @@ impl App {
     }
 
     /// 애플리케이션 창의 크기가 변경될 때 호출되는 함수입니다.
-    fn on_resized(&mut self, size: PhysicalSize<u32>, surface: &Arc<wgpu::Surface>) -> Result<(), AppError> {
+    fn on_resized(&mut self, window: &Window, surface: &wgpu::Surface) -> Result<(), AppError> {
         use crate::render::config_swapchain;
         
         // 애플리케이션 창의 가로 또는 세로 크기가 0인 경우 함수 실행을 생략합니다.
+        let size = window.inner_size();
         if size.width == 0 || size.height == 0 {
             return Ok(())
         }
@@ -325,7 +326,7 @@ impl App {
 
         // 현재 게임 장면의 콜백 함수를 호출합니다.
         self.scene_manager.borrow_mut()
-            .scene_handle_window_resized(size, self)?;
+            .scene_handle_window_resized(window, self)?;
 
         Ok(())
     }
@@ -333,15 +334,15 @@ impl App {
     /// 애플리케이션 그리기 명령이 호출되었을 때 호출되는 함수입니다.
     fn on_draw(
         &mut self, 
-        window: &Arc<Window>, 
-        surface: &Arc<wgpu::Surface>
+        window: &Window, 
+        surface: &wgpu::Surface
     ) -> Result<(), AppError> {
         // `winit` API에 애플리케이션 창을 갱신한다고 알립니다.
         window.pre_present_notify();
 
         // 현재 게임 장면의 콜백 함수를 호출합니다.
         self.scene_manager.borrow()
-            .scene_draw(self, surface)?;
+            .scene_draw(window, surface, self)?;
 
         Ok(())
     }
@@ -462,6 +463,10 @@ impl ApplicationHandler<AppEvent> for App {
             // 게임 장면이 비어있는 경우 애플리케이션을 종료합니다.
             if self.scene_manager.borrow().is_empty() {
                 return event_loop.exit();
+            } 
+
+            if let Err(e) = self.scene_manager.borrow_mut().scene_update(&window, self) {
+                handle_error!("Application runtime error", e, self.window.as_deref());
             }
 
             // 등록된 애플리케이션 창이 존재할 경우 애플리케이션 창을 갱신합니다.
@@ -506,7 +511,7 @@ impl ApplicationHandler<AppEvent> for App {
                 true => self.on_resumed(&window),
                 false => self.on_paused(&window)
             }, 
-            WindowEvent::Resized(size) => self.on_resized(size, &surface),
+            WindowEvent::Resized(_) => self.on_resized(&window, &surface),
             WindowEvent::RedrawRequested => self.on_draw(&window, &surface),
             WindowEvent::CloseRequested => match self.on_close() {
                 Ok(exiting) => {

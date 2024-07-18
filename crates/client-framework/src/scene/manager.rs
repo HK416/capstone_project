@@ -4,10 +4,9 @@ use crate::app::Application;
 use crate::error::AppError;
 
 use std::fmt;
-use std::sync::Arc;
 use std::collections::VecDeque;
 use hecs::World;
-use winit::dpi::PhysicalSize;
+use winit::window::Window;
 
 /// 게임 장면 관리자의 기본 `capacity` 입니다.
 pub const DEF_CAPACITY: usize = 16;
@@ -65,52 +64,52 @@ impl SceneManager {
     pub fn clear(&mut self, app: &dyn Application) -> Result<(), AppError> {
         // `stack`의 모든 게임 장면을 정리하고, 제거합니다.
         while let Some(mut old_scene) = self.scene_stack.pop_back() {
-            old_scene.on_exit(&mut self.world, app)?;
+            old_scene.on_exit(None, &mut self.world, app)?;
         }
 
         Ok(())
     }
 
     /// 게임 장면 관리자를 갱신합니다. 제어자에 따라 `stack`을 갱신합니다.
-    pub fn update(&mut self, app: &dyn Application) -> Result<(), AppError> {
+    pub fn update(&mut self, window: &Window, app: &dyn Application) -> Result<(), AppError> {
         // 장면 관리자의 제어자가 존재할 경우 장면 관리자를 갱신합니다.
         if let Some(control_flow) = self.control_flow.take() {
             match control_flow {
                 ControlFlow::Clear => {
                     // `stack`의 모든 게임 장면을 정리하고, 제거합니다.
                     while let Some(mut old_scene) = self.scene_stack.pop_back() {
-                        old_scene.on_exit(&mut self.world, app)?;
+                        old_scene.on_exit(Some(window), &mut self.world, app)?;
                     }
                 },
                 ControlFlow::Reset(mut new_scene) => {
                     // `stack`의 모든 게임 장면을 정리하고, 제거합니다.
                     while let Some(mut old_scene) = self.scene_stack.pop_back() {
-                        old_scene.on_exit(&mut self.world, app)?;
+                        old_scene.on_exit(Some(window), &mut self.world, app)?;
                     }
 
                     // 새로운 게임 장면을 초기화 하고, 추가합니다.
-                    new_scene.on_enter(&mut self.world, app)?;
+                    new_scene.on_enter(window, &mut self.world, app)?;
                     self.scene_stack.push_back(new_scene);
                 },
                 ControlFlow::Change(mut new_scene) => {
                     // `stack`의 현재 장면을 정리하고, 제거합니다.
                     if let Some(mut old_scene) = self.scene_stack.pop_back() {
-                        old_scene.on_exit(&mut self.world, app)?;
+                        old_scene.on_exit(Some(window), &mut self.world, app)?;
                     }
 
                     // 새로운 게임 장면을 초기화 하고, 추가합니다.
-                    new_scene.on_enter(&mut self.world, app)?;
+                    new_scene.on_enter(window, &mut self.world, app)?;
                     self.scene_stack.push_back(new_scene);
                 },
                 ControlFlow::Push(mut new_scene) => {
                     // 새로운 게임 장면을 초기화 하고, 추가합니다.
-                    new_scene.on_enter(&mut self.world, app)?;
+                    new_scene.on_enter(window, &mut self.world, app)?;
                     self.scene_stack.push_back(new_scene);
                 },
                 ControlFlow::Pop => {
                     // `stack`의 현재 장면을 정리하고, 제거합니다.
                     if let Some(mut old_scene) = self.scene_stack.pop_back() {
-                        old_scene.on_exit(&mut self.world, app)?;
+                        old_scene.on_exit(Some(window), &mut self.world, app)?;
                     }
                 },
             }
@@ -159,10 +158,10 @@ impl SceneManager {
     }
 
     /// 애플리케이션 창의 크기가 변경된 것을 처리합니다.
-    pub fn scene_handle_window_resized(&mut self, size: PhysicalSize<u32>, app: &dyn Application) -> Result<(), AppError> {
+    pub fn scene_handle_window_resized(&mut self, window: &Window, app: &dyn Application) -> Result<(), AppError> {
         // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
-            return scene.on_resized(size, &mut self.world, app);
+            return scene.on_resized(window, &mut self.world, app);
         }
         Ok(())
     }
@@ -175,14 +174,18 @@ impl SceneManager {
     /// 
     /// 고정 시간 간격 게임 장면 갱신의 경우 1/60초 간격의 갱신이 이뤄집니다.
     /// 
-    pub fn scene_update(&mut self, app: &dyn Application) -> Result<(), AppError> {
+    pub fn scene_update(
+        &mut self, 
+        window: &Window, 
+        app: &dyn Application
+    ) -> Result<(), AppError> {
         // 현재 게임 장면이 존재할 경우 갱신합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             let timer = app.ref_timer();
             let elapsed_time_sec = timer.elapsed_time_sec();
             
             // 변동 시간 갱신 함수를 호출합니다.
-            scene.on_update(&mut self.world, app, elapsed_time_sec)?;
+            scene.on_update(elapsed_time_sec, window, &mut self.world, app)?;
 
             // 총 경과 시간을 갱신합니다.
             self.elapsed_time_sec += elapsed_time_sec;
@@ -191,13 +194,13 @@ impl SceneManager {
             // 이떄 최대 횟수를 초과할 경우 (예를 들어 심각한 프레임 저하가 발생한 경우) 변동 시간 간격으로 갱신됩니다.
             let mut update_count = 0;
             while self.elapsed_time_sec >= FIXED_TIME_SEC && update_count < MAX_FIXED_UPDATE {
-                scene.on_fixed_update(&mut self.world, app, FIXED_TIME_SEC)?;
+                scene.on_fixed_update(FIXED_TIME_SEC, window, &mut self.world, app)?;
                 self.elapsed_time_sec -= FIXED_TIME_SEC;
                 update_count += 1;
             }
 
             if self.elapsed_time_sec >= FIXED_TIME_SEC {
-                scene.on_fixed_update(&mut self.world, app, self.elapsed_time_sec)?;
+                scene.on_fixed_update(self.elapsed_time_sec, window, &mut self.world, app)?;
                 self.elapsed_time_sec = 0.0;
             }
         }
@@ -209,7 +212,12 @@ impl SceneManager {
     /// 
     /// 게임 장면이 <b>투명</b>할 경우 하위 게임 장면도 그려집니다.
     /// 
-    pub fn scene_draw(&self, app: &dyn Application, surface: &Arc<wgpu::Surface>) -> Result<(), AppError> {
+    pub fn scene_draw(
+        &self, 
+        window: &Window, 
+        surface: &wgpu::Surface, 
+        app: &dyn Application, 
+    ) -> Result<(), AppError> {
         // 그려질 게임 장면들을 수집합니다.
         let mut stack = VecDeque::with_capacity(DEF_CAPACITY);
         for scene in self.scene_stack.iter().rev() {
@@ -221,7 +229,7 @@ impl SceneManager {
 
         // 수집된 게임 장면을 그립니다.
         while let Some(scene) = stack.pop_back() {
-            scene.on_draw(&self.world, app, surface)?;
+            scene.on_draw(window, surface, &self.world, app)?;
         }
 
         Ok(())
