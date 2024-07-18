@@ -41,3 +41,11 @@ cargo run --bin client --release -- <OPTIONS>
 |--num-threads|사용 가능한 최대 스레드의 갯수를 지정합니다.|
 |--show-frame-rate|현재 프레임 레이트를 출력합니다.|
 |--enable-debug-layer|렌더러의 디버깅 레이어를 활성화 합니다.|
+
+</br>
+
+## 예제 애플리케이션
+
+클라이언트 애플리케이션을 완성하기 전에 테스트 용도로 사용되는 예제 애플리케이션이 포함되어 있습니다.
+
+자세한 내용은 examples 디렉토리의 `README.md`파일을 확인해 주세요.
