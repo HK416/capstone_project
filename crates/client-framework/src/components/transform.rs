@@ -1,4 +1,3 @@
-use std::ops;
 use gmm::{
     Float3, Float4, Float4x4, 
     Matrix, Quaternion, Vector
@@ -180,7 +179,7 @@ impl Default for Transform {
     }
 }
 
-impl ops::Deref for Transform {
+impl core::ops::Deref for Transform {
     type Target = Float4x4;
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -188,7 +187,7 @@ impl ops::Deref for Transform {
     }
 }
 
-impl ops::DerefMut for Transform {
+impl core::ops::DerefMut for Transform {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0

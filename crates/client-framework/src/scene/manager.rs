@@ -3,7 +3,6 @@ use super::control_flow::ControlFlow;
 use crate::app::Application;
 use crate::error::AppError;
 
-use std::fmt;
 use std::collections::VecDeque;
 use hecs::World;
 use winit::window::Window;
@@ -236,9 +235,9 @@ impl SceneManager {
     }
 }
 
-impl fmt::Debug for SceneManager {
+impl core::fmt::Debug for SceneManager {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct(stringify!(SceneManager))
             .field("Current Game Scene", &self.scene_stack.back())
             .finish()

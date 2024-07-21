@@ -1,5 +1,5 @@
-use std::num::ParseIntError;
-use std::num::ParseFloatError;
+use core::num::ParseIntError;
+use core::num::ParseFloatError;
 use thiserror::Error;
 use winit::error::OsError;
 use winit::error::EventLoopError;
@@ -105,7 +105,8 @@ pub fn show_error_msg<T: AsRef<str>, S: AsRef<str>>(
     text: S, 
     owner_window: Option<&Window>
 ) {
-    assert_eq!(std::thread::current().id(), *framework::MAIN_THREAD_ID);
+    use framework::concurrency::MAIN_THREAD_ID;
+    assert_eq!(std::thread::current().id(), *MAIN_THREAD_ID);
     impl_show_error_msg(title.as_ref(), text.as_ref(), owner_window)
 }
 

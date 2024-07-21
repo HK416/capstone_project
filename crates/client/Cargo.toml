@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.2.0"
+version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -26,11 +26,27 @@ bytemuck = { version = "1.16", features = ["derive"] }
 # License: MIT or Apache-2.0
 image = "0.25"
 
-# 자체 프레임워크 라이브러리 (Client)
-client-framework = { path = "../client-framework", version = "0.2" }
+# 게임 수학 라이브러리
+# License: MIT
+gmm = { version = "0.2", features = ["bytemuck"] }
 
-# 자체 프레임워크 라이브러리
-framework = { path = "../framework", version = "0.1" }
+# Entity Component System (ECS) 라이브러리
+# License: MIT or Apache-2.0
+hecs = "0.10"
+
+# 윈도우 생성 라이브러리
+# License: Apache-2.0
+winit = { version = "0.30", features = ["rwh_05"] }
+
+# 크로스 플랫폼 렌더링 라이브러리 
+# License: MIT or Apache-2.0
+wgpu = "22"
+
+# 자체 프레임워크 라이브러리 (General)
+framework = { path = "../framework", version = "0.2" }
+
+# 자체 프레임워크 라이브러리 (Client)
+client-framework = { path = "../client-framework", version = "0.3" }
 
 
 
@@ -38,7 +54,7 @@ framework = { path = "../framework", version = "0.1" }
 default = ["command-line-args"]
 
 # 명령줄 인수를 허용합니다.
-command-line-args = []
+command-line-args = [ "client-framework/command-line-args" ]
 
 
 

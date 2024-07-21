@@ -4,14 +4,13 @@ pub mod manager;
 use crate::app::Application;
 use crate::error::AppError;
 
-use std::fmt;
 use hecs::World;
 use winit::window::Window;
 
 
 
 /// 게임 장면의 인터페이스 `trait` 입니다.
-pub trait GameScene : fmt::Debug {
+pub trait GameScene : core::fmt::Debug {
     /// 게임 장면에 진입할 때 한번만 호출되는 콜백 함수입니다.
     #[inline]
     #[allow(unused_variables)]

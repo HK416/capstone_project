@@ -4,9 +4,11 @@ use crate::error::CommandError;
 use super::builder::AppBuilder;
 use super::flag::AppFlags;
 
-use std::env::{self, Args};
+use std::env;
+use std::env::Args;
 use std::path::Path;
 use std::path::PathBuf;
+use framework::concurrency;
 use hashbrown::HashMap;
 use lazy_static::lazy_static;
 
@@ -40,7 +42,7 @@ fn num_threads(args: &mut Args, builder: AppBuilder) -> Result<AppBuilder, AppEr
     unsafe {
         Ok(builder.set_num_threads(
             NonZeroUsize::new_unchecked(match num_threads == 0 {
-                true => num_cpus::get_physical(),
+                true => *concurrency::MAX_CORE_NUM,
                 false => num_threads
             })
         ))

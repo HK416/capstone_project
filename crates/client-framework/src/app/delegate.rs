@@ -1,8 +1,9 @@
 use super::Application;
 use crate::error::AppError;
 
-use std::fmt;
-use winit::{event_loop::ActiveEventLoop, window::Window};
+use core::fmt;
+use winit::window::Window;
+use winit::event_loop::ActiveEventLoop;
 
 
 

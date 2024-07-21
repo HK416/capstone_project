@@ -18,12 +18,11 @@ use self::event::AppEvent;
 use self::flag::AppFlags;
 use self::locale::AppLocale;
 
-use std::fmt;
+use core::cell::RefCell;
 use std::sync::Arc;
 use std::sync::Once;
 use std::path::Path;
 use std::path::PathBuf;
-use std::cell::RefCell;
 use framework::timer::GameTimer;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
@@ -40,7 +39,7 @@ use winit::window::WindowId;
 
 
 /// 애플리케이션 인터페이스 `trait` 입니다.
-pub trait Application : fmt::Debug {
+pub trait Application : core::fmt::Debug {
     /// 애플리케이션에서 사용 가능한 최대 스레드 갯수를 반환합니다.
     fn get_num_threads(&self) -> usize;
 

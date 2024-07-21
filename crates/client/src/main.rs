@@ -1,8 +1,7 @@
-use std::fmt;
+use core::fmt;
 use std::thread;
 use client_framework::app::builder::AppBuilder;
 use client_framework::scene::GameScene;
-use framework::MAIN_THREAD_ID;
 
 
 
@@ -16,6 +15,7 @@ use framework::MAIN_THREAD_ID;
 #[cfg(target_pointer_width = "64")]
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
+    use framework::concurrency::MAIN_THREAD_ID;
     assert_eq!(thread::current().id(), *MAIN_THREAD_ID, "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.

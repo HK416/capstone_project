@@ -1,5 +1,5 @@
-use super::locale::AppLocale;
 use super::dpi::Dpi;
+use super::locale::AppLocale;
 
 
 

@@ -1,12 +1,16 @@
 //! 3차원 큐브를 렌더링하는 예제 애플리케이션입니다.
 //! 
-use std::fmt;
-use std::mem;
-use std::ops::Deref;
+use core::fmt;
+use core::mem;
+use core::ops::Deref;
 use std::thread;
 use std::sync::Arc;
 use std::io::Cursor;
 use std::include_bytes;
+use hecs::World;
+use wgpu::util::DeviceExt;
+use winit::window::Window;
+use gmm::{Float3, Float4x4, Quaternion, Matrix};
 use client_framework::app::builder::AppBuilder;
 use client_framework::app::dpi::Dpi;
 use client_framework::app::Application;
@@ -14,18 +18,9 @@ use client_framework::components::Transform;
 use client_framework::components::Projection;
 use client_framework::components::Perspective;
 use client_framework::error::AppError;
-use client_framework::gmm::Float3;
-use client_framework::gmm::Float4x4;
-use client_framework::gmm::Matrix;
-use client_framework::gmm::Quaternion;
 use client_framework::render;
-use client_framework::hecs::World;
 use client_framework::scene::GameScene;
-use client_framework::wgpu;
-use client_framework::wgpu::util::DeviceExt;
-use client_framework::winit::window::Window;
 
-use framework::MAIN_THREAD_ID;
 use image::io::Reader as ImageReader;
 
 
@@ -40,7 +35,7 @@ use image::io::Reader as ImageReader;
 #[cfg(target_pointer_width = "64")]
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
-
+    use framework::concurrency::MAIN_THREAD_ID;
     assert_eq!(thread::current().id(), *MAIN_THREAD_ID, "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.
@@ -350,6 +345,7 @@ impl ExampleScene {
             &wgpu::RenderPipelineDescriptor {
                 label: Some("RenderPipeline(Shader(Color))"), 
                 layout: Some(&pipeline_layout), 
+                cache: None, 
                 vertex: wgpu::VertexState {
                     module: &shader, 
                     entry_point: "vs_main", 

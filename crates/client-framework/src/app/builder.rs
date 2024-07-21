@@ -6,7 +6,8 @@ use super::flag::AppFlags;
 use super::dpi::Dpi;
 use crate::scene::GameScene;
 
-use std::num::NonZeroUsize;
+use core::num::NonZeroUsize;
+use framework::concurrency;
 use winit::window::Icon;
 
 
@@ -72,7 +73,7 @@ impl AppBuilder {
             icon: None, 
             dpi: None, 
             fullscreen: true, 
-            num_threads: num_cpus::get_physical(), 
+            num_threads: *concurrency::MAX_CORE_NUM, 
             flags: AppFlags::default() 
         }
     }
