@@ -1,4 +1,4 @@
-use std::fmt;
+use core::fmt;
 use winit::dpi::PhysicalSize;
 use winit::event_loop::ActiveEventLoop;
 

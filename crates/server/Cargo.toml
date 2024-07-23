@@ -11,4 +11,4 @@ publish.workspace = true
 
 
 # 자체 프레임워크 라이브러리
-framework = { path = "../framework", version = "0.1" }
+framework = { path = "../framework", version = "0.2" }

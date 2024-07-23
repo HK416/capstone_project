@@ -1,18 +1,7 @@
-mod core;
-mod error;
-mod render;
-
-use crate::core::app::builder::AppBuilder;
-
+use core::fmt;
 use std::thread;
-use std::thread::ThreadId;
-use lazy_static::lazy_static;
-
-
-lazy_static! {
-    /// `main` 스레드의 스레드 `ID` 입니다.
-    pub static ref MAIN_THREAD_ID: ThreadId = std::thread::current().id();
-}
+use client_framework::app::builder::AppBuilder;
+use client_framework::scene::GameScene;
 
 
 
@@ -26,13 +15,26 @@ lazy_static! {
 #[cfg(target_pointer_width = "64")]
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
+    use framework::concurrency::MAIN_THREAD_ID;
     assert_eq!(thread::current().id(), *MAIN_THREAD_ID, "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.
     env_logger::init();
     log::info!("클라이언트 애플리케이션 실행...");
 
-    AppBuilder::new()
+    AppBuilder::new(Box::new(TestScene {}))
         .set_title("Hello to Halo!")
         .build_and_run()
+}
+
+
+pub struct TestScene { }
+
+impl GameScene for TestScene { }
+
+impl fmt::Debug for TestScene {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(TestScene))
+    }
 }

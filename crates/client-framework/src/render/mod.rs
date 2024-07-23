@@ -7,7 +7,6 @@ use winit::window::Window;
 static SWAPCHAIN_FORMAT: OnceLock<wgpu::TextureFormat> = OnceLock::new();
 
 
-
 /// `wgpu` 렌더러 객체들을 생성합니다.
 #[inline]
 pub async fn create_renderer(enable_debug_layer: bool) -> Result<(Arc<wgpu::Instance>, Arc<wgpu::Adapter>, Arc<wgpu::Device>, Arc<wgpu::Queue>), AppError> {
@@ -53,6 +52,7 @@ async fn create_wgpu_device_and_queue(adapter: &wgpu::Adapter) -> Result<(Arc<wg
     adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: None,
+            memory_hints: wgpu::MemoryHints::Performance, 
             required_features: wgpu::Features::TEXTURE_COMPRESSION_BC, 
             required_limits: wgpu::Limits::downlevel_defaults()
                 .using_resolution(adapter.limits()),
@@ -64,6 +64,13 @@ async fn create_wgpu_device_and_queue(adapter: &wgpu::Adapter) -> Result<(Arc<wg
 }
 
 
+
+/// 현재 스왑체인 텍스처 포맷을 가져옵니다.
+#[must_use]
+#[inline(always)]
+pub fn get_swapchain_format() -> wgpu::TextureFormat {
+    SWAPCHAIN_FORMAT.get().cloned().unwrap_or(wgpu::TextureFormat::Bgra8Unorm)
+}
 
 /// `wgpu` 장치 표면을 생성합니다.
 #[allow(unused_must_use)]
@@ -78,24 +85,15 @@ pub fn create_wgpu_surface(window: Arc<Window>, instance: &wgpu::Instance, adapt
         return Err(AppError::NoSuitableAdapter);
     }
 
-    let format = surface.get_capabilities(&adapter)
+    // 스왑체인 텍스처 포맷을 설정합니다.
+    let format = surface.get_capabilities(adapter)
         .formats
         .first()
         .cloned()
         .unwrap();
-
-    log::info!("스왑체인 텍스처 포맷: {:?}", format);
     SWAPCHAIN_FORMAT.set(format);
 
     Ok(surface)
-}
-
-/// 현재 스왑체인 텍스처 포맷을 가져옵니다.
-#[inline]
-pub fn get_swapchain_format() -> wgpu::TextureFormat {
-    SWAPCHAIN_FORMAT.get()
-        .cloned()
-        .unwrap_or(wgpu::TextureFormat::Bgra8Unorm)
 }
 
 /// 스왑체인을 설정합니다.

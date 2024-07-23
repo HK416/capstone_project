@@ -1,5 +1,5 @@
-use crate::core::app::locale::AppLocale;
-use crate::core::dpi::Dpi;
+use super::dpi::Dpi;
+use super::locale::AppLocale;
 
 
 
