@@ -16,7 +16,7 @@ use client_framework::app::dpi::Dpi;
 use client_framework::app::Application;
 use client_framework::components::Transform;
 use client_framework::components::Projection;
-use client_framework::components::Perspective;
+use client_framework::components::PerspectiveBuilder;
 use client_framework::error::AppError;
 use client_framework::render;
 use client_framework::scene::GameScene;
@@ -468,14 +468,12 @@ impl GameScene for ExampleScene {
                 Quaternion::from_rotation_x(30_f32.to_radians()), 
                 (0.0, 1.0, -2.0)
             ), 
-            Projection::Perspective(
-                Perspective { 
-                    fov_y: 60_f32.to_radians(), 
-                    aspect_ratio: width as f32 / height as f32, 
-                    z_near: 0.001, 
-                    z_far: 1000.0 
-                }
-            ), 
+            PerspectiveBuilder::new()
+                .with_fov_y(60f32.to_radians())
+                .with_aspect(width as f32 / height as f32)
+                .with_z_near(0.001)
+                .with_z_far(100.0)
+                .build(), 
             (camera_blob, camera_buffer), 
         ));
 
@@ -513,23 +511,8 @@ impl GameScene for ExampleScene {
                 transform.get_forward_vector().into(), 
                 transform.get_up_vector().into()
             );
-            let projection = match projection {
-                Projection::Perspective(it) => Matrix::perspective_rh(
-                    it.fov_y, 
-                    it.aspect_ratio, 
-                    it.z_near, 
-                    it.z_far
-                ),
-                Projection::Orthographic(it) => Matrix::orthographic_rh(
-                    it.left, 
-                    it.right, 
-                    it.bottom, 
-                    it.top, 
-                    it.near, 
-                    it.far
-                ),
-            };
 
+            let projection: Matrix = (**projection).into();
             blob.view_proj = (projection * view).into();
             blob.position = transform.get_translation();
             queue.write_buffer(&buffer, 0, bytemuck::bytes_of(blob));
