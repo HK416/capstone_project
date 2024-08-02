@@ -7,18 +7,19 @@ use std::thread;
 use std::sync::Arc;
 use std::io::Cursor;
 use std::include_bytes;
+
 use hecs::World;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 use gmm::{Float3, Float4x4, Quaternion, Matrix};
-use client_framework::app::builder::AppBuilder;
-use client_framework::app::dpi::Dpi;
-use client_framework::app::Application;
+use client_framework::app::AppBuilder;
+use client_framework::app::Dpi;
+use client_framework::app::Handler;
 use client_framework::components::Transform;
 use client_framework::components::Projection;
 use client_framework::components::PerspectiveBuilder;
-use client_framework::error::AppError;
-use client_framework::render;
+use client_framework::error::ErrorMessage;
+use client_framework::render::SWAPCHAIN_FORMAT;
 use client_framework::scene::GameScene;
 
 use image::io::Reader as ImageReader;
@@ -392,7 +393,7 @@ impl ExampleScene {
                     targets: &[
                         Some(wgpu::ColorTargetState {
                             blend: None, 
-                            format: render::get_swapchain_format(), 
+                            format: SWAPCHAIN_FORMAT, 
                             write_mask: wgpu::ColorWrites::all(),
                         }),
                     ],
@@ -415,8 +416,8 @@ impl GameScene for ExampleScene {
         &mut self, 
         window: &Window, 
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         let device = app.ref_render_device();
         let queue = app.ref_render_queue();
 
@@ -485,8 +486,8 @@ impl GameScene for ExampleScene {
         &mut self, 
         window: Option<&Window>, 
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         // 모든 엔티티를 삭제합니다.
         world.clear();
         
@@ -499,8 +500,8 @@ impl GameScene for ExampleScene {
         elapsed_time_sec: f32, 
         window: &Window, 
         world: &mut World, 
-        app: &dyn Application 
-    ) -> Result<(), AppError> {
+        app: &dyn Handler 
+    ) -> Result<(), ErrorMessage> {
         let queue = app.ref_render_queue();
 
         // 카메라 갱신
@@ -536,8 +537,8 @@ impl GameScene for ExampleScene {
         window: &Window, 
         surface: &wgpu::Surface, 
         world: &World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         let device = app.ref_render_device();
         let queue = app.ref_render_queue();
 
@@ -546,7 +547,7 @@ impl GameScene for ExampleScene {
 
         // 현재 스왑체인 이미지를 가져옵니다.
         let frame = surface.get_current_texture()
-            .map_err(|e| AppError::from(e))?;
+            .expect("Failed to get swapchain texture.");
         
         // 렌더 타겟 뷰를 가져옵니다.
         let render_target_view = frame.texture.create_view(&wgpu::TextureViewDescriptor { ..Default::default() });

@@ -1,129 +1,113 @@
-use core::num::ParseIntError;
-use core::num::ParseFloatError;
+mod debug;
+pub use self::debug::*;
+
+mod process;
+pub use self::process::*;
+
 use thiserror::Error;
-use winit::error::OsError;
-use winit::error::EventLoopError;
-use winit::window::Window;
+
+use crate::app::WindowError;
+use crate::command::CommandParsingError;
+use crate::render::RenderError;
 
 
 
-/// 화면에 에러 메시지를 띄우고 애플리케이션을 종료하는 에러 처리 매크로 입니다.
-/// 
-/// ※ 이 매크로는 항상 메인 스레드에서 실행되어야 합니다.
-/// 
-/// # Panic
-/// 다음과 같은 상황에서 이 함수는 [`panic!`]을 호출합니다.
-/// - 현재 스레드의 id가 메인 스레드의 id와 불일치할 경우.
-/// 
-#[macro_export]
-macro_rules! handle_error {
-    ($t:expr, $e:expr, $w:expr) => {{
-        crate::error::show_error_msg($t, $e.to_string(), $w);
-        std::process::exit(-1)
-    }};
-}
 
-/// [`AppError`](crate::error::AppError)를 생성하는 매크로 입니다.
-/// 
-/// 에러가 발생한 파일이름, 줄, 열을 로그에 출력합니다.
-/// 
-#[macro_export]
-macro_rules! app_error {
-    ($e:expr) => {{
-        log::debug!("애플리케이션 에러 생성: File: {}, Line:{}, Column:{}", file!(), line!(), column!());
-        crate::error::AppError::from($e)
-    }};
-}
-
-
-
-/// 클라이언트 애플리케이션에서 발생할 수 있는 에러 목록 입니다.
+/// 에러 메시지 입니다.
 #[derive(Debug, Error)]
-pub enum AppError {
-    #[error("A system error occurred for the following reasons: {0}")]
-    System(#[from] OsError),
+pub enum ErrorMessage {
+    #[cfg(feature = "enable-debug-info")]
+    #[error("{0}, {1}")]
+    Window(WindowError, DebugInfo), 
 
-    #[error("An event loop error occurred for the following reasons: {0}")]
-    EventLoop(#[from] EventLoopError),
+    #[cfg(feature = "enable-debug-info")]
+    #[error("{0}, {1}")]
+    CommandParsing(CommandParsingError, DebugInfo), 
 
-    #[error("The following error occurred while parsing the command line: {0}")]
-    CommandLine(#[from] CommandError),
+    #[cfg(feature = "enable-debug-info")]
+    #[error("{0}, {1}")]
+    Render(RenderError, DebugInfo), 
 
-    #[error("No suitable resolution.")]
-    NoSuitableResolution,
+    #[cfg(not(feature = "enable-debug-info"))]
+    #[error("{0}")]
+    Window(WindowError), 
 
-    #[error("No suitable adapter.")]
-    NoSuitableAdapter,
-    
-    #[error("Surface runtime error occurred for the following reasons: {0}")]
-    SurfaceError(#[from] wgpu::SurfaceError),
+    #[cfg(not(feature = "enable-debug-info"))]
+    #[error("{0}")]
+    CommandParsing(CommandParsingError), 
 
-    #[error("Surface creation failed for the following reasons: {0}")]
-    SurfaceCreationFailed(#[from] wgpu::CreateSurfaceError),
-
-    #[error("Device creation failed for the following reasons: {0}")]
-    DeviceCreationFailed(#[from] wgpu::RequestDeviceError),
+    #[cfg(not(feature = "enable-debug-info"))]
+    #[error("{0}")]
+    Render(RenderError), 
 }
 
-
-
-/// 명령줄 인수를 구문 분석할 때 발생할 수 있는 에러 목록 입니다.
-#[derive(Debug, Error)]
-pub enum CommandError {
-    #[error("Command line arguments are invalid!")]
-    InvalidCommand, 
-
-    #[error("Command line arguments are empty!")]
-    EmptyCommand,
-
-    #[error("Not enough command line arguments!")]
-    NotEnough,
-
-    #[error("Application execution directory path not found!")]
-    RootPathNotFound,
-
-    #[error("Parsing integer failed for the following reasons: {0}")]
-    ParsingIntFailure(ParseIntError),
-    
-    #[error("Parsing float failed for the following reasons: {0}")]
-    ParsingFloatFailure(ParseFloatError),
-}
-
-
-
-/// 에러 메시지를 출력하는 대화 상자를 화면에 표시합니다.
-/// 
-/// ※ 이 함수는 메인 스레드에서 실행되어야 하며, 스레드를 멈춥니다.
-/// 
-/// # Panic
-/// 다음과 같은 상황에서 이 함수는 [`panic!`]을 호출합니다.
-/// - 현재 스레드의 id가 메인 스레드의 id와 불일치할 경우.
-/// 
-#[inline]
-pub fn show_error_msg<T: AsRef<str>, S: AsRef<str>>(
-    title: T, 
-    text: S, 
-    owner_window: Option<&Window>
-) {
-    use framework::concurrency::MAIN_THREAD_ID;
-    assert_eq!(std::thread::current().id(), *MAIN_THREAD_ID);
-    impl_show_error_msg(title.as_ref(), text.as_ref(), owner_window)
-}
-
-/// `Windows`, `macOS`에서 에러 메시지를 출력하는 대화 상자 구현입니다.
-#[cfg(any(target_os = "windows", target_os = "macos"))]
-fn impl_show_error_msg(title: &str, text: &str, owner_window: Option<&Window>) {
-    use native_dialog::MessageDialog;
-    use native_dialog::MessageType;
-
-    let mut dialog = MessageDialog::new()
-        .set_title(title)
-        .set_text(text)
-        .set_type(MessageType::Error);
-
-    if let Some(window) = owner_window {
-        dialog = dialog.set_owner(window);
+#[cfg(feature = "enable-debug-info")]
+impl From<(WindowError, DebugInfo)> for ErrorMessage {
+    #[inline]
+    fn from(value: (WindowError, DebugInfo)) -> Self {
+        Self::Window(value.0, value.1)
     }
-
-    dialog.show_alert().unwrap();
 }
+
+#[cfg(feature = "enable-debug-info")]
+impl From<(CommandParsingError, DebugInfo)> for ErrorMessage {
+    #[inline]
+    fn from(value: (CommandParsingError, DebugInfo)) -> Self {
+        Self::CommandParsing(value.0, value.1)
+    }
+}
+
+#[cfg(feature = "enable-debug-info")]
+impl From<(RenderError, DebugInfo)> for ErrorMessage {
+    #[inline]
+    fn from(value: (RenderError, DebugInfo)) -> Self {
+        Self::Render(value.0, value.1)
+    }
+}
+
+#[cfg(not(feature = "enable-debug-info"))]
+impl From<WindowError> for ErrorMessage {
+    #[inline]
+    fn from(value: WindowError) -> Self {
+        Self::Window(value)
+    }
+}
+
+#[cfg(not(feature = "enable-debug-info"))]
+impl From<CommandParsingError> for ErrorMessage {
+    #[inline]
+    fn from(value: CommandParsingError) -> Self {
+        Self::CommandParsing(value)
+    }
+}
+
+#[cfg(not(feature = "enable-debug-info"))]
+impl From<RenderError> for ErrorMessage {
+    #[inline]
+    fn from(value: RenderError) -> Self {
+        Self::Render(value)
+    }
+}
+
+
+
+/// 에러 메시지를 생성합니다.
+macro_rules! err_msg {
+    ($err:expr) => {{
+        #[cfg(feature = "enable-debug-info")] {
+            crate::error::ErrorMessage::from((
+                $err, 
+                crate::error::DebugInfo {
+                    file: file!(), 
+                    line: line!(), 
+                    column: column!()
+                }
+            ))
+        }
+        #[cfg(not(feature = "enable-debug-info"))] {
+            crate::error::ErrorMessage::from($err)
+        }
+    }};
+}
+
+pub(crate) use err_msg;

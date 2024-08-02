@@ -1,3 +1,4 @@
+use std::fmt;
 use bitflags::bitflags;
 
 
@@ -25,9 +26,9 @@ impl Default for AppFlags {
     }
 }
 
-impl core::fmt::Debug for AppFlags {
+impl fmt::Debug for AppFlags {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(stringify!(AppFlags))
             .field("Show Frame Rate", &self.contains(Self::SHOW_FRAME_RATE))
             .field("Enable Debug Layer", &self.contains(Self::ENABLE_DEBUG_LAYER))

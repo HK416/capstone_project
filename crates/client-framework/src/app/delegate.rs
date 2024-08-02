@@ -1,9 +1,9 @@
-use super::Application;
-use crate::error::AppError;
-
-use core::fmt;
+use std::fmt;
 use winit::window::Window;
 use winit::event_loop::ActiveEventLoop;
+
+use crate::app::Handler;
+use crate::error::ErrorMessage;
 
 
 
@@ -16,8 +16,8 @@ pub trait AppDelegate : fmt::Debug {
         &mut self, 
         window: &Window, 
         event_loop: &ActiveEventLoop, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션 시작 됨.");
         Ok(())
     }
@@ -28,8 +28,8 @@ pub trait AppDelegate : fmt::Debug {
     fn on_finish(
         &mut self,
         event_loop: &ActiveEventLoop, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션 종료 됨.");
         Ok(())
     }
@@ -40,8 +40,8 @@ pub trait AppDelegate : fmt::Debug {
     fn on_paused(
         &mut self, 
         window: &Window, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션이 일시 정지 됨.");
         Ok(())
     }
@@ -52,8 +52,8 @@ pub trait AppDelegate : fmt::Debug {
     fn on_resumed(
         &mut self, 
         window: &Window, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션이 재개 됨.");
         Ok(())
     }

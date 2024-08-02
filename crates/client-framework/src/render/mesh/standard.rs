@@ -3,10 +3,10 @@ use std::sync::Arc;
 use std::ops::Range;
 use hashbrown::HashMap;
 
-use crate::components::Indices;
-use crate::components::RenderableMesh;
-use crate::components::VertexAttribute;
-use crate::components::VertexAttributeValues;
+use crate::render::Indices;
+use crate::render::RenderableMesh;
+use crate::render::VertexAttribute;
+use crate::render::VertexAttributeValues;
 
 
 

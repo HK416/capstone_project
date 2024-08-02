@@ -1,4 +1,4 @@
-use super::GameScene;
+use crate::scene::GameScene;
 
 
 

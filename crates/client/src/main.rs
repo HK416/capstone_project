@@ -1,6 +1,6 @@
 use core::fmt;
 use std::thread;
-use client_framework::app::builder::AppBuilder;
+use client_framework::app::AppBuilder;
 use client_framework::scene::GameScene;
 
 

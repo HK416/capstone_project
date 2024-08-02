@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::cmp::Ordering;
 
-use crate::components::CameraUniform;
-use crate::components::DirLightUniform;
-use crate::components::PointLightUniform;
-use crate::components::SpotLightUniform;
+use crate::render::CameraUniform;
+use crate::render::DirLightUniform;
+use crate::render::PointLightUniform;
+use crate::render::SpotLightUniform;
 
 
 
