@@ -1,5 +1,6 @@
 use gmm::Matrix;
-use super::Projection;
+
+use crate::components::Projection;
 
 
 

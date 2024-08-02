@@ -2,9 +2,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::ops::Range;
 use hashbrown::HashMap;
-use super::{
-    Indices, RenderableMesh, VertexAttribute, VertexAttributeValues
-};
+
+use crate::components::Indices;
+use crate::components::RenderableMesh;
+use crate::components::VertexAttribute;
+use crate::components::VertexAttributeValues;
 
 
 

@@ -1,7 +1,8 @@
 use std::hash;
 use std::sync::Arc;
 use std::cmp::Ordering;
-use super::IndexValues;
+
+use crate::components::IndexValues;
 
 
 
