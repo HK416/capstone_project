@@ -6,6 +6,8 @@ pub use self::manager::*;
 
 use std::fmt;
 use hecs::World;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Window;
 
 use crate::app::Handler;
@@ -48,6 +50,34 @@ pub trait GameScene : fmt::Debug {
     fn on_resized(
         &mut self, 
         window: &Window,
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        Ok(())
+    }
+
+    /// 애플리케이션 창에 키보드가 눌렸을 경우 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_keyboard_pressed(
+        &mut self, 
+        code: KeyCode, 
+        location: KeyLocation, 
+        window: &Window, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        Ok(())
+    }
+
+    /// 애플리케이션 창에 키보드가 떼어졌을 경우 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_keyboard_released(
+        &mut self, 
+        code: KeyCode,
+        location: KeyLocation, 
+        window: &Window, 
         world: &mut World, 
         app: &dyn Handler
     ) -> Result<(), ErrorMessage> {

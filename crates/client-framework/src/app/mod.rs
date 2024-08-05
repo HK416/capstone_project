@@ -31,6 +31,8 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use winit::dpi::PhysicalSize;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Fullscreen;
 use winit::window::Icon;
 use winit::window::Window;
@@ -308,6 +310,24 @@ impl App {
         // 현재 게임 장면의 콜백 함수를 호출합니다.
         self.scene_manager.borrow_mut()
             .scene_handle_window_resized(window, self)?;
+
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 키보드 눌림이 발생했을때 호출되는 함수입니다.
+    fn on_keyboard_pressed(&mut self, code: KeyCode, location: KeyLocation, window: &Window) -> Result<(), ErrorMessage> {
+        // 현재 게임 장면의 콜백 함수를 호출합니다.
+        self.scene_manager.borrow_mut()
+            .scene_handle_keyboard_pressed(code, location, window, self)?;
+
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 키보드 떼짐이 발생했을때 호출되는 함수입니다.
+    fn on_keyboard_released(&mut self, code: KeyCode, location: KeyLocation, window: &Window) -> Result<(), ErrorMessage> {
+        // 현재 게임 장면의 콜백 함수를 호출합니다.
+        self.scene_manager.borrow_mut()
+            .scene_handle_keyboard_released(code, location, window, self)?;
 
         Ok(())
     }

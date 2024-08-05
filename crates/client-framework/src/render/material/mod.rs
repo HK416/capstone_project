@@ -30,6 +30,5 @@ pub trait GraphicsPipeline : fmt::Debug {
         device: &wgpu::Device, 
         queue: &wgpu::Queue, 
         render_target: &wgpu::TextureView, 
-        clear_color: wgpu::Color
     );
 }

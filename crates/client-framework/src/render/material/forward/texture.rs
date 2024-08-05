@@ -3,40 +3,34 @@ use std::mem;
 use std::sync::Arc;
 use winit::window::Window;
 
-use crate::render::scale::RenderScale;
-use crate::render::bind_group::GlobalBindGroup;
 use crate::render::bind_group::EntityBindGroup;
-use crate::render::mesh::ModelMesh3D;
-use crate::render::mesh::RenderableMesh;
+use crate::render::bind_group::GlobalBindGroup;
 use crate::render::material::GraphicsPipeline;
+use crate::render::mesh::RenderableMesh;
+use crate::render::mesh::ModelMesh3D;
+use crate::render::scale::RenderScale;
 use crate::render::targets::SWAPCHAIN_FORMAT;
 
 
 
-/// 오브젝트의 텍스처 좌표계를 시각적으로 표시합니다.
-/// 
-/// ※ 디버깅 용도로 사용됩니다.
-/// 
+/// 텍스처를 입힌 오브젝트를 표시합니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TexcoordMaterialID;
+pub struct TextureMaterialID;
 
 
 
-/// 오브젝트의 텍스처 좌표계를 시각적으로 표시합니다.
-/// 
-/// ※ 디버깅 용도로 사용됩니다.
-/// 
-pub struct TexcoordMaterial {
+/// 텍스처를 입힌 오브젝트를 표시합니다.
+pub struct TextureMaterial {
     depth_buffer: wgpu::TextureView, 
     pipeline: wgpu::RenderPipeline, 
 }
 
-impl TexcoordMaterial {
-    /// 깊이 버퍼 텍스처 포맷 입니다.
+impl TextureMaterial {
+    /// 깊이 버퍼 텍스처 포맷입니다.
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 }
 
-impl TexcoordMaterial {
+impl TextureMaterial {
     /// 깊이 버퍼를 생성합니다.
     #[must_use]
     fn create_depth_buffer(
@@ -68,7 +62,7 @@ impl TexcoordMaterial {
     #[must_use]
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
         // 쉐이더 모듈 설명자를 생성합니다.
-        let desc = wgpu::include_wgsl!(concat!(env!("CARGO_MANIFEST_DIR"), "/shader/texcoord.wgsl"));
+        let desc = wgpu::include_wgsl!(concat!(env!("CARGO_MANIFEST_DIR"), "/shader/texture.wgsl"));
 
         // 쉐이더 모듈을 생성합니다.
         #[cfg(feature = "enable-shader-validation")] {
@@ -78,7 +72,7 @@ impl TexcoordMaterial {
             unsafe { device.create_shader_module_unchecked(desc) }
         }
     }
-    
+
     /// 파이프라인 레이아웃을 생성합니다.
     #[inline]
     #[must_use]
@@ -142,7 +136,7 @@ impl TexcoordMaterial {
                     cull_mode: None, 
                     front_face: wgpu::FrontFace::Ccw, 
                     polygon_mode: wgpu::PolygonMode::Fill, 
-                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    topology: wgpu::PrimitiveTopology::TriangleList, 
                     ..Default::default()
                 }, 
                 depth_stencil: Some(wgpu::DepthStencilState {
@@ -150,7 +144,7 @@ impl TexcoordMaterial {
                     depth_write_enabled: true, 
                     depth_compare: wgpu::CompareFunction::Less, 
                     stencil: wgpu::StencilState::default(), 
-                    bias: wgpu::DepthBiasState::default()
+                    bias: wgpu::DepthBiasState::default(), 
                 }), 
                 multisample: wgpu::MultisampleState::default(), 
                 fragment: Some(wgpu::FragmentState {
@@ -167,12 +161,12 @@ impl TexcoordMaterial {
                 }), 
                 multiview: None, 
                 cache: None, 
-            }, 
+            }
         )
     }
 }
 
-impl TexcoordMaterial {
+impl TextureMaterial {
     pub fn new(
         window: &Window, 
         device: &wgpu::Device
@@ -182,12 +176,12 @@ impl TexcoordMaterial {
 
         // 렌더 파이프라인을 생성합니다.
         let pipeline = Self::create_render_pipeline(device);
-        
+
         Self { depth_buffer, pipeline }
     }
 }
 
-impl GraphicsPipeline for TexcoordMaterial {
+impl GraphicsPipeline for TextureMaterial {
     #[inline]
     fn attributes(&self) -> &'static [u32] {
         &[ModelMesh3D::ATTRIBUTE_POSITION, ModelMesh3D::ATTRIBUTE_TEXCOORD0]
@@ -209,7 +203,7 @@ impl GraphicsPipeline for TexcoordMaterial {
         camera: hecs::Entity, 
         device: &wgpu::Device, 
         queue: &wgpu::Queue, 
-        render_target: &wgpu::TextureView, 
+        render_target: &wgpu::TextureView
     ) {
         let mut camera_query = match world.query_one::<&Arc<GlobalBindGroup>>(camera) {
             Ok(query) => query, 
@@ -222,7 +216,7 @@ impl GraphicsPipeline for TexcoordMaterial {
         };
 
         let mut entities = world.query::<(&Arc<ModelMesh3D>, &Arc<EntityBindGroup>)>()
-            .with::<&TexcoordMaterialID>();
+            .with::<&TextureMaterialID>();
 
         let mut encoder = device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor { ..Default::default() }
@@ -268,7 +262,7 @@ impl GraphicsPipeline for TexcoordMaterial {
     }
 }
 
-impl fmt::Debug for TexcoordMaterial {
+impl fmt::Debug for TextureMaterial {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(Self))

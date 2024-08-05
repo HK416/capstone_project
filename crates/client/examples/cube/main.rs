@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use hecs::World;
 use hecs::Entity;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Window;
 use gmm::{Quaternion, Matrix};
 use client_framework::app::AppBuilder;
@@ -20,15 +22,15 @@ use client_framework::render::bind_group::EntityBindGroup;
 use client_framework::render::bind_group::GlobalBindGroup;
 use client_framework::render::mesh::shape;
 use client_framework::render::material::GraphicsPipeline;
-use client_framework::render::material::forward::TexcoordShaderID;
+use client_framework::render::material::forward::TexcoordMaterialID;
 use client_framework::render::material::forward::TexcoordMaterial;
+use client_framework::render::material::forward::TextureMaterial;
+use client_framework::render::material::forward::TextureMaterialID;
 use client_framework::render::variable::EntityDataLayout;
 use client_framework::render::variable::EntityUniform;
 use client_framework::render::variable::CameraDataLayout;
 use client_framework::render::variable::CameraUniform;
 use client_framework::scene::GameScene;
-
-// use image::io::Reader as ImageReader;
 
 
 
@@ -61,7 +63,7 @@ fn main() {
 /// 예제 게임 장면 입니다.
 pub struct ExampleScene {
     main_camera: Option<Entity>, 
-    pipelines: Vec<Box<dyn GraphicsPipeline>>, 
+    materials: Vec<Box<dyn GraphicsPipeline>>, 
 }
 
 impl Default for ExampleScene {
@@ -69,7 +71,7 @@ impl Default for ExampleScene {
     fn default() -> Self {
         Self { 
             main_camera: None, 
-            pipelines: Vec::with_capacity(4), 
+            materials: Vec::with_capacity(4), 
         }
     }
 }
@@ -109,17 +111,62 @@ impl ExampleScene {
         Ok(())
     }
 
-    /// 렌더링 파이프라인을 추가합니다.
-    fn regist_pipeline(&mut self, window: &Window, app: &dyn Handler) -> Result<(), ErrorMessage> {
-        // 텍스처 좌표 렌더 파이프라인을 추가합니다.
-        let pipeline = Box::new(TexcoordMaterial::new(window, app.ref_render_device()));
-        self.pipelines.push(pipeline);
+    /// 렌더링 머티리얼을 추가합니다.
+    fn register_materials(&mut self, window: &Window, app: &dyn Handler) -> Result<(), ErrorMessage> {
+        // 텍스처 좌표 디버깅 머티리얼을 추가합니다.
+        let material = Box::new(TexcoordMaterial::new(window, app.ref_render_device()));
+        self.materials.push(material);
+
+        // 텍스처 매핑 머티리얼을 추가한다.
+        let material = Box::new(TextureMaterial::new(window, app.ref_render_device()));
+        self.materials.push(material);
 
         Ok(())
     }
 
+    /// 큐브 텍스처를 생성합니다.
+    fn load_cube_texture(&self, app: &dyn Handler) -> wgpu::TextureView {
+        use std::io::Cursor;
+        use wgpu::util::DeviceExt;
+        use image::io::Reader as ImageReader;
+
+        // 이미지 바이트 배열
+        let bytes = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets/test.png"));
+
+        // 이미지 바이트 배열로부터 이미지를 로드합니다.
+        let reader = ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format()
+            .unwrap()
+            .decode()
+            .unwrap();
+
+        let device = app.ref_render_device();
+        let queue = app.ref_render_queue();
+
+        // 텍스처를 생성합니다.
+        device.create_texture_with_data(
+            queue, 
+            &wgpu::TextureDescriptor {
+                label: Some("Texture(Cube)"), 
+                size: wgpu::Extent3d { width: 1024, height: 1024, depth_or_array_layers: 1 }, 
+                dimension: wgpu::TextureDimension::D2, 
+                format: wgpu::TextureFormat::Rgba8Unorm, 
+                mip_level_count: 1, 
+                sample_count: 1, 
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, 
+                view_formats: &[]
+            }, 
+            wgpu::util::TextureDataOrder::LayerMajor, 
+            &reader.to_rgba8()
+        ).create_view(
+            &wgpu::TextureViewDescriptor { ..Default::default() }
+        )
+    }
+
     /// 큐브 오브젝트를 생성합니다.
     fn spawn_cube_object(&self, world: &mut World, app: &dyn Handler) -> Result<(), ErrorMessage> {
+        let diffuse_texture = &self.load_cube_texture(app);
+
         // 큐브 메쉬를 생성합니다.
         let mesh = Arc::new(shape::create_cube_mesh(
             1.0, 1.0, 1.0, 
@@ -140,7 +187,7 @@ impl ExampleScene {
         // 바인드 그룹을 생성합니다.
         let sampler = EntityBindGroup::get_default_sampler(app.ref_render_device());
         let ambient_texture = EntityBindGroup::get_default_ambient(app.ref_render_device(), app.ref_render_queue());
-        let diffuse_texture = EntityBindGroup::get_default_diffuse(app.ref_render_device(), app.ref_render_queue());
+        // let diffuse_texture = EntityBindGroup::get_default_diffuse(app.ref_render_device(), app.ref_render_queue());
         let normal_texture = EntityBindGroup::get_default_normal(app.ref_render_device(), app.ref_render_queue());
         let specular_texture = EntityBindGroup::get_default_specular(app.ref_render_device(), app.ref_render_queue());
         let emissive_texture = EntityBindGroup::get_default_emissive(app.ref_render_device(), app.ref_render_queue());
@@ -156,7 +203,7 @@ impl ExampleScene {
             (emissive_texture, sampler)
         );
 
-        world.spawn((TexcoordShaderID, mesh, transform, uniform, bind_group));
+        world.spawn((TextureMaterialID, mesh, transform, uniform, bind_group));
 
         Ok(())
     }
@@ -211,6 +258,41 @@ impl ExampleScene {
 
         Ok(())
     }
+
+    /// 렌더 타겟을 주어진 색깔로 초기화 합니다.
+    fn clear_render_target(
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
+        render_target_view: &wgpu::TextureView, 
+        clear_color: wgpu::Color
+    ) {
+        let mut encoder = device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor { ..Default::default() }
+        );
+
+        {
+            let _rpass = encoder.begin_render_pass(
+                &wgpu::RenderPassDescriptor {
+                    label: Some("RenderPass(Clear)"), 
+                    color_attachments: &[
+                        Some(wgpu::RenderPassColorAttachment {
+                            view: render_target_view, 
+                            resolve_target: None, 
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(clear_color), 
+                                store: wgpu::StoreOp::Store, 
+                            },
+                        }),
+                    ],
+                    depth_stencil_attachment: None, 
+                    timestamp_writes: None, 
+                    occlusion_query_set: None
+                }
+            );
+        }
+
+        queue.submit([encoder.finish()]);
+    }
 }
 
 impl GameScene for ExampleScene {
@@ -221,7 +303,7 @@ impl GameScene for ExampleScene {
         app: &dyn Handler
     ) -> Result<(), ErrorMessage> {
         // 파이프라인을 등록합니다.
-        self.regist_pipeline(window, app)?;
+        self.register_materials(window, app)?;
 
         // 카메라를 생성합니다.
         self.spawn_camera(window, world, app)?;
@@ -252,10 +334,46 @@ impl GameScene for ExampleScene {
         world: &mut World, 
         app: &dyn Handler
     ) -> Result<(), ErrorMessage> {
-        for pipeline in self.pipelines.iter_mut() {
+        for pipeline in self.materials.iter_mut() {
             pipeline.resize_buffer(RenderScale::P100, window, app.ref_render_device());
         }
 
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_keyboard_pressed(
+        &mut self, 
+        code: KeyCode, 
+        location: KeyLocation, 
+        window: &Window, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        if code == KeyCode::Tab {
+            let entities: Vec<Entity> = world.iter().map(|e| e.entity()).collect();
+            for entity in entities.into_iter() {
+                let _ = world.exchange::<(TextureMaterialID, ), (TexcoordMaterialID, )>(entity, (TexcoordMaterialID, ));
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_keyboard_released(
+        &mut self, 
+        code: KeyCode,
+        location: KeyLocation, 
+        window: &Window, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        if code == KeyCode::Tab {
+            let entities: Vec<Entity> = world.iter().map(|e| e.entity()).collect();
+            for entity in entities.into_iter() {
+                let _ = world.exchange::<(TexcoordMaterialID, ), (TextureMaterialID, )>(entity, (TextureMaterialID, ));
+            }
+        }
         Ok(())
     }
 
@@ -298,20 +416,26 @@ impl GameScene for ExampleScene {
             &wgpu::TextureViewDescriptor { ..Default::default() }
         );
 
+        Self::clear_render_target(
+            device, 
+            queue, 
+            &render_target_view,  
+            wgpu::Color {
+                r: 0.0, 
+                g: 116.0 / 255.0, 
+                b: 183.0 / 255.0, 
+                a: 1.0, 
+            }
+        );
+
         if let Some(camera) = &self.main_camera {
-            for pipeline in self.pipelines.iter() {
+            for pipeline in self.materials.iter() {
                 pipeline.process(
                     world, 
                     *camera, 
                     device, 
                     queue, 
                     &render_target_view, 
-                    wgpu::Color {
-                        r: 0.0, 
-                        g: 116.0 / 255.0, 
-                        b: 183.0 / 255.0, 
-                        a: 1.0, 
-                    }
                 );
             }
         }

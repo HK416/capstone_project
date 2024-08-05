@@ -1,4 +1,5 @@
 use winit::application::ApplicationHandler;
+use winit::keyboard::PhysicalKey;
 use winit::window::WindowId;
 use winit::event::StartCause;
 use winit::event::WindowEvent;
@@ -116,6 +117,17 @@ impl ApplicationHandler<AppEvent> for App {
                 true => self.on_resumed(&window),
                 false => self.on_paused(&window)
             }, 
+            WindowEvent::KeyboardInput { event, .. } if !event.repeat => {
+                if let PhysicalKey::Code(code) = event.physical_key {
+                    if event.state.is_pressed() {
+                        self.on_keyboard_pressed(code, event.location, &window)
+                    } else {
+                        self.on_keyboard_released(code, event.location, &window)
+                    }
+                } else {
+                    Ok(())
+                }
+            },
             WindowEvent::Resized(_) => self.on_resized(&window, &surface),
             WindowEvent::RedrawRequested => self.on_draw(&window, &surface),
             WindowEvent::CloseRequested => match self.on_close() {

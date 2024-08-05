@@ -1,6 +1,8 @@
 use std::fmt;
 use std::collections::VecDeque;
 use hecs::World;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Window;
 
 use crate::app::Handler;
@@ -162,6 +164,48 @@ impl SceneManager {
         // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             return scene.on_resized(window, &mut self.world, app);
+        }
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 키보드 눌림이 발생한것을 처리합니다.
+    pub fn scene_handle_keyboard_pressed(
+        &mut self, 
+        code: KeyCode, 
+        location: KeyLocation, 
+        window: &Window, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_keyboard_pressed(
+                code, 
+                location, 
+                window, 
+                &mut self.world, 
+                app
+            );
+        }
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 키보드 떼짐이 발생한것을 처리합니다.
+    pub fn scene_handle_keyboard_released(
+        &mut self, 
+        code: KeyCode, 
+        location: KeyLocation, 
+        window: &Window, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_keyboard_released(
+                code, 
+                location, 
+                window, 
+                &mut self.world, 
+                app
+            );
         }
         Ok(())
     }
