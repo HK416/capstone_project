@@ -8,8 +8,7 @@ use thiserror::Error;
 
 use crate::app::WindowError;
 use crate::command::CommandParsingError;
-use crate::render::RenderError;
-
+use crate::render::error::RenderError;
 
 
 
@@ -17,15 +16,15 @@ use crate::render::RenderError;
 #[derive(Debug, Error)]
 pub enum ErrorMessage {
     #[cfg(feature = "enable-debug-info")]
-    #[error("{0}, {1}")]
+    #[error("{0}, ({1})")]
     Window(WindowError, DebugInfo), 
 
     #[cfg(feature = "enable-debug-info")]
-    #[error("{0}, {1}")]
+    #[error("{0}, ({1})")]
     CommandParsing(CommandParsingError, DebugInfo), 
 
     #[cfg(feature = "enable-debug-info")]
-    #[error("{0}, {1}")]
+    #[error("{0}, ({1})")]
     Render(RenderError, DebugInfo), 
 
     #[cfg(not(feature = "enable-debug-info"))]
@@ -92,12 +91,13 @@ impl From<RenderError> for ErrorMessage {
 
 
 /// 에러 메시지를 생성합니다.
+#[macro_export]
 macro_rules! err_msg {
     ($err:expr) => {{
         #[cfg(feature = "enable-debug-info")] {
-            crate::error::ErrorMessage::from((
+            ErrorMessage::from((
                 $err, 
-                crate::error::DebugInfo {
+                DebugInfo {
                     file: file!(), 
                     line: line!(), 
                     column: column!()
@@ -105,9 +105,7 @@ macro_rules! err_msg {
             ))
         }
         #[cfg(not(feature = "enable-debug-info"))] {
-            crate::error::ErrorMessage::from($err)
+            ErrorMessage::from($err)
         }
     }};
 }
-
-pub(crate) use err_msg;

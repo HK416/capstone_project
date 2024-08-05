@@ -2,10 +2,11 @@ use std::env;
 use std::path::Path;
 use std::path::PathBuf;
 
+use crate::err_msg;
 use crate::app::AppBuilder;
 use crate::command::CommandParsingError;
 use crate::command::OPTIONS;
-use crate::error::err_msg;
+use crate::error::DebugInfo;
 use crate::error::ErrorMessage;
 
 

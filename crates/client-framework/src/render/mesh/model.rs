@@ -3,10 +3,12 @@ use std::sync::Arc;
 use std::ops::Range;
 use hashbrown::HashMap;
 
-use crate::render::Indices;
-use crate::render::RenderableMesh;
-use crate::render::VertexAttribute;
-use crate::render::VertexAttributeValues;
+use crate::render::mesh::Indices;
+use crate::render::mesh::RenderableMesh;
+use crate::render::mesh::VertexAttribute;
+use crate::render::mesh::VertexAttributeValues;
+
+use super::IndexValues;
 
 
 
@@ -15,7 +17,7 @@ use crate::render::VertexAttributeValues;
 /// 정점의 속성들은 미리 지정된 슬롯을 사용합니다.
 /// 
 #[derive(PartialEq, Eq)]
-pub struct StandardMesh {
+pub struct ModelMesh3D {
     ///메쉬의 이름 입니다.
     name: String, 
 
@@ -32,7 +34,7 @@ pub struct StandardMesh {
     attributes: HashMap<u32, Arc<VertexAttribute>>, 
 }
 
-impl StandardMesh {
+impl ModelMesh3D {
     /// 정정의 색상 속성의 슬롯 번호 입니다.
     pub const ATTRIBUTE_COLOR: u32 = 0;
 
@@ -61,7 +63,7 @@ impl StandardMesh {
     const DATA_CONVERT_ERR_MSG: &'static str = "The given data format is invalid!";
 }
 
-impl StandardMesh {
+impl ModelMesh3D {
     /// 새로운 표준 3차원 모델의 메쉬를 생성합니다.
     #[inline]
     #[must_use]
@@ -179,6 +181,28 @@ impl StandardMesh {
     }
 
 
+
+    /// 표준 3차원 모델 메쉬에 정점의 인덱스를 삽입합니다. </br>
+    /// 정점의 인덱스가 이미 존재할 경우 이전 인덱스를 반환하고 새로운 인덱스를 저장합니다. </br>
+    /// 
+    #[inline]
+    pub fn insert_indices(
+        &mut self, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
+        values: IndexValues
+    ) -> Option<Arc<Indices>> {
+        self.indices.replace(
+            Indices::new(Some(&format!("Index({})", self.name)), device, queue, values)
+        )
+    }
+
+    /// 표준 3차원 모델 메쉬에 정점의 인덱스를 제거합니다. </br>
+    /// 정점의 인덱스가 존재하지 않는 경우 `None`을 반환합니다. </br>
+    #[inline]
+    pub fn remove_indices(&mut self) -> Option<Arc<Indices>> {
+        self.indices.take()
+    }
 
     /// 표준 3차원 모델 메쉬에 정점의 색상 속성을 삽입합니다. </br>
     /// 정점의 색상 속성이 이미 존재할 경우 이전의 속성을 반환하고 새로운 속성을 저장합니다. </br>
@@ -429,10 +453,16 @@ impl StandardMesh {
     }
 }
 
-impl RenderableMesh for StandardMesh {
-    fn bind<'a>(&'a self, encoder: &mut dyn wgpu::util::RenderEncoder<'a>) {
-        for (&slot, attribute) in self.attributes.iter() {
-            encoder.set_vertex_buffer(slot, attribute.buffer.slice(..));
+impl RenderableMesh for ModelMesh3D {
+    fn bind<'a>(&'a self, attributes: &[u32], encoder: &mut dyn wgpu::util::RenderEncoder<'a>) {
+        for (slot, attribute) in attributes.iter().enumerate() {
+            encoder.set_vertex_buffer(
+                slot as u32, 
+                self.attributes.get(attribute)
+                    .expect("The required attribute could not be found!")
+                    .buffer
+                    .slice(..)
+            );
         }
 
         if let Some(indices) = &self.indices {
@@ -451,7 +481,7 @@ impl RenderableMesh for StandardMesh {
     }
 }
 
-impl fmt::Debug for StandardMesh {
+impl fmt::Debug for ModelMesh3D {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple(stringify!(Self))

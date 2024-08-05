@@ -69,10 +69,13 @@ pollster = "0.3"
 
 
 [features]
-default = ["command-line-args", "enable-debug-info"]
+default = ["command-line-args", "enable-debug-info", "enable-shader-validation"]
 
 # 명령줄 인수를 허용합니다.
 command-line-args = []
 
 # 에러 메시지에 디버깅 정보를 포함합니다.
 enable-debug-info = []
+
+# 쉐이더 코드가 유효한지 검사합니다.
+enable-shader-validation = []

@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::cmp::Ordering;
 
-use crate::render::CameraUniform;
-use crate::render::DirLightUniform;
-use crate::render::PointLightUniform;
-use crate::render::SpotLightUniform;
+use crate::render::variable::CameraUniform;
+use crate::render::variable::DirLightUniform;
+use crate::render::variable::PointLightUniform;
+use crate::render::variable::SpotLightUniform;
 
 
 
@@ -101,13 +101,13 @@ impl GlobalBindGroup {
                         ), 
                     }, 
                     wgpu::BindGroupEntry {
-                        binding: 0, 
+                        binding: 2, 
                         resource: wgpu::BindingResource::Buffer(
                             PointLightUniform::get(device).as_entire_buffer_binding()
                         ), 
                     }, 
                     wgpu::BindGroupEntry {
-                        binding: 0, 
+                        binding: 3, 
                         resource: wgpu::BindingResource::Buffer(
                             SpotLightUniform::get(device).as_entire_buffer_binding()
                         ), 

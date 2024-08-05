@@ -2,7 +2,7 @@ use std::hash;
 use std::sync::Arc;
 use std::cmp::Ordering;
 
-use crate::render::VertexAttributeValues;
+use crate::render::mesh::VertexAttributeValues;
 
 
 

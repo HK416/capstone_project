@@ -2,9 +2,10 @@ use std::env::Args;
 use std::num::NonZeroUsize;
 use framework::concurrency::MAX_CORE_NUM;
 
+use crate::err_msg;
 use crate::app::AppBuilder;
 use crate::command::CommandParsingError;
-use crate::error::err_msg;
+use crate::error::DebugInfo;
 use crate::error::ErrorMessage;
 
 

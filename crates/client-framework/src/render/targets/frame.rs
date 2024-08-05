@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use winit::window::Window;
 
-use crate::render::RenderError;
+use crate::render::error::RenderError;
 
 /// 창 표면에 사용되는 스왑체인 텍스처 포맷 입니다.
 pub const SWAPCHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;

@@ -40,12 +40,13 @@ use framework::timer::GameTimer;
 use winit::window::WindowButtons;
 
 use crate::command::parse_command_line_args;
-use crate::render::init_wgpu_renderer;
-use crate::render::config_swapchain;
-use crate::error::err_msg;
+use crate::render::init::init_wgpu_renderer;
+use crate::render::targets::config_swapchain;
+use crate::err_msg;
 use crate::error::success;
 use crate::error::set_panic_hooker;
 use crate::error::show_error_msg;
+use crate::error::DebugInfo;
 use crate::error::ErrorMessage;
 use crate::scene::SceneManager;
 

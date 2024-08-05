@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use crate::error::err_msg;
+use crate::err_msg;
+use crate::error::DebugInfo;
 use crate::error::ErrorMessage;
-use crate::render::RenderError;
+use crate::render::error::RenderError;
 
 
 

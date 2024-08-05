@@ -8,8 +8,8 @@ use crate::error::success;
 use crate::error::show_error_msg;
 use crate::app::App;
 use crate::app::AppEvent;
-use crate::render::config_swapchain;
-use crate::render::create_wgpu_surface;
+use crate::render::targets::config_swapchain;
+use crate::render::targets::create_wgpu_surface;
 
 
 
