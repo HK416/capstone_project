@@ -139,7 +139,7 @@ impl TexcoordMaterial {
                     ], 
                 }, 
                 primitive: wgpu::PrimitiveState {
-                    cull_mode: None, 
+                    cull_mode: Some(wgpu::Face::Back), 
                     front_face: wgpu::FrontFace::Ccw, 
                     polygon_mode: wgpu::PolygonMode::Fill, 
                     topology: wgpu::PrimitiveTopology::TriangleList,
