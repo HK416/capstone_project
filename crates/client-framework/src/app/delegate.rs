@@ -7,7 +7,7 @@ use crate::error::ErrorMessage;
 
 
 
-/// 애플리케이션을 제어하는 대리자의 `trait` 입니다.
+/// 애플리케이션을 제어하는 대리자의 `trait`입니다.
 pub trait AppDelegate : fmt::Debug {
     /// 애플리케이션이 시작될 때 한번만 호출되는 콜백 함수입니다.
     #[inline]
@@ -61,7 +61,7 @@ pub trait AppDelegate : fmt::Debug {
 
 
 
-/// 기본 애플리케이션 `delegate` 입니다.
+/// 기본 애플리케이션 `delegate`입니다.
 #[derive(Debug)]
 pub struct DefaultDelegate;
 

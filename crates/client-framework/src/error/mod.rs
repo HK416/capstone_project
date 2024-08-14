@@ -12,7 +12,7 @@ use crate::render::error::RenderError;
 
 
 
-/// 에러 메시지 입니다.
+/// 에러 메시지입니다.
 #[derive(Debug, Error)]
 pub enum ErrorMessage {
     #[cfg(feature = "enable-debug-info")]

@@ -10,7 +10,7 @@ use crate::error::ErrorMessage;
 use crate::scene::GameScene;
 use crate::scene::ControlFlow;
 
-/// 게임 장면 관리자의 기본 `capacity` 입니다.
+/// 게임 장면 관리자의 기본 `capacity`입니다.
 pub const DEF_CAPACITY: usize = 16;
 
 /// 고정 시간 갱신 함수에서 사용되는 경과 시간입니다.
@@ -22,12 +22,12 @@ pub const MAX_FIXED_UPDATE: usize = 30;
 
 
 
-/// 게임 장면을 관리하는 관리자 입니다.
+/// 게임 장면을 관리하는 관리자입니다.
 pub struct SceneManager {
-    /// 게임 장면을 담고있는 `stack` 컨테이너 입니다.
+    /// 게임 장면을 담고있는 `stack` 컨테이너입니다.
     scene_stack: VecDeque<Box<dyn GameScene>>,
 
-    /// 게임 장면 관리자의 제어자 입니다.
+    /// 게임 장면 관리자의 제어자입니다.
     control_flow: Option<ControlFlow>,
 
     /// 경과 시간을 저장합니다.
@@ -36,7 +36,7 @@ pub struct SceneManager {
     /// 
     elapsed_time_sec: f32,
 
-    /// 게임 Entity를 담고 있는 데이터 베이스 입니다.
+    /// 게임 Entity를 담고 있는 데이터 베이스입니다.
     world: World,
 }
 
@@ -257,7 +257,7 @@ impl SceneManager {
     /// 게임 장면이 <b>투명</b>할 경우 하위 게임 장면도 그려집니다.
     /// 
     pub fn scene_draw(
-        &self, 
+        &mut self, 
         window: &Window, 
         surface: &wgpu::Surface, 
         app: &dyn Handler, 
@@ -273,6 +273,7 @@ impl SceneManager {
 
         // 수집된 게임 장면을 그립니다.
         while let Some(scene) = stack.pop_back() {
+            scene.on_prepare_draw(window, surface, &mut self.world, app)?;
             scene.on_draw(window, surface, &self.world, app)?;
         }
 

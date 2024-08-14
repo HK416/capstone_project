@@ -16,7 +16,7 @@ use crate::error::ErrorMessage;
 
 
 
-/// 게임 장면의 인터페이스 `trait` 입니다.
+/// 게임 장면의 인터페이스 `trait`입니다.
 pub trait GameScene : fmt::Debug {
     /// 게임 장면에 진입할 때 한번만 호출되는 콜백 함수입니다.
     #[inline]
@@ -138,6 +138,19 @@ pub trait GameScene : fmt::Debug {
         &mut self, 
         elapsed_time_sec: f32, 
         window: &Window, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        Ok(())
+    }
+
+    /// 게임 장면이 그려지기 전에 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_prepare_draw(
+        &self, 
+        window: &Window, 
+        surface: &wgpu::Surface, 
         world: &mut World, 
         app: &dyn Handler
     ) -> Result<(), ErrorMessage> {

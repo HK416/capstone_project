@@ -10,7 +10,7 @@ use crate::app::AppLocale;
 
 
 
-/// 애플리케이션 인터페이스 `trait` 입니다.
+/// 애플리케이션 인터페이스 `trait`입니다.
 pub trait Handler : fmt::Debug {
     /// 애플리케이션에서 사용 가능한 최대 스레드 갯수를 반환합니다.
     fn get_num_threads(&self) -> usize;

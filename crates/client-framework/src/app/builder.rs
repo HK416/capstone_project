@@ -12,51 +12,51 @@ use crate::scene::GameScene;
 
 
 
-/// 애플리케이션을 생성하는 빌더 입니다.
+/// 애플리케이션을 생성하는 빌더입니다.
 #[derive(Debug)]
 pub struct AppBuilder {
     /// 게임 시작 장면입니다.
     pub start_scene: Box<dyn GameScene>,
 
-    /// 애플리케이션 `delegate` 입니다.
+    /// 애플리케이션 `delegate`입니다.
     /// 
-    /// ※ 기본 값은 [`DefaultDelegate`] 입니다.
+    /// ※ 기본 값은 [`DefaultDelegate`]입니다.
     /// 
     pub delegate: Box<dyn AppDelegate>,
 
-    /// 애플리케이션 창 타이틀 문자열 입니다.
+    /// 애플리케이션 창 타이틀 문자열입니다.
     /// 
-    /// ※ 기본 값은 `"Hello, World!"` 입니다.
+    /// ※ 기본 값은 `"Hello, World!"`입니다.
     /// 
     pub title: String,
 
-    /// 애플리케이션 창 아이콘 이미지 데이터 입니다.
+    /// 애플리케이션 창 아이콘 이미지 데이터입니다.
     /// 
-    /// ※ 기본 값은 `None` 입니다.
+    /// ※ 기본 값은 `None`입니다.
     /// 
     pub icon: Option<Icon>,
 
-    /// 애플리케이션 창의 크기 입니다.
+    /// 애플리케이션 창의 크기입니다.
     /// 
-    /// ※ 기본 값은 `None` 입니다.
+    /// ※ 기본 값은 `None`입니다.
     /// 
     pub dpi: Option<Dpi>,
 
-    /// 애플리케이션 창의 전체화면 여부 입니다.
+    /// 애플리케이션 창의 전체화면 여부입니다.
     /// 
-    /// ※ 기본 값은 `true` 입니다.
+    /// ※ 기본 값은 `true`입니다.
     /// 
     pub fullscreen: bool,
 
-    /// 애플리케이션에서 사용 가능한 최대 스레드의 갯수 입니다.
+    /// 애플리케이션에서 사용 가능한 최대 스레드의 갯수입니다.
     /// 
-    /// ※ 기본 값은 시스템의 물리적 코어의 갯수 입니다.
+    /// ※ 기본 값은 시스템의 물리적 코어의 갯수입니다.
     /// 
     pub num_threads: usize,
 
     /// 애플리케이션 생성에 사용되는 플래그 옵션입니다.
     /// 
-    /// ※ 기본 값은 `AppFlags::default()` 입니다.
+    /// ※ 기본 값은 `AppFlags::default()`입니다.
     /// 
     pub flags: AppFlags,
 }

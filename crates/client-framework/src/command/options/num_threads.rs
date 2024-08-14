@@ -10,7 +10,7 @@ use crate::error::ErrorMessage;
 
 
 
-/// 사용할 스레드 갯수를 설정하는 명령어 함수 입니다.
+/// 사용할 스레드 갯수를 설정하는 명령어 함수입니다.
 #[inline]
 pub fn num_threads(args: &mut Args, builder: AppBuilder) -> Result<AppBuilder, ErrorMessage> {
     // 스레드의 갯수를 구문 분석 합니다.

@@ -2,7 +2,7 @@ use crate::scene::GameScene;
 
 
 
-/// 게임 메니저를 제어하는 제어자 입니다.
+/// 게임 메니저를 제어하는 제어자입니다.
 #[derive(Debug)]
 pub enum ControlFlow {
     /// 모든 게임 장면을 제거합니다.

@@ -54,61 +54,61 @@ use crate::scene::SceneManager;
 
 
 
-/// 애플리케이션 입니다.
+/// 애플리케이션입니다.
 #[derive(Debug)]
 pub struct App {
-    /// 애플리케이션에서 사용 가능한 최대 스레드 갯수 입니다.
+    /// 애플리케이션에서 사용 가능한 최대 스레드 갯수입니다.
     num_threads: usize,
 
-    /// 애플리케이션 실행 디렉토리 경로 입니다.
+    /// 애플리케이션 실행 디렉토리 경로입니다.
     current_dir: PathBuf,
 
-    /// 애플리케이션 플래그 옵션 입니다.
+    /// 애플리케이션 플래그 옵션입니다.
     flags: AppFlags,
 
-    /// 애플리케이션 표시 언어 입니다.
+    /// 애플리케이션 표시 언어입니다.
     locale: Option<AppLocale>, 
 
 
-    /// <b>현재</b> 애플리케이션 창 타이틀 문자열 입니다.
+    /// <b>현재</b> 애플리케이션 창 타이틀 문자열입니다.
     title: String,
 
-    /// <b>현재</b> 애플리케이션 창 아이콘 이미지 데이터 입니다.
+    /// <b>현재</b> 애플리케이션 창 아이콘 이미지 데이터입니다.
     icon: Option<Icon>,
 
-    /// <b>현재</b> 애플리케이션 창의 크기 입니다.
+    /// <b>현재</b> 애플리케이션 창의 크기입니다.
     dpi: Dpi,
 
     /// <b>현재</b> 애플리케이션 창의 전체화면 여부입니다.
     fullscreen: bool,
 
-    /// 애플리케이션 `delegate` 입니다.
+    /// 애플리케이션 `delegate`입니다.
     delegate: RefCell<Box<dyn AppDelegate>>,
 
-    /// 게임 장면의 관리자 입니다.
+    /// 게임 장면의 관리자입니다.
     scene_manager: RefCell<SceneManager>,
 
-    /// 특정 시각의 경과 시간을 측정하는 타이머 입니다.
+    /// 특정 시각의 경과 시간을 측정하는 타이머입니다.
     timer: GameTimer,
 
 
-    /// `wgpu` 렌더러의 인스턴스 입니다.
+    /// `wgpu` 렌더러의 인스턴스입니다.
     instance: Arc<wgpu::Instance>,
 
-    /// `wgpu` 렌더러의 장치 어뎁터 입니다.
+    /// `wgpu` 렌더러의 장치 어뎁터입니다.
     adapter: Arc<wgpu::Adapter>,
 
-    /// `wgpu` 렌더러의 논리적 장치 입니다.
+    /// `wgpu` 렌더러의 논리적 장치입니다.
     device: Arc<wgpu::Device>,
 
-    /// `wgpu` 렌더러의 명령어 대기열 입니다.
+    /// `wgpu` 렌더러의 명령어 대기열입니다.
     queue: Arc<wgpu::Queue>,
 
 
-    /// 생성된 애플리케이션 창 입니다.
+    /// 생성된 애플리케이션 창입니다.
     window: Option<Arc<Window>>,
 
-    /// 생성된 `wgpu` 렌더러의 장치 표면 입니다.
+    /// 생성된 `wgpu` 렌더러의 장치 표면입니다.
     surface: Option<Arc<wgpu::Surface<'static>>>,
 }
 
@@ -262,7 +262,7 @@ impl App {
         );
     }
 
-    /// 애플리케이션이 일시 중단 될 때 (애플리케이션 창이 초점을 잃을 때) 호출되는 콜백 함수 입니다.
+    /// 애플리케이션이 일시 중단 될 때 (애플리케이션 창이 초점을 잃을 때) 호출되는 콜백 함수입니다.
     fn on_paused(&mut self, window: &Window) -> Result<(), ErrorMessage> {
         // 애플리케이션 대리자의 콜백 함수를 호출합니다.
         self.delegate.borrow_mut().on_paused(window, self)?;
@@ -273,7 +273,7 @@ impl App {
         Ok(())
     }
 
-    /// 애플리케이션이 재개될 때 (애플리케이션 창이 초점을 가질 때) 호출되는 콜백 함수 입니다.
+    /// 애플리케이션이 재개될 때 (애플리케이션 창이 초점을 가질 때) 호출되는 콜백 함수입니다.
     fn on_resumed(&mut self, window: &Window) -> Result<(), ErrorMessage> {
         // 애플리케이션 대리자의 콜백 함수를 호출합니다.
         self.delegate.borrow_mut().on_resumed(window, self)?;
@@ -338,7 +338,7 @@ impl App {
         window.pre_present_notify();
 
         // 현재 게임 장면의 콜백 함수를 호출합니다.
-        self.scene_manager.borrow().scene_draw(window, surface, self)?;
+        self.scene_manager.borrow_mut().scene_draw(window, surface, self)?;
 
         Ok(())
     }

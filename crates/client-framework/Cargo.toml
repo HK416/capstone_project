@@ -1,6 +1,6 @@
 [package]
 name = "client-framework"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -21,6 +21,10 @@ thiserror = "1.0"
 # Entity Component System (ECS) 라이브러리
 # License: MIT or Apache-2.0
 hecs = "0.10"
+
+# 데이터 직렬화 라이브러리
+# License: MIT or Apache-2.0
+serde = { version = "1.0", features = ["derive"] }
 
 # Lazy initialization 라이브러리
 # License: MIT or Apache-2.0

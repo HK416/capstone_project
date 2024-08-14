@@ -3,7 +3,7 @@ use bitflags::bitflags;
 
 
 
-/// 32bit 크기의 애플리케이션 생성 플래그 옵션 입니다.
+/// 32bit 크기의 애플리케이션 생성 플래그 옵션입니다.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AppFlags(u32);

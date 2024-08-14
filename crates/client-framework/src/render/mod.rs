@@ -1,8 +1,10 @@
-pub mod bind_group;
+pub mod camera;
+pub mod light;
 pub mod material;
 pub mod mesh;
+pub mod object;
+pub mod pipeline;
+pub mod skinning;
 pub mod targets;
-pub mod variable;
 pub mod error;
 pub mod init;
-pub mod scale;

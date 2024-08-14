@@ -77,7 +77,9 @@ async fn create_wgpu_device_and_queue(adapter: &wgpu::Adapter) -> Result<(Arc<wg
         &wgpu::DeviceDescriptor {
             label: None, 
             memory_hints: wgpu::MemoryHints::Performance, 
-            required_features: wgpu::Features::default(), 
+            required_features: wgpu::Features::default()
+                | wgpu::Features::MAPPABLE_PRIMARY_BUFFERS
+                | wgpu::Features::TEXTURE_COMPRESSION_BC, 
             required_limits: wgpu::Limits::downlevel_defaults()
                 .using_resolution(adapter.limits())
         }, 
