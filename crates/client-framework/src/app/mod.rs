@@ -305,7 +305,13 @@ impl App {
         self.instance.poll_all(true);
 
         // 변경된 크기로 스왑체인을 설정합니다.
-        config_swapchain(size.width, size.height, &self.device, &surface);
+        config_swapchain(
+            size.width, 
+            size.height, 
+            &self.device, 
+            &surface, 
+            self.flags.contains(AppFlags::DISABLE_VSYNC)
+        );
 
         // 현재 게임 장면의 콜백 함수를 호출합니다.
         self.scene_manager.borrow_mut()

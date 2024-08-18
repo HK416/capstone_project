@@ -9,19 +9,26 @@ pub use self::transform::*;
 
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering as MemOrdering;
 use hecs::Entity;
+use hecs::World;
 
 
+
+/// 오브젝트 컴포넌트 타입입니다.
+pub type GameObjectComponent = Arc<GameObject>;
 
 /// 3차원 오브젝트를 나타내는 데이터입니다.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GameObject {
-    pub parent: Entity, 
-    pub children: Vec<Entity>, 
+    parent: AtomicU64, 
+    sibling: AtomicU64, 
+    child: AtomicU64, 
 
     name: String, 
     buffer: Arc<GameObjectBuffer>, 
-    bind_group: Arc<wgpu::BindGroup>, 
+    bind_group: wgpu::BindGroup, 
 }
 
 impl GameObject {
@@ -54,7 +61,7 @@ impl GameObject {
 impl GameObject {
     /// 새로운 게임 오브젝트 데이터를 생성합니다.
     #[must_use]
-    pub fn new(name: Option<&str>, device: &wgpu::Device) -> Self {
+    pub fn new(name: Option<&str>, device: &wgpu::Device) -> GameObjectComponent {
         // 디버깅 라벨을 생성합니다.
         let name = format!("GameObject({})", name.unwrap_or("Unknown"));
 
@@ -73,19 +80,20 @@ impl GameObject {
                     }, 
                 ], 
             }
-        ).into();
+        );
 
         Self { 
-            parent: Entity::DANGLING,  
-            children: Vec::with_capacity(8), 
+            parent: AtomicU64::new(0), 
+            sibling: AtomicU64::new(0), 
+            child: AtomicU64::new(0), 
             name, 
             buffer, 
             bind_group 
-        }
+        }.into()
     }
 
     /// 유니폼 버퍼를 갱신합니다.
-    pub fn update(&self, data: GameObjectDataLayout) {
+    pub fn update(&self, queue: &wgpu::Queue, data: GameObjectDataLayout) {
         let name = self.name.clone();
         let capturable = self.buffer.clone();
         self.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
@@ -99,6 +107,48 @@ impl GameObject {
                 log::warn!("Failed to write uniform buffer! (name: {})", name);
             }
         });
+        queue.submit([]);
+    }
+}
+
+impl GameObject {
+    /// 부모 오브젝트 엔티티를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn get_parent(&self) -> Option<Entity> {
+        Entity::from_bits(self.parent.load(MemOrdering::Acquire))
+    }
+
+    /// 형제 오브젝트 엔티티를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn get_sibling(&self) -> Option<Entity> {
+        Entity::from_bits(self.sibling.load(MemOrdering::Acquire))
+    }
+
+    /// 자식 오브젝트 엔티티를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn get_child(&self) -> Option<Entity> {
+        Entity::from_bits(self.child.load(MemOrdering::Acquire))
+    }
+
+    /// 부모 오브젝트 엔티티를 설정합니다.
+    #[inline]
+    pub fn set_parent(&self, entity: Entity) {
+        self.parent.store(entity.to_bits().get(), MemOrdering::Release);
+    }
+
+    /// 형제 오브젝트 엔티티를 설정합니다.
+    #[inline]
+    pub fn set_sibling(&self, entity: Entity) {
+        self.sibling.store(entity.to_bits().get(), MemOrdering::Release);
+    }
+
+    /// 자식 오브젝트 엔티티를 설정합니다.
+    #[inline]
+    pub fn set_child(&self, entity: Entity) {
+        self.child.store(entity.to_bits().get(), MemOrdering::Release);
     }
 }
 
@@ -113,14 +163,49 @@ impl GameObject {
     /// 3차원 오브젝트의 유니폼 버퍼를 반환합니다.
     #[inline]
     #[must_use]
-    pub fn buffer(&self) -> Arc<GameObjectBuffer> {
-        self.buffer.clone()
+    pub fn buffer(&self) -> &GameObjectBuffer {
+        &self.buffer
     }
 
     /// 3차원 오브젝트의 [wgpu::BindGroup]을 반환합니다.
     #[inline]
     #[must_use]
-    pub fn bind_group(&self) -> Arc<wgpu::BindGroup> {
-        self.bind_group.clone()
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
+    }
+}
+
+
+
+macro_rules! ok_or_return {
+    ($result:expr) => {
+        match ($result) {
+            Ok(it) => it, 
+            _ => return,
+        }
+    };
+}
+
+/// 오브젝트 계층 구조를 갱신합니다.
+pub fn update_hierarchy(world: &mut World, parent: Option<gmm::Matrix>, entity: Entity) {
+    // 현제 엔티티의 오브젝트 컴포넌트를 가져옵니다.
+    let game_object = (*ok_or_return!(world.get::<&GameObjectComponent>(entity))).clone();
+    
+    // 현제 엔티티의 월드 변환 행렬을 갱신합니다.
+    if let Some(parent) = parent {
+        let transform = *ok_or_return!(world.get::<&Transform>(entity));
+        let world_transform = ok_or_return!(world.query_one_mut::<&mut WorldTransform>(entity));
+        (**world_transform) = parent * (*transform);
+    }
+
+    // 형제 엔티티의 월드 변환 행렬을 갱신합니다.
+    if let Some(sibling_entity) = game_object.get_sibling() {
+        update_hierarchy(world, parent, sibling_entity);
+    }
+
+    // 자식 엔티티의 월드 변환 행렬을 갱신합니다.
+    if let Some(child_entity) = game_object.get_child() {
+        let world_transform = **ok_or_return!(world.get::<&WorldTransform>(entity));
+        update_hierarchy(world, Some(world_transform), child_entity);
     }
 }

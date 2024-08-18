@@ -1,7 +1,7 @@
 use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use lazy_static::lazy_static;
 
 lazy_static! {

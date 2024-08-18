@@ -38,10 +38,6 @@ bitflags = "2.6"
 # License: Zlib or Apache-2.0 or MIT
 bytemuck = { version = "1.16", features = ["derive"] }
 
-# Google의 SwissTable hash map 라이브러리
-# License: MIT or Apache-2.0
-hashbrown = "0.14"
-
 # 게임 수학 라이브러리
 # License: MIT
 gmm = { version = "0.2", features = ["bytemuck"] }

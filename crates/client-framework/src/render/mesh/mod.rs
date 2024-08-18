@@ -5,7 +5,9 @@ mod values;
 pub use self::values::*;
 
 use std::sync::Arc;
-use hashbrown::HashMap;
+use std::collections::HashMap;
+
+use crate::render::skin::BindMatrixBuffer;
 
 
 
@@ -23,8 +25,11 @@ pub enum Attribute {
 
 
 
+/// 메쉬 컴포넌트 타입입니다.
+pub type MeshComponent = Arc<Mesh>;
+
 /// 3차원 메쉬 데이터입니다.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Mesh {
     /// 3차원 메쉬의 이름입니다.
     name: String, 
@@ -33,17 +38,20 @@ pub struct Mesh {
     num_vertices: u32, 
 
     /// 3차원 메쉬의 정점 버퍼입니다.
-    buffer: Arc<VertexBuffer>, 
+    buffer: VertexBuffer, 
 
     /// 3차원 메쉬의 하위 메쉬입니다.
-    submeshes: Vec<Arc<IndexBuffer>>, 
+    submeshes: Vec<IndexBuffer>, 
 
     /// 3차원 메쉬가 가지고 있는 정점 속성의 버퍼입니다.
-    attributes: HashMap<Attribute, Arc<VertexBuffer>>, 
+    attributes: HashMap<Attribute, VertexBuffer>, 
+
+    /// 초기 뼈의 위치 변환 행렬의 유니폼 버퍼입니다.
+    bindpose: Option<BindMatrixBuffer>, 
 }
 
 impl Mesh {
-    /// 3차원 메쉬의 이름을 가져옵니다.
+    /// 컴포넌트의 이름을 가져옵니다.
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
@@ -60,15 +68,8 @@ impl Mesh {
     /// 정점 버퍼를 가져옵니다.
     #[inline]
     #[must_use]
-    pub fn vertices(&self) -> Arc<VertexBuffer> {
-        self.buffer.clone()
-    }
-
-    /// 정점 속성을 가져옵니다.
-    #[inline]
-    #[must_use]
-    pub fn attribute(&self, id: Attribute) -> Option<Arc<VertexBuffer>> {
-        self.attributes.get(&id).cloned()
+    pub fn vertices(&self) -> &VertexBuffer {
+        &self.buffer
     }
 
     /// 하위 메쉬의 갯수를 반환합니다.
@@ -81,8 +82,22 @@ impl Mesh {
     /// 하위 메쉬들을 반환합니다.
     #[inline]
     #[must_use]
-    pub fn submeshes(&self) -> &[Arc<IndexBuffer>] {
+    pub fn submeshes(&self) -> &[IndexBuffer] {
         &self.submeshes
+    }
+
+    /// 정점 속성을 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn attribute(&self, id: Attribute) -> Option<&VertexBuffer> {
+        self.attributes.get(&id)
+    }
+
+    /// 메쉬의 초기 뼈의 위치 변환 행렬을 반환합니다.
+    #[inline]
+    #[must_use]
+    pub fn bindpose(&self) -> Option<&BindMatrixBuffer> {
+        self.bindpose.as_ref()
     }
 }
 
@@ -92,7 +107,7 @@ impl Mesh {
 #[derive(Debug, Clone)]
 pub struct MeshBuilder {
     /// 메쉬의 이름입니다.
-    name: String, 
+    pub name: String, 
 
     /// 메쉬의 정점 데이터입니다.
     vertices: Vertices, 
@@ -102,6 +117,9 @@ pub struct MeshBuilder {
 
     /// 메쉬의 하위 메쉬 데이터입니다.
     submeshes: Vec<Indices>, 
+
+    /// 메쉬의 초기 상태에서의 뼈의 위치 변환 행렬입니다.
+    bindposes: Vec<gmm::Float4x4>, 
 }
 
 impl MeshBuilder {
@@ -127,6 +145,7 @@ impl MeshBuilder {
             vertices, 
             attributes: HashMap::with_capacity(8), 
             submeshes: Vec::with_capacity(8), 
+            bindposes: Vec::new(), 
         }
     }
 
@@ -173,7 +192,29 @@ impl MeshBuilder {
         self
     }
 
-    pub fn build(self, device: &wgpu::Device, queue: &wgpu::Queue) -> Mesh {
+    /// 메쉬 빌더에 초기 상태의 뼈의 위치 변환 행렬을 설정합니다.
+    /// 
+    /// # Panics
+    /// 주어진 초기 상태의 뼈의 위치 변환 행렬이 비어있는 경우 [`panic!`]을 호출합니다.
+    /// 
+    #[must_use]
+    pub fn set_bindposes<I>(mut self, bindposes: I) -> Self 
+    where I: IntoIterator<Item = gmm::Float4x4>, I::IntoIter: ExactSizeIterator {
+        let bindposes: Vec<_> = bindposes.into_iter().collect();
+        assert!(!bindposes.is_empty(), "The given bindpose data is empty!");
+        self.bindposes = bindposes;
+        self
+    }
+
+    /// 메쉬 빌더에 설정된 초기 상태의 뼈의 위치 변환 행렬을 제거합니다.
+    #[must_use]
+    pub fn reset_bindposes(mut self) -> Self {
+        self.bindposes.clear();
+        self
+    }
+
+    #[must_use]
+    pub fn build(self, device: &wgpu::Device, queue: &wgpu::Queue) -> MeshComponent {
         Mesh {
             name: self.name.to_string(), 
             num_vertices: self.vertices.count() as u32, 
@@ -202,6 +243,14 @@ impl MeshBuilder {
                     )
                 ))
                 .collect(), 
+            bindpose: (!self.bindposes.is_empty()).then(|| {
+                BindMatrixBuffer::from_data(
+                    Some(&format!("Uniform(Bindpose({}))", &self.name)), 
+                    device, 
+                    queue, 
+                    self.bindposes
+                )
+            })
         }.into()
     }
 }

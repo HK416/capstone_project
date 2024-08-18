@@ -33,6 +33,10 @@ pub enum ErrorMessage {
 
     #[cfg(not(feature = "enable-debug-info"))]
     #[error("{0}")]
+    Asset(AssetError), 
+
+    #[cfg(not(feature = "enable-debug-info"))]
+    #[error("{0}")]
     CommandParsing(CommandParsingError), 
 
     #[cfg(not(feature = "enable-debug-info"))]

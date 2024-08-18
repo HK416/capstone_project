@@ -38,7 +38,7 @@ use rust_embed::Embed;
 
 /// 사용할 임베딩된 에셋 데이터입니다.
 #[derive(Embed)]
-#[folder = "examples/assets/Aris_Original"]
+#[folder = "examples/assets/Cube"]
 struct AssetBundle;
 
 /// 모델 에셋을 디코드합니다.

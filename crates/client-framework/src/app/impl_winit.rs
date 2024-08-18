@@ -8,6 +8,7 @@ use winit::event_loop::ActiveEventLoop;
 use crate::error::success;
 use crate::error::show_error_msg;
 use crate::app::App;
+use crate::app::AppFlags;
 use crate::app::AppEvent;
 use crate::render::targets::config_swapchain;
 use crate::render::targets::create_wgpu_surface;
@@ -42,7 +43,13 @@ impl ApplicationHandler<AppEvent> for App {
 
         // 스왑체인을 설정합니다.
         let size = window.inner_size();
-        config_swapchain(size.width, size.height, &self.device, &surface);
+        config_swapchain(
+            size.width, 
+            size.height, 
+            &self.device, 
+            &surface, 
+            self.flags.contains(AppFlags::DISABLE_VSYNC)
+        );
 
         // 애플리케이션 시작 콜백 함수를 호출합니다.
         self.on_launching(&window, event_loop);

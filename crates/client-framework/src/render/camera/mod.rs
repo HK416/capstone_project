@@ -21,15 +21,17 @@ use crate::render::light::spot::SpotLightBuffer;
 pub struct MainCamera;
 
 
+/// 카메라 컴포넌트 타입입니다.
+pub type CameraComponent = Arc<CameraObject>;
 
 /// 3차원 카메라 오브젝트를 나타내는 데이터입니다.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CameraObject {
     name: String, 
     camera_buffer: Arc<CameraObjectBuffer>, 
     #[allow(dead_code)] point_light_buffer: Arc<PointLightBuffer>, // 향후 사용 예정
     #[allow(dead_code)] spot_light_buffer: Arc<SpotLightBuffer>, // 향후 사용 예정
-    bind_group: Arc<wgpu::BindGroup>, 
+    bind_group: wgpu::BindGroup, 
 }
 
 impl CameraObject {
@@ -95,7 +97,7 @@ impl CameraObject {
 impl CameraObject {
     /// 새로운 카메라 오브젝트 데이터를 생성합니다.
     #[must_use]
-    pub fn new(name: Option<&str>, device: &wgpu::Device) -> Self {
+    pub fn new(name: Option<&str>, device: &wgpu::Device) -> CameraComponent {
         // 디버깅 라벨을 생성합니다.
         let name = format!("CameraObject({})", name.unwrap_or("Unknown"));
 
@@ -128,13 +130,19 @@ impl CameraObject {
                     }, 
                 ], 
             }
-        ).into();
+        );
 
-        Self { name, camera_buffer, point_light_buffer, spot_light_buffer, bind_group }
+        Self { 
+            name, 
+            camera_buffer, 
+            point_light_buffer, 
+            spot_light_buffer, 
+            bind_group 
+        }.into()
     }
 
     /// 유니폼 버퍼를 갱신합니다.
-    pub fn update(&self, data: CameraDataLayout) {
+    pub fn update(&self, queue: &wgpu::Queue, data: CameraDataLayout) {
         let name = self.name.clone();
         let capturable = self.camera_buffer.clone();
         self.camera_buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
@@ -148,28 +156,29 @@ impl CameraObject {
                 log::warn!("Failed to write uniform buffer! (name: {})", name);
             }
         });
+        queue.submit([]);
     }
 }
 
 impl CameraObject {
-    /// 3차원 카메라 오브젝트의 이름을 반환합니다.
+    /// 컴포넌트의 이름을 반환합니다.
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// 3차원 카메라 오브젝트의 유니폼 버퍼를 반환합니다.
+    /// 컴포넌트의 유니폼 버퍼를 반환합니다.
     #[inline]
     #[must_use]
-    pub fn buffer(&self) -> Arc<CameraObjectBuffer> {
-        self.camera_buffer.clone()
+    pub fn buffer(&self) -> &CameraObjectBuffer {
+        &self.camera_buffer
     }
 
-    /// 3차원 카메라 오브젝트의 [wgpu::BindGroup]을 반환합니다.
+    /// 컴포넌트의 [wgpu::BindGroup]을 반환합니다.
     #[inline]
     #[must_use]
-    pub fn bind_group(&self) -> Arc<wgpu::BindGroup> {
-        self.bind_group.clone()
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
     }
 }

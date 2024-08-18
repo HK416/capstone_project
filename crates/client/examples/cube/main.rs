@@ -4,7 +4,6 @@ use self::model::*;
 use std::fmt;
 use std::thread;
 
-use client_framework::animation::Animation;
 use client_framework::app::AppBuilder;
 use client_framework::app::Dpi;
 use client_framework::app::Handler;
@@ -46,7 +45,7 @@ fn main() {
     log::info!("클라이언트 애플리케이션 실행...");
 
     AppBuilder::new(Box::new(ExampleScene::default()))
-        .set_title("Example: Animation")
+        .set_title("Example: Cube")
         .set_dpi(Dpi::W1280H720)
         .set_fullscreen(false)
         .build_and_run()
@@ -57,8 +56,7 @@ fn main() {
 /// 예제 장면입니다.
 struct ExampleScene {
     main_camera: Entity, 
-    player: Entity, 
-    animations: Vec<Animation>, 
+    cube: Entity, 
 }
 
 impl ExampleScene {
@@ -66,8 +64,8 @@ impl ExampleScene {
     fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn Handler) {
         // 로컬 변환 행렬과 월드 변환 행렬을 생성합니다.
         let trans = Transform::from_rotation_translation(
-            gmm::Quaternion::from_rotation_y(180f32.to_radians()), 
-            gmm::Float3::new(0.0, 0.005, 0.02)
+            gmm::Quaternion::from_rotation_x(30f32.to_radians()), 
+            gmm::Float3::new(0.0, 1.0, -2.0)
         );
         let mut world_trans = WorldTransform::new();
         (*world_trans) = *trans;
@@ -95,16 +93,15 @@ impl ExampleScene {
     }
 
     /// 모델 에셋을 생성합니다.
-    fn spawn_aris_original_model(&mut self, world: &mut World, app: &dyn Handler) {
-        let (player, animations) = spawn_model_from_asset(
+    fn spawn_cube_model(&mut self, world: &mut World, app: &dyn Handler) {
+        let (cube, _) = spawn_model_from_asset(
             app.ref_render_device(), 
             app.ref_render_queue(), 
             world, 
             TextureShader, 
-            "Aris_Original.ron"
+            "Cube.ron"
         );
-        self.player = player;
-        self.animations = animations;
+        self.cube = cube;
     }
 
     /// 카메라를 준비합니다.
@@ -153,7 +150,7 @@ impl GameScene for ExampleScene {
         app: &dyn Handler
     ) -> Result<(), ErrorMessage> {
         self.spawn_main_camera(window, world, app);
-        self.spawn_aris_original_model(world, app);
+        self.spawn_cube_model(world, app);
         Ok(())
     }
 
@@ -177,28 +174,21 @@ impl GameScene for ExampleScene {
         app: &dyn Handler 
     ) -> Result<(), ErrorMessage> {
         let timer = app.ref_timer();
-        window.set_title(&format!("Example: Animation (FPS:{})", timer.frame_rate()));
+        window.set_title(&format!("Example: Cube (FPS:{})", timer.frame_rate()));
 
-        if let Some(animation_set) = self.animations.first_mut() {
-            animation_set.play(world, app.ref_render_queue(), elapsed_time_sec);
-            if animation_set.play_time() >= animation_set.length() {
-                animation_set.reset();
-            }
-        }
-
-        // 플레이어 오브젝트 회전
-        type QueryPlayer<'a> = (&'a mut Transform, &'a mut WorldTransform, &'a GameObjectComponent);
+        // 큐브 오브젝트 회전
+        type QueryCube<'a> = (&'a mut Transform, &'a mut WorldTransform, &'a GameObjectComponent);
         let rotation = gmm::Matrix::from_rotation_y(30f32.to_radians() * elapsed_time_sec);
         let (
             transform, 
             world_transform, 
             object
-        ) = world.query_one_mut::<QueryPlayer>(self.player).unwrap();
+        ) = world.query_one_mut::<QueryCube>(self.cube).unwrap();
         (**transform) = (**transform) * rotation;
         (**world_transform) = **transform;
 
         // // 계층 구조를 갱신합니다.
-        update_hierarchy(world, None, self.player);
+        update_hierarchy(world, None, self.cube);
 
         Ok(())
     }
@@ -300,8 +290,7 @@ impl Default for ExampleScene {
     fn default() -> Self {
         Self { 
             main_camera: Entity::DANGLING, 
-            player: Entity::DANGLING, 
-            animations: Vec::new(), 
+            cube: Entity::DANGLING, 
         }
     }
 }

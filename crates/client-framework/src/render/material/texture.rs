@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 use lazy_static::lazy_static;
 

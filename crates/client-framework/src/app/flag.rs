@@ -15,6 +15,9 @@ bitflags! {
 
         /// 디버깅 레이어 기능을 활성화 할 것인지 나타냅니다.
         const ENABLE_DEBUG_LAYER = 0x02;
+
+        /// 수직 동기화를 비활성화 합니다.
+        const DISABLE_VSYNC = 0x04;
     }
 }
 

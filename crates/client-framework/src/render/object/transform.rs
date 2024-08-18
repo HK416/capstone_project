@@ -178,6 +178,13 @@ impl Transform {
     }
 }
 
+impl From<gmm::Float4x4> for Transform {
+    #[inline]
+    fn from(value: gmm::Float4x4) -> Self {
+        Self(value.into())
+    }
+}
+
 impl ops::Deref for Transform {
     type Target = gmm::Matrix;
     #[inline]
@@ -375,6 +382,20 @@ impl WorldTransform {
     pub fn set_translation<T: Into<gmm::Vector>>(&mut self, translation: T) {
         let (scale, rotation, _) = self.get_scale_rotation_translation();
         self.0 = gmm::Matrix::from_scale_rotation_translation(scale, rotation, translation.into());
+    }
+}
+
+impl From<gmm::Matrix> for WorldTransform {
+    #[inline]
+    fn from(value: gmm::Matrix) -> Self {
+        Self(value)
+    }
+}
+
+impl Into<gmm::Float4x4> for WorldTransform {
+    #[inline]
+    fn into(self) -> gmm::Float4x4 {
+        self.0.into()
     }
 }
 

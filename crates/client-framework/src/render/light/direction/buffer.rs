@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 use crate::render::light::direction::DirectionLightDataLayout;
 
 
+
 /// 3차원 방향 조명의 유니폼 버퍼입니다.
 #[derive(Debug)]
 pub struct DirectionLightBuffer(Arc<wgpu::Buffer>);
@@ -16,8 +17,7 @@ impl DirectionLightBuffer {
 
     /// 유니폼 버퍼의 [wgpu::BufferUsages]입니다.
     pub const USAGE: wgpu::BufferUsages = wgpu::BufferUsages::UNIFORM
-        .union(wgpu::BufferUsages::MAP_WRITE)
-        .union(wgpu::BufferUsages::COPY_DST);
+        .union(wgpu::BufferUsages::MAP_WRITE);
 }
 
 impl DirectionLightBuffer {

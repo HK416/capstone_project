@@ -16,8 +16,7 @@ impl SpotLightBuffer {
 
     /// 유니폼 버퍼의 [wgpu::BufferUsages]입니다.
     pub const USAGE: wgpu::BufferUsages = wgpu::BufferUsages::UNIFORM
-        .union(wgpu::BufferUsages::MAP_WRITE)
-        .union(wgpu::BufferUsages::COPY_DST);
+        .union(wgpu::BufferUsages::MAP_WRITE);
 }
 
 impl SpotLightBuffer {

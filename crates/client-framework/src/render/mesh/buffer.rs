@@ -1,5 +1,4 @@
 use std::ops;
-use std::sync::Arc;
 
 use crate::render::mesh::Indices;
 use crate::render::mesh::Vertices;
@@ -22,7 +21,7 @@ impl IndexBuffer {
         device: &wgpu::Device, 
         queue: &wgpu::Queue, 
         values: Indices
-    ) -> Arc<Self> {
+    ) -> Self {
         // 인덱스 버퍼를 생성합니다.
         let buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -75,7 +74,7 @@ impl VertexBuffer {
         device: &wgpu::Device, 
         queue: &wgpu::Queue, 
         values: Vertices
-    ) -> Arc<Self> {
+    ) -> Self {
         // 정점 버퍼를 생성합니다.
         let buffer = device.create_buffer(
             &wgpu::BufferDescriptor {
@@ -100,7 +99,7 @@ impl VertexBuffer {
         device: &wgpu::Device, 
         queue: &wgpu::Queue, 
         values: VertexAttributeValues
-    ) -> Arc<Self> {
+    ) -> Self {
         // 정점 버퍼를 생성합니다.
         let buffer = device.create_buffer(
             &wgpu::BufferDescriptor {

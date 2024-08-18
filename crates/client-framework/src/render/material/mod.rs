@@ -15,12 +15,15 @@ use std::sync::OnceLock;
 
 
 
+/// 재질 컴포넌트 타입입니다.
+pub type MaterialComponent = Arc<Material>;
+
 /// 3차원 메쉬의 재질을 나타내는 데이터입니다.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Material {
     name: String, 
     buffer: Arc<MaterialBuffer>,  
-    bind_group: Arc<wgpu::BindGroup>, 
+    bind_group: wgpu::BindGroup, 
 }
 
 impl Material {
@@ -134,6 +137,7 @@ impl Material {
     fn new(
         name: Option<&str>, 
         device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
         diffuse: gmm::Float4, 
         specular: gmm::Float4, 
         emissive: gmm::Float4, 
@@ -145,12 +149,12 @@ impl Material {
         normal_sampler: Arc<wgpu::Sampler>, 
         emissive_map: Arc<wgpu::TextureView>, 
         emissive_sampler: Arc<wgpu::Sampler>
-    ) -> Self {
+    ) -> MaterialComponent {
         // 디버깅 라벨을 생성합니다.
         let name = format!("Material({})", name.unwrap_or("Unknown"));
 
         // 유니폼 버퍼를 생성합니다.
-        let buffer: Arc<MaterialBuffer> = MaterialBuffer::new(Some(&format!("Uniform({})", name)), device);
+        let buffer = MaterialBuffer::new(Some(&format!("Uniform({})", name)), device);
 
         // 바인드 그룹을 생성합니다.
         let bind_group = device.create_bind_group(
@@ -212,31 +216,15 @@ impl Material {
                     }, 
                 ],
             }
-        ).into();
+        );
 
-        // 유니폼 버퍼에 데이터를 작성합니다.
-        let material_name =  name.clone();
-        let capturable = buffer.clone();
-        buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
-            if result.is_ok() {
-                let mut view = capturable.slice(..).get_mapped_range_mut();
-                let data: &mut MaterialDataLayout = bytemuck::from_bytes_mut(&mut view);
-                data.diffuse = diffuse;
-                data.specular = specular;
-                data.emissive = emissive;
-                drop(view);
-                capturable.unmap();
-            }
-            else {
-                log::warn!("Failed to write uniform buffer! (name: {})", material_name);
-            }
-        });
-
-        Self { name, buffer, bind_group }.into()
+        let material: MaterialComponent = Self { name, buffer, bind_group }.into();
+        material.update(queue, MaterialDataLayout { diffuse, specular, emissive });
+        return material;
     }
 
     /// 유니폼 버퍼를 갱신합니다.
-    pub fn update(&self, data: MaterialDataLayout) {
+    pub fn update(&self, queue: &wgpu::Queue, data: MaterialDataLayout) {
         let name =  self.name.clone();
         let capturable = self.buffer.clone();
         self.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
@@ -251,28 +239,29 @@ impl Material {
                 log::warn!("Failed to write uniform buffer! (name: {})", name);
             }
         });
+        queue.submit([]);
     }
 }
 
 impl Material {
-    /// 3차원 메쉬 재질의 이름을 반환합니다.
+    /// 컴포넌트의 이름을 반환합니다.
     #[inline]
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// 3차원 메쉬 재질의 유니폼 버퍼를 반환합니다.
+    /// 컴포넌트의 유니폼 버퍼를 반환합니다.
     #[inline]
     #[must_use]
-    pub fn buffer(&self) -> Arc<MaterialBuffer> {
-        self.buffer.clone()
+    pub fn buffer(&self) -> &MaterialBuffer {
+        &self.buffer
     }
 
-    /// 3차원 메쉬 재질의 [wgpu::BindGroup]을 반환합니다.
+    /// 컴포넌트의 [wgpu::BindGroup]을 반환합니다.
     #[inline]
     #[must_use]
-    pub fn bind_group(&self) -> Arc<wgpu::BindGroup> {
-        self.bind_group.clone()
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.bind_group
     }
 }
 
@@ -346,10 +335,11 @@ impl<'a> MaterialBuilder<'a> {
 
     /// 3차원 매쉬의 재질을 생성합니다.
     #[inline]
-    pub fn build(self, device: &wgpu::Device) -> Material {
+    pub fn build(self, device: &wgpu::Device, queue: &wgpu::Queue) -> MaterialComponent {
         Material::new(
             self.name, 
             device, 
+            queue, 
             self.diffuse, 
             self.specular, 
             self.emissive, 

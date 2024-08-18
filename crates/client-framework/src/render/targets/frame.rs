@@ -35,7 +35,8 @@ pub fn config_swapchain(
     width: u32, 
     height: u32, 
     device: &wgpu::Device, 
-    surface: &wgpu::Surface<'_>
+    surface: &wgpu::Surface<'_>, 
+    disable_vsync: bool
 ) {
     surface.configure(
         device, 
@@ -44,7 +45,10 @@ pub fn config_swapchain(
             height, 
             format: SWAPCHAIN_FORMAT, 
             alpha_mode: wgpu::CompositeAlphaMode::Auto, 
-            present_mode: wgpu::PresentMode::AutoVsync, 
+            present_mode: match disable_vsync {
+                true => wgpu::PresentMode::AutoNoVsync, 
+                false => wgpu::PresentMode::AutoVsync, 
+            }, 
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT, 
             desired_maximum_frame_latency: 2, 
             view_formats: vec![], 
