@@ -25,6 +25,8 @@ use client_framework::scene::GameScene;
 use framework::concurrency::MAIN_THREAD_ID;
 use hecs::Entity;
 use hecs::World;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Window;
 
 
@@ -59,6 +61,7 @@ struct ExampleScene {
     main_camera: Entity, 
     player: Entity, 
     animations: Vec<Animation>, 
+    curr_animation: usize, 
 }
 
 impl ExampleScene {
@@ -66,8 +69,8 @@ impl ExampleScene {
     fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn Handler) {
         // 로컬 변환 행렬과 월드 변환 행렬을 생성합니다.
         let trans = Transform::from_rotation_translation(
-            gmm::Quaternion::from_rotation_y(180f32.to_radians()), 
-            gmm::Float3::new(0.0, 0.005, 0.02)
+            gmm::Quaternion::from_rotation_x(15f32.to_radians()), 
+            gmm::Float3::new(0.0, 1.5, -2.0)
         );
         let mut world_trans = WorldTransform::new();
         (*world_trans) = *trans;
@@ -105,6 +108,7 @@ impl ExampleScene {
         );
         self.player = player;
         self.animations = animations;
+        self.curr_animation = 0;
     }
 
     /// 카메라를 준비합니다.
@@ -169,6 +173,24 @@ impl GameScene for ExampleScene {
     }
 
     #[allow(unused_variables)]
+    fn on_keyboard_released(
+        &mut self, 
+        code: KeyCode,
+        location: KeyLocation, 
+        window: &Window, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        // 애니메이션 변경
+        if KeyCode::Tab == code {
+            self.curr_animation = (self.curr_animation + 1) % 2;
+            self.animations[self.curr_animation].reset();
+        }
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
     fn on_update(
         &mut self, 
         elapsed_time_sec: f32, 
@@ -179,7 +201,7 @@ impl GameScene for ExampleScene {
         let timer = app.ref_timer();
         window.set_title(&format!("Example: Animation (FPS:{})", timer.frame_rate()));
 
-        if let Some(animation_set) = self.animations.first_mut() {
+        if let Some(animation_set) = self.animations.get_mut(self.curr_animation) {
             animation_set.play(world, app.ref_render_queue(), elapsed_time_sec);
             if animation_set.play_time() >= animation_set.length() {
                 animation_set.reset();
@@ -302,6 +324,7 @@ impl Default for ExampleScene {
             main_camera: Entity::DANGLING, 
             player: Entity::DANGLING, 
             animations: Vec::new(), 
+            curr_animation: 0, 
         }
     }
 }
