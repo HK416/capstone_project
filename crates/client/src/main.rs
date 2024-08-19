@@ -1,12 +1,12 @@
 use core::fmt;
 use std::thread;
-use client_framework::app::builder::AppBuilder;
+use client_framework::app::AppBuilder;
 use client_framework::scene::GameScene;
 
 
 
 /// 64bit `Windows`, `macOS` 플랫폼의
-/// 애플리케이션 진입점 입니다.
+/// 애플리케이션 진입점입니다.
 /// 
 /// 게임 화면은 16 : 9 비율의 scaled 크기를 가집니다.
 /// 

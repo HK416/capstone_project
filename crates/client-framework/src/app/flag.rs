@@ -1,8 +1,9 @@
+use std::fmt;
 use bitflags::bitflags;
 
 
 
-/// 32bit 크기의 애플리케이션 생성 플래그 옵션 입니다.
+/// 32bit 크기의 애플리케이션 생성 플래그 옵션입니다.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AppFlags(u32);
@@ -14,6 +15,9 @@ bitflags! {
 
         /// 디버깅 레이어 기능을 활성화 할 것인지 나타냅니다.
         const ENABLE_DEBUG_LAYER = 0x02;
+
+        /// 수직 동기화를 비활성화 합니다.
+        const DISABLE_VSYNC = 0x04;
     }
 }
 
@@ -25,9 +29,9 @@ impl Default for AppFlags {
     }
 }
 
-impl core::fmt::Debug for AppFlags {
+impl fmt::Debug for AppFlags {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(stringify!(AppFlags))
             .field("Show Frame Rate", &self.contains(Self::SHOW_FRAME_RATE))
             .field("Enable Debug Layer", &self.contains(Self::ENABLE_DEBUG_LAYER))

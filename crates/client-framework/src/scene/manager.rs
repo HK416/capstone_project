@@ -1,13 +1,16 @@
-use super::GameScene;
-use super::control_flow::ControlFlow;
-use crate::app::Application;
-use crate::error::AppError;
-
+use std::fmt;
 use std::collections::VecDeque;
 use hecs::World;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Window;
 
-/// 게임 장면 관리자의 기본 `capacity` 입니다.
+use crate::app::Handler;
+use crate::error::ErrorMessage;
+use crate::scene::GameScene;
+use crate::scene::ControlFlow;
+
+/// 게임 장면 관리자의 기본 `capacity`입니다.
 pub const DEF_CAPACITY: usize = 16;
 
 /// 고정 시간 갱신 함수에서 사용되는 경과 시간입니다.
@@ -19,12 +22,12 @@ pub const MAX_FIXED_UPDATE: usize = 30;
 
 
 
-/// 게임 장면을 관리하는 관리자 입니다.
+/// 게임 장면을 관리하는 관리자입니다.
 pub struct SceneManager {
-    /// 게임 장면을 담고있는 `stack` 컨테이너 입니다.
+    /// 게임 장면을 담고있는 `stack` 컨테이너입니다.
     scene_stack: VecDeque<Box<dyn GameScene>>,
 
-    /// 게임 장면 관리자의 제어자 입니다.
+    /// 게임 장면 관리자의 제어자입니다.
     control_flow: Option<ControlFlow>,
 
     /// 경과 시간을 저장합니다.
@@ -33,7 +36,7 @@ pub struct SceneManager {
     /// 
     elapsed_time_sec: f32,
 
-    /// 게임 Entity를 담고 있는 데이터 베이스 입니다.
+    /// 게임 Entity를 담고 있는 데이터 베이스입니다.
     world: World,
 }
 
@@ -60,7 +63,7 @@ impl SceneManager {
     }
 
     /// 게임 장면 관리자를 정리합니다.
-    pub fn clear(&mut self, app: &dyn Application) -> Result<(), AppError> {
+    pub fn clear(&mut self, app: &dyn Handler) -> Result<(), ErrorMessage> {
         // `stack`의 모든 게임 장면을 정리하고, 제거합니다.
         while let Some(mut old_scene) = self.scene_stack.pop_back() {
             old_scene.on_exit(None, &mut self.world, app)?;
@@ -70,7 +73,7 @@ impl SceneManager {
     }
 
     /// 게임 장면 관리자를 갱신합니다. 제어자에 따라 `stack`을 갱신합니다.
-    pub fn update(&mut self, window: &Window, app: &dyn Application) -> Result<(), AppError> {
+    pub fn update(&mut self, window: &Window, app: &dyn Handler) -> Result<(), ErrorMessage> {
         // 장면 관리자의 제어자가 존재할 경우 장면 관리자를 갱신합니다.
         if let Some(control_flow) = self.control_flow.take() {
             match control_flow {
@@ -127,7 +130,7 @@ impl SceneManager {
 
 impl SceneManager {
     /// 애플리케이션이 일시 정지된 것을 처리합니다.
-    pub fn scene_handle_paused(&mut self, app: &dyn Application) -> Result<(), AppError> {
+    pub fn scene_handle_paused(&mut self, app: &dyn Handler) -> Result<(), ErrorMessage> {
         // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             return scene.on_pause(&mut self.world, app);
@@ -136,7 +139,7 @@ impl SceneManager {
     }
 
     /// 애플리케이션이 재개된 것을 처리합니다.
-    pub fn scene_handle_resumed(&mut self, app: &dyn Application) -> Result<(), AppError> {
+    pub fn scene_handle_resumed(&mut self, app: &dyn Handler) -> Result<(), ErrorMessage> {
         // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             return scene.on_resume(&mut self.world, app);
@@ -148,7 +151,7 @@ impl SceneManager {
     /// 
     /// ※ 애플리케이션을 종료하고자 하는 경우 `true`를 반환해야 합니다.
     /// 
-    pub fn scene_handle_close_request(&mut self, app: &dyn Application) -> Result<bool, AppError> {
+    pub fn scene_handle_close_request(&mut self, app: &dyn Handler) -> Result<bool, ErrorMessage> {
         // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             return scene.on_close(app);
@@ -157,10 +160,52 @@ impl SceneManager {
     }
 
     /// 애플리케이션 창의 크기가 변경된 것을 처리합니다.
-    pub fn scene_handle_window_resized(&mut self, window: &Window, app: &dyn Application) -> Result<(), AppError> {
+    pub fn scene_handle_window_resized(&mut self, window: &Window, app: &dyn Handler) -> Result<(), ErrorMessage> {
         // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             return scene.on_resized(window, &mut self.world, app);
+        }
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 키보드 눌림이 발생한것을 처리합니다.
+    pub fn scene_handle_keyboard_pressed(
+        &mut self, 
+        code: KeyCode, 
+        location: KeyLocation, 
+        window: &Window, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_keyboard_pressed(
+                code, 
+                location, 
+                window, 
+                &mut self.world, 
+                app
+            );
+        }
+        Ok(())
+    }
+
+    /// 애플리케이션 창의 키보드 떼짐이 발생한것을 처리합니다.
+    pub fn scene_handle_keyboard_released(
+        &mut self, 
+        code: KeyCode, 
+        location: KeyLocation, 
+        window: &Window, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        // 현재 게임 장면이 존재할 경우 콜백 함수를 호출합니다.
+        if let Some(scene) = self.scene_stack.back_mut() {
+            return scene.on_keyboard_released(
+                code, 
+                location, 
+                window, 
+                &mut self.world, 
+                app
+            );
         }
         Ok(())
     }
@@ -176,8 +221,8 @@ impl SceneManager {
     pub fn scene_update(
         &mut self, 
         window: &Window, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         // 현재 게임 장면이 존재할 경우 갱신합니다.
         if let Some(scene) = self.scene_stack.back_mut() {
             let timer = app.ref_timer();
@@ -212,11 +257,11 @@ impl SceneManager {
     /// 게임 장면이 <b>투명</b>할 경우 하위 게임 장면도 그려집니다.
     /// 
     pub fn scene_draw(
-        &self, 
+        &mut self, 
         window: &Window, 
         surface: &wgpu::Surface, 
-        app: &dyn Application, 
-    ) -> Result<(), AppError> {
+        app: &dyn Handler, 
+    ) -> Result<(), ErrorMessage> {
         // 그려질 게임 장면들을 수집합니다.
         let mut stack = VecDeque::with_capacity(DEF_CAPACITY);
         for scene in self.scene_stack.iter().rev() {
@@ -228,6 +273,7 @@ impl SceneManager {
 
         // 수집된 게임 장면을 그립니다.
         while let Some(scene) = stack.pop_back() {
+            scene.on_prepare_draw(window, surface, &mut self.world, app)?;
             scene.on_draw(window, surface, &self.world, app)?;
         }
 
@@ -235,9 +281,9 @@ impl SceneManager {
     }
 }
 
-impl core::fmt::Debug for SceneManager {
+impl fmt::Debug for SceneManager {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(stringify!(SceneManager))
             .field("Current Game Scene", &self.scene_stack.back())
             .finish()

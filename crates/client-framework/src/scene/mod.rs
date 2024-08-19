@@ -1,16 +1,23 @@
-pub mod control_flow;
-pub mod manager;
+mod control_flow;
+pub use self::control_flow::*;
 
-use crate::app::Application;
-use crate::error::AppError;
+mod manager;
+pub use self::manager::*;
 
+use std::fmt;
 use hecs::World;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Window;
 
+use crate::app::Handler;
+use crate::error::ErrorMessage;
 
 
-/// 게임 장면의 인터페이스 `trait` 입니다.
-pub trait GameScene : core::fmt::Debug {
+
+
+/// 게임 장면의 인터페이스 `trait`입니다.
+pub trait GameScene : fmt::Debug {
     /// 게임 장면에 진입할 때 한번만 호출되는 콜백 함수입니다.
     #[inline]
     #[allow(unused_variables)]
@@ -18,8 +25,8 @@ pub trait GameScene : core::fmt::Debug {
         &mut self, 
         window: &Window, 
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("게임 장면({:?})에 진입함...", self);
         Ok(())
     }
@@ -31,8 +38,8 @@ pub trait GameScene : core::fmt::Debug {
         &mut self, 
         window: Option<&Window>, 
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("게임 장면({:?})에 빠져나옴...", self);
         Ok(())
     }
@@ -44,8 +51,36 @@ pub trait GameScene : core::fmt::Debug {
         &mut self, 
         window: &Window,
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        Ok(())
+    }
+
+    /// 애플리케이션 창에 키보드가 눌렸을 경우 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_keyboard_pressed(
+        &mut self, 
+        code: KeyCode, 
+        location: KeyLocation, 
+        window: &Window, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        Ok(())
+    }
+
+    /// 애플리케이션 창에 키보드가 떼어졌을 경우 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_keyboard_released(
+        &mut self, 
+        code: KeyCode,
+        location: KeyLocation, 
+        window: &Window, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         Ok(())
     }
 
@@ -55,7 +90,7 @@ pub trait GameScene : core::fmt::Debug {
     /// 
     #[inline]
     #[allow(unused_variables)]
-    fn on_close(&mut self, app: &dyn Application) -> Result<bool, AppError> {
+    fn on_close(&mut self, app: &dyn Handler) -> Result<bool, ErrorMessage> {
         Ok(true)
     }
 
@@ -65,8 +100,8 @@ pub trait GameScene : core::fmt::Debug {
     fn on_pause(
         &mut self, 
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("게임 장면({:?})이 일시 정지 됨...", self);
         Ok(())
     }
@@ -77,8 +112,8 @@ pub trait GameScene : core::fmt::Debug {
     fn on_resume(
         &mut self, 
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("게임 장면({:?})이 재개 됨...", self);
         Ok(())
     }
@@ -91,8 +126,8 @@ pub trait GameScene : core::fmt::Debug {
         elapsed_time_sec: f32, 
         window: &Window, 
         world: &mut World, 
-        app: &dyn Application 
-    ) -> Result<(), AppError> {
+        app: &dyn Handler 
+    ) -> Result<(), ErrorMessage> {
         Ok(())
     }
 
@@ -104,8 +139,21 @@ pub trait GameScene : core::fmt::Debug {
         elapsed_time_sec: f32, 
         window: &Window, 
         world: &mut World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
+        Ok(())
+    }
+
+    /// 게임 장면이 그려지기 전에 호출되는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_prepare_draw(
+        &self, 
+        window: &Window, 
+        surface: &wgpu::Surface, 
+        world: &mut World, 
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         Ok(())
     }
 
@@ -117,8 +165,8 @@ pub trait GameScene : core::fmt::Debug {
         window: &Window, 
         surface: &wgpu::Surface, 
         world: &World, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::warn!("게임 장면이 그려지고 있지 않습니다!");
         Ok(())
     }

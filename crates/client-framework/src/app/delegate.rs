@@ -1,13 +1,13 @@
-use super::Application;
-use crate::error::AppError;
-
-use core::fmt;
+use std::fmt;
 use winit::window::Window;
 use winit::event_loop::ActiveEventLoop;
 
+use crate::app::Handler;
+use crate::error::ErrorMessage;
 
 
-/// 애플리케이션을 제어하는 대리자의 `trait` 입니다.
+
+/// 애플리케이션을 제어하는 대리자의 `trait`입니다.
 pub trait AppDelegate : fmt::Debug {
     /// 애플리케이션이 시작될 때 한번만 호출되는 콜백 함수입니다.
     #[inline]
@@ -16,8 +16,8 @@ pub trait AppDelegate : fmt::Debug {
         &mut self, 
         window: &Window, 
         event_loop: &ActiveEventLoop, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션 시작 됨.");
         Ok(())
     }
@@ -28,8 +28,8 @@ pub trait AppDelegate : fmt::Debug {
     fn on_finish(
         &mut self,
         event_loop: &ActiveEventLoop, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션 종료 됨.");
         Ok(())
     }
@@ -40,8 +40,8 @@ pub trait AppDelegate : fmt::Debug {
     fn on_paused(
         &mut self, 
         window: &Window, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션이 일시 정지 됨.");
         Ok(())
     }
@@ -52,8 +52,8 @@ pub trait AppDelegate : fmt::Debug {
     fn on_resumed(
         &mut self, 
         window: &Window, 
-        app: &dyn Application
-    ) -> Result<(), AppError> {
+        app: &dyn Handler
+    ) -> Result<(), ErrorMessage> {
         log::info!("애플리케이션이 재개 됨.");
         Ok(())
     }
@@ -61,7 +61,7 @@ pub trait AppDelegate : fmt::Debug {
 
 
 
-/// 기본 애플리케이션 `delegate` 입니다.
+/// 기본 애플리케이션 `delegate`입니다.
 #[derive(Debug)]
 pub struct DefaultDelegate;
 

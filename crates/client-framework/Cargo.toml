@@ -1,6 +1,6 @@
 [package]
 name = "client-framework"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -22,6 +22,10 @@ thiserror = "1.0"
 # License: MIT or Apache-2.0
 hecs = "0.10"
 
+# 데이터 직렬화 라이브러리
+# License: MIT or Apache-2.0
+serde = { version = "1.0", features = ["derive"] }
+
 # Lazy initialization 라이브러리
 # License: MIT or Apache-2.0
 lazy_static = "1.5"
@@ -33,10 +37,6 @@ bitflags = "2.6"
 # byte 캐스팅 라이브러리
 # License: Zlib or Apache-2.0 or MIT
 bytemuck = { version = "1.16", features = ["derive"] }
-
-# Google의 SwissTable hash map 라이브러리
-# License: MIT or Apache-2.0
-hashbrown = "0.14"
 
 # 게임 수학 라이브러리
 # License: MIT
@@ -69,7 +69,13 @@ pollster = "0.3"
 
 
 [features]
-default = ["command-line-args"]
+default = ["command-line-args", "enable-debug-info", "enable-shader-validation"]
 
 # 명령줄 인수를 허용합니다.
 command-line-args = []
+
+# 에러 메시지에 디버깅 정보를 포함합니다.
+enable-debug-info = []
+
+# 쉐이더 코드가 유효한지 검사합니다.
+enable-shader-validation = []

@@ -18,6 +18,18 @@ log = "0.4"
 # License: MIT or Apache-2.0
 env_logger = "0.11"
 
+# ron 포맷 인코딩, 디코딩 라이브러리
+# License: MIT or Apache-2.0
+ron = "0.8"
+
+# 파일 임베딩 라이브러리
+# License: MIT
+rust-embed = "8.5"
+
+# 데이터 직렬화 라이브러리
+# License: MIT or Apache-2.0
+serde = { version = "1.0", features = ["derive"] }
+
 # byte 캐스팅 라이브러리
 # License: Zlib or Apache-2.0 or MIT
 bytemuck = { version = "1.16", features = ["derive"] }
@@ -26,9 +38,13 @@ bytemuck = { version = "1.16", features = ["derive"] }
 # License: MIT or Apache-2.0
 image = "0.25"
 
+# dds 포맷 이미지 디코딩 라이브러리
+# License: MIT 
+ddsfile = "0.5"
+
 # 게임 수학 라이브러리
 # License: MIT
-gmm = { version = "0.2", features = ["bytemuck"] }
+gmm = { version = "0.2", features = ["bytemuck", "serde"] }
 
 # Entity Component System (ECS) 라이브러리
 # License: MIT or Apache-2.0
@@ -43,10 +59,10 @@ winit = { version = "0.30", features = ["rwh_05"] }
 wgpu = "22"
 
 # 자체 프레임워크 라이브러리 (General)
-framework = { path = "../framework", version = "0.2" }
+framework = { path = "../framework" }
 
 # 자체 프레임워크 라이브러리 (Client)
-client-framework = { path = "../client-framework", version = "0.3" }
+client-framework = { path = "../client-framework" }
 
 
 
@@ -61,3 +77,7 @@ command-line-args = [ "client-framework/command-line-args" ]
 [[example]]
 name = "cube"
 path = "./examples/cube/main.rs"
+
+[[example]]
+name = "animation"
+path = "./examples/animation/main.rs"
