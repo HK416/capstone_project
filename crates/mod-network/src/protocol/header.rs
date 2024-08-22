@@ -5,7 +5,7 @@ pub type PacketSize = u16;
 
 
 // 새로운 패킷 추가시 여기에 추가
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct PacketType(u8);
 impl PacketType {
     pub const RAW: Self = Self(0);

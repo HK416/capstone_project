@@ -21,6 +21,10 @@ impl RawPacket {
         }
     }
 
+    pub fn packet_type(&self) -> PacketType {
+        self.header.packet_type
+    }
+
     pub fn data(&self) -> &[u8] {
         &self.data
     }
