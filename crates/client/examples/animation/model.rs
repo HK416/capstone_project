@@ -2,36 +2,36 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
 
-use client_framework::animation::Animation;
-use client_framework::animation::BoneTransform;
-use client_framework::animation::KeyFrame;
-use client_framework::animation::SkinnedMesh;
-use client_framework::asset::node::AnimationNode;
-use client_framework::asset::node::MaterialNode;
-use client_framework::asset::node::MeshNode;
-use client_framework::asset::node::ModelNode;
-use client_framework::asset::node::SkinNode;
-use client_framework::asset::node::RootModelNode;
-use client_framework::asset::node::TextureNode;
-use client_framework::render::material::MaterialBuilder;
-use client_framework::render::material::MaterialComponent;
-use client_framework::render::material::SamplerPool;
-use client_framework::render::material::TexturePool;
-use client_framework::render::mesh::Indices;
-use client_framework::render::mesh::Mesh;
-use client_framework::render::mesh::MeshBuilder; 
-use client_framework::render::mesh::MeshComponent; 
-use client_framework::render::mesh::VertexAttributeValues;
-use client_framework::render::object::GameObject;
-use client_framework::render::object::GameObjectDataLayout;
-use client_framework::render::object::Transform;
-use client_framework::render::object::WorldTransform;
-use client_framework::render::skin::BoneDataLayout;
-use client_framework::render::skin::Skin; 
-use client_framework::render::skin::SkinComponent;
 use hecs::Component;
 use hecs::Entity; 
 use hecs::World;
+use mod_asset::node::AnimationNode;
+use mod_asset::node::MaterialNode;
+use mod_asset::node::MeshNode;
+use mod_asset::node::ModelNode;
+use mod_asset::node::RootModelNode;
+use mod_asset::node::SkinNode;
+use mod_asset::node::TextureNode;
+use mod_render::anim::Animation;
+use mod_render::anim::Bone;
+use mod_render::anim::BoneTransform;
+use mod_render::anim::KeyFrame;
+use mod_render::material::MaterialBuilder;
+use mod_render::material::MaterialComponent;
+use mod_render::material::SamplerPool;
+use mod_render::material::TexturePool;
+use mod_render::mesh::Indices;
+use mod_render::mesh::Mesh;
+use mod_render::mesh::MeshBuilder;
+use mod_render::mesh::MeshComponent;
+use mod_render::mesh::VertexAttributeValues;
+use mod_render::object::GameObject;
+use mod_render::object::GameObjectDataLayout;
+use mod_render::object::Transform;
+use mod_render::object::WorldTransform;
+use mod_render::skin::BoneDataLayout;
+use mod_render::skin::Skin;
+use mod_render::skin::SkinComponent;
 use rust_embed::Embed;
 
 
@@ -407,13 +407,13 @@ fn create_animation(
     Animation::new(
         node.name, 
         node.length, 
-        node.play_mode.into(), 
+        node.frame_rate, 
         node.keyframes.into_iter()
             .map(|node| KeyFrame::new(
                 node.time_point, 
                 node.meshes.into_iter()
                     .map(|node| {
-                        SkinnedMesh::new(
+                        Bone::new(
                             skinned_meshes.get(&node.mesh_name).unwrap().clone(), 
                             node.bone_transforms.into_iter()
                                 .map(|node| BoneTransform {

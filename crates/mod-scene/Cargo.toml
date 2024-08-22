@@ -1,0 +1,32 @@
+[package]
+name = "mod-scene"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+
+
+[dependencies]
+# Entity Component System (ECS) 라이브러리
+# License: MIT or Apache-2.0
+hecs = "0.10"
+
+# 로그 인터페이스 라이브러리
+# License: MIT or Apache-2.0
+log = "0.4"
+
+# 윈도우 생성 라이브러리
+# License: Apache-2.0
+winit = { version = "0.30", features = ["rwh_05"] }
+
+# 크로스 플랫폼 렌더링 라이브러리 
+# License: MIT or Apache-2.0
+wgpu = "22"
+
+
+
+# 자체 프레임워크 라이브러리
+mod-util = { path = "../mod-util" }

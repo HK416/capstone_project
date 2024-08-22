@@ -1,29 +1,26 @@
 mod model;
 use self::model::*;
 
+use std::error::Error;
 use std::fmt;
 use std::thread;
 
-use client_framework::app::AppBuilder;
-use client_framework::app::Dpi;
-use client_framework::app::Handler;
-use client_framework::error::ErrorMessage;
-use client_framework::render::camera::CameraComponent;
-use client_framework::render::camera::CameraDataLayout;
-use client_framework::render::camera::CameraObject;
-use client_framework::render::camera::PerspectiveRh;
-use client_framework::render::camera::Projection;
-use client_framework::render::object::update_hierarchy;
-use client_framework::render::object::GameObjectComponent;
-use client_framework::render::object::GameObjectDataLayout;
-use client_framework::render::object::Transform;
-use client_framework::render::object::WorldTransform;
-use client_framework::render::shader::TextureShader;
-use client_framework::render::targets::DepthBuffer;
-use client_framework::scene::GameScene;
-use framework::concurrency::MAIN_THREAD_ID;
 use hecs::Entity;
 use hecs::World;
+use mod_render::brush::TextureBrush;
+use mod_render::camera::CameraComponent;
+use mod_render::camera::CameraDataLayout;
+use mod_render::camera::CameraObject;
+use mod_render::camera::PerspectiveRh;
+use mod_render::camera::Projection;
+use mod_render::object::update_hierarchy;
+use mod_render::object::GameObjectComponent;
+use mod_render::object::GameObjectDataLayout;
+use mod_render::object::Transform;
+use mod_render::object::WorldTransform;
+use mod_render::DepthBuffer;
+use mod_scene::GameScene;
+use mod_util::AppHandle;
 use winit::window::Window;
 
 
@@ -38,6 +35,10 @@ use winit::window::Window;
 #[cfg(target_pointer_width = "64")]
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
+    use mod_app::AppBuilder;
+    use mod_parallelism::MAIN_THREAD_ID;
+    use mod_util::AppDpi;
+
     assert_eq!(thread::current().id(), *MAIN_THREAD_ID, "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.
@@ -45,9 +46,9 @@ fn main() {
     log::info!("클라이언트 애플리케이션 실행...");
 
     AppBuilder::new(Box::new(ExampleScene::default()))
-        .set_title("Example: Cube")
-        .set_dpi(Dpi::W1280H720)
-        .set_fullscreen(false)
+        .with_title("Example: Cube")
+        .with_dpi(AppDpi::W1280H720)
+        .with_fullscreen(false)
         .build_and_run()
 }
 
@@ -61,7 +62,7 @@ struct ExampleScene {
 
 impl ExampleScene {
     /// 카메라 오브젝트를 생성합니다.
-    fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn Handler) {
+    fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn AppHandle) {
         // 로컬 변환 행렬과 월드 변환 행렬을 생성합니다.
         let trans = Transform::from_rotation_translation(
             gmm::Quaternion::from_rotation_x(30f32.to_radians()), 
@@ -80,7 +81,7 @@ impl ExampleScene {
         // 카메라 오브젝트 데이터를 생성합니다.
         let camera_object = CameraObject::new(
             Some("Main"), 
-            app.ref_render_device()
+            app.render_device()
         );
 
         // 카메라 오브젝트를 생성합니다.
@@ -93,19 +94,19 @@ impl ExampleScene {
     }
 
     /// 모델 에셋을 생성합니다.
-    fn spawn_cube_model(&mut self, world: &mut World, app: &dyn Handler) {
+    fn spawn_cube_model(&mut self, world: &mut World, app: &dyn AppHandle) {
         let (cube, _) = spawn_model_from_asset(
-            app.ref_render_device(), 
-            app.ref_render_queue(), 
+            app.render_device(), 
+            app.render_queue(), 
             world, 
-            TextureShader, 
+            TextureBrush, 
             "Cube.ron"
         );
         self.cube = cube;
     }
 
     /// 카메라를 준비합니다.
-    fn preapre_camera(world: &mut World, app: &dyn Handler) {
+    fn preapre_camera(world: &mut World, app: &dyn AppHandle) {
         type QueryType<'a> = (&'a WorldTransform, &'a Projection, &'a CameraComponent);
         let mut query = world.query::<QueryType>();
         for (_, (world_transform, projection, camera)) in query.iter() {
@@ -115,7 +116,7 @@ impl ExampleScene {
             let view_trans = gmm::Matrix::look_to_rh(eye, dir, up);
 
             camera.update(
-                app.ref_render_queue(), 
+                app.render_queue(), 
                 CameraDataLayout {
                     proj_view: ((**projection) * view_trans).into(), 
                     position: eye.into(), 
@@ -127,12 +128,12 @@ impl ExampleScene {
     }
 
     /// 오브젝트를 준비합니다.
-    fn prepare_objects(world: &mut World, app: &dyn Handler) {
+    fn prepare_objects(world: &mut World, app: &dyn AppHandle) {
         type QueryType<'a> = (&'a WorldTransform, &'a GameObjectComponent);
         let mut query = world.query::<QueryType>();
         for (_, (world_transform, object)) in query.iter() {
             object.update(
-                app.ref_render_queue(), 
+                app.render_queue(), 
                 GameObjectDataLayout { 
                     transform: (**world_transform).into() 
                 }
@@ -147,8 +148,8 @@ impl GameScene for ExampleScene {
         &mut self, 
         window: &Window, 
         world: &mut World, 
-        app: &dyn Handler
-    ) -> Result<(), ErrorMessage> {
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error>> {
         self.spawn_main_camera(window, world, app);
         self.spawn_cube_model(world, app);
         Ok(())
@@ -159,8 +160,8 @@ impl GameScene for ExampleScene {
         &mut self, 
         window: Option<&Window>, 
         world: &mut World, 
-        app: &dyn Handler
-    ) -> Result<(), ErrorMessage> {
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error>> {
         world.clear();
         Ok(())
     }
@@ -171,9 +172,9 @@ impl GameScene for ExampleScene {
         elapsed_time_sec: f32, 
         window: &Window, 
         world: &mut World, 
-        app: &dyn Handler 
-    ) -> Result<(), ErrorMessage> {
-        let timer = app.ref_timer();
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error>> {
+        let timer = app.timer();
         window.set_title(&format!("Example: Cube (FPS:{})", timer.frame_rate()));
 
         // 큐브 오브젝트 회전
@@ -199,8 +200,8 @@ impl GameScene for ExampleScene {
         window: &Window, 
         surface: &wgpu::Surface, 
         world: &mut World, 
-        app: &dyn Handler
-    ) -> Result<(), ErrorMessage> {
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error>> {
         Self::preapre_camera(world, app);
         Self::prepare_objects(world, app);
         Ok(())
@@ -212,10 +213,10 @@ impl GameScene for ExampleScene {
         window: &Window, 
         surface: &wgpu::Surface, 
         world: &World, 
-        app: &dyn Handler
-    ) -> Result<(), ErrorMessage> {
-        let device = app.ref_render_device();
-        let queue = app.ref_render_queue();
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error>> {
+        let device = app.render_device();
+        let queue = app.render_queue();
 
         // 이전 작업이 끝날 때 까지 기다립니다.
         device.poll(wgpu::Maintain::Wait);
@@ -275,7 +276,7 @@ impl GameScene for ExampleScene {
             );
 
             rpass.set_bind_group(0, &camera.bind_group(), &[]);
-            TextureShader::draw(world, device, &mut rpass);
+            TextureBrush::draw(world, device, &mut rpass);
         }
         
         queue.submit([encoder.finish()]);

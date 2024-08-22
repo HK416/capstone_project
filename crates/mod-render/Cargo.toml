@@ -1,0 +1,56 @@
+[package]
+name = "mod-render"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+
+
+[dependencies]
+# byte 캐스팅 라이브러리
+# License: Zlib or Apache-2.0 or MIT
+bytemuck = { version = "1.16", features = ["derive"] }
+
+# 게임 수학 라이브러리
+# License: MIT
+gmm = { version = "0.2", features = ["bytemuck", "serde"] }
+
+# Entity Component System (ECS) 라이브러리
+# License: MIT or Apache-2.0
+hecs = "0.10"
+
+# Lazy initialization 라이브러리
+# License: MIT or Apache-2.0
+lazy_static = "1.5"
+
+# 로그 인터페이스 라이브러리
+# License: MIT or Apache-2.0
+log = "0.4"
+
+# 에러 타입을 쉽게 만들어주는 라이브러리
+# License: MIT or Apache-2.0
+thiserror = "1.0"
+
+# 윈도우 생성 라이브러리
+# License: Apache-2.0
+winit = { version = "0.30", features = ["rwh_05"] }
+
+# 크로스 플랫폼 렌더링 라이브러리 
+# License: MIT or Apache-2.0
+wgpu = "22"
+
+
+
+# 자체 프레임워크 라이브러리
+mod-error = { path = "../mod-error" }
+
+
+
+[features]
+default = ["enable-shader-validation"]
+
+# 쉐이더 유효성 검증을 활성화 합니다.
+enable-shader-validation = []
