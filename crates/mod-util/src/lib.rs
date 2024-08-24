@@ -7,9 +7,6 @@ pub use self::event::*;
 mod flag;
 pub use self::flag::*;
 
-mod handle;
-pub use self::handle::*;
-
 mod locale;
 pub use self::locale::*;
 

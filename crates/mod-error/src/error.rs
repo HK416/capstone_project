@@ -10,7 +10,7 @@ pub struct RuntimeError {
     pub file: &'static str, 
     pub line: u32, 
     pub column: u32, 
-    pub error: Box<dyn Error>
+    pub error: Box<dyn Error + Send>
 }
 
 /// 디버깅 정보를 포함하고 있는 오류 메시지를 생성합니다.
@@ -34,7 +34,7 @@ macro_rules! err_msg {
 #[derive(Debug, thiserror::Error)]
 #[error("{error}")]
 pub struct RuntimeError {
-    pub error: Box<dyn Error>
+    pub error: Box<dyn Error + Send>
 }
 
 

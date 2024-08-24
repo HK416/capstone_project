@@ -1,9 +1,5 @@
-use thiserror::Error;
-
-
-
 /// `wgpu` 렌더러에서 발생하는 오류 목록입니다.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum RenderError {
     /// 적절한 `wgpu` 장치 어뎁터를 찾지 못한 경우 발생하는 오류입니다.
     #[error("No suitable adapter!")]

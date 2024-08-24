@@ -7,9 +7,6 @@ pub mod mesh;
 pub mod object;
 pub mod skin;
 
-mod dpeth;
-pub use self::dpeth::*;
-
 mod error;
 pub use self::error::*;
 
