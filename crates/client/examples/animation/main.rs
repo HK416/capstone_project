@@ -20,9 +20,9 @@ use mod_render::object::GameObjectDataLayout;
 use mod_render::object::Transform;
 use mod_render::object::WorldTransform;
 use mod_render::skin::BoneMatrixDataLayout;
-use mod_render::DepthBuffer;
+use mod_scene::AppHandle;
 use mod_scene::GameScene;
-use mod_util::AppHandle;
+use winit::event::Modifiers;
 use winit::keyboard::KeyCode;
 use winit::keyboard::KeyLocation;
 use winit::window::Window;
@@ -157,7 +157,7 @@ impl GameScene for ExampleScene {
         window: &Window, 
         world: &mut World, 
         app: &dyn AppHandle
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error + Send>> {
         self.spawn_main_camera(window, world, app);
         self.spawn_aris_original_model(world, app);
         Ok(())
@@ -169,7 +169,7 @@ impl GameScene for ExampleScene {
         window: Option<&Window>, 
         world: &mut World, 
         app: &dyn AppHandle
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error + Send>> {
         world.clear();
         Ok(())
     }
@@ -177,18 +177,18 @@ impl GameScene for ExampleScene {
     #[allow(unused_variables)]
     fn on_keyboard_released(
         &mut self, 
-        code: KeyCode,
+        keycode: KeyCode, 
         location: KeyLocation, 
+        modifiers: Modifiers, 
         window: &Window, 
         world: &mut World, 
         app: &dyn AppHandle
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error + Send>> {
         // 애니메이션 변경
-        if KeyCode::Tab == code {
+        if KeyCode::Tab == keycode {
             self.anim_timer = 0.0;
             self.anim_index = (self.anim_index + 1) % self.animations.len();
         }
-
         Ok(())
     }
 
@@ -199,7 +199,7 @@ impl GameScene for ExampleScene {
         window: &Window, 
         world: &mut World, 
         app: &dyn AppHandle 
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error + Send>> {
         let timer = app.timer();
         window.set_title(&format!("Example: Animation (FPS:{})", timer.frame_rate()));
 
@@ -248,7 +248,7 @@ impl GameScene for ExampleScene {
         surface: &wgpu::Surface, 
         world: &mut World, 
         app: &dyn AppHandle
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error + Send>> {
         Self::preapre_camera(world, app);
         Self::prepare_objects(world, app);
         Ok(())
@@ -257,25 +257,13 @@ impl GameScene for ExampleScene {
     #[allow(unused_variables)]
     fn on_draw(
         &self, 
-        window: &Window, 
-        surface: &wgpu::Surface, 
-        world: &World, 
+        render_target_view: &wgpu::TextureView, 
+        depth_stencil_view: &wgpu::TextureView, 
+        world: &mut World, 
         app: &dyn AppHandle
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
         let queue = app.render_queue();
-
-        // 이전 작업이 끝날 때 까지 기다립니다.
-        device.poll(wgpu::Maintain::Wait);
-
-        // 현재 스왑체인 이미지를 가져옵니다.
-        let frame = surface.get_current_texture()
-            .expect("Failed to get swapchain texture.");
-        
-        // 렌더 타겟 뷰를 가져옵니다.
-        let render_target_view = frame.texture.create_view(
-            &wgpu::TextureViewDescriptor { ..Default::default() }
-        );
 
         // 명령어 레코더를 생성합니다.
         let mut encoder = device.create_command_encoder(
@@ -310,7 +298,7 @@ impl GameScene for ExampleScene {
                         }), 
                     ], 
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: DepthBuffer::get(window, device), 
+                        view: depth_stencil_view, 
                         depth_ops: Some(wgpu::Operations {
                             load: wgpu::LoadOp::Clear(1.0), 
                             store: wgpu::StoreOp::Store, 
@@ -327,8 +315,6 @@ impl GameScene for ExampleScene {
         }
         
         queue.submit([encoder.finish()]);
-        frame.present();
-
         Ok(())
     }
 }

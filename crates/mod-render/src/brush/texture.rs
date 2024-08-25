@@ -11,7 +11,7 @@ use crate::object::GameObject;
 use crate::object::GameObjectComponent;
 use crate::skin::Skin;
 use crate::skin::SkinComponent;
-use crate::DepthBuffer;
+use crate::DEPTH_STENCIL_FORMAT;
 use crate::SWAPCHAIN_FORMAT;
 
 
@@ -167,7 +167,7 @@ impl MeshTextureShader {
                     ..Default::default()
                 }, 
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DepthBuffer::FORMAT, 
+                    format: DEPTH_STENCIL_FORMAT, 
                     depth_write_enabled: true, 
                     depth_compare: wgpu::CompareFunction::Less, 
                     stencil: wgpu::StencilState::default(), 
@@ -314,7 +314,7 @@ impl SkinMeshTextureShader {
                     ..Default::default()
                 }, 
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DepthBuffer::FORMAT, 
+                    format: DEPTH_STENCIL_FORMAT, 
                     depth_write_enabled: true, 
                     depth_compare: wgpu::CompareFunction::Less, 
                     stencil: wgpu::StencilState::default(), 
