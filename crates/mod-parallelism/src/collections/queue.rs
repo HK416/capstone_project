@@ -158,22 +158,73 @@ impl<T> Drop for Queue<T> {
 
 #[cfg(test)]
 mod tests {
+    //! 유효성 검사 방식
+    //! 1. Lock-Free Queue에 push(enqueue), pop(dequeue) 할 때 마다 기록을 남깁니다.
+    //! 2. Queue에 집어넣은 값과 Queue에서 꺼낸 값 + Queue에 남아있는 값이 같은지 확인합니다.
+    //! 
+    //! 이때 두 값이 맞지 않는 경우 Lock-Free Queue 구현에 문제가 있다 판단할 수 있습니다.
+    //! 
+
     use std::thread;
     use std::sync::Arc;
 
     use super::Queue;
 
+    const MAX_NUM: usize = 10_000;
     const MAX_THREADS: usize = 16;
     const MAX_TESTS: usize = 10_000_000;
 
+    enum History {
+        Push(u32), 
+        Pop(Option<u32>)
+    }
 
-    fn thread_main(num_threads: usize, queue: Arc<Queue<i32>>) {
-        for _ in 0..MAX_TESTS / num_threads {
-            let num = rand::random();
+    fn thread_main(num_threads: usize, queue: Arc<Queue<u32>>) -> Vec<History> {
+        let num_tests = MAX_TESTS / num_threads;
+        let mut history = Vec::with_capacity(num_tests);
+
+        for _ in 0..num_tests {
             if rand::random() {
-                queue.push(num);
+                let mut val = rand::random();
+                val = val % (MAX_NUM as u32 + 1);
+                queue.push(val);
+                history.push(History::Push(val));
             } else {
-                queue.pop();
+                history.push(History::Pop(queue.pop()));
+            }
+        }
+
+        return history;
+    }
+
+    fn check_invalidation(historys: Vec<Vec<History>>, queue: Arc<Queue<u32>>) {
+        let mut numbers: [i32; MAX_NUM + 1] = [0; MAX_NUM + 1];
+        for history in historys {
+            for record in history {
+                match record {
+                    History::Push(val) => {
+                        numbers[val as usize] += 1
+                    }, 
+                    History::Pop(result) => {
+                        if let Some(val) = result {
+                            numbers[val as usize] -= 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        while let Some(val) = queue.pop() {
+            numbers[val as usize] -= 1;
+        }
+
+        for (number, count) in numbers.into_iter().enumerate() {
+            if count == 0 {
+                continue;
+            } else if count < 0 {
+                panic!("pop(dequeue) function is invalid! ({})", number);
+            } else {
+                panic!("push(enqueue) function is invalid! ({})", number);
             }
         }
     }
@@ -182,6 +233,8 @@ mod tests {
     fn check_consistency() {
         let mut num_threads = 1;
         while num_threads <= MAX_THREADS {
+            println!("Checking validation... (Threads={})", num_threads);
+
             let queue = Arc::new(Queue::new());
             let handles: Vec<_> = (0..num_threads).into_iter()
                 .map(|_| {
@@ -190,11 +243,12 @@ mod tests {
                 })
                 .collect();
 
+            let mut historys = Vec::with_capacity(num_threads);
             for handle in handles {
-                handle.join().unwrap();
+                historys.push(handle.join().unwrap());
             }
             
-            drop(queue);
+            check_invalidation(historys, queue);
             num_threads *= 2;
         }
     }
