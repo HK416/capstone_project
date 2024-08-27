@@ -1,6 +1,6 @@
 use std::fmt;
-use std::mem;
 use std::ptr;
+use std::ptr::NonNull;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering as MemOrdering;
 
@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering as MemOrdering;
 
 /// 무잠금 Queue에서 사용하는 노드입니다.
 struct Node<T> {
-    value: T, 
+    value: NonNull<T>, 
     next: AtomicPtr<Node<T>>, 
 }
 
@@ -16,32 +16,20 @@ impl<T> Node<T> {
     /// 비어있는 노드를 생성합니다.
     #[inline]
     #[must_use]
-    pub const fn zeroed() -> Self {
-        unsafe {
-            Self { 
-                value: mem::zeroed(), 
-                next: AtomicPtr::new(ptr::null_mut()) 
-            }
-        }
-    }
-
-    /// 새로운 노드를 생성합니다.
-    #[inline]
-    #[must_use]
-    pub const fn new(value: T) -> Self {
-        Self {
-            value, 
-            next: AtomicPtr::new(ptr::null_mut()), 
-        }
-    }
-
-    /// 새로운 노드를 생성합니다.
-    #[inline]
-    #[must_use]
-    pub const fn new_with_next(value: T, next: *mut Node<T>) -> Self {
+    pub fn zeroed() -> Self {
         Self { 
-            value, 
-            next: AtomicPtr::new(next) 
+            value: NonNull::dangling(),  
+            next: AtomicPtr::new(ptr::null_mut()) 
+        }
+    }
+
+    /// 새로운 노드를 생성합니다.
+    #[inline]
+    #[must_use]
+    pub fn new(value: T) -> Self {
+        Self {
+            value: unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(value))) }, 
+            next: AtomicPtr::new(ptr::null_mut()), 
         }
     }
 
@@ -111,6 +99,44 @@ impl<T> Queue<T> {
             }
         }
     }
+
+    pub fn pop(&self) -> Option<T> {
+        unsafe {
+            loop {
+                let first = self.head.load(MemOrdering::Relaxed);
+                let last = self.tail.load(MemOrdering::Relaxed);
+                let next = (*first).get_next();
+
+                // first가 head가 아닌 경우 (다른 스레드가 head를 변경한 경우) 다시 시도
+                if first != self.head.load(MemOrdering::Relaxed) {
+                    continue;
+                }
+
+                // next가 null인 경우 (Queue가 비어있는 경우) None을 반환
+                if next.is_null() {
+                    return None;
+                }
+
+                // first와 last가 같은 경우 (tail이 마지막 노드를 가리키고 있지 않는 경우)
+                // tail을 갱신하고 다시 시도
+                #[allow(unused_must_use)]
+                if first == last {
+                    self.tail.compare_exchange(last, next, MemOrdering::SeqCst, MemOrdering::Relaxed);
+                    continue;
+                }
+
+                // head를 next로 옮기기를 시도 (다른 스레드가 head를 변경하지 않아 head가 first인 경우 성공)
+                // 실패할 경우 다시 시도.
+                let value = (*next).value;
+                if !self.head.compare_exchange(first, next, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
+                    continue;
+                }
+
+                //---- delete first -----
+                return Some(*Box::from_raw(value.as_ptr()));
+            }
+        }
+    }
 } 
 
 impl<T> Drop for Queue<T> {
@@ -144,7 +170,11 @@ mod tests {
     fn thread_main(num_threads: usize, queue: Arc<Queue<i32>>) {
         for _ in 0..MAX_TESTS / num_threads {
             let num = rand::random();
-            queue.push(num);
+            if rand::random() {
+                queue.push(num);
+            } else {
+                queue.pop();
+            }
         }
     }
 
