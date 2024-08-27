@@ -17,3 +17,10 @@ num_cpus = "1.16"
 # Lazy initialization 라이브러리
 # License: MIT or Apache-2.0
 lazy_static = "1.5"
+
+
+
+[dev-dependencies]
+# 난수 생성 라이브러리
+# License: MIT or Apache-2.0
+rand = "0.8"
