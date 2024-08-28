@@ -18,6 +18,10 @@ num_cpus = "1.16"
 # License: MIT or Apache-2.0
 lazy_static = "1.5"
 
+# 객체별 스레드 로컬 저장소
+# License: MIT or Apache-2.0
+thread_local = "1.1"
+
 
 
 [dev-dependencies]

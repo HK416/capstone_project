@@ -1,14 +1,16 @@
 use std::fmt;
+use std::mem;
 use std::ptr;
-use std::ptr::NonNull;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering as MemOrdering;
+
+use crate::hazard::Collector;
 
 
 
 /// 무잠금 Queue에서 사용하는 노드입니다.
 struct Node<T> {
-    value: NonNull<T>, 
+    value: T, 
     next: AtomicPtr<Node<T>>, 
 }
 
@@ -17,9 +19,11 @@ impl<T> Node<T> {
     #[inline]
     #[must_use]
     pub fn zeroed() -> Self {
-        Self { 
-            value: NonNull::dangling(),  
-            next: AtomicPtr::new(ptr::null_mut()) 
+        unsafe {
+            Self { 
+                value: mem::zeroed::<T>(),  
+                next: AtomicPtr::new(ptr::null_mut()) 
+            }
         }
     }
 
@@ -28,7 +32,7 @@ impl<T> Node<T> {
     #[must_use]
     pub fn new(value: T) -> Self {
         Self {
-            value: unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(value))) }, 
+            value, 
             next: AtomicPtr::new(ptr::null_mut()), 
         }
     }
@@ -54,6 +58,7 @@ impl<T: fmt::Debug> fmt::Debug for Node<T> {
 
 /// Lock-Free Queue 자료구조입니다.
 pub struct Queue<T> {
+    collector: Collector<Node<T>>, 
     head: AtomicPtr<Node<T>>, 
     tail: AtomicPtr<Node<T>>, 
 }
@@ -64,18 +69,22 @@ impl<T> Queue<T> {
     pub fn new() -> Self {
         let ptr = Box::into_raw(Box::new(Node::zeroed()));
         Self { 
+            collector: Collector::new(), 
             head: AtomicPtr::new(ptr), 
             tail: AtomicPtr::new(ptr) 
         }
     }
 
     pub fn push(&self, v: T) {
-        let new = Box::into_raw(Box::new(Node::new(v)));
         unsafe {
+            let new = Box::into_raw(Box::new(Node::new(v)));
+            let hazard = self.collector.get_hazard_ptr();
+
             loop {
                 let last = self.tail.load(MemOrdering::Relaxed);
                 let next = (*last).get_next();
-
+                (*hazard).set_node(last);
+                
                 // last가 tail이 아닌 경우 (다른 스레드가 tail을 변경한 경우) 다시 시도
                 if last != self.tail.load(MemOrdering::Relaxed) {
                     continue;
@@ -93,6 +102,7 @@ impl<T> Queue<T> {
                 // 성공시 tail을 new로 옮기는 시도를 하고 종료
                 #[allow(unused_must_use)]
                 if (*last).next.compare_exchange(ptr::null_mut(), new, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
+                    (*hazard).release();
                     self.tail.compare_exchange(next, new, MemOrdering::SeqCst, MemOrdering::Relaxed);
                     return;
                 }
@@ -102,10 +112,16 @@ impl<T> Queue<T> {
 
     pub fn pop(&self) -> Option<T> {
         unsafe {
+            let hazard0 = self.collector.get_hazard_ptr();
+            let hazard1 = self.collector.get_hazard_ptr();
+
             loop {
                 let first = self.head.load(MemOrdering::Relaxed);
                 let last = self.tail.load(MemOrdering::Relaxed);
                 let next = (*first).get_next();
+
+                (*hazard0).set_node(first);
+                (*hazard1).set_node(next);
 
                 // first가 head가 아닌 경우 (다른 스레드가 head를 변경한 경우) 다시 시도
                 if first != self.head.load(MemOrdering::Relaxed) {
@@ -114,6 +130,8 @@ impl<T> Queue<T> {
 
                 // next가 null인 경우 (Queue가 비어있는 경우) None을 반환
                 if next.is_null() {
+                    (*hazard0).release();
+                    (*hazard1).release();
                     return None;
                 }
 
@@ -127,32 +145,33 @@ impl<T> Queue<T> {
 
                 // head를 next로 옮기기를 시도 (다른 스레드가 head를 변경하지 않아 head가 first인 경우 성공)
                 // 실패할 경우 다시 시도.
-                let value = (*next).value;
+                let value: T = mem::transmute_copy(&(*next).value);
                 if !self.head.compare_exchange(first, next, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
                     continue;
                 }
 
-                //---- delete first -----
-                return Some(*Box::from_raw(value.as_ptr()));
+                (*hazard0).release();
+                (*hazard1).release();
+                self.collector.drop(first);
+                
+                return Some(value);
             }
-        }
-    }
-} 
-
-impl<T> Drop for Queue<T> {
-    fn drop(&mut self) {
-        unsafe {
-            let mut ptr = (*self.head.load(MemOrdering::Relaxed)).get_next();
-            while !ptr.is_null() {
-                let temp = ptr;
-                ptr = (*ptr).get_next();
-                drop(Box::from_raw(temp)); // delete
-            }
-            drop(Box::from_raw(self.head.load(MemOrdering::Relaxed))); // delete
         }
     }
 }
 
+impl<T> Drop for Queue<T> {
+    fn drop(&mut self) {
+        unsafe {
+            let mut ptr = self.head.load(MemOrdering::Relaxed);
+            while !ptr.is_null() {
+                let temp = ptr;
+                ptr = (*ptr).get_next();
+                drop(Box::from_raw(temp));
+            }
+        }
+    }
+}
 
 
 
