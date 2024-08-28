@@ -1,4 +1,7 @@
-use tokio::net::{TcpListener, TcpStream};
+use tokio::{
+    net::{TcpListener, TcpStream},
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 use std::sync::Mutex;
 
 use server::{
@@ -17,7 +20,7 @@ pub async fn run_server(addr: &str) {
         }
     };
 
-    println!("Server listening on: {}", addr);
+    println!("Server listening on: {}", listener.local_addr().unwrap());
 
     let world = World::new();
 
@@ -37,19 +40,16 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
         match listener.accept().await {
             Ok((stream, _addr)) => {
                 let mut slots = CLIENT_SLOTS.lock().unwrap();
-                let mut accepted = false;
 
-                for id in 0..MAX_CLIENTS {
-                    if slots[id].is_none() {
+                match slots.iter().position(|x| x.is_none()) {
+                    Some(id) => {
                         slots[id] = Some(());
-                        // println!("Accepted connection from: {}", addr);
-                        accepted = true;
+                        println!("Accepted connection from: {}", id);
                         tokio::spawn(handle_connection(id as u32, stream, world));
-                        break;
-                    }
-                }
-                if !accepted {
-                    // 서버가 가득 차서 연결 거부
+                    },
+                    None => {
+                        tokio::spawn(server_full(stream));
+                    },
                 }
             },
             Err(e) => {
@@ -80,9 +80,63 @@ async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
     }
 }
 
+/// 서버가 가득 차서 연결 거부
+async fn server_full(mut stream: TcpStream) {
+    let packet = mod_network::MessagePacket::new(0, "Server is full").as_raw();
+    stream.write(&packet.as_bytes()).await.unwrap();
+
+    let mut buf = [0; 1024];
+    stream.read(&mut buf).await.unwrap();       // 클라이언트가 확인할때까지 대기(메세지 종류는 상관없음)
+}
+
 
 
 #[tokio::main]
 async fn main() {
     run_server("localhost:7878").await;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::AsyncReadExt;
+    use mod_network::*;
+
+    #[tokio::test]
+    async fn test_connection() {
+        tokio::spawn(run_server("localhost:7878"));
+
+        let mut parser = PacketParser::new();
+
+        let mut client_stream = TcpStream::connect("localhost:7878").await.unwrap();
+
+        let mut buf = [0; 1024];
+        if let Ok(n) = client_stream.read(&mut buf).await {
+            parser.push(&buf[..n]);
+
+            let packet = parser.pop().unwrap();
+            assert_eq!(packet.packet_type(), PacketType::INIT);
+    
+            let packet = InitPacket::from_raw(packet);
+            assert_eq!(packet.client_id, 0);
+        }
+    }
 }

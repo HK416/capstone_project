@@ -70,6 +70,12 @@ impl Session {
                     let move_packet = MovePacket::from_raw(packet);
                     self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z).await;
                 },
+                PacketType::MESSAGE => {
+                    let message_packet = MessagePacket::from_raw(packet);
+                    if message_packet.msg == "ping" {
+                        self.stream_write(MessagePacket::new(message_packet.time, "pong").as_raw()).await.unwrap();
+                    }
+                },
                 _ => {},
             }
         }
