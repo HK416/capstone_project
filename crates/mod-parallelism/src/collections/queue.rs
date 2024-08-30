@@ -1,6 +1,7 @@
 use std::fmt;
-use std::mem;
 use std::ptr;
+use std::mem::ManuallyDrop;
+use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering as MemOrdering;
 
@@ -10,7 +11,7 @@ use crate::hazard::Collector;
 
 /// 무잠금 Queue에서 사용하는 노드입니다.
 struct Node<T> {
-    value: T, 
+    value: MaybeUninit<T>, 
     next: AtomicPtr<Node<T>>, 
 }
 
@@ -19,11 +20,9 @@ impl<T> Node<T> {
     #[inline]
     #[must_use]
     pub fn zeroed() -> Self {
-        unsafe {
-            Self { 
-                value: mem::zeroed::<T>(),  
-                next: AtomicPtr::new(ptr::null_mut()) 
-            }
+        Self { 
+            value: MaybeUninit::uninit(),  
+            next: AtomicPtr::new(ptr::null_mut()) 
         }
     }
 
@@ -32,7 +31,7 @@ impl<T> Node<T> {
     #[must_use]
     pub fn new(value: T) -> Self {
         Self {
-            value, 
+            value: MaybeUninit::new(value), 
             next: AtomicPtr::new(ptr::null_mut()), 
         }
     }
@@ -145,7 +144,8 @@ impl<T> Queue<T> {
 
                 // head를 next로 옮기기를 시도 (다른 스레드가 head를 변경하지 않아 head가 first인 경우 성공)
                 // 실패할 경우 다시 시도.
-                let value: T = mem::transmute_copy(&(*next).value);
+                let value = (*next).value.assume_init_read();
+                let mut value = ManuallyDrop::new(value);
                 if !self.head.compare_exchange(first, next, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
                     continue;
                 }
@@ -154,7 +154,7 @@ impl<T> Queue<T> {
                 (*hazard1).release();
                 self.collector.drop(first);
                 
-                return Some(value);
+                return Some(ManuallyDrop::take(&mut value));
             }
         }
     }
