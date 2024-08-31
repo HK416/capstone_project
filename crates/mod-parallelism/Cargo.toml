@@ -22,9 +22,6 @@ lazy_static = "1.5"
 # License: MIT or Apache-2.0
 thread_local = "1.1"
 
-
-
-[dev-dependencies]
 # 난수 생성 라이브러리
 # License: MIT or Apache-2.0
 rand = "0.8"
