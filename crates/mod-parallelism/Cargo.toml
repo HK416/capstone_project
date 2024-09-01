@@ -31,3 +31,7 @@ rand = "0.8"
 [[example]]
 name = "queue"
 path = "examples/queue.rs"
+
+[[example]]
+name = "map"
+path = "examples/map.rs"

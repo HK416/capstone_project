@@ -1,13 +1,13 @@
 use std::cmp;
 use std::fmt;
 use std::ptr;
+use std::mem::ManuallyDrop;
 use std::mem::MaybeUninit;
 use std::marker::PhantomData;
+use std::sync::atomic;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering as MemOrdering;
-
-use crate::hazard::Collector;
 
 /// 합성 포인터에서 주소 값을 추출하기 위한 비트 마스크입니다.
 #[cfg(target_pointer_width = "32")]
@@ -39,20 +39,10 @@ impl<T> Stamp<T> {
     /// Marking되지 않고 주소 값이 `null`인 새로운 합성 포인터를 생성합니다.
     #[inline]
     #[must_use]
-    pub const fn zeroed() -> Self {
+    pub const fn new() -> Self {
         Self {
             inner: AtomicUsize::new(0), 
             _phantom: PhantomData, 
-        }
-    }
-
-    /// Marking되지 않은 새로운 합성 포인터를 생성합니다.
-    #[inline]
-    #[must_use]
-    pub fn new(ptr: *mut T) -> Self {
-        Self { 
-            inner: AtomicUsize::new(ptr as usize), 
-            _phantom: PhantomData 
         }
     }
 
@@ -196,7 +186,7 @@ pub struct Node<K, V> {
 }
 
 impl<K, V> Node<K, V> {
-    const ARRAY_REPEAT_VAL: Stamp<Self> = Stamp::zeroed();
+    const ARRAY_REPEAT_VAL: Stamp<Self> = Stamp::new();
 
     /// Skip List로 구현된 `SkipMap`의 `head` 노드를 생성합니다.
     #[inline]
@@ -258,7 +248,6 @@ fn generate_top_level() -> usize {
 /// O(log n) ~ O(n)의 검색 성능을 가집니다.
 /// 
 pub struct SkipMap<K, V> {
-    collector: Collector<Node<K, V>>, 
     head: AtomicPtr<Node<K, V>>, 
     tail: AtomicPtr<Node<K, V>>, 
 }
@@ -276,10 +265,137 @@ impl<K, V> SkipMap<K, V> {
         }
 
         Self { 
-            collector: Collector::new(), 
             head: AtomicPtr::new(head), 
             tail: AtomicPtr::new(tail) 
         }
+    }
+}
+
+impl<K: Ord, V> SkipMap<K, V> {
+    /// Skip List에 주어진 키 값의 이전, 이후 노드를 검색합니다.
+    /// 주어진 키 값이 포함되어 있는 경우 `true`를 반환합니다.
+    unsafe fn search_position(&self, key: &Key<K>) -> (
+        bool, 
+        [*mut Node<K, V>; MAX_LEVELS], 
+        [*mut Node<K, V>; MAX_LEVELS], 
+    ) {
+        let mut prevs = [ptr::null_mut(); MAX_LEVELS];
+        let mut currs = [ptr::null_mut(); MAX_LEVELS];
+        'retry: loop {
+            let mut prev = self.head.load(MemOrdering::Relaxed);
+            let mut curr = ptr::null_mut();
+            
+            for lv in (0..MAX_LEVELS).rev() {
+                curr = (*prev).next[lv].get_ptr();
+
+                loop {
+                    let (mut succ, mut removed) = (*curr).next[lv].get_ptr_with_marking();
+                    while removed {
+                        // 이미 다른 스레드가 노드 제거를 수행한 경우 처음 부터 다시 시도.
+                        if !(*prev).next[lv].try_change(curr, succ, false, false) {
+                            continue 'retry;
+                        }
+
+                        curr = (*prev).next[lv].get_ptr();
+                        (succ, removed) = (*curr).next[lv].get_ptr_with_marking();
+                    }
+
+                    if (*curr).key.lt(key) {
+                        prev = curr;
+                        curr = succ;
+                    } else {
+                        break;
+                    }
+                }
+
+                prevs[lv] = prev;
+                currs[lv] = curr;
+            }
+
+            return ((*curr).key.eq(key), prevs, currs);
+        }
+    }
+
+    /// `SkipMap`에 데이터를 넣습니다.
+    /// 주어진 키 값이 이미 존재할 경우 `false`를 반환합니다.
+    pub fn insert(&self, key: K, val: V) -> bool {
+        let new = Box::into_raw(Box::new(Node::new(key, val)));
+        unsafe {
+            loop {
+                let (is_contains, mut prevs, mut currs) = self.search_position(&(*new).key);
+                if is_contains {
+                    drop(Box::from_raw(new));
+                    return false;
+                }
+
+                // 다음 노드를 설정합니다.
+                for lv in 0..=(*new).top_level {
+                    (*new).next[lv].set_ptr(currs[lv]);
+                }
+                atomic::fence(MemOrdering::SeqCst);
+
+                let mut prev = prevs[0];
+                let mut curr = currs[0];
+                if !(*prev).next[0].try_change(curr, new, false, false) {
+                    continue;
+                }
+
+                for lv in 1..=(*new).top_level {
+                    loop {
+                        prev = prevs[lv];
+                        curr = currs[lv];
+                        if (*prev).next[lv].try_change(curr, new, false, false) {
+                            break;
+                        }
+                        (_, prevs, currs) = self.search_position(&(*new).key);
+                    }
+                }
+
+                return true;
+            }
+        }
+    }
+
+    pub fn remove(&self, key: K) -> Option<V> {
+        let key = Key::Value(MaybeUninit::new(key));
+        unsafe {
+            loop {
+                let (is_contains, _, currs) = self.search_position(&key);
+                if !is_contains {
+                    return None;
+                }
+
+                let value = (*currs[0]).value.assume_init_read();
+                let mut value = ManuallyDrop::new(value);
+
+                let target = currs[0];
+                for lv in (1..=(*target).top_level).rev() {
+                    let (mut succ, mut removed) = (*target).next[lv].get_ptr_with_marking();
+                    #[allow(unused_must_use)]
+                    while !removed {
+                        (*target).next[lv].try_change(succ, succ, false, true);
+                        (succ, removed) = (*target).next[lv].get_ptr_with_marking();
+                    }
+                }
+
+                let mut removed;
+                let mut succ = (*target).next[0].get_ptr();
+                loop {
+                    let marked = (*target).next[0].try_change(succ, succ, false, true);
+                    (succ, removed) = (*currs[0]).next[0].get_ptr_with_marking();
+                    if marked {
+                        self.search_position(&key);
+                        return Some(ManuallyDrop::take(&mut value));
+                    } else if removed {
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn contains(&self, key: K) -> bool {
+        unsafe { self.search_position(&Key::Value(MaybeUninit::new(key))).0 }
     }
 }
 
@@ -309,17 +425,73 @@ impl<K, V> Drop for SkipMap<K, V> {
 
 #[cfg(test)]
 mod tests {
-    use std::thread::{self, spawn};
+    use std::thread;
     use std::sync::Arc;
 
     use super::SkipMap;
 
     const MAX_NUM: usize = 10_000;
     const MAX_THREADS: usize = 16;
-    const MAX_TESTS: usize = 10_000_000;
+    const NUM_TESTS: usize = 10_000_000;
 
-    fn thread_main(num_threads: usize, map: Arc<SkipMap<u32, u32>>) {
-        // TODO
+    enum History {
+        Insert {
+            val: u32, 
+            res: bool, 
+        }, 
+        Remove {
+            val: u32, 
+            res: bool, 
+        }
+    }
+
+
+
+    fn thread_main(num_threads: usize, map: Arc<SkipMap<u32, u32>>) -> Vec<History> {
+        let num_tests = NUM_TESTS / num_threads;
+        (0..num_tests).into_iter()
+            .map(|_| {
+                let mut op: u32 = rand::random();
+                op = op % 2;
+                let mut val = rand::random();
+                val = val % MAX_NUM as u32;
+                match op {
+                    0 => History::Insert { val, res: map.insert(val, val) }, 
+                    1 => History::Remove { val, res: map.remove(val).is_some() },
+                    _ => panic!("out of range!")
+                }
+            })
+            .collect()
+    }
+
+    fn check_history(historys: Vec<Vec<History>>, map: Arc<SkipMap<u32, u32>>) {
+        let mut survive = [0; MAX_NUM + 1];
+
+        for historys in historys {
+            for history in historys {
+                match history {
+                    History::Insert { val, res } if res => {
+                        survive[val as usize] += 1;
+                    }, 
+                    History::Remove { val, res } if res => {
+                        survive[val as usize] -= 1;
+                    }, 
+                    _ => { }
+                };
+            }
+        }
+
+        for (num, cnt) in survive.into_iter().enumerate() {
+            if cnt < 0 {
+                panic!("ERROR. The value {} removed while it is not in the set.", num);
+            } else if cnt > 1 {
+                panic!("ERROR. The value {} is added while the set already have it.", num);
+            } else if cnt == 0 && map.contains(num as u32) {
+                panic!("ERROR. The value {} should not exists.", num);
+            } else if cnt == 1 && !map.contains(num as u32) {
+                panic!("ERROR. The value {} should exists.", num);
+            }
+        }
     }
 
     #[test]
@@ -336,9 +508,10 @@ mod tests {
                 })
                 .collect();
 
-            for handle in handles {
-                handle.join().unwrap();
-            }
+            let historys: Vec<_> = handles.into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect();
+            check_history(historys, map);
 
             num_threads *= 2;
         }
