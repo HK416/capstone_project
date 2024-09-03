@@ -1,5 +1,8 @@
-use std::sync::Arc;
+//! `SkipMap`의 성능 측정과 `SkipMap`의 결과가 유효한지 확인합니다.
+//! 
+
 use std::thread;
+use std::sync::Arc;
 use std::time::Instant;
 
 use mod_parallelism::collections::SkipMap;
@@ -9,8 +12,8 @@ const MAX_THREADS: usize = 16;
 const NUM_TESTS: usize = 10_000_000;
 
 enum History {
-    Insert { val: u32, result: bool }, 
-    Remove { val: u32, result: bool }, 
+    Insert { val: u32, result: Option<u32> }, 
+    Remove { val: u32, result: Option<u32> }, 
 }
 
 
@@ -21,13 +24,18 @@ fn check_history(historys: Vec<Vec<History>>, map: Arc<SkipMap<u32, u32>>) {
     for historys in historys {
         for history in historys {
             match history {
-                History::Insert { val, result } if result => {
+                History::Insert { val, result } => {
                     survive[val as usize] += 1;
+                    if let Some(old) = result {
+                        survive[old as usize] -= 1;
+                    }
+                },
+                History::Remove { val, result } => {
+                    if let Some(own) = result {
+                        assert_eq!(val, own);
+                        survive[own as usize] -= 1;
+                    }
                 }, 
-                History::Remove { val, result } if result => {
-                    survive[val as usize] -= 1;
-                }, 
-                _ => { }
             };
         }
     }
@@ -54,7 +62,7 @@ fn validation_main(num_threads: usize, map: Arc<SkipMap<u32, u32>>) -> Vec<Histo
             if rand::random() {
                 History::Insert { val, result: map.insert(val, val) }
             } else {
-                History::Remove { val, result: map.remove(val).is_some() }
+                History::Remove { val, result: map.remove(val) }
             }
         })
         .collect()
@@ -62,6 +70,7 @@ fn validation_main(num_threads: usize, map: Arc<SkipMap<u32, u32>>) -> Vec<Histo
 
 fn thread_main(num_threads: usize, map: Arc<SkipMap<u32, u32>>) {
     let num_tests = NUM_TESTS / num_threads;
+
     for _ in 0..num_tests {
         let mut val = rand::random();
         val = val % (MAX_NUM as u32 + 1);
