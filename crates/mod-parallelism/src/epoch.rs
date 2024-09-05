@@ -34,6 +34,9 @@ impl<T> EpochList<T> {
         loop {
             let current = self.head.load(MemOrdering::Relaxed);
             (*new).next.store(current, MemOrdering::Relaxed);
+            if current != self.head.load(MemOrdering::Relaxed) {
+                continue;
+            }
             if self.head.compare_exchange(current, new, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
                 break;
             }

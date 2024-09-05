@@ -4,6 +4,7 @@ use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering as MemOrdering;
 
+use crate::backoff::Backoff;
 use crate::epoch::EBRGuard;
 use crate::epoch::EBR;
 
@@ -70,6 +71,7 @@ impl<T> Queue<T> {
     /// 주어진 `val`을 Queue에 추가합니다.
     pub fn push(&self, val: T) {
         let ebr_pin = self.ebr.pin();
+        let mut backoff = Backoff::new();
         let new = Node::new(&ebr_pin, val);
         unsafe {
             loop {
@@ -96,6 +98,8 @@ impl<T> Queue<T> {
                     self.tail.compare_exchange(next, new, MemOrdering::SeqCst, MemOrdering::Relaxed);
                     return;
                 }
+
+                backoff.spin_wait();
             }
         }
     }
@@ -104,6 +108,7 @@ impl<T> Queue<T> {
     /// Queue가 비어있는 경우 `Noen`을 반환합니다.
     pub fn pop(&self) -> Option<T> {
         let ebr_pin = self.ebr.pin();
+        let mut backoff = Backoff::new();
         unsafe {
             loop {
                 let first = self.head.load(MemOrdering::Relaxed);
@@ -133,6 +138,7 @@ impl<T> Queue<T> {
                 let value = (*next).value.assume_init_read();
                 let mut value = ManuallyDrop::new(value);
                 if !self.head.compare_exchange(first, next, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
+                    backoff.spin_wait();
                     continue;
                 }
 

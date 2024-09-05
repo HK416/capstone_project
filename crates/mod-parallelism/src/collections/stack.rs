@@ -4,6 +4,7 @@ use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering as MemOrdering;
 
+use crate::backoff::Backoff;
 use crate::epoch::EBRGuard;
 use crate::epoch::EBR;
 
@@ -70,6 +71,7 @@ impl<T> Stack<T> {
     /// 주어진 `val`을 추가합니다.
     pub fn push(&self, val: T) {
         let ebr_pin = self.ebr.pin();
+        let mut backoff = Backoff::new();
         let new = Node::new(&ebr_pin, val);
         unsafe {
             loop {
@@ -81,6 +83,7 @@ impl<T> Stack<T> {
                 if self.top.compare_exchange(current, new, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
                     break;
                 }
+                backoff.spin_wait();
             }
         }
     }
@@ -89,6 +92,7 @@ impl<T> Stack<T> {
     /// Stack이 비어있는 경우 `None`을 반환합니다.
     pub fn pop(&self) -> Option<T> {
         let ebr_pin = self.ebr.pin();
+        let mut backoff = Backoff::new();
         unsafe {
             loop {
                 let current = self.top.load(MemOrdering::Relaxed);
@@ -104,6 +108,7 @@ impl<T> Stack<T> {
                     continue;
                 }
                 if !self.top.compare_exchange(current, next, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
+                    backoff.spin_wait();
                     continue;
                 }
 
