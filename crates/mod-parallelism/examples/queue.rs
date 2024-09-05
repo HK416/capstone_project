@@ -9,11 +9,11 @@ const NUM_TESTS: usize = 10_000_000;
 
 enum History {
     Push(u32), 
-    Pop(Option<u32>)
+    Pop(Option<Box<u32>>)
 }
 
 
-fn check_invalidation(historys: Vec<Vec<History>>, queue: Arc<Queue<u32>>) {
+fn check_invalidation(historys: Vec<Vec<History>>, queue: Arc<Queue<Box<u32>>>) {
     let mut numbers: [i32; MAX_NUM + 1] = [0; MAX_NUM + 1];
     for history in historys {
         for record in history {
@@ -23,7 +23,7 @@ fn check_invalidation(historys: Vec<Vec<History>>, queue: Arc<Queue<u32>>) {
                 }, 
                 History::Pop(result) => {
                     if let Some(val) = result {
-                        numbers[val as usize] -= 1;
+                        numbers[*val as usize] -= 1;
                     }
                 }
             }
@@ -31,7 +31,7 @@ fn check_invalidation(historys: Vec<Vec<History>>, queue: Arc<Queue<u32>>) {
     }
 
     while let Some(val) = queue.pop() {
-        numbers[val as usize] -= 1;
+        numbers[*val as usize] -= 1;
     }
 
     for (number, count) in numbers.into_iter().enumerate() {
@@ -45,7 +45,7 @@ fn check_invalidation(historys: Vec<Vec<History>>, queue: Arc<Queue<u32>>) {
     }
 }
 
-fn validation_main(num_threads: usize, queue: Arc<Queue<u32>>) -> Vec<History> {
+fn validation_main(num_threads: usize, queue: Arc<Queue<Box<u32>>>) -> Vec<History> {
     let num_tests = NUM_TESTS / num_threads;
     let mut history = Vec::with_capacity(num_tests);
 
@@ -53,7 +53,7 @@ fn validation_main(num_threads: usize, queue: Arc<Queue<u32>>) -> Vec<History> {
         if rand::random() {
             let mut val = rand::random();
             val = val % (MAX_NUM as u32 + 1);
-            queue.push(val);
+            queue.push(Box::new(val));
             history.push(History::Push(val));
         } else {
             history.push(History::Pop(queue.pop()));

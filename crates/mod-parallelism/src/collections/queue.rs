@@ -1,11 +1,11 @@
-use std::fmt;
 use std::ptr;
 use std::mem::ManuallyDrop;
 use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering as MemOrdering;
 
-use crate::hazard::Collector;
+use crate::epoch::EBRGuard;
+use crate::epoch::EBR;
 
 
 
@@ -16,48 +16,40 @@ struct Node<T> {
 }
 
 impl<T> Node<T> {
-    /// 비어있는 노드를 생성합니다.
-    #[inline]
-    #[must_use]
-    pub fn zeroed() -> Self {
-        Self { 
-            value: MaybeUninit::uninit(),  
-            next: AtomicPtr::new(ptr::null_mut()) 
-        }
-    }
-
     /// 새로운 노드를 생성합니다.
     #[inline]
     #[must_use]
-    pub fn new(value: T) -> Self {
-        Self {
-            value: MaybeUninit::new(value), 
-            next: AtomicPtr::new(ptr::null_mut()), 
-        }
+    fn new(ebr_pin: &EBRGuard<'_, Self>, val: T) -> *mut Self {
+        let mut node = ebr_pin.alloc();
+        node.value.write(val);
+        node.next.store(ptr::null_mut(), MemOrdering::Relaxed);
+        return Box::into_raw(node);
     }
 
     #[inline]
     #[must_use]
-    pub fn get_next(&self) -> *mut Node<T> {
+    fn get_next(&self) -> *mut Node<T> {
         self.next.load(MemOrdering::Relaxed)
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for Node<T> {
+impl<T> Default for Node<T> {
     #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct(stringify!(Node<T>))
-            .field("value", &self.value)
-            .field("next", &self.next.load(MemOrdering::Relaxed))
-            .finish()
+    fn default() -> Self {
+        Self { 
+            value: MaybeUninit::uninit(), 
+            next: AtomicPtr::new(ptr::null_mut()) 
+        }
     }
 }
+
+
 
 
 
 /// Lock-Free Queue 자료구조입니다.
 pub struct Queue<T> {
-    collector: Collector<Node<T>>, 
+    ebr: EBR<Node<T>>, 
     head: AtomicPtr<Node<T>>, 
     tail: AtomicPtr<Node<T>>, 
 }
@@ -66,24 +58,22 @@ impl<T> Queue<T> {
     /// 새로운 Lock-Free Queue를 생성합니다.
     #[must_use]
     pub fn new() -> Self {
-        let ptr = Box::into_raw(Box::new(Node::zeroed()));
+        let ptr = Box::into_raw(Box::new(Node::default()));
         Self { 
-            collector: Collector::new(), 
+            ebr: EBR::new(), 
             head: AtomicPtr::new(ptr), 
             tail: AtomicPtr::new(ptr) 
         }
     }
 
-    pub fn push(&self, v: T) {
+    pub fn push(&self, val: T) {
+        let ebr_pin = self.ebr.pin();
+        let new = Node::new(&ebr_pin, val);
         unsafe {
-            let new = Box::into_raw(Box::new(Node::new(v)));
-            let hazard = self.collector.get_hazard_ptr();
-
             loop {
                 let last = self.tail.load(MemOrdering::Relaxed);
                 let next = (*last).get_next();
-                (*hazard).set_node(last);
-                
+
                 // last가 tail이 아닌 경우 (다른 스레드가 tail을 변경한 경우) 다시 시도
                 if last != self.tail.load(MemOrdering::Relaxed) {
                     continue;
@@ -101,7 +91,6 @@ impl<T> Queue<T> {
                 // 성공시 tail을 new로 옮기는 시도를 하고 종료
                 #[allow(unused_must_use)]
                 if (*last).next.compare_exchange(ptr::null_mut(), new, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
-                    (*hazard).release();
                     self.tail.compare_exchange(next, new, MemOrdering::SeqCst, MemOrdering::Relaxed);
                     return;
                 }
@@ -110,17 +99,12 @@ impl<T> Queue<T> {
     }
 
     pub fn pop(&self) -> Option<T> {
+        let ebr_pin = self.ebr.pin();
         unsafe {
-            let hazard0 = self.collector.get_hazard_ptr();
-            let hazard1 = self.collector.get_hazard_ptr();
-
             loop {
                 let first = self.head.load(MemOrdering::Relaxed);
                 let last = self.tail.load(MemOrdering::Relaxed);
                 let next = (*first).get_next();
-
-                (*hazard0).set_node(first);
-                (*hazard1).set_node(next);
 
                 // first가 head가 아닌 경우 (다른 스레드가 head를 변경한 경우) 다시 시도
                 if first != self.head.load(MemOrdering::Relaxed) {
@@ -129,8 +113,6 @@ impl<T> Queue<T> {
 
                 // next가 null인 경우 (Queue가 비어있는 경우) None을 반환
                 if next.is_null() {
-                    (*hazard0).release();
-                    (*hazard1).release();
                     return None;
                 }
 
@@ -150,10 +132,7 @@ impl<T> Queue<T> {
                     continue;
                 }
 
-                (*hazard0).release();
-                (*hazard1).release();
-                self.collector.drop(first);
-                
+                ebr_pin.dealloc(Box::from_raw(first));
                 return Some(ManuallyDrop::take(&mut value));
             }
         }

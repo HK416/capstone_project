@@ -1,6 +1,5 @@
 use std::cmp;
 use std::ptr;
-use std::mem::MaybeUninit;
 use std::sync::atomic;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::AtomicBool;
@@ -85,7 +84,7 @@ impl<K: Ord> PartialOrd<Self> for Key<K> {
 /// 게으른 동기화(Lazy-synchronization)를 위한 데이터가 포함되어 있습니다.
 pub struct Node<K, V> {
     key: Key<K>, 
-    value: MaybeUninit<V>, 
+    value: Option<V>, 
     top_level: usize, 
     removed: AtomicBool, 
     fully_linked: AtomicBool, 
@@ -114,7 +113,7 @@ impl<K, V> Node<K, V> {
     fn head() -> Box<Self> {
         Box::new(Self { 
             key: Key::Head, 
-            value: MaybeUninit::uninit(), 
+            value: None, 
             top_level: MAX_LEVEL_INDEX, 
             removed: AtomicBool::new(false), 
             fully_linked: AtomicBool::new(true), 
@@ -128,7 +127,7 @@ impl<K, V> Node<K, V> {
     fn tail() -> Box<Self> {
         Box::new(Self { 
             key: Key::Tail, 
-            value: MaybeUninit::uninit(), 
+            value: None, 
             top_level: MAX_LEVEL_INDEX, 
             removed: AtomicBool::new(false), 
             fully_linked: AtomicBool::new(true), 
@@ -143,7 +142,7 @@ impl<K, V> Node<K, V> {
     fn new(ebr_pin: EBRGuard<'_, Self>, key: Key<K>, val: V, top_level: usize) -> Box<Self> {
         let mut node = ebr_pin.alloc();
         node.key = key;
-        node.value = MaybeUninit::new(val);
+        node.value = Some(val);
         node.top_level = top_level;
         node.removed.store(false, MemOrdering::Relaxed);
         node.fully_linked.store(false, MemOrdering::Relaxed);
@@ -159,7 +158,7 @@ impl<K, V> Default for Node<K, V> {
     fn default() -> Self {
         Self { 
             key: Key::Head, 
-            value: MaybeUninit::uninit(), 
+            value: None, 
             top_level: MAX_LEVEL_INDEX, 
             removed: AtomicBool::new(false), 
             fully_linked: AtomicBool::new(false), 
@@ -237,9 +236,7 @@ impl<K: Ord, V> SkipMap<K, V> {
                 while !(*currs[found_level]).fully_linked.load(MemOrdering::Relaxed) { }
 
                 let _guard = (*currs[found_level]).mtx[0].lock().unwrap();
-                let old = (*currs[found_level]).value.assume_init_read();
-                (*currs[found_level]).value.write(val);
-                return Some(old);
+                return (*currs[found_level]).value.replace(val);
             }
 
             let top_level = Node::<K, V>::generate_random_level();
@@ -335,9 +332,8 @@ impl<K: Ord, V> SkipMap<K, V> {
                 }
                 drop(guard);
 
-                let value = (*victim).value.assume_init_read();
                 ebr_pin.dealloc(Box::from_raw(victim));
-                return Some(value);
+                return (*victim).value.take();
             }
         }
 
