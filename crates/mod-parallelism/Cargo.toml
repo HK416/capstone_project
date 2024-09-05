@@ -40,3 +40,7 @@ path = "examples/queue.rs"
 [[example]]
 name = "map"
 path = "examples/map.rs"
+
+[[example]]
+name = "stack"
+path = "examples/stack.rs"

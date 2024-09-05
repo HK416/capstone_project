@@ -48,6 +48,7 @@ impl<T> Default for Node<T> {
 
 
 /// Lock-Free Queue 자료구조입니다.
+#[derive(Debug)]
 pub struct Queue<T> {
     ebr: EBR<Node<T>>, 
     head: AtomicPtr<Node<T>>, 
@@ -66,6 +67,7 @@ impl<T> Queue<T> {
         }
     }
 
+    /// 주어진 `val`을 Queue에 추가합니다.
     pub fn push(&self, val: T) {
         let ebr_pin = self.ebr.pin();
         let new = Node::new(&ebr_pin, val);
@@ -98,6 +100,8 @@ impl<T> Queue<T> {
         }
     }
 
+    /// Queue에 가장 예전에 추가된 값을 반환합니다.
+    /// Queue가 비어있는 경우 `Noen`을 반환합니다.
     pub fn pop(&self) -> Option<T> {
         let ebr_pin = self.ebr.pin();
         unsafe {
