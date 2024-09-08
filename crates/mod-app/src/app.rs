@@ -32,6 +32,7 @@ use winit::event::MouseScrollDelta;
 use winit::event::StartCause;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::EventLoopProxy;
 use winit::keyboard::PhysicalKey;
 use winit::window::Fullscreen;
 use winit::window::Icon;
@@ -51,6 +52,10 @@ pub const MAX_FIXED_UPDATE: usize = 8;
 
 /// 애플리케이션 데이터를 가진 구조체입니다.
 pub struct Application {
+    /// 사용자 정의 이벤트를 이벤트 루프로 보내는 프록시입니다.
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
+
+
     /// 애플리케이션에서 사용 가능한 최대 스레드 갯수입니다.
     num_threads: usize, 
 
@@ -126,11 +131,15 @@ pub struct Application {
 
 impl Application {
     /// 애플리케이션을 생성합니다.
-    pub(crate) async fn new(builder: AppBuilder) -> Result<Self, Box<dyn Error + Send>> {
+    pub(crate) async fn new(
+        proxy: Arc<EventLoopProxy<AppEvent>>, 
+        builder: AppBuilder
+    ) -> Result<Self, Box<dyn Error + Send>> {
         let enable_debug_layer = builder.flags.contains(AppFlags::ENABLE_DEBUG_LAYER);
         let (instance, adapter, device, queue) = init_wgpu(enable_debug_layer).await?;
 
         Ok(Self {
+            event_loop_proxy: proxy, 
             num_threads: builder.num_threads, 
             current_dir: builder.current_dir.unwrap(), 
             flags: builder.flags, 
@@ -673,9 +682,43 @@ impl ApplicationHandler<AppEvent> for Application {
             drop(self.surface.take());
         }
     }
+
+
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppEvent) {
+        // 현재 게임 장면을 가져옵니다.
+        // 현재 게임 장면이 비어있는 경우 함수 실행을 생략합니다.
+        let mut scene_stack = self.scene_stack.borrow_mut();
+        let current_scene = match scene_stack.top_mut() {
+            Some(current_scene) => current_scene, 
+            None => return, 
+        };
+
+        let result = match event {
+            AppEvent::PacketReceived(raw_packet) => {
+                let mut world = self.world.borrow_mut();
+                current_scene.on_received_packet(raw_packet, &mut world, self)
+            }, 
+            AppEvent::NetworkIOError(e) => {
+                // 현재는 모든 입/출력 에러를 런타임 에러로 처리합니다.
+                Err(err_msg!(e))
+            }, 
+        };
+
+        if let Err(e) = result {
+            alert_error("Runtime error", e.to_string(), self.window.as_deref());
+            event_loop.exit();
+        }
+    }
 }
 
 impl AppHandle for Application {
+    #[inline]
+    #[must_use]
+    fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>> {
+        &self.event_loop_proxy
+    }
+
     #[inline]
     #[must_use]
     fn num_threads(&self) -> usize {

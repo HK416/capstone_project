@@ -1,9 +1,11 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use mod_util::AppEvent;
 use mod_util::AppFlags;
 use mod_util::AppLocale; 
 use mod_util::GameTimer;
+use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 use crate::GameSceneFlow;
@@ -12,6 +14,9 @@ use crate::GameSceneFlow;
 
 /// 애플리케이션 접근 인터페이스입니다.
 pub trait AppHandle {
+    /// 애플리케이션 이벤트 루프 프록시를 가져옵니다.
+    fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>>;
+
     /// 애플리케이션에서 사용 가능한 최대 스레드 갯수를 가져옵니다.
     fn num_threads(&self) -> usize;
 

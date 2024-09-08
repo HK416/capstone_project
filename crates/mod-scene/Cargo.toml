@@ -29,4 +29,5 @@ wgpu = "22"
 
 
 # 자체 프레임워크 라이브러리
+mod-network = { path = "../mod-network" }
 mod-util = { path = "../mod-util" }

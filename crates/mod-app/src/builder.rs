@@ -147,8 +147,11 @@ impl AppBuilder {
             }, 
         };
 
+        // 이벤트 루프 프록시를 생성합니다.
+        let proxy = event_loop.create_proxy().into();
+
         // 애플리케이션을 생성합니다.
-        let result = pollster::block_on(Application::new(builder));
+        let result = pollster::block_on(Application::new(proxy, builder));
         let mut app = match result {
             Ok(app) => app, 
             Err(e) => {

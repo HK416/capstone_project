@@ -23,7 +23,7 @@ macro_rules! err_msg {
             line: line!(), 
             column: column!(), 
             error: Box::new($err), 
-        })
+        }) as Box<dyn Error + Send>
     };
 }
 
@@ -45,6 +45,6 @@ macro_rules! err_msg {
     ($err:expr) => {
         Box::new(RuntimeError {
             error: Box::new($err), 
-        })
+        }) as Box<dyn Error + Send>
     };
 }

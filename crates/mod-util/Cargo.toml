@@ -28,6 +28,11 @@ wgpu = "22"
 
 
 
+# 자체 프레임워크 라이브러리
+mod-network = { path = "../mod-network" }
+
+
+
 [dev-dependencies]
 # 난수 생성 라이브러리
 # License: MIT or Apache-2.0
