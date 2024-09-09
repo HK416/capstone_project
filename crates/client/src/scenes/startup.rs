@@ -1,6 +1,7 @@
 use std::fmt;
 use std::error::Error;
 use std::io;
+use std::io::BufReader;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
@@ -8,6 +9,7 @@ use std::thread::JoinHandle;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::io::Read;
 
 use hecs::World;
 use mod_error::err_msg;
@@ -18,6 +20,8 @@ use mod_scene::GameSceneFlow;
 use mod_util::AppEvent;
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
+
+use mod_network::PacketParser;
 
 type Task = JoinHandle<Result<(), Box<dyn Error + Send>>>;
 
@@ -195,7 +199,8 @@ fn connect_to_server(addr: SocketAddr) -> Result<TcpStream, io::Error> {
     // `std::net::TcpStream`의 connect 함수를 사용하여 네트워크에 연결합니다.
     // 네트워크 연결에 실패한 경우 `std::io::Error`를 반환합니다.
     // 
-    todo!()
+
+    TcpStream::connect(addr)
 }
 
 /// 네트워크 패킷 수신 루프입니다.
@@ -209,7 +214,35 @@ fn network_loop(
     // 만약 수신 중 오류가 발생할 경우 오류 메시지를 이벤트 루프로 보내고
     // 패킷 수신 루프를 빠져나옵니다.
     //
+
+    
+    let mut buffer = [0; 1024]; 
+
+    let mut parser = PacketParser::new(); 
+    let mut server_stream = BufReader::new(stream.as_ref());
+    
     loop {
-        todo!()
+        // tcp stream 에서 읽어들이기 시도
+
+        
+        match server_stream.read(&mut buffer){
+            Ok(0) => {
+                println!("connection closed");
+            },
+            Ok(n) =>{
+                parser.push(&buffer[..n]);
+            },
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+
+            },
+            Err(_) => {
+
+            }
+        }
+
+
+
+
+        
     }
 }
