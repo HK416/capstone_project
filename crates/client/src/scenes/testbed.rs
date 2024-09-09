@@ -1,13 +1,21 @@
 use core::f32;
 use std::fmt;
 use std::error::Error;
+use std::io::BufWriter;
+use std::io::Write;
 use std::net::TcpStream;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use hecs::Entity;
 use hecs::World;
+use mod_error::err_msg;
+use mod_error::RuntimeError;
+use mod_network::PacketType;
 use mod_network::Player;
+use mod_network::PullPacket;
+use mod_network::PushPacket;
+use mod_network::RawPacket;
 use mod_render::anim::Animation;
 use mod_render::brush::TextureBrush;
 use mod_render::camera::CameraComponent;
@@ -15,6 +23,7 @@ use mod_render::camera::CameraDataLayout;
 use mod_render::camera::CameraObject;
 use mod_render::camera::PerspectiveLh;
 use mod_render::camera::Projection;
+use mod_render::object::cleanup_hierarchy;
 use mod_render::object::update_hierarchy;
 use mod_render::object::GameObjectComponent;
 use mod_render::object::GameObjectDataLayout;
@@ -34,6 +43,7 @@ const FORCE: f32 = 100.0; // 단위: N
 
 
 /// 캐릭터 엔티티의 정보입니다.
+#[derive(Debug)]
 struct CharacterEntity {
     id: Entity, 
     
@@ -127,7 +137,7 @@ impl TestBedScene {
         player: Player, 
         world: &mut World, 
         app: &dyn AppHandle
-    ) {
+    ) -> CharacterEntity {
         // ※ 추후 변경될 함수입니다.
         let (entity, animations) = crate::model::spawn_model_from_asset(
             app.render_device(), 
@@ -148,24 +158,19 @@ impl TestBedScene {
         // // 계층 구조를 갱신합니다.
         update_hierarchy(world, None, entity);
 
-
-        // 플레이어를 추가합니다.
-        self.players.insert(
-            player.id, 
-            CharacterEntity { 
-                id: entity, 
-                animations, 
-                anim_index: 0, 
-                prev_anim_index: 0, 
-                anim_timer: 0.0, 
-                rotation, 
-                translation, 
-                force: gmm::Float3::ZERO, 
-                velocity: gmm::Float3::ZERO, 
-                inverse_mass: 1.0 / 43.0, 
-                damping: 0.002, 
-            }
-        );
+        CharacterEntity { 
+            id: entity, 
+            animations, 
+            anim_index: 0, 
+            prev_anim_index: 0, 
+            anim_timer: 0.0, 
+            rotation, 
+            translation, 
+            force: gmm::Float3::ZERO, 
+            velocity: gmm::Float3::ZERO, 
+            inverse_mass: 1.0 / 43.0, 
+            damping: 0.002, 
+        }
     }
 
 
@@ -329,11 +334,58 @@ impl GameScene for TestBedScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         self.spawn_main_camera(window, world, app);
         while let Some(player) = self.stage_data.pop() {
-            self.spawn_aris_original_model(
+            let new_player = self.spawn_aris_original_model(
                 player, 
                 world, 
                 app
             );
+
+            self.players.insert(
+                player.id, 
+                new_player
+            );
+        }
+        Ok(())
+    }
+
+    fn on_received_packet(
+        &mut self, 
+        raw_packet: RawPacket, 
+        world: &mut World, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if raw_packet.packet_type() == PacketType::PULL {
+            let packet = PullPacket::from_raw(raw_packet);
+            let mut temp = Vec::new();
+            for pull_data in packet.world {
+                if let Some(mut player) = self.players.remove(&pull_data.id) {
+                    if pull_data.id == self.client_id {
+                        temp.push((pull_data.id, player));
+                        continue;
+                    }
+
+                    player.translation = pull_data.translation;
+                    player.rotation = pull_data.rotation;
+                    player.anim_index = pull_data.anim_index as usize;
+                    player.anim_timer = pull_data.anim_timer;
+                    temp.push((pull_data.id, player));
+                } else {
+                    let new_player = self.spawn_aris_original_model(
+                        pull_data, 
+                        world, 
+                        app
+                    );
+                    temp.push((pull_data.id, new_player));
+                }
+            }
+
+            for removed_player in self.players.values() {
+                cleanup_hierarchy(world, removed_player.id);
+            }
+            self.players.clear();
+            for (id, player) in temp {
+                self.players.insert(id, player);
+            }
         }
         Ok(())
     }
@@ -357,6 +409,19 @@ impl GameScene for TestBedScene {
             );
         }
 
+        if let Some(player) = self.players.get(&self.client_id) {
+            let push_data = Player {
+                id: self.client_id, 
+                translation: player.translation, 
+                rotation: player.rotation, 
+                anim_index: player.anim_index as u32, 
+                anim_timer: player.anim_timer
+            };
+            let packet = PushPacket::new(push_data).as_raw();
+            let mut writer = BufWriter::new(self.stream.as_ref());
+            writer.write_all(&packet.as_bytes())
+                .map_err(|e| err_msg!(e))?;
+        }
         Ok(())
     }
 

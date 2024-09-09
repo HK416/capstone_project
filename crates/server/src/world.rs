@@ -22,6 +22,12 @@ impl World {
         self.players.insert(id, Player { id, ..Default::default() });
     }
 
+    pub fn update_player(&mut self, player: Player) {
+        if let Some(old_player) = self.players.get_mut(&player.id) {
+            *old_player = player;
+        }
+    }
+
     pub fn move_player(&mut self, id: u32, x: f32, y: f32, z: f32) {
         if let Some(player) = self.players.get_mut(&id) {
             player.translation.x += x;
@@ -69,6 +75,10 @@ impl WorldInterface {
     /// 3. 배열을 사용한다. (Vec<Option<Player>> 또는 [Option<Player>; MAX_PLAYER])
     pub async fn add_player(&self, id: u32) {
         self.as_mut().add_player(id);
+    }
+
+    pub async fn update_player(&self, player: Player) {
+        self.as_mut().update_player(player);
     }
 
     pub async fn move_player(&self, id: u32, x: f32, y: f32, z: f32) {

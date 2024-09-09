@@ -66,6 +66,22 @@ impl Session {
 
         while let Some(packet) = self.packet_parser.pop() {
             match packet.packet_type() {
+                PacketType::PUSH => {
+                    let push_packet = PushPacket::from_raw(packet);
+                    self.world.update_player(push_packet.player).await;
+
+                    let world = self.world.get_objects();
+                    let raw_packet = PullPacket::new(world).as_raw();
+                    match self.stream_write(raw_packet).await {
+                        Ok(_) => {
+
+                        }, 
+                        Err(_) => {
+                            self.running = false;
+                            return;
+                        }
+                    }
+                }, 
                 PacketType::MOVE => {
                     let move_packet = MovePacket::from_raw(packet);
                     self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z).await;
