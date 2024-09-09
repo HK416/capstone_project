@@ -31,7 +31,7 @@ impl Session {
     pub async fn handle_connection(&mut self) {
         self.world.add_player(self.id).await;
 
-        match self.stream_write(InitPacket::new(self.id).as_raw()).await {
+        match self.stream_write(InitPacket::new(self.id, self.world.get_objects()).as_raw()).await {
             Ok(_) => {
                 // println!("Client {} connected", self.id);
             },

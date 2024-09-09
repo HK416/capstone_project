@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use mod_network::Player as PPlayer;     // 플레이어 프로토콜
 
 
 struct Player {
@@ -39,12 +40,10 @@ impl World {
         self.players.remove(&id);
     }
 
-    pub fn update_message(&self) -> String {
-        let objects = self.players.iter()
-            .map(|(id, player)| format!("{} {} {}", id, player.x, player.y))
-            .collect::<Vec<String>>();
-        
-        format!("update {} {}", objects.len(), objects.join(" "))
+    pub fn get_objects(&self) -> Vec<PPlayer> {
+        self.players.iter()
+            .map(|(id, player)| PPlayer::new(*id, player.x, player.y, player.z))
+            .collect()
     }
 }
 
@@ -70,6 +69,10 @@ impl WorldInterface {
     }
 
     /// id가 겹치지 않음을 사용하는쪽에서 보장해야 함.
+    /// 보장하더라도 해싱된 결과가 같으면 충돌이 발생할 수 있음.
+    /// 1. mpsc를 사용해서 한 스레드에서만 add/remove를 수행하도록 한다.
+    /// 2. lockfree HashMap을 사용한다.
+    /// 3. 배열을 사용한다. (Vec<Option<Player>> 또는 [Option<Player>; MAX_PLAYER])
     pub async fn add_player(&self, id: u32) {
         self.as_mut().add_player(id);
     }
@@ -82,8 +85,8 @@ impl WorldInterface {
         self.as_mut().remove_player(id);
     }
 
-    pub fn update_message(&self) -> String {
-        self.as_mut().update_message()
+    pub fn get_objects(&self) -> Vec<PPlayer> {
+        self.as_mut().get_objects()
     }
 
     fn as_mut(&self) -> &mut World {

@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use hecs::World;
+use mod_network::RawPacket;
 use winit::event::{Modifiers, MouseButton};
 use winit::keyboard::{KeyCode, KeyLocation};
 use winit::window::Window;
@@ -196,6 +197,18 @@ pub trait GameScene : Debug {
         delta_x: f32, 
         delta_y: f32, 
         window: &Window, 
+        world: &mut World, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
+    }
+
+    /// 애플리케이션이 패킷을 수신받았을 때 호출되는 콜백함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_received_packet(
+        &mut self, 
+        raw_packet: RawPacket, 
         world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
