@@ -69,6 +69,7 @@ mod-physics = { path = "../mod-physics" }
 mod-render = { path = "../mod-render" }
 mod-scene = { path = "../mod-scene" }
 mod-util = { path = "../mod-util" }
+mod-network = { path = "../mod-network" }
 
 
 
