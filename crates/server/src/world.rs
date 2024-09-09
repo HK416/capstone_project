@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use mod_network::Player as PPlayer;     // 플레이어 프로토콜
 
 
 struct Player {
@@ -39,12 +40,10 @@ impl World {
         self.players.remove(&id);
     }
 
-    pub fn update_message(&self) -> String {
-        let objects = self.players.iter()
-            .map(|(id, player)| format!("{} {} {}", id, player.x, player.y))
-            .collect::<Vec<String>>();
-        
-        format!("update {} {}", objects.len(), objects.join(" "))
+    pub fn get_objects(&self) -> Vec<PPlayer> {
+        self.players.iter()
+            .map(|(id, player)| PPlayer::new(*id, player.x, player.y, player.z))
+            .collect()
     }
 }
 
@@ -82,8 +81,8 @@ impl WorldInterface {
         self.as_mut().remove_player(id);
     }
 
-    pub fn update_message(&self) -> String {
-        self.as_mut().update_message()
+    pub fn get_objects(&self) -> Vec<PPlayer> {
+        self.as_mut().get_objects()
     }
 
     fn as_mut(&self) -> &mut World {
