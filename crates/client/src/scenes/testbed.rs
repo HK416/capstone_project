@@ -1,3 +1,4 @@
+use core::f32;
 use std::fmt;
 use std::error::Error;
 use std::net::TcpStream;
@@ -12,7 +13,7 @@ use mod_render::brush::TextureBrush;
 use mod_render::camera::CameraComponent;
 use mod_render::camera::CameraDataLayout;
 use mod_render::camera::CameraObject;
-use mod_render::camera::PerspectiveRh;
+use mod_render::camera::PerspectiveLh;
 use mod_render::camera::Projection;
 use mod_render::object::update_hierarchy;
 use mod_render::object::GameObjectComponent;
@@ -22,16 +23,31 @@ use mod_render::object::WorldTransform;
 use mod_render::skin::BoneMatrixDataLayout;
 use mod_scene::AppHandle;
 use mod_scene::GameScene;
+use winit::event::Modifiers;
+use winit::keyboard::KeyCode;
+use winit::keyboard::KeyLocation;
 use winit::window::Window;
+
+const PIXEL_PER_METER: f32 = 1.0 / 0.1;
+const FORCE: f32 = 100.0; // 단위: N
 
 
 
 /// 캐릭터 엔티티의 정보입니다.
 struct CharacterEntity {
     id: Entity, 
+    
     animations: Vec<Animation>, 
     anim_index: usize, 
+    prev_anim_index: usize, 
     anim_timer: f32, 
+    
+    rotation: gmm::Float4, 
+    translation: gmm::Float3, 
+    force: gmm::Float3, 
+    velocity: gmm::Float3, 
+    inverse_mass: f32, 
+    damping: f32, 
 }
 
 
@@ -72,6 +88,7 @@ impl TestBedScene {
     }
 
 
+
     /// 카메라 오브젝트를 생성합니다.
     fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn AppHandle) {
         // 로컬 변환 행렬과 월드 변환 행렬을 생성합니다.
@@ -84,7 +101,7 @@ impl TestBedScene {
 
         // 투영 변환 행렬을 생성합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
-        let projection: Projection = PerspectiveRh::new()
+        let projection: Projection = PerspectiveLh::new()
             .with_fov_y(60f32.to_radians())
             .with_aspect_ratio(width as f32 / height as f32)
             .into();
@@ -118,13 +135,14 @@ impl TestBedScene {
             app.render_queue(), 
             world, 
             TextureBrush, 
-            "Aris_Original.ron"
+            "Aris_Original_Mesh.ron"
         );
 
         // 플레이어 오브젝트 이동
-        let translation = gmm::Matrix::from_translation(translation.into());
+        let rotation = gmm::Quaternion::from_rotation_y(-45f32.to_radians());
+        let mat = gmm::Matrix::from_rotation_translation(rotation, translation.into());
         let (transform, world_transform) = world.query_one_mut::<(&mut Transform, &mut WorldTransform)>(entity).unwrap();
-        (**transform) = (**transform) * translation;
+        (**transform) = (**transform) * mat;
         (**world_transform) = **transform;
 
         // // 계층 구조를 갱신합니다.
@@ -138,20 +156,61 @@ impl TestBedScene {
                 id: entity, 
                 animations, 
                 anim_index: 0, 
+                prev_anim_index: 0, 
                 anim_timer: 0.0, 
+                rotation: rotation.into(), 
+                translation, 
+                force: gmm::Float3::ZERO, 
+                velocity: gmm::Float3::ZERO, 
+                inverse_mass: 1.0 / 43.0, 
+                damping: 0.002, 
             }
         );
     }
 
-    /// 플레이어의 애니메이션을 갱신합니다.
-    fn update_animation(
+
+
+    /// 플레이어를 갱신합니다.
+    fn update_player(
         elapsed_time_sec: f32, 
         player: &mut CharacterEntity, 
         world: &mut World, 
         app: &dyn AppHandle
     ) {
+        Self::update_player_animation(elapsed_time_sec, player, world, app);
+        Self::update_player_transform(elapsed_time_sec, player, world);
+        update_hierarchy(world, None, player.id);
+    }
+
+    /// 플레이어의 애니메이션을 갱신합니다.
+    fn update_player_animation(
+        elapsed_time_sec: f32, 
+        player: &mut CharacterEntity, 
+        world: &mut World, 
+        app: &dyn AppHandle
+    ) {
+        // 애니메이션을 갱신합니다.
+        if player.prev_anim_index != player.anim_index {
+            player.anim_timer = 0.0;
+        }
+
         if let Some(animation) = player.animations.get(player.anim_index) {
-            player.anim_timer = (player.anim_timer + elapsed_time_sec) % animation.length();
+            (player.anim_index, player.anim_timer) = match player.anim_index {
+                2 => {
+                    let timer = player.anim_timer + elapsed_time_sec;
+                    if timer >= animation.length() {(
+                        0, 
+                        timer, 
+                    )} else {(
+                        player.anim_index, 
+                        timer
+                    )}
+                }, 
+                _ => (
+                    player.anim_index, 
+                    (player.anim_timer + elapsed_time_sec) % animation.length()
+                )
+            };
             let keyframe = animation.sample_animation(player.anim_timer);
 
             for bone in keyframe.bones() {
@@ -169,11 +228,61 @@ impl TestBedScene {
                     .map(|matrix| matrix.into());
                 bone.target().update(app.render_queue(), BoneMatrixDataLayout::new(iter));
             }
-
-            update_hierarchy(world, None, player.id);
+            player.prev_anim_index = player.anim_index;
         }
     }
-    
+
+    /// 플레이어의 위치, 회전량을 갱신합니다.
+    fn update_player_transform(
+        elapsed_time_sec: f32, 
+        player: &mut CharacterEntity, 
+        world: &mut World, 
+    ) {
+        // 위치를 갱신합니다.
+        // 0. 질량이 무한대(0.0)인 경우 생략합니다.
+        if player.inverse_mass >= f32::EPSILON {
+            // 1. 속도를 이용하여 이동 거리를 계산합니다.
+            player.translation += player.velocity * elapsed_time_sec;
+            
+            // 2. 가속도를 구하고, 속도를 갱신합니다.
+            let acceleration = player.force * player.inverse_mass;
+            player.velocity += acceleration * elapsed_time_sec;
+
+            // 3. 저항을 적용합니다.
+            player.velocity *= player.damping.powf(elapsed_time_sec);
+            if (player.velocity.x * player.velocity.x
+            + player.velocity.y * player.velocity.y
+            + player.velocity.z * player.velocity.z)
+            <= f32::EPSILON {
+                player.velocity = gmm::Float3::ZERO;
+            } else {
+                let dir: gmm::Vector = player.velocity.into();
+                let x_axis: gmm::Vector = gmm::Float3::X.into();
+                let norm_dir = dir.vec3_normalize().unwrap();
+                let cross: gmm::Float3 = x_axis.vec3_cross(norm_dir).into();
+                let dot: gmm::Float3 = x_axis.vec3_dot(norm_dir).into();
+                let theta = if cross.y >= 0.0 { 
+                    dot.x.acos() 
+                } else { 
+                    360f32.to_radians() - dot.x.acos() 
+                };
+                player.rotation = gmm::Quaternion::from_rotation_y(theta).into();
+            }
+
+            // 플레이어 오브젝트 이동
+            let translation = player.translation * PIXEL_PER_METER;
+            let transformation = gmm::Matrix::from_rotation_translation(
+                player.rotation.into(), 
+                translation.into()
+            );
+            let (transform, world_transform) = world.query_one_mut::<(&mut Transform, &mut WorldTransform)>(player.id).unwrap();
+            (**transform) =  transformation;
+            (**world_transform) = **transform;
+        }
+    }
+
+
+
     /// 카메라를 준비합니다.
     fn preapre_camera(world: &mut World, app: &dyn AppHandle) {
         type QueryType<'a> = (&'a WorldTransform, &'a Projection, &'a CameraComponent);
@@ -182,7 +291,7 @@ impl TestBedScene {
             let eye = world_transform.get_translation();
             let dir = world_transform.get_forward_vector();
             let up = world_transform.get_up_vector();
-            let view_trans = gmm::Matrix::look_to_rh(eye, dir, up);
+            let view_trans = gmm::Matrix::look_to_lh(eye, dir, up);
 
             camera.update(
                 app.render_queue(), 
@@ -245,12 +354,68 @@ impl GameScene for TestBedScene {
         window.set_title(&format!("Example: Animation (FPS:{})", timer.frame_rate()));
 
         for player in self.players.values_mut() {
-            Self::update_animation(
+            Self::update_player(
                 elapsed_time_sec, 
                 player, 
                 world, 
                 app
             );
+        }
+
+        Ok(())
+    }
+
+    fn on_keyboard_pressed(
+        &mut self, 
+        keycode: KeyCode, 
+        _location: KeyLocation, 
+        _modifiers: Modifiers, 
+        _window: &Window, 
+        _world: &mut World, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let player = self.players.get_mut(&self.client_id).unwrap();
+
+        if keycode == KeyCode::KeyW {
+            player.anim_index = 1;
+            player.force.z += FORCE;
+        } else if keycode == KeyCode::KeyA {
+            player.anim_index = 1;
+            player.force.x -= FORCE;
+        } else if keycode == KeyCode::KeyS {
+            player.anim_index = 1;
+            player.force.z -= FORCE;
+        } else if keycode == KeyCode::KeyD {
+            player.anim_index = 1;
+            player.force.x += FORCE;
+        }
+
+        Ok(())
+    }
+
+    fn on_keyboard_released(
+        &mut self, 
+        keycode: KeyCode, 
+        _location: KeyLocation, 
+        _modifiers: Modifiers, 
+        _window: &Window, 
+        _world: &mut World, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let player = self.players.get_mut(&self.client_id).unwrap();
+
+        if keycode == KeyCode::KeyW {
+            player.anim_index = 2;
+            player.force.z -= FORCE;
+        } else if keycode == KeyCode::KeyA {
+            player.anim_index = 2;
+            player.force.x += FORCE;
+        } else if keycode == KeyCode::KeyS {
+            player.anim_index = 2;
+            player.force.z += FORCE;
+        } else if keycode == KeyCode::KeyD {
+            player.anim_index = 2;
+            player.force.x -= FORCE;
         }
 
         Ok(())

@@ -11,7 +11,7 @@ use mod_render::brush::TextureBrush;
 use mod_render::camera::CameraComponent;
 use mod_render::camera::CameraDataLayout;
 use mod_render::camera::CameraObject;
-use mod_render::camera::PerspectiveRh;
+use mod_render::camera::PerspectiveLh;
 use mod_render::camera::Projection;
 use mod_render::object::update_hierarchy;
 use mod_render::object::GameObjectComponent;
@@ -72,7 +72,7 @@ impl ExampleScene {
 
         // 투영 변환 행렬을 생성합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
-        let projection: Projection = PerspectiveRh::new()
+        let projection: Projection = PerspectiveLh::new()
             .with_fov_y(60f32.to_radians())
             .with_aspect_ratio(width as f32 / height as f32)
             .into();
@@ -112,7 +112,7 @@ impl ExampleScene {
             let eye = world_transform.get_translation();
             let dir = world_transform.get_forward_vector();
             let up = world_transform.get_up_vector();
-            let view_trans = gmm::Matrix::look_to_rh(eye, dir, up);
+            let view_trans = gmm::Matrix::look_to_lh(eye, dir, up);
 
             camera.update(
                 app.render_queue(), 

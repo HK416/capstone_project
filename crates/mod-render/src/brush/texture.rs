@@ -161,7 +161,7 @@ impl MeshTextureShader {
                 }, 
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList, 
-                    front_face: wgpu::FrontFace::Ccw, 
+                    front_face: wgpu::FrontFace::Cw, 
                     cull_mode: Some(wgpu::Face::Back), 
                     polygon_mode: wgpu::PolygonMode::Fill, 
                     ..Default::default()
@@ -308,7 +308,7 @@ impl SkinMeshTextureShader {
                 }, 
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList, 
-                    front_face: wgpu::FrontFace::Ccw, 
+                    front_face: wgpu::FrontFace::Cw, 
                     cull_mode: Some(wgpu::Face::Back), 
                     polygon_mode: wgpu::PolygonMode::Fill, 
                     ..Default::default()
