@@ -95,18 +95,6 @@ pub struct Node<K, V> {
 impl<K, V> Node<K, V> {
     const ARRAY_REPEAT_VAL: Mutex<()> = Mutex::new(());
 
-    /// 무작위 값의 노드 레벨을 생성합니다.
-    #[must_use]
-    fn generate_random_level() -> usize {
-        let mut top_level = 0;
-        while top_level < MAX_LEVEL_INDEX {
-            if rand::random() {
-                break;
-            }
-            top_level += 1;
-        }
-        return top_level;
-    }
 
     /// `SkipMap`의 `head` 노드를 생성합니다.
     #[must_use]
@@ -139,7 +127,7 @@ impl<K, V> Node<K, V> {
     /// 주어진 `key`, `val`, `top_level`로 노드를 생성합니다.
     /// 이 함수는 이전에 할당된 메모리 블록을 재사용할 수 있습니다.
     #[must_use]
-    fn new(ebr_pin: EBRGuard<'_, Self>, key: Key<K>, val: V, top_level: usize) -> Box<Self> {
+    fn new(ebr_pin: &EBRGuard<'_, Self>, key: Key<K>, val: V, top_level: usize) -> Box<Self> {
         let mut node = ebr_pin.alloc();
         node.key = key;
         node.value = Some(val);
@@ -166,6 +154,19 @@ impl<K, V> Default for Node<K, V> {
             mtx: [Self::ARRAY_REPEAT_VAL; MAX_LEVELS]
         }
     }
+}
+
+/// 무작위 값의 노드 레벨을 생성합니다.
+#[must_use]
+fn random_level() -> usize {
+    let mut level = 0;
+    while level < MAX_LEVEL_INDEX {
+        if rand::random() {
+            break;
+        }
+        level += 1;
+    }
+    return level;
 }
 
 
@@ -217,13 +218,23 @@ impl<K: Ord, V> SkipMap<K, V> {
     }
 
 
-    
+
     /// 주어진 `key`와 `val`을 `SkipMap`에 넣습니다.
     /// 이미 `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
     /// 
-    unsafe fn insert_impl(&self, key: K, val: V) -> Option<V> {
-        let key = Key::Val(key);
+    #[inline]
+    pub fn insert(&self, key: K, val: V) -> Option<V> {
         let ebr_pin = self.ebr.pin();
+        unsafe { self.insert_impl(&ebr_pin, key, val) }
+    }
+
+    /// 주어진 `key`와 `val`을 `SkipMap`에 넣습니다.
+    /// 이미 `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
+    /// 
+    unsafe fn insert_impl(
+        &self, ebr_pin: &EBRGuard<'_, Node<K, V>>, key: K, val: V
+    ) -> Option<V> {
+        let key = Key::Val(key);
         let mut prevs = [ptr::null_mut(); MAX_LEVELS];
         let mut currs = [ptr::null_mut(); MAX_LEVELS];
         loop {
@@ -233,13 +244,15 @@ impl<K: Ord, V> SkipMap<K, V> {
                 }
 
                 // fully linke 일 때 까지 대기
-                while !(*currs[found_level]).fully_linked.load(MemOrdering::Relaxed) { }
+                while !(*currs[found_level]).fully_linked.load(MemOrdering::Relaxed) {
+                    std::hint::spin_loop();
+                }
 
                 let _guard = (*currs[found_level]).mtx[0].lock().unwrap();
                 return (*currs[found_level]).value.replace(val);
             }
 
-            let top_level = Node::<K, V>::generate_random_level();
+            let top_level = random_level();
             let mut invalidate = false;
             let mut locked_mtx = Vec::with_capacity(MAX_LEVELS);
             for lv in 0..=top_level {
@@ -284,9 +297,17 @@ impl<K: Ord, V> SkipMap<K, V> {
     /// 주어진 `key`에 해당하는 노드를`SkipMap`에서 제거합니다.
     /// `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
     /// 
-    unsafe fn remove_impl(&self, key: K) -> Option<V> {
-        let key = Key::Val(key);
+    #[inline]
+    pub fn remove(&self, key: K) -> Option<V> {
         let ebr_pin = self.ebr.pin();
+        unsafe { self.remove_impl(&ebr_pin, key) }
+    }
+
+    /// 주어진 `key`에 해당하는 노드를`SkipMap`에서 제거합니다.
+    /// `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
+    /// 
+    unsafe fn remove_impl(&self, ebr_pin: &EBRGuard<'_, Node<K, V>>, key: K) -> Option<V> {
+        let key = Key::Val(key);
         let mut prevs = [ptr::null_mut(); MAX_LEVELS];
         let mut currs = [ptr::null_mut(); MAX_LEVELS];
 
@@ -343,9 +364,16 @@ impl<K: Ord, V> SkipMap<K, V> {
 
 
     /// 주어진 `key`가 `SkipMap`에 포함되어있는지 여부를 반환합니다.
+    #[inline]
+    #[must_use]
+    pub fn contains_key(&self, key: K) -> bool {
+        let _ = self.ebr.pin();
+        unsafe { self.contains_key_impl(key) }
+    }
+
+    /// 주어진 `key`가 `SkipMap`에 포함되어있는지 여부를 반환합니다.
     unsafe fn contains_key_impl(&self, key: K) -> bool {
         let key = Key::Val(key);
-        let _ebr_pin = self.ebr.pin();
         let mut prevs = [ptr::null_mut(); MAX_LEVELS];
         let mut currs = [ptr::null_mut(); MAX_LEVELS];
 
@@ -357,9 +385,38 @@ impl<K: Ord, V> SkipMap<K, V> {
 
         return false;
     }
+
+
+
+    /// 주어진 `key`에 해당하는 노드의 값을 빌려옵니다.
+    pub fn get(&self, key: K) -> Option<&V> {
+        let _ebr_pin = self.ebr.pin();
+        unsafe { self.get_impl(key) }
+    }
+
+    /// 주어진 `key`에 해당하는 노드의 값을 빌려옵니다.
+    unsafe fn get_impl(&self, key: K) -> Option<&V> {
+        let key = Key::Val(key);
+        let mut prevs = [ptr::null_mut(); MAX_LEVELS];
+        let mut currs = [ptr::null_mut(); MAX_LEVELS];
+
+        if let Some(found_level) = self.find_position(&key, &mut prevs, &mut currs) {
+            if (*currs[found_level]).removed.load(MemOrdering::Relaxed) {
+                return None;
+            }
+
+            // fully linke 일 때 까지 대기
+            while !(*currs[found_level]).fully_linked.load(MemOrdering::Relaxed) {
+                std::hint::spin_loop();
+            }
+
+            return (*currs[found_level]).value.as_ref();
+        }
+        None
+    }
 }
 
-impl<K: Ord, V> SkipMap<K, V> {
+impl<K, V> SkipMap<K, V> {
     /// 새로운 `SkipMap`을 생성합니다.
     #[must_use]
     pub fn new() -> Self {
@@ -374,29 +431,6 @@ impl<K: Ord, V> SkipMap<K, V> {
             head: AtomicPtr::new(head), 
             tail: AtomicPtr::new(tail)
         }
-    }
-
-    /// 주어진 `key`와 `val`을 `SkipMap`에 넣습니다.
-    /// 이미 `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
-    /// 
-    #[inline]
-    pub fn insert(&self, key: K, val: V) -> Option<V> {
-        unsafe { self.insert_impl(key, val) }
-    }
-
-    /// 주어진 `key`에 해당하는 노드를`SkipMap`에서 제거합니다.
-    /// `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
-    /// 
-    #[inline]
-    pub fn remove(&self, key: K) -> Option<V> {
-        unsafe { self.remove_impl(key) }
-    }
-
-    /// 주어진 `key`가 `SkipMap`에 포함되어있는지 여부를 반환합니다.
-    #[inline]
-    #[must_use]
-    pub fn contains(&self, key: K) -> bool {
-        unsafe { self.contains_key_impl(key) }
     }
 }
 
@@ -415,8 +449,6 @@ impl<K, V> Drop for SkipMap<K, V> {
         drop(unsafe { Box::from_raw(tail) });
     }
 }
-
-
 
 
 
@@ -465,9 +497,9 @@ mod tests {
                 panic!("ERROR. The value {} removed while it is not in the set.", num);
             } else if cnt > 1 {
                 panic!("ERROR. The value {} is added while the set already have it.", num);
-            } else if cnt == 0 && map.contains(num as u32) {
+            } else if cnt == 0 && map.contains_key(num as u32) {
                 panic!("ERROR. The value {} should not exists.", num);
-            } else if cnt == 1 && !map.contains(num as u32) {
+            } else if cnt == 1 && !map.contains_key(num as u32) {
                 panic!("ERROR. The value {} should exists.", num);
             }
         }

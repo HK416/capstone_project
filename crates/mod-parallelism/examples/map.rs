@@ -45,9 +45,9 @@ fn check_history(historys: Vec<Vec<History>>, map: Arc<SkipMap<u32, u32>>) {
             panic!("ERROR. The value {} removed while it is not in the set.", num);
         } else if cnt > 1 {
             panic!("ERROR. The value {} is added while the set already have it.", num);
-        } else if cnt == 0 && map.contains(num as u32) {
+        } else if cnt == 0 && map.contains_key(num as u32) {
             panic!("ERROR. The value {} should not exists.", num);
-        } else if cnt == 1 && !map.contains(num as u32) {
+        } else if cnt == 1 && !map.contains_key(num as u32) {
             panic!("ERROR. The value {} should exists.", num);
         }
     }
