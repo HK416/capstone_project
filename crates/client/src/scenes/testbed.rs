@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use hecs::Entity;
 use hecs::World;
+use mod_network::Player;
 use mod_render::anim::Animation;
 use mod_render::brush::TextureBrush;
 use mod_render::camera::CameraComponent;
@@ -18,18 +19,19 @@ use mod_render::object::GameObjectComponent;
 use mod_render::object::GameObjectDataLayout;
 use mod_render::object::Transform;
 use mod_render::object::WorldTransform;
+use mod_render::skin::BoneMatrixDataLayout;
 use mod_scene::AppHandle;
 use mod_scene::GameScene;
 use winit::window::Window;
 
 
 
-/// 플레이어 정보를 저장하는 구조체입니다.
-#[derive(Debug)]
-struct Player {
-    entity: Entity, 
+/// 캐릭터 엔티티의 정보입니다.
+struct CharacterEntity {
+    id: Entity, 
     animations: Vec<Animation>, 
     anim_index: usize, 
+    anim_timer: f32, 
 }
 
 
@@ -37,20 +39,38 @@ struct Player {
 /// TestBed Game Scene
 pub struct TestBedScene {
     stream: Arc<TcpStream>, 
-    players: HashMap<u32, Player>, 
+    stage_data: Vec<Player>, 
+
+    client_id: u32, 
+    players: HashMap<u32, CharacterEntity>, 
+
     main_camera: Entity, 
 }
 
 impl TestBedScene {
     #[inline]
     #[must_use]
-    pub fn new(stream: Arc<TcpStream>) -> Self {
+    pub fn new<I>(
+        stream: Arc<TcpStream>, 
+        client_id: u32, 
+        players: I, 
+    ) -> Self 
+    where 
+    I: IntoIterator<Item = Player>, 
+        I::IntoIter: ExactSizeIterator
+    {
+        let init_data: Vec<_> = players.into_iter().collect();
+        let size = init_data.len();
+        
         Self { 
             stream, 
-            players: HashMap::with_capacity(16), 
+            stage_data: init_data, 
+            client_id, 
+            players: HashMap::with_capacity(size), 
             main_camera: Entity::DANGLING, 
         }
     }
+
 
     /// 카메라 오브젝트를 생성합니다.
     fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn AppHandle) {
@@ -114,12 +134,44 @@ impl TestBedScene {
         // 플레이어를 추가합니다.
         self.players.insert(
             id, 
-            Player { 
-                entity, 
+            CharacterEntity { 
+                id: entity, 
                 animations, 
-                anim_index: 0 
+                anim_index: 0, 
+                anim_timer: 0.0, 
             }
         );
+    }
+
+    /// 플레이어의 애니메이션을 갱신합니다.
+    fn update_animation(
+        elapsed_time_sec: f32, 
+        player: &mut CharacterEntity, 
+        world: &mut World, 
+        app: &dyn AppHandle
+    ) {
+        if let Some(animation) = player.animations.get(player.anim_index) {
+            player.anim_timer = (player.anim_timer + elapsed_time_sec) % animation.length();
+            let keyframe = animation.sample_animation(player.anim_timer);
+
+            for bone in keyframe.bones() {
+                for (entity, bone_transform) in bone.target().bones().iter().cloned().zip(bone.transforms()) {
+                    if let Ok(transform) = world.query_one_mut::<&mut Transform>(entity) {
+                        **transform = bone_transform.as_matrix();
+                    }
+                }
+                
+                let root_entity = bone.target().root_bone().clone();
+                update_hierarchy(world, None, root_entity);
+
+                let iter = bone.target().bones().iter()
+                    .map(|&entity| **world.get::<&WorldTransform>(entity).unwrap())
+                    .map(|matrix| matrix.into());
+                bone.target().update(app.render_queue(), BoneMatrixDataLayout::new(iter));
+            }
+
+            update_hierarchy(world, None, player.id);
+        }
     }
     
     /// 카메라를 준비합니다.
@@ -166,6 +218,41 @@ impl GameScene for TestBedScene {
         world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        self.spawn_main_camera(window, world, app);
+        while let Some(player) = self.stage_data.pop() {
+            self.spawn_aris_original_model(
+                player.id, 
+                gmm::Float3::new(
+                    player.x, 
+                    player.y, 
+                    player.z
+                ), 
+                world, 
+                app
+            );
+        }
+        Ok(())
+    }
+
+    fn on_update(
+        &mut self, 
+        elapsed_time_sec: f32, 
+        window: &Window, 
+        world: &mut World, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let timer = app.timer();
+        window.set_title(&format!("Example: Animation (FPS:{})", timer.frame_rate()));
+
+        for player in self.players.values_mut() {
+            Self::update_animation(
+                elapsed_time_sec, 
+                player, 
+                world, 
+                app
+            );
+        }
+
         Ok(())
     }
 

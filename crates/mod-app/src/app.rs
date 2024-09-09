@@ -699,6 +699,10 @@ impl ApplicationHandler<AppEvent> for Application {
                 let mut world = self.world.borrow_mut();
                 current_scene.on_received_packet(raw_packet, &mut world, self)
             }, 
+            AppEvent::ClosedConnection => {
+                // 현재는 네트워크 연결 끊김 에러를 애플리케이션 종료 처리합니다.
+                return event_loop.exit();
+            },
             AppEvent::NetworkIOError(e) => {
                 // 현재는 모든 입/출력 에러를 런타임 에러로 처리합니다.
                 Err(err_msg!(e))
