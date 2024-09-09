@@ -124,8 +124,7 @@ impl TestBedScene {
     /// 모델 에셋을 생성합니다.
     fn spawn_aris_original_model(
         &mut self, 
-        id: u32, 
-        translation: gmm::Float3, 
+        player: Player, 
         world: &mut World, 
         app: &dyn AppHandle
     ) {
@@ -139,8 +138,9 @@ impl TestBedScene {
         );
 
         // 플레이어 오브젝트 이동
-        let rotation = gmm::Quaternion::from_rotation_y(-45f32.to_radians());
-        let mat = gmm::Matrix::from_rotation_translation(rotation, translation.into());
+        let translation = player.translation;
+        let rotation = player.rotation;
+        let mat = gmm::Matrix::from_rotation_translation(rotation.into(), translation.into());
         let (transform, world_transform) = world.query_one_mut::<(&mut Transform, &mut WorldTransform)>(entity).unwrap();
         (**transform) = (**transform) * mat;
         (**world_transform) = **transform;
@@ -151,14 +151,14 @@ impl TestBedScene {
 
         // 플레이어를 추가합니다.
         self.players.insert(
-            id, 
+            player.id, 
             CharacterEntity { 
                 id: entity, 
                 animations, 
                 anim_index: 0, 
                 prev_anim_index: 0, 
                 anim_timer: 0.0, 
-                rotation: rotation.into(), 
+                rotation, 
                 translation, 
                 force: gmm::Float3::ZERO, 
                 velocity: gmm::Float3::ZERO, 
@@ -330,12 +330,7 @@ impl GameScene for TestBedScene {
         self.spawn_main_camera(window, world, app);
         while let Some(player) = self.stage_data.pop() {
             self.spawn_aris_original_model(
-                player.id, 
-                gmm::Float3::new(
-                    player.x, 
-                    player.y, 
-                    player.z
-                ), 
+                player, 
                 world, 
                 app
             );

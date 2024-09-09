@@ -1,12 +1,6 @@
 use std::collections::HashMap;
-use mod_network::Player as PPlayer;     // 플레이어 프로토콜
+use mod_network::Player;     // 플레이어 프로토콜
 
-
-struct Player {
-    x: f32,
-    y: f32,
-    z: f32,
-}
 
 
 pub type WorldPointer = usize;
@@ -25,14 +19,14 @@ impl World {
 
 
     pub fn add_player(&mut self, id: u32) {
-        self.players.insert(id, Player { x: 0.0, y: 0.0, z: 0.0 });
+        self.players.insert(id, Player { id, ..Default::default() });
     }
 
     pub fn move_player(&mut self, id: u32, x: f32, y: f32, z: f32) {
         if let Some(player) = self.players.get_mut(&id) {
-            player.x += x;
-            player.y += y;
-            player.z += z;
+            player.translation.x += x;
+            player.translation.y += y;
+            player.translation.z += z;
         }
     }
 
@@ -40,9 +34,9 @@ impl World {
         self.players.remove(&id);
     }
 
-    pub fn get_objects(&self) -> Vec<PPlayer> {
-        self.players.iter()
-            .map(|(id, player)| PPlayer::new(*id, player.x, player.y, player.z))
+    pub fn get_objects(&self) -> Vec<Player> {
+        self.players.values()
+            .cloned()
             .collect()
     }
 }
@@ -85,7 +79,7 @@ impl WorldInterface {
         self.as_mut().remove_player(id);
     }
 
-    pub fn get_objects(&self) -> Vec<PPlayer> {
+    pub fn get_objects(&self) -> Vec<Player> {
         self.as_mut().get_objects()
     }
 
