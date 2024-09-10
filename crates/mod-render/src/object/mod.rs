@@ -209,3 +209,19 @@ pub fn update_hierarchy(world: &mut World, parent: Option<gmm::Matrix>, entity: 
         update_hierarchy(world, Some(world_transform), child_entity);
     }
 }
+
+/// 오브젝트 계층 구조를 정리합니다.
+pub fn cleanup_hierarchy(world: &mut World, entity: Entity) {
+    // 현제 엔티티의 오브젝트 컴포넌트를 가져옵니다.
+    let game_object = (*ok_or_return!(world.get::<&GameObjectComponent>(entity))).clone();
+    
+    if let Some(sibling_entity) = game_object.get_sibling() {
+        cleanup_hierarchy(world, sibling_entity);
+    }
+
+    if let Some(child_entity) = game_object.get_child() {
+        cleanup_hierarchy(world, child_entity);
+    }
+
+    world.despawn(entity).unwrap();
+}

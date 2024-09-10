@@ -4,7 +4,7 @@ use std::ops;
 
 /// 정사영 투영 변환 행렬을 생성하는 데이터입니다.
 #[derive(Debug, Clone, Copy)]
-pub struct OrthographicRh {
+pub struct OrthographicLh {
     pub left: f32, 
     pub right: f32, 
     pub bottom: f32, 
@@ -13,7 +13,7 @@ pub struct OrthographicRh {
     pub far: f32
 }
 
-impl OrthographicRh {
+impl OrthographicLh {
     /// 새로운 정사영 투영 변환 행렬 데이터를 생성합니다.
     #[inline]
     #[must_use]
@@ -70,7 +70,7 @@ impl OrthographicRh {
     }
 }
 
-impl Default for OrthographicRh {
+impl Default for OrthographicLh {
     #[inline]
     fn default() -> Self {
         Self { 
@@ -88,14 +88,14 @@ impl Default for OrthographicRh {
 
 /// 원근 투영 변환 행렬을 생성하는 데이터입니다.
 #[derive(Debug, Clone, Copy)]
-pub struct PerspectiveRh {
+pub struct PerspectiveLh {
     pub fov_y: f32, 
     pub aspect_ratio: f32, 
     pub z_near: f32, 
     pub z_far: f32
 }
 
-impl PerspectiveRh {
+impl PerspectiveLh {
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -135,7 +135,7 @@ impl PerspectiveRh {
     }
 }
 
-impl Default for PerspectiveRh {
+impl Default for PerspectiveLh {
     #[inline]
     fn default() -> Self {
         Self { 
@@ -153,10 +153,10 @@ impl Default for PerspectiveRh {
 #[derive(Debug, Clone, Copy)]
 pub struct Projection(gmm::Matrix);
 
-impl From<OrthographicRh> for Projection {
+impl From<OrthographicLh> for Projection {
     #[inline]
-    fn from(value: OrthographicRh) -> Self {
-        Self(gmm::Matrix::orthographic_rh(
+    fn from(value: OrthographicLh) -> Self {
+        Self(gmm::Matrix::orthographic_lh(
             value.left, 
             value.right, 
             value.bottom, 
@@ -167,10 +167,10 @@ impl From<OrthographicRh> for Projection {
     }
 }
 
-impl From<PerspectiveRh> for Projection {
+impl From<PerspectiveLh> for Projection {
     #[inline]
-    fn from(value: PerspectiveRh) -> Self {
-        Self(gmm::Matrix::perspective_rh(
+    fn from(value: PerspectiveLh) -> Self {
+        Self(gmm::Matrix::perspective_lh(
             value.fov_y, 
             value.aspect_ratio, 
             value.z_near, 

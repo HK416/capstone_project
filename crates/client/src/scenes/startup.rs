@@ -5,6 +5,7 @@ use std::io::BufReader;
 use std::net::SocketAddr;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
+use std::thread;
 use std::thread::JoinHandle;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -14,6 +15,9 @@ use std::io::Read;
 use hecs::World;
 use mod_error::err_msg;
 use mod_error::RuntimeError;
+use mod_network::InitPacket;
+use mod_network::PacketType;
+use mod_network::RawPacket;
 use mod_scene::AppHandle;
 use mod_scene::GameScene;
 use mod_scene::GameSceneFlow;
@@ -22,6 +26,8 @@ use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 use mod_network::PacketParser;
+
+use super::TestBedScene;
 
 type Task = JoinHandle<Result<(), Box<dyn Error + Send>>>;
 
@@ -36,12 +42,6 @@ pub struct StartupScene {
 
     /// 현재 실행 중인 작업 목록입니다.
     running_task: VecDeque<Task>, 
-
-    /// 총 작업의 갯수 입니다.
-    total_task_num: usize, 
-
-    /// 작업이 완료되었는지 나타냅니다.
-    finished: bool, 
 }
 
 impl StartupScene {
@@ -51,9 +51,7 @@ impl StartupScene {
     pub fn new() -> Self {
         Self { 
             stream: Arc::new(Mutex::new(None)), 
-            running_task: VecDeque::with_capacity(8), 
-            total_task_num: 0, 
-            finished: false, 
+            running_task: VecDeque::with_capacity(8),
         }
     }
 }
@@ -70,7 +68,6 @@ impl GameScene for StartupScene {
         // 현재는 새로운 스레드를 생성하여 
         // 주어진 IP 주소로 서버에 연결하는 작업만 수행합니다.
         // 
-        use std::thread;
         let addr = "localhost:7878".to_socket_addrs().unwrap().next().unwrap();
         let proxy_cloned = app.event_loop_proxy().clone();
         let future = self.stream.clone();
@@ -80,7 +77,33 @@ impl GameScene for StartupScene {
             *future_guard = Some(stream);
             Ok(())
         }));
-        self.total_task_num += 1;
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_received_packet(
+        &mut self, 
+        raw_packet: RawPacket, 
+        world: &mut World, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // Init Packet에서 데이터를 수집하고 다음 게임 장면으로 전환합니다.
+        if raw_packet.packet_type() == PacketType::INIT {
+            let packet = InitPacket::from_raw(raw_packet);
+            let stream = {
+                let mut guard = self.stream.lock().unwrap();
+                guard.take().unwrap()
+            };
+            
+            app.set_scene_flow(GameSceneFlow::Change(
+                Box::new(TestBedScene::new(
+                    stream, 
+                    packet.client_id, 
+                    packet.world
+                ))
+            ));
+        }
 
         Ok(())
     }
@@ -93,8 +116,8 @@ impl GameScene for StartupScene {
         world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 모든 작업이 완료된 경우 함수 실행을 생략합니다.
-        if self.finished {
+        // 처리할 작업이 없는 경우 함수 실행을 생략합니다.
+        if self.running_task.is_empty() {
             return Ok(())
         }
 
@@ -107,20 +130,7 @@ impl GameScene for StartupScene {
                 temp.push_back(task);
             }
         }
-
-        if temp.is_empty() {
-            // 모든 작업이 완료된 경우 다음 게임 장면으로 전환합니다.
-            self.finished = true;
-            let stream = {
-                let mut guard = self.stream.lock().unwrap();
-                guard.take().unwrap()
-            };
-            app.set_scene_flow(GameSceneFlow::Change(
-                Box::new(super::TestBedScene::new(stream))
-            ));
-        } else {
-            self.running_task.append(&mut temp);
-        }
+        self.running_task.append(&mut temp);
 
         Ok(())
     }
@@ -200,7 +210,10 @@ fn connect_to_server(addr: SocketAddr) -> Result<TcpStream, io::Error> {
     // 네트워크 연결에 실패한 경우 `std::io::Error`를 반환합니다.
     // 
 
-    TcpStream::connect(addr)
+    let stream = TcpStream::connect(addr)?;
+    stream.set_nodelay(true)?;
+    stream.set_nonblocking(true)?;
+    return Ok(stream);
 }
 
 /// 네트워크 패킷 수신 루프입니다.
@@ -214,35 +227,32 @@ fn network_loop(
     // 만약 수신 중 오류가 발생할 경우 오류 메시지를 이벤트 루프로 보내고
     // 패킷 수신 루프를 빠져나옵니다.
     //
-
-    
-    let mut buffer = [0; 1024]; 
-
     let mut parser = PacketParser::new(); 
     let mut server_stream = BufReader::new(stream.as_ref());
     
-    loop {
+    'recv: loop {
         // tcp stream 에서 읽어들이기 시도
 
-        
+        let mut buffer = [0; 1024]; 
         match server_stream.read(&mut buffer){
-            Ok(0) => {
-                println!("connection closed");
+            Ok(0) => if proxy.send_event(AppEvent::ClosedConnection).is_err() {
+                break 'recv;
             },
             Ok(n) =>{
                 parser.push(&buffer[..n]);
             },
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                continue 'recv;
             },
-            Err(_) => {
-
+            Err(e) => if proxy.send_event(AppEvent::NetworkIOError(e)).is_err() {
+                break 'recv;
             }
         }
 
-
-
-
-        
+        while let Some(raw_packet) = parser.pop() {
+            if proxy.send_event(AppEvent::PacketReceived(raw_packet)).is_err() {
+                break 'recv;
+            }
+        }
     }
 }
