@@ -29,7 +29,7 @@ impl Session {
     }
 
     pub async fn handle_connection(&mut self) {
-        self.world.add_player(self.id).await;
+        self.world.add_player(self.id);
 
         match self.stream_write(InitPacket::new(self.id, self.world.get_objects()).as_raw()).await {
             Ok(_) => {
@@ -57,7 +57,7 @@ impl Session {
             };
         }
 
-        self.world.remove_player(self.id).await;
+        self.world.remove_player(self.id);
     }
 
     
@@ -68,7 +68,7 @@ impl Session {
             match packet.packet_type() {
                 PacketType::PUSH => {
                     let push_packet = PushPacket::from_raw(packet);
-                    self.world.update_player(push_packet.player).await;
+                    self.world.update_player(push_packet.player);
 
                     let world = self.world.get_objects();
                     let raw_packet = PullPacket::new(world).as_raw();
@@ -84,7 +84,7 @@ impl Session {
                 }, 
                 PacketType::MOVE => {
                     let move_packet = MovePacket::from_raw(packet);
-                    self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z).await;
+                    self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z);
                 },
                 PacketType::MESSAGE => {
                     let message_packet = MessagePacket::from_raw(packet);

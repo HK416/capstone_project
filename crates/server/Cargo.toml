@@ -9,5 +9,6 @@ publish.workspace = true
 
 [dependencies]
 tokio = { version = "1.39.3", features = ["full"] }
+lockfree = "0.5.1"
 
 mod-network = { path = "../mod-network" }
