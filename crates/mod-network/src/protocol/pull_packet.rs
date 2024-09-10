@@ -20,12 +20,21 @@ impl PullPacket {
 
     /// RawPacket내의 데이터는 유효하다고 가정한다.
     pub fn from_raw(raw: RawPacket) -> Self {
+        let world = raw.data()
+            .chunks_exact(size_of::<Player>())
+            .map(|chunk| Player::from_bytes(chunk))
+            .collect();
+
         Self {
-            world: bytemuck::cast_slice(raw.data()).iter().cloned().collect()
+            world,
         }
     }
 
     pub fn as_raw(&self) -> RawPacket {
-        RawPacket::new(PacketType::PULL, bytemuck::cast_slice(&self.world))
+        let bytes = self.world.iter()
+            .flat_map(|player| player.as_bytes())
+            .collect::<Vec<u8>>();
+
+        RawPacket::new(PacketType::PULL, &bytes)
     }
 }
