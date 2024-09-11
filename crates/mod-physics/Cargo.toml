@@ -1,0 +1,19 @@
+[package]
+name = "mod-physics"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+
+
+[dependencies]
+# 게임 수학 라이브러리
+# License: MIT
+gmm = { version = "0.2", features = ["bytemuck", "serde"] }
+
+# 데이터 직렬화 라이브러리
+# License: MIT or Apache-2.0
+serde = { version = "1.0", features = ["derive"] }

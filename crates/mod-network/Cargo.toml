@@ -1,0 +1,17 @@
+[package]
+name = "mod-network"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+# byte 캐스팅 라이브러리
+# License: Zlib or Apache-2.0 or MIT
+bytemuck = { version = "1.16", features = ["derive"] }
+
+# 게임 수학 라이브러리
+# License: MIT
+gmm = { version = "0.2", features = ["bytemuck", "serde"] }

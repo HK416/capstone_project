@@ -1,0 +1,46 @@
+[package]
+name = "mod-parallelism"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+
+
+[dependencies]
+# 물리적 코어의 갯수를 가져오는 라이브러리
+# License: MIT or Apache-2.0
+num_cpus = "1.16"
+
+# Lazy initialization 라이브러리
+# License: MIT or Apache-2.0
+lazy_static = "1.5"
+
+# 객체별 스레드 로컬 저장소 라이브러리
+# License: MIT or Apache-2.0
+thread_local = "1.1"
+
+# 뮤텍스 잠금 라이브러리
+# License: MIT or Apache-2.0
+parking_lot = "0.12"
+
+
+# 난수 생성 라이브러리
+# License: MIT or Apache-2.0
+rand = "0.8"
+
+
+
+[[example]]
+name = "queue"
+path = "examples/queue.rs"
+
+[[example]]
+name = "map"
+path = "examples/map.rs"
+
+[[example]]
+name = "stack"
+path = "examples/stack.rs"

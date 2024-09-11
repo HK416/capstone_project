@@ -3,7 +3,6 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
 edition = "2021"
 rust-version = "1.78"
 description = "2024년 한국공학대학교 게임공학과 졸업작품"
