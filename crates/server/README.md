@@ -18,6 +18,16 @@ cargo run --bin server --release
 cargo run --bin server --release -- ip:port
 ```
 
+**스트레스 테스트(더미 클라이언트)**
+```shell
+cargo run --example {더미클라이언트} --release
+```
+
+|더미클라이언트 목록|설명|
+|:---:|:---:|
+|client100|클라이언트 100개 접속, 각각 1초마다 랜덤 이동|
+|ar100|클라이언트 100개가 1초마다 접속/종료 반복|
+
 <b>주의</b>
 - `rust`의 패키지 관리자인 `cargo`가 필요합니다.
 - `cargo`가 환경변수에 등록되어 있어야 합니다.
