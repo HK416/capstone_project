@@ -93,7 +93,16 @@ async fn server_full(mut stream: TcpStream) {
 
 #[tokio::main]
 async fn main() {
-    run_server("localhost:7878").await;
+    let addr = match mod_network::get_addr() {
+        Ok(addr) => addr,
+        Err(e) => {
+            eprintln!("{}", e);
+            return;
+        }
+    };
+    let addr = format!("{}:{}", addr.0, addr.1);
+
+    run_server(&addr).await;
 }
 
 

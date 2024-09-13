@@ -10,9 +10,13 @@ cargo build --bin server --release
 ````
 
 <b>실행</b>
-````shell
+```shell
 cargo run --bin server --release
-````
+```
+또는 
+```shell
+cargo run --bin server --release -- ip:port
+```
 
 <b>주의</b>
 - `rust`의 패키지 관리자인 `cargo`가 필요합니다.
