@@ -1,41 +1,11 @@
-use core::f32;
-use std::fmt;
-use std::error::Error;
-use std::io::BufWriter;
-use std::io::Write;
-use std::net::TcpStream;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, error::Error, fmt, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
 
-use hecs::Entity;
-use hecs::World;
-use mod_error::err_msg;
-use mod_error::RuntimeError;
-use mod_network::PacketType;
-use mod_network::Player;
-use mod_network::PullPacket;
-use mod_network::PushPacket;
-use mod_network::RawPacket;
-use mod_render::anim::Animation;
-use mod_render::brush::TextureBrush;
-use mod_render::camera::CameraComponent;
-use mod_render::camera::CameraDataLayout;
-use mod_render::camera::CameraObject;
-use mod_render::camera::PerspectiveLh;
-use mod_render::camera::Projection;
-use mod_render::object::cleanup_hierarchy;
-use mod_render::object::update_hierarchy;
-use mod_render::object::GameObjectComponent;
-use mod_render::object::GameObjectDataLayout;
-use mod_render::object::Transform;
-use mod_render::object::WorldTransform;
-use mod_render::skin::BoneMatrixDataLayout;
-use mod_scene::AppHandle;
-use mod_scene::GameScene;
-use winit::event::Modifiers;
-use winit::keyboard::KeyCode;
-use winit::keyboard::KeyLocation;
-use winit::window::Window;
+use hecs::{Entity, World};
+use mod_app::{app::AppHandle, scene::GameScene};
+use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
+use mod_render::{anim::Animation, brush::TextureBrush, camera::{CameraComponent, CameraDataLayout, CameraObject, PerspectiveLh, Projection}, object::{cleanup_hierarchy, update_hierarchy, GameObjectComponent, GameObjectDataLayout, Transform, WorldTransform}, skin::BoneMatrixDataLayout};
+use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}, window::Window};
+
 
 const PIXEL_PER_METER: f32 = 1.0 / 0.1;
 const FORCE: f32 = 100.0; // 단위: N
@@ -64,6 +34,7 @@ struct CharacterEntity {
 
 /// TestBed Game Scene
 pub struct TestBedScene {
+    world: World, 
     stream: Arc<TcpStream>, 
     stage_data: Vec<Player>, 
 
@@ -89,6 +60,7 @@ impl TestBedScene {
         let size = init_data.len();
         
         Self { 
+            world: World::new(), 
             stream, 
             stage_data: init_data, 
             client_id, 
@@ -100,7 +72,7 @@ impl TestBedScene {
 
 
     /// 카메라 오브젝트를 생성합니다.
-    fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn AppHandle) {
+    fn spawn_main_camera(&mut self, window: &Window, app: &dyn AppHandle) {
         // 로컬 변환 행렬과 월드 변환 행렬을 생성합니다.
         let trans = Transform::from_rotation_translation(
             gmm::Quaternion::from_rotation_x(15f32.to_radians()), 
@@ -123,7 +95,7 @@ impl TestBedScene {
         );
 
         // 카메라 오브젝트를 생성합니다.
-        self.main_camera = world.spawn((
+        self.main_camera = self.world.spawn((
             trans, 
             world_trans, 
             projection, 
@@ -135,14 +107,13 @@ impl TestBedScene {
     fn spawn_aris_original_model(
         &mut self, 
         player: Player, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> CharacterEntity {
         // ※ 추후 변경될 함수입니다.
         let (entity, animations) = crate::model::spawn_model_from_asset(
             app.render_device(), 
             app.render_queue(), 
-            world, 
+            &mut self.world, 
             TextureBrush, 
             "Aris_Original_Mesh.ron"
         );
@@ -151,12 +122,12 @@ impl TestBedScene {
         let translation = player.translation;
         let rotation = player.rotation;
         let mat = gmm::Matrix::from_rotation_translation(rotation.into(), translation.into());
-        let (transform, world_transform) = world.query_one_mut::<(&mut Transform, &mut WorldTransform)>(entity).unwrap();
+        let (transform, world_transform) = self.world.query_one_mut::<(&mut Transform, &mut WorldTransform)>(entity).unwrap();
         (**transform) = (**transform) * mat;
         (**world_transform) = **transform;
 
         // // 계층 구조를 갱신합니다.
-        update_hierarchy(world, None, entity);
+        update_hierarchy(&mut self.world, None, entity);
 
         CharacterEntity { 
             id: entity, 
@@ -289,7 +260,7 @@ impl TestBedScene {
 
 
     /// 카메라를 준비합니다.
-    fn preapre_camera(world: &mut World, app: &dyn AppHandle) {
+    fn preapre_camera(world: &World, app: &dyn AppHandle) {
         type QueryType<'a> = (&'a WorldTransform, &'a Projection, &'a CameraComponent);
         let mut query = world.query::<QueryType>();
         for (_, (world_transform, projection, camera)) in query.iter() {
@@ -311,7 +282,7 @@ impl TestBedScene {
     }
 
     /// 오브젝트를 준비합니다.
-    fn prepare_objects(world: &mut World, app: &dyn AppHandle) {
+    fn prepare_objects(world: &World, app: &dyn AppHandle) {
         type QueryType<'a> = (&'a WorldTransform, &'a GameObjectComponent);
         let mut query = world.query::<QueryType>();
         for (_, (world_transform, object)) in query.iter() {
@@ -329,21 +300,12 @@ impl GameScene for TestBedScene {
     fn on_enter(
         &mut self, 
         window: &Window, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.spawn_main_camera(window, world, app);
+        self.spawn_main_camera(window, app);
         while let Some(player) = self.stage_data.pop() {
-            let new_player = self.spawn_aris_original_model(
-                player, 
-                world, 
-                app
-            );
-
-            self.players.insert(
-                player.id, 
-                new_player
-            );
+            let new_player = self.spawn_aris_original_model(player, app);
+            self.players.insert(player.id, new_player);
         }
         Ok(())
     }
@@ -351,7 +313,6 @@ impl GameScene for TestBedScene {
     fn on_received_packet(
         &mut self, 
         raw_packet: RawPacket, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         if raw_packet.packet_type() == PacketType::PULL {
@@ -370,17 +331,13 @@ impl GameScene for TestBedScene {
                     player.anim_timer = pull_data.anim_timer;
                     temp.push((pull_data.id, player));
                 } else {
-                    let new_player = self.spawn_aris_original_model(
-                        pull_data, 
-                        world, 
-                        app
-                    );
+                    let new_player = self.spawn_aris_original_model(pull_data, app);
                     temp.push((pull_data.id, new_player));
                 }
             }
 
             for removed_player in self.players.values() {
-                cleanup_hierarchy(world, removed_player.id);
+                cleanup_hierarchy(&mut self.world, removed_player.id);
             }
             self.players.clear();
             for (id, player) in temp {
@@ -394,7 +351,7 @@ impl GameScene for TestBedScene {
         &mut self, 
         elapsed_time_sec: f32, 
         window: &Window, 
-        world: &mut World, 
+
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let timer = app.timer();
@@ -404,7 +361,7 @@ impl GameScene for TestBedScene {
             Self::update_player(
                 elapsed_time_sec, 
                 player, 
-                world, 
+                &mut self.world, 
                 app
             );
         }
@@ -420,7 +377,7 @@ impl GameScene for TestBedScene {
             let packet = PushPacket::new(push_data).as_raw();
             let mut writer = BufWriter::new(self.stream.as_ref());
             writer.write_all(&packet.as_bytes())
-                .map_err(|e| err_msg!(e))?;
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
         }
         Ok(())
     }
@@ -431,7 +388,6 @@ impl GameScene for TestBedScene {
         _location: KeyLocation, 
         _modifiers: Modifiers, 
         _window: &Window, 
-        _world: &mut World, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let player = self.players.get_mut(&self.client_id).unwrap();
@@ -459,7 +415,6 @@ impl GameScene for TestBedScene {
         _location: KeyLocation, 
         _modifiers: Modifiers, 
         _window: &Window, 
-        _world: &mut World, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let player = self.players.get_mut(&self.client_id).unwrap();
@@ -486,11 +441,10 @@ impl GameScene for TestBedScene {
         &self, 
         window: &Window, 
         surface: &wgpu::Surface, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        Self::preapre_camera(world, app);
-        Self::prepare_objects(world, app);
+        Self::preapre_camera(&self.world, app);
+        Self::prepare_objects(&self.world, app);
         Ok(())
     }
     
@@ -498,7 +452,6 @@ impl GameScene for TestBedScene {
         &self, 
         render_target_view: &wgpu::TextureView, 
         depth_stencil_view: &wgpu::TextureView, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
@@ -510,7 +463,7 @@ impl GameScene for TestBedScene {
         );
 
         // 카메라 오브젝트를 가져옵니다.
-        let camera = match world.get::<&CameraComponent>(self.main_camera) {
+        let camera = match self.world.get::<&CameraComponent>(self.main_camera) {
             Ok(component) => component, 
             _ => return Ok(()),
         };
@@ -550,7 +503,7 @@ impl GameScene for TestBedScene {
             );
 
             rpass.set_bind_group(0, &camera.bind_group(), &[]);
-            TextureBrush::draw(world, device, &mut rpass);
+            TextureBrush::draw(&self.world, device, &mut rpass);
         }
         
         queue.submit([encoder.finish()]);

@@ -1,6 +1,6 @@
 [package]
 name = "mod-app"
-version = "0.2.0"
+version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -10,46 +10,58 @@ publish.workspace = true
 
 
 [dependencies]
-# Entity Component System (ECS) 라이브러리
-# License: MIT or Apache-2.0
+# A macro to generate structures which behave like bitflags.
+# License: MIT OR Apache-2.0
+bitflags = "2.6"
+
+# A fast, minimal, and ergonomic entity-component-system library
+# License: MIT OR Apache-2.0
 hecs = "0.10"
 
-# Lazy initialization 라이브러리
-# License: MIT or Apache-2.0
+# A macro for declaring lazily evaluated statics in Rust.
+# License: MIT OR Apache-2.0
 lazy_static = "1.5"
 
-# 로그 인터페이스 라이브러리
-# License: MIT or Apache-2.0
+# A lightweight logging facade for Rust
+# License: MIT OR Apache-2.0
 log = "0.4"
 
-# 에러 타입을 쉽게 만들어주는 라이브러리
-# License: MIT or Apache-2.0
+# Rusty File Dialog
+# License: MIT
+rfd = "0.14"
+
+# A generic serialization/deserialization framework
+# License: MIT OR Apache-2.0
+serde = "1.0"
+
+# derive(Error)
+# License: MIT OR Apache-2.0
 thiserror = "1.0"
 
-# 윈도우 생성 라이브러리
+# Cross-platform window creation library.
 # License: Apache-2.0
-winit = { version = "0.30", features = ["rwh_05"] }
+winit = "0.30"
 
-# 크로스 플랫폼 렌더링 라이브러리 
-# License: MIT or Apache-2.0
+# Rusty WebGPU API wrapper
+# License: MIT OR Apache-2.0
 wgpu = "22"
 
 
 
 # 자체 프레임워크 라이브러리
-mod-error = { path = "../mod-error" }
+mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-render = { path = "../mod-render" }
-mod-scene = { path = "../mod-scene" }
-mod-util = { path = "../mod-util" }
 
 
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 # 사용 플랫폼: Windows, macOS
-# 동기화를 위한 스레드 blocking 라이브러리
-# License: MIT or Apache-2.0
+# Synchronously block the thread until a future completes
+# License: Apache-2.0 OR MIT
 pollster = "0.3"
+
+
 
 
 

@@ -1,31 +1,22 @@
 mod model;
+use std::{error::Error, fmt};
+
+use hecs::{Entity, World};
+use mod_app::{app::AppHandle, scene::GameScene};
+use mod_render::{
+    anim::Animation, 
+    brush::TextureBrush, 
+    camera::{CameraComponent, CameraDataLayout, CameraObject, PerspectiveLh, Projection}, 
+    object::{update_hierarchy, GameObjectComponent, GameObjectDataLayout, Transform, WorldTransform}, 
+    skin::BoneMatrixDataLayout
+};
+use winit::{
+    event::Modifiers, 
+    keyboard::{KeyCode, KeyLocation}, 
+    window::Window
+};
+
 use self::model::*;
-
-use std::error::Error;
-use std::fmt;
-use std::thread;
-
-use hecs::Entity;
-use hecs::World;
-use mod_render::anim::Animation;
-use mod_render::brush::TextureBrush;
-use mod_render::camera::CameraComponent;
-use mod_render::camera::CameraDataLayout;
-use mod_render::camera::CameraObject;
-use mod_render::camera::PerspectiveLh;
-use mod_render::camera::Projection;
-use mod_render::object::update_hierarchy;
-use mod_render::object::GameObjectComponent;
-use mod_render::object::GameObjectDataLayout;
-use mod_render::object::Transform;
-use mod_render::object::WorldTransform;
-use mod_render::skin::BoneMatrixDataLayout;
-use mod_scene::AppHandle;
-use mod_scene::GameScene;
-use winit::event::Modifiers;
-use winit::keyboard::KeyCode;
-use winit::keyboard::KeyLocation;
-use winit::window::Window;
 
 
 
@@ -39,19 +30,18 @@ use winit::window::Window;
 #[cfg(target_pointer_width = "64")]
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
-    use mod_app::AppBuilder;
-    use mod_parallelism::MAIN_THREAD_ID;
-    use mod_util::AppDpi;
+    use mod_app::{app::AppBuilder, etc::WindowSize};
+    use mod_parallelism::is_main_thread;
 
-    assert_eq!(thread::current().id(), *MAIN_THREAD_ID, "Invalid main thread id!");
+    assert!(is_main_thread(), "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.
     env_logger::init();
     log::info!("클라이언트 애플리케이션 실행...");
 
     AppBuilder::new(Box::new(ExampleScene::default()))
-        .with_title("Example: Animation")
-        .with_dpi(AppDpi::W1280H720)
+        .with_window_title("Example: Animation")
+        .with_window_size(WindowSize::W1280H720)
         .with_fullscreen(false)
         .build_and_run()
 }
@@ -60,6 +50,7 @@ fn main() {
 
 /// 예제 장면입니다.
 struct ExampleScene {
+    world: World, 
     main_camera: Entity, 
     player: Entity, 
     anim_timer: f32, 
@@ -69,7 +60,7 @@ struct ExampleScene {
 
 impl ExampleScene {
     /// 카메라 오브젝트를 생성합니다.
-    fn spawn_main_camera(&mut self, window: &Window, world: &mut World, app: &dyn AppHandle) {
+    fn spawn_main_camera(&mut self, window: &Window, app: &dyn AppHandle) {
         // 로컬 변환 행렬과 월드 변환 행렬을 생성합니다.
         let trans = Transform::from_rotation_translation(
             gmm::Quaternion::from_rotation_x(15f32.to_radians()), 
@@ -92,7 +83,7 @@ impl ExampleScene {
         );
 
         // 카메라 오브젝트를 생성합니다.
-        self.main_camera = world.spawn((
+        self.main_camera = self.world.spawn((
             trans, 
             world_trans, 
             projection, 
@@ -101,11 +92,11 @@ impl ExampleScene {
     }
 
     /// 모델 에셋을 생성합니다.
-    fn spawn_aris_original_model(&mut self, world: &mut World, app: &dyn AppHandle) {
+    fn spawn_aris_original_model(&mut self, app: &dyn AppHandle) {
         let (player, animations) = spawn_model_from_asset(
             app.render_device(), 
             app.render_queue(), 
-            world, 
+            &mut self.world, 
             TextureBrush, 
             "Aris_Original.ron"
         );
@@ -114,9 +105,9 @@ impl ExampleScene {
     }
 
     /// 카메라를 준비합니다.
-    fn preapre_camera(world: &mut World, app: &dyn AppHandle) {
+    fn preapre_camera(&self, app: &dyn AppHandle) {
         type QueryType<'a> = (&'a WorldTransform, &'a Projection, &'a CameraComponent);
-        let mut query = world.query::<QueryType>();
+        let mut query = self.world.query::<QueryType>();
         for (_, (world_transform, projection, camera)) in query.iter() {
             let eye = world_transform.get_translation();
             let dir = world_transform.get_forward_vector();
@@ -136,9 +127,9 @@ impl ExampleScene {
     }
 
     /// 오브젝트를 준비합니다.
-    fn prepare_objects(world: &mut World, app: &dyn AppHandle) {
+    fn prepare_objects(&self, app: &dyn AppHandle) {
         type QueryType<'a> = (&'a WorldTransform, &'a GameObjectComponent);
-        let mut query = world.query::<QueryType>();
+        let mut query = self.world.query::<QueryType>();
         for (_, (world_transform, object)) in query.iter() {
             object.update(
                 app.render_queue(), 
@@ -155,11 +146,10 @@ impl GameScene for ExampleScene {
     fn on_enter(
         &mut self, 
         window: &Window, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.spawn_main_camera(window, world, app);
-        self.spawn_aris_original_model(world, app);
+        self.spawn_main_camera(window, app);
+        self.spawn_aris_original_model(app);
         Ok(())
     }
 
@@ -167,10 +157,9 @@ impl GameScene for ExampleScene {
     fn on_exit(
         &mut self, 
         window: Option<&Window>, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        world.clear();
+        self.world.clear();
         Ok(())
     }
 
@@ -181,7 +170,6 @@ impl GameScene for ExampleScene {
         location: KeyLocation, 
         modifiers: Modifiers, 
         window: &Window, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // 애니메이션 변경
@@ -197,7 +185,6 @@ impl GameScene for ExampleScene {
         &mut self, 
         elapsed_time_sec: f32, 
         window: &Window, 
-        world: &mut World, 
         app: &dyn AppHandle 
     ) -> Result<(), Box<dyn Error + Send>> {
         let timer = app.timer();
@@ -209,16 +196,16 @@ impl GameScene for ExampleScene {
 
             for bone in keyframe.bones() {
                 for (entity, bone_transform) in bone.target().bones().iter().cloned().zip(bone.transforms()) {
-                    if let Ok(transform) = world.query_one_mut::<&mut Transform>(entity) {
+                    if let Ok(transform) = self.world.query_one_mut::<&mut Transform>(entity) {
                         **transform = bone_transform.as_matrix();
                     }
                 }
                 
                 let root_entity = bone.target().root_bone().clone();
-                update_hierarchy(world, None, root_entity);
+                update_hierarchy(&mut self.world, None, root_entity);
 
                 let iter = bone.target().bones().iter()
-                    .map(|&entity| **world.get::<&WorldTransform>(entity).unwrap())
+                    .map(|&entity| **self.world.get::<&WorldTransform>(entity).unwrap())
                     .map(|matrix| matrix.into());
                 bone.target().update(app.render_queue(), BoneMatrixDataLayout::new(iter));
             }
@@ -231,12 +218,12 @@ impl GameScene for ExampleScene {
             transform, 
             world_transform, 
             object
-        ) = world.query_one_mut::<QueryPlayer>(self.player).unwrap();
+        ) = self.world.query_one_mut::<QueryPlayer>(self.player).unwrap();
         (**transform) = (**transform) * rotation;
         (**world_transform) = **transform;
 
         // // 계층 구조를 갱신합니다.
-        update_hierarchy(world, None, self.player);
+        update_hierarchy(&mut self.world, None, self.player);
 
         Ok(())
     }
@@ -246,11 +233,10 @@ impl GameScene for ExampleScene {
         &self, 
         window: &Window, 
         surface: &wgpu::Surface, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        Self::preapre_camera(world, app);
-        Self::prepare_objects(world, app);
+        self.preapre_camera(app);
+        self.prepare_objects(app);
         Ok(())
     }
 
@@ -259,7 +245,6 @@ impl GameScene for ExampleScene {
         &self, 
         render_target_view: &wgpu::TextureView, 
         depth_stencil_view: &wgpu::TextureView, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
@@ -271,7 +256,7 @@ impl GameScene for ExampleScene {
         );
 
         // 카메라 오브젝트를 가져옵니다.
-        let camera = match world.get::<&CameraComponent>(self.main_camera) {
+        let camera = match self.world.get::<&CameraComponent>(self.main_camera) {
             Ok(component) => component, 
             _ => return Ok(()),
         };
@@ -311,7 +296,7 @@ impl GameScene for ExampleScene {
             );
 
             rpass.set_bind_group(0, &camera.bind_group(), &[]);
-            TextureBrush::draw(world, device, &mut rpass);
+            TextureBrush::draw(&self.world, device, &mut rpass);
         }
         
         queue.submit([encoder.finish()]);
@@ -323,6 +308,7 @@ impl Default for ExampleScene {
     #[inline]
     fn default() -> Self {
         Self { 
+            world: World::new(), 
             main_camera: Entity::DANGLING, 
             player: Entity::DANGLING, 
             anim_timer: 0.0, 

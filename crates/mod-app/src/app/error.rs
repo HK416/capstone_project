@@ -1,14 +1,10 @@
-use thiserror::Error;
-use winit::error::EventLoopError;
+use winit::error::{EventLoopError, OsError};
 
-
-
-/// 애플리케이션에서 발생하는 오류 목록입니다.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum AppError {
     /// 시스템에서 오류가 발생한 경우 발생하는 오류입니다.
     #[error("A system error occurred for the following reasons: {0}")]
-    System(String), 
+    System(#[from] OsError), 
 
     /// 이벤트 루프에서 오류가 발생한 경우 발생하는 오류입니다.
     #[error("An event loop error occurred for the following reasons: {0}")]

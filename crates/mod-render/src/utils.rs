@@ -1,8 +1,5 @@
-use std::error::Error;
 use std::sync::Arc;
 
-use mod_error::err_msg;
-use mod_error::RuntimeError;
 use winit::window::Window;
 
 use crate::RenderError;
@@ -26,7 +23,7 @@ pub async fn init_wgpu(enable_debug_layer: bool) -> Result<(
     Arc<wgpu::Adapter>, 
     Arc<wgpu::Device>, 
     Arc<wgpu::Queue>
-), Box<dyn Error + Send>> {
+), RenderError> {
     let instance = create_instance(enable_debug_layer);
     let adapter = create_adapter(&instance).await?;
     let (device, queue) = create_device_and_queue(&adapter).await?;
@@ -63,7 +60,7 @@ fn create_instance(enable_debug_layer: bool) -> Arc<wgpu::Instance> {
 /// 적절한 `wgpu` 장치 어댑터를 찾지 못한 경우 `RenderError`를 반환합니다.
 /// 
 #[must_use]
-async fn create_adapter(instance: &wgpu::Instance)-> Result<Arc<wgpu::Adapter>, Box<dyn Error + Send>> {
+async fn create_adapter(instance: &wgpu::Instance)-> Result<Arc<wgpu::Adapter>, RenderError> {
     instance.request_adapter(
         &wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance, 
@@ -72,7 +69,7 @@ async fn create_adapter(instance: &wgpu::Instance)-> Result<Arc<wgpu::Adapter>, 
         }
     ).await
     .map(|adapter| adapter.into())
-    .ok_or(err_msg!(RenderError::NoSuitableAdapter))
+    .ok_or(RenderError::NoSuitableAdapter)
 }
 
 
@@ -86,8 +83,8 @@ async fn create_adapter(instance: &wgpu::Instance)-> Result<Arc<wgpu::Adapter>, 
 async fn create_device_and_queue(adapter: &wgpu::Adapter) -> Result<(
     Arc<wgpu::Device>, 
     Arc<wgpu::Queue>
-), Box<dyn Error + Send>> {
-    let result = adapter.request_device(
+), RenderError> {
+    adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: None, 
             memory_hints: wgpu::MemoryHints::Performance, 
@@ -98,12 +95,9 @@ async fn create_device_and_queue(adapter: &wgpu::Adapter) -> Result<(
                 .using_resolution(adapter.limits())
         }, 
         None
-    ).await;
-
-    match result {
-        Ok((device, queue)) => Ok((device.into(), queue.into())), 
-        Err(e) => Err(err_msg!(RenderError::from(e))),
-    }
+    ).await
+    .map(|(device, queue)| (device.into(), queue.into()))
+    .map_err(|e| RenderError::from(e))
 }
 
 
@@ -118,17 +112,17 @@ pub fn create_surface(
     window: Arc<Window>, 
     instance: &wgpu::Instance, 
     adapter: &wgpu::Adapter
-) -> Result<Arc<wgpu::Surface<'static>>, Box<dyn Error + Send>> {
+) -> Result<Arc<wgpu::Surface<'static>>, RenderError> {
     // `wgpu` 창 표면을 생성합니다.
     let result = instance.create_surface(wgpu::SurfaceTarget::from(window));
     let surface = match result {
         Ok(surface) => surface, 
-        Err(e) => return Err(err_msg!(RenderError::from(e))), 
+        Err(e) => return Err(RenderError::from(e)), 
     };
     
     // 생성된 창 표면이 장치 어댑터와 호환되는지 확인합니다.
     if !adapter.is_surface_supported(&surface) {
-        return Err(err_msg!(RenderError::NoSuitableAdapter));
+        return Err(RenderError::NoSuitableAdapter);
     }
 
     Ok(surface.into())
@@ -156,7 +150,7 @@ pub fn config_swapchain(
                 false => wgpu::PresentMode::AutoVsync, 
             }, 
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT, 
-            desired_maximum_frame_latency: 2, 
+            desired_maximum_frame_latency: 0, 
             view_formats: vec![], 
         }
     );

@@ -1,33 +1,23 @@
-use std::fmt;
-use std::error::Error;
-use std::io;
-use std::io::BufReader;
-use std::net::SocketAddr;
-use std::net::TcpStream;
-use std::net::ToSocketAddrs;
-use std::thread;
-use std::thread::JoinHandle;
-use std::collections::VecDeque;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::io::Read;
+use std::{
+    collections::VecDeque, 
+    error::Error, 
+    fmt, 
+    io::{self, BufReader, Read}, 
+    net::{SocketAddr, TcpStream}, 
+    sync::{Arc, Mutex}, 
+    thread::JoinHandle
+};
 
-use hecs::World;
-use mod_error::err_msg;
-use mod_error::RuntimeError;
-use mod_network::InitPacket;
-use mod_network::PacketType;
-use mod_network::RawPacket;
-use mod_scene::AppHandle;
-use mod_scene::GameScene;
-use mod_scene::GameSceneFlow;
-use mod_util::AppEvent;
-use winit::event_loop::EventLoopProxy;
-use winit::window::Window;
-
-use mod_network::PacketParser;
+use mod_app::{
+    app::AppHandle, 
+    etc::AppEvent, 
+    scene::{GameScene, GameSceneFlow}
+};
+use mod_network::{InitPacket, PacketParser, PacketType, RawPacket};
+use winit::{event_loop::EventLoopProxy, window::Window};
 
 use super::TestBedScene;
+
 
 type Task = JoinHandle<Result<(), Box<dyn Error + Send>>>;
 
@@ -61,17 +51,12 @@ impl GameScene for StartupScene {
     fn on_enter(
         &mut self, 
         window: &Window, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 수행할 작업을 추가합니다.
-        // 현재는 새로운 스레드를 생성하여 
-        // 주어진 IP 주소로 서버에 연결하는 작업만 수행합니다.
-        // 
-        let addr = "localhost:7878".to_socket_addrs().unwrap().next().unwrap();
+        let addr = app.address().clone();
         let proxy_cloned = app.event_loop_proxy().clone();
         let future = self.stream.clone();
-        self.running_task.push_back(thread::spawn(move || {
+        self.running_task.push_back(std::thread::spawn(move || {
             let stream = connect_and_run(proxy_cloned, addr)?;
             let mut future_guard = future.lock().unwrap();
             *future_guard = Some(stream);
@@ -85,7 +70,6 @@ impl GameScene for StartupScene {
     fn on_received_packet(
         &mut self, 
         raw_packet: RawPacket, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // Init Packet에서 데이터를 수집하고 다음 게임 장면으로 전환합니다.
@@ -96,13 +80,15 @@ impl GameScene for StartupScene {
                 guard.take().unwrap()
             };
             
-            app.set_scene_flow(GameSceneFlow::Change(
-                Box::new(TestBedScene::new(
-                    stream, 
-                    packet.client_id, 
-                    packet.world
+            app.event_loop_proxy().send_event(
+                AppEvent::SetGameSceneFlow(GameSceneFlow::Change(
+                    Box::new(TestBedScene::new(
+                        stream, 
+                        packet.client_id, 
+                        packet.world
+                    ))
                 ))
-            ));
+            ).unwrap();
         }
 
         Ok(())
@@ -113,7 +99,6 @@ impl GameScene for StartupScene {
         &mut self, 
         elapsed_time_sec: f32, 
         window: &Window, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // 처리할 작업이 없는 경우 함수 실행을 생략합니다.
@@ -140,7 +125,6 @@ impl GameScene for StartupScene {
         &self, 
         render_target_view: &wgpu::TextureView, 
         depth_stencil_view: &wgpu::TextureView, 
-        world: &mut World, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // 게임을 초기화 하는 동안 검정색 화면을 출력합니다.
@@ -192,14 +176,13 @@ fn connect_and_run(
 ) -> Result<Arc<TcpStream>, Box<dyn Error + Send>> {
     // 서버에 연결합니다.
     let stream: Arc<TcpStream> = connect_to_server(addr)
-        .map_err(|e| err_msg!(e))?
+        .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?
         .into();
 
     // 별도의 스레드에서
     // 네트워크 패킷 수신 루프를 실행합니다.
-    use std::thread;
     let stream_cloned = stream.clone();
-    thread::spawn(move || network_loop(proxy, stream_cloned));
+    std::thread::spawn(move || network_loop(proxy, stream_cloned));
 
     Ok(stream)
 }
@@ -235,7 +218,7 @@ fn network_loop(
 
         let mut buffer = [0; 1024]; 
         match server_stream.read(&mut buffer){
-            Ok(0) => if proxy.send_event(AppEvent::ClosedConnection).is_err() {
+            Ok(0) => if proxy.send_event(AppEvent::ClosedSocket).is_err() {
                 break 'recv;
             },
             Ok(n) =>{

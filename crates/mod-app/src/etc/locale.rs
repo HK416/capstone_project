@@ -1,5 +1,4 @@
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 
 
@@ -7,7 +6,7 @@ use serde::Serialize;
 #[repr(C)]
 #[derive(Deserialize, Serialize)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AppLocale {
+pub enum Locale {
     #[default]
     English, 
     Japanese, 

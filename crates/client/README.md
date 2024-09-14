@@ -38,10 +38,11 @@ cargo run --bin client --release -- <OPTIONS>
 
 |명령어|기능|
 |:---|:---|
-| --num-threads | (예정) 사용 가능한 최대 스레드의 갯수를 지정합니다. |
+| --num-threads <숫자> | (예정) 사용 가능한 최대 스레드의 갯수를 지정합니다. |
 | --show-frame-rate | (예정) 현재 프레임 레이트를 출력합니다. |
 | --no-vsync | 수직 동기화를 비활성화 합니다. |
 | --enable-debug-layer | 렌더러의 디버깅 레이어를 활성화 합니다. |
+| --server-addr <문자열> | 서버의 주소를 설정합니다. |
 
 </br>
 
