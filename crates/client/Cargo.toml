@@ -67,15 +67,3 @@ mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-physics = { path = "../mod-physics" }
 mod-render = { path = "../mod-render" }
-
-
-
-
-
-[[example]]
-name = "cube"
-path = "./examples/cube/main.rs"
-
-[[example]]
-name = "animation"
-path = "./examples/animation/main.rs"
