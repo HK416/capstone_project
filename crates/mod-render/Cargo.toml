@@ -1,6 +1,6 @@
 [package]
 name = "mod-render"
-version = "0.1.1"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -10,33 +10,33 @@ publish.workspace = true
 
 
 [dependencies]
-# byte 캐스팅 라이브러리
-# License: Zlib or Apache-2.0 or MIT
-bytemuck = { version = "1.16", features = ["derive"] }
+# A crate for mucking around with piles of bytes.
+# License: Zlib OR Apache-2.0 OR MIT
+bytemuck = { version = "1.18", features = ["derive"] }
 
-# 게임 수학 라이브러리
+# Math library for video games
 # License: MIT
-gmm = { version = "0.2", features = ["bytemuck", "serde"] }
+gmm = { version = "0.2", features = ["bytemuck"] }
 
-# Entity Component System (ECS) 라이브러리
-# License: MIT or Apache-2.0
-hecs = "0.10"
-
-# Lazy initialization 라이브러리
-# License: MIT or Apache-2.0
+# A macro for declaring lazily evaluated statics in Rust.
+# License: MIT OR Apache-2.0
 lazy_static = "1.5"
 
-# 로그 인터페이스 라이브러리
-# License: MIT or Apache-2.0
+# A lightweight logging facade for Rust
+# License: MIT OR Apache-2.0
 log = "0.4"
 
-# 에러 타입을 쉽게 만들어주는 라이브러리
-# License: MIT or Apache-2.0
+# Compile-time assertions to ensure that invariants are met.
+# License: MIT OR Apache-2.0
+static_assertions = "1.1"
+
+# derive(Error)
+# License: MIT OR Apache-2.0
 thiserror = "1.0"
 
-# 윈도우 생성 라이브러리
+# Cross-platform window creation library.
 # License: Apache-2.0
-winit = { version = "0.30", features = ["rwh_05"] }
+winit = "0.30"
 
 # 크로스 플랫폼 렌더링 라이브러리 
 # License: MIT or Apache-2.0

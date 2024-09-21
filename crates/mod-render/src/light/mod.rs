@@ -1,3 +1,5 @@
-pub mod direction;
-pub mod point;
-pub mod spot;
+mod global;
+mod local;
+
+pub use self::global::*;
+pub use self::local::*;
