@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use hecs::Entity;
 
-use crate::mesh::Mesh;
+use crate::mesh::NonSkinnedMesh;
 
 
 
@@ -18,7 +18,7 @@ pub type SkinComponent = Arc<Skin>;
 /// 3차원 메쉬의 스키닝 데이터입니다.
 #[derive(Debug)]
 pub struct Skin {
-    mesh: Arc<Mesh>, 
+    mesh: Arc<NonSkinnedMesh>, 
     root_bone: Entity, 
     bones: Vec<Entity>, 
     bone_matrix_buffer: Arc<BoneMatrixBuffer>, 
@@ -82,7 +82,7 @@ impl Skin {
     /// 
     #[must_use]
     pub fn new<I>(
-        mesh: Arc<Mesh>, 
+        mesh: Arc<NonSkinnedMesh>, 
         root_bone: Entity, 
         bones: I, 
         device: &wgpu::Device, 
@@ -168,7 +168,7 @@ impl Skin {
     /// 컴포넌트에 연결된 메쉬를 반환합니다.
     #[inline]
     #[must_use]
-    pub fn mesh(&self) -> &Mesh {
+    pub fn mesh(&self) -> &NonSkinnedMesh {
         &self.mesh
     }
 

@@ -21,7 +21,7 @@ use mod_render::material::MaterialComponent;
 use mod_render::material::SamplerPool;
 use mod_render::material::TexturePool;
 use mod_render::mesh::Indices;
-use mod_render::mesh::Mesh;
+use mod_render::mesh::NonSkinnedMesh;
 use mod_render::mesh::MeshBuilder;
 use mod_render::mesh::MeshComponent;
 use mod_render::mesh::VertexAttributeValues;
@@ -259,7 +259,7 @@ fn create_mesh(
 fn create_skin(
     device: &wgpu::Device, 
     queue: &wgpu::Queue, 
-    mesh: Arc<Mesh>, 
+    mesh: Arc<NonSkinnedMesh>, 
     node: SkinNode, 
     objects: &mut HashMap<String, Entity>
 ) -> SkinComponent {

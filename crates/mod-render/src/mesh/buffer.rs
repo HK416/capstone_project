@@ -1,8 +1,6 @@
 use std::ops;
 
-use super::Indices;
-use super::VertexAttributeValues; 
-use super::Vertices;
+use super::{Indices, VertexAttributeValues, Vertices};
 
 
 
@@ -33,7 +31,6 @@ impl IndexBuffer {
         );
 
         // 인덱스 데이터를 정점 버퍼에 작성합니다.
-        log::debug!("Write index buffer ({:?})", label);
         queue.write_buffer(&buffer, 0, values.as_bytes());
 
         Self { count: values.count() as u32, buffer }.into()
@@ -86,7 +83,6 @@ impl VertexBuffer {
         );
 
         // 정점 데이터를 정점 버퍼에 작성합니다.
-        log::debug!("Write vertex buffer ({:?})", label);
         queue.write_buffer(&buffer, 0, values.as_bytes());
 
         Self(buffer).into()
@@ -111,7 +107,6 @@ impl VertexBuffer {
         );
 
         // 정점 데이터를 정점 버퍼에 작성합니다.
-        log::debug!("Write attribute vertex buffer ({:?})", label);
         queue.write_buffer(&buffer, 0, values.as_bytes());
 
         Self(buffer).into()

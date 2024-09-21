@@ -1,7 +1,18 @@
-use std::mem::size_of;
-use bytemuck::cast_slice;
+use std::mem;
 
-use super::Attribute;
+
+
+/// 정점 속성 식별자입니다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Attribute {
+    Colors, 
+    Normals, 
+    Tangents, 
+    Texcoords0, 
+    Texcoords1, 
+    BoneIndices, 
+    BoneWeights, 
+}
 
 
 
@@ -31,13 +42,13 @@ impl Indices {
     /// 인덱스 데이터의 바이트 단위 크기를 반환합니다.
     #[inline]
     pub fn stride(&self) -> usize {
-        size_of::<u32>()
+        mem::size_of::<u32>()
     }
 
     /// 인덱스 데이터의 바이트 배열을 반환합니다.
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
-        cast_slice(&self.0)
+        bytemuck::cast_slice(&self.0)
     }
 }
 
@@ -69,13 +80,13 @@ impl Vertices {
     /// 정점 데이터 요소의 바이트 단위 크기를 반환합니다.
     #[inline]
     pub fn stride(&self) -> usize {
-        size_of::<gmm::Float3>()
+        mem::size_of::<gmm::Float3>()
     }
 
     /// 정점 데이터의 바이트 배열을 반환합니다.
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
-        cast_slice(&self.0)
+        bytemuck::cast_slice(&self.0)
     }
 }
 
@@ -124,13 +135,13 @@ impl VertexAttributeValues {
     #[inline]
     pub fn stride(&self) -> usize {
         match self {
-            VertexAttributeValues::Colors(_) => size_of::<gmm::Float4>(), 
-            VertexAttributeValues::Normals(_) => size_of::<gmm::Float3>(), 
-            VertexAttributeValues::Tangents(_) => size_of::<gmm::Float3>(), 
-            VertexAttributeValues::Texcoords0(_) => size_of::<gmm::Float2>(), 
-            VertexAttributeValues::Texcoords1(_) => size_of::<gmm::Float2>(), 
-            VertexAttributeValues::BoneIndices(_) => size_of::<gmm::UInteger4>(), 
-            VertexAttributeValues::BoneWeights(_) => size_of::<gmm::Float4>(), 
+            VertexAttributeValues::Colors(_) => mem::size_of::<gmm::Float4>(), 
+            VertexAttributeValues::Normals(_) => mem::size_of::<gmm::Float3>(), 
+            VertexAttributeValues::Tangents(_) => mem::size_of::<gmm::Float3>(), 
+            VertexAttributeValues::Texcoords0(_) => mem::size_of::<gmm::Float2>(), 
+            VertexAttributeValues::Texcoords1(_) => mem::size_of::<gmm::Float2>(), 
+            VertexAttributeValues::BoneIndices(_) => mem::size_of::<gmm::UInteger4>(), 
+            VertexAttributeValues::BoneWeights(_) => mem::size_of::<gmm::Float4>(), 
         }
     }
 
@@ -138,13 +149,13 @@ impl VertexAttributeValues {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         match self {
-            VertexAttributeValues::Colors(values) => cast_slice(values), 
-            VertexAttributeValues::Normals(values) => cast_slice(values), 
-            VertexAttributeValues::Tangents(values) => cast_slice(values), 
-            VertexAttributeValues::Texcoords0(values) => cast_slice(values), 
-            VertexAttributeValues::Texcoords1(values) => cast_slice(values), 
-            VertexAttributeValues::BoneIndices(values) => cast_slice(values), 
-            VertexAttributeValues::BoneWeights(values) => cast_slice(values), 
+            VertexAttributeValues::Colors(values) => bytemuck::cast_slice(values), 
+            VertexAttributeValues::Normals(values) => bytemuck::cast_slice(values), 
+            VertexAttributeValues::Tangents(values) => bytemuck::cast_slice(values), 
+            VertexAttributeValues::Texcoords0(values) => bytemuck::cast_slice(values), 
+            VertexAttributeValues::Texcoords1(values) => bytemuck::cast_slice(values), 
+            VertexAttributeValues::BoneIndices(values) => bytemuck::cast_slice(values), 
+            VertexAttributeValues::BoneWeights(values) => bytemuck::cast_slice(values), 
         }
     }
 
