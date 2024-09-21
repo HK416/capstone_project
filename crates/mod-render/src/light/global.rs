@@ -1,4 +1,4 @@
-use std::{mem, sync::{Arc, OnceLock}};
+use std::{mem, ops, sync::{Arc, OnceLock}};
 
 use bytemuck::{Pod, Zeroable};
 
@@ -38,7 +38,6 @@ impl Default for GlobalLightDataLayout {
 /// 
 #[derive(Debug, Clone)]
 pub struct GlobalLightUniform {
-    /// 전역 조명의 유니폼 버퍼
     buffer: Arc<wgpu::Buffer>, 
 }
 
@@ -94,3 +93,13 @@ impl GlobalLightUniform {
         });
     }
 }
+
+impl ops::Deref for GlobalLightUniform {
+    type Target = wgpu::Buffer;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
+    }
+}
+
+static_assertions::const_assert_eq!(GlobalLightUniform::SIZE as usize, mem::size_of::<GlobalLightDataLayout>());

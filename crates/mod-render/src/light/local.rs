@@ -1,4 +1,4 @@
-use std::{mem, sync::Arc};
+use std::{mem, ops, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
 
@@ -128,3 +128,13 @@ impl LocalLightUniform {
         });
     }
 }
+
+impl ops::Deref for LocalLightUniform {
+    type Target = wgpu::Buffer;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
+    }
+}
+
+static_assertions::const_assert_eq!(LocalLightUniform::SIZE as usize, mem::size_of::<LocalLightArrayDataLayout>());
