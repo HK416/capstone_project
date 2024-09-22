@@ -128,15 +128,23 @@ impl TexturePool {
         }
     }
 
+    /// 주어진 텍스처에 해당하는 텍스처를 풀 객체에서 가져옵니다.
+    /// 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    #[must_use]
+    pub fn get<N: AsRef<str>>(texture_name: N) -> Option<Arc<wgpu::Texture>> {
+        let pool_guard = POOL.lock().unwrap();
+        pool_guard.get(texture_name.as_ref()).cloned()
+    }
+
     /// 주어진 텍스처에 해당하는 텍스처가 풀 객체에 포함되어있는지 여부를 반환합니다.
     #[must_use]
-    pub fn contains<N: AsRef<String>>(texture_name: N) -> bool {
+    pub fn contains<N: AsRef<str>>(texture_name: N) -> bool {
         let pool_guard = POOL.lock().unwrap();
         pool_guard.contains_key(texture_name.as_ref())
     }
 
     /// 주어진 텍스처에 해당하는 텍스처를 풀 객체에서 제거합니다.
-    pub fn remove<N: AsRef<String>>(texture_name: N) -> Option<Arc<wgpu::Texture>> {
+    pub fn remove<N: AsRef<str>>(texture_name: N) -> Option<Arc<wgpu::Texture>> {
         let mut pool_guard = POOL.lock().unwrap();
         pool_guard.remove(texture_name.as_ref())
     }

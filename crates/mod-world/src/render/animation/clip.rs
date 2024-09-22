@@ -104,8 +104,6 @@ impl AnimationClip {
             .map(|(prev, next)| {
                 Skinning {
                     skinned_mesh: prev.skinned_mesh.clone(), 
-                    root_bone: prev.root_bone.clone(), 
-                    bones: prev.bones.clone(), 
                     transforms: prev.transforms.iter().zip(next.transforms.iter())
                         .map(|(&a, &b)| {
                             (1.0 - t) * a + t * b

@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 /// 모델 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModelBlob {
-    /// 모델의 이름입니다.
-    pub name: String, 
+    /// 모델을 구성하는 노드 데이터입니다.
+    pub root: NodeBlob, 
+
+    /// 모델에 포함된 애니메이션 데이터입니다.
+    pub animations: Vec<AnimationBlob>, 
 }
 
 
@@ -88,7 +91,7 @@ pub struct SkinBlob {
     pub bone_names: Vec<String>, 
 
     /// 바인드 포즈 변환 행렬 데이터입니다.
-    pub bindpose: Vec<gmm::Float4x4>, 
+    pub bindposes: Vec<gmm::Float4x4>, 
 }
 
 
@@ -139,19 +142,86 @@ pub struct TextureBlob {
     pub name: String, 
 
     /// 텍스처의 차원입니다.
-    pub dimension: wgpu::TextureViewDimension, 
+    pub dimension: ViewDimension, 
 
     /// 텍스처 샘플러의 필터링 모드입니다.
-    pub filter_mode: wgpu::FilterMode, 
+    pub filter_mode: FilterMode, 
 
     /// 텍스처 샘플러의 u 좌표계 매핑 모드입니다.
-    pub address_u: wgpu::AddressMode, 
+    pub address_u: AddressMode, 
 
     /// 텍스처 샘플러의 v 좌표계 매핑 모드입니다.
-    pub address_v: wgpu::AddressMode, 
+    pub address_v: AddressMode, 
 
     /// 텍스처 샘플러의 w 좌표계 매핑 모드입니다.
-    pub address_w: wgpu::AddressMode, 
+    pub address_w: AddressMode, 
+}
+
+
+
+/// 텍스처 차원 데이터입니다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ViewDimension {
+    D1, 
+    D2, 
+    D2Array, 
+    Cube, 
+    CubeArray, 
+    D3
+}
+
+impl Into<wgpu::TextureViewDimension> for ViewDimension {
+    #[inline]
+    fn into(self) -> wgpu::TextureViewDimension {
+        match self {
+            ViewDimension::D1 => wgpu::TextureViewDimension::D1,
+            ViewDimension::D2 => wgpu::TextureViewDimension::D2,
+            ViewDimension::D2Array => wgpu::TextureViewDimension::D2Array,
+            ViewDimension::Cube => wgpu::TextureViewDimension::Cube,
+            ViewDimension::CubeArray => wgpu::TextureViewDimension::CubeArray,
+            ViewDimension::D3 => wgpu::TextureViewDimension::D3,
+        }
+    }
+}
+
+
+
+/// 텍스처 샘플러의 필터 모드입니다.
+#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FilterMode {
+    Nearest, 
+    Linear, 
+}
+
+impl Into<wgpu::FilterMode> for FilterMode {
+    #[inline]
+    fn into(self) -> wgpu::FilterMode {
+        match self {
+            FilterMode::Nearest => wgpu::FilterMode::Nearest, 
+            FilterMode::Linear => wgpu::FilterMode::Linear, 
+        }
+    }
+}
+
+/// 텍스터 샘플러의 좌표 모드입니다.
+#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AddressMode {
+    ClampToEdge, 
+    Repeat, 
+    MirrorRepeat, 
+}
+
+impl Into<wgpu::AddressMode> for AddressMode {
+    #[inline]
+    fn into(self) -> wgpu::AddressMode {
+        match self {
+            AddressMode::ClampToEdge => wgpu::AddressMode::ClampToEdge, 
+            AddressMode::Repeat => wgpu::AddressMode::Repeat, 
+            AddressMode::MirrorRepeat => wgpu::AddressMode::MirrorRepeat, 
+        }
+    }
 }
 
 

@@ -1,5 +1,7 @@
 use std::sync::{Arc, OnceLock};
 
+use crate::object::GameObject;
+
 use super::{BoneUniform, ModelMesh, SkinnedMeshUniform};
 
 
@@ -9,6 +11,12 @@ use super::{BoneUniform, ModelMesh, SkinnedMeshUniform};
 pub struct SkinnedMesh {
     /// 공유 메쉬 데이터입니다.
     pub(super) model_mesh: Arc<ModelMesh>, 
+
+    /// 최상위 뼈 노드입니다.
+    pub(super) root_bone: Arc<GameObject>, 
+
+    /// 스키닝 메쉬를 구성하는 뼈 노드입니다.
+    pub(super) bones: Vec<Arc<GameObject>>, 
 
     /// 메쉬의 유니폼 버퍼입니다.
     pub(super) skinned_mesh_uniform: SkinnedMeshUniform, 
@@ -74,6 +82,18 @@ impl SkinnedMesh {
 }
 
 impl SkinnedMesh {
+    #[inline]
+    #[must_use]
+    pub fn root_bone(&self) -> &Arc<GameObject> {
+        &self.root_bone
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn bones(&self) -> &[Arc<GameObject>] {
+        &self.bones
+    }
+
     /// 모델 메쉬 데이터를 가져옵니다.
     #[inline]
     #[must_use]

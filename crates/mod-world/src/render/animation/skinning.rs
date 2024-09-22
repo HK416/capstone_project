@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{object::GameObject, render::mesh::SkinnedMesh};
+use crate::render::mesh::SkinnedMesh;
 
 
 
@@ -9,15 +9,6 @@ use crate::{object::GameObject, render::mesh::SkinnedMesh};
 pub struct Skinning {
     /// 대상 스키닝된 메쉬입니다.
     pub skinned_mesh: Arc<SkinnedMesh>, 
-
-    /// 최상위 뼈 오브젝트입니다.
-    pub root_bone: Arc<GameObject>, 
-
-    /// 스키닝 데이터를 구성하는 뼈 오브젝트입니다.
-    /// 
-    /// `transform`과 같은 순서를 가집니다.
-    /// 
-    pub bones: Vec<Arc<GameObject>>, 
 
     /// 뼈 오브젝트의 부모로 부터 변환 행렬입니다.
     /// 

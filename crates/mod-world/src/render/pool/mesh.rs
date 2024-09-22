@@ -77,13 +77,13 @@ impl MeshPool {
 
     /// 주어진 공유 가능한 메쉬에 해당하는 공유 가능한 메쉬가 풀 객체에 포함되어있는지 여부를 반환합니다.
     #[must_use]
-    pub fn contains<N: AsRef<String>>(mesh_name: N) -> bool {
+    pub fn contains<N: AsRef<str>>(mesh_name: N) -> bool {
         let pool_guard = POOL.lock().unwrap();
         pool_guard.contains_key(mesh_name.as_ref())
     }
 
     /// 주어진 공유 가능한 메쉬에 해당하는 공유 가능한 메쉬를 풀 객체에서 제거합니다.
-    pub fn remove<N: AsRef<String>>(mesh_name: N) -> Option<Arc<ModelMesh>> {
+    pub fn remove<N: AsRef<str>>(mesh_name: N) -> Option<Arc<ModelMesh>> {
         let mut pool_guard = POOL.lock().unwrap();
         pool_guard.remove(mesh_name.as_ref())
     }

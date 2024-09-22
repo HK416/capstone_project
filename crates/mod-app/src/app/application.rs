@@ -209,6 +209,9 @@ impl Application {
         surface: &wgpu::Surface<'static>, 
         curr_scene: &Box<dyn GameScene>
     ) -> Result<(), Box<dyn Error + Send>> {
+        // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
+        curr_scene.on_prepare_draw(&window, &surface, self)?;
+        
         // 이전 렌더링 작업이 끝날때 까지 대기합니다.
         self.device.poll(wgpu::Maintain::Wait);
 
@@ -225,9 +228,6 @@ impl Application {
 
         // 깊이 - 스텐실 뷰를 가져옵니다.
         let depth_stencil_view = self.depth_buffer_view.as_ref().unwrap();
-
-        // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
-        curr_scene.on_prepare_draw(&window, &surface, self)?;
 
         // `winit` API에 애플리케이션 창을 갱신한다고 알립니다.
         window.pre_present_notify();

@@ -3,15 +3,14 @@ use std::{
     sync::Arc
 };
 
-use crate::render::{
-    mesh::{
-        BoneUniform, 
-        MeshUniform, 
-        NonSkinnedMesh, 
-        SkinnedMesh, 
-        SkinnedMeshUniform, 
-    }, 
-    pool::MeshPool
+use crate::{
+    object::GameObject, 
+    render::{
+        mesh::{
+            BoneDataLayout, BoneUniform, MeshUniform, NonSkinnedMesh, SkinnedMesh, SkinnedMeshDataLayout, SkinnedMeshUniform 
+        }, 
+        pool::MeshPool
+    }
 };
 
 use super::{
@@ -21,6 +20,23 @@ use super::{
     VertexAttributeValues, 
     Vertices
 };
+
+
+
+#[derive(Debug, Clone)]
+pub struct SkinningData {
+    /// 스키닝된 메쉬의 바인드 포즈 데이터입니다.
+    pub bindpose: Vec<gmm::Float4x4>, 
+
+    /// 스키닝된 메쉬의 정점에 연결된 뼈의 개수입니다.
+    pub quality: u32, 
+
+    /// 최상위 뼈 노드 데이터입니다.
+    pub root_bone: Arc<GameObject>, 
+
+    /// 스키닝 데이터를 이루는 뼈 노드 데이터입니다.
+    pub bones: Vec<Arc<GameObject>>, 
+}
 
 
 
@@ -38,9 +54,6 @@ pub struct MeshBuilder {
 
     /// 메쉬의 하위 메쉬 데이터입니다.
     pub(crate) submeshes: Vec<Indices>, 
-
-    /// 메쉬의 바인드 포즈 데이터입니다.
-    pub(crate) bindposes: Vec<gmm::Float4x4>, 
 }
 
 impl MeshBuilder {
@@ -66,7 +79,6 @@ impl MeshBuilder {
             vertices, 
             attributes: HashMap::with_capacity(8), 
             submeshes: Vec::with_capacity(8), 
-            bindposes: Vec::new() 
         }
     }
 
@@ -95,25 +107,15 @@ impl MeshBuilder {
         self
     }
 
-    /// 메쉬 빌더에 바인드 포즈 데이터를 추가합니다.
-    /// 이미 바인드 포즈 데이터가 존재할 경우 데이터를 덮어씁니다.
-    /// 
-    /// # Panics
-    /// 주어진 바인드 포즈 데이터가 비어있는 경우 `panic!`을 호출합니다.
-    /// 
-    #[must_use]
-    pub fn with_bindposes<I>(mut self, bindposes: I) -> Self 
-    where I: IntoIterator<Item = gmm::Float4x4>, I::IntoIter: ExactSizeIterator {
-        let bindposes: Vec<_> = bindposes.into_iter().collect();
-        assert!(!bindposes.is_empty(), "The given bindpose data is empty!");
-        self.bindposes = bindposes;
-        self
-    }
-
     /// 메쉬 빌더로부터 메쉬를 생성합니다.
     #[must_use]
-    pub fn build(self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> MeshRenderer {
-        let non_skinned = self.bindposes.is_empty()
+    pub fn build(
+        self, 
+        device: &Arc<wgpu::Device>, 
+        queue: &Arc<wgpu::Queue>, 
+        skinning: Option<SkinningData>
+    ) -> MeshRenderer {
+        let non_skinned = skinning.is_none()
             | self.attributes.get(&Attribute::BoneIndices).is_none()
             | self.attributes.get(&Attribute::BoneIndices).is_none();
         
@@ -166,9 +168,28 @@ impl MeshBuilder {
                 }
             );
 
+            let skinning = unsafe { skinning.unwrap_unchecked() }; // Safe: 이전에 존재 여부를 확인함.
+            skinned_mesh_uniform.update(queue, SkinnedMeshDataLayout {
+                quality: skinning.quality.min(4), 
+                num_bones: (skinning.bones.len() as u32).min(256), 
+                ..Default::default()
+            });
+
+            let mut iter = skinning.bindpose.iter();
+            let mut data = BoneDataLayout::default();
+            for dst in data.iter_mut() {
+                *dst = match iter.next() {
+                    Some(mat) => *mat, 
+                    None => break
+                };
+            }
+            bindpose_uniform.update(queue, data);
+
             MeshRenderer::SkinnedMesh(
                 SkinnedMesh {
                     model_mesh: MeshPool::get_or_init(device, queue, self), 
+                    root_bone: skinning.root_bone, 
+                    bones: skinning.bones, 
                     skinned_mesh_uniform,
                     bindpose_uniform, 
                     bone_transforms_uniform, 

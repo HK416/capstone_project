@@ -9,6 +9,8 @@ use mod_parallelism::collections::SkipMap;
 
 
 mod element;
+use crate::render::{material::Material, mesh::{Attribute, MeshRenderer}};
+
 pub use self::element::*;
 
 
@@ -141,6 +143,17 @@ impl GameObject {
             .map(|element| element.downcast_ref().unwrap())
     }
 
+    /// 게임 오브젝트에 연결된 요소를 가져옵니다.
+    /// 
+    /// 주어진 요소가 게임 오브젝트에 없는 경우 `None`을 반환합니다.
+    /// 
+    #[inline]
+    #[must_use]
+    pub fn get_mut_element<T: Element>(&self) -> Option<&mut T> {
+        self.elements.get_mut(TypeId::of::<T>())
+            .map(|element| element.downcast_mut().unwrap())
+    }
+
     /// 게임 오브젝트에 요소를 추가합니다.
     /// 
     /// 주어진 요소가 이미 게임 오브젝트에 존재하는 경우 이전 요소를 반환합니다.
@@ -148,6 +161,60 @@ impl GameObject {
     pub fn add_element<T: Element>(&self, element: T) -> Option<T> {
         self.elements.insert(TypeId::of::<T>(), Box::new(element))
             .map(|element| *element.downcast().unwrap())
+    }
+
+    /// 게임 오브젝트의 계층구조로 이루어진 월드 변환 행렬을 갱신합니다.
+    pub fn update_hierarchy(&self, parent_trans: Option<gmm::Matrix>) {
+        // 현재 게임 오브젝트의 변환 행렬 갱신
+        if let Some(parent_trans) = &parent_trans {
+            let to_parent_trans = self.get_to_parent_trans();
+            let world_trans = (*parent_trans) * to_parent_trans;
+            self.set_world_trans(|result| {
+                let mut lock_guard = result.unwrap();
+                *lock_guard = world_trans;
+            });
+        }
+
+        // 형제 게임 오브젝트 변환 행렬 갱신.
+        if let Some(sibling) = self.get_sibling() {
+            sibling.update_hierarchy(parent_trans);
+        }
+
+        // 자식 게임 오브젝트 변환 행렬 갱신.
+        if let Some(child) = self.get_child() {
+            let parent_trans = self.get_world_trans();
+            child.update_hierarchy(parent_trans.into());
+        }
+    }
+
+    /// 게임 오브젝트의 계층구조를 그립니다.
+    pub fn draw(&self, rpass: &mut wgpu::RenderPass<'static>) {
+        let renderer = self.get_element::<MeshRenderer>();
+        let materials = self.get_element::<Vec<Material>>();
+        if renderer.is_some() & materials.is_some() {
+            let renderer = unsafe { renderer.unwrap_unchecked() };
+            let materials = unsafe { materials.unwrap_unchecked() };
+            rpass.set_bind_group(1, renderer.bind_group(), &[]);
+            rpass.set_vertex_buffer(0, renderer.vertex().slice(..));
+            rpass.set_vertex_buffer(1, renderer.attribute(&Attribute::Normals).unwrap().slice(..));
+            rpass.set_vertex_buffer(2, renderer.attribute(&Attribute::Tangents).unwrap().slice(..));
+            rpass.set_vertex_buffer(3, renderer.attribute(&Attribute::Texcoords0).unwrap().slice(..));
+            rpass.set_vertex_buffer(4, renderer.attribute(&Attribute::BoneIndices).unwrap().slice(..));
+            rpass.set_vertex_buffer(5, renderer.attribute(&Attribute::BoneWeights).unwrap().slice(..));
+            for (idx, submesh) in renderer.submeshes().iter().enumerate() {
+                rpass.set_bind_group(2, materials[idx].bind_group(), &[]);
+                rpass.set_index_buffer(submesh.slice(..), wgpu::IndexFormat::Uint32);
+                rpass.draw_indexed(0..submesh.count(), 0, 0..1);
+            }
+        }
+
+        if let Some(sibling) = self.get_sibling() {
+            sibling.draw(rpass);
+        }
+
+        if let Some(child) = self.get_child() {
+            child.draw(rpass);
+        }
     }
 }
 

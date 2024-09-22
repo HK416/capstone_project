@@ -1,11 +1,11 @@
 use std::{mem, sync::{Arc, OnceLock}};
 
-use crate::render::{
+use crate::{object::CameraElement, render::{
     material::Material, 
     mesh::SkinnedMesh, 
     DEPTH_STENCIL_FORMAT, 
     SWAPCHAIN_FORMAT
-};
+}};
 
 
 
@@ -40,7 +40,7 @@ impl CharacterShader {
                 label: Some("PipelineLayout(CharacterShader)"), 
                 bind_group_layouts: &[
                     // 0번 그룹: 카메라 데이터 & 조명 데이터
-                    todo!(), 
+                    CameraElement::bind_group_layout(device), 
                     // 1번 그룹: 스키닝된 메쉬 데이터
                     SkinnedMesh::bind_group_layout(device), 
                     // 2번 그룹: 재질 데이터

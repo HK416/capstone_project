@@ -98,6 +98,14 @@ impl SamplerPool {
         }
     }
 
+    /// 주어진 텍스처 샘플러에 해당하는 텍스처 샘플러를 풀 객체에서 가져옵니다.
+    /// 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    #[must_use]
+    pub fn get(sampler_id: &SamplerID) -> Option<Arc<wgpu::Sampler>> {
+        let pool_guard = POOL.lock().unwrap();
+        pool_guard.get(sampler_id).cloned()
+    }
+
     /// 주어진 텍스처 샘플러 식별자에 해당하는 텍스처 샘플러가 풀 객체에 포함되어있는지 여부를 반환합니다.
     #[must_use]
     pub fn contains(sampler_id: &SamplerID) -> bool {

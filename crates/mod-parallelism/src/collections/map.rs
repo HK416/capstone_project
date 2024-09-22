@@ -414,6 +414,34 @@ impl<K: Ord, V> SkipMap<K, V> {
         }
         None
     }
+
+
+    /// 주어진 `key`에 해당하는 노드의 값을 빌려옵니다.
+    pub fn get_mut(&self, key: K) -> Option<&mut V> {
+        let _ebr_pin = self.ebr.pin();
+        unsafe { self.get_mut_impl(key) }
+    }
+
+    /// 주어진 `key`에 해당하는 노드의 값을 빌려옵니다.
+    unsafe fn get_mut_impl(&self, key: K) -> Option<&mut V> {
+        let key = Key::Val(key);
+        let mut prevs = [ptr::null_mut(); MAX_LEVELS];
+        let mut currs = [ptr::null_mut(); MAX_LEVELS];
+
+        if let Some(found_level) = self.find_position(&key, &mut prevs, &mut currs) {
+            if (*currs[found_level]).removed.load(MemOrdering::Relaxed) {
+                return None;
+            }
+
+            // fully linke 일 때 까지 대기
+            while !(*currs[found_level]).fully_linked.load(MemOrdering::Relaxed) {
+                std::hint::spin_loop();
+            }
+
+            return (*currs[found_level]).value.as_mut();
+        }
+        None
+    }
 }
 
 impl<K, V> SkipMap<K, V> {
