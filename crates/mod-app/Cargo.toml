@@ -1,6 +1,6 @@
 [package]
 name = "mod-app"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -28,7 +28,7 @@ log = "0.4"
 
 # Rusty File Dialog
 # License: MIT
-rfd = "0.14"
+rfd = "0.15"
 
 # A generic serialization/deserialization framework
 # License: MIT OR Apache-2.0
@@ -51,7 +51,7 @@ wgpu = "22"
 # 자체 프레임워크 라이브러리
 mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
-mod-render = { path = "../mod-render" }
+mod-world = { path = "../mod-world" }
 
 
 

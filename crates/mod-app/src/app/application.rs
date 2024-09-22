@@ -7,7 +7,13 @@ use std::{
     sync::{Arc, Once}
 };
 
-use mod_render::{config_swapchain, create_surface, RenderError};
+use mod_world::render::{
+    config_swapchain, 
+    create_surface, 
+    init_wgpu, 
+    RenderError, 
+    DEPTH_STENCIL_FORMAT
+};
 use winit::{
     application::ApplicationHandler, 
     dpi::PhysicalPosition, 
@@ -120,8 +126,6 @@ impl Application {
         event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
         builder: AppBuilder
     ) -> Result<Self, RenderError> {
-        use mod_render::init_wgpu;
-
         // wgpu 렌더러를 생성합니다.
         let enable_debug_layer = builder.flags.contains(AppFlags::ENABLE_DEBUG_LAYER);
         let (instance, adapter, device, queue) = init_wgpu(enable_debug_layer).await?;
@@ -656,8 +660,6 @@ fn create_depth_buffer(
     height: u32, 
     device: &wgpu::Device
 ) -> wgpu::TextureView {
-    use mod_render::DEPTH_STENCIL_FORMAT;
-    
     debug_assert!(width != 0 && height != 0);
     device.create_texture(
         &wgpu::TextureDescriptor {

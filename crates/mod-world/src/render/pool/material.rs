@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use lazy_static::lazy_static;
 
-use crate::material::{Material, MaterialBuilder};
+use crate::render::material::{Material, MaterialBuilder};
 
 lazy_static! {
     /// 생성된 재질을 관리하는 풀 객체입니다.

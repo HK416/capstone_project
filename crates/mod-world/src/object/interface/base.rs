@@ -19,8 +19,8 @@ pub trait GameObject : std::fmt::Debug {
     fn get_child(&self) -> Option<&Arc<dyn GameObject>>;
 
     /// 부모로 부터 변환 행렬을 가져옵니다.
-    fn to_parent_transform(&self) -> &gmm::Matrix;
+    fn to_parent_trans(&self) -> gmm::Matrix;
 
     /// 월드 변환 행렬을 가져옵니다.
-    fn world_transform(&self) -> &gmm::Matrix;
+    fn world_trans(&self) -> gmm::Matrix;
 }

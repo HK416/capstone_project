@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use mod_world::object::GameObject;
-
-use crate::mesh::SkinnedMesh;
+use crate::{object::GameObject, render::mesh::SkinnedMesh};
 
 
 

@@ -66,4 +66,4 @@ mod-asset = { path = "../mod-asset" }
 mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-physics = { path = "../mod-physics" }
-mod-render = { path = "../mod-render" }
+mod-world = { path = "../mod-world" }

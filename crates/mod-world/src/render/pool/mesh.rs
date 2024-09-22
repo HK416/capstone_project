@@ -1,8 +1,16 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap, 
+    sync::{Arc, Mutex}
+};
 
 use lazy_static::lazy_static;
 
-use crate::mesh::{IndexBuffer, MeshBuilder, ModelMesh, VertexBuffer};
+use crate::render::mesh::{
+    IndexBuffer, 
+    MeshBuilder, 
+    ModelMesh, 
+    VertexBuffer
+};
 
 lazy_static! {
     /// 공유 가능한 메쉬 데이터를 관리하는 풀 객체입니다.

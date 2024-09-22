@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::pool::{SamplerPool, TexturePool, TextureViewPool};
+use crate::render::pool::{SamplerPool, TexturePool, TextureViewPool};
 
 use super::{Material, MaterialDataLayout, MaterialUniform};
 

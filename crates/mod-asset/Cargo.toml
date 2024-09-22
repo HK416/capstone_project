@@ -26,4 +26,4 @@ wgpu = "22"
 
 # 자체 프레임워크 라이브러리
 mod-physics = { path = "../mod-physics" }
-mod-render = { path = "../mod-render" }
+mod-world = { path = "../mod-world" }
