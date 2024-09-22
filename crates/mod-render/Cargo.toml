@@ -38,9 +38,14 @@ thiserror = "1.0"
 # License: Apache-2.0
 winit = "0.30"
 
-# 크로스 플랫폼 렌더링 라이브러리 
+# Rusty WebGPU API wrapper
 # License: MIT or Apache-2.0
 wgpu = "22"
+
+
+
+# 자체 제작 라이브러리
+mod-world = { path = "../mod-world" }
 
 
 

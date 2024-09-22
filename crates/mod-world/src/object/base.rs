@@ -6,6 +6,9 @@ use std::sync::{Arc, Weak};
 /// 게임 세상에 존재하는 모든 오브젝트는 `GameObject`를 구현해야 합니다.
 /// 
 pub trait GameObject : std::fmt::Debug {
+    /// 게임 오브젝트의 이름을 가져옵니다.
+    fn name(&self) -> &str;
+
     /// 부모 게임 오브젝트를 가져옵니다.
     fn get_parent(&self) -> Option<&Weak<dyn GameObject>>;
 
