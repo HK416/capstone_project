@@ -10,17 +10,17 @@ publish.workspace = true
 
 
 [dependencies]
-# 게임 수학 라이브러리
+# Math library for video games
 # License: MIT
 gmm = { version = "0.2", features = ["bytemuck", "serde"] }
 
-# 데이터 직렬화 라이브러리
+# A generic serialization/deserialization framework
 # License: MIT or Apache-2.0
 serde = { version = "1.0", features = ["derive"] }
 
-# 크로스 플랫폼 렌더링 라이브러리 
+# Rusty WebGPU API wrapper
 # License: MIT or Apache-2.0
-wgpu = "22"
+wgpu = { version = "22", features = ["serde"] }
 
 
 

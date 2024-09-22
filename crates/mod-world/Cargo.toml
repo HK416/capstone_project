@@ -44,6 +44,11 @@ wgpu = "22"
 
 
 
+# 자체 제작 프레임워크
+mod-parallelism = { path = "../mod-parallelism" }
+
+
+
 [features]
 default = ["enable-shader-validation"]
 
