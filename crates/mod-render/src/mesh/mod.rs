@@ -1,5 +1,6 @@
 mod buffer;
 mod builder;
+mod model_mesh;
 mod non_skinned_mesh;
 mod skinned_mesh;
 mod uniform;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 pub use self::buffer::*;
 pub use self::builder::*;
+pub use self::model_mesh::*;
 pub use self::non_skinned_mesh::*;
 pub use self::skinned_mesh::*;
 pub use self::uniform::*;
@@ -16,21 +18,21 @@ pub use self::values::*;
 
 
 
-/// 메쉬 데이터입니다.
+/// 메쉬 렌더링 데이터입니다.
 #[derive(Debug, Clone)]
-pub enum Mesh {
+pub enum MeshRenderer {
     NonSkinnedMesh(Arc<NonSkinnedMesh>), 
     SkinnedMesh(Arc<SkinnedMesh>)
 }
 
-impl Mesh {
+impl MeshRenderer {
     /// 메쉬의 이름을 가져옵니다.
     #[inline]
     #[must_use]
     pub fn name(&self) -> &str {
         match self {
-            Mesh::NonSkinnedMesh(mesh) => mesh.name(), 
-            Mesh::SkinnedMesh(skinned_mesh) => skinned_mesh.name()
+            MeshRenderer::NonSkinnedMesh(mesh) => mesh.model_mesh().name(), 
+            MeshRenderer::SkinnedMesh(skinned_mesh) => skinned_mesh.model_mesh().name()
         }
     }
 
@@ -39,8 +41,8 @@ impl Mesh {
     #[must_use]
     pub fn num_vertices(&self) -> u32 {
         match self {
-            Mesh::NonSkinnedMesh(mesh) => mesh.num_vertices(), 
-            Mesh::SkinnedMesh(skinned_mesh) => skinned_mesh.num_vertices()
+            MeshRenderer::NonSkinnedMesh(mesh) => mesh.model_mesh().num_vertices(), 
+            MeshRenderer::SkinnedMesh(skinned_mesh) => skinned_mesh.model_mesh().num_vertices()
         }
     }
 
@@ -49,8 +51,8 @@ impl Mesh {
     #[must_use]
     pub fn vertex(&self) -> &VertexBuffer {
         match self {
-            Mesh::NonSkinnedMesh(mesh) => mesh.vertex(), 
-            Mesh::SkinnedMesh(skinned_mesh) => skinned_mesh.vertex()
+            MeshRenderer::NonSkinnedMesh(mesh) => mesh.model_mesh().vertex(), 
+            MeshRenderer::SkinnedMesh(skinned_mesh) => skinned_mesh.model_mesh().vertex()
         }
     }
 
@@ -59,8 +61,8 @@ impl Mesh {
     #[must_use]
     pub fn attribute(&self, id: &Attribute) -> Option<&VertexBuffer> {
         match self {
-            Mesh::NonSkinnedMesh(mesh) => mesh.attribute(id), 
-            Mesh::SkinnedMesh(skinned_mesh) => skinned_mesh.attribute(id)
+            MeshRenderer::NonSkinnedMesh(mesh) => mesh.model_mesh().attribute(id), 
+            MeshRenderer::SkinnedMesh(skinned_mesh) => skinned_mesh.model_mesh().attribute(id)
         }
     }
 
@@ -69,8 +71,8 @@ impl Mesh {
     #[must_use]
     pub fn submeshes(&self) -> &[IndexBuffer] {
         match self {
-            Mesh::NonSkinnedMesh(mesh) => mesh.submeshes(), 
-            Mesh::SkinnedMesh(skinned_mesh) => skinned_mesh.submeshes()
+            MeshRenderer::NonSkinnedMesh(mesh) => mesh.model_mesh().submeshes(), 
+            MeshRenderer::SkinnedMesh(skinned_mesh) => skinned_mesh.model_mesh().submeshes()
         }
     }
 
@@ -79,8 +81,8 @@ impl Mesh {
     #[must_use]
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         match self {
-            Mesh::NonSkinnedMesh(mesh) => mesh.bind_group(), 
-            Mesh::SkinnedMesh(skinned_mesh) => skinned_mesh.bind_group()
+            MeshRenderer::NonSkinnedMesh(mesh) => mesh.bind_group(), 
+            MeshRenderer::SkinnedMesh(skinned_mesh) => skinned_mesh.bind_group()
         }
     }
 }
