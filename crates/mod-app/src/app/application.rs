@@ -441,17 +441,13 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             }, 
             WindowEvent::KeyboardInput { event, .. } => {
-                // 반복된 이벤트의 경우 생략합니다.
-                if event.repeat {
-                    return;
-                }
-
                 if let PhysicalKey::Code(code) = event.physical_key {
                     if event.state.is_pressed() {
                         curr_scene.on_keyboard_pressed(
                             code, 
                             event.location, 
                             self.modifier, 
+                            event.repeat, 
                             &window, 
                             self
                         )
@@ -460,6 +456,7 @@ impl ApplicationHandler<AppEvent> for Application {
                             code, 
                             event.location, 
                             self.modifier, 
+                            event.repeat, 
                             &window, 
                             self
                         )

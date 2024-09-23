@@ -9,9 +9,12 @@ use mod_parallelism::collections::SkipMap;
 
 
 mod element;
-use crate::render::{material::Material, mesh::{Attribute, MeshRenderer}};
-
 pub use self::element::*;
+
+use crate::render::{
+    material::Material, 
+    mesh::{Attribute, MeshRenderer}
+};
 
 
 

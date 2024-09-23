@@ -127,6 +127,7 @@ pub trait GameScene : Debug + Send {
         code: KeyCode, 
         location: KeyLocation, 
         modifiers: Modifiers, 
+        repeat: bool, 
         window: &Window, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -141,6 +142,7 @@ pub trait GameScene : Debug + Send {
         code: KeyCode, 
         location: KeyLocation, 
         modifiers: Modifiers, 
+        repeat: bool, 
         window: &Window, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {

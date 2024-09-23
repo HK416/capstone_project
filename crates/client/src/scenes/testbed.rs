@@ -3,19 +3,26 @@ use std::{collections::HashMap, error::Error, fmt, io::{BufWriter, Write}, net::
 use mod_app::{app::AppHandle, scene::GameScene};
 use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
 use mod_world::{object::{CameraElement, GameObject, PerspectiveLh, Projection}, render::{animation::AnimationClip, camera::CameraDataLayout, mesh::{BoneDataLayout, MeshDataLayout, MeshRenderer}, pipeline::CharacterShader}};
-use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}, window::Window};
+use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 
-const PIXEL_PER_METER: f32 = 1.0 / 0.1;
-const FORCE: f32 = 100.0; // 단위: N
+const PIXEL_PER_METER: f32 = 5.0 / 1.0;
+const FORCE: f32 = 500.0; // 단위: N
+const DISTANCE: f32 = 0.5 * PIXEL_PER_METER;
+const POS_OFFSET: gmm::Float3 = gmm::Float3::new(0.0, 0.2 * PIXEL_PER_METER, 0.0);
 
 
+/// 캐릭터로부터 회전 방향을 나타냅니다.
+#[derive(Debug)]
+struct Angle {
+    polar: f32, 
+    azimuthal: f32, 
+    dir: gmm::Float3, 
+}
 
 /// 캐릭터 물리 데이터입니다.
 #[derive(Debug)]
 struct Physics {
-    pub rotation: gmm::Float4, 
-    pub translation: gmm::Float3, 
     pub force: gmm::Float3, 
     pub velocity: gmm::Float3, 
     pub inverse_mass: f32, 
@@ -52,7 +59,7 @@ impl TestBedScene {
         players: I, 
     ) -> Self 
     where 
-    I: IntoIterator<Item = Player>, 
+        I: IntoIterator<Item = Player>, 
         I::IntoIter: ExactSizeIterator
     {
         let init_data: Vec<_> = players.into_iter().collect();
@@ -70,18 +77,13 @@ impl TestBedScene {
 
 
     /// 카메라 오브젝트를 생성합니다.
-    fn spawn_main_camera(&mut self, window: &Window, app: &dyn AppHandle) {
-        let camera = GameObject::new(None, "Main_Camera");
-
-        // 카메라의 월드 변환 행렬을 생성하고, 설정합니다.
-        let world_trans = gmm::Matrix::from_rotation_translation(
-            gmm::Quaternion::from_rotation_x(15f32.to_radians()), 
-            gmm::Float3::new(0.0, 1.5, -2.0).into()
-        );
-        camera.set_world_trans(|result| {
-            let mut lock_guard = result.unwrap();
-            *lock_guard = world_trans;
-        });
+    fn spawn_camera(
+        target: Arc<GameObject>, 
+        window: &Window, 
+        app: &dyn AppHandle
+    ) -> Arc<GameObject> {
+        // 카메라 오브젝트를 생성합니다.
+        let camera = GameObject::new(None, "MainCamera");
 
         // 투영 변환 행렬을 생성하고, 요소에 추가합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
@@ -93,14 +95,15 @@ impl TestBedScene {
 
         // 카메라에 카메라 요소를 추가합니다.
         camera.add_element(CameraElement::new(Some(camera.name()), app.render_device()));
+        camera.add_element(Angle { polar: -15.0, azimuthal: 0.0, dir: gmm::Float3::Z });
+        camera.add_element(target);
 
         // 카메라 오브젝트를 설정합니다.
-        self.main_camera = camera.into();
+        camera.into()
     }
 
     /// 모델 에셋을 생성합니다.
     fn spawn_aris_original_model(
-        &mut self, 
         player: Player, 
         app: &dyn AppHandle
     ) -> Arc<GameObject> {
@@ -123,8 +126,6 @@ impl TestBedScene {
 
         // 플레이어 오브젝트에 물리 요소를 추가합니다.
         object.add_element(Physics {
-            rotation: player.rotation, 
-            translation: player.translation, 
             force: gmm::Float3::ZERO, 
             velocity: gmm::Float3::ZERO, 
             inverse_mass: 1.0 / 43.0, 
@@ -218,15 +219,20 @@ impl TestBedScene {
         player: &Arc<GameObject>, 
     ) {
         let physics = player.get_mut_element::<Physics>().unwrap();
+        let world_trans = player.get_world_trans();
+        let mut rotation: gmm::Quaternion = world_trans.try_into().unwrap();
+        let world_trans: gmm::Float4x4 = world_trans.into();
+        let mut translation = world_trans.w_axis.xyz();
 
         // 위치를 갱신합니다.
         // 0. 질량이 무한대(0.0)인 경우 생략합니다.
         if physics.inverse_mass >= f32::EPSILON {
             // 1. 속도를 이용하여 이동 거리를 계산합니다.
-            physics.translation += physics.velocity * elapsed_time_sec;
+            translation += physics.velocity * elapsed_time_sec * PIXEL_PER_METER;
             
             // 2. 가속도를 구하고, 속도를 갱신합니다.
             let acceleration = physics.force * physics.inverse_mass;
+            physics.force = gmm::Float3::ZERO;
             physics.velocity += acceleration * elapsed_time_sec;
 
             // 3. 저항을 적용합니다.
@@ -247,13 +253,13 @@ impl TestBedScene {
                 } else { 
                     360f32.to_radians() - dot.x.acos() 
                 };
-                physics.rotation = gmm::Quaternion::from_rotation_y(theta).into();
+                rotation = gmm::Quaternion::from_rotation_y(theta).into();
             }
 
             // 플레이어 오브젝트 이동
-            let translation = physics.translation * PIXEL_PER_METER;
+            let translation = translation;
             let world_trans = gmm::Matrix::from_rotation_translation(
-                physics.rotation.into(), 
+                rotation.into(), 
                 translation.into()
             );
 
@@ -262,6 +268,54 @@ impl TestBedScene {
                 *lock_guard = world_trans;
             });
         }
+    }
+
+
+
+    fn update_camera(
+        camera: &Arc<GameObject>, 
+    ) {
+        let target = camera.get_element::<Arc<GameObject>>().unwrap();
+        let target_trans: gmm::Float4x4 = target.get_world_trans().into();
+        let taget_position = target_trans.w_axis.xyz();
+        let target_pivot = taget_position + POS_OFFSET;
+
+        let angle = camera.get_mut_element::<Angle>().unwrap();
+        let mut axis: gmm::Quaternion = gmm::Float4::new(1.0, 0.0, 0.0, 0.0).into();
+        let mut pos: gmm::Quaternion = gmm::Float4::new(0.0, 0.0, -DISTANCE, 0.0).into();
+        let y_rotate = gmm::Quaternion::from_rotation_y(angle.azimuthal.to_radians());
+        axis = y_rotate * axis * y_rotate.inverse().unwrap();
+        pos = y_rotate * pos * y_rotate.inverse().unwrap();
+
+        angle.dir = {
+            let pos: gmm::Vector = pos.into();
+            let dir = -pos.vec3_normalize().unwrap();
+            dir.into()
+        };
+
+        let polar_rotate = gmm::Quaternion::from_axis_angle(axis.into(), angle.polar.to_radians());
+        pos = polar_rotate * pos * polar_rotate.inverse().unwrap(); 
+        let pos: gmm::Vector = pos.into();
+        let pos: gmm::Float3 = pos.into();
+
+        let camera_pos = target_pivot + pos;
+        let camera_dir: gmm::Vector = (target_pivot - camera_pos).into();
+        let camera_dir = camera_dir.vec3_normalize().unwrap();
+        let camera_up: gmm::Vector = gmm::Float3::Y.into();
+        let camera_right = camera_up.vec3_cross(camera_dir);
+        let camera_up = camera_dir.vec3_cross(camera_right);
+        
+        let camera_transform = gmm::Float4x4::from_columns(
+            camera_right.into(), 
+            camera_up.into(), 
+            camera_dir.into(), 
+            gmm::Float4::new(camera_pos.x, camera_pos.y, camera_pos.z, 1.0)
+        );
+
+        camera.set_world_trans(|result| {
+            let mut lock_guard = result.unwrap();
+            *lock_guard = camera_transform.into();
+        });
     }
 
 
@@ -319,10 +373,53 @@ impl GameScene for TestBedScene {
         window: &Window, 
         app: &dyn AppHandle
 ) -> Result<(), Box<dyn Error + Send>> {
-        self.spawn_main_camera(window, app);
+        window.set_cursor_visible(false);
+        window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+
         while let Some(player) = self.stage_data.pop() {
-            let new_player = self.spawn_aris_original_model(player, app);
+            let new_player = Self::spawn_aris_original_model(player, app);
+            if player.id == self.client_id {
+                self.main_camera = Some(Self::spawn_camera(
+                    new_player.clone(), 
+                    window, 
+                    app
+                ));
+            }
             self.players.insert(player.id, new_player);
+        }
+        Ok(())
+    }
+
+    fn on_exit(
+        &mut self, 
+        window: Option<&Window>, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if let Some(window) = window {
+            window.set_cursor_visible(true);
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        }
+        Ok(())
+    }
+
+    fn on_paused(
+        &mut self, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if let Some(window) = app.window() {
+            window.set_cursor_visible(true);
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        }
+        Ok(())
+    }
+
+    fn on_resumed(
+        &mut self, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if let Some(window) = app.window() {
+            window.set_cursor_visible(false);
+            window.set_cursor_position(window.inner_position().unwrap()).unwrap();
         }
         Ok(())
     }
@@ -342,9 +439,14 @@ impl GameScene for TestBedScene {
                         continue;
                     }
 
-                    let physics = player.get_mut_element::<Physics>().unwrap();
-                    physics.rotation = pull_data.rotation;
-                    physics.translation = pull_data.translation;
+                    let world_trans = gmm::Matrix::from_rotation_translation(
+                        pull_data.rotation.into(), 
+                        pull_data.translation.into()
+                    );
+                    player.set_world_trans(|result| {
+                        let mut lock_guard = result.unwrap();
+                        *lock_guard = world_trans;
+                    });
 
                     let animator = player.get_mut_element::<Animator>().unwrap();
                     animator.anim_index = pull_data.anim_index as usize;
@@ -352,7 +454,7 @@ impl GameScene for TestBedScene {
 
                     temp.push((pull_data.id, player));
                 } else {
-                    let new_player = self.spawn_aris_original_model(pull_data, app);
+                    let new_player = Self::spawn_aris_original_model(pull_data, app);
                     temp.push((pull_data.id, new_player));
                 }
             }
@@ -378,13 +480,20 @@ impl GameScene for TestBedScene {
             Self::update_player(elapsed_time_sec, player, app);
         }
 
+        let camera = self.main_camera.as_ref().unwrap();
+        Self::update_camera(camera);
+
         if let Some(player) = self.players.get(&self.client_id) {
-            let physics = player.get_element::<Physics>().unwrap();
             let animator = player.get_element::<Animator>().unwrap();
+            let world_trans = player.get_world_trans();
+            let rotation: gmm::Quaternion = world_trans.try_into().unwrap();
+            let rotation: gmm::Float4 = rotation.into();
+            let world_trans: gmm::Float4x4 = world_trans.into();
+            let translation = world_trans.w_axis.xyz();
             let push_data = Player {
                 id: self.client_id, 
-                translation: physics.translation, 
-                rotation: physics.rotation, 
+                translation, 
+                rotation, 
                 anim_index: animator.anim_index as u32, 
                 anim_timer: animator.anim_timer
             };
@@ -401,25 +510,33 @@ impl GameScene for TestBedScene {
         keycode: KeyCode, 
         _location: KeyLocation, 
         _modifiers: Modifiers, 
+        _repeat: bool, 
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        let camera = self.main_camera.as_ref().unwrap();
+        let angle = camera.get_element::<Angle>().unwrap();
+        let camera_dir: gmm::Vector = angle.dir.into();
+        let camera_up: gmm::Vector = gmm::Float3::Y.into();
+        let camera_right: gmm::Float3 = camera_dir.vec3_cross(camera_up).into();
+        let camera_dir = angle.dir;
+
         let player = self.players.get_mut(&self.client_id).unwrap();
         let physics = player.get_mut_element::<Physics>().unwrap();
         let animator = player.get_mut_element::<Animator>().unwrap();
 
         if keycode == KeyCode::KeyW {
             animator.anim_index = 1;
-            physics.force.z += FORCE;
+            physics.force += camera_dir * FORCE;
         } else if keycode == KeyCode::KeyA {
             animator.anim_index = 1;
-            physics.force.x -= FORCE;
+            physics.force += camera_right * FORCE;
         } else if keycode == KeyCode::KeyS {
             animator.anim_index = 1;
-            physics.force.z -= FORCE;
+            physics.force -= camera_dir * FORCE;
         } else if keycode == KeyCode::KeyD {
             animator.anim_index = 1;
-            physics.force.x += FORCE;
+            physics.force -= camera_right * FORCE;
         }
 
         Ok(())
@@ -430,26 +547,42 @@ impl GameScene for TestBedScene {
         keycode: KeyCode, 
         _location: KeyLocation, 
         _modifiers: Modifiers, 
+        _repeat: bool, 
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let player = self.players.get_mut(&self.client_id).unwrap();
-        let physics = player.get_mut_element::<Physics>().unwrap();
         let animator = player.get_mut_element::<Animator>().unwrap();
         
         if keycode == KeyCode::KeyW {
             animator.anim_index = 2;
-            physics.force.z -= FORCE;
         } else if keycode == KeyCode::KeyA {
             animator.anim_index = 2;
-            physics.force.x += FORCE;
         } else if keycode == KeyCode::KeyS {
             animator.anim_index = 2;
-            physics.force.z += FORCE;
         } else if keycode == KeyCode::KeyD {
             animator.anim_index = 2;
-            physics.force.x -= FORCE;
         }
+
+        Ok(())
+    }
+
+    fn on_cursor_moved(
+        &mut self, 
+        x: f32, y: f32, 
+        _dx: f32, _dy: f32, 
+        window: &Window, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+
+        let (px, py): (f32, f32) = window.inner_position().unwrap().into();
+        let (dx, dy) = (px - x, py - y);
+
+        let camera = self.main_camera.as_ref().unwrap();
+        let angle = camera.get_mut_element::<Angle>().unwrap();
+        angle.polar = (angle.polar + dy).clamp(-30.0, 30.0);
+        angle.azimuthal = (angle.azimuthal + dx) % 360.0;
 
         Ok(())
     }
