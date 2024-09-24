@@ -1,6 +1,8 @@
 use super::Sphere;
+use mod_math::Segment;
 
 
+/// height <= 2 * radius 인 경우, Capsule-Capsule 충돌은 제대로 동작하지 않는다.  
 #[derive(Debug)]
 pub struct Capsule {
     pub center: gmm::Float3,     // 캡슐의 가장 아래 부분
@@ -12,10 +14,7 @@ pub struct Capsule {
 impl Capsule {
     pub fn check_point_collision(&self, point: &gmm::Float3) -> bool {
         let p = gmm::Vector::from(*point - self.center);    // center에 대한 point의 상대좌표
-        let d = match gmm::Vector::from(self.direction).vec3_normalize() {
-            Some(v) => v,
-            None => gmm::Vector::from(gmm::Float3::Y),  // default: Y축
-        };
+        let d = self.direction_normal();
 
         let dot: gmm::Float3 = d.vec3_dot(p).into();
         // 캡슐에 대한 point의 상대지역좌표 y
@@ -41,10 +40,7 @@ impl Capsule {
 
     /// Capsule의 크기를 sphere의 radius만큼 확장하고 sphere의 중심점과 충돌하는지 체크
     pub fn check_sphere_collision(&self, sphere: &Sphere) -> bool {
-        let d: gmm::Float3 = match gmm::Vector::from(self.direction).vec3_normalize() {
-            Some(v) => v,
-            None => gmm::Vector::from(gmm::Float3::Y),            // default: Y축
-        }.into();
+        let d: gmm::Float3 = self.direction_normal().into();
 
         let capsule = Capsule {
             center: self.center - d * sphere.radius,
@@ -54,6 +50,39 @@ impl Capsule {
         };
 
         capsule.check_point_collision(&sphere.center)
+    }
+
+    /// 두 선분 사이의 거리를 구하는 것과 같은가?
+    /// 캡슐은 한 선분에서 radius거리 이내의 모든 점의 집합  
+    /// 이는 self를 sphere.radius만큼 확장한 캡슐과 나머지 캡슐의 양쪽 구의 중심을 이은 선분이 충돌하는지 체크하는것과 같다.
+    /// 따라서 두 선분의 최소 거리가 self.radius + sphere.radius보다 작거나 같으면 충돌한다.
+    pub fn check_capsule_collision(&self, other: &Capsule) -> bool {
+        let c_to_c = gmm::Vector::from(other.center - self.center);
+        if c_to_c.vec3_len_sq() > (self.height + other.height).powi(2) {
+            return false;
+        }
+
+        // 테스트 필요
+        let distance = Segment::distance_between_segments(&self.get_seg(), &other.get_seg());
+
+        distance <= self.radius + other.radius
+    }
+
+    pub fn direction_normal(&self) -> gmm::Vector {
+        match gmm::Vector::from(self.direction).vec3_normalize() {
+            Some(v) => v,
+            None => gmm::Vector::from(gmm::Float3::Y),            // default: Y축
+        }
+    }
+
+    /// 캡슐의 아래 구의 중심과 윗 구의 중심을 이은 선분
+    fn get_seg(&self) -> Segment {
+        let d: gmm::Float3 = self.direction_normal().into();
+
+        Segment {
+            start: self.center + d * self.radius,
+            end: self.center + d * (self.height - self.radius),
+        }
     }
 }
 
