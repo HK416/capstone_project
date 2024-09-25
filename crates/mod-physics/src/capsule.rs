@@ -88,7 +88,8 @@ impl Capsule {
 
 
 
-/// Axis-Aligned Capsule
+/// Y축에 정렬된 캡슐  
+/// direction은 항상 <0, 1, 0>이다.  
 #[derive(Debug)]
 pub struct YCapsule {
     pub center: gmm::Float3,     // 캡슐의 가장 아래 부분
@@ -98,23 +99,10 @@ pub struct YCapsule {
 
 impl YCapsule {
     pub fn check_point_collision(&self, point: &gmm::Float3) -> bool {
-        let dx2 = (self.center.x - point.x).powi(2);
-        let dz2 = (self.center.z - point.z).powi(2);
-        let r2 = self.radius.powi(2);
-
-        // xz 거리 체크
-        let dxz2 = dx2 + dz2;
-        let h2 = r2 - dxz2;
-        if h2 < 0.0 {
-            return false;
+        match self.get_y_range_at(point.x, point.z) {
+            Some((bot_y, top_y)) => bot_y <= point.y && point.y <= top_y,
+            None =>                 false,
         }
-
-        let h = h2.sqrt();
-        let top_y = self.center.y + self.height - self.radius   + h;
-        let bot_y = self.center.y + self.radius                 - h;
-
-        // y축 범위 체크
-        bot_y <= point.y && point.y <= top_y
     }
 
     /// Capsule의 크기를 sphere의 radius만큼 확장하고 sphere의 중심점과 충돌하는지 체크
@@ -129,5 +117,46 @@ impl YCapsule {
         };
 
         capsule.check_point_collision(&sphere.center)
+    }
+
+    /// Y축에 정렬된 두 캡슐의 충돌 체크
+    pub fn check_ycapsule_collision(&self, other: &YCapsule) -> bool {
+        let capsule = YCapsule {
+            center: self.center,
+            height: self.height + 2.0 * other.radius,
+            radius: self.radius + other.radius,
+        };
+
+        match capsule.get_y_range_at(other.center.x, other.center.z) {
+            Some((bot_y, top_y)) => {
+                let other_bot_y = other.center.y;
+                let other_top_y = other.center.y + other.height;
+
+                bot_y <= other_bot_y && other_bot_y <= top_y ||
+                bot_y <= other_top_y && other_top_y <= top_y
+            },
+            None => false,
+        }
+    }
+
+    /// x, z에서 캡슐의 y축 범위를 구하고(bottom, top)형태로 반환한다.  
+    /// x, z가 캡슐의 외부에 있으면 None을 반환한다.
+    fn get_y_range_at(&self, x: f32, z: f32) -> Option<(f32, f32)> {
+        let dx2 = (self.center.x - x).powi(2);
+        let dz2 = (self.center.z - z).powi(2);
+        let r2 = self.radius.powi(2);
+
+        // xz 거리 체크
+        let dxz2 = dx2 + dz2;
+        let h2 = r2 - dxz2;
+        if h2 < 0.0 {
+            return None;
+        }
+
+        let h = h2.sqrt();
+        let top_y = self.center.y + self.height - self.radius   + h;
+        let bot_y = self.center.y + self.radius                 - h;
+
+        Some((bot_y, top_y))
     }
 }
