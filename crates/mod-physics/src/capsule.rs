@@ -1,5 +1,5 @@
 use super::Sphere;
-use mod_math::Segment;
+use mod_math::{Segment, Line};
 
 
 /// height <= 2 * radius 인 경우, Capsule-Capsule 충돌은 제대로 동작하지 않는다.  
@@ -103,6 +103,50 @@ impl YCapsule {
             Some((bot_y, top_y)) => bot_y <= point.y && point.y <= top_y,
             None =>                 false,
         }
+    }
+
+    pub fn check_line_collision(&self, line: &Line) -> bool {   
+        let mut v = line.point - self.center;     
+        let mut d = line.direction();
+
+        // y축과 평행한 경우
+        if d.y == 1.0 || d.y == -1.0 {
+            let r = gmm::Vector::from(v);
+            // 원점과 직선 사이 거리가 radius보다 작거나 같으면 충돌
+            return r.vec3_len_sq() <= self.radius.powi(2);
+        }
+
+        // center를 원점으로 평행이동 했을때,
+        // 직선위의 점 p는 v와 같다.
+        v.y = 0.0;
+        // 직선을 xz평면으로 투영
+        d.y = 0.0;
+        
+        let line2d = Line::build(v, d).unwrap();
+
+        // 2d상에서도 충돌하지 않는다면 3d상에서도 충돌하지 않는다.
+        if line2d.distance_to_point(&gmm::Vector::from(gmm::Float3::ZERO)) > self.radius {
+            return false;
+        }
+
+        // 일단 접점을 구하고, 그 점이 center.y+r과 center.y+height-r 사이에 있는지 체크
+        // 원과 직선의 접점 구하기
+        let op = gmm::Vector::from(line2d.point);
+        let op_len2 = op.vec3_len_sq();
+
+        let h = line2d.foot_of_perpendicular_from_point(&gmm::Vector::from(gmm::Float3::ZERO));
+        let oh2 = gmm::Vector::from(h).vec3_len_sq();
+        let r2 = self.radius.powi(2);
+        let hs = (r2 - oh2).sqrt();
+
+        let m = gmm::Vector::from(d * hs);
+
+        let s1 = h + m;
+        let s2 = h - m;
+        
+        // 찾은 점 중 하나라도 캡슐의 기둥 부분(center+r, center+h-r)에 걸치면 ok
+        // 아니면 양 끝 구와 직선의 거리 체크
+        todo!()
     }
 
     /// Capsule의 크기를 sphere의 radius만큼 확장하고 sphere의 중심점과 충돌하는지 체크
