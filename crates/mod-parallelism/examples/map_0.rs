@@ -1,4 +1,4 @@
-//! `SkipMap`의 성능 측정과 `SkipMap`의 결과가 유효한지 확인합니다.
+//! `SkipMap`의 삽입/삭제 성능 측정과 `SkipMap`의 결과가 유효한지 확인합니다.
 //! 
 
 use std::thread;
@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use mod_parallelism::collections::SkipMap;
 
-const MAX_NUM: usize = 10_000;
+const MAX_NUM: usize = 100_000;
 const MAX_THREADS: usize = 16;
 const NUM_TESTS: usize = 10_000_000;
 
@@ -25,15 +25,13 @@ fn check_history(historys: Vec<Vec<History>>, map: Arc<SkipMap<u32, u32>>) {
         for history in historys {
             match history {
                 History::Insert { val, result } => {
-                    survive[val as usize] += 1;
-                    if let Some(old) = result {
-                        survive[old as usize] -= 1;
+                    if result.is_none() {
+                        survive[val as usize] += 1;
                     }
                 },
                 History::Remove { val, result } => {
-                    if let Some(own) = result {
-                        assert_eq!(val, own);
-                        survive[own as usize] -= 1;
+                    if result.is_some() {
+                        survive[val as usize] -= 1;
                     }
                 }, 
             };
@@ -45,9 +43,9 @@ fn check_history(historys: Vec<Vec<History>>, map: Arc<SkipMap<u32, u32>>) {
             panic!("ERROR. The value {} removed while it is not in the set.", num);
         } else if cnt > 1 {
             panic!("ERROR. The value {} is added while the set already have it.", num);
-        } else if cnt == 0 && map.contains_key(num as u32) {
+        } else if cnt == 0 && map.contains_key(&(num as u32)) {
             panic!("ERROR. The value {} should not exists.", num);
-        } else if cnt == 1 && !map.contains_key(num as u32) {
+        } else if cnt == 1 && !map.contains_key(&(num as u32)) {
             panic!("ERROR. The value {} should exists.", num);
         }
     }
@@ -62,7 +60,7 @@ fn validation_main(num_threads: usize, map: Arc<SkipMap<u32, u32>>) -> Vec<Histo
             if rand::random() {
                 History::Insert { val, result: map.insert(val, val) }
             } else {
-                History::Remove { val, result: map.remove(val) }
+                History::Remove { val, result: map.remove(&val) }
             }
         })
         .collect()
@@ -78,7 +76,7 @@ fn thread_main(num_threads: usize, map: Arc<SkipMap<u32, u32>>) {
         if rand::random() {
             map.insert(val, val);
         } else {
-            map.remove(val);
+            map.remove(&val);
         }
     }
 }
