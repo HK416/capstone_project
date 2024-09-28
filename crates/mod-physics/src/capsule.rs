@@ -114,8 +114,9 @@ impl YCapsule {
     /// 
     /// #### y축과 평행하지 않은 경우
     /// 1. 주어진 직선에서 캡슐의 중심이 되는 직선에 수선의 발을 내린다.
-    /// 2. 수선의 발이 캡슐의 seg에 속하면 충돌한다.
-    /// 3. 속하지 않는다면, 캡슐의 위 아래 구와 직선의 거리를 구한다.
+    /// 2. 두 직선의 거리가 radius보다 크면 충돌하지 않음
+    /// 3. radius이내라면, 수선의 발이 캡슐의 seg에 속하면 충돌한다.
+    /// 4. 속하지 않는다면, 캡슐의 위 아래 구의 중심과 직선의 거리를 구한다.
     pub fn check_line_collision(&self, line: &Line) -> bool {   
         let radius_sq = self.radius.powi(2);
         
@@ -131,16 +132,23 @@ impl YCapsule {
 
         // #### y축과 평행하지 않은 경우
         // 1. 수선의 발을 구한다.
-        let h: gmm::Float3 = Line::build(self.center, gmm::Float3::Y).unwrap()
-            .foot_of_perpendicular_from_other(&line).into();
+        let h = Line::build(self.center, gmm::Float3::Y).unwrap()
+            .foot_of_perpendicular_from_other(&line);
 
-        // 2. 수선의 발이 캡슐의 seg에 속하면 충돌
+        // 2. 두 직선의 거리가 radius보다 크면 충돌하지 않음
+        if h.vec3_len_sq() > radius_sq {
+            return false;
+        }
+
+        let h: gmm::Float3 = h.into();
+
+        // 3. 수선의 발이 캡슐의 seg에 속하면 충돌
         let Segment { start, end } = self.get_seg();
         if start.y <= h.y && h.y <= end.y {
             return true;
         }
 
-        // 3. 캡슐의 위 아래 구와 직선의 거리를 구한다.
+        // 4. 캡슐의 위 아래 구와 직선의 거리를 구한다.
         let start = gmm::Vector::from(start);
         let end = gmm::Vector::from(end);
         if line.distance_to_point_sq(&start) <= radius_sq || line.distance_to_point_sq(&end) <= radius_sq {
