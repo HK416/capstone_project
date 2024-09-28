@@ -105,48 +105,49 @@ impl YCapsule {
         }
     }
 
+    /// 이 함수는 height <= 2 * radius인 경우에는 제대로 동작하지 않는다.  
+    /// 
+    /// #### y축과 평행한 경우
+    /// 캡슐과 직선을 캡슐의 center가 원점이 되도록 평행이동 시킨 후, 
+    /// 1. 직선을 xz평면으로 사영하여 점을 얻는다.(직선 위의 점 P의 y좌표를 0으로 만든다.)
+    /// 2. 이 점과 원점 사이의 거리가 radius보다 작거나 같으면 충돌한다.
+    /// 
+    /// #### y축과 평행하지 않은 경우
+    /// 1. 주어진 직선에서 캡슐의 중심이 되는 직선에 수선의 발을 내린다.
+    /// 2. 수선의 발이 캡슐의 seg에 속하면 충돌한다.
+    /// 3. 속하지 않는다면, 캡슐의 위 아래 구와 직선의 거리를 구한다.
     pub fn check_line_collision(&self, line: &Line) -> bool {   
-        let mut v = line.point - self.center;     
-        let mut d = line.direction();
-
-        // y축과 평행한 경우
+        let radius_sq = self.radius.powi(2);
+        
+        // #### y축과 평행한 경우
+        let d = line.direction();
         if d.y == 1.0 || d.y == -1.0 {
-            let r = gmm::Vector::from(v);
-            // 원점과 직선 사이 거리가 radius보다 작거나 같으면 충돌
-            return r.vec3_len_sq() <= self.radius.powi(2);
+            // 1. xz평면으로 사영
+            let mut v = line.point - self.center;     
+            v.y = 0.0;
+            // 2. 해당 점과 원점 사이 거리가 radius보다 작거나 같으면 충돌
+            return gmm::Vector::from(v).vec3_len_sq() <= radius_sq;
         }
 
-        // center를 원점으로 평행이동 했을때,
-        // 직선위의 점 p는 v와 같다.
-        v.y = 0.0;
-        // 직선을 xz평면으로 투영
-        d.y = 0.0;
-        
-        let line2d = Line::build(v, d).unwrap();
+        // #### y축과 평행하지 않은 경우
+        // 1. 수선의 발을 구한다.
+        let h: gmm::Float3 = Line::build(self.center, gmm::Float3::Y).unwrap()
+            .foot_of_perpendicular_from_other(&line).into();
 
-        // 2d상에서도 충돌하지 않는다면 3d상에서도 충돌하지 않는다.
-        if line2d.distance_to_point(&gmm::Vector::from(gmm::Float3::ZERO)) > self.radius {
-            return false;
+        // 2. 수선의 발이 캡슐의 seg에 속하면 충돌
+        let Segment { start, end } = self.get_seg();
+        if start.y <= h.y && h.y <= end.y {
+            return true;
         }
 
-        // 일단 접점을 구하고, 그 점이 center.y+r과 center.y+height-r 사이에 있는지 체크
-        // 원과 직선의 접점 구하기
-        let op = gmm::Vector::from(line2d.point);
-        let op_len2 = op.vec3_len_sq();
+        // 3. 캡슐의 위 아래 구와 직선의 거리를 구한다.
+        let start = gmm::Vector::from(start);
+        let end = gmm::Vector::from(end);
+        if line.distance_to_point_sq(&start) <= radius_sq || line.distance_to_point_sq(&end) <= radius_sq {
+            return true;
+        }
 
-        let h = line2d.foot_of_perpendicular_from_point(&gmm::Vector::from(gmm::Float3::ZERO));
-        let oh2 = gmm::Vector::from(h).vec3_len_sq();
-        let r2 = self.radius.powi(2);
-        let hs = (r2 - oh2).sqrt();
-
-        let m = gmm::Vector::from(d * hs);
-
-        let s1 = h + m;
-        let s2 = h - m;
-        
-        // 찾은 점 중 하나라도 캡슐의 기둥 부분(center+r, center+h-r)에 걸치면 ok
-        // 아니면 양 끝 구와 직선의 거리 체크
-        todo!()
+        false
     }
 
     /// Capsule의 크기를 sphere의 radius만큼 확장하고 sphere의 중심점과 충돌하는지 체크
@@ -202,5 +203,15 @@ impl YCapsule {
         let bot_y = self.center.y + self.radius                 - h;
 
         Some((bot_y, top_y))
+    }
+
+    /// 캡슐의 아래 구의 중심과 윗 구의 중심을 이은 선분
+    fn get_seg(&self) -> Segment {
+        let mut start = self.center.clone();
+        start.y += self.radius;
+        let mut end = self.center.clone();
+        end.y += self.height - self.radius;
+
+        Segment { start, end }
     }
 }

@@ -42,6 +42,13 @@ impl Line {
         ah.vec3_len()
     }
 
+    /// point까지의 최소 거리의 제곱
+    pub fn distance_to_point_sq(&self, point: &gmm::Vector) -> f32 {
+        let h = self.foot_of_perpendicular_from_point(point);
+        let ah = gmm::Vector::from(h - *point);
+        ah.vec3_len_sq()
+    }
+
     /// point로 부터의 수선의 발
     pub fn foot_of_perpendicular_from_point(&self, point: &gmm::Vector) -> gmm::Vector {
         let p = gmm::Vector::from(self.point);
