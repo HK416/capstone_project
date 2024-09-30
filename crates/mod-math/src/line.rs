@@ -99,6 +99,45 @@ impl Line {
             a2
         }
     }
+
+    /// 다른 직선으로부터의 수선의 발과 사이 거리, 두 직선이 평행하지 않다고 가정
+    pub fn distance_sq_and_foot_from_other(&self, other: &Line) -> (f32, gmm::Vector) {
+        let p = gmm::Vector::from(other.point);
+        let h = self.foot_of_perpendicular_from_point(&p);
+        let hp = p - h;
+
+        let v1 = gmm::Vector::from(self.direction);
+        let v2 = gmm::Vector::from(other.direction);
+        let dot: gmm::Float3 = v1.vec3_dot(v2).into();
+        let cos = dot.x;
+
+        if cos == 0.0 {   // 두 직선이 수직할 경우
+            let dot: gmm::Float3 = hp.vec3_dot(v2).into();
+            let dist_sq = hp.vec3_len_sq() - (dot.x * dot.x);
+            return (dist_sq, h);
+        }
+
+        let hs2 = hp.vec3_len_sq() - Line::distance_between(self, other).powi(2);
+
+        let cos_sq = cos * cos;
+        let ah2 = hs2 * (cos_sq) / (1.0 - cos_sq);
+        let ah = ah2.sqrt();
+
+        let a_h = v1 * gmm::Vector::from([ah, ah, ah, 0.0]);
+
+        // 어떤걸 골라야할지 모르겠다 -> 비교 선택
+        let a1 = h + a_h;
+        let a2 = h - a_h;
+
+        let d1 = other.distance_to_point(&a1);
+        let d2 = other.distance_to_point(&a2);
+
+        if d1 < d2 {
+            (d1, a1)
+        } else {
+            (d2, a2)
+        }
+    }
 }
 
 // associate functions
