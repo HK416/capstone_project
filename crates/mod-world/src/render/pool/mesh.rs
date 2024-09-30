@@ -31,8 +31,8 @@ impl MeshPool {
     /// 만약 공유 가능한 메쉬가 풀 객체에 존재하지 않을 경우 공유 가능한 메쉬를 생성합니다.
     #[must_use]
     pub fn get_or_init(
-        device: &Arc<wgpu::Device>, 
-        queue: &Arc<wgpu::Queue>, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
         builder: MeshBuilder
     ) -> Arc<ModelMesh> {
         let mesh_name = builder.name.clone();

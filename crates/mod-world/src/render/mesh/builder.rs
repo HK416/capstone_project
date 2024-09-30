@@ -1,13 +1,16 @@
-use std::{
-    collections::HashMap, 
-    sync::Arc
-};
+use std::collections::HashMap;
 
 use crate::{
-    object::GameObject, 
+    component::ArenaID, 
     render::{
         mesh::{
-            BoneDataLayout, BoneUniform, MeshUniform, NonSkinnedMesh, SkinnedMesh, SkinnedMeshDataLayout, SkinnedMeshUniform 
+            BoneDataLayout, 
+            BoneUniform, 
+            MeshUniform, 
+            NonSkinnedMesh, 
+            SkinnedMesh, 
+            SkinnedMeshDataLayout, 
+            SkinnedMeshUniform
         }, 
         pool::MeshPool
     }
@@ -16,7 +19,7 @@ use crate::{
 use super::{
     Attribute, 
     Indices, 
-    MeshRenderer, 
+    Mesh, 
     VertexAttributeValues, 
     Vertices
 };
@@ -32,10 +35,10 @@ pub struct SkinningData {
     pub quality: u32, 
 
     /// 최상위 뼈 노드 데이터입니다.
-    pub root_bone: Arc<GameObject>, 
+    pub root_bone: ArenaID, 
 
     /// 스키닝 데이터를 이루는 뼈 노드 데이터입니다.
-    pub bones: Vec<Arc<GameObject>>, 
+    pub bones: Vec<ArenaID>, 
 }
 
 
@@ -111,10 +114,10 @@ impl MeshBuilder {
     #[must_use]
     pub fn build(
         self, 
-        device: &Arc<wgpu::Device>, 
-        queue: &Arc<wgpu::Queue>, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
         skinning: Option<SkinningData>
-    ) -> MeshRenderer {
+    ) -> Mesh {
         let non_skinned = skinning.is_none()
             | self.attributes.get(&Attribute::BoneIndices).is_none()
             | self.attributes.get(&Attribute::BoneIndices).is_none();
@@ -135,7 +138,7 @@ impl MeshBuilder {
                 }
             );
 
-            MeshRenderer::NonSkinnedMesh(
+            Mesh::NonSkinnedMesh(
                 NonSkinnedMesh {
                     model_mesh: MeshPool::get_or_init(device, queue, self), 
                     mesh_uniform, 
@@ -185,7 +188,7 @@ impl MeshBuilder {
             }
             bindpose_uniform.update(device, queue, data);
 
-            MeshRenderer::SkinnedMesh(
+            Mesh::SkinnedMesh(
                 SkinnedMesh {
                     model_mesh: MeshPool::get_or_init(device, queue, self), 
                     root_bone: skinning.root_bone, 

@@ -60,8 +60,8 @@ impl MaterialBuilder {
     #[must_use]
     pub fn new<N: Into<String>>(
         name: N, 
-        device: &Arc<wgpu::Device>, 
-        queue: &Arc<wgpu::Queue>
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue
     ) -> Self {
         let default_white = TexturePool::white(device, queue);
         let default_white = TextureViewPool::get_or_init(
@@ -100,7 +100,7 @@ impl MaterialBuilder {
 
     /// 재질 빌더로부터 재질을 생성합니다.
     #[must_use]
-    pub fn build(self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Material {
+    pub fn build(self, device: &wgpu::Device, queue: &wgpu::Queue) -> Material {
         let uniform = MaterialUniform::new(Some(&format!("MaterialUniform({})", &self.name)), device);
         uniform.update(device, queue, MaterialDataLayout {
             glossiness: self.glossiness, 

@@ -23,8 +23,8 @@ impl MaterialPool {
     /// 만약 재질이 풀 객체에 존재하지 않을 경우 재질을 생성합니다.
     #[must_use]
     pub fn get_or_init(
-        device: &Arc<wgpu::Device>, 
-        queue: &Arc<wgpu::Queue>, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
         builder: MaterialBuilder
     ) -> Arc<Material> {
         let material_name = builder.name.clone();

@@ -72,7 +72,7 @@ impl TextureViewPool {
     /// 만약 텍스처 뷰가 풀 객체에 존재하지 않을 경우 텍스처 뷰를 생성합니다.
     #[must_use]
     pub fn get_or_init<'a>(
-        texture: &Arc<wgpu::Texture>, 
+        texture: &wgpu::Texture, 
         desc: &wgpu::TextureViewDescriptor<'a>
     ) -> Arc<wgpu::TextureView> {
         let texture_view_id = TextureViewID::from((texture, desc));

@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use super::MaterialUniform;
 
@@ -20,7 +20,7 @@ pub struct Material {
 impl Material {
     /// 범용적으로 사용 가능한 재질의 [wgpu::BindGroupLayout]를 반환합니다.
     #[must_use]
-    pub fn bind_group_layout(device: &Arc<wgpu::Device>) -> &'static wgpu::BindGroupLayout {
+    pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(

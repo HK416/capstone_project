@@ -1,6 +1,6 @@
 use std::{mem, sync::{Arc, OnceLock}};
 
-use crate::{object::CameraElement, render::{
+use crate::{define::CameraElement, render::{
     material::Material, 
     mesh::SkinnedMesh, 
     DEPTH_STENCIL_FORMAT, 

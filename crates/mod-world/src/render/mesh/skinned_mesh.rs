@@ -1,6 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
-use crate::object::GameObject;
+use crate::component::ArenaID;
 
 use super::{BoneUniform, ModelMesh, SkinnedMeshUniform};
 
@@ -13,10 +13,10 @@ pub struct SkinnedMesh {
     pub(super) model_mesh: Arc<ModelMesh>, 
 
     /// 최상위 뼈 노드입니다.
-    pub(super) root_bone: Arc<GameObject>, 
+    pub(super) root_bone: ArenaID, 
 
     /// 스키닝 메쉬를 구성하는 뼈 노드입니다.
-    pub(super) bones: Vec<Arc<GameObject>>, 
+    pub(super) bones: Vec<ArenaID>, 
 
     /// 메쉬의 유니폼 버퍼입니다.
     pub(super) skinned_mesh_uniform: SkinnedMeshUniform, 
@@ -34,7 +34,7 @@ pub struct SkinnedMesh {
 impl SkinnedMesh {
     /// 스키닝된 메쉬의 [wgpu::BindGroupLayout]을 가져옵니다.
     #[must_use]
-    pub fn bind_group_layout(device: &Arc<wgpu::Device>) -> &'static wgpu::BindGroupLayout {
+    pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(
@@ -84,13 +84,13 @@ impl SkinnedMesh {
 impl SkinnedMesh {
     #[inline]
     #[must_use]
-    pub fn root_bone(&self) -> &Arc<GameObject> {
+    pub fn root_bone(&self) -> &ArenaID {
         &self.root_bone
     }
 
     #[inline]
     #[must_use]
-    pub fn bones(&self) -> &[Arc<GameObject>] {
+    pub fn bones(&self) -> &[ArenaID] {
         &self.bones
     }
 

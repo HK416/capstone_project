@@ -36,7 +36,7 @@ impl Default for MaterialDataLayout {
             smoothness: 0.5, 
             metallic: 0.25, 
             _padding0: [0; 4], 
-            diffuse: gmm::Float4::fill(0.85), 
+            diffuse: gmm::Float4::new(0.85, 0.85, 0.85, 1.0), 
             specular: gmm::Float4::fill(1.0), 
             emissive: gmm::Float4::fill(1.0) 
         }

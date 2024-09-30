@@ -20,7 +20,7 @@ pub struct NonSkinnedMesh {
 impl NonSkinnedMesh {
     /// 스키닝되지 않은 메쉬의 [wgpu::BindGroupLayout]을 가져옵니다.
     #[must_use]
-    pub fn bind_group_layout(device: &Arc<wgpu::Device>) -> &'static wgpu::BindGroupLayout {
+    pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(

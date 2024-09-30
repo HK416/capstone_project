@@ -20,7 +20,7 @@ pub struct TexturePool;
 impl TexturePool {
     /// 기본 검정색 텍스처를 반환합니다.
     #[must_use]
-    pub fn black(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Arc<wgpu::Texture> {
+    pub fn black(device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<wgpu::Texture> {
         static TEXTURE: OnceLock<Arc<wgpu::Texture>> = OnceLock::new();
         TEXTURE.get_or_init(|| {
             device.create_texture_with_data(
@@ -47,7 +47,7 @@ impl TexturePool {
 
     /// 기본 하얀색 텍스처를 반환합니다.
     #[must_use]
-    pub fn white(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Arc<wgpu::Texture> {
+    pub fn white(device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<wgpu::Texture> {
         static TEXTURE: OnceLock<Arc<wgpu::Texture>> = OnceLock::new();
         TEXTURE.get_or_init(|| {
             device.create_texture_with_data(
@@ -74,7 +74,7 @@ impl TexturePool {
 
     /// 기본 노멀 텍스처를 반환합니다.
     #[must_use]
-    pub fn normal(device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Arc<wgpu::Texture> {
+    pub fn normal(device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<wgpu::Texture> {
         static TEXTURE: OnceLock<Arc<wgpu::Texture>> = OnceLock::new();
         TEXTURE.get_or_init(|| {
             device.create_texture_with_data(
@@ -105,8 +105,8 @@ impl TexturePool {
     /// 만약 텍스처가 풀 객체에 존재하지 않을 경우 텍스처를 생성합니다.
     #[must_use]
     pub fn get_or_init<'a, N: Into<String>>(
-        device: &Arc<wgpu::Device>, 
-        queue: &Arc<wgpu::Queue>, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
         texture_name: N, 
         desc: &wgpu::TextureDescriptor<'a>, 
         data: &[u8]

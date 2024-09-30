@@ -59,7 +59,7 @@ pub struct SamplerPool;
 impl SamplerPool {
     /// 기본 선형 보간 샘플러를 반환합니다.
     #[must_use]
-    pub fn linear(device: &Arc<wgpu::Device>) -> Arc<wgpu::Sampler> {
+    pub fn linear(device: &wgpu::Device) -> Arc<wgpu::Sampler> {
         static SAMPLER: OnceLock<Arc<wgpu::Sampler>> = OnceLock::new();
         SAMPLER.get_or_init(|| {
             device.create_sampler(
@@ -83,7 +83,7 @@ impl SamplerPool {
     /// 만약 텍스처 샘플러가 풀 객체에 존재하지 않을 경우 텍스처 샘플러를 생성합니다.
     #[must_use]
     pub fn get_or_init<'a>(
-        device: &Arc<wgpu::Device>, 
+        device: &wgpu::Device, 
         desc: &wgpu::SamplerDescriptor<'a>
     ) -> (SamplerID, Arc<wgpu::Sampler>) {
         let sampler_id = SamplerID::from(desc);
