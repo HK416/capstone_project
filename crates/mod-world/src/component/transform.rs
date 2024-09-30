@@ -67,6 +67,28 @@ impl Transform {
     }
 
 
+    /// 위쪽을 향하는 벡터를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn get_up_vector(&self) -> gmm::Vector {
+        self.0.get_y_axis().vec3_normalize()
+    }
+
+    /// 오른쪽을 향하는 벡터를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn get_right_vector(&self) -> gmm::Vector {
+        self.0.get_x_axis().vec3_normalize()
+    }
+
+    /// 앞쪽을 향하는 벡터를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn get_look_vector(&self) -> gmm::Vector {
+        self.0.get_z_axis().vec3_normalize()
+    }
+
+
     /// 주어진 거리만큼 변환 행렬의 위치를 이동합니다.
     #[allow(unused_must_use)] // gmm 라이브러리 문제 (추후 수정)
     pub fn translate(&mut self, distance: impl Into<gmm::Vector>) {
