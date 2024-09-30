@@ -142,8 +142,7 @@ impl GameObject {
     #[inline]
     #[must_use]
     pub fn get_element<T: Element>(&self) -> Option<&T> {
-        self.elements.get(TypeId::of::<T>())
-            .map(|element| element.downcast_ref().unwrap())
+        todo!()
     }
 
     /// 게임 오브젝트에 연결된 요소를 가져옵니다.
@@ -153,8 +152,7 @@ impl GameObject {
     #[inline]
     #[must_use]
     pub fn get_mut_element<T: Element>(&self) -> Option<&mut T> {
-        self.elements.get_mut(TypeId::of::<T>())
-            .map(|element| element.downcast_mut().unwrap())
+        todo!()
     }
 
     /// 게임 오브젝트에 요소를 추가합니다.
