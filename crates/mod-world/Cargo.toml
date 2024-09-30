@@ -16,7 +16,7 @@ bytemuck = { version = "1.18", features = ["derive"] }
 
 # Math library for video games
 # License: MIT
-gmm = { version = "0.2", features = ["bytemuck"] }
+gmm = { version = "0.3", features = ["bytemuck"] }
 
 # A macro for declaring lazily evaluated statics in Rust.
 # License: MIT OR Apache-2.0

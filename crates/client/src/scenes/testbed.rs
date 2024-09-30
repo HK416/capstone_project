@@ -220,7 +220,7 @@ impl TestBedScene {
     ) {
         let physics = player.get_mut_element::<Physics>().unwrap();
         let world_trans = player.get_world_trans();
-        let mut rotation: gmm::Quaternion = world_trans.try_into().unwrap();
+        let mut rotation = gmm::Quaternion::from_matrix(world_trans);
         let world_trans: gmm::Float4x4 = world_trans.into();
         let mut translation = world_trans.w_axis.xyz();
 
@@ -245,7 +245,7 @@ impl TestBedScene {
             } else {
                 let dir: gmm::Vector = physics.velocity.into();
                 let x_axis: gmm::Vector = gmm::Float3::X.into();
-                let norm_dir = dir.vec3_normalize().unwrap();
+                let norm_dir = dir.vec3_normalize();
                 let cross: gmm::Float3 = x_axis.vec3_cross(norm_dir).into();
                 let dot: gmm::Float3 = x_axis.vec3_dot(norm_dir).into();
                 let theta = if cross.y >= 0.0 { 
@@ -284,23 +284,23 @@ impl TestBedScene {
         let mut axis: gmm::Quaternion = gmm::Float4::new(1.0, 0.0, 0.0, 0.0).into();
         let mut pos: gmm::Quaternion = gmm::Float4::new(0.0, 0.0, -DISTANCE, 0.0).into();
         let y_rotate = gmm::Quaternion::from_rotation_y(angle.azimuthal.to_radians());
-        axis = y_rotate * axis * y_rotate.inverse().unwrap();
-        pos = y_rotate * pos * y_rotate.inverse().unwrap();
+        axis = y_rotate * axis * y_rotate.inverse();
+        pos = y_rotate * pos * y_rotate.inverse();
 
         angle.dir = {
             let pos: gmm::Vector = pos.into();
-            let dir = -pos.vec3_normalize().unwrap();
+            let dir = -pos.vec3_normalize();
             dir.into()
         };
 
         let polar_rotate = gmm::Quaternion::from_axis_angle(axis.into(), angle.polar.to_radians());
-        pos = polar_rotate * pos * polar_rotate.inverse().unwrap(); 
+        pos = polar_rotate * pos * polar_rotate.inverse();
         let pos: gmm::Vector = pos.into();
         let pos: gmm::Float3 = pos.into();
 
         let camera_pos = target_pivot + pos;
         let camera_dir: gmm::Vector = (target_pivot - camera_pos).into();
-        let camera_dir = camera_dir.vec3_normalize().unwrap();
+        let camera_dir = camera_dir.vec3_normalize();
         let camera_up: gmm::Vector = gmm::Float3::Y.into();
         let camera_right = camera_up.vec3_cross(camera_dir);
         let camera_up = camera_dir.vec3_cross(camera_right);
@@ -327,9 +327,9 @@ impl TestBedScene {
             let world_trans: gmm::Float4x4 = world_trans.into();
             let eye: gmm::Vector = world_trans.w_axis.xyz().into();
             let dir: gmm::Vector = world_trans.z_axis.xyz().into();
-            let dir = dir.vec3_normalize().unwrap();
+            let dir = dir.vec3_normalize();
             let up: gmm::Vector = world_trans.y_axis.xyz().into();
-            let up = up.vec3_normalize().unwrap();
+            let up = up.vec3_normalize();
             let camera_trans = gmm::Matrix::look_to_lh(eye, dir, up);
 
             let projection = camera.get_element::<Projection>().unwrap();
@@ -486,7 +486,7 @@ impl GameScene for TestBedScene {
         if let Some(player) = self.players.get(&self.client_id) {
             let animator = player.get_element::<Animator>().unwrap();
             let world_trans = player.get_world_trans();
-            let rotation: gmm::Quaternion = world_trans.try_into().unwrap();
+            let rotation = gmm::Quaternion::from_matrix(world_trans);
             let rotation: gmm::Float4 = rotation.into();
             let world_trans: gmm::Float4x4 = world_trans.into();
             let translation = world_trans.w_axis.xyz();

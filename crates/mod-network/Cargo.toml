@@ -14,4 +14,4 @@ bytemuck = { version = "1.16", features = ["derive"] }
 
 # 게임 수학 라이브러리
 # License: MIT
-gmm = { version = "0.2", features = ["bytemuck", "serde"] }
+gmm = { version = "0.3", features = ["bytemuck", "serde"] }
