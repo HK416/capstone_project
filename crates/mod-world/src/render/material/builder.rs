@@ -102,7 +102,7 @@ impl MaterialBuilder {
     #[must_use]
     pub fn build(self, device: &Arc<wgpu::Device>, queue: &Arc<wgpu::Queue>) -> Material {
         let uniform = MaterialUniform::new(Some(&format!("MaterialUniform({})", &self.name)), device);
-        uniform.update(queue, MaterialDataLayout {
+        uniform.update(device, queue, MaterialDataLayout {
             glossiness: self.glossiness, 
             smoothness: self.smoothness, 
             metallic: self.metallic, 

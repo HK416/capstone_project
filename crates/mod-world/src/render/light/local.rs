@@ -92,7 +92,7 @@ impl LocalLightUniform {
 impl LocalLightUniform {
     /// 초기화되지 않은 새로운 지역 조명 유니폼 버퍼를 생성합니다.
     #[must_use]
-    pub fn new(label: Option<&str>, device: &Arc<wgpu::Device>) -> Self {
+    pub fn new(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self { 
             buffer: device.create_buffer(
                 &wgpu::BufferDescriptor {
@@ -106,9 +106,8 @@ impl LocalLightUniform {
     }
 
     /// 지역 조명 유니폼 버퍼의 데이터를 갱신합니다.
-    pub fn update(&self, queue: &Arc<wgpu::Queue>, data: LocalLightArrayDataLayout) {
+    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: LocalLightArrayDataLayout) {
         let capturable = self.buffer.clone();
-        let queue_cloned = queue.clone();
         self.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
             match result {
                 Ok(_) => {
@@ -119,13 +118,16 @@ impl LocalLightUniform {
 
                     drop(buffer_view);
                     capturable.unmap();
-                    queue_cloned.submit([]);
                 }, 
                 Err(e) => {
                     log::warn!("Failed to write uniform buffer! (LocalLightUniform :: {})", e);
                 }
             }
         });
+
+        // 제출된 작업이 끝날 때 까지 대기합니다.
+        let index = queue.submit([]);
+        device.poll(wgpu::Maintain::WaitForSubmissionIndex(index));
     }
 }
 

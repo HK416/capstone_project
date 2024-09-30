@@ -54,7 +54,7 @@ impl GlobalLightUniform {
 impl GlobalLightUniform {
     /// 전역 조명 유니폼 버퍼를 가져옵니다.
     #[must_use]
-    pub fn get(device: &Arc<wgpu::Device>) -> &'static Self {
+    pub fn get(device: &wgpu::Device) -> &'static Self {
         static THIS: OnceLock<GlobalLightUniform> = OnceLock::new();
         THIS.get_or_init(|| {
             Self { 
@@ -71,9 +71,8 @@ impl GlobalLightUniform {
     }
 
     /// 전역 조명 유니폼 버퍼의 데이터를 갱신합니다.
-    pub fn update(&self, queue: &Arc<wgpu::Queue>, data: GlobalLightDataLayout) {
+    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: GlobalLightDataLayout) {
         let capturable = self.buffer.clone();
-        let queue_cloned = queue.clone();
         self.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
             match result {
                 Ok(_) => {
@@ -84,13 +83,16 @@ impl GlobalLightUniform {
 
                     drop(buffer_view);
                     capturable.unmap();
-                    queue_cloned.submit([]);
                 }, 
                 Err(e) => {
                     log::warn!("Failed to write uniform buffer! (GlobalLightUniform :: {})", e);
                 }
             }
         });
+
+        // 제출된 작업이 끝날 때 까지 대기합니다.
+        let index = queue.submit([]);
+        device.poll(wgpu::Maintain::WaitForSubmissionIndex(index));
     }
 }
 

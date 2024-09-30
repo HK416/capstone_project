@@ -207,7 +207,7 @@ impl TestBedScene {
                         None => break
                     };
                 }
-                skinning.skinned_mesh.bone_transforms_uniform().update(app.render_queue(), data);
+                skinning.skinned_mesh.bone_transforms_uniform().update(app.render_device(), app.render_queue(), data);
             }
             animator.prev_anim_index = animator.anim_index;
         }
@@ -334,7 +334,7 @@ impl TestBedScene {
 
             let projection = camera.get_element::<Projection>().unwrap();
             let element = camera.get_element::<CameraElement>().unwrap();
-            element.camera_uniform().update(app.render_queue(), CameraDataLayout {
+            element.camera_uniform().update(app.render_device(), app.render_queue(), CameraDataLayout {
                 proj_view: ((**projection) * camera_trans).into(), 
                 position: eye.into(), 
                 direction: dir.into(), 
@@ -349,7 +349,7 @@ impl TestBedScene {
             match mesh_renderer {
                 MeshRenderer::NonSkinnedMesh(mesh) => {
                     mesh.mesh_uniform()
-                        .update(app.render_queue(), MeshDataLayout {
+                        .update(app.render_device(), app.render_queue(), MeshDataLayout {
                             trans: object.get_world_trans().into()
                         });
                 }, 

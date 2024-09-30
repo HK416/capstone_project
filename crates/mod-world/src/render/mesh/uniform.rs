@@ -45,7 +45,7 @@ impl MeshUniform {
 impl MeshUniform {
     /// 초기화되지 않은 새로운 스키닝되지 않은 메쉬의 유니폼 버퍼를 생성합니다.
     #[must_use]
-    pub fn new(label: Option<&str>, device: &Arc<wgpu::Device>) -> Self {
+    pub fn new(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self { 
             buffer: device.create_buffer(
                 &wgpu::BufferDescriptor {
@@ -59,9 +59,8 @@ impl MeshUniform {
     }
 
     /// 스키닝되지 않은 메쉬의 유니폼 버퍼의 데이터를 갱신합니다.
-    pub fn update(&self, queue: &Arc<wgpu::Queue>, data: MeshDataLayout) {
+    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: MeshDataLayout) {
         let capturable = self.buffer.clone();
-        let queue_cloned = queue.clone();
         self.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
             match result {
                 Ok(_) => {
@@ -72,13 +71,16 @@ impl MeshUniform {
 
                     drop(buffer_view);
                     capturable.unmap();
-                    queue_cloned.submit([]);
                 }, 
                 Err(e) => {
                     log::warn!("Failed to write uniform buffer! (MeshUniform :: {})", e);
                 }
             }
         });
+
+        // 제출된 작업이 끝날 때 까지 대기합니다.
+        let index = queue.submit([]);
+        device.poll(wgpu::Maintain::WaitForSubmissionIndex(index));
     }
 }
 
@@ -133,7 +135,7 @@ impl SkinnedMeshUniform {
 impl SkinnedMeshUniform {
     /// 초기화되지 않은 새로운 스키닝된 메쉬의 유니폼 버퍼를 생성합니다.
     #[must_use]
-    pub fn new(label: Option<&str>, device: &Arc<wgpu::Device>) -> Self {
+    pub fn new(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self { 
             buffer: device.create_buffer(
                 &wgpu::BufferDescriptor {
@@ -147,9 +149,8 @@ impl SkinnedMeshUniform {
     }
 
     /// 스키닝된 메쉬의 유니폼 버퍼의 데이터를 갱신합니다.
-    pub fn update(&self, queue: &Arc<wgpu::Queue>, data: SkinnedMeshDataLayout) {
+    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: SkinnedMeshDataLayout) {
         let capturable = self.buffer.clone();
-        let queue_cloned = queue.clone();
         self.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
             match result {
                 Ok(_) => {
@@ -160,13 +161,16 @@ impl SkinnedMeshUniform {
 
                     drop(buffer_view);
                     capturable.unmap();
-                    queue_cloned.submit([]);
                 }, 
                 Err(e) => {
                     log::warn!("Failed to write uniform buffer! (SkinnedMeshUniform :: {})", e);
                 }
             }
         });
+
+        // 제출된 작업이 끝날 때 까지 대기합니다.
+        let index = queue.submit([]);
+        device.poll(wgpu::Maintain::WaitForSubmissionIndex(index));
     }
 }
 
@@ -242,7 +246,7 @@ impl BoneUniform {
 impl BoneUniform {
     /// 초기화되지 않은 새로운 뼈 변환 행렬 유니폼 버퍼를 생성합니다.
     #[must_use]
-    pub fn new(label: Option<&str>, device: &Arc<wgpu::Device>) -> Self {
+    pub fn new(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self { 
             buffer: device.create_buffer(
                 &wgpu::BufferDescriptor {
@@ -256,9 +260,8 @@ impl BoneUniform {
     }
 
     /// 뼈 변환 행렬 유니폼 버퍼 데이터를 갱신합니다.
-    pub fn update(&self, queue: &Arc<wgpu::Queue>, data: BoneDataLayout) {
+    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: BoneDataLayout) {
         let capturable = self.buffer.clone();
-        let queue_cloned = queue.clone();
         self.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
             match result {
                 Ok(_) => {
@@ -269,13 +272,16 @@ impl BoneUniform {
 
                     drop(buffer_view);
                     capturable.unmap();
-                    queue_cloned.submit([]);
                 }, 
                 Err(e) => {
                     log::warn!("Failed to write uniform buffer! (BoneDataLayout :: {})", e);
                 }
             }
         });
+
+        // 제출된 작업이 끝날 때 까지 대기합니다.
+        let index = queue.submit([]);
+        device.poll(wgpu::Maintain::WaitForSubmissionIndex(index));
     }
 }
 

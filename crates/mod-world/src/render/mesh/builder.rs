@@ -169,7 +169,7 @@ impl MeshBuilder {
             );
 
             let skinning = unsafe { skinning.unwrap_unchecked() }; // Safe: 이전에 존재 여부를 확인함.
-            skinned_mesh_uniform.update(queue, SkinnedMeshDataLayout {
+            skinned_mesh_uniform.update(device, queue, SkinnedMeshDataLayout {
                 quality: skinning.quality.min(4), 
                 num_bones: (skinning.bones.len() as u32).min(256), 
                 ..Default::default()
@@ -183,7 +183,7 @@ impl MeshBuilder {
                     None => break
                 };
             }
-            bindpose_uniform.update(queue, data);
+            bindpose_uniform.update(device, queue, data);
 
             MeshRenderer::SkinnedMesh(
                 SkinnedMesh {
