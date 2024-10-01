@@ -100,7 +100,7 @@ impl MaterialBuilder {
 
     /// 재질 빌더로부터 재질을 생성합니다.
     #[must_use]
-    pub fn build(self, device: &wgpu::Device, queue: &wgpu::Queue) -> Material {
+    pub fn build(self, device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<Material> {
         let uniform = MaterialUniform::new(Some(&format!("MaterialUniform({})", &self.name)), device);
         uniform.update(device, queue, MaterialDataLayout {
             glossiness: self.glossiness, 
@@ -177,6 +177,6 @@ impl MaterialBuilder {
             name: self.name, 
             uniform, 
             bind_group 
-        }
+        }.into()
     }
 }

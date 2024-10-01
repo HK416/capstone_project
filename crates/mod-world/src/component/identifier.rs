@@ -30,13 +30,13 @@ impl IdGenerator {
 
     /// 새로운 식별자를 할당받습니다.
     #[must_use]
-    pub fn alloc(self: &Arc<Self>) -> ArenaID {
+    pub fn alloc(self: &Arc<Self>) -> WorldID {
         let value = match self.recycle.pop() {
             Some(value) => value, 
             None => self.number.fetch_add(1, MemOrdering::AcqRel)
         };
 
-        ArenaID(UniqueId {value, allocator: Arc::downgrade(self) }.into())
+        WorldID(UniqueId {value, allocator: Arc::downgrade(self) }.into())
     }
 
     /// 할당한 식별자를 회수합니다.
@@ -55,44 +55,64 @@ struct UniqueId {
     allocator: Weak<IdGenerator>, 
 }
 
+impl Default for UniqueId {
+    #[inline]
+    fn default() -> Self {
+        Self { 
+            value: 0, 
+            allocator: Weak::new(), 
+        }
+    }
+}
+
 impl Drop for UniqueId {
     fn drop(&mut self) {
         if let Some(allocator) = self.allocator.upgrade() {
-            allocator.retire(self.value);
+            if self.value != 0 {
+                allocator.retire(self.value);
+            }
         }
     }
 }
 
 
 
+
 /// 게임 오브젝트의 식별자입니다.
 #[derive(Debug, Clone)]
-pub struct ArenaID(Arc<UniqueId>);
+pub struct WorldID(Arc<UniqueId>);
 
-impl Eq for ArenaID { }
+impl Default for WorldID {
+    #[inline]
+    fn default() -> Self {
+        Self(Arc::new(UniqueId::default()))
+    }
+}
 
-impl PartialEq<Self> for ArenaID {
+impl Eq for WorldID { }
+
+impl PartialEq<Self> for WorldID {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.0.value.eq(&other.0.value)
     }
 }
 
-impl Ord for ArenaID {
+impl Ord for WorldID {
     #[inline]
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.value.cmp(&other.0.value)
     }
 }
 
-impl PartialOrd<Self> for ArenaID {
+impl PartialOrd<Self> for WorldID {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.0.value.partial_cmp(&other.0.value)
     }
 }
 
-impl Hash for ArenaID {
+impl Hash for WorldID {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.value.hash(state);

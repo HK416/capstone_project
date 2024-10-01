@@ -1,10 +1,9 @@
-use std::{mem, sync::OnceLock};
+use std::{mem, sync::{Arc, OnceLock}};
 
 use crate::{
     component::{
-        camera_bind_group_layout, 
-        ArenaID, 
-        CameraObject
+        Camera, 
+        WorldID
     }, 
     render::{
         material::Material, 
@@ -18,16 +17,17 @@ use super::MeshRenderer;
 
 
 
+/// 모델을 그리는 렌더러입니다.
 #[derive(Debug)]
 pub struct ModelRenderer {
     /// 렌더러의 게임 오브젝트 식별자입니다.
-    game_object_id: ArenaID, 
+    game_object_id: WorldID, 
 
     /// 렌더러에 연결된 메쉬입니다.
     mesh: Mesh, 
 
     /// 렌더러에 연결된 재질입니다.
-    materials: Vec<Material>, 
+    materials: Vec<Arc<Material>>, 
 
     /// 렌더러의 그래픽스 파이프라인입니다.
     pipeline: &'static wgpu::RenderPipeline,  
@@ -37,9 +37,9 @@ impl ModelRenderer {
     /// 새로운 모델 메쉬 렌더러를 생성합니다.
     #[must_use]
     pub fn new(
-        id: ArenaID, 
+        id: WorldID, 
         mesh: Mesh, 
-        materials: Vec<Material>, 
+        materials: Vec<Arc<Material>>, 
         device: &wgpu::Device
     ) -> Self {
         Self { 
@@ -54,7 +54,7 @@ impl ModelRenderer {
 impl MeshRenderer for ModelRenderer {
     #[inline]
     #[must_use]
-    fn game_object(&self) -> &ArenaID {
+    fn game_object(&self) -> &WorldID {
         &self.game_object_id
     }
 
@@ -66,11 +66,11 @@ impl MeshRenderer for ModelRenderer {
 
     #[inline]
     #[must_use]
-    fn materials(&self) -> &[Material] {
+    fn materials(&self) -> &[Arc<Material>] {
         &self.materials
     }
 
-    fn bind<'a>(&'a self, camera: &dyn CameraObject, rpass: &mut wgpu::RenderPass<'a>) {
+    fn bind<'a>(&'a self, camera: &Camera, rpass: &mut wgpu::RenderPass<'a>) {
         rpass.set_pipeline(&self.pipeline);
 
         rpass.set_bind_group(0, camera.bind_group(), &[]);
@@ -191,7 +191,8 @@ fn get_render_pipeline(device: &wgpu::Device) -> &'static wgpu::RenderPipeline {
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList, 
                     front_face: wgpu::FrontFace::Cw, 
-                    cull_mode: Some(wgpu::Face::Back), 
+                    // cull_mode: Some(wgpu::Face::Back), 
+                    cull_mode: None, 
                     polygon_mode: wgpu::PolygonMode::Fill, 
                     ..Default::default()
                 }, 
@@ -248,7 +249,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         &wgpu::PipelineLayoutDescriptor {
             label: Some("PipelineLayout(ModelRenderer)"), 
             bind_group_layouts: &[
-                camera_bind_group_layout(device), 
+                Camera::layout(device), 
                 SkinnedMesh::bind_group_layout(device), 
                 Material::bind_group_layout(device)
             ], 

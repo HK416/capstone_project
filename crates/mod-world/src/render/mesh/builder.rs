@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    component::ArenaID, 
+    component::WorldID, 
     render::{
         mesh::{
             BoneDataLayout, 
@@ -35,10 +35,10 @@ pub struct SkinningData {
     pub quality: u32, 
 
     /// 최상위 뼈 노드 데이터입니다.
-    pub root_bone: ArenaID, 
+    pub root_bone: WorldID, 
 
     /// 스키닝 데이터를 이루는 뼈 노드 데이터입니다.
-    pub bones: Vec<ArenaID>, 
+    pub bones: Vec<WorldID>, 
 }
 
 

@@ -32,7 +32,7 @@ impl MaterialPool {
         match pool_guard.get(&material_name) {
             Some(material) => material.clone(), 
             None => {
-                let material = Arc::new(builder.build(device, queue));
+                let material = builder.build(device, queue);
                 pool_guard.insert(material_name, material.clone());
                 material
             }
