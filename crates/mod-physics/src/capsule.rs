@@ -27,6 +27,22 @@ impl Capsule {
         }
     }
     
+    /// direction을 단위벡터로 만들어 Capsule의 방향을 설정한다.  
+    /// 영벡터가 주어지면 Error를 반환한다.  
+    pub fn set_direction(&mut self, direction: gmm::Float3) -> Result<(), &'static str> {
+        match gmm::Vector::from(direction).vec3_normalize() {
+            Some(direction) => {
+                self.direction = direction.into();
+                Ok(())
+            },
+            None => Err("Direction cannot be zero vector")
+        }
+    }
+
+    pub fn direction(&self) -> gmm::Float3 {
+        self.direction
+    }
+
     /// 캡슐이 UFO형태인 경우에도 제대로 동작한다.
     pub fn check_point_collision(&self, point: &gmm::Float3) -> bool {
         let p = gmm::Vector::from(*point - self.center);    // center에 대한 point의 상대좌표
@@ -75,6 +91,7 @@ impl Capsule {
     /// 이는 self를 sphere.radius만큼 확장한 캡슐과 나머지 캡슐의 양쪽 구의 중심을 이은 선분이 충돌하는지 체크하는것과 같다.
     /// 따라서 두 선분의 최소 거리가 self.radius + sphere.radius보다 작거나 같으면 충돌한다.
     pub fn check_capsule_collision(&self, other: &Capsule) -> bool {
+        // 두 캡슐위의 점 사이 거리가 두 캡슐의 높이 합보다 크면 충돌하지 않음
         let c_to_c = gmm::Vector::from(other.center - self.center);
         if c_to_c.vec3_len_sq() > (self.height + other.height).powi(2) {
             return false;
@@ -86,6 +103,8 @@ impl Capsule {
         distance <= self.radius + other.radius
     }
 
+    /// 캡슐이 UFO형태인 경우는 고려하지 않는다.  
+    /// 
     /// 캡슐의 아래 구의 중심과 윗 구의 중심을 이은 선분
     fn get_seg(&self) -> Segment {
         Segment {
