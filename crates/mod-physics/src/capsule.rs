@@ -1,4 +1,4 @@
-use super::Sphere;
+use super::{Sphere, Ray, RayIntersect};
 use mod_math::{Segment, Line};
 
 
@@ -133,6 +133,14 @@ impl Capsule {
 }
 
 
+impl RayIntersect for Capsule {
+    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
+        todo!()
+    }
+}
+
+
+
 
 /// Y축에 정렬된 캡슐  
 /// direction은 항상 <0, 1, 0>이다.  
@@ -252,5 +260,12 @@ impl YCapsule {
         end.y += self.height - self.radius;
 
         Segment { start, end }
+    }
+}
+
+
+impl RayIntersect for YCapsule {
+    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
+        todo!()
     }
 }
