@@ -61,6 +61,21 @@ impl Segment {
         self.nearest_to_point(&other_nearest)
     }
 
+    /// line까지의 거리가 최소가 되는 선분 위의 점
+    pub fn nearest_to_line(&self, line: &Line) -> gmm::Vector {
+        let start = gmm::Vector::from(self.start);
+        let end = gmm::Vector::from(self.end);
+
+        let this_line = match Line::build(self.start, end - start) {
+            Ok(line) => line,
+            Err(_)   => return gmm::Vector::from(self.start),
+        };
+
+        let h = line.foot_of_perpendicular_from_other(&this_line);
+
+        self.nearest_to_point(&h)
+    }
+
     /// 두 선분 사이의 최소 거리
     pub fn distance_to_other(&self, other: &Segment) -> f32 {
         let start = gmm::Vector::from(self.start);

@@ -84,6 +84,24 @@ impl Capsule {
         capsule.check_point_collision(&sphere.center)
     }
 
+    /// 캡슐이 UFO형태인 경우에는 제대로 동작하지 않는다.  
+    /// 
+    /// 직선과 선분 사이의 최소 거리를 구하는 것과 같다.  
+    pub fn check_line_collision(&self, line: &Line) -> bool {
+        let center = gmm::Vector::from(self.center);
+        let radius_sq = self.radius.powi(2);
+
+        if self.direction == line.direction() {
+            return line.distance_to_point_sq(&center) <= radius_sq;
+        }
+        
+        let nearest = self.get_seg().nearest_to_line(line);
+        let nearest = gmm::Vector::from(nearest);
+        let distance_sq = line.distance_to_point_sq(&nearest);
+
+        distance_sq <= radius_sq
+    }
+
     /// 캡슐이 UFO형태인 경우에는 제대로 동작하지 않는다.
     /// 
     /// 두 선분 사이의 거리를 구하는 것과 같은가?
@@ -138,59 +156,6 @@ impl YCapsule {
         }
     }
 
-    /// 캡슐이 UFO형태인 경우에는 제대로 동작하지 않는다.  
-    /// 
-    /// #### y축과 평행한 경우
-    /// 캡슐과 직선을 캡슐의 center가 원점이 되도록 평행이동 시킨 후, 
-    /// 1. 직선을 xz평면으로 사영하여 점을 얻는다.(직선 위의 점 P의 y좌표를 0으로 만든다.)
-    /// 2. 이 점과 원점 사이의 거리가 radius보다 작거나 같으면 충돌한다.
-    /// 
-    /// #### y축과 평행하지 않은 경우
-    /// 1. 주어진 직선에서 캡슐의 중심이 되는 직선에 수선의 발을 내린다.
-    /// 2. 두 직선의 거리가 radius보다 크면 충돌하지 않음
-    /// 3. radius이내라면, 수선의 발이 캡슐의 seg에 속하면 충돌한다.
-    /// 4. 속하지 않는다면, 캡슐의 위 아래 구의 중심과 직선의 거리를 구한다.
-    pub fn check_line_collision(&self, line: &Line) -> bool {   
-        let radius_sq = self.radius.powi(2);
-        
-        // #### y축과 평행한 경우
-        let d = line.direction();
-        if d.y == 1.0 || d.y == -1.0 {
-            // 1. xz평면으로 사영
-            let mut v = line.point - self.center;     
-            v.y = 0.0;
-            // 2. 해당 점과 원점 사이 거리가 radius보다 작거나 같으면 충돌
-            return gmm::Vector::from(v).vec3_len_sq() <= radius_sq;
-        }
-
-        // #### y축과 평행하지 않은 경우
-        // 1. 수선의 발을 구한다.
-        let (distance, h) = Line::build(self.center, gmm::Vector::from(gmm::Float3::Y)).unwrap()
-            .distance_sq_and_foot_from_other(&line);
-
-        // 2. 두 직선의 거리가 radius보다 크면 충돌하지 않음
-        if distance > radius_sq {
-            return false;
-        }
-
-        let h: gmm::Float3 = h.into();
-
-        // 3. 수선의 발이 캡슐의 seg에 속하면 충돌
-        let Segment { start, end } = self.get_seg();
-        if start.y <= h.y && h.y <= end.y {
-            return true;
-        }
-
-        // 4. 캡슐의 위 아래 구와 직선의 거리를 구한다.
-        let start = gmm::Vector::from(start);
-        let end = gmm::Vector::from(end);
-        if line.distance_to_point_sq(&start) <= radius_sq || line.distance_to_point_sq(&end) <= radius_sq {
-            return true;
-        }
-
-        false
-    }
-
     /// 캡슐이 UFO형태인 경우에도 제대로 동작한다.  
     /// 
     /// Capsule의 크기를 sphere의 radius만큼 확장하고 sphere의 중심점과 충돌하는지 체크
@@ -205,6 +170,25 @@ impl YCapsule {
         };
 
         capsule.check_point_collision(&sphere.center)
+    }
+
+    /// 캡슐이 UFO형태인 경우에는 제대로 동작하지 않는다.  
+    /// 
+    /// 직선과 선분 사이의 최소 거리를 구하는 것과 같다.
+    pub fn check_line_collision(&self, line: &Line) -> bool {   
+        let center = gmm::Vector::from(self.center);
+        let radius_sq = self.radius.powi(2);
+
+        let line_y = line.direction().y;
+        if line_y == 1.0 || line_y == -1.0 {
+            return line.distance_to_point_sq(&center) <= radius_sq;
+        }
+        
+        let nearest = self.get_seg().nearest_to_line(line);
+        let nearest = gmm::Vector::from(nearest);
+        let distance_sq = line.distance_to_point_sq(&nearest);
+
+        distance_sq <= radius_sq
     }
 
     /// other캡슐이 UFO형태인 경우에는 제대로 동작하지 않는다.
