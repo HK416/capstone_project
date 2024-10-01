@@ -55,9 +55,8 @@ impl Line {
 
         let pa = a - p;
 
-        let v_dot_pa: gmm::Float3 = pa.vec3_dot(v).into();
-        let proj = v_dot_pa.x;
-        let add = v * gmm::Vector::from([proj, proj, proj, 0.0]);
+        let proj = pa.vec3_dot(v);
+        let add = v * proj;
 
         p + add
     }
