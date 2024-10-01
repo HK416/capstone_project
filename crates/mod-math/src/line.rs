@@ -6,29 +6,27 @@ pub struct Line {
 
 // constructors/desctructors
 impl Line {
-    pub fn build(point: gmm::Float3, direction: gmm::Float3) -> Result<Self, &'static str> {
-        if direction == gmm::Float3::ZERO {
-            return Err("Direction cannot be zero vector");
+    pub fn build(point: gmm::Float3, direction: gmm::Vector) -> Result<Self, &'static str> {
+        match direction.vec3_normalize() {
+            Some(direction) => Ok(Self { 
+                point, 
+                direction: direction.into()
+            }),
+            None => Err("Direction cannot be zero vector")
         }
-
-        let direction = gmm::Vector::from(direction)
-            .vec3_normalize().unwrap().into();
-
-        Ok(Self { point, direction })
     }
 }
 
 // methods
 impl Line {
-    pub fn set_direction(&mut self, direction: gmm::Float3) -> Result<(), &'static str> {
-        if direction == gmm::Float3::ZERO {
-            return Err("Direction cannot be zero vector");
+    pub fn set_direction(&mut self, direction: gmm::Vector) -> Result<(), &'static str> {
+        match direction.vec3_normalize() {
+            Some(direction) => {
+                self.direction = direction.into();
+                Ok(())
+            },
+            None => Err("Direction cannot be zero vector")
         }
-
-        self.direction = gmm::Vector::from(direction)
-            .vec3_normalize().unwrap().into();
-
-        Ok(())
     }
 
     pub fn direction(&self) -> gmm::Float3 {

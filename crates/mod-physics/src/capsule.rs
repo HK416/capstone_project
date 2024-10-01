@@ -165,7 +165,7 @@ impl YCapsule {
 
         // #### y축과 평행하지 않은 경우
         // 1. 수선의 발을 구한다.
-        let (distance, h) = Line::build(self.center, gmm::Float3::Y).unwrap()
+        let (distance, h) = Line::build(self.center, gmm::Vector::from(gmm::Float3::Y)).unwrap()
             .distance_sq_and_foot_from_other(&line);
 
         // 2. 두 직선의 거리가 radius보다 크면 충돌하지 않음

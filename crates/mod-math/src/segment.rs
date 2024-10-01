@@ -15,8 +15,14 @@ impl Segment {
         pn.vec3_len()
     }
 
-    /// point까지의 거리가 최소가 되는 점
+    /// point까지의 거리가 최소가 되는 점  
+    /// 
+    /// 시작점과 끝점이 같으면 시작점을 반환한다.  
     pub fn nearest_to_point(&self, point: &gmm::Vector) -> gmm::Vector {
+        if self.start == self.end {
+            return gmm::Vector::from(self.start);
+        }
+
         let a = gmm::Vector::from(self.start);
         let b = gmm::Vector::from(self.end);
         let p = *point;
@@ -35,8 +41,20 @@ impl Segment {
 
     /// 다른 선분까지의 거리가 최소가 되는 점
     pub fn nearest_to_other(&self, other: &Segment) -> gmm::Vector {
-        let this_line = Line::build(self.start, self.end - self.start).unwrap();
-        let other_line = Line::build(other.start, other.end - other.start).unwrap();
+        let start = gmm::Vector::from(self.start);
+        let end = gmm::Vector::from(self.end);
+        let other_start = gmm::Vector::from(other.start);
+        let other_end = gmm::Vector::from(other.end);
+
+        let this_line = match Line::build(self.start, end - start) {
+            Ok(line) => line,
+            Err(_)   => return start,
+        };
+
+        let other_line = match Line::build(other.start, other_end - other_start) {
+            Ok(line) => line,
+            Err(_)   => return self.nearest_to_point(&other_start),
+        };
 
         let this_h = this_line.foot_of_perpendicular_from_other(&other_line);
         let other_nearest = other.nearest_to_point(&this_h);
@@ -45,8 +63,20 @@ impl Segment {
 
     /// 두 선분 사이의 최소 거리
     pub fn distance_to_other(&self, other: &Segment) -> f32 {
-        let this_line = Line::build(self.start, self.end - self.start).unwrap();
-        let other_line = Line::build(other.start, other.end - other.start).unwrap();
+        let start = gmm::Vector::from(self.start);
+        let end = gmm::Vector::from(self.end);
+        let other_start = gmm::Vector::from(other.start);
+        let other_end = gmm::Vector::from(other.end);
+
+        let this_line = match Line::build(self.start, end - start) {
+            Ok(line) => line,
+            Err(_)   => return other.distance_to_point(&start),
+        };
+
+        let other_line = match Line::build(other.start, other_end - other_start) {
+            Ok(line) => line,
+            Err(_)   => return self.distance_to_point(&other_start),
+        };
 
         let this_h = this_line.foot_of_perpendicular_from_other(&other_line);
         let other_nearest = other.nearest_to_point(&this_h);
