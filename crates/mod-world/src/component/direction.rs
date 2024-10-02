@@ -26,6 +26,30 @@ impl Direction {
         || *self == Direction::Left | Direction::Right
         || *self == Direction::All 
     }
+
+    /// 방향 벡터를 가져옵니다.
+    #[must_use]
+    pub fn get_vector(&self) -> gmm::Vector {
+        let mut vector = gmm::Vector::ZERO;
+        
+        if self.contains(Direction::Forward) {
+            vector += gmm::Vector::Z;
+        }
+
+        if self.contains(Direction::Backward) {
+            vector += gmm::Vector::NEG_Z;
+        }
+
+        if self.contains(Direction::Left) {
+            vector += gmm::Vector::NEG_X
+        }
+
+        if self.contains(Direction::Right) {
+            vector += gmm::Vector::X
+        }
+
+        vector
+    }
 }
 
 impl Default for Direction {

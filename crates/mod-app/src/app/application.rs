@@ -535,7 +535,7 @@ impl ApplicationHandler<AppEvent> for Application {
         }
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppEvent) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
         // 현재 게임 장면을 가져옵니다.
         // 현재 게임 장면이 존재하지 않는 경우 함수 실행을 생략합니다.
         let mut scene_stack = self.scene_stack.borrow_mut();
@@ -552,17 +552,20 @@ impl ApplicationHandler<AppEvent> for Application {
             AppEvent::ClosedSocket => {
                 // FIXME: 현재는 애플리케이션을 종료시킵니다.
                 alert_error("Runtime error", "서버와 연결이 끊어졌습니다.", self.window.as_deref());
-                return event_loop.exit();
+                drop(self.window.take());
+                drop(self.surface.take());
             }, 
             AppEvent::NetworkIOError(e) => {
                 alert_error("Runtime error", e.to_string(), self.window.as_deref());
-                return event_loop.exit();
+                drop(self.window.take());
+                drop(self.surface.take());
             }, 
             AppEvent::PacketReceived(packet) => {
                 log::debug!("received packet: {:?}", packet);
                 if let Err(e) = curr_scene.on_received_packet(packet, self) {
                     alert_error("Runtime error", e.to_string(), self.window.as_deref());
-                    return event_loop.exit();
+                    drop(self.window.take());
+                    drop(self.surface.take());
                 }
             }
         };

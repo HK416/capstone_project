@@ -1,11 +1,13 @@
-use std::{collections::HashMap, error::Error, net::TcpStream, sync::Arc};
+use std::{collections::HashMap, error::Error, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
 
 use mod_app::{app::AppHandle, scene::GameScene};
-use mod_network::Player;
+use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
+use mod_physics::rigid_body::RigidBody;
 use mod_world::{component::{player_keyboard_pressed, player_keyboard_released, player_update, AnimationSet, Camera, Direction, GameObject, IdGenerator, InputController, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
 use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}, window::Window};
 
+const FORCE: f32 = 500.0;
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
     r: 0.0, 
     g: 116.0 / 255.0, 
@@ -115,10 +117,29 @@ impl TestBedScene {
             timer: 0.0
         });
 
+        // 게임 오브젝트에 강체 물리 요소를 추가합니다.
+        let mut rigid_body = RigidBody::new(Some(43.0));
+        rigid_body.damping = 0.002;
+        object.insert(rigid_body);
+
         // 플레이어를 게임 세상에 추가합니다.
         let world_id = object.id().clone();
         self.players.insert(data.id, world_id.clone());
         self.world.insert(object.id().clone(), object);
+    }
+
+
+    /// 플레이어를 제거합니다.
+    fn remove_player(&self, player_id: &WorldID) {
+        if let Some(object) = self.world.remove(player_id) {
+            if let Some(sibling_id) = object.get_sibling() {
+                self.remove_player(sibling_id);
+            }
+
+            if let Some(child_id) = object.get_child() {
+                self.remove_player(child_id);
+            }
+        }
     }
 
     /// 메인 카메라를 생성합니다.
@@ -141,7 +162,7 @@ impl TestBedScene {
                 gmm::Vector::new(0.0, 1.25, -2.0, 0.0)
             )
         );
-        camera_object.set_world_transform(transform);
+        camera_object.set_local_transform(transform);
 
         // 카메라 오브젝트에 원근 투영 변환 행렬을 추가합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
@@ -167,7 +188,93 @@ impl TestBedScene {
         self.world.insert(world_id.clone(), camera_object);
         self.main_camera = world_id.clone();
     }
+
+
+    fn update_camera_pos(&self) {
+        // 플레이어 오브젝트의 월드 변환 행렬을 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+        let player = self.world.get(player_id).unwrap();
+        let player_pos = player.get_world_transform().get_translation();
+        let player_transform = Transform(gmm::Matrix::from_translation(player_pos));
+
+        // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
+        let mut camera = self.world.get_mut(&self.main_camera).unwrap();
+        let camera_transform = camera.get_local_transform().clone();
+        let world_transform = player_transform * camera_transform;
+        camera.set_world_transform(world_transform);
+    }
+
+
+    /// 플레이어 힘의 총량을 계산합니다.
+    fn update_player_force(&self) {
+        // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
+        let camera = self.world.get(&self.main_camera).unwrap();
+        let camera_transform = camera.get_world_transform().clone();
+
+        // 플레이어의 힘의 총량을 계산합니다.
+        let right = camera_transform.get_right_vector();
+        let look = camera_transform.get_look_vector();
+        let vector = self.direction.get_vector();
+        let mut force_accum = gmm::Vector::ZERO;
+        force_accum += FORCE * vector.get_x() * right;
+        force_accum += FORCE * vector.get_z() * look;
+
+        // 플레이어 오브젝트를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+        let mut player = self.world.get_mut(player_id).unwrap();
+        
+        // 플레이어 힘의 총량을 설정합니다.
+        let rigid_body = player.get_mut::<RigidBody>().unwrap();
+        rigid_body.force_accum = force_accum;
+
+        // 속도의 크기가 f32::EPSILON보다 클 경우 플레이어 방향을 설정합니다.
+        let velocity = rigid_body.velocity.clone();
+        if velocity.vec3_len() > f32::EPSILON {
+            let z_axis = velocity.vec3_normalize();
+            let x_axis = gmm::Vector::X;
+            let cross = x_axis.vec3_cross(z_axis);
+            let dot = x_axis.vec3_dot_into(z_axis);
+            let theta = match cross.get_y() >= 0.0 {
+                true => dot.acos(), 
+                false => 360f32.to_radians() - dot.acos()
+            } + 90f32.to_radians();
+
+            let mut transform = player.get_local_transform().clone();
+            transform.set_rotation(gmm::Quaternion::from_rotation_y(theta));
+            player.set_local_transform(transform);
+        }
+    }
+
+
+    /// 플레이어 데이터를 서버로 전송합니다.
+    fn upload_player_data(&self) {
+        // 플레이어 오브젝트를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+        let player = self.world.get(player_id).unwrap();
+        let player_transform = player.get_world_transform().clone();
+        let animation = player.get::<AnimationSet>().unwrap();
+
+        // 업로드 데이터를 생성합니다.
+        let push_data = Player {
+            id: self.client_id, 
+            translation: player_transform.get_translation().into(), 
+            rotation: player_transform.get_rotation().into(), 
+            anim_index: animation.index as u32, 
+            anim_timer: animation.timer
+        };
+        
+        // 패킷을 생성합니다.
+        let packet = PushPacket::new(push_data).as_raw();
+        let mut writer = BufWriter::new(self.stream.as_ref());
+        writer.write_all(&packet.as_bytes()).unwrap();
+    }
 }
+
+
+
+
+
+
 
 impl GameScene for TestBedScene {
     fn on_enter(
@@ -182,6 +289,50 @@ impl GameScene for TestBedScene {
 
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
+
+        Ok(())
+    }
+
+    fn on_received_packet(
+        &mut self, 
+        raw_packet: RawPacket, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if raw_packet.packet_type() == PacketType::PULL {
+            let packet = PullPacket::from_raw(raw_packet);
+            let mut temp = Vec::new();
+            for pull_data in packet.world {
+                if let Some(world_id) = self.players.remove(&pull_data.id) {
+                    if pull_data.id == self.client_id {
+                        temp.push((pull_data.id, world_id));
+                        continue;
+                    }
+
+                    let mut player = self.world.get_mut(&world_id).unwrap();
+                    let mut transform = player.get_local_transform().clone();
+                    transform.set_translation(pull_data.translation);
+                    transform.set_rotation(pull_data.rotation);
+                    player.set_local_transform(transform);
+
+                    let animation = player.get_mut::<AnimationSet>().unwrap();
+                    animation.index = pull_data.anim_index as usize;
+                    animation.timer = pull_data.anim_timer;
+                    temp.push((pull_data.id, world_id));
+                } else {
+                    self.insert_player(pull_data, app.render_device(), app.render_queue());
+                    temp.push((pull_data.id, self.players.remove(&pull_data.id).unwrap()));
+                }
+            }
+
+            for player_id in self.players.values() {
+                self.remove_player(&player_id);
+            }
+            self.players.clear();
+            
+            for (id, player) in temp {
+                self.players.insert(id, player);
+            }
+        }
 
         Ok(())
     }
@@ -247,11 +398,16 @@ impl GameScene for TestBedScene {
         let frame_rate = app.timer().frame_rate();
         window.set_title(&format!("Hello to Halo! (FPS: {})", frame_rate));
 
+        self.update_player_force();
+        self.update_camera_pos();
+
         // 플레이어 오브젝트를 갱신합니다.
         for player_id in self.players.values() {
             player_update(&self.world, player_id, elapsed_time_sec)
                 .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
         }
+
+        self.upload_player_data();
 
         Ok(())
     }

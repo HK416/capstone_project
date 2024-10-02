@@ -1,6 +1,7 @@
 use std::{any::TypeId, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
+use mod_physics::rigid_body::RigidBody;
 use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}};
 
 use crate::component::{AnimationSet, Direction, GameObject, InputController, Transform, WorldID};
@@ -114,6 +115,7 @@ pub fn on_update(
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     update_animation(world, player_id, elapsed_time_sec)?;
+    update_position(world, player_id, elapsed_time_sec)?;
     super::update_hierarchy(world, Transform::new(), player_id);
     Ok(())
 }
@@ -140,7 +142,7 @@ pub fn update_animation(
 
     // 애니메이션 타이머를 갱신합니다.
     let animation_clip = animation.clips.get(animation.index).unwrap();
-    animation.timer = animation.timer + elapsed_time_sec;
+    animation.timer = (animation.timer + elapsed_time_sec).min(animation_clip.length());
 
     // 애니메이션 타이머가 애니메이션 길이보다 클 경우 플레이어 상태를 변경합니다.
     let diff_t = animation.timer - animation_clip.length();
@@ -149,7 +151,15 @@ pub fn update_animation(
         animation.index = PlayerState::Idle as usize;
         animation.timer = diff_t;
 
+        // 플레이어 속도를 초기화 합니다.
+        let rigid_body =  match player.get_mut::<RigidBody>() {
+            Some(rigid_body) => rigid_body, 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<RigidBody>()))
+        };
+        rigid_body.velocity = gmm::Vector::ZERO;
+
         // 플레이어 상태를 변경합니다.
+        player.insert(PlayerState::Idle);
 
         return Ok(());
     }
@@ -181,6 +191,40 @@ pub fn update_animation(
             bone_object.set_local_transform(bone_transform);
         }
     }
+
+    Ok(())
+}
+
+
+
+/// 플레이어 위치를 갱신하는 함수입니다.
+fn update_position(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    elapsed_time_sec: f32
+) -> Result<(), PlayerStateError> {
+    // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
+    let mut player = match world.get_mut(player_id) {
+        Some(object) => object, 
+        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+    };
+
+    // 플레이어의 월드 변환 행렬을 가져옵니다.
+    let mut transform = player.get_local_transform().clone();
+
+    // 강체 물리 요소를 가져옵니다.
+    let rigid_body = match player.get_mut::<RigidBody>() {
+        Some(rigid_body) => rigid_body, 
+        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<RigidBody>()))
+    };
+
+    // 플레이어를 이동시킵니다.
+    let distance = rigid_body.integral(elapsed_time_sec);
+    transform.translate(distance);
+    rigid_body.reset_force();
+
+    // 월드 변환 행렬을 적용합니다.
+    player.set_local_transform(transform);
 
     Ok(())
 }
