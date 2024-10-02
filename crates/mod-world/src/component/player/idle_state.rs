@@ -144,6 +144,16 @@ pub fn update_animation(
     // 키 프레임을 샘플링 합니다.
     let keyframe = animation_clip.sample_animation(animation.timer);
 
+    // 최상위 뼈 노드를 가져옵니다.
+    let root_id = animation_clip.root_bone_id();
+    let mut root_object = match world.get_mut(root_id) {
+        Some(object) => object, 
+        None => return Err(PlayerStateError::PlayerNotFound(root_id.clone()))
+    };
+
+    // 최상위 뼈 노드의 변환 행렬을 설정합니다.
+    root_object.set_local_transform(keyframe.root_bone());
+    
     // 뼈 변환 행렬을 게임 오브젝트에 적용합니다.
     for skinning in keyframe.meshes() {
         for (index, world_id) in skinning.skinned_mesh.bones().iter().enumerate() {

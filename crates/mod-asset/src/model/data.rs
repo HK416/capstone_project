@@ -232,6 +232,9 @@ pub struct AnimationBlob {
     /// 애니메이션의 이름입니다.
     pub name: String, 
 
+    /// 최상위 뼈 노드의 이름입니다.
+    pub root_name: String, 
+
     /// 애니메이션의 총 길이입니다.
     pub length: f32, 
 
@@ -250,6 +253,9 @@ pub struct KeyFrameBlob {
     /// 키 프레임의 시각 데이터입니다.
     pub time_point: f32, 
 
+    /// 최상위 뼈 변환 행렬입니다.
+    pub root: gmm::Float4x4, 
+    
     /// 키 프레임에 영향을 받는 스키닝 데이터입니다.
     pub meshes: Vec<KeyFrameMeshBlob>, 
 }
@@ -260,10 +266,10 @@ pub struct KeyFrameBlob {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KeyFrameMeshBlob {
     /// 스키닝된 메쉬의 이름입니다.
-    pub mesh_name: String, 
+    pub name: String, 
 
     /// 현재 키 프레임에 뼈 노드의 부모로 부터 변환 행렬입니다.
-    pub bone_transforms: Vec<BoneTransformBlob>, 
+    pub transforms: Vec<gmm::Float4x4>, 
 }
 
 

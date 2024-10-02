@@ -50,7 +50,11 @@ pub fn spawn_aris_original_model(
     );
 
     let animations: Vec<_> = blob.animations.into_iter()
-        .map(|animation_blob| create_animations(&skinned_meshes, animation_blob))
+        .map(|animation_blob| create_animations(
+            &nodes, 
+            &skinned_meshes, 
+            animation_blob
+        ))
         .collect();
 
     (root_id, animations)
@@ -130,7 +134,7 @@ fn spawn_node(
                         nodes.get(name).unwrap().clone()
                     })
                     .collect(), 
-                bindpose: skin_blob.bindposes, 
+                bindpose: skin_blob.bindposes
             }
         });
 
@@ -319,25 +323,24 @@ fn create_texture(
 }
 
 fn create_animations(
+    nodes: &HashMap<String, WorldID>,
     skinned_meshes: &HashMap<String, Arc<SkinnedMesh>>,
     blob: AnimationBlob
 ) -> AnimationClip {
     AnimationClip::new(
         blob.name, 
+        nodes.get(&blob.root_name).unwrap().clone(), 
         blob.length, 
         blob.frame_rate, 
         blob.keyframes.into_iter()
             .map(|blob| KeyFrame::new(
                 blob.time_point, 
+                blob.root.into(), 
                 blob.meshes.into_iter()
                     .map(|blob| Skinning {
-                        skinned_mesh: skinned_meshes.get(&blob.mesh_name).unwrap().clone(), 
-                        transforms: blob.bone_transforms.into_iter()
-                            .map(|transform| gmm::Matrix::from_scale_rotation_translation(
-                                transform.scale.into(), 
-                                transform.rotation.into(), 
-                                transform.translation.into()
-                            ).into())
+                        skinned_mesh: skinned_meshes.get(&blob.name).unwrap().clone(), 
+                        transforms: blob.transforms.into_iter()
+                            .map(|transform| transform.into())
                             .collect()
                     })
             ))

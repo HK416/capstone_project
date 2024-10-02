@@ -1,3 +1,5 @@
+use crate::component::WorldID;
+
 use super::{KeyFrame, Skinning};
 
 
@@ -6,6 +8,9 @@ use super::{KeyFrame, Skinning};
 pub struct AnimationClip {
     /// 애니메이션 이름입니다.
     name: String, 
+
+    /// 최상위 뼈 노드의 식별자입니다.
+    root_bone: WorldID, 
 
     /// 애니메이션의 총 재생길이입니다.
     length: f32, 
@@ -27,7 +32,7 @@ impl AnimationClip {
     /// 주어진 애니메이션의 길이 또는 애니메이션 샘플링 프레임 레이트가 0보다 작거나 같을 경우
     /// 또는 주어진 키 프레임 데이터가 비어있는 경우 `panic!`을 호출합니다.
     /// 
-    pub fn new<N, I>(name: N, length: f32, frame_rate: f32, keyframes: I) -> Self 
+    pub fn new<N, I>(name: N, root_bone: WorldID, length: f32, frame_rate: f32, keyframes: I) -> Self 
     where 
         N: Into<String>, 
         I: IntoIterator<Item = KeyFrame>, 
@@ -41,7 +46,7 @@ impl AnimationClip {
         assert!(!keyframes.is_empty(), "The given key frame data is empty!");
         keyframes.sort_by(|lhs, rhs| lhs.time_point().total_cmp(&rhs.time_point()));
 
-        unsafe { Self::new_unchecked(name, length, frame_rate, keyframes) }
+        unsafe { Self::new_unchecked(name, root_bone, length, frame_rate, keyframes) }
     }
 
     /// 새로운 애니메이션 데이터를 생성합니다.
@@ -53,13 +58,13 @@ impl AnimationClip {
     /// 
     #[inline]
     #[must_use]
-    pub unsafe fn new_unchecked<N, I>(name: N, length: f32, frame_rate: f32, keyframes: I) -> Self 
+    pub unsafe fn new_unchecked<N, I>(name: N, root_bone: WorldID, length: f32, frame_rate: f32, keyframes: I) -> Self 
     where 
         N: Into<String>, 
         I: IntoIterator<Item = KeyFrame>, 
         I::IntoIter: ExactSizeIterator,
     {
-        Self { name: name.into(), length, frame_rate, keyframes: keyframes.into_iter().collect() }
+        Self { name: name.into(), root_bone, length, frame_rate, keyframes: keyframes.into_iter().collect() }
     }
 
     /// 애니메이션 이름을 가져옵니다.
@@ -67,6 +72,13 @@ impl AnimationClip {
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// 최상위 뼈 노드의 식별자를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn root_bone_id(&self) -> &WorldID {
+        &self.root_bone
     }
 
     /// 애니메이션의 총 재생 길이를 가져옵니다.
@@ -112,6 +124,7 @@ impl AnimationClip {
                 }
             });
 
-        unsafe { KeyFrame::new_unchecked(time_point, meshes) } // Safe: 키 프레임 스키닝 데이터는 비어있지 않습니다.
+        let root_bone = (1.0 - t) * prev.root_bone() + t * next.root_bone();
+        unsafe { KeyFrame::new_unchecked(time_point, root_bone, meshes) } // Safe: 키 프레임 스키닝 데이터는 비어있지 않습니다.
     }
 }

@@ -14,5 +14,5 @@ pub struct Skinning {
     /// 
     /// `bones`와 같은 순서를 가집니다.
     /// 
-    pub transforms: Vec<gmm::Float4x4>, 
+    pub transforms: Vec<gmm::Matrix>, 
 }
