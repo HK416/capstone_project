@@ -133,4 +133,13 @@ impl Camera {
 #[derive(Debug, Clone)]
 pub struct ThirdPersonCamera {
     pub target: WorldID, 
+
+    // 거리
+    pub distance: f32, 
+
+    /// 극선
+    pub polar: f32,
+
+    /// 방위각 
+    pub azimuthal: f32, 
 }

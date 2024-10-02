@@ -156,13 +156,13 @@ impl TestBedScene {
         );
 
         // 카메라의 월드 변환 행렬을 설정합니다.
-        let transform = Transform(
-            gmm::Matrix::from_rotation_translation(
-                gmm::Quaternion::from_rotation_x(10f32.to_radians()), 
-                gmm::Vector::new(0.0, 1.25, -2.0, 0.0)
-            )
-        );
-        camera_object.set_local_transform(transform);
+        // let transform = Transform(
+        //     gmm::Matrix::from_rotation_translation(
+        //         gmm::Quaternion::from_rotation_x(10f32.to_radians()), 
+        //         gmm::Vector::new(0.0, 1.25, -2.0, 0.0)
+        //     )
+        // );
+        // camera_object.set_local_transform(transform);
 
         // 카메라 오브젝트에 원근 투영 변환 행렬을 추가합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
@@ -181,7 +181,12 @@ impl TestBedScene {
 
         // 카메라 오브젝트에 대상 오브젝트 요소를 추가합니다.
         let world_id = self.players.get(&self.client_id).unwrap();
-        camera_object.insert(ThirdPersonCamera { target: world_id.clone() });
+        camera_object.insert(ThirdPersonCamera { 
+            target: world_id.clone(), 
+            distance: -2.5, 
+            polar: 180f32.to_radians(), 
+            azimuthal: 10f32.to_radians()
+        });
 
         // 게임 월드에 카메라 오브젝트를 추가합니다.
         let world_id = camera_object.id().clone();
@@ -190,18 +195,38 @@ impl TestBedScene {
     }
 
 
+    /// 카메라의 위치를 갱신합니다.
     fn update_camera_pos(&self) {
-        // 플레이어 오브젝트의 월드 변환 행렬을 가져옵니다.
-        let player_id = self.players.get(&self.client_id).unwrap();
-        let player = self.world.get(player_id).unwrap();
-        let player_pos = player.get_world_transform().get_translation();
-        let player_transform = Transform(gmm::Matrix::from_translation(player_pos));
+        // 카메라 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
+        let camera = self.world.get(&self.main_camera).unwrap();
+        let third_person = camera.get::<ThirdPersonCamera>().unwrap();
+        
+        // 카메라 오브젝트의 변위를 계산합니다.
+        let polar = gmm::Quaternion::from_rotation_y(third_person.polar);
+        let right: gmm::Float4 = (polar * gmm::Quaternion::new(-1.0, 0.0, 0.0, 0.0) * polar.inverse()).into();
+        let offset = polar * gmm::Quaternion::new(0.0, 0.0, -third_person.distance, 0.0) * polar.inverse();
 
-        // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
+        let azimuthal = gmm::Quaternion::from_axis_angle(right.into(), third_person.azimuthal);
+        let offset: gmm::Float4 = (azimuthal * offset * azimuthal.inverse()).into();
+        let offset = gmm::Vector::load_float3(offset.xyz());
+
+        // 대상 오브젝트의 위치를 가져옵니다.
+        let target_id = third_person.target.clone();
+        let object = self.world.get(&target_id).unwrap();
+        let pivot = object.get_world_transform().get_translation() + gmm::Vector::new(0.0, 1.0, 0.0, 0.0);
+        
+        // 최종 카메라의 위치를 계산합니다.
+        let translation = offset + pivot;
+        let x_axis = gmm::Vector::load_float3(right.xyz());
+        let z_axis = (pivot - translation).vec3_normalize();
+        let y_axis = z_axis.vec3_cross(x_axis);
+
+        let rotation = gmm::Quaternion::from_rotation_axes(x_axis, y_axis, z_axis);
+        let transform = Transform(gmm::Matrix::from_rotation_translation(rotation, translation));
+
+        // 카메라 오브젝트의 변환 행렬을 설정합니다.
         let mut camera = self.world.get_mut(&self.main_camera).unwrap();
-        let camera_transform = camera.get_local_transform().clone();
-        let world_transform = player_transform * camera_transform;
-        camera.set_world_transform(world_transform);
+        camera.set_world_transform(transform);
     }
 
 
@@ -212,8 +237,12 @@ impl TestBedScene {
         let camera_transform = camera.get_world_transform().clone();
 
         // 플레이어의 힘의 총량을 계산합니다.
-        let right = camera_transform.get_right_vector();
-        let look = camera_transform.get_look_vector();
+        let mut right = camera_transform.get_right_vector();
+        right.set_y(0.0);
+
+        let mut look = camera_transform.get_look_vector();
+        look.set_y(0.0);
+
         let vector = self.direction.get_vector();
         let mut force_accum = gmm::Vector::ZERO;
         force_accum += FORCE * vector.get_x() * right;
@@ -282,6 +311,10 @@ impl GameScene for TestBedScene {
         window: &Window, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        // 마우스 커서를 비활성화 합니다.
+        window.set_cursor_visible(false);
+        window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+
         // 플레이어들을 생성합니다.
         while let Some(data) = self.stage_data.pop() {
             self.insert_player(data, app.render_device(), app.render_queue());
@@ -290,6 +323,29 @@ impl GameScene for TestBedScene {
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
 
+        Ok(())
+    }
+
+    fn on_paused(
+        &mut self, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 마우스 커서를 활성화 합니다.
+        if let Some(window) = app.window() {
+            window.set_cursor_visible(true);
+        }
+        Ok(())
+    }
+
+    fn on_resumed(
+        &mut self, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 마우스 커서를 비활성화 합니다.
+        if let Some(window) = app.window() {
+            window.set_cursor_visible(false);
+            window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+        }
         Ok(())
     }
 
@@ -387,6 +443,30 @@ impl GameScene for TestBedScene {
             repeat
         )
         .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+    }
+
+    fn on_cursor_moved(
+        &mut self, 
+        x: f32, y: f32, 
+        _dx: f32, _dy: f32, 
+        window: &Window, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 커서의 위치를 이동시킵니다.
+        window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+
+        // 커서의 이동량을 계산합니다.
+        let (px, py): (f32, f32) = window.inner_position().unwrap().into();
+        let delta_x = px - x;
+        let delta_y = py - y;
+
+        // 카메라 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
+        let mut camera = self.world.get_mut(&self.main_camera).unwrap();
+        let third_person = camera.get_mut::<ThirdPersonCamera>().unwrap();
+        third_person.polar = (third_person.polar + delta_x.to_radians()) % 360f32.to_radians();
+        third_person.azimuthal = (third_person.azimuthal + delta_y.to_radians()).clamp(0f32.to_radians(), 30f32.to_radians());
+
+        Ok(())
     }
 
     fn on_update(
