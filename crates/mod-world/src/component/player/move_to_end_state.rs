@@ -1,0 +1,176 @@
+use std::{any::TypeId, sync::Arc};
+
+use mod_parallelism::collections::SkipMap;
+use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}};
+
+use crate::component::{AnimationSet, Direction, GameObject, InputController, Transform, WorldID};
+
+use super::{PlayerState, PlayerStateError};
+
+
+
+/// 애플리케이션에 키보드 눌림 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
+pub fn on_keyboard_pressed(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    controller: &InputController, 
+    direction: &mut Direction, 
+    keycode: KeyCode, 
+    _location: KeyLocation, 
+    _modifiers: Modifiers, 
+    repeat: bool
+) -> Result<(), PlayerStateError> {
+    if !repeat {
+        if keycode == controller.forward {
+            *direction |= Direction::Forward;
+        } else if keycode == controller.backward {
+            *direction |= Direction::Backward;
+        } else if keycode == controller.left {
+            *direction |= Direction::Left;
+        } else if keycode == controller.right {
+            *direction |= Direction::Right;
+        }
+
+        if !direction.is_stopped() {
+            // 플레이어 오브젝트를 가져옵니다.
+            let mut player = match world.get_mut(player_id) {
+                Some(object) => object, 
+                None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+            };
+
+            // 플레이어 애니메이션을 가져옵니다.
+            let animation = match player.get_mut::<AnimationSet>() {
+                Some(animation) => animation, 
+                None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+            };
+
+            // 애니메이션을 초기화 합니다.
+            animation.index = PlayerState::Moving as usize;
+            animation.timer = 0.0;
+
+            // 플레이어 상태를 변경합니다.
+            player.insert(PlayerState::Moving);
+        }
+    }
+
+    Ok(())
+}
+
+
+
+/// 애플리케이션에 키보드 떼임 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
+pub fn on_keyboard_released(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    controller: &InputController, 
+    direction: &mut Direction, 
+    keycode: KeyCode, 
+    _location: KeyLocation, 
+    _modifiers: Modifiers, 
+    repeat: bool
+) -> Result<(), PlayerStateError> {
+    if !repeat {
+        if keycode == controller.forward {
+            *direction &= !Direction::Forward;
+        } else if keycode == controller.backward {
+            *direction &= !Direction::Backward;
+        } else if keycode == controller.left {
+            *direction &= !Direction::Left;
+        } else if keycode == controller.right {
+            *direction &= !Direction::Right;
+        }
+
+        if !direction.is_stopped() {
+            // 플레이어 오브젝트를 가져옵니다.
+            let mut player = match world.get_mut(player_id) {
+                Some(object) => object, 
+                None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+            };
+
+            // 플레이어 애니메이션을 가져옵니다.
+            let animation = match player.get_mut::<AnimationSet>() {
+                Some(animation) => animation, 
+                None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+            };
+
+            // 애니메이션을 초기화 합니다.
+            animation.index = PlayerState::Moving as usize;
+            animation.timer = 0.0;
+
+            // 플레이어 상태를 변경합니다.
+            player.insert(PlayerState::Moving);
+        }
+    }
+
+    Ok(())
+}
+
+
+
+/// 애플리케이션 갱신 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
+pub fn on_update(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    elapsed_time_sec: f32
+) -> Result<(), PlayerStateError> {
+    update_animation(world, player_id, elapsed_time_sec)?;
+    super::update_hierarchy(world, Transform::new(), player_id);
+    Ok(())
+}
+
+
+
+/// 플레이어 애니메이션을 갱신하는 함수입니다.
+pub fn update_animation(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    elapsed_time_sec: f32
+) -> Result<(), PlayerStateError> {
+    // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
+    let mut player = match world.get_mut(player_id) {
+        Some(object) => object, 
+        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+    };
+
+    // 애니메이션 요소를 가져옵니다.
+    let animation = match player.get_mut::<AnimationSet>() {
+        Some(animation) => animation, 
+        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+    };
+
+    // 애니메이션 타이머를 갱신합니다.
+    let animation_clip = animation.clips.get(animation.index).unwrap();
+    animation.timer = animation.timer + elapsed_time_sec;
+
+    // 애니메이션 타이머가 애니메이션 길이보다 클 경우 플레이어 상태를 변경합니다.
+    let diff_t = animation.timer - animation_clip.length();
+    if diff_t >= 0.0 {
+        // 애니메이션을 초기화 합니다.
+        animation.index = PlayerState::Idle as usize;
+        animation.timer = diff_t;
+
+        // 플레이어 상태를 변경합니다.
+
+        return Ok(());
+    }
+
+    // 키 프레임을 샘플링 합니다.
+    let keyframe = animation_clip.sample_animation(animation.timer);
+
+    // 뼈 변환 행렬을 게임 오브젝트에 적용합니다.
+    for skinning in keyframe.meshes() {
+        for (index, world_id) in skinning.skinned_mesh.bones().iter().enumerate() {
+            // 게임 월드에서 뼈 오브젝트를 가져옵니다.
+            let mut bone_object = match world.get_mut(world_id) {
+                Some(object) => object, 
+                None => return Err(PlayerStateError::PlayerNotFound(world_id.clone()))
+            };
+
+            // 뼈 오브젝트의 로컬 변환 행렬을 설정합니다.
+            let bone_transform = Transform(skinning.transforms[index].into());
+            bone_object.set_local_transform(bone_transform);
+        }
+    }
+
+    Ok(())
+}

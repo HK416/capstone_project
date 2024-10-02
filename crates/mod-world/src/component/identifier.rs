@@ -79,7 +79,7 @@ impl Drop for UniqueId {
 
 
 /// 게임 오브젝트의 식별자입니다.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WorldID(Arc<UniqueId>);
 
 impl Default for WorldID {
@@ -116,5 +116,14 @@ impl Hash for WorldID {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.value.hash(state);
+    }
+}
+
+impl std::fmt::Debug for WorldID {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple(stringify!(WorldID))
+            .field(&self.0.value)
+            .finish()
     }
 }

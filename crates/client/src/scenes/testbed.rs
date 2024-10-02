@@ -3,10 +3,9 @@ use std::{collections::HashMap, error::Error, net::TcpStream, sync::Arc};
 use mod_app::{app::AppHandle, scene::GameScene};
 use mod_network::Player;
 use mod_parallelism::collections::{Queue, SkipMap};
-use mod_world::{component::{AnimationSet, Camera, GameObject, IdGenerator, Perspective, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
-use winit::window::Window;
+use mod_world::{component::{player_keyboard_pressed, player_keyboard_released, player_update, AnimationSet, Camera, Direction, GameObject, IdGenerator, InputController, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
+use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}, window::Window};
 
-const METER_PER_PIXEL: f32 = 1.0 / 1000.0;
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
     r: 0.0, 
     g: 116.0 / 255.0, 
@@ -37,6 +36,12 @@ pub struct TestBedScene {
 
     /// 메쉬 렌더러 오브젝트를 관리합니다.
     renderer: Arc<Queue<Arc<dyn MeshRenderer>>>, 
+
+    /// 사용자의 입력입니다.
+    direction: Direction, 
+
+    /// 사용자 입력기입니다.
+    controller: InputController, 
 }
 
 impl TestBedScene {
@@ -61,6 +66,8 @@ impl TestBedScene {
             main_camera: WorldID::default(), 
             players: HashMap::with_capacity(10),
             renderer: Arc::new(Queue::new()), 
+            direction: Direction::default(), 
+            controller: InputController::default(), 
         }
     }
 
@@ -98,6 +105,9 @@ impl TestBedScene {
         // 하위 오브젝트를 설정합니다.
         object.set_child(Some(root_id));
 
+        // 게임 오브젝트에 상태를 추가합니다.
+        object.insert(PlayerState::default());
+
         // 게임 오브젝트에 애니메이션을 추가합니다.
         object.insert(AnimationSet {
             clips, 
@@ -117,22 +127,6 @@ impl TestBedScene {
         window: &Window, 
         device: &wgpu::Device, 
     ) {
-        // 플레이어 게임 오브젝트를 가져옵니다.
-        let player_id = self.players.get(&self.client_id).unwrap();
-        let player = self.world.get(player_id).unwrap();
-        
-        // 플레이어 게임 오브젝트의 월드 변환 행렬을 가져옵니다.
-        let player_world_transform = player.get_world_transform().clone();
-
-        // 카메라의 초기 위치를 설정합니다.
-        let mut world_transform = player_world_transform.clone();
-        let right = world_transform.get_right_vector();
-        let up = world_transform.get_up_vector();
-        let dir = world_transform.get_look_vector();
-        let distance = up * 1.25 - dir * 2.0;
-        world_transform.translate(distance);
-        world_transform.rotate(gmm::Quaternion::from_axis_angle(right, 10f32.to_radians()));
-
         // 카메라 오브젝트를 생성합니다.
         let mut camera_object = GameObject::new(
             &self.id_generator, 
@@ -140,14 +134,20 @@ impl TestBedScene {
             None
         );
 
-        // 카메라 오브젝트의 월드 변환 행렬을 설정합니다.
-        camera_object.set_world_transform(world_transform);
+        // 카메라의 월드 변환 행렬을 설정합니다.
+        let transform = Transform(
+            gmm::Matrix::from_rotation_translation(
+                gmm::Quaternion::from_rotation_x(10f32.to_radians()), 
+                gmm::Vector::new(0.0, 1.25, -2.0, 0.0)
+            )
+        );
+        camera_object.set_world_transform(transform);
 
         // 카메라 오브젝트에 원근 투영 변환 행렬을 추가합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
-        camera_object.insert(Perspective::new(
-            width as f32 * METER_PER_PIXEL, 
-            height as f32 * METER_PER_PIXEL, 
+        camera_object.insert(Projection::perspective(
+            45f32.to_radians(), 
+            width as f32 / height as f32, 
             0.001, 
             1000.0
         ));
@@ -158,12 +158,14 @@ impl TestBedScene {
             device
         )));
 
-        // 카메라 오브젝트에 대상 오브젝트 식별자를 추가합니다.
-        camera_object.insert(ThirdPersonCamera { target: player_id.clone() });
+        // 카메라 오브젝트에 대상 오브젝트 요소를 추가합니다.
+        let world_id = self.players.get(&self.client_id).unwrap();
+        camera_object.insert(ThirdPersonCamera { target: world_id.clone() });
 
+        // 게임 월드에 카메라 오브젝트를 추가합니다.
         let world_id = camera_object.id().clone();
         self.world.insert(world_id.clone(), camera_object);
-        self.main_camera = world_id;
+        self.main_camera = world_id.clone();
     }
 }
 
@@ -184,6 +186,58 @@ impl GameScene for TestBedScene {
         Ok(())
     }
 
+    fn on_keyboard_pressed(
+        &mut self, 
+        keycode: KeyCode, 
+        location: KeyLocation, 
+        modifiers: Modifiers, 
+        repeat: bool, 
+        _window: &Window, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 유저의 게임 월드 식별자를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+
+        // 사용자 입력을 처리합니다.
+        player_keyboard_pressed(
+            &self.world, 
+            player_id, 
+            &self.controller, 
+            &mut self.direction, 
+            keycode, 
+            location, 
+            modifiers, 
+            repeat
+        )
+        .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+    }
+
+    fn on_keyboard_released(
+        &mut self, 
+        keycode: KeyCode, 
+        location: KeyLocation, 
+        modifiers: Modifiers, 
+        repeat: bool, 
+        _window: &Window, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 유저의 게임 월드 식별자를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+
+        // 사용자 입력을 처리합니다.
+        player_keyboard_released(
+            &self.world, 
+            player_id, 
+            &self.controller, 
+            &mut self.direction, 
+            keycode, 
+            location, 
+            modifiers, 
+            repeat
+        )
+        .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+    }
+
     fn on_update(
         &mut self, 
         elapsed_time_sec: f32, 
@@ -193,23 +247,11 @@ impl GameScene for TestBedScene {
         let frame_rate = app.timer().frame_rate();
         window.set_title(&format!("Hello to Halo! (FPS: {})", frame_rate));
 
-        // 애니메이션을 갱신합니다.
-        for id in self.players.values() {
-            let object = self.world.get(id).unwrap();
-            let animations = object.get::<AnimationSet>().unwrap();
-            
-            let current = animations.clips.get(animations.index).unwrap();
-            let keyframe = current.sample_animation(animations.timer);
-            for skinning in keyframe.meshes() {
-                for (index, id) in skinning.skinned_mesh.bones().iter().enumerate() {
-                    self.world.get_mut(id).unwrap()
-                        .set_local_transform(Transform(skinning.transforms[index].into()));
-                }
-            }
-
-            update_hierarchy(&self.world, Transform::new(), id.clone());
+        // 플레이어 오브젝트를 갱신합니다.
+        for player_id in self.players.values() {
+            player_update(&self.world, player_id, elapsed_time_sec)
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
         }
-
 
         Ok(())
     }
@@ -230,13 +272,10 @@ impl GameScene for TestBedScene {
             let dir = world_transform.get_look_vector();
             let up = world_transform.get_up_vector();
             let camera_matrix = gmm::Matrix::look_to_lh(eye, dir, up);
-            let projection_matrix = match camera_object.get::<Perspective>() {
-                Some(perspective) => perspective.to_projection_matrix(), 
+            let projection_matrix = match camera_object.get::<Projection>() {
+                Some(projection) => projection.0, 
                 None => gmm::Matrix::IDENTITY
             };
-            let projection_matrix = gmm::Matrix::perspective_lh(
-                60f32.to_radians(), 16.0 / 9.0, 0.001, 100.0
-            );
 
             if let Some(camera) = camera_object.get::<Arc<Camera>>() {
                 camera.camera_uniform().update(device, queue, CameraDataLayout {
@@ -379,27 +418,5 @@ impl GameScene for TestBedScene {
 impl std::fmt::Debug for TestBedScene {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", stringify!(TestBedScene))
-    }
-}
-
-fn update_hierarchy(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    parent: Transform, 
-    id: WorldID
-) {
-    let mut object = world.get_mut(&id).unwrap();
-    let local_transform = object.get_local_transform().clone();
-    let world_transform = parent * local_transform;
-    object.set_world_transform(world_transform);
-
-    let sibling_id = object.get_sibling().cloned();
-    let child_id = object.get_child().cloned();
-
-    if let Some(sibling_id) = sibling_id {
-        update_hierarchy(world, parent, sibling_id);
-    }
-
-    if let Some(child_id) = child_id {
-        update_hierarchy(world, world_transform, child_id);
     }
 }

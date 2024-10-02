@@ -10,6 +10,10 @@ publish.workspace = true
 
 
 [dependencies]
+# A macro to generate structures which behave like bitflags.
+# License: MIT OR Apache-2.0
+bitflags = "2.6"
+
 # A crate for mucking around with piles of bytes.
 # License: Zlib OR Apache-2.0 OR MIT
 bytemuck = { version = "1.18", features = ["derive"] }
