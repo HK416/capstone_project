@@ -1,4 +1,4 @@
-use winit::keyboard::KeyCode;
+use winit::{event::MouseButton, keyboard::KeyCode};
 
 
 
@@ -9,6 +9,8 @@ pub struct InputController {
     pub backward: KeyCode, 
     pub left: KeyCode, 
     pub right: KeyCode, 
+    pub aim_btn: MouseButton, 
+    pub fire_btn: MouseButton, 
 }
 
 impl Default for InputController {
@@ -18,7 +20,9 @@ impl Default for InputController {
             forward: KeyCode::KeyW, 
             backward: KeyCode::KeyS, 
             left: KeyCode::KeyA, 
-            right: KeyCode::KeyD 
+            right: KeyCode::KeyD, 
+            aim_btn: MouseButton::Right, 
+            fire_btn: MouseButton::Left, 
         }
     }
 }

@@ -184,11 +184,6 @@ impl Application {
             .with_visible(true)
             .with_active(true);
 
-        #[cfg(target_os = "macos")] {
-            use winit::platform::macos::WindowAttributesExtMacOS;
-            attributes = attributes.with_movable_by_window_background(true);
-        }
-
         #[cfg(target_os = "windows")] {
             use winit::platform::windows::WindowAttributesExtWindows;
             use winit::platform::windows::CornerPreference;

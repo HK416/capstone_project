@@ -13,15 +13,32 @@ use super::{PlayerFlags, PlayerState, PlayerStateError};
 /// 애플리케이션에 키보드 눌림 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
 pub fn on_keyboard_pressed(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
-    controller: &InputController, 
-    direction: &mut Direction, 
+    player_id: &WorldID,
     keycode: KeyCode, 
     _location: KeyLocation, 
     _modifiers: Modifiers, 
     repeat: bool
 ) -> Result<(), PlayerStateError> {
     if !repeat {
+        // 플레이어 오브젝트를 가져옵니다.
+        let mut player = match world.get_mut(player_id) {
+            Some(player) => player, 
+            None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        };
+
+        // 플레이어 컨트롤러를 가져옵니다.
+        let controller = match player.get::<InputController>() {
+            Some(controller) => controller.clone(), 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<InputController>()))
+        };
+
+        // 플레이어 입력 방향을 가져옵니다.
+        let direction = match player.get_mut::<Direction>() {
+            Some(direction) => direction, 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<Direction>()))
+        };
+
+
         if keycode == controller.forward {
             *direction |= Direction::Forward;
         } else if keycode == controller.backward {
@@ -63,14 +80,31 @@ pub fn on_keyboard_pressed(
 pub fn on_keyboard_released(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID, 
-    controller: &InputController, 
-    direction: &mut Direction, 
     keycode: KeyCode, 
     _location: KeyLocation, 
     _modifiers: Modifiers, 
     repeat: bool
 ) -> Result<(), PlayerStateError> {
     if !repeat {
+        // 플레이어 오브젝트를 가져옵니다.
+        let mut player = match world.get_mut(player_id) {
+            Some(player) => player, 
+            None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        };
+
+        // 플레이어 컨트롤러를 가져옵니다.
+        let controller = match player.get::<InputController>() {
+            Some(controller) => controller.clone(), 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<InputController>()))
+        };
+
+        // 플레이어 입력 방향을 가져옵니다.
+        let direction = match player.get_mut::<Direction>() {
+            Some(direction) => direction, 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<Direction>()))
+        };
+
+
         if keycode == controller.forward {
             *direction &= !Direction::Forward;
         } else if keycode == controller.backward {
@@ -129,11 +163,43 @@ pub fn on_cursor_moved(
 pub fn on_mouse_btn_pressed(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID, 
-    x: f32, y: f32, 
-    button: MouseButton, 
-    controller: &InputController,
-    flags: &mut PlayerFlags
+    _x: f32, _y: f32, 
+    button: MouseButton
 ) -> Result<(), PlayerStateError> {
+    // 플레이어 오브젝트를 가져옵니다.
+    let mut player = match world.get_mut(player_id) {
+        Some(player) => player, 
+        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+    };
+
+    // 입력 제어기를 가져옵니다.
+    let controller = match player.get::<InputController>() {
+        Some(controller) => controller, 
+        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<InputController>()))
+    };
+
+    // 조준 버튼이 눌렸을 경우 플레이어 상태를 변경합니다.
+    if controller.fire_btn == button {
+        // 플래그 변수를 활성화 합니다.
+        match player.get_mut::<PlayerFlags>() {
+            Some(flags) => *flags |= PlayerFlags::Fire, 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerFlags>()))
+        };
+
+        // 플레이어 애니메이션을 가져옵니다.
+        let animation = match player.get_mut::<AnimationSet>() {
+            Some(animation) => animation, 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+        };
+
+        // 애니메이션을 초기화 합니다.
+        animation.index = PlayerState::AttackStart as usize;
+        animation.timer = 0.0;
+
+        // 플레이어 상태를 변경합니다.
+        player.insert(PlayerState::AttackStart);
+    }
+
     Ok(())
 }
 
@@ -141,12 +207,10 @@ pub fn on_mouse_btn_pressed(
 
 /// 애플리케이션 마우스 버튼 떼임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_mouse_btn_released(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
-    x: f32, y: f32, 
-    button: MouseButton, 
-    controller: &InputController,
-    flags: &mut PlayerFlags
+    _world: &Arc<SkipMap<WorldID, GameObject>>, 
+    _player_id: &WorldID, 
+    _x: f32, _y: f32, 
+    _button: MouseButton
 ) -> Result<(), PlayerStateError> {
     Ok(())
 }

@@ -3,7 +3,7 @@ use std::{any::TypeId, sync::Arc};
 use mod_parallelism::collections::SkipMap;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use super::{Direction, GameObject, InputController, Transform, WorldID};
+use super::{GameObject, Transform, WorldID};
 
 
 
@@ -71,8 +71,6 @@ fn update_hierarchy(
 pub fn player_keyboard_pressed(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID, 
-    controller: &InputController, 
-    direction: &mut Direction, 
     keycode: KeyCode, 
     location: KeyLocation, 
     modifiers: Modifiers, 
@@ -81,17 +79,18 @@ pub fn player_keyboard_pressed(
     type CallbackFn = fn(
         &Arc<SkipMap<WorldID, GameObject>>, 
         &WorldID, 
-        &InputController, 
-        &mut Direction, 
         KeyCode, 
         KeyLocation, 
         Modifiers, 
         bool
     ) -> Result<(), PlayerStateError>;
-    const CALLBACK_FN: [CallbackFn; 3] = [
+    const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_keyboard_pressed as CallbackFn, 
         moving_state::on_keyboard_pressed as CallbackFn, 
         move_to_end_state::on_keyboard_pressed as CallbackFn, 
+        attack_start_state::on_keyboard_pressed as CallbackFn, 
+        attacking_state::on_keyboard_pressed as CallbackFn, 
+        attack_end_state::on_keyboard_pressed as CallbackFn, 
     ];
 
     // 플레이어 오브젝트를 가져옵니다.
@@ -109,8 +108,6 @@ pub fn player_keyboard_pressed(
     CALLBACK_FN[state as usize](
         world, 
         player_id, 
-        controller, 
-        direction, 
         keycode, 
         location, 
         modifiers, 
@@ -124,8 +121,6 @@ pub fn player_keyboard_pressed(
 pub fn player_keyboard_released(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID, 
-    controller: &InputController, 
-    direction: &mut Direction, 
     keycode: KeyCode, 
     location: KeyLocation, 
     modifiers: Modifiers, 
@@ -134,17 +129,18 @@ pub fn player_keyboard_released(
     type CallbackFn = fn(
         &Arc<SkipMap<WorldID, GameObject>>, 
         &WorldID, 
-        &InputController, 
-        &mut Direction, 
         KeyCode, 
         KeyLocation, 
         Modifiers, 
         bool
     ) -> Result<(), PlayerStateError>;
-    const CALLBACK_FN: [CallbackFn; 3] = [
+    const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_keyboard_released as CallbackFn, 
         moving_state::on_keyboard_released as CallbackFn, 
         move_to_end_state::on_keyboard_released as CallbackFn, 
+        attack_start_state::on_keyboard_released as CallbackFn, 
+        attacking_state::on_keyboard_released as CallbackFn, 
+        attack_end_state::on_keyboard_released as CallbackFn, 
     ];
 
     // 플레이어 오브젝트를 가져옵니다.
@@ -162,8 +158,6 @@ pub fn player_keyboard_released(
     CALLBACK_FN[state as usize](
         world, 
         player_id, 
-        controller, 
-        direction, 
         keycode, 
         location, 
         modifiers, 
@@ -177,7 +171,6 @@ pub fn player_keyboard_released(
 pub fn player_cursor_moved(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID, 
-    camera_id: &WorldID, 
     dx: f32, dy: f32
 ) -> Result<(), PlayerStateError> {
     type CallbackFn = fn(
@@ -185,10 +178,13 @@ pub fn player_cursor_moved(
         &WorldID, 
         f32, f32
     ) -> Result<(), PlayerStateError>;
-    const CALLBACK_FN: [CallbackFn; 3] = [
+    const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_cursor_moved as CallbackFn, 
         moving_state::on_cursor_moved as CallbackFn, 
         move_to_end_state::on_cursor_moved as CallbackFn, 
+        attack_start_state::on_cursor_moved as CallbackFn, 
+        attacking_state::on_cursor_moved as CallbackFn, 
+        attack_end_state::on_cursor_moved as CallbackFn, 
     ];
 
     // 플레이어 오브젝트를 가져옵니다.
@@ -203,7 +199,7 @@ pub fn player_cursor_moved(
         None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
     };
 
-    CALLBACK_FN[state as usize](world, camera_id, dx, dy)
+    CALLBACK_FN[state as usize](world, player_id, dx, dy)
 }
 
 
@@ -213,22 +209,21 @@ pub fn player_mouse_btn_pressed(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID, 
     x: f32, y: f32, 
-    button: MouseButton, 
-    controller: &InputController,
-    flags: &mut PlayerFlags
+    button: MouseButton
 ) -> Result<(), PlayerStateError> {
     type CallbackFn = fn(
         &Arc<SkipMap<WorldID, GameObject>>, 
         &WorldID, 
         f32, f32, 
-        MouseButton, 
-        &InputController, 
-        &mut PlayerFlags
+        MouseButton
     ) -> Result<(), PlayerStateError>;
-    const CALLBACK_FN: [CallbackFn; 3] = [
+    const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_mouse_btn_pressed as CallbackFn, 
         moving_state::on_mouse_btn_pressed as CallbackFn, 
         move_to_end_state::on_mouse_btn_pressed as CallbackFn, 
+        attack_start_state::on_mouse_btn_pressed as CallbackFn, 
+        attacking_state::on_mouse_btn_pressed as CallbackFn, 
+        attack_end_state::on_mouse_btn_pressed as CallbackFn, 
     ];
 
     // 플레이어 오브젝트를 가져옵니다.
@@ -248,9 +243,7 @@ pub fn player_mouse_btn_pressed(
         player_id, 
         x, 
         y, 
-        button, 
-        controller, 
-        flags
+        button
     )
 }
 
@@ -261,22 +254,21 @@ pub fn player_mouse_btn_released(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID, 
     x: f32, y: f32, 
-    button: MouseButton, 
-    controller: &InputController,
-    flags: &mut PlayerFlags
+    button: MouseButton
 ) -> Result<(), PlayerStateError> {
     type CallbackFn = fn(
         &Arc<SkipMap<WorldID, GameObject>>, 
         &WorldID, 
         f32, f32, 
-        MouseButton, 
-        &InputController, 
-        &mut PlayerFlags
+        MouseButton
     ) -> Result<(), PlayerStateError>;
-    const CALLBACK_FN: [CallbackFn; 3] = [
+    const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_mouse_btn_released as CallbackFn, 
         moving_state::on_mouse_btn_released as CallbackFn, 
         move_to_end_state::on_mouse_btn_released as CallbackFn, 
+        attack_start_state::on_mouse_btn_released as CallbackFn, 
+        attacking_state::on_mouse_btn_released as CallbackFn, 
+        attack_end_state::on_mouse_btn_released as CallbackFn, 
     ];
 
     // 플레이어 오브젝트를 가져옵니다.
@@ -296,9 +288,7 @@ pub fn player_mouse_btn_released(
         player_id, 
         x, 
         y, 
-        button, 
-        controller, 
-        flags
+        button
     )
 }
 
@@ -316,10 +306,13 @@ pub fn player_update(
         &WorldID, 
         f32
     ) -> Result<(), PlayerStateError>;
-    const CALLBACK_FN: [CallbackFn; 3] = [
+    const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_update as CallbackFn, 
         moving_state::on_update as CallbackFn, 
         move_to_end_state::on_update as CallbackFn, 
+        attack_start_state::on_update as CallbackFn, 
+        attacking_state::on_update as CallbackFn, 
+        attack_end_state::on_update as CallbackFn, 
     ];
 
     // 플레이어 오브젝트를 가져옵니다.
@@ -347,5 +340,8 @@ mod flag;
 mod idle_state;
 mod moving_state;
 mod move_to_end_state;
+mod attack_start_state;
+mod attacking_state;
+mod attack_end_state;
 
 pub use self::flag::*;

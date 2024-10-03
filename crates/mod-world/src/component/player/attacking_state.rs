@@ -1,7 +1,6 @@
 use std::{any::TypeId, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
-use mod_physics::rigid_body::RigidBody;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
 use crate::component::{AnimationSet, Direction, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
@@ -38,7 +37,6 @@ pub fn on_keyboard_pressed(
             None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<Direction>()))
         };
 
-
         if keycode == controller.forward {
             *direction |= Direction::Forward;
         } else if keycode == controller.backward {
@@ -47,27 +45,6 @@ pub fn on_keyboard_pressed(
             *direction |= Direction::Left;
         } else if keycode == controller.right {
             *direction |= Direction::Right;
-        }
-
-        if !direction.is_stopped() {
-            // 플레이어 오브젝트를 가져옵니다.
-            let mut player = match world.get_mut(player_id) {
-                Some(object) => object, 
-                None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
-            };
-
-            // 플레이어 애니메이션을 가져옵니다.
-            let animation = match player.get_mut::<AnimationSet>() {
-                Some(animation) => animation, 
-                None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
-            };
-
-            // 애니메이션을 초기화 합니다.
-            animation.index = PlayerState::Moving as usize;
-            animation.timer = 0.0;
-
-            // 플레이어 상태를 변경합니다.
-            player.insert(PlayerState::Moving);
         }
     }
 
@@ -104,7 +81,6 @@ pub fn on_keyboard_released(
             None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<Direction>()))
         };
 
-
         if keycode == controller.forward {
             *direction &= !Direction::Forward;
         } else if keycode == controller.backward {
@@ -113,27 +89,6 @@ pub fn on_keyboard_released(
             *direction &= !Direction::Left;
         } else if keycode == controller.right {
             *direction &= !Direction::Right;
-        }
-
-        if !direction.is_stopped() {
-            // 플레이어 오브젝트를 가져옵니다.
-            let mut player = match world.get_mut(player_id) {
-                Some(object) => object, 
-                None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
-            };
-
-            // 플레이어 애니메이션을 가져옵니다.
-            let animation = match player.get_mut::<AnimationSet>() {
-                Some(animation) => animation, 
-                None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
-            };
-
-            // 애니메이션을 초기화 합니다.
-            animation.index = PlayerState::Moving as usize;
-            animation.timer = 0.0;
-
-            // 플레이어 상태를 변경합니다.
-            player.insert(PlayerState::Moving);
         }
     }
 
@@ -148,11 +103,12 @@ pub fn on_cursor_moved(
     player_id: &WorldID, 
     dx: f32, dy: f32
 ) -> Result<(), PlayerStateError> {
-    // 카메라 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
+    // 플레이어 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
+    const OFFSET: f32 = 0.05;
     let mut player = world.get_mut(player_id).unwrap();
-    let third_person = player.get_mut::<ThirdPersonCamera>().unwrap();
-    third_person.polar = (third_person.polar + dx.to_radians()) % 360f32.to_radians();
-    third_person.azimuthal = (third_person.azimuthal + dy.to_radians()).clamp(0f32.to_radians(), 30f32.to_radians());
+    let third_person_camera = player.get_mut::<ThirdPersonCamera>().unwrap();
+    third_person_camera.polar = (third_person_camera.polar + dx.to_radians() * OFFSET) % 360f32.to_radians();
+    third_person_camera.azimuthal = (third_person_camera.azimuthal + dy.to_radians() * OFFSET).clamp(0f32.to_radians(), 30f32.to_radians());
 
     Ok(())
 }
@@ -185,19 +141,6 @@ pub fn on_mouse_btn_pressed(
             Some(flags) => *flags |= PlayerFlags::Fire, 
             None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerFlags>()))
         };
-
-        // 플레이어 애니메이션을 가져옵니다.
-        let animation = match player.get_mut::<AnimationSet>() {
-            Some(animation) => animation, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
-        };
-
-        // 애니메이션을 초기화 합니다.
-        animation.index = PlayerState::AttackStart as usize;
-        animation.timer = 0.0;
-
-        // 플레이어 상태를 변경합니다.
-        player.insert(PlayerState::AttackStart);
     }
 
     Ok(())
@@ -207,11 +150,32 @@ pub fn on_mouse_btn_pressed(
 
 /// 애플리케이션 마우스 버튼 떼임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_mouse_btn_released(
-    _world: &Arc<SkipMap<WorldID, GameObject>>, 
-    _player_id: &WorldID, 
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
     _x: f32, _y: f32, 
-    _button: MouseButton
+    button: MouseButton
 ) -> Result<(), PlayerStateError> {
+    // 플레이어 오브젝트를 가져옵니다.
+    let mut player = match world.get_mut(player_id) {
+        Some(player) => player, 
+        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+    };
+
+    // 입력 제어기를 가져옵니다.
+    let controller = match player.get::<InputController>() {
+        Some(controller) => controller, 
+        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<InputController>()))
+    };
+
+    // 조준 버튼이 눌렸을 경우 플레이어 상태를 변경합니다.
+    if controller.fire_btn == button {
+        // 플래그 변수를 비활성화 합니다.
+        match player.get_mut::<PlayerFlags>() {
+            Some(flags) => *flags &= !PlayerFlags::Fire, 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerFlags>()))
+        };
+    }
+
     Ok(())
 }
 
@@ -224,11 +188,9 @@ pub fn on_update(
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     update_animation(world, player_id, elapsed_time_sec)?;
-    update_position(world, player_id, elapsed_time_sec)?;
     super::update_hierarchy(world, Transform::new(), player_id);
     Ok(())
 }
-
 
 
 /// 플레이어 애니메이션을 갱신하는 함수입니다.
@@ -253,29 +215,6 @@ pub fn update_animation(
     let animation_clip = animation.clips.get(animation.index).unwrap();
     animation.timer = animation.timer + elapsed_time_sec;
 
-
-    // 애니메이션 타이머가 애니메이션 길이보다 클 경우 플레이어 상태를 변경합니다.
-    let diff_t = animation.timer - animation_clip.length();
-    animation.timer = animation.timer.min(animation_clip.length());
-
-    if diff_t >= 0.0 {
-        // 애니메이션을 초기화 합니다.
-        animation.index = PlayerState::Idle as usize;
-        animation.timer = diff_t;
-
-        // 플레이어 속도를 초기화 합니다.
-        let rigid_body =  match player.get_mut::<RigidBody>() {
-            Some(rigid_body) => rigid_body, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<RigidBody>()))
-        };
-        rigid_body.velocity = gmm::Vector::ZERO;
-
-        // 플레이어 상태를 변경합니다.
-        player.insert(PlayerState::Idle);
-
-        return Ok(());
-    }
-
     // 키 프레임을 샘플링 합니다.
     let keyframe = animation_clip.sample_animation(animation.timer);
 
@@ -285,6 +224,21 @@ pub fn update_animation(
         Some(object) => object, 
         None => return Err(PlayerStateError::PlayerNotFound(root_id.clone()))
     };
+
+    // 애니메이션 타이머가 애니메이션 길이보다 클 경우 플레이어 상태를 변경합니다.
+    let diff_t = animation.timer - animation_clip.length();
+    animation.timer = animation.timer.min(animation_clip.length());
+
+    if diff_t >= 0.0 {
+        // 애니메이션을 초기화 합니다.
+        animation.index = PlayerState::AttackEnd as usize;
+        animation.timer = diff_t;
+
+        // 플레이어 상태를 변경합니다.
+        player.insert(PlayerState::AttackEnd);
+
+        return Ok(());
+    }
 
     // 최상위 뼈 노드의 변환 행렬을 설정합니다.
     root_object.set_local_transform(keyframe.root_bone());
@@ -303,40 +257,6 @@ pub fn update_animation(
             bone_object.set_local_transform(bone_transform);
         }
     }
-
-    Ok(())
-}
-
-
-
-/// 플레이어 위치를 갱신하는 함수입니다.
-fn update_position(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
-    elapsed_time_sec: f32
-) -> Result<(), PlayerStateError> {
-    // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
-    let mut player = match world.get_mut(player_id) {
-        Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
-    };
-
-    // 플레이어의 월드 변환 행렬을 가져옵니다.
-    let mut transform = player.get_local_transform().clone();
-
-    // 강체 물리 요소를 가져옵니다.
-    let rigid_body = match player.get_mut::<RigidBody>() {
-        Some(rigid_body) => rigid_body, 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<RigidBody>()))
-    };
-
-    // 플레이어를 이동시킵니다.
-    let distance = rigid_body.integral(elapsed_time_sec);
-    transform.translate(distance);
-    rigid_body.reset_force();
-
-    // 월드 변환 행렬을 적용합니다.
-    player.set_local_transform(transform);
 
     Ok(())
 }

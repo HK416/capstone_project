@@ -24,7 +24,7 @@ fn main() {
 
     AppBuilder::new(Box::new(scenes::StartupScene::new()))
         .with_window_title("Hello to Halo!")
-        .with_window_size(WindowSize::W1280H720)
+        .with_window_size(WindowSize::W1600H900)
         .with_fullscreen(false)
         .build_and_run()
 }

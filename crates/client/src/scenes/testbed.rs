@@ -5,7 +5,7 @@ use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
 use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Camera, Direction, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
-use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::Window};
+use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::Window};
 
 const FORCE: f32 = 500.0;
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -38,15 +38,6 @@ pub struct TestBedScene {
 
     /// 메쉬 렌더러 오브젝트를 관리합니다.
     renderer: Arc<Queue<Arc<dyn MeshRenderer>>>, 
-
-    /// 사용자의 입력입니다.
-    direction: Direction, 
-
-    /// 사용자 플래그입니다.
-    flags: PlayerFlags, 
-
-    /// 사용자 입력기입니다.
-    controller: InputController, 
 }
 
 impl TestBedScene {
@@ -71,9 +62,6 @@ impl TestBedScene {
             main_camera: WorldID::default(), 
             players: HashMap::with_capacity(10),
             renderer: Arc::new(Queue::new()), 
-            direction: Direction::default(), 
-            flags: PlayerFlags::default(), 
-            controller: InputController::default(), 
         }
     }
 
@@ -126,6 +114,27 @@ impl TestBedScene {
         rigid_body.damping = 0.002;
         object.insert(rigid_body);
 
+        
+        if self.client_id == data.id {
+            // 플레이어 오브젝트에 입력 방향을 추가합니다.
+            object.insert(Direction::default());
+
+            // 플레이어 오브젝트에 입력 제어기를 추가합니다.
+            object.insert(InputController::default());
+
+            // 플레이어 오브젝트에 플래그 변수를 추가합니다.
+            object.insert(PlayerFlags::default());
+
+            // 플레이어 오브젝트에 삼인칭 카메라를 추가합니다.
+            object.insert(ThirdPersonCamera {
+                target: self.main_camera.clone(), 
+                distance: -2.5, 
+                polar: 180f32.to_radians(), 
+                azimuthal: -10f32.to_radians()
+            });
+        }
+
+
         // 플레이어를 게임 세상에 추가합니다.
         let world_id = object.id().clone();
         self.players.insert(data.id, world_id.clone());
@@ -159,15 +168,6 @@ impl TestBedScene {
             None
         );
 
-        // 카메라의 월드 변환 행렬을 설정합니다.
-        // let transform = Transform(
-        //     gmm::Matrix::from_rotation_translation(
-        //         gmm::Quaternion::from_rotation_x(10f32.to_radians()), 
-        //         gmm::Vector::new(0.0, 1.25, -2.0, 0.0)
-        //     )
-        // );
-        // camera_object.set_local_transform(transform);
-
         // 카메라 오브젝트에 원근 투영 변환 행렬을 추가합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
         camera_object.insert(Projection::perspective(
@@ -183,15 +183,6 @@ impl TestBedScene {
             device
         )));
 
-        // 카메라 오브젝트에 대상 오브젝트 요소를 추가합니다.
-        let world_id = self.players.get(&self.client_id).unwrap();
-        camera_object.insert(ThirdPersonCamera { 
-            target: world_id.clone(), 
-            distance: -2.5, 
-            polar: 180f32.to_radians(), 
-            azimuthal: 10f32.to_radians()
-        });
-
         // 게임 월드에 카메라 오브젝트를 추가합니다.
         let world_id = camera_object.id().clone();
         self.world.insert(world_id.clone(), camera_object);
@@ -201,27 +192,26 @@ impl TestBedScene {
 
     /// 카메라의 위치를 갱신합니다.
     fn update_camera_pos(&self) {
-        // 카메라 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
-        let camera = self.world.get(&self.main_camera).unwrap();
-        let third_person = camera.get::<ThirdPersonCamera>().unwrap();
+        // 플레이어 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+        let player = self.world.get(player_id).unwrap();
+        let third_person_camera = player.get::<ThirdPersonCamera>().unwrap();
         
         // 카메라 오브젝트의 변위를 계산합니다.
-        let polar = gmm::Quaternion::from_rotation_y(third_person.polar);
-        let right: gmm::Float4 = (polar * gmm::Quaternion::new(-1.0, 0.0, 0.0, 0.0) * polar.inverse()).into();
-        let offset = polar * gmm::Quaternion::new(0.0, 0.0, -third_person.distance, 0.0) * polar.inverse();
+        let polar = gmm::Quaternion::from_rotation_y(third_person_camera.polar);
+        let right = polar.transform_vector(gmm::Vector::NEG_X);
+        let offset = polar.transform_vector(gmm::Vector::NEG_Z * third_person_camera.distance);
 
-        let azimuthal = gmm::Quaternion::from_axis_angle(right.into(), third_person.azimuthal);
-        let offset: gmm::Float4 = (azimuthal * offset * azimuthal.inverse()).into();
-        let offset = gmm::Vector::load_float3(offset.xyz());
+        let azimuthal = gmm::Quaternion::from_axis_angle(right.into(), third_person_camera.azimuthal);
+        let offset = azimuthal.transform_vector(offset);
 
-        // 대상 오브젝트의 위치를 가져옵니다.
-        let target_id = third_person.target.clone();
-        let object = self.world.get(&target_id).unwrap();
-        let pivot = object.get_world_transform().get_translation() + gmm::Vector::new(0.0, 1.0, 0.0, 0.0);
+        // 플레이어 오브젝트의 위치를 가져옵니다.
+        let position = player.get_world_transform().get_translation();
+        let pivot = position + gmm::Vector::new(0.0, 1.0, 0.0, 0.0);
         
         // 최종 카메라의 위치를 계산합니다.
         let translation = offset + pivot;
-        let x_axis = gmm::Vector::load_float3(right.xyz());
+        let x_axis = right.vec3_normalize();
         let z_axis = (pivot - translation).vec3_normalize();
         let y_axis = z_axis.vec3_cross(x_axis);
 
@@ -240,6 +230,13 @@ impl TestBedScene {
         let camera = self.world.get(&self.main_camera).unwrap();
         let camera_transform = camera.get_world_transform().clone();
 
+        // 플레이어 오브젝트를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+        let mut player = self.world.get_mut(player_id).unwrap();
+
+        // 현재 사용자 입력 방향을 가져옵니다.
+        let direction = player.get::<Direction>().unwrap();
+
         // 플레이어의 힘의 총량을 계산합니다.
         let mut right = camera_transform.get_right_vector();
         right.set_y(0.0);
@@ -247,14 +244,10 @@ impl TestBedScene {
         let mut look = camera_transform.get_look_vector();
         look.set_y(0.0);
 
-        let vector = self.direction.get_vector();
+        let vector = direction.get_vector();
         let mut force_accum = gmm::Vector::ZERO;
         force_accum += FORCE * vector.get_x() * right;
         force_accum += FORCE * vector.get_z() * look;
-
-        // 플레이어 오브젝트를 가져옵니다.
-        let player_id = self.players.get(&self.client_id).unwrap();
-        let mut player = self.world.get_mut(player_id).unwrap();
         
         // 플레이어 힘의 총량을 설정합니다.
         let rigid_body = player.get_mut::<RigidBody>().unwrap();
@@ -317,15 +310,16 @@ impl GameScene for TestBedScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 마우스 커서를 비활성화 합니다.
         window.set_cursor_visible(false);
-        window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+        let (w, h): (u32, u32) = window.inner_size().into();
+        window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
+
+        // 메인 카메라를 생성합니다.
+        self.create_main_camera(window, app.render_device());
 
         // 플레이어들을 생성합니다.
         while let Some(data) = self.stage_data.pop() {
             self.insert_player(data, app.render_device(), app.render_queue());
         }
-
-        // 메인 카메라를 생성합니다.
-        self.create_main_camera(window, app.render_device());
 
         Ok(())
     }
@@ -348,7 +342,8 @@ impl GameScene for TestBedScene {
         // 마우스 커서를 비활성화 합니다.
         if let Some(window) = app.window() {
             window.set_cursor_visible(false);
-            window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+            let (w, h): (u32, u32) = window.inner_size().into();
+            window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
         }
         Ok(())
     }
@@ -413,8 +408,6 @@ impl GameScene for TestBedScene {
         player_keyboard_pressed(
             &self.world, 
             player_id, 
-            &self.controller, 
-            &mut self.direction, 
             keycode, 
             location, 
             modifiers, 
@@ -439,8 +432,6 @@ impl GameScene for TestBedScene {
         player_keyboard_released(
             &self.world, 
             player_id, 
-            &self.controller, 
-            &mut self.direction, 
             keycode, 
             location, 
             modifiers, 
@@ -464,8 +455,6 @@ impl GameScene for TestBedScene {
             player_id, 
             x, y, 
             button, 
-            &self.controller, 
-            &mut self.flags
         )
         .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }
@@ -485,8 +474,6 @@ impl GameScene for TestBedScene {
             player_id, 
             x, y, 
             button, 
-            &self.controller, 
-            &mut self.flags
         )
         .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }
@@ -499,10 +486,11 @@ impl GameScene for TestBedScene {
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // 커서의 위치를 이동시킵니다.
-        window.set_cursor_position(window.inner_position().unwrap()).unwrap();
+        let (w, h): (u32, u32) = window.inner_size().into();
+        window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
 
         // 커서의 이동량을 계산합니다.
-        let (px, py): (f32, f32) = window.inner_position().unwrap().into();
+        let (px, py) = (w as f32 / 2.0, h as f32 / 2.0);
         let delta_x = px - x;
         let delta_y = py - y;
 
@@ -513,7 +501,6 @@ impl GameScene for TestBedScene {
         player_cursor_moved(
             &self.world, 
             player_id, 
-            &self.main_camera, 
             delta_x, 
             delta_y
         )
