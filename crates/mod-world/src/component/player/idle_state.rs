@@ -22,7 +22,7 @@ pub fn on_keyboard_pressed(
         // 플레이어 오브젝트를 가져옵니다.
         let mut player = match world.get_mut(player_id) {
             Some(player) => player, 
-            None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+            None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
         };
 
         // 플레이어 컨트롤러를 가져옵니다.
@@ -52,7 +52,7 @@ pub fn on_keyboard_pressed(
             // 플레이어 오브젝트를 가져옵니다.
             let mut player = match world.get_mut(player_id) {
                 Some(object) => object, 
-                None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+                None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
             };
 
             // 플레이어 애니메이션을 가져옵니다.
@@ -88,7 +88,7 @@ pub fn on_keyboard_released(
         // 플레이어 오브젝트를 가져옵니다.
         let mut player = match world.get_mut(player_id) {
             Some(player) => player, 
-            None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+            None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
         };
 
         // 플레이어 컨트롤러를 가져옵니다.
@@ -118,7 +118,7 @@ pub fn on_keyboard_released(
             // 플레이어 오브젝트를 가져옵니다.
             let mut player = match world.get_mut(player_id) {
                 Some(object) => object, 
-                None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+                None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
             };
 
             // 플레이어 애니메이션을 가져옵니다.
@@ -151,7 +151,7 @@ pub fn on_cursor_moved(
     let mut player = world.get_mut(player_id).unwrap();
     let third_person = player.get_mut::<ThirdPersonCamera>().unwrap();
     third_person.polar = (third_person.polar + dx.to_radians()) % 360f32.to_radians();
-    third_person.azimuthal = (third_person.azimuthal + dy.to_radians()).clamp(0f32.to_radians(), 30f32.to_radians());
+    third_person.azimuthal = (third_person.azimuthal + dy.to_radians()).clamp(-10f32.to_radians(), 30f32.to_radians());
 
     Ok(())
 }
@@ -168,7 +168,7 @@ pub fn on_mouse_btn_pressed(
     // 플레이어 오브젝트를 가져옵니다.
     let mut player = match world.get_mut(player_id) {
         Some(player) => player, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 입력 제어기를 가져옵니다.
@@ -184,6 +184,29 @@ pub fn on_mouse_btn_pressed(
             Some(flags) => *flags |= PlayerFlags::Fire, 
             None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerFlags>()))
         };
+
+        // 카메라 오브젝트의 식별자를 가져옵니다.
+        let camera_id = match player.get::<ThirdPersonCamera>() {
+            Some(third_person_camera) => third_person_camera.target.clone(), 
+            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<ThirdPersonCamera>()))
+        };
+
+        // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
+        let camera_transform = match world.get(&camera_id) {
+            Some(camera) => camera.get_world_transform().clone(), 
+            None => return Err(PlayerStateError::ObjectNotFound(camera_id))
+        };
+
+        // 플레이어 방향을 카메라의 방향과 일치시킵니다.
+        let z_axis = camera_transform.get_look_vector();
+        let y_axis = gmm::Vector::Y;
+        let x_axis = y_axis.vec3_cross(z_axis);
+        let z_axis = x_axis.vec3_cross(y_axis);
+        let rotation = gmm::Quaternion::from_rotation_axes(x_axis, y_axis, z_axis);
+        let mut transform = player.get_local_transform().clone();
+        transform.set_rotation(rotation);
+        player.set_local_transform(transform);
+
 
         // 플레이어 애니메이션을 가져옵니다.
         let animation = match player.get_mut::<AnimationSet>() {
@@ -237,7 +260,7 @@ pub fn update_animation(
     // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
     let mut player = match world.get_mut(player_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 애니메이션 요소를 가져옵니다.
@@ -257,7 +280,7 @@ pub fn update_animation(
     let root_id = animation_clip.root_bone_id();
     let mut root_object = match world.get_mut(root_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(root_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(root_id.clone()))
     };
 
     // 최상위 뼈 노드의 변환 행렬을 설정합니다.
@@ -269,7 +292,7 @@ pub fn update_animation(
             // 게임 월드에서 뼈 오브젝트를 가져옵니다.
             let mut bone_object = match world.get_mut(world_id) {
                 Some(object) => object, 
-                None => return Err(PlayerStateError::PlayerNotFound(world_id.clone()))
+                None => return Err(PlayerStateError::ObjectNotFound(world_id.clone()))
             };
 
             // 뼈 오브젝트의 로컬 변환 행렬을 설정합니다.

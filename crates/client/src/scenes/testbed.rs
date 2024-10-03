@@ -7,7 +7,6 @@ use mod_physics::rigid_body::RigidBody;
 use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Camera, Direction, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
 use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::Window};
 
-const FORCE: f32 = 500.0;
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
     r: 0.0, 
     g: 116.0 / 255.0, 
@@ -207,7 +206,7 @@ impl TestBedScene {
 
         // 플레이어 오브젝트의 위치를 가져옵니다.
         let position = player.get_world_transform().get_translation();
-        let pivot = position + gmm::Vector::new(0.0, 1.0, 0.0, 0.0);
+        let pivot = position + gmm::Vector::Y * 1.0;
         
         // 최종 카메라의 위치를 계산합니다.
         let translation = offset + pivot;
@@ -221,54 +220,6 @@ impl TestBedScene {
         // 카메라 오브젝트의 변환 행렬을 설정합니다.
         let mut camera = self.world.get_mut(&self.main_camera).unwrap();
         camera.set_world_transform(transform);
-    }
-
-
-    /// 플레이어 힘의 총량을 계산합니다.
-    fn update_player_force(&self) {
-        // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
-        let camera = self.world.get(&self.main_camera).unwrap();
-        let camera_transform = camera.get_world_transform().clone();
-
-        // 플레이어 오브젝트를 가져옵니다.
-        let player_id = self.players.get(&self.client_id).unwrap();
-        let mut player = self.world.get_mut(player_id).unwrap();
-
-        // 현재 사용자 입력 방향을 가져옵니다.
-        let direction = player.get::<Direction>().unwrap();
-
-        // 플레이어의 힘의 총량을 계산합니다.
-        let mut right = camera_transform.get_right_vector();
-        right.set_y(0.0);
-
-        let mut look = camera_transform.get_look_vector();
-        look.set_y(0.0);
-
-        let vector = direction.get_vector();
-        let mut force_accum = gmm::Vector::ZERO;
-        force_accum += FORCE * vector.get_x() * right;
-        force_accum += FORCE * vector.get_z() * look;
-        
-        // 플레이어 힘의 총량을 설정합니다.
-        let rigid_body = player.get_mut::<RigidBody>().unwrap();
-        rigid_body.force_accum = force_accum;
-
-        // 속도의 크기가 f32::EPSILON보다 클 경우 플레이어 방향을 설정합니다.
-        let velocity = rigid_body.velocity.clone();
-        if velocity.vec3_len() > f32::EPSILON {
-            let z_axis = velocity.vec3_normalize();
-            let x_axis = gmm::Vector::X;
-            let cross = x_axis.vec3_cross(z_axis);
-            let dot = x_axis.vec3_dot_into(z_axis);
-            let theta = match cross.get_y() >= 0.0 {
-                true => dot.acos(), 
-                false => 360f32.to_radians() - dot.acos()
-            } + 90f32.to_radians();
-
-            let mut transform = player.get_local_transform().clone();
-            transform.set_rotation(gmm::Quaternion::from_rotation_y(theta));
-            player.set_local_transform(transform);
-        }
     }
 
 
@@ -516,7 +467,7 @@ impl GameScene for TestBedScene {
         let frame_rate = app.timer().frame_rate();
         window.set_title(&format!("Hello to Halo! (FPS: {})", frame_rate));
 
-        self.update_player_force();
+        // self.update_player_force();
         self.update_camera_pos();
 
         // 플레이어 오브젝트를 갱신합니다.

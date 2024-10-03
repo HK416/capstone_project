@@ -31,9 +31,9 @@ impl Default for PlayerState {
 /// 플레이어 상태 오류 목록입니다.
 #[derive(Debug, thiserror::Error)]
 pub enum PlayerStateError {
-    /// 게임 월드에서 플레이어를 찾을 수 없는 경우 발생하는 오류입니다.
-    #[error("Player not found in game world! ({0:?})")]
-    PlayerNotFound(WorldID), 
+    /// 게임 월드에서 게임 오브젝트를 찾을 수 없는 경우 발생하는 오류입니다.
+    #[error("GameObject not found in game world! ({0:?})")]
+    ObjectNotFound(WorldID), 
 
     /// 게임 오브젝트에서 요소를 찾을 수 없는 경우 발생하는 오류입니다.
     #[error("Could not find ({0:?}) element on the game object!")]
@@ -96,7 +96,7 @@ pub fn player_keyboard_pressed(
     // 플레이어 오브젝트를 가져옵니다.
     let player = match world.get(player_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 플레이어 상태를 가져옵니다.
@@ -146,7 +146,7 @@ pub fn player_keyboard_released(
     // 플레이어 오브젝트를 가져옵니다.
     let player = match world.get(player_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 플레이어 상태를 가져옵니다.
@@ -190,7 +190,7 @@ pub fn player_cursor_moved(
     // 플레이어 오브젝트를 가져옵니다.
     let player = match world.get(player_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 플레이어 상태를 가져옵니다.
@@ -229,7 +229,7 @@ pub fn player_mouse_btn_pressed(
     // 플레이어 오브젝트를 가져옵니다.
     let player = match world.get(player_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 플레이어 상태를 가져옵니다.
@@ -274,7 +274,7 @@ pub fn player_mouse_btn_released(
     // 플레이어 오브젝트를 가져옵니다.
     let player = match world.get(player_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 플레이어 상태를 가져옵니다.
@@ -318,7 +318,7 @@ pub fn player_update(
     // 플레이어 오브젝트를 가져옵니다.
     let player = match world.get(player_id) {
         Some(object) => object, 
-        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
     };
 
     // 플레이어 상태를 가져옵니다.
