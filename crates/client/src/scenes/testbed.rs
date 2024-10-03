@@ -4,8 +4,8 @@ use mod_app::{app::AppHandle, scene::GameScene};
 use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_keyboard_pressed, player_keyboard_released, player_update, AnimationSet, Camera, Direction, GameObject, IdGenerator, InputController, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
-use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}, window::Window};
+use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Camera, Direction, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
+use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::Window};
 
 const FORCE: f32 = 500.0;
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -42,6 +42,9 @@ pub struct TestBedScene {
     /// 사용자의 입력입니다.
     direction: Direction, 
 
+    /// 사용자 플래그입니다.
+    flags: PlayerFlags, 
+
     /// 사용자 입력기입니다.
     controller: InputController, 
 }
@@ -69,6 +72,7 @@ impl TestBedScene {
             players: HashMap::with_capacity(10),
             renderer: Arc::new(Queue::new()), 
             direction: Direction::default(), 
+            flags: PlayerFlags::default(), 
             controller: InputController::default(), 
         }
     }
@@ -445,6 +449,48 @@ impl GameScene for TestBedScene {
         .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }
 
+    fn on_mouse_btn_pressed(
+        &mut self, 
+        x: f32, y: f32, 
+        button: MouseButton, 
+        _window: &Window, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 유저의 게임 월드 식별자를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+
+        player_mouse_btn_pressed(
+            &self.world, 
+            player_id, 
+            x, y, 
+            button, 
+            &self.controller, 
+            &mut self.flags
+        )
+        .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+    }
+
+    fn on_mouse_btn_released(
+        &mut self, 
+        x: f32, y: f32, 
+        button: MouseButton, 
+        _window: &Window, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 유저의 게임 월드 식별자를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+
+        player_mouse_btn_released(
+            &self.world, 
+            player_id, 
+            x, y, 
+            button, 
+            &self.controller, 
+            &mut self.flags
+        )
+        .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+    }
+
     fn on_cursor_moved(
         &mut self, 
         x: f32, y: f32, 
@@ -460,13 +506,18 @@ impl GameScene for TestBedScene {
         let delta_x = px - x;
         let delta_y = py - y;
 
-        // 카메라 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
-        let mut camera = self.world.get_mut(&self.main_camera).unwrap();
-        let third_person = camera.get_mut::<ThirdPersonCamera>().unwrap();
-        third_person.polar = (third_person.polar + delta_x.to_radians()) % 360f32.to_radians();
-        third_person.azimuthal = (third_person.azimuthal + delta_y.to_radians()).clamp(0f32.to_radians(), 30f32.to_radians());
+        // 유저의 게임 월드 식별자를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
 
-        Ok(())
+        // 사용자 입력을 처리합니다.
+        player_cursor_moved(
+            &self.world, 
+            player_id, 
+            &self.main_camera, 
+            delta_x, 
+            delta_y
+        )
+        .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }
 
     fn on_update(

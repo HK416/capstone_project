@@ -1,11 +1,11 @@
 use std::{any::TypeId, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
-use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}};
+use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::component::{AnimationSet, Direction, GameObject, InputController, Transform, WorldID};
+use crate::component::{AnimationSet, Direction, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
 
-use super::{PlayerState, PlayerStateError};
+use super::{PlayerFlags, PlayerState, PlayerStateError};
 
 
 
@@ -102,6 +102,51 @@ pub fn on_keyboard_released(
         }
     }
 
+    Ok(())
+}
+
+
+
+/// 애플리케이션 마우스 커서 움직임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
+pub fn on_cursor_moved(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    camera_id: &WorldID, 
+    dx: f32, dy: f32
+) -> Result<(), PlayerStateError> {
+    // 카메라 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
+    let mut camera = world.get_mut(camera_id).unwrap();
+    let third_person = camera.get_mut::<ThirdPersonCamera>().unwrap();
+    third_person.polar = (third_person.polar + dx.to_radians()) % 360f32.to_radians();
+    third_person.azimuthal = (third_person.azimuthal + dy.to_radians()).clamp(0f32.to_radians(), 30f32.to_radians());
+
+    Ok(())
+}
+
+
+
+/// 애플리케이션 마우스 버튼 눌림 이벤트가 발생할 때 호출되는 콜백 함수입니다.
+pub fn on_mouse_btn_pressed(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    x: f32, y: f32, 
+    button: MouseButton, 
+    controller: &InputController,
+    flags: &mut PlayerFlags
+) -> Result<(), PlayerStateError> {
+    Ok(())
+}
+
+
+
+/// 애플리케이션 마우스 버튼 떼임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
+pub fn on_mouse_btn_released(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    x: f32, y: f32, 
+    button: MouseButton, 
+    controller: &InputController,
+    flags: &mut PlayerFlags
+) -> Result<(), PlayerStateError> {
     Ok(())
 }
 

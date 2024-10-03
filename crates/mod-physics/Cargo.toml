@@ -12,7 +12,7 @@ publish.workspace = true
 [dependencies]
 # 게임 수학 라이브러리
 # License: MIT
-gmm = { version = "0.3", features = ["bytemuck", "serde"] }
+gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck", "serde"] }
 
 # 데이터 직렬화 라이브러리
 # License: MIT or Apache-2.0

@@ -1,7 +1,7 @@
 use std::{any::TypeId, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
-use winit::{event::Modifiers, keyboard::{KeyCode, KeyLocation}};
+use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
 use super::{Direction, GameObject, InputController, Transform, WorldID};
 
@@ -14,6 +14,9 @@ pub enum PlayerState {
     Idle = 0, 
     Moving = 1, 
     MoveToEnd = 2, 
+    AttackStart = 3, 
+    Attacking = 4, 
+    AttackEnd = 5, 
 }
 
 impl Default for PlayerState {
@@ -170,6 +173,136 @@ pub fn player_keyboard_released(
 
 
 
+/// 애플리케이션 마우스 커서 움직임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
+pub fn player_cursor_moved(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    camera_id: &WorldID, 
+    dx: f32, dy: f32
+) -> Result<(), PlayerStateError> {
+    type CallbackFn = fn(
+        &Arc<SkipMap<WorldID, GameObject>>, 
+        &WorldID, 
+        f32, f32
+    ) -> Result<(), PlayerStateError>;
+    const CALLBACK_FN: [CallbackFn; 3] = [
+        idle_state::on_cursor_moved as CallbackFn, 
+        moving_state::on_cursor_moved as CallbackFn, 
+        move_to_end_state::on_cursor_moved as CallbackFn, 
+    ];
+
+    // 플레이어 오브젝트를 가져옵니다.
+    let player = match world.get(player_id) {
+        Some(object) => object, 
+        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+    };
+
+    // 플레이어 상태를 가져옵니다.
+    let state = match player.get::<PlayerState>() {
+        Some(state) => state.clone(), 
+        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+    };
+
+    CALLBACK_FN[state as usize](world, camera_id, dx, dy)
+}
+
+
+
+/// 애플리케이션 마우스 버튼 눌림 이벤트가 발생할 때 호출되는 콜백 함수입니다.
+pub fn player_mouse_btn_pressed(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    x: f32, y: f32, 
+    button: MouseButton, 
+    controller: &InputController,
+    flags: &mut PlayerFlags
+) -> Result<(), PlayerStateError> {
+    type CallbackFn = fn(
+        &Arc<SkipMap<WorldID, GameObject>>, 
+        &WorldID, 
+        f32, f32, 
+        MouseButton, 
+        &InputController, 
+        &mut PlayerFlags
+    ) -> Result<(), PlayerStateError>;
+    const CALLBACK_FN: [CallbackFn; 3] = [
+        idle_state::on_mouse_btn_pressed as CallbackFn, 
+        moving_state::on_mouse_btn_pressed as CallbackFn, 
+        move_to_end_state::on_mouse_btn_pressed as CallbackFn, 
+    ];
+
+    // 플레이어 오브젝트를 가져옵니다.
+    let player = match world.get(player_id) {
+        Some(object) => object, 
+        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+    };
+
+    // 플레이어 상태를 가져옵니다.
+    let state = match player.get::<PlayerState>() {
+        Some(state) => state.clone(), 
+        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+    };
+
+    CALLBACK_FN[state as usize](
+        world, 
+        player_id, 
+        x, 
+        y, 
+        button, 
+        controller, 
+        flags
+    )
+}
+
+
+
+/// 애플리케이션 마우스 버튼 떼임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
+pub fn player_mouse_btn_released(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    x: f32, y: f32, 
+    button: MouseButton, 
+    controller: &InputController,
+    flags: &mut PlayerFlags
+) -> Result<(), PlayerStateError> {
+    type CallbackFn = fn(
+        &Arc<SkipMap<WorldID, GameObject>>, 
+        &WorldID, 
+        f32, f32, 
+        MouseButton, 
+        &InputController, 
+        &mut PlayerFlags
+    ) -> Result<(), PlayerStateError>;
+    const CALLBACK_FN: [CallbackFn; 3] = [
+        idle_state::on_mouse_btn_released as CallbackFn, 
+        moving_state::on_mouse_btn_released as CallbackFn, 
+        move_to_end_state::on_mouse_btn_released as CallbackFn, 
+    ];
+
+    // 플레이어 오브젝트를 가져옵니다.
+    let player = match world.get(player_id) {
+        Some(object) => object, 
+        None => return Err(PlayerStateError::PlayerNotFound(player_id.clone()))
+    };
+
+    // 플레이어 상태를 가져옵니다.
+    let state = match player.get::<PlayerState>() {
+        Some(state) => state.clone(), 
+        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+    };
+
+    CALLBACK_FN[state as usize](
+        world, 
+        player_id, 
+        x, 
+        y, 
+        button, 
+        controller, 
+        flags
+    )
+}
+
+
 
 
 /// 플레이어 오브젝트를 갱신하는 함수입니다.
@@ -210,6 +343,9 @@ pub fn player_update(
 
 
 
+mod flag;
 mod idle_state;
 mod moving_state;
 mod move_to_end_state;
+
+pub use self::flag::*;

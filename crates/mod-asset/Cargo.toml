@@ -12,7 +12,7 @@ publish.workspace = true
 [dependencies]
 # Math library for video games
 # License: MIT
-gmm = { version = "0.3", features = ["bytemuck", "serde"] }
+gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck", "serde"] }
 
 # A generic serialization/deserialization framework
 # License: MIT or Apache-2.0

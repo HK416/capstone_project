@@ -20,7 +20,7 @@ ddsfile = "0.5"
 
 # Math library for video games
 # License: MIT
-gmm = { version = "0.3", features = ["bytemuck"] }
+gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck"] }
 
 # A lightweight logging facade for Rust
 # License: MIT OR Apache-2.0
