@@ -5,7 +5,7 @@ use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
 use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Camera, Direction, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
-use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::Window};
+use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
     r: 0.0, 
@@ -263,6 +263,9 @@ impl GameScene for TestBedScene {
         window.set_cursor_visible(false);
         let (w, h): (u32, u32) = window.inner_size().into();
         window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
+        window.set_cursor_grab(CursorGrabMode::Confined)
+            .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
+            .unwrap();
 
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
@@ -282,6 +285,7 @@ impl GameScene for TestBedScene {
         // 마우스 커서를 활성화 합니다.
         if let Some(window) = app.window() {
             window.set_cursor_visible(true);
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
         }
         Ok(())
     }
@@ -290,11 +294,14 @@ impl GameScene for TestBedScene {
         &mut self, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 마우스 커서를 비활성화 합니다.
         if let Some(window) = app.window() {
+            // 마우스 커서를 비활성화 합니다.
             window.set_cursor_visible(false);
             let (w, h): (u32, u32) = window.inner_size().into();
             window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
+            window.set_cursor_grab(CursorGrabMode::Confined)
+                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
+                .unwrap();
         }
         Ok(())
     }
@@ -431,20 +438,11 @@ impl GameScene for TestBedScene {
 
     fn on_cursor_moved(
         &mut self, 
-        x: f32, y: f32, 
-        _dx: f32, _dy: f32, 
-        window: &Window, 
+        _x: f32, _y: f32, 
+        dx: f32, dy: f32, 
+        _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 커서의 위치를 이동시킵니다.
-        let (w, h): (u32, u32) = window.inner_size().into();
-        window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
-
-        // 커서의 이동량을 계산합니다.
-        let (px, py) = (w as f32 / 2.0, h as f32 / 2.0);
-        let delta_x = px - x;
-        let delta_y = py - y;
-
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -452,8 +450,8 @@ impl GameScene for TestBedScene {
         player_cursor_moved(
             &self.world, 
             player_id, 
-            delta_x, 
-            delta_y
+            dx, 
+            dy
         )
         .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }

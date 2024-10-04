@@ -4,7 +4,7 @@ use std::{
     error::Error, 
     net::SocketAddr, 
     path::{Path, PathBuf}, 
-    sync::{Arc, Once}
+    sync::Arc
 };
 
 use mod_world::render::{
@@ -17,7 +17,7 @@ use mod_world::render::{
 use winit::{
     application::ApplicationHandler, 
     dpi::PhysicalPosition, 
-    event::{Modifiers, MouseScrollDelta, StartCause, WindowEvent}, 
+    event::{DeviceEvent, Modifiers, MouseScrollDelta, StartCause, WindowEvent}, 
     event_loop::{ActiveEventLoop, EventLoopProxy}, 
     keyboard::PhysicalKey, 
     window::{Fullscreen, Icon, Window, WindowButtons}
@@ -80,7 +80,7 @@ pub struct Application {
     modifier: Modifiers, 
 
     /// 커서의 이전 위치입니다.
-    prev_cursor_pos: PhysicalPosition<f64>, 
+    cursor_delta: PhysicalPosition<f64>, 
 
     /// 게임 장면 스택을 제어하는 게임 장면 흐름입니다.
     scene_flow: Option<GameSceneFlow>, 
@@ -142,7 +142,7 @@ impl Application {
             window_size: builder.size.unwrap_or(WindowSize::MAX), 
             fullscreen: builder.fullscreen, 
             modifier: Modifiers::default(), 
-            prev_cursor_pos: PhysicalPosition::default(), 
+            cursor_delta: PhysicalPosition::default(), 
             scene_flow: Some(GameSceneFlow::Reset(builder.start_scene)), 
             scene_stack: RefCell::new(VecDeque::with_capacity(8)), 
             timer: GameTimer::start(), 
@@ -367,6 +367,20 @@ impl ApplicationHandler<AppEvent> for Application {
         window.request_redraw();
     }
 
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: DeviceEvent,
+    ) {
+        match event {
+            DeviceEvent::MouseMotion { delta } => {
+                self.cursor_delta = delta.into();
+            }, 
+            _ => { }
+        }
+    }
+
     /// NOTE: 이 함수에서 이벤트 루프의 종료 함수를 호출할 경우 `panic!`이 발생합니다.
     fn window_event(
         &mut self,
@@ -461,15 +475,7 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             },
             WindowEvent::CursorMoved { position, .. } => {
-                static INIT: Once = Once::new();
-                INIT.call_once(|| {
-                    self.prev_cursor_pos = position;
-                });
-
-                let dx = position.x - self.prev_cursor_pos.x;
-                let dy = position.y - self.prev_cursor_pos.y;
-                self.prev_cursor_pos = position;
-
+                let (dx, dy): (f32, f32) = self.cursor_delta.into();
                 curr_scene.on_cursor_moved(
                     position.x as f32, 
                     position.y as f32, 
@@ -487,7 +493,7 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             }, 
             WindowEvent::MouseInput { state, button, .. } => {
-                let (x, y): (f64, f64) = self.prev_cursor_pos.into();
+                let (x, y): (f64, f64) = self.cursor_delta.into();
                 if state.is_pressed() {
                     curr_scene.on_mouse_btn_pressed(x as f32, y as f32, button, &window, self)
                 } else {
