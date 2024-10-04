@@ -1,4 +1,4 @@
-use super::{Sphere, Ray, RayIntersect};
+use super::{Sphere, Ray, RayIntersect, Cylinder};
 use mod_math::{Segment, Line};
 
 
@@ -135,7 +135,38 @@ impl Capsule {
 
 impl RayIntersect for Capsule {
     fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
-        todo!()
+        let seg = self.get_seg();
+        let seg_len = self.height - 2.0 * self.radius;
+        
+        let sphere1 = Sphere {
+            center: seg.start,
+            radius: self.radius,
+        };
+
+        if seg_len == 0.0 {
+            return ray.intersect(&sphere1);
+        }
+        
+        let sphere2 = Sphere {
+            center: seg.end,
+            radius: self.radius,
+        };
+
+        let cylinder = Cylinder::build(
+            seg.start, 
+            gmm::Vector::from(self.direction), 
+            seg_len, 
+            self.radius
+        ).unwrap();
+
+        let dist = [
+            ray.intersect(&sphere1),
+            ray.intersect(&sphere2),
+            ray.intersect(&cylinder),
+        ];
+
+        dist.iter().filter_map(|&d| d)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
     }
 }
 
