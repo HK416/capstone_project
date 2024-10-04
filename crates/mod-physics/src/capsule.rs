@@ -1,4 +1,4 @@
-use super::{Sphere, Ray, RayIntersect, Cylinder};
+use super::{Sphere, Ray, RayIntersect};
 use mod_math::{Segment, Line};
 
 
@@ -143,31 +143,79 @@ impl RayIntersect for Capsule {
             radius: self.radius,
         };
 
+        // 기둥이 없는 경우 구와의 충돌체크
         if seg_len == 0.0 {
             return ray.intersect(&sphere1);
         }
+
+        let radius_sq = self.radius.powi(2);
+
+        // 시작점이 캡슐 안에 있는 경우
+        if seg.distance_to_point_sq(&ray.origin.into()) <= radius_sq {
+            return Some(0.0);
+        }
+
+        // 기둥부분 충돌체크
+        let ray_origin = gmm::Vector::from(ray.origin);
+        let ray_direction = gmm::Vector::from(ray.direction());
         
-        let sphere2 = Sphere {
-            center: seg.end,
-            radius: self.radius,
-        };
+        let cylinder_direction = gmm::Vector::from(self.direction);
 
-        let cylinder = Cylinder::build(
-            seg.start, 
-            gmm::Vector::from(self.direction), 
-            seg_len, 
-            self.radius
-        ).unwrap();
+        // 기둥의 아래부분 중심
+        let center = gmm::Vector::from(seg.start);
 
-        let dist = [
-            ray.intersect(&sphere1),
-            ray.intersect(&sphere2),
-            ray.intersect(&cylinder),
-        ];
+        let ray_line = Line::build(ray.origin, ray_direction).unwrap();
+        let capsule_line = Line::build(self.center, cylinder_direction).unwrap();
 
-        dist.iter().filter_map(|&d| d)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-    }
+        let (nearest_dist_sq, h) = ray_line.distance_sq_and_foot_from_other(&capsule_line);
+        // 캡슐의 중심선과 ray직선 사이의 최소거리가 radius보다 크면 충돌하지 않음
+        if nearest_dist_sq > radius_sq {
+            return None;
+        }
+
+        let h_to_origin = ray_origin - h;
+        let h_to_origin_dot: gmm::Float3 = h_to_origin.vec3_dot(ray_direction).into();
+        let h_to_origin_len = h_to_origin_dot.x;
+        // h to origin * direction이 양수이면 충돌하지 않음(ray의 시작점이 기둥 바깥이고 바깥 방향으로 향할때)
+        if h_to_origin_len > 0.0 {
+            return None;
+        }
+
+        let dot = ray_direction.vec3_dot(cylinder_direction);
+        let cos = Into::<gmm::Float3>::into(dot).x;
+        let cos_sq = cos.powi(2);
+        let sin_sq = 1.0 - cos_sq;
+
+        let h_to_intersect_proj_sq = radius_sq - nearest_dist_sq;
+        let h_to_intersect_sq = h_to_intersect_proj_sq / sin_sq;
+
+        let h_to_intersect = h_to_intersect_sq.sqrt();
+        
+        let intersect = h - ray_direction * gmm::Vector::from([h_to_intersect, h_to_intersect, h_to_intersect, 0.0]);
+
+        let center_to_intersect = intersect - center;
+        let center_to_intersect_dot: gmm::Float3 = center_to_intersect.vec3_dot(cylinder_direction).into();
+        let center_to_intersect_proj = center_to_intersect_dot.x;
+
+        // 교점이 기둥의 아래쪽에 존재하면 아래 구와 충돌체크
+        if center_to_intersect_proj < 0.0 {
+            return ray.intersect(&sphere1);
+        }
+
+        // 교점이 기둥의 위쪽에 존재하면 위 구와 충돌체크
+        if center_to_intersect_proj > seg_len {
+            let sphere2 = Sphere {
+                center: seg.end,
+                radius: self.radius,
+            };
+
+            return ray.intersect(&sphere2);
+        }
+
+        // 교점이 기둥 범위 안에 있다면 기둥과 충돌하는 거리 리턴
+        let distance = h_to_origin_len - h_to_intersect;
+        Some(distance)
+   }
 }
 
 
@@ -297,6 +345,13 @@ impl YCapsule {
 
 impl RayIntersect for YCapsule {
     fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
-        todo!()
+        let capsule = Capsule {
+            center: self.center,
+            direction: gmm::Float3::Y,
+            height: self.height,
+            radius: self.radius,
+        };
+
+        capsule.ray_intersect(ray)
     }
 }

@@ -15,6 +15,13 @@ impl Segment {
         pn.vec3_len()
     }
 
+    /// point까지의 최소 거리의 제곱
+    pub fn distance_to_point_sq(&self, point: &gmm::Vector) -> f32 {
+        let nearest = self.nearest_to_point(point);
+        let pn = gmm::Vector::from(nearest - *point);
+        pn.vec3_len_sq()
+    }
+
     /// point까지의 거리가 최소가 되는 점  
     /// 
     /// 시작점과 끝점이 같으면 시작점을 반환한다.  
