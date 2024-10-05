@@ -55,8 +55,16 @@ mod-world = { path = "../mod-world" }
 
 
 
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+# 사용 플랫폼: Windows
+[target.'cfg(target_os = "windows")'.dependencies]
+# Rust for Windows
+# License: MIT OR Apache-2.0
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
+
+
 # 사용 플랫폼: Windows, macOS
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 # Synchronously block the thread until a future completes
 # License: Apache-2.0 OR MIT
 pollster = "0.3"

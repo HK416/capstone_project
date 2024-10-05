@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
 
-use mod_app::{app::AppHandle, scene::GameScene};
+use mod_app::{app::AppHandle, ext::AppWindowExt, scene::GameScene};
 use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
@@ -260,7 +260,7 @@ impl GameScene for TestBedScene {
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // 마우스 커서를 비활성화 합니다.
-        window.set_cursor_visible(false);
+        window.show_cursor(false);
         let (w, h): (u32, u32) = window.inner_size().into();
         window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
         window.set_cursor_grab(CursorGrabMode::Confined)
@@ -284,7 +284,7 @@ impl GameScene for TestBedScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 마우스 커서를 활성화 합니다.
         if let Some(window) = app.window() {
-            window.set_cursor_visible(true);
+            window.show_cursor(true);
             window.set_cursor_grab(CursorGrabMode::None).unwrap();
         }
         Ok(())
@@ -296,7 +296,7 @@ impl GameScene for TestBedScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         if let Some(window) = app.window() {
             // 마우스 커서를 비활성화 합니다.
-            window.set_cursor_visible(false);
+            window.show_cursor(false);
             let (w, h): (u32, u32) = window.inner_size().into();
             window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
             window.set_cursor_grab(CursorGrabMode::Confined)
