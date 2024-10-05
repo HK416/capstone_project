@@ -15,12 +15,44 @@ use mod_world::{
 use rust_embed::Embed;
 
 /// `Aris_Original` 모델의 경로입니다.
-const PATH: &'static str = "characters/aris_original/Aris_Original_Mesh.ron";
+const ARIS_ORIGINAL_PATH: &'static str = "characters/aris_original/Aris_Original_Mesh.ron";
+
+/// `Sphere` 모양의 경로입니다.
+const SPHERE_PATH: &'static str = "shape/sphere/Sphere.ron";
 
 /// 임베딩된 에셋 파일 관리자입니다.
 #[derive(Embed)]
 #[folder = "assets/"]
 struct EmbededAssets;
+
+
+pub fn spawn_sphere_shape(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>,
+    id_generator: &Arc<IdGenerator>, 
+    device: &wgpu::Device, 
+    queue: &wgpu::Queue
+) -> WorldID {
+    let embeded_file = EmbededAssets::get(&SPHERE_PATH).unwrap();
+    let blob: ModelBlob = ron::de::from_bytes(&embeded_file.data).unwrap();
+
+    let mut nodes = HashMap::new();
+    let mut skinned_meshes = HashMap::new();
+    let root_id = spawn_node(
+        world, 
+        renderer, 
+        id_generator, 
+        device, 
+        queue, 
+        &mut nodes, 
+        &mut skinned_meshes, 
+        None, 
+        blob.root, 
+        Vec::new()
+    );
+
+    root_id
+}
 
 
 
@@ -31,7 +63,7 @@ pub fn spawn_aris_original_model(
     device: &wgpu::Device, 
     queue: &wgpu::Queue
 ) -> (WorldID, Vec<AnimationClip>) {
-    let embeded_file = EmbededAssets::get(&PATH).unwrap();
+    let embeded_file = EmbededAssets::get(&ARIS_ORIGINAL_PATH).unwrap();
     let blob: ModelBlob = ron::de::from_bytes(&embeded_file.data).unwrap();
 
     let mut nodes = HashMap::new();

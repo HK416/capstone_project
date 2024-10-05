@@ -64,6 +64,13 @@ impl TestBedScene {
         }
     }
 
+    /// 총알을 추가합니다.
+    fn insert_bullet(
+        &mut self, 
+    ) {
+        
+    }
+
     /// 플레이어를 추가합니다.
     fn insert_player(
         &mut self, 

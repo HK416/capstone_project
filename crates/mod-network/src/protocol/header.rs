@@ -16,6 +16,7 @@ impl PacketType {
     pub const INIT: Self = Self(5);
     pub const PUSH: Self = Self(6);
     pub const PULL: Self = Self(7);
+    pub const FIRED: Self = Self(8);
 
     // 크기가 u8보다 커지면 이 함수 활성화
     // pub fn as_bytes(&self) -> [u8; size_of::<PacketType>()] {
