@@ -18,11 +18,25 @@
 
 
 
-/// 총알의 종류를 나타냅니다.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// 총알의 종류와 Attacking 상태에서 지연 시간을 나타냅니다.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum BulletKind {
-    ArisOriginal, 
+    ArisOriginal(f32), 
 }
+
+impl BulletKind {
+    pub fn delay_time_sec(self) -> f32 {
+        match self {
+            BulletKind::ArisOriginal(time) => time,
+        }
+    }
+}
+
+
+
+/// 총알의 발사 지연 시간 타이머입니다.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct DelayTimer(pub f32);
 
 
 

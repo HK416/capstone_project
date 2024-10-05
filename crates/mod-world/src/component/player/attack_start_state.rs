@@ -3,7 +3,7 @@ use std::{any::type_name, sync::Arc};
 use mod_parallelism::collections::SkipMap;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::component::{AnimationSet, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
+use crate::component::{AnimationSet, DelayTimer, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
 
 use super::{PlayerFlags, PlayerState, PlayerStateError};
 
@@ -233,6 +233,9 @@ pub fn update_animation(
         // 애니메이션을 초기화 합니다.
         animation.index = PlayerState::Attacking as usize;
         animation.timer = diff_t;
+
+        // 플레이어 오브젝트에 타이머 요소를 추가합니다.
+        player.insert(DelayTimer(0.0));
 
         // 플레이어 상태를 변경합니다.
         player.insert(PlayerState::Attacking);

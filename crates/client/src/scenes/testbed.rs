@@ -4,7 +4,7 @@ use mod_app::{app::AppHandle, ext::AppWindowExt, scene::GameScene};
 use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
+use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, BulletKind, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
 use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -98,6 +98,9 @@ impl TestBedScene {
         // 하위 오브젝트를 설정합니다.
         object.set_child(Some(root_id));
 
+        // 게임 오브젝트에 모델 및 총알 발사 지연시간 정보를 추가합니다.
+        object.insert(BulletKind::ArisOriginal(1.0));
+
         // 게임 오브젝트에 상태를 추가합니다.
         object.insert(PlayerState::default());
 
@@ -115,6 +118,10 @@ impl TestBedScene {
 
         
         if self.client_id == data.id {
+            // 플레이어 오브젝트에 TCP 소켓을 추가합니다.
+            // ※ 추후 변경될 예정입니다.
+            object.insert(self.stream.clone());
+
             // 플레이어 오브젝트에 입력 제어기를 추가합니다.
             object.insert(InputController::default());
 

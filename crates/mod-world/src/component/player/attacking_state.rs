@@ -1,9 +1,9 @@
-use std::{any::type_name, sync::Arc};
+use std::{any::type_name, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::component::{AnimationSet, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
+use crate::component::{AnimationSet, BulletKind, DelayTimer, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
 
 use super::{PlayerFlags, PlayerState, PlayerStateError};
 
@@ -188,6 +188,7 @@ pub fn on_update(
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     update_animation(world, player_id, elapsed_time_sec)?;
+    fire_bullet(world, player_id, elapsed_time_sec)?;
     super::update_hierarchy(world, Transform::new(), player_id);
     Ok(())
 }
@@ -260,3 +261,45 @@ pub fn update_animation(
 
     Ok(())
 }
+
+fn fire_bullet(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    player_id: &WorldID, 
+    elapsed_time_sec: f32
+) -> Result<(), PlayerStateError> {
+    // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
+    let mut player = match world.get_mut(player_id) {
+        Some(object) => object, 
+        None => return Err(PlayerStateError::ObjectNotFound(player_id.clone()))
+    };
+
+    if let Some(delay_timer) = player.remove::<DelayTimer>() {
+        // 플레이어 발사 지연 시간을 가져옵니다.
+        let delay_time_sec = match player.get::<BulletKind>() {
+            Some(kind) => kind.delay_time_sec(), 
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<BulletKind>()))
+        }; 
+
+        // 타이머를 갱신합니다.
+        let timer = delay_timer.0 + elapsed_time_sec;
+
+        // 타이머가 지연시간 보다 크거나 같을 경우 총알을 발사합니다.
+        if timer >= delay_time_sec {
+            // ※ 추후 수정될 예정입니다.
+            // TCP 소켓을 가져옵니다.
+            let stream = match player.get::<Arc<TcpStream>>() {
+                Some(stream) => stream, 
+                None => return Err(PlayerStateError::ElementNotFound(type_name::<Arc<TcpStream>>()))
+            };
+
+            let mut writer = BufWriter::new(stream.as_ref());
+
+            log::info!("Fire!");
+        } else {
+            player.insert(DelayTimer(timer));
+        }
+    }
+
+    Ok(())
+}
+
