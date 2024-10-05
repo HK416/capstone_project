@@ -1,0 +1,61 @@
+[package]
+name = "mod-world"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+
+
+[dependencies]
+# A macro to generate structures which behave like bitflags.
+# License: MIT OR Apache-2.0
+bitflags = "2.6"
+
+# A crate for mucking around with piles of bytes.
+# License: Zlib OR Apache-2.0 OR MIT
+bytemuck = { version = "1.18", features = ["derive"] }
+
+# Math library for video games
+# License: MIT
+gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck"] }
+
+# A macro for declaring lazily evaluated statics in Rust.
+# License: MIT OR Apache-2.0
+lazy_static = "1.5"
+
+# A lightweight logging facade for Rust
+# License: MIT OR Apache-2.0
+log = "0.4"
+
+# Compile-time assertions to ensure that invariants are met.
+# License: MIT OR Apache-2.0
+static_assertions = "1.1"
+
+# derive(Error)
+# License: MIT OR Apache-2.0
+thiserror = "1.0"
+
+# Cross-platform window creation library.
+# License: Apache-2.0
+winit = "0.30"
+
+# Rusty WebGPU API wrapper
+# License: MIT or Apache-2.0
+wgpu = "22"
+
+
+
+# 자체 제작 프레임워크
+mod-physics = { path = "../mod-physics" }
+mod-parallelism = { path = "../mod-parallelism" }
+
+
+
+[features]
+default = ["enable-shader-validation"]
+
+# 쉐이더 유효성 검증을 활성화 합니다.
+enable-shader-validation = []
