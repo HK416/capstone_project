@@ -127,9 +127,9 @@ impl TestBedScene {
             // 플레이어 오브젝트에 삼인칭 카메라를 추가합니다.
             object.insert(ThirdPersonCamera {
                 target: self.main_camera.clone(), 
-                distance: -2.5, 
+                distance: -2.0, 
                 polar: 180f32.to_radians(), 
-                azimuthal: -10f32.to_radians()
+                azimuthal: 15f32.to_radians()
             });
         }
 
@@ -170,7 +170,7 @@ impl TestBedScene {
         // 카메라 오브젝트에 원근 투영 변환 행렬을 추가합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
         camera_object.insert(Projection::perspective(
-            45f32.to_radians(), 
+            50f32.to_radians(), 
             width as f32 / height as f32, 
             0.001, 
             1000.0
@@ -206,7 +206,7 @@ impl TestBedScene {
 
         // 플레이어 오브젝트의 위치를 가져옵니다.
         let position = player.get_world_transform().get_translation();
-        let pivot = position + gmm::Vector::Y * 1.0;
+        let pivot = position + gmm::Vector::Y * 0.85;
         
         // 최종 카메라의 위치를 계산합니다.
         let translation = offset + pivot;

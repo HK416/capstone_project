@@ -110,7 +110,7 @@ pub fn on_cursor_moved(
     let mut player = world.get_mut(player_id).unwrap();
     let third_person_camera = player.get_mut::<ThirdPersonCamera>().unwrap();
     third_person_camera.polar = (third_person_camera.polar + dx.to_radians() * OFFSET) % 360f32.to_radians();
-    third_person_camera.azimuthal = (third_person_camera.azimuthal + dy.to_radians() * OFFSET).clamp(-10f32.to_radians(), 30f32.to_radians());
+    third_person_camera.azimuthal = (third_person_camera.azimuthal + dy.to_radians() * OFFSET).clamp(-20f32.to_radians(), 45f32.to_radians());
 
     Ok(())
 }
