@@ -3,13 +3,47 @@
 //! 1. 종류 (발사 플레이어 캐릭터 모델)
 //! - 캐릭터 모델마다 발사하는 총알의 크기나 모양이 다르다.
 //! 
-//! 2. 위치와 회전
+//! 2. 위치
 //! 
-//! 3. 속도
+//! 3. 방향
+//! 
+//! 4. 속력 (방향 없음)
 //! - 총알은 직선으로 날아가는 등속도 운동을 한다고 가정한다.
 //! 
-//! 4. 사거리
+//! 5. 사거리
 //! - 총알은 최대 사거리까지 이동한 후 사라진다.
 //! 
-//! 5. 발사한 플레이어의 식별자
+//! 6. 발사한 플레이어의 식별자
 //! 
+
+
+
+/// 총알의 종류를 나타냅니다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BulletKind {
+    ArisOriginal, 
+}
+
+
+
+/// 클라이언트에서 사용하는 총알의 데이터입니다.
+#[derive(Debug, Clone, Copy)]
+pub struct Bullet {
+    /// 총알의 종류입니다.
+    pub kind: BulletKind,
+
+    /// 총알이 날아가는 방향입니다.
+    pub direction: gmm::Vector, 
+
+    /// 총알의 속력입니다.
+    pub speed: f32, 
+
+    /// 총알의 최대 사거리입니다.
+    pub range: f32, 
+}
+
+
+
+mod pool;
+
+pub use self::pool::*;
