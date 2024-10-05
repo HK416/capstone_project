@@ -1,4 +1,4 @@
-use std::{any::TypeId, sync::Arc};
+use std::{any::type_name, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
@@ -36,8 +36,8 @@ pub enum PlayerStateError {
     ObjectNotFound(WorldID), 
 
     /// 게임 오브젝트에서 요소를 찾을 수 없는 경우 발생하는 오류입니다.
-    #[error("Could not find ({0:?}) element on the game object!")]
-    ElementNotFound(TypeId), 
+    #[error("Could not find ({0}) element on the game object!")]
+    ElementNotFound(&'static str), 
 }
 
 
@@ -102,7 +102,7 @@ pub fn player_keyboard_pressed(
     // 플레이어 상태를 가져옵니다.
     let state = match player.get::<PlayerState>() {
         Some(state) => state.clone(), 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerState>()))
     };
 
     CALLBACK_FN[state as usize](
@@ -152,7 +152,7 @@ pub fn player_keyboard_released(
     // 플레이어 상태를 가져옵니다.
     let state = match player.get::<PlayerState>() {
         Some(state) => state.clone(), 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerState>()))
     };
 
     CALLBACK_FN[state as usize](
@@ -196,7 +196,7 @@ pub fn player_cursor_moved(
     // 플레이어 상태를 가져옵니다.
     let state = match player.get::<PlayerState>() {
         Some(state) => state.clone(), 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerState>()))
     };
 
     CALLBACK_FN[state as usize](world, player_id, dx, dy)
@@ -235,7 +235,7 @@ pub fn player_mouse_btn_pressed(
     // 플레이어 상태를 가져옵니다.
     let state = match player.get::<PlayerState>() {
         Some(state) => state.clone(), 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerState>()))
     };
 
     CALLBACK_FN[state as usize](
@@ -280,7 +280,7 @@ pub fn player_mouse_btn_released(
     // 플레이어 상태를 가져옵니다.
     let state = match player.get::<PlayerState>() {
         Some(state) => state.clone(), 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerState>()))
     };
 
     CALLBACK_FN[state as usize](
@@ -324,7 +324,7 @@ pub fn player_update(
     // 플레이어 상태를 가져옵니다.
     let state = match player.get::<PlayerState>() {
         Some(state) => state.clone(), 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerState>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerState>()))
     };
 
     CALLBACK_FN[state as usize](
