@@ -3,11 +3,15 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 use std::sync::Mutex;
+use std::env;
+use std::str::FromStr;
 
 use server::{
     world::*,
     session::Session,
 };
+
+use mod_network::Addr;
 
 
 
@@ -28,7 +32,7 @@ pub async fn run_server(addr: &str) {
 }
 
 
-const MAX_CLIENTS: usize =  10;
+const MAX_CLIENTS: usize =  1000;
 /// World를 직접 읽으면 최신 데이터가 아닐 가능성이 있다.  
 /// World에 Mutex, RwLock등을 걸면 클라이언트가 읽는데 병목이 생길 수 있다.  
 /// 따라서 클라이언트 개수만 세기 위해 따로 분리.  
@@ -93,7 +97,21 @@ async fn server_full(mut stream: TcpStream) {
 
 #[tokio::main]
 async fn main() {
-    run_server("localhost:7878").await;
+    let mut args = env::args();
+    args.next();
+
+    let addr = match args.next() {
+        Some(args) => match Addr::from_str(&args) {
+            Ok(addr) => addr,
+            Err(e) => {
+                eprintln!("{}", e);
+                return;
+            }
+        },
+        None => Addr::default()
+    };
+
+    run_server(&addr.to_string()).await;
 }
 
 
