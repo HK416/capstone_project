@@ -13,6 +13,8 @@ lockfree = "0.5.1"
 futures = "0.3.30"
 rand = "0.8.5"
 
+gmm = { git = "https://github.com/HK416/gmm.git" }
+
 mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }
 

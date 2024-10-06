@@ -82,16 +82,24 @@ impl Session {
                         }
                     }
                 }, 
+
                 PacketType::MOVE => {
                     let move_packet = MovePacket::from_raw(packet);
                     self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z);
                 },
+
                 PacketType::MESSAGE => {
                     let message_packet = MessagePacket::from_raw(packet);
                     if message_packet.msg == "ping" {
                         self.stream_write(MessagePacket::new(message_packet.time, "pong").as_raw()).await.unwrap();
                     }
                 },
+
+                PacketType::FIRED => {
+                    let fired_packet = ShotPacket::from_raw(packet);
+                    self.world.add_bullet(fired_packet.bullet);
+                }
+
                 _ => {},
             }
         }

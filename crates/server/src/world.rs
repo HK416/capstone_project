@@ -52,6 +52,14 @@ impl World {
         self.players.values()
             .cloned()
             .collect()
+
+        // TODO: 총알 추가
+        // Queue에서 하나씩 pop하면서 복사해서 추가하고, 다시 Queue에 넣어줘야함.
+    }
+
+
+    pub fn add_bullet(&mut self, bullet: Bullet) {
+        self.bullets.push(bullet);
     }
 
 
@@ -136,6 +144,12 @@ impl WorldInterface {
     pub fn get_objects(&self) -> Vec<Player> {
         self.as_mut().get_objects()
     }
+
+
+    pub fn add_bullet(&self, bullet: Bullet) {
+        self.as_mut().add_bullet(bullet);
+    }
+
 
     fn as_mut(&self) -> &mut World {
         unsafe { 
