@@ -221,7 +221,9 @@ impl<T> EBR<T> {
 impl<T> fmt::Debug for EBR<T> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Epoch Based Reclamation GC")
+        f.debug_struct("Epoch Based Reclamation")
+            .field("Current Epoch", &self.counter.load(MemOrdering::Relaxed))
+            .finish()
     }
 }
 
@@ -276,5 +278,14 @@ impl<'a, T> Drop for EBRGuard<'a, T> {
     fn drop(&mut self) {
         let local = self.inner.get_local();
         local.counter.store(0, MemOrdering::Relaxed);
+    }
+}
+
+impl<'a, T> fmt::Debug for EBRGuard<'a, T> {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple(stringify!(EBRGuard<'a, T>))
+            .field(&self.inner)
+            .finish()
     }
 }

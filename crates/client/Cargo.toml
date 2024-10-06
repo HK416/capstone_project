@@ -10,51 +10,36 @@ publish.workspace = true
 
 
 [dependencies]
-# 로그 인터페이스 라이브러리
-# License: MIT or Apache-2.0
-log = "0.4"
+# A crate for mucking around with piles of bytes.
+# License: Zlib OR Apache-2.0 OR MIT
+bytemuck = { version = "1.18", features = ["derive"] }
 
-# 로그 출력 라이브러리 
-# License: MIT or Apache-2.0
-env_logger = "0.11"
-
-# ron 포맷 인코딩, 디코딩 라이브러리
-# License: MIT or Apache-2.0
-ron = "0.8"
-
-# 파일 임베딩 라이브러리
-# License: MIT
-rust-embed = "8.5"
-
-# 데이터 직렬화 라이브러리
-# License: MIT or Apache-2.0
-serde = { version = "1.0", features = ["derive"] }
-
-# byte 캐스팅 라이브러리
-# License: Zlib or Apache-2.0 or MIT
-bytemuck = { version = "1.16", features = ["derive"] }
-
-# 이미지 로드 라이브러리
-# License: MIT or Apache-2.0
-image = "0.25"
-
-# dds 포맷 이미지 디코딩 라이브러리
+# DirectDraw Surface file format parser/composer
 # License: MIT 
 ddsfile = "0.5"
 
-# 게임 수학 라이브러리
+# Math library for video games
 # License: MIT
-gmm = { version = "0.2", features = ["bytemuck", "serde"] }
+gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck"] }
 
-# Entity Component System (ECS) 라이브러리
-# License: MIT or Apache-2.0
-hecs = "0.10"
+# A lightweight logging facade for Rust
+# License: MIT OR Apache-2.0
+log = "0.4"
 
-# 윈도우 생성 라이브러리
+# Rusty Object Notation
+# License: MIT OR Apache-2.0
+ron = "0.8"
+
+# Rust Custom Derive Macro which loads files into the rust binary at compile time during release 
+# and loads the file from the fs during dev
+# License: MIT
+rust-embed = "8.5"
+
+# Cross-platform window creation library.
 # License: Apache-2.0
-winit = { version = "0.30", features = ["rwh_05"] }
+winit = "0.30"
 
-# 크로스 플랫폼 렌더링 라이브러리 
+# Rusty WebGPU API wrapper
 # License: MIT or Apache-2.0
 wgpu = "22"
 
@@ -63,34 +48,14 @@ wgpu = "22"
 # 자체 프레임워크 라이브러리
 mod-app = { path = "../mod-app" }
 mod-asset = { path = "../mod-asset" }
-mod-error = { path = "../mod-error" }
+mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-physics = { path = "../mod-physics" }
-mod-render = { path = "../mod-render" }
-mod-scene = { path = "../mod-scene" }
-mod-util = { path = "../mod-util" }
-mod-network = { path = "../mod-network" }
+mod-world = { path = "../mod-world" }
 
 
 
-[features]
-default = ["command-line-args", "enable-shader-validation", "enable-debug-info"]
-
-# 명령줄 인수를 허용합니다.
-command-line-args = ["mod-app/command-line-args"]
-
-# 쉐이더 유효성 검증을 활성화 합니다.
-enable-shader-validation = ["mod-render/enable-shader-validation"]
-
-# 오류 메시지에 디버깅 정보를 포함합니다.
-enable-debug-info = ["mod-error/enable-debug-info"]
-
-
-
-[[example]]
-name = "cube"
-path = "./examples/cube/main.rs"
-
-[[example]]
-name = "animation"
-path = "./examples/animation/main.rs"
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+# A logging implementation for `log` which is configured via an environment variable.
+# License: MIT OR Apache-2.0
+env_logger = "0.11"

@@ -1,10 +1,14 @@
-use std::cmp;
+use std::borrow::Borrow;
+use std::ops;
 use std::ptr;
 use std::sync::atomic;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering as MemOrdering;
-use std::sync::Mutex;
+
+use parking_lot::ReentrantMutex;
+use parking_lot::ReentrantMutexGuard;
 
 use crate::epoch::EBRGuard;
 use crate::epoch::EBR;
@@ -17,119 +21,25 @@ const MAX_LEVEL_INDEX: usize = MAX_LEVELS - 1;
 
 
 
-
-
-/// `SkipMap`의 키 값입니다.
-/// `head`와 `tail`을 비교하기 위해 사용합니다.
-#[derive(Debug)]
-enum Key<K> {
-    Head, 
-    Tail, 
-    Val(K)
-}
-
-impl<K: Eq> Eq for Key<K> { }
-
-impl<K: Eq> PartialEq<Self> for Key<K> {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        match self {
-            Key::Head => match other {
-                Key::Head => true, 
-                _ => false, 
-            }, 
-            Key::Tail => match other {
-                Key::Tail => true, 
-                _ => false, 
-            }, 
-            Key::Val(lhs) => match other {
-                Key::Val(rhs) => lhs.eq(rhs), 
-                _ => false, 
-            },
-        }
-    }
-}
-
-impl<K: Ord> Ord for Key<K> {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        match self {
-            Key::Head => match other {
-                Key::Head => cmp::Ordering::Equal, 
-                _ => cmp::Ordering::Less, 
-            }, 
-            Key::Tail => match other {
-                Key::Tail => cmp::Ordering::Equal, 
-                _ => cmp::Ordering::Greater, 
-            }, 
-            Key::Val(lhs) => match other {
-                Key::Head => cmp::Ordering::Greater, 
-                Key::Tail => cmp::Ordering::Less, 
-                Key::Val(rhs) => lhs.cmp(rhs), 
-            }
-        }
-    }
-}
-
-impl<K: Ord> PartialOrd<Self> for Key<K> {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-
-
-
-
 /// `SkipMap`의 노드입니다.
 /// 게으른 동기화(Lazy-synchronization)를 위한 데이터가 포함되어 있습니다.
 pub struct Node<K, V> {
-    key: Key<K>, 
+    key: Option<K>, // 값이 `None`인 경우 `head` 또는 `tail`노드
     value: Option<V>, 
     top_level: usize, 
     removed: AtomicBool, 
     fully_linked: AtomicBool, 
     next: [*mut Node<K, V>; MAX_LEVELS], 
-    mtx: [Mutex<()>; MAX_LEVELS], 
+    mtx: ReentrantMutex<()>, 
 }
 
 impl<K, V> Node<K, V> {
-    const ARRAY_REPEAT_VAL: Mutex<()> = Mutex::new(());
-
-
-    /// `SkipMap`의 `head` 노드를 생성합니다.
-    #[must_use]
-    fn head() -> Box<Self> {
-        Box::new(Self { 
-            key: Key::Head, 
-            value: None, 
-            top_level: MAX_LEVEL_INDEX, 
-            removed: AtomicBool::new(false), 
-            fully_linked: AtomicBool::new(true), 
-            next: [ptr::null_mut(); MAX_LEVELS], 
-            mtx: [Self::ARRAY_REPEAT_VAL; MAX_LEVELS] 
-        })
-    }
-
-    /// `SkipMap`의 `tail` 노드를 생성합니다.
-    #[must_use]
-    fn tail() -> Box<Self> {
-        Box::new(Self { 
-            key: Key::Tail, 
-            value: None, 
-            top_level: MAX_LEVEL_INDEX, 
-            removed: AtomicBool::new(false), 
-            fully_linked: AtomicBool::new(true), 
-            next: [ptr::null_mut(); MAX_LEVELS], 
-            mtx: [Self::ARRAY_REPEAT_VAL; MAX_LEVELS] 
-        })
-    }
-
     /// 주어진 `key`, `val`, `top_level`로 노드를 생성합니다.
     /// 이 함수는 이전에 할당된 메모리 블록을 재사용할 수 있습니다.
     #[must_use]
-    fn new(ebr_pin: &EBRGuard<'_, Self>, key: Key<K>, val: V, top_level: usize) -> Box<Self> {
-        let mut node = ebr_pin.alloc();
-        node.key = key;
+    fn new(ebr_guard: &EBRGuard<'_, Self>, key: K, val: V, top_level: usize) -> Box<Self> {
+        let mut node = ebr_guard.alloc();
+        node.key = Some(key);
         node.value = Some(val);
         node.top_level = top_level;
         node.removed.store(false, MemOrdering::Relaxed);
@@ -145,13 +55,13 @@ impl<K, V> Default for Node<K, V> {
     #[inline]
     fn default() -> Self {
         Self { 
-            key: Key::Head, 
+            key: None, 
             value: None, 
             top_level: MAX_LEVEL_INDEX, 
             removed: AtomicBool::new(false), 
             fully_linked: AtomicBool::new(false), 
             next: [ptr::null_mut(); MAX_LEVELS], 
-            mtx: [Self::ARRAY_REPEAT_VAL; MAX_LEVELS]
+            mtx: ReentrantMutex::new(()), 
         }
     }
 }
@@ -171,6 +81,45 @@ fn random_level() -> usize {
 
 
 
+/// `SkipMap`에 담겨있는 요소를 보호하기 위한 reference 가드입니다.
+pub struct RefGuard<'a, K, V> {
+    value: &'a V, 
+    _lock_guard: ReentrantMutexGuard<'a, ()>, 
+    _ebr_guard: EBRGuard<'a, Node<K, V>>
+}
+
+impl<'a, K, V> ops::Deref for RefGuard<'a, K, V> {
+    type Target = V;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+/// `SkipMap`에 담겨있는 요소를 보호하기 위한 mutable 가드입니다.
+pub struct MutGuard<'a, K, V> {
+    value: &'a mut V, 
+    _lock_guard: ReentrantMutexGuard<'a, ()>, 
+    _ebr_guard: EBRGuard<'a, Node<K, V>>
+}
+
+impl<'a, K, V> ops::Deref for MutGuard<'a, K, V> {
+    type Target = V;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+impl<'a, K, V> ops::DerefMut for MutGuard<'a, K, V> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.value
+    }
+}
+
+
+
 
 
 /// ### Skip Map
@@ -181,22 +130,41 @@ fn random_level() -> usize {
 #[derive(Debug)]
 pub struct SkipMap<K, V> {
     ebr: EBR<Node<K, V>>, 
+    len: AtomicUsize, 
     head: AtomicPtr<Node<K, V>>, 
     tail: AtomicPtr<Node<K, V>>, 
 }
 
-impl<K: Ord, V> SkipMap<K, V> {
+impl<K, V> SkipMap<K, V> {
+    /// 새로운 `SkipMap`을 생성합니다.
+    #[must_use]
+    pub fn new() -> Self {
+        let head = Box::into_raw(Box::new(Node::default()));
+        let tail = Box::into_raw(Box::new(Node::default()));
+        for lv in 0..MAX_LEVELS {
+            unsafe { (*head).next[lv] = tail };
+        }
+
+        Self { 
+            ebr: EBR::new(), 
+            len: AtomicUsize::new(0), 
+            head: AtomicPtr::new(head), 
+            tail: AtomicPtr::new(tail)
+        }
+    }
+
     /// 주어진 `key`의 위치를 찾습니다.
     /// `prevs`, `currs`에 `key`의 이전, 이후 노드의 주소 값이 저장됩니다.
     /// 
     /// 주어진 `key`와 일치하는 노드를 찾지 못한 경우 `None`을 반환합니다.
     /// 
-    unsafe fn find_position(
+    unsafe fn find_position<Q: ?Sized>(
         &self, 
-        key: &Key<K>, 
+        key: &Q, 
         prevs: &mut [*mut Node<K, V>], 
         currs: &mut [*mut Node<K, V>]
-    ) -> Option<usize> {
+    ) -> Option<usize> 
+    where K: Borrow<Q> + Ord, Q: Ord {
         let mut found_level = None;
         prevs[MAX_LEVEL_INDEX] = self.head.load(MemOrdering::Relaxed);
         for lv in (0..MAX_LEVELS).rev() {
@@ -205,36 +173,38 @@ impl<K: Ord, V> SkipMap<K, V> {
             }
 
             currs[lv] = (*prevs[lv]).next[lv];
-            while (*currs[lv]).key < (*key) {
+
+            while (*currs[lv]).key.as_ref().is_some_and(|k| k.borrow() < key) {
                 prevs[lv] = currs[lv];
                 currs[lv] = (*currs[lv]).next[lv];
             }
 
-            if found_level.is_none() && (*currs[lv]).key == (*key) {
+            if found_level.is_none() 
+            && (*currs[lv]).key.as_ref().is_some_and(|k| k.borrow() == key) {
                 found_level = Some(lv);
             }
         }
-        return found_level;
+
+        found_level
     }
-
-
 
     /// 주어진 `key`와 `val`을 `SkipMap`에 넣습니다.
     /// 이미 `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
     /// 
     #[inline]
-    pub fn insert(&self, key: K, val: V) -> Option<V> {
-        let ebr_pin = self.ebr.pin();
-        unsafe { self.insert_impl(&ebr_pin, key, val) }
+    pub fn insert(&self, key: K, val: V) -> Option<V> 
+    where K: Ord {
+        let ebr_guard = self.ebr.pin();
+        unsafe { self.insert_impl(&ebr_guard, key, val) }
     }
-
-    /// 주어진 `key`와 `val`을 `SkipMap`에 넣습니다.
-    /// 이미 `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
-    /// 
+    
     unsafe fn insert_impl(
-        &self, ebr_pin: &EBRGuard<'_, Node<K, V>>, key: K, val: V
-    ) -> Option<V> {
-        let key = Key::Val(key);
+        &self, 
+        ebr_guard: &EBRGuard<'_, Node<K, V>>, 
+        key: K, 
+        val: V
+    ) -> Option<V> 
+    where K: Ord {
         let mut prevs = [ptr::null_mut(); MAX_LEVELS];
         let mut currs = [ptr::null_mut(); MAX_LEVELS];
         loop {
@@ -243,20 +213,25 @@ impl<K: Ord, V> SkipMap<K, V> {
                     continue;
                 }
 
-                // fully linke 일 때 까지 대기
+                // fully linked일 때 까지 대기
                 while !(*currs[found_level]).fully_linked.load(MemOrdering::Relaxed) {
                     std::hint::spin_loop();
                 }
 
-                let _guard = (*currs[found_level]).mtx[0].lock().unwrap();
+                let _lock_guard = (*currs[found_level]).mtx.lock();
+                if (*currs[found_level]).removed.load(MemOrdering::Relaxed) {
+                    continue;
+                }
+
                 return (*currs[found_level]).value.replace(val);
             }
 
             let top_level = random_level();
+
             let mut invalidate = false;
-            let mut locked_mtx = Vec::with_capacity(MAX_LEVELS);
+            let mut lock_guards = Vec::with_capacity(MAX_LEVELS);
             for lv in 0..=top_level {
-                locked_mtx.push((*prevs[lv]).mtx[lv].lock().unwrap_unchecked());
+                lock_guards.push((*prevs[lv]).mtx.lock());
                 if (*prevs[lv]).removed.load(MemOrdering::Relaxed)
                 || (*currs[lv]).removed.load(MemOrdering::Relaxed)
                 || (*prevs[lv]).next[lv] != currs[lv] {
@@ -266,13 +241,10 @@ impl<K: Ord, V> SkipMap<K, V> {
             }
 
             if invalidate {
-                for guard in locked_mtx {
-                    drop(guard);
-                }
                 continue;
             }
 
-            let node = Box::into_raw(Node::new(ebr_pin, key, val, top_level));
+            let node = Box::into_raw(Node::new(ebr_guard, key, val, top_level));
             for lv in 0..=top_level {
                 (*node).next[lv] = currs[lv];
             }
@@ -282,53 +254,47 @@ impl<K: Ord, V> SkipMap<K, V> {
                 (*prevs[lv]).next[lv] = node;
             }
             atomic::fence(MemOrdering::SeqCst);
-
+            
             (*node).fully_linked.store(true, MemOrdering::Relaxed);
-            for guard in locked_mtx {
-                drop(guard);
-            }
-
+            self.len.fetch_add(1, MemOrdering::AcqRel);
             return None;
-        };
+        }
     }
-
-
 
     /// 주어진 `key`에 해당하는 노드를`SkipMap`에서 제거합니다.
     /// `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
     /// 
     #[inline]
-    pub fn remove(&self, key: K) -> Option<V> {
-        let ebr_pin = self.ebr.pin();
-        unsafe { self.remove_impl(&ebr_pin, key) }
+    pub fn remove<Q>(&self, key: &Q) -> Option<V> 
+    where K: Borrow<Q> + Ord, Q: Ord {
+        let ebr_guard = self.ebr.pin();
+        unsafe { self.remove_impl(&ebr_guard, key) }
     }
 
-    /// 주어진 `key`에 해당하는 노드를`SkipMap`에서 제거합니다.
-    /// `SkipMap`에 주어진 `key`값이 존재하는 경우 기존의 값을 반환합니다.
-    /// 
-    unsafe fn remove_impl(&self, ebr_pin: &EBRGuard<'_, Node<K, V>>, key: K) -> Option<V> {
-        let key = Key::Val(key);
+    unsafe fn remove_impl<Q>(
+        &self,
+        ebr_guard: &EBRGuard<'_, Node<K, V>>, 
+        key: &Q
+    ) -> Option<V> 
+    where K: Borrow<Q> + Ord, Q: Ord {
         let mut prevs = [ptr::null_mut(); MAX_LEVELS];
         let mut currs = [ptr::null_mut(); MAX_LEVELS];
-
-        if let Some(found_level) = self.find_position(&key, &mut prevs, &mut currs) {
+        if let Some(found_level) = self.find_position(key, &mut prevs, &mut currs) {
             let victim = currs[found_level];
-            if (*victim).fully_linked.load(MemOrdering::Relaxed) { return None };
+            if !(*victim).fully_linked.load(MemOrdering::Relaxed) { return None };
             if (*victim).removed.load(MemOrdering::Relaxed) { return None };
             if (*victim).top_level != found_level { return None };
 
-            let guard = (*victim).mtx[0].lock();
-            if (*victim).removed.load(MemOrdering::Relaxed) {
-                return None;
-            }
-
+            let lock_guard = (*victim).mtx.lock();
+            if (*victim).removed.load(MemOrdering::Relaxed) { return None };
             (*victim).removed.store(true, MemOrdering::Relaxed);
+
             let top_level = (*victim).top_level;
             loop {
                 let mut invalidate = false;
-                let mut locked_mtx = Vec::with_capacity(MAX_LEVELS);
+                let mut lock_guards = Vec::with_capacity(MAX_LEVELS);
                 for lv in 0..=top_level {
-                    locked_mtx.push((*prevs[lv]).mtx[lv].lock().unwrap());
+                    lock_guards.push((*prevs[lv]).mtx.lock());
                     if (*prevs[lv]).removed.load(MemOrdering::Relaxed)
                     || (*prevs[lv]).next[lv] != victim {
                         invalidate = true;
@@ -337,9 +303,7 @@ impl<K: Ord, V> SkipMap<K, V> {
                 }
 
                 if invalidate {
-                    for guard in locked_mtx {
-                        drop(guard);
-                    }
+                    drop(lock_guards);
                     self.find_position(&key, &mut prevs, &mut currs);
                     continue;
                 }
@@ -348,89 +312,130 @@ impl<K: Ord, V> SkipMap<K, V> {
                     (*prevs[lv]).next[lv] = (*victim).next[lv];
                 }
 
-                for guard in locked_mtx {
-                    drop(guard);
-                }
-                drop(guard);
+                drop(lock_guards);
+                drop(lock_guard);
 
-                ebr_pin.dealloc(Box::from_raw(victim));
+                ebr_guard.dealloc(Box::from_raw(victim));
+                self.len.fetch_sub(1, MemOrdering::AcqRel);
                 return (*victim).value.take();
             }
         }
-
-        return None;
+        None
     }
-
-
 
     /// 주어진 `key`가 `SkipMap`에 포함되어있는지 여부를 반환합니다.
     #[inline]
     #[must_use]
-    pub fn contains_key(&self, key: K) -> bool {
-        let _ = self.ebr.pin();
+    pub fn contains_key<Q>(&self, key: &Q) -> bool 
+    where K: Borrow<Q> + Ord, Q: Ord {
+        let _ebr_guard = self.ebr.pin();
         unsafe { self.contains_key_impl(key) }
     }
 
-    /// 주어진 `key`가 `SkipMap`에 포함되어있는지 여부를 반환합니다.
-    unsafe fn contains_key_impl(&self, key: K) -> bool {
-        let key = Key::Val(key);
+    #[must_use]
+    unsafe fn contains_key_impl<Q>(&self, key: &Q) -> bool 
+    where K: Borrow<Q> + Ord, Q: Ord {
         let mut prevs = [ptr::null_mut(); MAX_LEVELS];
         let mut currs = [ptr::null_mut(); MAX_LEVELS];
-
-        if let Some(found_level) = self.find_position(&key, &mut prevs, &mut currs) {
-            let target = currs[found_level];
-            return (*target).fully_linked.load(MemOrdering::Relaxed) 
-            && !(*target).removed.load(MemOrdering::Relaxed);
+        if let Some(found_level) = self.find_position(key, &mut prevs, &mut currs) {
+            let victim = currs[found_level];
+            return (*victim).fully_linked.load(MemOrdering::Relaxed)
+            && !(*victim).removed.load(MemOrdering::Relaxed);
         }
-
-        return false;
+        false
     }
 
-
-
-    /// 주어진 `key`에 해당하는 노드의 값을 빌려옵니다.
-    pub fn get(&self, key: K) -> Option<&V> {
-        let _ebr_pin = self.ebr.pin();
-        unsafe { self.get_impl(key) }
+    /// `SkipMap`에 포함된 요소의 개수를 반환합니다.
+    #[inline]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.len.load(MemOrdering::Relaxed)
     }
 
     /// 주어진 `key`에 해당하는 노드의 값을 빌려옵니다.
-    unsafe fn get_impl(&self, key: K) -> Option<&V> {
-        let key = Key::Val(key);
+    /// 
+    /// # Performance Warning
+    /// **이 함수는 병렬성이 없습니다.**
+    /// 
+    /// 반환되는 `RefGuard`는 내부적으로 뮤텍스 락을 소유하고 있으며, 
+    /// 경쟁 상태를 방지하기 위해 `RefGuard`가 소멸될 때 까지 락을 유지합니다.
+    /// 
+    #[inline]
+    #[must_use]
+    pub fn get<'a, Q>(&'a self, key: &Q) -> Option<RefGuard<'a, K, V>> 
+    where K: Borrow<Q> + Ord, Q: Ord {
+        let ebr_guard = self.ebr.pin();
+        unsafe { self.get_impl(ebr_guard, key) }
+    }
+
+    #[must_use]
+    unsafe fn get_impl<'a, Q>(
+        &'a self, 
+        ebr_guard: EBRGuard<'a, Node<K, V>>, 
+        key: &Q
+    ) -> Option<RefGuard<'a, K, V>>
+    where K: Borrow<Q> + Ord, Q: Ord {
         let mut prevs = [ptr::null_mut(); MAX_LEVELS];
         let mut currs = [ptr::null_mut(); MAX_LEVELS];
+        if let Some(found_level) = self.find_position(key, &mut prevs, &mut currs) {
+            let victim = currs[found_level];
+            if !(*victim).fully_linked.load(MemOrdering::Relaxed) { return None };
+            if (*victim).removed.load(MemOrdering::Relaxed) { return None };
+            if (*victim).top_level != found_level { return None };
 
-        if let Some(found_level) = self.find_position(&key, &mut prevs, &mut currs) {
-            if (*currs[found_level]).removed.load(MemOrdering::Relaxed) {
-                return None;
-            }
+            let lock_guard = (*victim).mtx.lock();
+            if (*victim).removed.load(MemOrdering::Relaxed) { return None };
 
-            // fully linke 일 때 까지 대기
-            while !(*currs[found_level]).fully_linked.load(MemOrdering::Relaxed) {
-                std::hint::spin_loop();
-            }
-
-            return (*currs[found_level]).value.as_ref();
+            return Some(RefGuard {
+                value: (*victim).value.as_ref().unwrap_unchecked(), 
+                _lock_guard: lock_guard, 
+                _ebr_guard: ebr_guard
+            });
         }
         None
     }
-}
 
-impl<K, V> SkipMap<K, V> {
-    /// 새로운 `SkipMap`을 생성합니다.
+    /// 주어진 `key`에 해당하는 노드의 값을 빌려옵니다.
+    /// 
+    /// # Performance Warning
+    /// **이 함수는 병렬성이 없습니다.**
+    /// 
+    /// 반환되는 `MutGuard`는 내부적으로 뮤텍스 락을 소유하고 있으며, 
+    /// 경쟁 상태를 방지하기 위해 `MutGuard`가 소멸될 때 까지 락을 유지합니다.
+    /// 
+    #[inline]
     #[must_use]
-    pub fn new() -> Self {
-        let head = Box::into_raw(Node::head());
-        let tail = Box::into_raw(Node::tail());
-        for lv in 0..MAX_LEVELS {
-            unsafe { (*head).next[lv] = tail };
-        }
+    pub fn get_mut<'a, Q>(&'a self, key: &Q) -> Option<MutGuard<'a, K, V>> 
+    where K: Borrow<Q> + Ord, Q: Ord {
+        let ebr_guard = self.ebr.pin();
+        unsafe { self.get_mut_impl(ebr_guard, key) }
+    }
 
-        Self { 
-            ebr: EBR::new(), 
-            head: AtomicPtr::new(head), 
-            tail: AtomicPtr::new(tail)
+    #[must_use]
+    unsafe fn get_mut_impl<'a, Q>(
+        &'a self, 
+        ebr_guard: EBRGuard<'a, Node<K, V>>, 
+        key: &Q
+    ) -> Option<MutGuard<'a, K, V>>
+    where K: Borrow<Q> + Ord, Q: Ord {
+        let mut prevs = [ptr::null_mut(); MAX_LEVELS];
+        let mut currs = [ptr::null_mut(); MAX_LEVELS];
+        if let Some(found_level) = self.find_position(key, &mut prevs, &mut currs) {
+            let victim = currs[found_level];
+            if !(*victim).fully_linked.load(MemOrdering::Relaxed) { return None };
+            if (*victim).removed.load(MemOrdering::Relaxed) { return None };
+            if (*victim).top_level != found_level { return None };
+
+            let lock_guard = (*victim).mtx.lock();
+            if (*victim).removed.load(MemOrdering::Relaxed) { return None };
+
+            return Some(MutGuard {
+                value: (*victim).value.as_mut().unwrap(), 
+                _lock_guard: lock_guard, 
+                _ebr_guard: ebr_guard
+            });
         }
+        None
     }
 }
 
@@ -452,11 +457,20 @@ impl<K, V> Drop for SkipMap<K, V> {
 
 
 
+
+
+
+
+
+
+
+
+
+
 #[cfg(test)]
-mod tests {
+mod test0 {
     use std::thread;
     use std::sync::Arc;
-
     use super::SkipMap;
 
     const MAX_NUM: usize = 10_000;
@@ -468,8 +482,6 @@ mod tests {
         Remove { val: u32, result: Option<u32> }, 
     }
     
-    
-    
     fn check_history(historys: Vec<Vec<History>>, map: Arc<SkipMap<u32, u32>>) {
         let mut survive = [0; MAX_NUM + 1];
     
@@ -477,15 +489,13 @@ mod tests {
             for history in historys {
                 match history {
                     History::Insert { val, result } => {
-                        survive[val as usize] += 1;
-                        if let Some(old) = result {
-                            survive[old as usize] -= 1;
+                        if result.is_none() {
+                            survive[val as usize] += 1;
                         }
                     },
                     History::Remove { val, result } => {
-                        if let Some(own) = result {
-                            assert_eq!(val, own);
-                            survive[own as usize] -= 1;
+                        if result.is_some() {
+                            survive[val as usize] -= 1;
                         }
                     }, 
                 };
@@ -497,9 +507,9 @@ mod tests {
                 panic!("ERROR. The value {} removed while it is not in the set.", num);
             } else if cnt > 1 {
                 panic!("ERROR. The value {} is added while the set already have it.", num);
-            } else if cnt == 0 && map.contains_key(num as u32) {
+            } else if cnt == 0 && map.contains_key(&(num as u32)) {
                 panic!("ERROR. The value {} should not exists.", num);
-            } else if cnt == 1 && !map.contains_key(num as u32) {
+            } else if cnt == 1 && !map.contains_key(&(num as u32)) {
                 panic!("ERROR. The value {} should exists.", num);
             }
         }
@@ -514,7 +524,7 @@ mod tests {
                 if rand::random() {
                     History::Insert { val, result: map.insert(val, val) }
                 } else {
-                    History::Remove { val, result: map.remove(val) }
+                    History::Remove { val, result: map.remove(&val) }
                 }
             })
             .collect()
@@ -525,6 +535,74 @@ mod tests {
         let mut num_threads = 1;
         while num_threads <= MAX_THREADS {
             let map = Arc::new(SkipMap::new());
+            let handles: Vec<_> = (0..num_threads).into_iter()
+                .map(|_| {
+                    let map_cloned = map.clone();
+                    thread::spawn(move || validation_main(num_threads, map_cloned))
+                })
+                .collect();
+    
+            let historys: Vec<_> = handles.into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect();
+            check_history(historys, map);
+    
+            num_threads *= 2;
+        }
+    }    
+}
+
+#[cfg(test)]
+mod test1 {
+    use std::thread;
+    use std::sync::Arc;
+    use super::SkipMap;
+
+    const MAX_THREADS: usize = 16;
+    const NUM_TESTS: usize = 10_000_000;
+    
+    enum History {
+        Increase, 
+        Decrease, 
+    }
+    
+    fn check_history(historys: Vec<Vec<History>>, map: Arc<SkipMap<u32, i32>>) {
+        let mut number = 0;
+    
+        for historys in historys {
+            for history in historys {
+                match history {
+                    History::Increase => number += 1, 
+                    History::Decrease => number -= 1
+                };
+            }
+        }
+    
+        assert_eq!(number, map.remove(&0).unwrap());
+    }
+    
+    fn validation_main(num_threads: usize, map: Arc<SkipMap<u32, i32>>) -> Vec<History> {
+        let num_tests = NUM_TESTS / num_threads;
+        let mut history = Vec::with_capacity(num_tests);
+        for _ in 0..num_tests {
+            if rand::random() {
+                *(map.get_mut(&0).unwrap()) += 1;
+                history.push(History::Increase);
+            } else {
+                *(map.get_mut(&0).unwrap()) -= 1;
+                history.push(History::Decrease);
+            }
+        }
+        history
+    }
+    
+    #[test]
+    fn check_consistency() {
+        let mut num_threads = 1;
+        while num_threads <= MAX_THREADS {
+            let map = Arc::new(SkipMap::new());
+            map.insert(0, 0);
+
             let handles: Vec<_> = (0..num_threads).into_iter()
                 .map(|_| {
                     let map_cloned = map.clone();
