@@ -14,7 +14,7 @@ use server::{
 use mod_network::Addr;
 
 
-
+/// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -26,13 +26,18 @@ pub async fn run_server(addr: &str) {
 
     println!("Server listening on: {}", listener.local_addr().unwrap());
 
-    let world = World::new();
 
-    wait_for_players(listener, (&world).into()).await;
+    let mut world = World::new();
+
+    // 새로운 쓰레드에서 클라이언트 연결 관리
+    tokio::spawn(wait_for_players(listener, (&world).into()));
+
+    // 메인 쓰레드에서 월드 업데이트
+    world.update_loop().await;
 }
 
 
-const MAX_CLIENTS: usize =  1000;
+const MAX_CLIENTS: usize =  10;
 /// World를 직접 읽으면 최신 데이터가 아닐 가능성이 있다.  
 /// World에 Mutex, RwLock등을 걸면 클라이언트가 읽는데 병목이 생길 수 있다.  
 /// 따라서 클라이언트 개수만 세기 위해 따로 분리.  

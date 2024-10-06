@@ -1,5 +1,9 @@
-use lockfree::map::Map;
-use mod_network::Player;     // 플레이어 프로토콜
+use std::collections::HashMap;
+use mod_network::{
+    Player,
+    Bullet,
+};
+use mod_parallelism::collections::Queue;
 
 
 
@@ -7,13 +11,17 @@ pub type WorldPointer = usize;
 
 
 pub struct World {
-    players: Map<u32, Player>,
+    timer: tokio::time::Instant,
+    players: HashMap<u32, Player>,
+    bullets: Queue<Bullet>,
 }
 
 impl World {
     pub fn new() -> Self {
         Self {
-            players: Map::new(),
+            timer: tokio::time::Instant::now(),
+            players: HashMap::new(),
+            bullets: Queue::new(),
         }
     }
 
@@ -21,28 +29,65 @@ impl World {
     pub fn add_player(&mut self, id: u32) {
         self.players.insert(id, Player { id, ..Default::default() });
     }
-
+    
     pub fn remove_player(&mut self, id: u32) {
         self.players.remove(&id);
     }
 
     pub fn update_player(&mut self, player: Player) {
-        self.players.insert(player.id, player);
+        if let Some(old_player) = self.players.get_mut(&player.id) {
+            *old_player = player;
+        }
     }
 
     pub fn move_player(&mut self, id: u32, x: f32, y: f32, z: f32) {
-        let mut player = self.players.get(&id).unwrap().1.clone();
-        player.translation.x += x;
-        player.translation.y += y;
-        player.translation.z += z;
-        
-        self.update_player(player);
+        if let Some(player) = self.players.get_mut(&id) {
+            player.translation.x += x;
+            player.translation.y += y;
+            player.translation.z += z;
+        }
     }
 
     pub fn get_objects(&self) -> Vec<Player> {
-        self.players.iter()
-            .map(|player| player.1.clone())
+        self.players.values()
+            .cloned()
             .collect()
+    }
+
+
+    /// 총알 이동 및 충돌 처리
+    pub async fn update_loop(&mut self) {
+        self.timer = tokio::time::Instant::now();
+            
+        loop {
+            let elapsed = self.timer.elapsed();
+            self.timer = tokio::time::Instant::now();
+
+            let mut alive_bullets = Vec::new();
+
+            while let Some(bullet) = self.bullets.pop() {
+                for player in self.players.values() {
+                    if player.id == bullet.shooter {
+                        continue;
+                    }
+
+                    // TODO: 충돌 처리
+                    
+                    // 충돌했다면 총알 제거 -> pop했으므로 제거됨
+                }
+                
+                // TODO: 총알 위치 이동
+
+
+                // 충돌하지 않았다면
+                alive_bullets.push(bullet);
+            }
+
+            // 총알을 다시 넣어줌
+            for bullet in alive_bullets {
+                self.bullets.push(bullet);
+            }
+        }
     }
 }
 
@@ -70,7 +115,7 @@ impl WorldInterface {
     /// id가 겹치지 않음을 사용하는쪽에서 보장해야 함.
     /// 보장하더라도 해싱된 결과가 같으면 충돌이 발생할 수 있음.
     /// 1. mpsc를 사용해서 한 스레드에서만 add/remove를 수행하도록 한다.    >>>>>>> 자주 호출되지 않는 add/remove를 위해 task를 하나 할당해줘야함.
-    /// 2. lockfree HashMap을 사용한다.     >>>>>>> lockfree::map::Map으로 테스트, 성능확인 아직 안함.
+    /// 2. lockfree HashMap을 사용한다.
     /// 3. 배열을 사용한다. (Vec<Option<Player>> 또는 [Option<Player>; MAX_PLAYER])     >>>>>>> 오브젝트용 HashMap과 플레이어용 배열을 따로 관리해야한다.
     pub fn add_player(&self, id: u32) {
         self.as_mut().add_player(id);
