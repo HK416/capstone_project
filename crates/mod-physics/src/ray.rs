@@ -5,7 +5,7 @@ pub struct Ray {
 
 impl Ray {
     pub fn build(origin: gmm::Float3, direction: gmm::Vector) -> Result<Self, &'static str> {
-        match direction.vec3_normalize() {
+        match direction.try_vec3_normalize() {
             Some(direction) => Ok(Self { 
                 origin, 
                 direction: direction.into()
@@ -15,7 +15,7 @@ impl Ray {
     }
 
     pub fn set_direction(&mut self, direction: gmm::Vector) -> Result<(), &'static str> {
-        match direction.vec3_normalize() {
+        match direction.try_vec3_normalize() {
             Some(direction) => {
                 self.direction = direction.into();
                 Ok(())

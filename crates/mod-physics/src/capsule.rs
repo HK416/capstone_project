@@ -19,7 +19,7 @@ impl Capsule {
     /// direction을 단위벡터로 만들어 Capsule을 생성한다.  
     /// 영벡터가 주어지면 Error를 반환한다.  
     pub fn build(center: gmm::Float3, direction: gmm::Float3, height: f32, radius: f32) -> Result<Self, &'static str> {
-        match gmm::Vector::from(direction).vec3_normalize() {
+        match gmm::Vector::from(direction).try_vec3_normalize() {
             Some(direction) => Ok(Self { 
                 center, direction: direction.into(), height, radius 
             }),
@@ -30,7 +30,7 @@ impl Capsule {
     /// direction을 단위벡터로 만들어 Capsule의 방향을 설정한다.  
     /// 영벡터가 주어지면 Error를 반환한다.  
     pub fn set_direction(&mut self, direction: gmm::Float3) -> Result<(), &'static str> {
-        match gmm::Vector::from(direction).vec3_normalize() {
+        match gmm::Vector::from(direction).try_vec3_normalize() {
             Some(direction) => {
                 self.direction = direction.into();
                 Ok(())

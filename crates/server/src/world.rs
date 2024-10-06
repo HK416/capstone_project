@@ -60,7 +60,7 @@ impl World {
         self.timer = tokio::time::Instant::now();
             
         loop {
-            let elapsed = self.timer.elapsed();
+            let _elapsed = self.timer.elapsed();
             self.timer = tokio::time::Instant::now();
 
             let mut alive_bullets = Vec::new();

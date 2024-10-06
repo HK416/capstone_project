@@ -7,7 +7,7 @@ pub struct Line {
 // constructors/desctructors
 impl Line {
     pub fn build(point: gmm::Float3, direction: gmm::Vector) -> Result<Self, &'static str> {
-        match direction.vec3_normalize() {
+        match direction.try_vec3_normalize() {
             Some(direction) => Ok(Self { 
                 point, 
                 direction: direction.into()
@@ -20,7 +20,7 @@ impl Line {
 // methods
 impl Line {
     pub fn set_direction(&mut self, direction: gmm::Vector) -> Result<(), &'static str> {
-        match direction.vec3_normalize() {
+        match direction.try_vec3_normalize() {
             Some(direction) => {
                 self.direction = direction.into();
                 Ok(())
@@ -149,7 +149,7 @@ impl Line {
         let v2 = gmm::Vector::from(line2.direction);
         let cross = v1.vec3_cross(v2);
 
-        match cross.vec3_normalize() {
+        match cross.try_vec3_normalize() {
             Some(cross) => {
                 let p1 = gmm::Vector::from(line1.point);
                 let p2 = gmm::Vector::from(line2.point);
