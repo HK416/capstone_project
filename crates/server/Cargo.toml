@@ -9,16 +9,5 @@ publish.workspace = true
 
 [dependencies]
 tokio = { version = "1.39.3", features = ["full"] }
-lockfree = "0.5.1"
-futures = "0.3.30"
-rand = "0.8.5"
 
 mod-network = { path = "../mod-network" }
-
-[[example]]
-name = "move"
-path = "./dummies/move.rs"
-
-[[example]]
-name = "ad-rm"
-path = "./dummies/ad-rm.rs"
