@@ -62,7 +62,7 @@ async fn run_client(addr: &str) {
             match raw_packet.packet_type() {
                 PacketType::PULL => {
                     let packet = PullPacket::from_raw(raw_packet);
-                    for p in packet.world {
+                    for p in packet.players {
                         if p.id == player.id {
                             player = p;
                         }

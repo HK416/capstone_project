@@ -73,8 +73,9 @@ impl Session {
                     let push_packet = PushPacket::from_raw(packet);
                     self.world.update_player(push_packet.player);
 
-                    let world = self.world.get_players();
-                    let raw_packet = PullPacket::new(world).as_raw();
+                    let players = self.world.get_players();
+                    let bullets = self.world.get_bullets();
+                    let raw_packet = PullPacket::new(players, bullets).as_raw();
                     match self.stream_write(raw_packet).await {
                         Ok(_) => {
 

@@ -83,6 +83,12 @@ impl World {
         self.bullet_blobs.push(bullet);
     }
 
+    pub fn get_bullets(&self) -> Vec<BulletBlob> {
+        self.alive_bullets.iter()
+            .map(|bullet| bullet.blob.clone())
+            .collect()
+    }
+
 
     /// 총알 이동 및 충돌 처리
     pub async fn update_loop(&mut self) {
@@ -229,6 +235,10 @@ impl WorldInterface {
 
     pub fn add_bullet(&self, bullet: BulletBlob) {
         self.as_mut().add_bullet(bullet);
+    }
+
+    pub fn get_bullets(&self) -> Vec<BulletBlob> {
+        self.as_mut().get_bullets()
     }
 
 

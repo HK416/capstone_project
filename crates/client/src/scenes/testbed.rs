@@ -356,7 +356,7 @@ impl GameScene for TestBedScene {
         if raw_packet.packet_type() == PacketType::PULL {
             let packet = PullPacket::from_raw(raw_packet);
             let mut temp = Vec::new();
-            for pull_data in packet.world {
+            for pull_data in packet.players {
                 if let Some(world_id) = self.players.remove(&pull_data.id) {
                     if pull_data.id == self.client_id {
                         temp.push((pull_data.id, world_id));
