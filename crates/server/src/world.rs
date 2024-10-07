@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use mod_network::{
     Player,
     BulletBlob,
@@ -11,18 +11,41 @@ use mod_physics::{Ray, YCapsule};
 pub type WorldPointer = usize;
 
 
+struct Bullet {
+    blob: BulletBlob,       // 총알의 기본 정보
+    alive: bool,            // 충돌하거나 사거리를 넘어가면 false로 변경
+    moved_distance: f32,    // 총알의 이동거리
+}
+
+impl Bullet {
+    fn new(blob: BulletBlob) -> Self {
+        Self {
+            blob,
+            alive: true,
+            moved_distance: 0.0,
+        }
+    }
+}
+
+
 pub struct World {
     timer: tokio::time::Instant,
+    
     players: HashMap<u32, Player>,
-    bullets: Queue<BulletBlob>,
+    
+    alive_bullets: VecDeque<Bullet>,    // get_objects에서 Queue::pop을 하지 않기 위해 사용, 중간값 삭제가 빈번할것으로 예상되어 VecDeque로 사용
+    bullet_blobs: Queue<BulletBlob>,        // Session에서 총알을 추가할 때 사용
 }
 
 impl World {
     pub fn new() -> Self {
         Self {
             timer: tokio::time::Instant::now(),
+
             players: HashMap::new(),
-            bullets: Queue::new(),
+
+            alive_bullets: VecDeque::new(),
+            bullet_blobs: Queue::new(),
         }
     }
 
@@ -49,18 +72,15 @@ impl World {
         }
     }
 
-    pub fn get_objects(&self) -> Vec<Player> {
+    pub fn get_players(&self) -> Vec<Player> {
         self.players.values()
             .cloned()
             .collect()
-
-        // TODO: 총알 추가
-        // Queue에서 하나씩 pop하면서 복사해서 추가하고, 다시 Queue에 넣어줘야함.
     }
 
 
     pub fn add_bullet(&mut self, bullet: BulletBlob) {
-        self.bullets.push(bullet);
+        self.bullet_blobs.push(bullet);
     }
 
 
@@ -72,22 +92,26 @@ impl World {
             let elapsed = self.timer.elapsed().as_secs_f32();
             self.timer = tokio::time::Instant::now();
 
-            let mut alive_bullets = Vec::new();
+            // 받은 총알을 alive_bullets로 이동
+            while let Some(bullet) = self.bullet_blobs.pop() {
+                self.alive_bullets.push_back(Bullet::new(bullet));
+            }
 
-            while let Some(mut bullet) = self.bullets.pop() {
-                let move_distance = bullet.speed * elapsed;
+            for bullet in self.alive_bullets.iter_mut() {
+                let move_distance = bullet.blob.speed * elapsed;
 
                 // bullet.direction이 영벡터가 아니라고 가정
-                let ray = Ray::build(bullet.translation, gmm::Vector::from(bullet.direction)).unwrap();
-                let bullet_position = gmm::Vector::from(bullet.translation);
+                let ray = Ray::build(bullet.blob.translation, gmm::Vector::from(bullet.blob.direction)).unwrap();
+                let bullet_position = gmm::Vector::from(bullet.blob.translation);
 
+                // 거리 한계를 넘어가면 충돌체크 하지 않음(+1.0은 여유 거리)
                 let dist_limit_sq = (move_distance + 1.0).powi(2);
 
                 let mut nearest_distance = f32::MAX;
                 let mut nearest_player_id = None;
                 
                 for player in self.players.values() {
-                    if player.id == bullet.shooter {
+                    if player.id == bullet.blob.shooter {
                         continue;
                     }
                     
@@ -98,7 +122,6 @@ impl World {
                     const PLAYER_RADIUS: f32 = 1.0;     // 플레이어의 반지름은 0.1로 가정
                     const PLAYER_HEIGHT: f32 = 2.5;    // 플레이어의 높이는 0.25로 가정
 
-                    // 너무 멀면 충돌체크 하지 않음(+1.0은 여유 거리)
                     if (bullet_position - player_position).vec3_len_sq() > dist_limit_sq {
                         continue;
                     }
@@ -132,21 +155,27 @@ impl World {
                         // TODO: 플레이어에게 피해를 줌
                         // 해당 Session은 클라이언트에게 피해를 받았다는 패킷을 보내야함
                         println!("Player {} hit by bullet", id);
+                        bullet.alive = false;
                     },
 
                     // 충돌하지 않았다면
                     None => {
                         // 총알 위치 이동
-                        bullet.translation += bullet.direction * move_distance;
-                        alive_bullets.push(bullet);
+                        bullet.blob.translation += bullet.blob.direction * move_distance;
+                        
+                        // 누적 이동거리 증가
+                        bullet.moved_distance += move_distance;
+
+                        // 총알 사거리를 넘어가면 총알 제거
+                        if bullet.moved_distance >= bullet.blob.range {
+                            bullet.alive = false;
+                        }
                     }
                 }
             }
 
-            // 총알을 다시 넣어줌
-            for bullet in alive_bullets {
-                self.bullets.push(bullet);
-            }
+            // 살아남은 총알만 남김
+            self.alive_bullets.retain(|bullet| bullet.alive);
         }
     }
 }
@@ -193,8 +222,8 @@ impl WorldInterface {
         self.as_mut().move_player(id, x, y, z);
     }
 
-    pub fn get_objects(&self) -> Vec<Player> {
-        self.as_mut().get_objects()
+    pub fn get_players(&self) -> Vec<Player> {
+        self.as_mut().get_players()
     }
 
 
