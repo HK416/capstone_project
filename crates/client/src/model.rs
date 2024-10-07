@@ -62,7 +62,7 @@ pub fn spawn_aris_original_model(
     id_generator: &Arc<IdGenerator>, 
     device: &wgpu::Device, 
     queue: &wgpu::Queue
-) -> (WorldID, Vec<AnimationClip>) {
+) -> (WorldID, Vec<AnimationClip>, HashMap<String, WorldID>) {
     let embeded_file = EmbededAssets::get(&ARIS_ORIGINAL_PATH).unwrap();
     let blob: ModelBlob = ron::de::from_bytes(&embeded_file.data).unwrap();
 
@@ -89,7 +89,7 @@ pub fn spawn_aris_original_model(
         ))
         .collect();
 
-    (root_id, animations)
+    (root_id, animations, nodes)
 }
 
 

@@ -25,6 +25,19 @@ pub enum BulletKind {
 }
 
 impl BulletKind {
+    /// 총알의 식별 번호를 반환합니다.
+    #[inline]
+    #[must_use]
+    pub fn into_id(self) -> u32 {
+        match self {
+            BulletKind::ArisOriginal(_) => 0,
+        }
+    }
+
+
+    /// 총알의 지연 시간을 반환합니다.
+    #[inline]
+    #[must_use]
     pub fn delay_time_sec(self) -> f32 {
         match self {
             BulletKind::ArisOriginal(time) => time,
@@ -45,6 +58,9 @@ pub struct DelayTimer(pub f32);
 pub struct Bullet {
     /// 총알의 종류입니다.
     pub kind: BulletKind,
+
+    /// 총알의 위치입니다.
+    pub translation: gmm::Vector, 
 
     /// 총알이 날아가는 방향입니다.
     pub direction: gmm::Vector, 

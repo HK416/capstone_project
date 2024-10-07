@@ -3,15 +3,11 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 use std::sync::Mutex;
-use std::env;
-use std::str::FromStr;
 
 use server::{
     world::*,
     session::Session,
 };
-
-use mod_network::Addr;
 
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
@@ -102,21 +98,7 @@ async fn server_full(mut stream: TcpStream) {
 
 #[tokio::main]
 async fn main() {
-    let mut args = env::args();
-    args.next();
-
-    let addr = match args.next() {
-        Some(args) => match Addr::from_str(&args) {
-            Ok(addr) => addr,
-            Err(e) => {
-                eprintln!("{}", e);
-                return;
-            }
-        },
-        None => Addr::default()
-    };
-
-    run_server(&addr.to_string()).await;
+    run_server("localhost:7878").await;
 }
 
 

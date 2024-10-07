@@ -1,10 +1,10 @@
 use std::{collections::HashMap, error::Error, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
 
 use mod_app::{app::AppHandle, ext::AppWindowExt, scene::GameScene};
-use mod_network::{PacketType, Player, PullPacket, PushPacket, RawPacket};
+use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, BulletKind, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
+use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, Weapon, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
 use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -64,13 +64,6 @@ impl TestBedScene {
         }
     }
 
-    /// 총알을 추가합니다.
-    fn insert_bullet(
-        &mut self, 
-    ) {
-        
-    }
-
     /// 플레이어를 추가합니다.
     fn insert_player(
         &mut self, 
@@ -86,7 +79,7 @@ impl TestBedScene {
         );
 
         // 모델 파일을 로드합니다.
-        let (root_id, clips) = crate::model::spawn_aris_original_model(
+        let (root_id, clips, nodes) = crate::model::spawn_aris_original_model(
             &self.world, 
             &self.renderer, 
             &self.id_generator, 
@@ -141,6 +134,11 @@ impl TestBedScene {
                 distance: -2.0, 
                 polar: 180f32.to_radians(), 
                 azimuthal: 15f32.to_radians()
+            });
+
+            // 플레이어 오브젝트에 무기 요소를 추가합니다.
+            object.insert(Weapon {
+                muzzle: nodes.get("fire_01").unwrap().clone()
             });
         }
 
@@ -231,6 +229,39 @@ impl TestBedScene {
         // 카메라 오브젝트의 변환 행렬을 설정합니다.
         let mut camera = self.world.get_mut(&self.main_camera).unwrap();
         camera.set_world_transform(transform);
+    }
+
+
+    /// 플레이어 오브젝트를 갱신합니다.
+    fn update_player(&self, elapsed_time_sec: f32) {
+        for player_id in self.players.values() {
+            player_update(&self.world, player_id, elapsed_time_sec).unwrap()
+        }
+    }
+
+
+    /// 총알을 생성 및 삭제하고, 총알의 위치를 갱신합니다.
+    fn update_bullet(&self, elapsed_time_sec: f32) {
+        // 플레이어 오브젝트를 가져옵니다.
+        let player_id = self.players.get(&self.client_id).unwrap();
+        let mut player = self.world.get_mut(player_id).unwrap();
+
+        // 플레이어가 총알을 발사한 경우 서버에 생성 메시지를 전달합니다.
+        if let Some(bullet) = player.remove::<Bullet>() {
+            // 패킷을 생성합니다.
+            let packet = ShotPacket::new(BulletBlob::new(
+                bullet.kind.into_id(), 
+                self.client_id, 
+                bullet.translation, 
+                bullet.direction, 
+                bullet.speed, 
+                bullet.range
+            )).as_raw();
+            
+            // 패킷을 서버에 전송합니다.
+            let mut writer = BufWriter::new(self.stream.as_ref());
+            writer.write_all(&packet.as_bytes()).unwrap();
+        }
     }
 
 
@@ -476,14 +507,9 @@ impl GameScene for TestBedScene {
         let frame_rate = app.timer().frame_rate();
         window.set_title(&format!("Hello to Halo! (FPS: {})", frame_rate));
 
-        // self.update_player_force();
         self.update_camera_pos();
-
-        // 플레이어 오브젝트를 갱신합니다.
-        for player_id in self.players.values() {
-            player_update(&self.world, player_id, elapsed_time_sec)
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-        }
+        self.update_player(elapsed_time_sec);
+        self.update_bullet(elapsed_time_sec);
 
         self.upload_player_data();
 

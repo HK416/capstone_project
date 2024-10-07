@@ -7,7 +7,7 @@
 /// 
 /// 3. 위치
 /// 
-/// 4. 회전
+/// 4. 방향
 /// 
 /// 5. 속력
 /// 
@@ -17,7 +17,7 @@
 /// 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Bullet {
+pub struct BulletBlob {
     pub kind: u32, 
     pub shooter: u32, 
     pub translation: gmm::Float3, 
@@ -27,7 +27,7 @@ pub struct Bullet {
     // TODO: 충돌체 추가
 }
 
-impl Bullet {
+impl BulletBlob {
     #[inline]
     #[must_use]
     pub fn new(
