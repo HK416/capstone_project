@@ -1,9 +1,9 @@
-use std::{any::type_name, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
+use std::{any::type_name, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::component::{AnimationSet, BulletKind, DelayTimer, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
+use crate::component::{AnimationSet, Bullet, BulletKind, DelayTimer, GameObject, InputController, ThirdPersonCamera, Transform, Weapon, WorldID};
 
 use super::{PlayerFlags, PlayerState, PlayerStateError};
 
@@ -274,27 +274,55 @@ fn fire_bullet(
     };
 
     if let Some(delay_timer) = player.remove::<DelayTimer>() {
-        // 플레이어 발사 지연 시간을 가져옵니다.
-        let delay_time_sec = match player.get::<BulletKind>() {
-            Some(kind) => kind.delay_time_sec(), 
+        // 플레이어 총알의 종류를 가져옵니다.
+        let kind = match player.get::<BulletKind>() {
+            Some(kind) => kind.clone(), 
             None => return Err(PlayerStateError::ElementNotFound(type_name::<BulletKind>()))
         }; 
+
+        // 플레이어 발사 지연 시간을 가져옵니다.
+        let delay_time_sec = kind.delay_time_sec();
 
         // 타이머를 갱신합니다.
         let timer = delay_timer.0 + elapsed_time_sec;
 
         // 타이머가 지연시간 보다 크거나 같을 경우 총알을 발사합니다.
         if timer >= delay_time_sec {
-            // ※ 추후 수정될 예정입니다.
-            // TCP 소켓을 가져옵니다.
-            let stream = match player.get::<Arc<TcpStream>>() {
-                Some(stream) => stream, 
-                None => return Err(PlayerStateError::ElementNotFound(type_name::<Arc<TcpStream>>()))
+            // 카메라 오브젝트 식별자를 가져옵니다.
+            let camera_id = match player.get::<ThirdPersonCamera>() {
+                Some(third_person_camera) => third_person_camera.target.clone(), 
+                None => return Err(PlayerStateError::ElementNotFound(type_name::<ThirdPersonCamera>()))
             };
 
-            let mut writer = BufWriter::new(stream.as_ref());
+            // 카메라 오브젝트를 가져옵니다.
+            let camera = match world.get(&camera_id) {
+                Some(object) => object, 
+                None => return Err(PlayerStateError::ObjectNotFound(camera_id))
+            };
 
-            log::info!("Fire!");
+            // 카메라 오브젝트의 방향을 가져옵니다.
+            let direction = camera.get_world_transform().get_look_vector();
+
+            // 플레이어 무기의 총구 오브젝트의 식별자를 가져옵니다.
+            let muzzle_id = match player.get::<Weapon>() {
+                Some(weapon) => weapon.muzzle.clone(), 
+                None => return Err(PlayerStateError::ElementNotFound(type_name::<Weapon>()))
+            };
+
+            // 총구 오브젝트의 위치를 가져옵니다.
+            let translation = match world.get(&muzzle_id) {
+                Some(object) => object.get_world_transform().get_translation().clone(), 
+                None => return Err(PlayerStateError::ObjectNotFound(muzzle_id))
+            };
+
+
+            player.insert(Bullet {
+                kind, 
+                translation, 
+                direction, 
+                speed: 250.0, // meter per seconds
+                range: 850.0, // meter
+            });
         } else {
             player.insert(DelayTimer(timer));
         }
@@ -302,4 +330,5 @@ fn fire_bullet(
 
     Ok(())
 }
+
 
