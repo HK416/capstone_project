@@ -4,6 +4,7 @@ use mod_network::{
     Bullet,
 };
 use mod_parallelism::collections::Queue;
+use mod_physics::{Ray, YCapsule};
 
 
 
@@ -68,27 +69,76 @@ impl World {
         self.timer = tokio::time::Instant::now();
             
         loop {
-            let _elapsed = self.timer.elapsed();
+            let elapsed = self.timer.elapsed();
             self.timer = tokio::time::Instant::now();
 
             let mut alive_bullets = Vec::new();
 
-            while let Some(bullet) = self.bullets.pop() {
+            while let Some(mut bullet) = self.bullets.pop() {
+                let move_distance = bullet.speed * elapsed.as_secs_f32();
+
+                let mut nearest_distance = f32::MAX;
+                let mut nearest_player_id = None;
+
                 for player in self.players.values() {
                     if player.id == bullet.shooter {
                         continue;
                     }
 
-                    // TODO: 충돌 처리
+                    let bullet_direction = gmm::Vector::from(bullet.direction);
+                    let bullet_position = gmm::Vector::from(bullet.translation);                    
+                    let player_position = gmm::Vector::from(player.translation);
+
+                    // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
+                    const BULLET_RADIUS: f32 = 0.01;    // 총알의 크기는 일단 반지름 0.01로 가정
+                    const PLAYER_RADIUS: f32 = 0.1;     // 플레이어의 반지름은 0.1로 가정
+                    const PLAYER_HEIGHT: f32 = 0.25;    // 플레이어의 높이는 0.25로 가정
+
+                    // 너무 멀면 충돌체크 하지 않음(+1.0은 여유 거리)
+                    if (bullet_position - player_position).vec3_len_sq() > (move_distance + 1.0).powi(2) {
+                        continue;
+                    }
                     
-                    // 충돌했다면 총알 제거 -> pop했으므로 제거됨
+                    // 충돌 처리: 플레이어 - 총알
+                    // 플레이어의 충돌체: YCapsule(총알의 크기 만큼 확대)           나중에 세분화
+                    // 총알은 점으로 raycasting
+                    
+                    let mut center = player.translation;
+                    center.y -= BULLET_RADIUS;
+
+                    // mod-network의 Player에 make_collider()를 추가해서 클라이언트에서도 표시할 수 있도록 해도 좋아보임.
+                    let player_capsule = YCapsule {
+                        center,
+                        radius: PLAYER_RADIUS + BULLET_RADIUS,
+                        height: PLAYER_HEIGHT,
+                    };
+
+                    // bullet.direction이 영벡터가 아니라고 가정
+                    let ray = Ray::build(bullet.translation, bullet_direction).unwrap();
+
+                    if let Some(dist) = ray.intersect(&player_capsule) {
+                        if dist < nearest_distance {
+                            nearest_distance = dist;
+                            nearest_player_id = Some(player.id);
+                        }
+                    }
                 }
-                
-                // TODO: 총알 위치 이동
 
+                match nearest_player_id {
+                    Some(id) => {
+                        // 총알 제거 -> pop했으므로 제거됨
+                        // TODO: 플레이어에게 피해를 줌
+                        // 해당 Session은 클라이언트에게 피해를 받았다는 패킷을 보내야함
+                        println!("Player {} hit by bullet", id);
+                    },
 
-                // 충돌하지 않았다면
-                alive_bullets.push(bullet);
+                    // 충돌하지 않았다면
+                    None => {
+                        // 총알 위치 이동
+                        bullet.translation += bullet.direction * move_distance;
+                        alive_bullets.push(bullet);
+                    }
+                }
             }
 
             // 총알을 다시 넣어줌
