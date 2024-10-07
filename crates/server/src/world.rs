@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use mod_network::{
     Player,
-    Bullet,
+    BulletBlob,
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
@@ -14,7 +14,7 @@ pub type WorldPointer = usize;
 pub struct World {
     timer: tokio::time::Instant,
     players: HashMap<u32, Player>,
-    bullets: Queue<Bullet>,
+    bullets: Queue<BulletBlob>,
 }
 
 impl World {
@@ -59,7 +59,7 @@ impl World {
     }
 
 
-    pub fn add_bullet(&mut self, bullet: Bullet) {
+    pub fn add_bullet(&mut self, bullet: BulletBlob) {
         self.bullets.push(bullet);
     }
 
@@ -196,7 +196,7 @@ impl WorldInterface {
     }
 
 
-    pub fn add_bullet(&self, bullet: Bullet) {
+    pub fn add_bullet(&self, bullet: BulletBlob) {
         self.as_mut().add_bullet(bullet);
     }
 

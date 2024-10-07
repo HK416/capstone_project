@@ -4,7 +4,7 @@ use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::component::{GameObject, IdGenerator, Transform, WorldID};
 
-use super::{Bullet, BulletKind};
+use super::Bullet;
 
 
 
@@ -31,11 +31,7 @@ impl BulletPool {
         &self,
         world: &Arc<SkipMap<WorldID, GameObject>>, 
         id_generator: &Arc<IdGenerator>, 
-        kind: BulletKind, 
-        translation: impl Into<gmm::Vector>, 
-        direction: impl Into<gmm::Vector>, 
-        speed: f32, 
-        range: f32
+        bullet: Bullet, 
     ) -> WorldID {
         // 게임 오브젝트를 가져옵니다.
         let mut object = match self.free_list.pop() {
@@ -44,32 +40,25 @@ impl BulletPool {
                 // 새로운 게임 오브젝트를 생성합니다.
                 GameObject::new(
                     id_generator, 
-                    format!("Bullet({:?})", &kind), 
+                    format!("Bullet({:?})", &bullet.kind), 
                     None
                 )
             }
         };
 
         // 게임 오브젝트의 월드 변환 행렬을 계산합니다.
-        let translation: gmm::Vector = translation.into();
-        let direction: gmm::Vector = direction.into();
-        let z_axis = direction.try_vec3_normalize().unwrap();
+        let z_axis = bullet.direction;
         let y_axis = gmm::Vector::Y;
         let x_axis = y_axis.vec3_cross(z_axis);
         let y_axis = z_axis.vec3_cross(x_axis);
         let rotation = gmm::Quaternion::from_rotation_axes(x_axis, y_axis, z_axis);
-        let transform = Transform(gmm::Matrix::from_rotation_translation(rotation, translation));
+        let transform = Transform(gmm::Matrix::from_rotation_translation(rotation, bullet.translation));
 
         // 게임 오브젝트의 월드 변환 행렬을 설정합니다.
         object.set_world_transform(transform);
 
         // 게임 오브젝트에 총알 요소를 추가합니다.
-        object.insert(Bullet {
-            kind, 
-            direction, 
-            speed, 
-            range,
-        });
+        object.insert(bullet);
 
         // 게임 오브젝트를 게임 월드에 추가하고 식별자를 반환합니다.
         let world_id = object.id().clone();
