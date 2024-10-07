@@ -69,33 +69,37 @@ impl World {
         self.timer = tokio::time::Instant::now();
             
         loop {
-            let elapsed = self.timer.elapsed();
+            let elapsed = self.timer.elapsed().as_secs_f32();
             self.timer = tokio::time::Instant::now();
 
             let mut alive_bullets = Vec::new();
 
             while let Some(mut bullet) = self.bullets.pop() {
-                let move_distance = bullet.speed * elapsed.as_secs_f32();
+                let move_distance = bullet.speed * elapsed;
+
+                // bullet.direction이 영벡터가 아니라고 가정
+                let ray = Ray::build(bullet.translation, gmm::Vector::from(bullet.direction)).unwrap();
+                let bullet_position = gmm::Vector::from(bullet.translation);
+
+                let dist_limit_sq = (move_distance + 1.0).powi(2);
 
                 let mut nearest_distance = f32::MAX;
                 let mut nearest_player_id = None;
-
+                
                 for player in self.players.values() {
                     if player.id == bullet.shooter {
                         continue;
                     }
-
-                    let bullet_direction = gmm::Vector::from(bullet.direction);
-                    let bullet_position = gmm::Vector::from(bullet.translation);                    
+                    
                     let player_position = gmm::Vector::from(player.translation);
 
                     // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
-                    const BULLET_RADIUS: f32 = 0.01;    // 총알의 크기는 일단 반지름 0.01로 가정
-                    const PLAYER_RADIUS: f32 = 0.1;     // 플레이어의 반지름은 0.1로 가정
-                    const PLAYER_HEIGHT: f32 = 0.25;    // 플레이어의 높이는 0.25로 가정
+                    const BULLET_RADIUS: f32 = 1.0;    // 총알의 크기는 일단 반지름 0.01로 가정
+                    const PLAYER_RADIUS: f32 = 1.0;     // 플레이어의 반지름은 0.1로 가정
+                    const PLAYER_HEIGHT: f32 = 2.5;    // 플레이어의 높이는 0.25로 가정
 
                     // 너무 멀면 충돌체크 하지 않음(+1.0은 여유 거리)
-                    if (bullet_position - player_position).vec3_len_sq() > (move_distance + 1.0).powi(2) {
+                    if (bullet_position - player_position).vec3_len_sq() > dist_limit_sq {
                         continue;
                     }
                     
@@ -110,13 +114,11 @@ impl World {
                     let player_capsule = YCapsule {
                         center,
                         radius: PLAYER_RADIUS + BULLET_RADIUS,
-                        height: PLAYER_HEIGHT,
+                        height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
                     };
 
-                    // bullet.direction이 영벡터가 아니라고 가정
-                    let ray = Ray::build(bullet.translation, bullet_direction).unwrap();
-
                     if let Some(dist) = ray.intersect(&player_capsule) {
+                        println!("Bullet find player (player id: {})", player.id);
                         if dist < nearest_distance {
                             nearest_distance = dist;
                             nearest_player_id = Some(player.id);

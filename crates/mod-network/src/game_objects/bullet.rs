@@ -24,6 +24,7 @@ pub struct BulletBlob {
     pub direction: gmm::Float3, 
     pub speed: f32, 
     pub range: f32, 
+    pub id: u32,
     // TODO: 충돌체 추가
 }
 
@@ -46,7 +47,28 @@ impl BulletBlob {
             direction: direction.into(), 
             speed, 
             range, 
+            id: 0,      // 클라이언트에서 서버로 보낼때는 일단 아무 값이나 넣어서 보냄
             // TODO: 충돌체 추가
+        }
+    }
+
+    pub fn with_id(
+        kind: u32, 
+        shooter: u32, 
+        translation: impl Into<gmm::Float3>, 
+        direction: impl Into<gmm::Float3>, 
+        speed: f32, 
+        range: f32, 
+        id: u32,
+    ) -> Self {
+        Self { 
+            kind, 
+            shooter, 
+            translation: translation.into(), 
+            direction: direction.into(), 
+            speed, 
+            range, 
+            id, 
         }
     }
 
@@ -54,7 +76,7 @@ impl BulletBlob {
     /// `big-endian` 바이트 배열로부터 `Bullet`을 생성합니다.
     #[must_use]
     pub fn from_bytes(data: &[u8]) -> Self {
-        Self::new(
+        Self::with_id(
             u32::from_be_bytes(data[0..4].try_into().unwrap()), 
             u32::from_be_bytes(data[4..8].try_into().unwrap()), 
             gmm::Float3::new(
@@ -68,7 +90,8 @@ impl BulletBlob {
                 f32::from_be_bytes(data[28..32].try_into().unwrap()), 
             ), 
             f32::from_be_bytes(data[32..36].try_into().unwrap()), 
-            f32::from_le_bytes(data[36..40].try_into().unwrap())
+            f32::from_be_bytes(data[36..40].try_into().unwrap()),
+            u32::from_be_bytes(data[40..44].try_into().unwrap()),
         )
     }
 
@@ -86,6 +109,7 @@ impl BulletBlob {
         bytes.extend_from_slice(&self.direction.z.to_be_bytes());
         bytes.extend_from_slice(&self.speed.to_be_bytes());
         bytes.extend_from_slice(&self.range.to_be_bytes());
+        bytes.extend_from_slice(&self.id.to_be_bytes());
         // TODO: 충돌체를 big-endian 바이트 배열로 변환
         bytes
     }

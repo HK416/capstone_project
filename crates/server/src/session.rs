@@ -15,6 +15,8 @@ pub struct Session {
     world: WorldInterface,
 
     running: bool,
+
+    shot_count: u32,
 }
 
 impl Session {
@@ -25,6 +27,7 @@ impl Session {
             packet_parser: PacketParser::new(),
             world,
             running: true,
+            shot_count: 0,
         }
     }
 
@@ -97,7 +100,14 @@ impl Session {
 
                 PacketType::FIRED => {
                     let fired_packet = ShotPacket::from_raw(packet);
-                    self.world.add_bullet(fired_packet.bullet);
+                    
+                    self.shot_count += 1;
+                    self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
+
+                    let mut bullet = fired_packet.bullet;
+                    bullet.id = self.id * 1000 + self.shot_count;           // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
+
+                    self.world.add_bullet(bullet);
                 }
 
                 _ => {},
