@@ -21,16 +21,26 @@
 /// 총알의 종류와 Attacking 상태에서 지연 시간을 나타냅니다.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum BulletKind {
-    ArisOriginal(f32), 
+    ArisOriginal, 
 }
 
 impl BulletKind {
+    /// 총알의 식별 번호로부터 총알의 종류를 생성합니다.
+    #[inline]
+    #[must_use]
+    pub fn from_id(id: u32) -> Self {
+        match id {
+            0 => BulletKind::ArisOriginal, 
+            _ => panic!("out of range!")
+        }
+    }
+
     /// 총알의 식별 번호를 반환합니다.
     #[inline]
     #[must_use]
     pub fn into_id(self) -> u32 {
         match self {
-            BulletKind::ArisOriginal(_) => 0,
+            BulletKind::ArisOriginal => 0,
         }
     }
 
@@ -40,7 +50,7 @@ impl BulletKind {
     #[must_use]
     pub fn delay_time_sec(self) -> f32 {
         match self {
-            BulletKind::ArisOriginal(time) => time,
+            BulletKind::ArisOriginal => 1.0,
         }
     }
 }

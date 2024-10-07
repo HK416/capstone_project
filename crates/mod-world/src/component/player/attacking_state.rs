@@ -289,19 +289,22 @@ fn fire_bullet(
         // 타이머가 지연시간 보다 크거나 같을 경우 총알을 발사합니다.
         if timer >= delay_time_sec {
             // 카메라 오브젝트 식별자를 가져옵니다.
-            let camera_id = match player.get::<ThirdPersonCamera>() {
-                Some(third_person_camera) => third_person_camera.target.clone(), 
-                None => return Err(PlayerStateError::ElementNotFound(type_name::<ThirdPersonCamera>()))
-            };
+            // let camera_id = match player.get::<ThirdPersonCamera>() {
+            //     Some(third_person_camera) => third_person_camera.target.clone(), 
+            //     None => return Err(PlayerStateError::ElementNotFound(type_name::<ThirdPersonCamera>()))
+            // };
 
             // 카메라 오브젝트를 가져옵니다.
-            let camera = match world.get(&camera_id) {
-                Some(object) => object, 
-                None => return Err(PlayerStateError::ObjectNotFound(camera_id))
-            };
+            // let camera = match world.get(&camera_id) {
+            //     Some(object) => object, 
+            //     None => return Err(PlayerStateError::ObjectNotFound(camera_id))
+            // };
 
             // 카메라 오브젝트의 방향을 가져옵니다.
-            let direction = camera.get_world_transform().get_look_vector();
+            // let direction = camera.get_world_transform().get_look_vector();
+
+            // 플레이어 오브젝트의 방향을 가져옵니다.
+            let direction = player.get_world_transform().get_look_vector();
 
             // 플레이어 무기의 총구 오브젝트의 식별자를 가져옵니다.
             let muzzle_id = match player.get::<Weapon>() {
