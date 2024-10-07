@@ -7,7 +7,7 @@ use crate::{
     }, 
     render::{
         material::Material, 
-        mesh::{Attribute, Mesh, SkinnedMesh}, 
+        mesh::{Attribute, Mesh, NonSkinnedMesh}, 
         DEPTH_STENCIL_FORMAT, 
         SWAPCHAIN_FORMAT
     }
@@ -19,7 +19,7 @@ use super::MeshRenderer;
 
 /// 모델을 그리는 렌더러입니다.
 #[derive(Debug)]
-pub struct ModelRenderer {
+pub struct ShapeRenderer {
     /// 렌더러의 게임 오브젝트 식별자입니다.
     game_object_id: WorldID, 
 
@@ -33,7 +33,7 @@ pub struct ModelRenderer {
     pipeline: &'static wgpu::RenderPipeline,  
 }
 
-impl ModelRenderer {
+impl ShapeRenderer {
     /// 새로운 모델 메쉬 렌더러를 생성합니다.
     #[must_use]
     pub fn new(
@@ -51,7 +51,7 @@ impl ModelRenderer {
     }
 }
 
-impl MeshRenderer for ModelRenderer {
+impl MeshRenderer for ShapeRenderer {
     #[inline]
     #[must_use]
     fn game_object(&self) -> &WorldID {
@@ -77,11 +77,7 @@ impl MeshRenderer for ModelRenderer {
         rpass.set_bind_group(1, self.mesh().bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, self.mesh().vertex().slice(..));
-        rpass.set_vertex_buffer(1, self.mesh().attribute(&Attribute::Normals).unwrap().slice(..));
-        rpass.set_vertex_buffer(2, self.mesh().attribute(&Attribute::Tangents).unwrap().slice(..));
-        rpass.set_vertex_buffer(3, self.mesh().attribute(&Attribute::Texcoords0).unwrap().slice(..));
-        rpass.set_vertex_buffer(4, self.mesh().attribute(&Attribute::BoneIndices).unwrap().slice(..));
-        rpass.set_vertex_buffer(5, self.mesh().attribute(&Attribute::BoneWeights).unwrap().slice(..));
+        rpass.set_vertex_buffer(1, self.mesh().attribute(&Attribute::Texcoords0).unwrap().slice(..));
     }
 
     fn draw<'a>(&'a self, rpass: &mut wgpu::RenderPass<'a>) {
@@ -107,7 +103,7 @@ fn get_render_pipeline(device: &wgpu::Device) -> &'static wgpu::RenderPipeline {
         let layout = pipeline_layout(device);
         device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
-                label: Some("RenderPipeline(ModelRenderer)"), 
+                label: Some("RenderPipeline(ShapeRenderer)"), 
                 layout: Some(&layout), 
                 vertex: wgpu::VertexState {
                     module: &module, 
@@ -126,63 +122,15 @@ fn get_render_pipeline(device: &wgpu::Device) -> &'static wgpu::RenderPipeline {
                                 }
                             ]
                         }, 
-                        // 1번 입력 속성: 노멀 데이터
-                        wgpu::VertexBufferLayout {
-                            array_stride: mem::size_of::<gmm::Float3>() as wgpu::BufferAddress, 
-                            step_mode: wgpu::VertexStepMode::Vertex, 
-                            attributes: &[
-                                wgpu::VertexAttribute {
-                                    offset: 0, 
-                                    shader_location: 1, 
-                                    format: wgpu::VertexFormat::Float32x3, 
-                                }
-                            ]
-                        },
-                        // 2번 입력 속성: 탄젠트 공간 노멀 데이터
-                        wgpu::VertexBufferLayout {
-                            array_stride: mem::size_of::<gmm::Float3>() as wgpu::BufferAddress, 
-                            step_mode: wgpu::VertexStepMode::Vertex, 
-                            attributes: &[
-                                wgpu::VertexAttribute {
-                                    offset: 0, 
-                                    shader_location: 2, 
-                                    format: wgpu::VertexFormat::Float32x3, 
-                                }
-                            ]
-                        }, 
-                        // 3번 입력 속성: 0번 텍스처 좌표
+                        // 1번 입력 속성: 0번 텍스처 좌표
                         wgpu::VertexBufferLayout {
                             array_stride: mem::size_of::<gmm::Float2>() as wgpu::BufferAddress, 
                             step_mode: wgpu::VertexStepMode::Vertex, 
                             attributes: &[
                                 wgpu::VertexAttribute {
                                     offset: 0, 
-                                    shader_location: 3, 
+                                    shader_location: 1, 
                                     format: wgpu::VertexFormat::Float32x2, 
-                                }
-                            ]
-                        }, 
-                        // 4번 입력 속성: 뼈 인덱스 데이터
-                        wgpu::VertexBufferLayout {
-                            array_stride: mem::size_of::<gmm::UInteger4>() as wgpu::BufferAddress, 
-                            step_mode: wgpu::VertexStepMode::Vertex, 
-                            attributes: &[
-                                wgpu::VertexAttribute {
-                                    offset: 0, 
-                                    shader_location: 4, 
-                                    format: wgpu::VertexFormat::Uint32x4, 
-                                }
-                            ]
-                        }, 
-                        // 5번 입력 속성: 뼈 가중치 데이터
-                        wgpu::VertexBufferLayout {
-                            array_stride: mem::size_of::<gmm::Float4>() as wgpu::BufferAddress, 
-                            step_mode: wgpu::VertexStepMode::Vertex, 
-                            attributes: &[
-                                wgpu::VertexAttribute {
-                                    offset: 0, 
-                                    shader_location: 5, 
-                                    format: wgpu::VertexFormat::Float32x4
                                 }
                             ]
                         }, 
@@ -228,13 +176,13 @@ fn get_render_pipeline(device: &wgpu::Device) -> &'static wgpu::RenderPipeline {
 fn shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     #[cfg(feature = "enable-shader-validation")] {
         device.create_shader_module(
-            wgpu::include_wgsl!(concat!(env!("CARGO_MANIFEST_DIR"), "/shader/model.wgsl"))
+            wgpu::include_wgsl!(concat!(env!("CARGO_MANIFEST_DIR"), "/shader/shape.wgsl"))
         )
     }
     #[cfg(not(feature = "enable-shader-validation"))] {
         unsafe {
             device.create_shader_module_unchecked(
-                wgpu::include_wgsl!(concat!(env!("CARGO_MANIFEST_DIR"), "/shader/model.wgsl"))
+                wgpu::include_wgsl!(concat!(env!("CARGO_MANIFEST_DIR"), "/shader/shape.wgsl"))
             )
         }
     }
@@ -249,7 +197,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
             label: Some("PipelineLayout(ModelRenderer)"), 
             bind_group_layouts: &[
                 Camera::layout(device), 
-                SkinnedMesh::bind_group_layout(device), 
+                NonSkinnedMesh::bind_group_layout(device), 
                 Material::bind_group_layout(device)
             ], 
             push_constant_ranges: &[]

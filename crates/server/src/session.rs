@@ -109,6 +109,15 @@ impl Session {
                     bullet.id = self.id * 1000 + self.shot_count;           // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
 
                     self.world.add_bullet(bullet);
+
+                    let raw_packet = ShotPacket::new(bullet).as_raw();
+                    match self.stream_write(raw_packet).await {
+                        Ok(_) => { }, 
+                        Err(_) => {
+                            self.running = false;
+                            return;
+                        }
+                    }
                 }
 
                 _ => {},
