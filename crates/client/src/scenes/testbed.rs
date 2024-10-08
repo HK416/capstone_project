@@ -458,12 +458,12 @@ impl TestBedScene {
         let mut next = Vec::with_capacity(self.players.len());
         for data in bullets {
             if let Some(world_id) = self.bullets.remove(&data.id) {
-                // 총알 오브젝트의 로컬 변환 행렬(부모로 부터 변환 행렬)을 설정합니다.
-                let mut object = self.world.get_mut(&world_id).unwrap();
-                let mut transform = object.get_local_transform().clone();
-                transform.set_translation(data.translation);
-                object.set_local_transform(transform);
-                self.update_object_hierarchy(&world_id, Transform::default());
+                // // 총알 오브젝트의 로컬 변환 행렬(부모로 부터 변환 행렬)을 설정합니다.
+                // let mut object = self.world.get_mut(&world_id).unwrap();
+                // let transform = object.get_local_transform().clone();
+                // transform.set_translation(data.translation);
+                // object.set_local_transform(transform);
+                // self.update_object_hierarchy(&world_id, Transform::default());
 
                 next.push((data.id, world_id));
             } else {
