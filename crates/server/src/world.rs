@@ -182,6 +182,16 @@ impl World {
 
             // 살아남은 총알만 남김
             self.alive_bullets.retain(|bullet| bullet.alive);
+
+            // Tokio에서 loop가 비동기 함수 내에서 사용될 경우
+            // 다른 작업이 실행될 수 없을 수 있다.
+            // 
+            // 이 때문에 Tokio 내부적으로 일정 실행 시간을 넘길 경우 tokio::task::yield_now를 사용하는 것으로 추측된다.
+            // 다만 tokio::task::yield_now의 경우 다시 실행되는 시기를 모른다.
+            // (아마 시스템 인터럽트가 발생할 경우 실행되는 것으로 추측됨)
+            //
+            // 따라서 tokio::time::sleep으로 잠시 실행을 중단.
+            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
         }
     }
 }
