@@ -93,32 +93,11 @@ impl World {
     /// 총알 이동 및 충돌 처리
     pub async fn update_loop(&mut self) {
         self.timer = tokio::time::Instant::now();
-
-        let update_time = 1.0 / 30.0;   // 초당 업데이트 횟수 제한(30fps)
-        let mut elapsed = 0.0;          // 누적 경과 시간
         
         loop {
-            // 경과 시간 추가
-            elapsed += self.timer.elapsed().as_secs_f32();
+            // 경과 시간 계산
+            let elapsed = self.timer.elapsed().as_secs_f32();
             self.timer = tokio::time::Instant::now();
-
-            // 업데이트 시간이 되지 않았으면 대기
-            if elapsed < update_time {
-                // Tokio에서 loop가 비동기 함수 내에서 사용될 경우
-                // 다른 작업이 실행될 수 없을 수 있다.
-                // 
-                // 이 때문에 Tokio 내부적으로 일정 실행 시간을 넘길 경우 tokio::task::yield_now를 사용하는 것으로 추측된다.
-                // 다만 tokio::task::yield_now의 경우 다시 실행되는 시기를 모른다.
-                // (아마 시스템 인터럽트가 발생할 경우 실행되는 것으로 추측됨)
-                //
-                // 따라서 단순 대기가 아닌 tokio::task::yield_now를 사용하여 루프를 돌면서 cpu를 낭비하지 않도록 양보한다.
-
-                tokio::task::yield_now().await;
-                continue;
-            }
-            
-            // 경과 시간을 업데이트 시간만큼 감소(고정된 시간만큼 업데이트하기 위해)
-            elapsed -= update_time;
 
             // 받은 총알을 alive_bullets로 이동
             while let Some(bullet) = self.bullet_blobs.pop() {
@@ -126,7 +105,7 @@ impl World {
             }
 
             for bullet in self.alive_bullets.iter_mut() {
-                let move_distance = bullet.blob.speed * update_time;
+                let move_distance = bullet.blob.speed * elapsed;
 
                 // bullet.direction이 영벡터가 아니라고 가정
                 let ray = Ray::build(bullet.blob.translation, gmm::Vector::from(bullet.blob.direction)).unwrap();
@@ -208,6 +187,16 @@ impl World {
 
             // 살아남은 총알만 남김
             self.alive_bullets.retain(|bullet| bullet.alive);
+
+            // Tokio에서 loop가 비동기 함수 내에서 사용될 경우
+            // 다른 작업이 실행될 수 없을 수 있다.
+            // 
+            // 이 때문에 Tokio 내부적으로 일정 실행 시간을 넘길 경우 tokio::task::yield_now를 사용하는 것으로 추측된다.
+            // 다만 tokio::task::yield_now의 경우 다시 실행되는 시기를 모른다.
+            // (아마 시스템 인터럽트가 발생할 경우 실행되는 것으로 추측됨)
+            //
+            // 따라서 tokio::time::sleep으로 잠시 실행을 중단.
+            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
         }
     }
 }
