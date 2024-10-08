@@ -93,10 +93,23 @@ impl World {
     /// 총알 이동 및 충돌 처리
     pub async fn update_loop(&mut self) {
         self.timer = tokio::time::Instant::now();
-            
+
+        let update_time = 1.0 / 30.0;   // 초당 업데이트 횟수 제한(30fps)
+        let mut elapsed = 0.0;          // 누적 경과 시간
+        
         loop {
-            let elapsed = self.timer.elapsed().as_secs_f32();
+            // 경과 시간 추가
+            elapsed += self.timer.elapsed().as_secs_f32();
             self.timer = tokio::time::Instant::now();
+
+            // 업데이트 시간이 되지 않았으면 대기
+            if elapsed < update_time {
+                tokio::task::yield_now().await;     // 루프를 돌면서 cpu를 낭비하지 않도록 양보
+                continue;
+            }
+            
+            // 경과 시간을 업데이트 시간만큼 감소(고정된 시간만큼 업데이트하기 위해)
+            elapsed -= update_time;
 
             // 받은 총알을 alive_bullets로 이동
             while let Some(bullet) = self.bullet_blobs.pop() {
@@ -104,7 +117,7 @@ impl World {
             }
 
             for bullet in self.alive_bullets.iter_mut() {
-                let move_distance = bullet.blob.speed * elapsed;
+                let move_distance = bullet.blob.speed * update_time;
 
                 // bullet.direction이 영벡터가 아니라고 가정
                 let ray = Ray::build(bullet.blob.translation, gmm::Vector::from(bullet.blob.direction)).unwrap();
@@ -124,9 +137,9 @@ impl World {
                     let player_position = gmm::Vector::from(player.translation);
 
                     // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
-                    const BULLET_RADIUS: f32 = 1.0;    // 총알의 크기는 일단 반지름 0.01로 가정
-                    const PLAYER_RADIUS: f32 = 1.0;     // 플레이어의 반지름은 0.1로 가정
-                    const PLAYER_HEIGHT: f32 = 2.5;    // 플레이어의 높이는 0.25로 가정
+                    const BULLET_RADIUS: f32 = 0.5;
+                    const PLAYER_RADIUS: f32 = 1.0;
+                    const PLAYER_HEIGHT: f32 = 2.5;
 
                     if (bullet_position - player_position).vec3_len_sq() > dist_limit_sq {
                         continue;
@@ -166,15 +179,19 @@ impl World {
 
                     // 충돌하지 않았다면
                     None => {
-                        // 총알 위치 이동
-                        bullet.blob.translation += bullet.blob.direction * move_distance;
-                        
                         // 누적 이동거리 증가
                         bullet.moved_distance += move_distance;
-
+                        
+                        // println!("range: {}, moved: {}", bullet.blob.range, bullet.moved_distance);
+                        
                         // 총알 사거리를 넘어가면 총알 제거
                         if bullet.moved_distance >= bullet.blob.range {
+                            println!("Bullet range over");
                             bullet.alive = false;
+                        }
+                        else {
+                            // 총알 위치 이동
+                            bullet.blob.translation += bullet.blob.direction * move_distance;
                         }
                     }
                 }
