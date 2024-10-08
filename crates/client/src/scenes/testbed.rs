@@ -40,6 +40,8 @@ pub struct TestBedScene {
 
     /// 메쉬 렌더러 오브젝트를 관리합니다.
     renderer: Arc<Queue<Arc<dyn MeshRenderer>>>, 
+
+    lock_cursor: bool, 
 }
 
 impl TestBedScene {
@@ -65,6 +67,7 @@ impl TestBedScene {
             players: HashMap::with_capacity(10),
             bullets: HashMap::with_capacity(64), 
             renderer: Arc::new(Queue::new()), 
+            lock_cursor: true, 
         }
     }
 
@@ -154,15 +157,15 @@ impl TestBedScene {
     }
 
 
-    /// 플레이어를 제거합니다.
-    fn remove_player(&self, player_id: &WorldID) {
-        if let Some(object) = self.world.remove(player_id) {
+    /// 게임 오브젝트 계층 구조를 제거합니다.
+    fn remove_hierarchy(&self, object_id: &WorldID) {
+        if let Some(object) = self.world.remove(object_id) {
             if let Some(sibling_id) = object.get_sibling() {
-                self.remove_player(sibling_id);
+                self.remove_hierarchy(sibling_id);
             }
 
             if let Some(child_id) = object.get_child() {
-                self.remove_player(child_id);
+                self.remove_hierarchy(child_id);
             }
         }
     }
@@ -175,8 +178,6 @@ impl TestBedScene {
         device: &wgpu::Device, 
         queue: &wgpu::Queue
     ) {
-        print!("bullet spawn!");
-
         // 게임 오브젝트를 생성합니다.
         let mut object = GameObject::new(
             &self.id_generator, 
@@ -201,7 +202,7 @@ impl TestBedScene {
         let y_axis = gmm::Vector::Y;
         let x_axis = y_axis.vec3_cross(z_axis);
         let y_axis = z_axis.vec3_cross(x_axis);
-        let scale = gmm::Vector::fill(0.5);
+        let scale = gmm::Vector::fill(1.0);
         let rotation = gmm::Quaternion::from_rotation_axes(x_axis, y_axis, z_axis);
         let translation = gmm::Vector::from(data.translation);
         object.set_local_transform(Transform(gmm::Matrix::from_scale_rotation_translation(
@@ -223,18 +224,6 @@ impl TestBedScene {
         let world_id = object.id().clone();
         self.bullets.insert(data.id, world_id.clone());
         self.world.insert(object.id().clone(), object);
-    }
-
-
-    /// 총알을 게임 월드에서 제거합니다.
-    fn remove_bullet(&mut self, bullet_id: u32) {
-        if let Some(world_id) = self.bullets.remove(&bullet_id) {
-            if self.world.remove(&world_id).is_none() {
-                log::warn!("존재하지 않는 탄환 게임 오브젝트입니다!");
-            }
-        } else {
-            log::warn!("존재하지 않는 탄환의 식별자입니다!");
-        }
     }
 
 
@@ -410,6 +399,92 @@ impl TestBedScene {
         let mut writer = BufWriter::new(self.stream.as_ref());
         writer.write_all(&packet.as_bytes()).unwrap();
     }
+
+
+    /// 게임 월드의 플레이어 오브젝트를 갱신합니다.
+    fn pull_player_objects(
+        &mut self, 
+        players: Vec<Player>, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue
+    ) {
+        let mut next = Vec::with_capacity(self.players.len());
+        for data in players {
+            if let Some(world_id) = self.players.remove(&data.id) {
+                if data.id == self.client_id {
+                    next.push((data.id, world_id));
+                    continue;
+                }
+
+                // 플레이어 오브젝트의 로컬 변환 행렬(부모로 부터 변환 행렬)을 설정합니다.
+                let mut object = self.world.get_mut(&world_id).unwrap();
+                let mut local_transform = object.get_local_transform().clone();
+                local_transform.set_rotation(data.rotation);
+                local_transform.set_translation(data.translation);
+                object.set_local_transform(local_transform);
+
+                // 플레이어 오브젝트의 애니메이션을 설정합니다.
+                let animation = object.get_mut::<AnimationSet>().unwrap();
+                animation.index = data.anim_index as usize;
+                animation.timer = data.anim_timer;
+
+                next.push((data.id, world_id));
+            } else {
+                self.insert_player(data, device, queue);
+                next.push((data.id, self.players.remove(&data.id).unwrap()));
+            }
+        }
+
+        // 제거된 플레이어를 게임 월드에서 삭제합니다.
+        for world_id in self.players.values() {
+            self.remove_hierarchy(world_id);
+        }
+        self.players.clear();
+
+
+        // 남아있는 플레이어 이동.
+        while let Some((id, world_id)) = next.pop() {
+            self.players.insert(id, world_id);
+        }
+    }
+
+    /// 게임 월드의 플레이어 오브젝트를 갱신합니다.
+    fn pull_bullet_objects(
+        &mut self, 
+        bullets: Vec<BulletBlob>, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue
+    ) {
+        let mut next = Vec::with_capacity(self.players.len());
+        for data in bullets {
+            if let Some(world_id) = self.bullets.remove(&data.id) {
+                // 총알 오브젝트의 로컬 변환 행렬(부모로 부터 변환 행렬)을 설정합니다.
+                let mut object = self.world.get_mut(&world_id).unwrap();
+                let mut transform = object.get_local_transform().clone();
+                transform.set_translation(data.translation);
+                object.set_local_transform(transform);
+                self.update_object_hierarchy(&world_id, Transform::default());
+
+                next.push((data.id, world_id));
+            } else {
+                self.insert_bullet(data, device, queue);
+                next.push((data.id, self.bullets.remove(&data.id).unwrap()));
+            }
+        }
+
+        // 제거된 총알을 게임 월드에서 삭제합니다.
+        for world_id in self.bullets.values() {
+            println!("REMOVE: {:?}", world_id);
+            self.remove_hierarchy(world_id);
+        }
+        self.bullets.clear();
+
+
+        // 남아있는 총알 이동.
+        while let Some((id, world_id)) = next.pop() {
+            self.bullets.insert(id, world_id);
+        }
+    }
 }
 
 
@@ -460,13 +535,15 @@ impl GameScene for TestBedScene {
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         if let Some(window) = app.window() {
-            // 마우스 커서를 비활성화 합니다.
-            window.show_cursor(false);
-            let (w, h): (u32, u32) = window.inner_size().into();
-            window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
-            window.set_cursor_grab(CursorGrabMode::Confined)
-                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
-                .unwrap();
+            if self.lock_cursor {
+                // 마우스 커서를 비활성화 합니다.
+                window.show_cursor(false);
+                let (w, h): (u32, u32) = window.inner_size().into();
+                window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
+                window.set_cursor_grab(CursorGrabMode::Confined)
+                    .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
+                    .unwrap();
+            }
         }
         Ok(())
     }
@@ -476,44 +553,10 @@ impl GameScene for TestBedScene {
         raw_packet: RawPacket, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        // if raw_packet.packet_type() == PacketType::FIRED {
-        //     let packet = ShotPacket::from_raw(raw_packet);
-        //     self.insert_bullet(packet.bullet, app.render_device(), app.render_queue());
-        // } 
         if raw_packet.packet_type() == PacketType::PULL {
             let packet = PullPacket::from_raw(raw_packet);
-            let mut temp = Vec::new();
-            for pull_data in packet.players {
-                if let Some(world_id) = self.players.remove(&pull_data.id) {
-                    if pull_data.id == self.client_id {
-                        temp.push((pull_data.id, world_id));
-                        continue;
-                    }
-
-                    let mut player = self.world.get_mut(&world_id).unwrap();
-                    let mut transform = player.get_local_transform().clone();
-                    transform.set_translation(pull_data.translation);
-                    transform.set_rotation(pull_data.rotation);
-                    player.set_local_transform(transform);
-
-                    let animation = player.get_mut::<AnimationSet>().unwrap();
-                    animation.index = pull_data.anim_index as usize;
-                    animation.timer = pull_data.anim_timer;
-                    temp.push((pull_data.id, world_id));
-                } else {
-                    self.insert_player(pull_data, app.render_device(), app.render_queue());
-                    temp.push((pull_data.id, self.players.remove(&pull_data.id).unwrap()));
-                }
-            }
-
-            for player_id in self.players.values() {
-                self.remove_player(&player_id);
-            }
-            self.players.clear();
-            
-            for (id, player) in temp {
-                self.players.insert(id, player);
-            }
+            self.pull_player_objects(packet.players, app.render_device(), app.render_queue());
+            self.pull_bullet_objects(packet.bullets, app.render_device(), app.render_queue());
         }
 
         Ok(())
@@ -549,9 +592,26 @@ impl GameScene for TestBedScene {
         location: KeyLocation, 
         modifiers: Modifiers, 
         repeat: bool, 
-        _window: &Window, 
+        window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !repeat && keycode == KeyCode::Escape {
+            self.lock_cursor = !self.lock_cursor;
+            if self.lock_cursor {
+                // 마우스 커서를 비활성화 합니다.
+                window.show_cursor(false);
+                let (w, h): (u32, u32) = window.inner_size().into();
+                window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2)).unwrap();
+                window.set_cursor_grab(CursorGrabMode::Confined)
+                    .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
+                    .unwrap();
+            } else {
+                window.show_cursor(true);
+                window.set_cursor_grab(CursorGrabMode::None).unwrap();
+            }
+        }
+
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
