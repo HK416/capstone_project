@@ -1,7 +1,4 @@
-use std::{
-    net::{SocketAddr, ToSocketAddrs}, 
-    path::PathBuf
-};
+use std::path::PathBuf;
 
 use mod_parallelism::NUM_SYSTEM_CORE;
 use winit::window::Icon;
@@ -41,9 +38,6 @@ pub struct AppBuilder {
 
     /// 애플리케이션 생성 플래그입니다.
     pub(crate) flags: AppFlags, 
-
-    /// 애플리케이션 서버의 주소입니다.
-    pub(crate) address: SocketAddr, 
 }
 
 impl AppBuilder {
@@ -60,7 +54,6 @@ impl AppBuilder {
             fullscreen: true, 
             num_threads: *NUM_SYSTEM_CORE, 
             flags: AppFlags::empty(), 
-            address: "localhost:7878".to_socket_addrs().unwrap().next().unwrap(), 
         }
     }
 
@@ -117,14 +110,6 @@ impl AppBuilder {
     #[must_use]
     pub(crate) fn with_flags(mut self, flags: AppFlags) -> Self {
         self.flags = self.flags | flags;
-        self
-    }
-
-    /// 애플리케이션 서버의 주소를 설정합니다.
-    #[inline]
-    #[must_use]
-    pub fn with_server_address(mut self, address: SocketAddr) -> Self {
-        self.address = address;
         self
     }
 }

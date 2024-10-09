@@ -2,7 +2,7 @@ use std::{net::SocketAddr, path::Path, sync::Arc};
 
 use winit::{event_loop::EventLoopProxy, window::Window};
 
-use crate::etc::{AppEvent, AppFlags, GameTimer, Locale};
+use crate::{etc::{AppEvent, AppFlags, GameTimer, Locale}, net::NetManager};
 
 
 
@@ -17,8 +17,8 @@ pub trait AppHandle {
     /// 현재 애플리케이션 실행 디렉토리 경로를 가져옵니다.
     fn current_dir(&self) -> &Path;
 
-    /// 애플리케이션 서버 주소를 가져옵니다.
-    fn address(&self) -> &SocketAddr;
+    /// 애플리케이션 네트워크 매니저를 가져옵니다.
+    fn network(&self) -> &NetManager;
 
     /// 애플리케이션 생성 플래그를 가져옵니다.
     fn flags(&self) -> AppFlags;

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, error::Error, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
-use mod_app::{app::AppHandle, ext::AppWindowExt, scene::GameScene};
+use mod_app::{app::AppHandle, ext::AppWindowExt, net::{IpAddress, NetManager}, scene::GameScene};
 use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
@@ -18,7 +18,7 @@ const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
 
 /// TestBed Game Scene
 pub struct TestBedScene {
-    stream: Arc<TcpStream>, 
+    address: IpAddress, 
     stage_data: Vec<Player>, 
 
     client_id: u32, 
@@ -49,7 +49,7 @@ impl TestBedScene {
     #[inline]
     #[must_use]
     pub fn new<I>(
-        stream: Arc<TcpStream>, 
+        address: IpAddress, 
         client_id: u32, 
         players: I, 
     ) -> Self 
@@ -58,7 +58,7 @@ impl TestBedScene {
         I::IntoIter: ExactSizeIterator
     {   
         Self { 
-            stream, 
+            address, 
             stage_data: players.into_iter().collect(), 
             client_id, 
             id_generator: IdGenerator::new(), 
@@ -125,10 +125,6 @@ impl TestBedScene {
 
         
         if self.client_id == data.id {
-            // 플레이어 오브젝트에 TCP 소켓을 추가합니다.
-            // ※ 추후 변경될 예정입니다.
-            object.insert(self.stream.clone());
-
             // 플레이어 오브젝트에 입력 제어기를 추가합니다.
             object.insert(InputController::default());
 
@@ -305,7 +301,7 @@ impl TestBedScene {
 
 
     /// 총알을 생성 및 삭제하고, 총알의 위치를 갱신합니다.
-    fn update_bullet(&self, elapsed_time_sec: f32) {
+    fn update_bullet(&self, elapsed_time_sec: f32, network: &NetManager) {
         // 플레이어 오브젝트를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
         let mut player = self.world.get_mut(player_id).unwrap();
@@ -323,8 +319,8 @@ impl TestBedScene {
             )).as_raw();
             
             // 패킷을 서버에 전송합니다.
-            let mut writer = BufWriter::new(self.stream.as_ref());
-            writer.write_all(&packet.as_bytes()).unwrap();
+            let socket = network.get(&self.address).unwrap();
+            socket.push_packet(packet);
         }
 
         self.update_bullet_pos(elapsed_time_sec);
@@ -378,7 +374,7 @@ impl TestBedScene {
 
 
     /// 플레이어 데이터를 서버로 전송합니다.
-    fn upload_player_data(&self) {
+    fn upload_player_data(&self, network: &NetManager) {
         // 플레이어 오브젝트를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
         let player = self.world.get(player_id).unwrap();
@@ -394,10 +390,10 @@ impl TestBedScene {
             anim_timer: animation.timer
         };
         
-        // 패킷을 생성합니다.
+        // 패킷을 생성하고 전송합니다.
         let packet = PushPacket::new(push_data).as_raw();
-        let mut writer = BufWriter::new(self.stream.as_ref());
-        writer.write_all(&packet.as_bytes()).unwrap();
+        let socket = network.get(&self.address).unwrap();
+        socket.push_packet(packet);
     }
 
 
@@ -696,9 +692,9 @@ impl GameScene for TestBedScene {
 
         self.update_camera_pos();
         self.update_player(elapsed_time_sec);
-        self.update_bullet(elapsed_time_sec);
+        self.update_bullet(elapsed_time_sec, app.network());
 
-        self.upload_player_data();
+        self.upload_player_data(app.network());
 
         Ok(())
     }

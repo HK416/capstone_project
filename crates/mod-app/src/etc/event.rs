@@ -2,7 +2,7 @@ use std::io;
 
 use mod_network::RawPacket;
 
-use crate::scene::GameSceneFlow;
+use crate::{net::IpAddress, scene::GameSceneFlow};
 
 
 
@@ -13,11 +13,11 @@ pub enum AppEvent {
     SetGameSceneFlow(GameSceneFlow), 
 
     /// 서버 연결이 끊어졌을 때 전달되는 이벤트입니다.
-    ClosedSocket, 
+    ClosedSocket(IpAddress), 
 
     /// 패킷을 수신했을 때 전달되는 이벤트입니다.
     PacketReceived(RawPacket), 
 
-    /// 네트워크 입/출력 오류가 발생했을 떄 전달되는 이벤트입니다.
-    NetworkIOError(io::Error), 
+    /// 입/출력 오류가 발생했을 떄 전달되는 이벤트입니다.
+    IOError(io::Error), 
 }

@@ -2,7 +2,6 @@ use std::{
     cell::RefCell, 
     collections::VecDeque, 
     error::Error, 
-    net::SocketAddr, 
     path::{Path, PathBuf}, 
     sync::Arc
 };
@@ -11,7 +10,6 @@ use mod_world::render::{
     config_swapchain, 
     create_surface, 
     init_wgpu, 
-    RenderError, 
     DEPTH_STENCIL_FORMAT
 };
 use winit::{
@@ -26,6 +24,7 @@ use winit::{
 use crate::{
     etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize}, 
     exception::alert_error, 
+    net::NetManager, 
     scene::{GameScene, GameSceneFlow}
 };
 
@@ -55,8 +54,8 @@ pub struct Application {
     /// 애플리케이션 실행 디렉토리 경로입니다.
     current_dir: PathBuf, 
 
-    /// 애플리케이션 서버 주소입니다.
-    address: SocketAddr, 
+    /// 애플리케이션 네트워크 매니저입니다.
+    net_manager: NetManager, 
 
     /// 애플리케이션 플래그 옵션입니다.
     flags: AppFlags, 
@@ -125,16 +124,21 @@ impl Application {
     pub(crate) async fn new(
         event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
         builder: AppBuilder
-    ) -> Result<Self, RenderError> {
+    ) -> Result<Self, Box<dyn Error + Send>> {
         // wgpu 렌더러를 생성합니다.
         let enable_debug_layer = builder.flags.contains(AppFlags::ENABLE_DEBUG_LAYER);
-        let (instance, adapter, device, queue) = init_wgpu(enable_debug_layer).await?;
+        let (instance, adapter, device, queue) = init_wgpu(enable_debug_layer).await
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 네트워크 매니저를 생성합니다.
+        let net_manager = NetManager::new(builder.num_threads, event_loop_proxy.clone())
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         Ok(Self {
             event_loop_proxy, 
             num_threads: builder.num_threads, 
             current_dir: unsafe { builder.current_dir.unwrap_unchecked() }, // Safe: 빌더 생성 중 확인함.
-            address: builder.address, 
+            net_manager, 
             flags: builder.flags, 
             locale: None, 
             window_title: builder.title.unwrap_or("Hello to Halo".to_string()), 
@@ -550,23 +554,20 @@ impl ApplicationHandler<AppEvent> for Application {
                 self.scene_flow = flow.into();
                 return;
             }, 
-            AppEvent::ClosedSocket => {
+            AppEvent::ClosedSocket(_) => {
                 // FIXME: 현재는 애플리케이션을 종료시킵니다.
                 alert_error("Runtime error", "서버와 연결이 끊어졌습니다.", self.window.as_deref());
-                drop(self.window.take());
-                drop(self.surface.take());
+                std::process::exit(-1);
             }, 
-            AppEvent::NetworkIOError(e) => {
+            AppEvent::IOError(e) => {
                 alert_error("Runtime error", e.to_string(), self.window.as_deref());
-                drop(self.window.take());
-                drop(self.surface.take());
+                std::process::exit(-1);
             }, 
             AppEvent::PacketReceived(packet) => {
                 log::debug!("received packet: {:?}", packet);
                 if let Err(e) = curr_scene.on_received_packet(packet, self) {
                     alert_error("Runtime error", e.to_string(), self.window.as_deref());
-                    drop(self.window.take());
-                    drop(self.surface.take());
+                    std::process::exit(-1);
                 }
             }
         };
@@ -592,8 +593,10 @@ impl AppHandle for Application {
         &self.current_dir
     }
 
-    fn address(&self) -> &SocketAddr {
-        &self.address
+    #[inline]
+    #[must_use]
+    fn network(&self) -> &NetManager {
+        &self.net_manager
     }
 
     #[inline]

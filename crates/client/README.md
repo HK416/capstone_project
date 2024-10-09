@@ -42,4 +42,3 @@ cargo run --bin client --release -- <OPTIONS>
 | --show-frame-rate | (예정) 현재 프레임 레이트를 출력합니다. |
 | --no-vsync | 수직 동기화를 비활성화 합니다. |
 | --enable-debug-layer | 렌더러의 디버깅 레이어를 활성화 합니다. |
-| --server-addr <문자열> | 서버의 주소를 설정합니다. |
