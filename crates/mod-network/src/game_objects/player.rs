@@ -1,9 +1,5 @@
-use bytemuck::{Pod, Zeroable};
-
-
-
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Player {
     pub id: u32,
     pub translation: gmm::Float3, 

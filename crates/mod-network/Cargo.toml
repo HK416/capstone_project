@@ -1,6 +1,6 @@
 [package]
 name = "mod-network"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -8,10 +8,8 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-# byte 캐스팅 라이브러리
-# License: Zlib or Apache-2.0 or MIT
-bytemuck = { version = "1.16", features = ["derive"] }
-
-# 게임 수학 라이브러리
+# Math library for video games
 # License: MIT
 gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck", "serde"] }
+
+local-ip-address = "0.6.2"

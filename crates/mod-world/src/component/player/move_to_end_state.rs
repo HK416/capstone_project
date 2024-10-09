@@ -1,10 +1,10 @@
-use std::{any::TypeId, sync::Arc};
+use std::{any::type_name, sync::Arc};
 
 use mod_parallelism::collections::SkipMap;
 use mod_physics::rigid_body::RigidBody;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::component::{AnimationSet, Direction, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
+use crate::component::{AnimationSet, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
 
 use super::{PlayerFlags, PlayerState, PlayerStateError};
 
@@ -29,27 +29,27 @@ pub fn on_keyboard_pressed(
         // 플레이어 컨트롤러를 가져옵니다.
         let controller = match player.get::<InputController>() {
             Some(controller) => controller.clone(), 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<InputController>()))
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<InputController>()))
         };
 
-        // 플레이어 입력 방향을 가져옵니다.
-        let direction = match player.get_mut::<Direction>() {
-            Some(direction) => direction, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<Direction>()))
+        // 플레이어 상태 플래그를 가져옵니다.
+        let flags = match player.get_mut::<PlayerFlags>() {
+            Some(flags) => flags, 
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerFlags>()))
         };
 
 
         if keycode == controller.forward {
-            *direction |= Direction::Forward;
+            *flags |= PlayerFlags::Forward;
         } else if keycode == controller.backward {
-            *direction |= Direction::Backward;
+            *flags |= PlayerFlags::Backward;
         } else if keycode == controller.left {
-            *direction |= Direction::Left;
+            *flags |= PlayerFlags::Left;
         } else if keycode == controller.right {
-            *direction |= Direction::Right;
+            *flags |= PlayerFlags::Right;
         }
 
-        if !direction.is_stopped() {
+        if !flags.is_stopped() {
             // 플레이어 오브젝트를 가져옵니다.
             let mut player = match world.get_mut(player_id) {
                 Some(object) => object, 
@@ -59,7 +59,7 @@ pub fn on_keyboard_pressed(
             // 플레이어 애니메이션을 가져옵니다.
             let animation = match player.get_mut::<AnimationSet>() {
                 Some(animation) => animation, 
-                None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+                None => return Err(PlayerStateError::ElementNotFound(type_name::<AnimationSet>()))
             };
 
             // 애니메이션을 초기화 합니다.
@@ -95,27 +95,27 @@ pub fn on_keyboard_released(
         // 플레이어 컨트롤러를 가져옵니다.
         let controller = match player.get::<InputController>() {
             Some(controller) => controller.clone(), 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<InputController>()))
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<InputController>()))
         };
 
-        // 플레이어 입력 방향을 가져옵니다.
-        let direction = match player.get_mut::<Direction>() {
-            Some(direction) => direction, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<Direction>()))
+        // 플레이어 상태 플래그를 가져옵니다.
+        let flags = match player.get_mut::<PlayerFlags>() {
+            Some(flags) => flags, 
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerFlags>()))
         };
 
 
         if keycode == controller.forward {
-            *direction &= !Direction::Forward;
+            *flags &= !PlayerFlags::Forward;
         } else if keycode == controller.backward {
-            *direction &= !Direction::Backward;
+            *flags &= !PlayerFlags::Backward;
         } else if keycode == controller.left {
-            *direction &= !Direction::Left;
+            *flags &= !PlayerFlags::Left;
         } else if keycode == controller.right {
-            *direction &= !Direction::Right;
+            *flags &= !PlayerFlags::Right;
         }
 
-        if !direction.is_stopped() {
+        if !flags.is_stopped() {
             // 플레이어 오브젝트를 가져옵니다.
             let mut player = match world.get_mut(player_id) {
                 Some(object) => object, 
@@ -125,7 +125,7 @@ pub fn on_keyboard_released(
             // 플레이어 애니메이션을 가져옵니다.
             let animation = match player.get_mut::<AnimationSet>() {
                 Some(animation) => animation, 
-                None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+                None => return Err(PlayerStateError::ElementNotFound(type_name::<AnimationSet>()))
             };
 
             // 애니메이션을 초기화 합니다.
@@ -175,7 +175,7 @@ pub fn on_mouse_btn_pressed(
     // 입력 제어기를 가져옵니다.
     let controller = match player.get::<InputController>() {
         Some(controller) => controller, 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<InputController>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<InputController>()))
     };
 
     // 조준 버튼이 눌렸을 경우 플레이어 상태를 변경합니다.
@@ -186,19 +186,19 @@ pub fn on_mouse_btn_pressed(
                 rigid_body.velocity = gmm::Vector::ZERO;
                 rigid_body.reset_force();
             }, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<RigidBody>()))
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<RigidBody>()))
         };
 
         // 플래그 변수를 활성화 합니다.
         match player.get_mut::<PlayerFlags>() {
             Some(flags) => *flags |= PlayerFlags::Fire, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<PlayerFlags>()))
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<PlayerFlags>()))
         };
 
         // 카메라 오브젝트의 식별자를 가져옵니다.
         let camera_id = match player.get::<ThirdPersonCamera>() {
             Some(third_person_camera) => third_person_camera.target.clone(), 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<ThirdPersonCamera>()))
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<ThirdPersonCamera>()))
         };
 
         // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
@@ -220,7 +220,7 @@ pub fn on_mouse_btn_pressed(
         // 플레이어 애니메이션을 가져옵니다.
         let animation = match player.get_mut::<AnimationSet>() {
             Some(animation) => animation, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<AnimationSet>()))
         };
 
         // 애니메이션을 초기화 합니다.
@@ -278,7 +278,7 @@ pub fn update_animation(
     // 애니메이션 요소를 가져옵니다.
     let animation = match player.get_mut::<AnimationSet>() {
         Some(animation) => animation, 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<AnimationSet>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<AnimationSet>()))
     };
 
     // 애니메이션 타이머를 갱신합니다.
@@ -298,7 +298,7 @@ pub fn update_animation(
         // 플레이어 속도를 초기화 합니다.
         let rigid_body =  match player.get_mut::<RigidBody>() {
             Some(rigid_body) => rigid_body, 
-            None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<RigidBody>()))
+            None => return Err(PlayerStateError::ElementNotFound(type_name::<RigidBody>()))
         };
         rigid_body.velocity = gmm::Vector::ZERO;
 
@@ -357,15 +357,15 @@ fn update_player_force(
     // 카메라 오브젝트의 식별자를 가져옵니다.
     let camera_id = match player.get::<ThirdPersonCamera>() {
         Some(third_person_camera) => third_person_camera.target.clone(), 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<ThirdPersonCamera>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<ThirdPersonCamera>()))
     };
 
     // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
     let camera = world.get(&camera_id).unwrap();
     let camera_transform = camera.get_world_transform().clone();
 
-    // 현재 사용자 입력 방향을 가져옵니다.
-    let direction = player.get::<Direction>().unwrap();
+    // 현재 사용자 상태 플래그를 가져옵니다.
+    let flags = player.get::<PlayerFlags>().unwrap();
 
     // 플레이어의 힘의 총량을 계산합니다.
     let mut right = camera_transform.get_right_vector();
@@ -374,10 +374,10 @@ fn update_player_force(
     let mut look = camera_transform.get_look_vector();
     look.set_y(0.0);
 
-    let vector = direction.get_vector();
+    let direction = flags.get_direction();
     let mut force_accum = gmm::Vector::ZERO;
-    force_accum += FORCE * vector.get_x() * right;
-    force_accum += FORCE * vector.get_z() * look;
+    force_accum += FORCE * direction.get_x() * right;
+    force_accum += FORCE * direction.get_z() * look;
         
     // 플레이어 힘의 총량을 설정합니다.
     let rigid_body = player.get_mut::<RigidBody>().unwrap();
@@ -423,7 +423,7 @@ fn update_position(
     // 강체 물리 요소를 가져옵니다.
     let rigid_body = match player.get_mut::<RigidBody>() {
         Some(rigid_body) => rigid_body, 
-        None => return Err(PlayerStateError::ElementNotFound(TypeId::of::<RigidBody>()))
+        None => return Err(PlayerStateError::ElementNotFound(type_name::<RigidBody>()))
     };
 
     // 플레이어를 이동시킵니다.

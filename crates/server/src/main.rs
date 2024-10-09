@@ -3,14 +3,18 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 use std::sync::Mutex;
+use std::env;
+use std::str::FromStr;
 
 use server::{
     world::*,
     session::Session,
 };
 
+use mod_network::Addr;
 
 
+/// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -22,9 +26,14 @@ pub async fn run_server(addr: &str) {
 
     println!("Server listening on: {}", listener.local_addr().unwrap());
 
-    let world = World::new();
 
-    wait_for_players(listener, (&world).into()).await;
+    let mut world = World::new();
+
+    // 새로운 쓰레드에서 클라이언트 연결 관리
+    tokio::spawn(wait_for_players(listener, (&world).into()));
+
+    // 메인 쓰레드에서 월드 업데이트
+    world.update_loop().await;
 }
 
 
@@ -93,7 +102,21 @@ async fn server_full(mut stream: TcpStream) {
 
 #[tokio::main]
 async fn main() {
-    run_server("localhost:7878").await;
+    let mut args = env::args();
+    args.next();
+
+    let addr = match args.next() {
+        Some(args) => match Addr::from_str(&args) {
+            Ok(addr) => addr,
+            Err(e) => {
+                eprintln!("{}", e);
+                return;
+            }
+        },
+        None => Addr::default()
+    };
+
+    run_server(&addr.to_string()).await;
 }
 
 

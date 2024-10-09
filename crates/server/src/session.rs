@@ -15,6 +15,8 @@ pub struct Session {
     world: WorldInterface,
 
     running: bool,
+
+    shot_count: u32,
 }
 
 impl Session {
@@ -25,13 +27,14 @@ impl Session {
             packet_parser: PacketParser::new(),
             world,
             running: true,
+            shot_count: 0,
         }
     }
 
     pub async fn handle_connection(&mut self) {
-        self.world.add_player(self.id).await;
+        self.world.add_player(self.id);
 
-        match self.stream_write(InitPacket::new(self.id, self.world.get_objects()).as_raw()).await {
+        match self.stream_write(InitPacket::new(self.id, self.world.get_players()).as_raw()).await {
             Ok(_) => {
                 // println!("Client {} connected", self.id);
             },
@@ -57,7 +60,7 @@ impl Session {
             };
         }
 
-        self.world.remove_player(self.id).await;
+        self.world.remove_player(self.id);
     }
 
     
@@ -68,10 +71,11 @@ impl Session {
             match packet.packet_type() {
                 PacketType::PUSH => {
                     let push_packet = PushPacket::from_raw(packet);
-                    self.world.update_player(push_packet.player).await;
+                    self.world.update_player(push_packet.player);
 
-                    let world = self.world.get_objects();
-                    let raw_packet = PullPacket::new(world).as_raw();
+                    let players = self.world.get_players();
+                    let bullets = self.world.get_bullets();
+                    let raw_packet = PullPacket::new(players, bullets).as_raw();
                     match self.stream_write(raw_packet).await {
                         Ok(_) => {
 
@@ -82,16 +86,31 @@ impl Session {
                         }
                     }
                 }, 
+
                 PacketType::MOVE => {
                     let move_packet = MovePacket::from_raw(packet);
-                    self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z).await;
+                    self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z);
                 },
+
                 PacketType::MESSAGE => {
                     let message_packet = MessagePacket::from_raw(packet);
                     if message_packet.msg == "ping" {
                         self.stream_write(MessagePacket::new(message_packet.time, "pong").as_raw()).await.unwrap();
                     }
                 },
+
+                PacketType::FIRED => {
+                    let fired_packet = ShotPacket::from_raw(packet);
+                    
+                    self.shot_count += 1;
+                    self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
+
+                    let mut bullet = fired_packet.bullet;
+                    bullet.id = self.id * 1000 + self.shot_count;           // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
+
+                    self.world.add_bullet(bullet);
+                }
+
                 _ => {},
             }
         }

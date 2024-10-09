@@ -9,5 +9,20 @@ publish.workspace = true
 
 [dependencies]
 tokio = { version = "1.39.3", features = ["full"] }
+futures = "0.3.30"
+rand = "0.8.5"
 
+gmm = { git = "https://github.com/HK416/gmm.git" }
+
+mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }
+mod-physics = { path = "../mod-physics" }
+
+
+[[example]]
+name = "move"
+path = "./dummies/move.rs"
+
+[[example]]
+name = "ad-rm"
+path = "./dummies/ad-rm.rs"

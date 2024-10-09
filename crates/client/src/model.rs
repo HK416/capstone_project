@@ -8,19 +8,126 @@ use mod_world::{
         animation::{AnimationClip, KeyFrame, Skinning}, 
         material::{Material, MaterialBuilder}, 
         mesh::{Indices, Mesh, MeshBuilder, SkinnedMesh, SkinningData, VertexAttributeValues}, 
-        pipeline::mesh::{model::ModelRenderer, MeshRenderer}, 
+        pipeline::mesh::{model::ModelRenderer, shape::ShapeRenderer, MeshRenderer}, 
         pool::{SamplerPool, TexturePool, TextureViewPool}
     }
 };
 use rust_embed::Embed;
 
 /// `Aris_Original` 모델의 경로입니다.
-const PATH: &'static str = "characters/aris_original/Aris_Original_Mesh.ron";
+const ARIS_ORIGINAL_PATH: &'static str = "characters/aris_original/Aris_Original_Mesh.ron";
+
+/// `Sphere` 모양의 경로입니다.
+const SPHERE_PATH: &'static str = "shape/sphere/Sphere.ron";
 
 /// 임베딩된 에셋 파일 관리자입니다.
 #[derive(Embed)]
 #[folder = "assets/"]
 struct EmbededAssets;
+
+
+pub fn spawn_sphere_shape(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>,
+    id_generator: &Arc<IdGenerator>, 
+    device: &wgpu::Device, 
+    queue: &wgpu::Queue
+) -> WorldID {
+    let embeded_file = EmbededAssets::get(&SPHERE_PATH).unwrap();
+    let blob: ModelBlob = ron::de::from_bytes(&embeded_file.data).unwrap();
+    let root_id = spawn_shape_node(
+        world, 
+        renderer, 
+        id_generator, 
+        device, 
+        queue, 
+        None, 
+        blob.root, 
+        Vec::new()
+    );
+
+    root_id
+}
+
+/// 모양 노드를 생성합니다.
+#[must_use]
+fn spawn_shape_node(
+    world: &Arc<SkipMap<WorldID, GameObject>>, 
+    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
+    id_generator: &Arc<IdGenerator>, 
+    device: &wgpu::Device,
+    queue: &wgpu::Queue, 
+    parent: Option<WorldID>, 
+    mut blob: NodeBlob, 
+    mut sibling: Vec<NodeBlob>, 
+) -> WorldID {
+    // 새로운 게임 오브젝트를 생성합니다.
+    let name = blob.name.clone();
+    let mut object = GameObject::new(id_generator, name, parent.clone());
+
+
+    // 로컬 변환 행렬과 월드 변환 행렬을 생성하고 설정합니다.
+    let local_transform = gmm::Matrix::load_float4x4(blob.transform);
+    let world_transform = gmm::Matrix::IDENTITY;
+    object.set_local_transform(local_transform);
+    object.set_world_transform(world_transform);
+
+
+    // 자식 데이터가 있는 경우 자식 오브젝트를 생성합니다.
+    if let Some(child_blob) = blob.children.pop() {
+        let child_id = spawn_shape_node(
+            world, 
+            renderer, 
+            id_generator, 
+            device, 
+            queue, 
+            Some(object.id().clone()), 
+            child_blob, 
+            blob.children
+        );
+        object.set_child(Some(child_id));
+    }
+
+    // 형제 데이터가 있는 경우 형제 오브젝트를 생성합니다.
+    if let Some(sibling_blob) = sibling.pop() {
+        let sibling_id = spawn_shape_node(
+            world, 
+            renderer, 
+            id_generator, 
+            device, 
+            queue, 
+            parent, 
+            sibling_blob, 
+            sibling
+        );
+        object.set_sibling(Some(sibling_id));
+    }
+
+    // 메쉬 데이터가 있는 경우 모델 렌더러를 생성합니다.
+    if let Some(mesh_blob) = blob.mesh {
+        let builder = create_mesh_builder(mesh_blob);
+        let mesh = builder.build(device, queue, None);
+
+        let materials: Vec<_> = blob.materials.into_iter()
+            .map(|material_blob| {
+                create_material(device, queue, material_blob)
+            })
+            .collect();
+
+        let mesh_renderer = Arc::new(ShapeRenderer::new(
+            object.id().clone(), 
+            mesh, 
+            materials, 
+            device
+        ));
+        object.insert(mesh_renderer.clone());
+        renderer.push(mesh_renderer);
+    }
+
+    let id = object.id().clone();
+    world.insert(id.clone(), object);
+    id
+}
 
 
 
@@ -30,13 +137,13 @@ pub fn spawn_aris_original_model(
     id_generator: &Arc<IdGenerator>, 
     device: &wgpu::Device, 
     queue: &wgpu::Queue
-) -> (WorldID, Vec<AnimationClip>) {
-    let embeded_file = EmbededAssets::get(&PATH).unwrap();
+) -> (WorldID, Vec<AnimationClip>, HashMap<String, WorldID>) {
+    let embeded_file = EmbededAssets::get(&ARIS_ORIGINAL_PATH).unwrap();
     let blob: ModelBlob = ron::de::from_bytes(&embeded_file.data).unwrap();
 
     let mut nodes = HashMap::new();
     let mut skinned_meshes = HashMap::new();
-    let root_id = spawn_node(
+    let root_id = spawn_model_node(
         world, 
         renderer, 
         id_generator, 
@@ -57,13 +164,13 @@ pub fn spawn_aris_original_model(
         ))
         .collect();
 
-    (root_id, animations)
+    (root_id, animations, nodes)
 }
 
 
 /// 모델 노드를 생성합니다.
 #[must_use]
-fn spawn_node(
+fn spawn_model_node(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     id_generator: &Arc<IdGenerator>, 
@@ -89,7 +196,7 @@ fn spawn_node(
 
     // 자식 데이터가 있는 경우 자식 오브젝트를 생성합니다.
     if let Some(child_blob) = blob.children.pop() {
-        let child_id = spawn_node(
+        let child_id = spawn_model_node(
             world, 
             renderer, 
             id_generator, 
@@ -106,7 +213,7 @@ fn spawn_node(
 
     // 형제 데이터가 있는 경우 형제 오브젝트를 생성합니다.
     if let Some(sibling_blob) = sibling.pop() {
-        let sibling_id = spawn_node(
+        let sibling_id = spawn_model_node(
             world, 
             renderer, 
             id_generator, 
