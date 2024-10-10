@@ -12,6 +12,7 @@ use mod_world::render::{
     init_wgpu, 
     DEPTH_STENCIL_FORMAT
 };
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler, 
     dpi::PhysicalPosition, 
@@ -22,10 +23,7 @@ use winit::{
 };
 
 use crate::{
-    etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize}, 
-    exception::alert_error, 
-    net::NetManager, 
-    scene::{GameScene, GameSceneFlow}
+    asset::AssetBundle, etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize}, exception::alert_error, net::NetManager, scene::{GameScene, GameSceneFlow}
 };
 
 use super::{
@@ -48,14 +46,20 @@ pub struct Application {
     /// 사용자 정의 이벤트를 이벤트 루프로 보내는 프록시입니다.
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
 
-    /// 애플리케이션에서 사용 가능한 최대 스레드의 수입니다.
-    num_threads: usize, 
+    /// 작업 스레드 풀 객체입니다.
+    task_threads: ThreadPool, 
+
+    /// 입/출력 스레드 풀 객체입니다.
+    io_threads: ThreadPool, 
 
     /// 애플리케이션 실행 디렉토리 경로입니다.
     current_dir: PathBuf, 
 
+    /// 애플리케이션 에셋 관리자입니다.
+    bundle: AssetBundle, 
+
     /// 애플리케이션 네트워크 매니저입니다.
-    net_manager: NetManager, 
+    network: NetManager, 
 
     /// 애플리케이션 플래그 옵션입니다.
     flags: AppFlags, 
@@ -131,14 +135,36 @@ impl Application {
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         // 네트워크 매니저를 생성합니다.
-        let net_manager = NetManager::new(builder.num_threads, event_loop_proxy.clone())
+        let network = NetManager::new(builder.num_threads, event_loop_proxy.clone())
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 에셋 관리자를 생성합니다.
+        let mut root_dir = unsafe { builder.current_dir.clone().unwrap_unchecked() }; // Safe: 빌더를 생성할 때 존재 유무를 확인함.
+        root_dir.push("assets");
+        let bundle = AssetBundle::new(root_dir)
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 입/출력 스레드 풀 객체를 생성합니다.
+        let io_threads = ThreadPoolBuilder::new()
+            .num_threads((builder.num_threads / 2).max(1))
+            .thread_name(|id| format!("IO_Thread({})", id))
+            .build()
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 작업 스레드 풀 객체를 생성합니다.
+        let task_threads = ThreadPoolBuilder::new()
+            .num_threads(builder.num_threads)
+            .thread_name(|id| format!("Task_Thread({})", id))
+            .build()
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         Ok(Self {
             event_loop_proxy, 
-            num_threads: builder.num_threads, 
+            io_threads, 
+            task_threads, 
             current_dir: unsafe { builder.current_dir.unwrap_unchecked() }, // Safe: 빌더 생성 중 확인함.
-            net_manager, 
+            bundle, 
+            network, 
             flags: builder.flags, 
             locale: None, 
             window_title: builder.title.unwrap_or("Hello to Halo".to_string()), 
@@ -583,8 +609,14 @@ impl AppHandle for Application {
 
     #[inline]
     #[must_use]
-    fn num_threads(&self) -> usize {
-        self.num_threads
+    fn io_threads(&self) -> &ThreadPool {
+        &self.io_threads
+    }
+
+    #[inline]
+    #[must_use]
+    fn task_threads(&self) -> &ThreadPool {
+        &self.task_threads
     }
 
     #[inline]
@@ -595,8 +627,14 @@ impl AppHandle for Application {
 
     #[inline]
     #[must_use]
+    fn bundle(&self) -> &AssetBundle {
+        &self.bundle
+    }
+
+    #[inline]
+    #[must_use]
     fn network(&self) -> &NetManager {
-        &self.net_manager
+        &self.network
     }
 
     #[inline]

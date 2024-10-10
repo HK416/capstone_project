@@ -119,7 +119,7 @@ pub(crate) fn parse_command_line_args(mut builder: AppBuilder) -> Result<AppBuil
     };
     let current_exe = Path::new(&argument);
     let current_dir = match current_exe.parent() {
-        Some(path) => path, 
+        Some(path) => path.canonicalize()?, 
         None => return Err(CmdParsingError::RootPathNotFound), 
     };
     builder = builder.with_current_path(current_dir);

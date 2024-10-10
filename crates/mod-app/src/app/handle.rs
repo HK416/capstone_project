@@ -1,8 +1,9 @@
 use std::{net::SocketAddr, path::Path, sync::Arc};
 
+use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
-use crate::{etc::{AppEvent, AppFlags, GameTimer, Locale}, net::NetManager};
+use crate::{asset::AssetBundle, etc::{AppEvent, AppFlags, GameTimer, Locale}, net::NetManager};
 
 
 
@@ -11,11 +12,17 @@ pub trait AppHandle {
     /// 애플리케이션 이벤트 루프 프록시를 가져옵니다.
     fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>>;
 
-    /// 사용 가능한 스레드 수를 가져옵니다.
-    fn num_threads(&self) -> usize;
+    /// 입/출력 스레드 풀 객체를 가져옵니다.
+    fn io_threads(&self) -> &ThreadPool;
+
+    /// 작업 스레드 풀 객체를 가져옵니다.
+    fn task_threads(&self) -> &ThreadPool;
 
     /// 현재 애플리케이션 실행 디렉토리 경로를 가져옵니다.
     fn current_dir(&self) -> &Path;
+
+    /// 애플리케이션 에셋 관리자를 가져옵니다.
+    fn bundle(&self) -> &AssetBundle;
 
     /// 애플리케이션 네트워크 매니저를 가져옵니다.
     fn network(&self) -> &NetManager;
