@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
