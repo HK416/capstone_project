@@ -46,9 +46,6 @@ pub struct Application {
     /// 사용자 정의 이벤트를 이벤트 루프로 보내는 프록시입니다.
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
 
-    /// 작업 스레드 풀 객체입니다.
-    task_threads: ThreadPool, 
-
     /// 입/출력 스레드 풀 객체입니다.
     io_threads: ThreadPool, 
 
@@ -129,19 +126,11 @@ impl Application {
         event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
         builder: AppBuilder
     ) -> Result<Self, Box<dyn Error + Send>> {
-        // wgpu 렌더러를 생성합니다.
-        let enable_debug_layer = builder.flags.contains(AppFlags::ENABLE_DEBUG_LAYER);
-        let (instance, adapter, device, queue) = init_wgpu(enable_debug_layer).await
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-
-        // 네트워크 매니저를 생성합니다.
-        let network = NetManager::new(builder.num_threads, event_loop_proxy.clone())
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-
-        // 에셋 관리자를 생성합니다.
-        let mut root_dir = unsafe { builder.current_dir.clone().unwrap_unchecked() }; // Safe: 빌더를 생성할 때 존재 유무를 확인함.
-        root_dir.push("assets");
-        let bundle = AssetBundle::new(root_dir)
+        // 작업 스레드 풀 객체를 생성합니다.
+        ThreadPoolBuilder::new()
+            .num_threads(builder.num_threads.max(1))
+            .thread_name(|id| format!("Task_Thread({})", id))
+            .build_global()
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         // 입/출력 스레드 풀 객체를 생성합니다.
@@ -151,17 +140,23 @@ impl Application {
             .build()
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
-        // 작업 스레드 풀 객체를 생성합니다.
-        let task_threads = ThreadPoolBuilder::new()
-            .num_threads(builder.num_threads)
-            .thread_name(|id| format!("Task_Thread({})", id))
-            .build()
+        // wgpu 렌더러를 생성합니다.
+        let enable_debug_layer = builder.flags.contains(AppFlags::ENABLE_DEBUG_LAYER);
+        let (instance, adapter, device, queue) = init_wgpu(enable_debug_layer).await
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 네트워크 매니저를 생성합니다.
+        let network = NetManager::new(event_loop_proxy.clone());
+
+        // 에셋 관리자를 생성합니다.
+        let mut root_dir = unsafe { builder.current_dir.clone().unwrap_unchecked() }; // Safe: 빌더를 생성할 때 존재 유무를 확인함.
+        root_dir.push("assets");
+        let bundle = AssetBundle::new(root_dir)
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         Ok(Self {
             event_loop_proxy, 
             io_threads, 
-            task_threads, 
             current_dir: unsafe { builder.current_dir.unwrap_unchecked() }, // Safe: 빌더 생성 중 확인함.
             bundle, 
             network, 
@@ -611,12 +606,6 @@ impl AppHandle for Application {
     #[must_use]
     fn io_threads(&self) -> &ThreadPool {
         &self.io_threads
-    }
-
-    #[inline]
-    #[must_use]
-    fn task_threads(&self) -> &ThreadPool {
-        &self.task_threads
     }
 
     #[inline]

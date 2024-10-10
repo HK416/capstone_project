@@ -7,7 +7,6 @@ use std::{
 
 use mod_network::{PacketParser, RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
-use rayon::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use winit::event_loop::EventLoopProxy;
 
 use crate::etc::AppEvent;
@@ -117,12 +116,6 @@ struct NetManagerInner {
     /// 
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
 
-    /// 네트워크 I/O 작업을 위한 풀 객체입니다.
-    /// 
-    /// 최소 2개 ~ 현재 시스템의 코어 개수 절반 만큼 스레드를 생성합니다.
-    /// 
-    thread_pool: ThreadPool, 
-
     /// 생성된 소켓 집합입니다.
     sockets: SkipMap<IpAddress, Arc<SocketStatus>>, 
 }
@@ -134,18 +127,13 @@ pub struct NetManager(Arc<NetManagerInner>);
 
 impl NetManager {
     /// 새로운 네트워크 매니저를 생성합니다.
+    #[inline]
     #[must_use]
-    pub fn new(
-        num_threads: usize, 
-        event_loop_proxy: Arc<EventLoopProxy<AppEvent>>
-    ) -> Result<Self, ThreadPoolBuildError> {
-        Ok(Self(NetManagerInner {
+    pub fn new(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>) -> Self {
+        Self(NetManagerInner {
             event_loop_proxy, 
-            thread_pool: ThreadPoolBuilder::new()
-                .num_threads((num_threads / 2).max(2))
-                .build()?, 
             sockets: SkipMap::new(), 
-        }.into()))
+        }.into())
     }
 
 
@@ -163,7 +151,6 @@ impl NetManager {
                 // TCP 스트림을 생성하고 연결합니다.
                 let stream = TcpStream::connect_timeout(addr, Duration::from_secs(5))?;
                 stream.set_nodelay(true)?;
-                stream.set_nonblocking(true)?;
 
                 Arc::new(SocketStatus {
                     address: address.clone(), 
@@ -177,11 +164,11 @@ impl NetManager {
 
         let status_cloned = status.clone();
         let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-        self.0.thread_pool.spawn(|| packet_receive_loop(event_loop_proxy_cloned, status_cloned));
+        std::thread::spawn(|| packet_receive_loop(event_loop_proxy_cloned, status_cloned));
 
         let status_cloned = status.clone();
         let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-        self.0.thread_pool.spawn(|| packet_send_loop(event_loop_proxy_cloned, status_cloned));
+        std::thread::spawn(|| packet_send_loop(event_loop_proxy_cloned, status_cloned));
 
         let status_cloned = status.clone();
         self.0.sockets.insert(address.clone(), status);
@@ -215,11 +202,44 @@ impl NetManager {
 
 
 
+/// 스레드 대기를 위한 `Back-off` 자료형입니다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Backoff(u64);
+
+impl Backoff {
+    const MIN_WAIT_TIME: u64 = 0x000000FF;
+    const MAX_WAIT_TIME: u64 = 0x00FFFFFF;
+
+    /// 새로운 `Back-off` 자료형을 생성합니다.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        let wait_time: u64 = rand::random();
+        Self(wait_time % Self::MIN_WAIT_TIME)
+    }
+
+    /// `Back-off`를 초기화 합니다.
+    #[inline]
+    pub fn reset(&mut self) {
+        *self = Self::new()
+    }
+
+    /// 현재 스레드를 대기시킵니다.
+    #[inline]
+    pub fn wait(&mut self) {
+        std::thread::sleep(Duration::from_nanos(self.0));
+        self.0 = (self.0 << 1).min(Self::MAX_WAIT_TIME);
+    }
+}
+
+
+
 /// 패킷을 보내는 루프 함수입니다.
 fn packet_send_loop(
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
     status: Arc<SocketStatus>
 ) {
+    let mut backoff = Backoff::new();
     while status.is_connected() {
         if let Some(raw_packet) = status.queue.pop() {
             let bytes = raw_packet.as_bytes();
@@ -234,7 +254,7 @@ fn packet_send_loop(
                         break;
                     }, 
                     Ok(n) => { buffer = &buffer[n..] }, 
-                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => { /* continue */}, 
+                    Err(ref e) if e.kind() == ErrorKind::Interrupted => { continue; }, 
                     Err(e) => {
                         // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
                         unsafe { event_loop_proxy.send_event(AppEvent::IOError(e)).unwrap_unchecked() };
@@ -242,6 +262,9 @@ fn packet_send_loop(
                     }
                 }
             }
+            backoff.reset();
+        } else {
+            backoff.wait();
         }
     }
 }
@@ -276,7 +299,7 @@ fn packet_receive_loop(
                 break;
             }, 
             Ok(n) => { parser.push(&buffer[..n]) }, 
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => { /* continue */ }, 
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => { continue; }, 
             Err(e) => {
                 // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
                 unsafe { event_loop_proxy.send_event(AppEvent::IOError(e)).unwrap_unchecked() };

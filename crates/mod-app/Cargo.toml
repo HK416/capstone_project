@@ -26,6 +26,10 @@ lazy_static = "1.5"
 # License: MIT OR Apache-2.0
 log = "0.4"
 
+# Random number generators and other randomness functionality.
+# License: MIT OR Apache-2.0
+rand = "0.8"
+
 # Simple work-stealing parallelism for Rust
 # License: MIT OR Apache-2.0
 rayon = "1.10"

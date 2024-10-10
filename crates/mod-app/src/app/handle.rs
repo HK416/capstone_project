@@ -15,9 +15,6 @@ pub trait AppHandle {
     /// 입/출력 스레드 풀 객체를 가져옵니다.
     fn io_threads(&self) -> &ThreadPool;
 
-    /// 작업 스레드 풀 객체를 가져옵니다.
-    fn task_threads(&self) -> &ThreadPool;
-
     /// 현재 애플리케이션 실행 디렉토리 경로를 가져옵니다.
     fn current_dir(&self) -> &Path;
 
