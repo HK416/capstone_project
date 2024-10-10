@@ -1,5 +1,6 @@
 use std::{collections::HashMap, io::Cursor, sync::Arc};
 
+use mod_app::asset::AssetBundle;
 use mod_asset::model::{AnimationBlob, MaterialBlob, MeshBlob, ModelBlob, NodeBlob, TextureBlob};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_world::{
@@ -12,7 +13,6 @@ use mod_world::{
         pool::{SamplerPool, TexturePool, TextureViewPool}
     }
 };
-use rust_embed::Embed;
 
 /// `Aris_Original` 모델의 경로입니다.
 const ARIS_ORIGINAL_PATH: &'static str = "characters/aris_original/Aris_Original_Mesh.ron";
@@ -20,25 +20,23 @@ const ARIS_ORIGINAL_PATH: &'static str = "characters/aris_original/Aris_Original
 /// `Sphere` 모양의 경로입니다.
 const SPHERE_PATH: &'static str = "shape/sphere/Sphere.ron";
 
-/// 임베딩된 에셋 파일 관리자입니다.
-#[derive(Embed)]
-#[folder = "assets/"]
-struct EmbededAssets;
 
 
 pub fn spawn_sphere_shape(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>,
     id_generator: &Arc<IdGenerator>, 
+    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>,
+    bundle: &AssetBundle, 
     device: &wgpu::Device, 
     queue: &wgpu::Queue
 ) -> WorldID {
-    let embeded_file = EmbededAssets::get(&SPHERE_PATH).unwrap();
-    let blob: ModelBlob = ron::de::from_bytes(&embeded_file.data).unwrap();
+    let cache = bundle.get_or_init(SPHERE_PATH).unwrap();
+    let blob: ModelBlob = ron::de::from_bytes(cache.as_bytes()).unwrap();
     let root_id = spawn_shape_node(
         world, 
-        renderer, 
         id_generator, 
+        renderer, 
+        bundle, 
         device, 
         queue, 
         None, 
@@ -53,8 +51,9 @@ pub fn spawn_sphere_shape(
 #[must_use]
 fn spawn_shape_node(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     id_generator: &Arc<IdGenerator>, 
+    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
+    bundle: &AssetBundle,
     device: &wgpu::Device,
     queue: &wgpu::Queue, 
     parent: Option<WorldID>, 
@@ -77,8 +76,9 @@ fn spawn_shape_node(
     if let Some(child_blob) = blob.children.pop() {
         let child_id = spawn_shape_node(
             world, 
-            renderer, 
             id_generator, 
+            renderer, 
+            bundle, 
             device, 
             queue, 
             Some(object.id().clone()), 
@@ -92,8 +92,9 @@ fn spawn_shape_node(
     if let Some(sibling_blob) = sibling.pop() {
         let sibling_id = spawn_shape_node(
             world, 
-            renderer, 
             id_generator, 
+            renderer, 
+            bundle, 
             device, 
             queue, 
             parent, 
@@ -110,7 +111,7 @@ fn spawn_shape_node(
 
         let materials: Vec<_> = blob.materials.into_iter()
             .map(|material_blob| {
-                create_material(device, queue, material_blob)
+                create_material(device, queue, bundle, material_blob)
             })
             .collect();
 
@@ -133,20 +134,22 @@ fn spawn_shape_node(
 
 pub fn spawn_aris_original_model(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     id_generator: &Arc<IdGenerator>, 
+    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
+    bundle: &AssetBundle,
     device: &wgpu::Device, 
     queue: &wgpu::Queue
 ) -> (WorldID, Vec<AnimationClip>, HashMap<String, WorldID>) {
-    let embeded_file = EmbededAssets::get(&ARIS_ORIGINAL_PATH).unwrap();
-    let blob: ModelBlob = ron::de::from_bytes(&embeded_file.data).unwrap();
+    let cache = bundle.get_or_init(ARIS_ORIGINAL_PATH).unwrap();
+    let blob: ModelBlob = ron::de::from_bytes(cache.as_bytes()).unwrap();
 
     let mut nodes = HashMap::new();
     let mut skinned_meshes = HashMap::new();
     let root_id = spawn_model_node(
         world, 
-        renderer, 
         id_generator, 
+        renderer, 
+        bundle, 
         device, 
         queue, 
         &mut nodes, 
@@ -172,8 +175,9 @@ pub fn spawn_aris_original_model(
 #[must_use]
 fn spawn_model_node(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     id_generator: &Arc<IdGenerator>, 
+    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
+    bundle: &AssetBundle,
     device: &wgpu::Device,
     queue: &wgpu::Queue, 
     nodes: &mut HashMap<String, WorldID>, 
@@ -198,8 +202,9 @@ fn spawn_model_node(
     if let Some(child_blob) = blob.children.pop() {
         let child_id = spawn_model_node(
             world, 
-            renderer, 
             id_generator, 
+            renderer, 
+            bundle, 
             device, 
             queue, 
             nodes, 
@@ -215,8 +220,9 @@ fn spawn_model_node(
     if let Some(sibling_blob) = sibling.pop() {
         let sibling_id = spawn_model_node(
             world, 
-            renderer, 
             id_generator, 
+            renderer, 
+            bundle, 
             device, 
             queue, 
             nodes, 
@@ -252,7 +258,7 @@ fn spawn_model_node(
 
         let materials: Vec<_> = blob.materials.into_iter()
             .map(|material_blob| {
-                create_material(device, queue, material_blob)
+                create_material(device, queue, bundle, material_blob)
             })
             .collect();
 
@@ -316,6 +322,7 @@ fn create_mesh_builder(blob: MeshBlob) -> MeshBuilder {
 fn create_material(
     device: &wgpu::Device, 
     queue: &wgpu::Queue, 
+    bundle: &AssetBundle, 
     blob: MaterialBlob
 ) -> Arc<Material> {
     // 재질 빌더를 생성합니다.
@@ -346,25 +353,25 @@ fn create_material(
     }
 
     if let Some(texture_blob) = blob.diffuse_map {
-        let (texture_view, sampler) = create_texture(device, queue, texture_blob);
+        let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
         builder.diffuse_map = texture_view;
         builder.diffuse_sampler = sampler;
     }
 
     if let Some(texture_blob) = blob.specular_map {
-        let (texture_view, sampler) = create_texture(device, queue, texture_blob);
+        let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
         builder.specular_map = texture_view;
         builder.specular_sampler = sampler;
     }
 
     if let Some(texture_blob) = blob.normal_map {
-        let (texture_view, sampler) = create_texture(device, queue, texture_blob);
+        let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
         builder.normal_map = texture_view;
         builder.normal_sampler = sampler;
     }
 
     if let Some(texture_blob) = blob.emissive_map {
-        let (texture_view, sampler) = create_texture(device, queue, texture_blob);
+        let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
         builder.emissive_map = texture_view;
         builder.emissive_sampler = sampler;
     }
@@ -375,14 +382,15 @@ fn create_material(
 fn create_texture(
     device: &wgpu::Device, 
     queue: &wgpu::Queue, 
+    bundle: &AssetBundle,
     blob: TextureBlob
 ) -> (Arc<wgpu::TextureView>, Arc<wgpu::Sampler>) {
     let texture = match TexturePool::get(&blob.name) {
         Some(texture) => texture, 
         None => {
             let path = format!("characters/aris_original/{}.dds", &blob.name);
-            let embeded_file = EmbededAssets::get(&path).unwrap();
-            let dds = ddsfile::Dds::read(Cursor::new(embeded_file.data)).unwrap();
+            let cache = bundle.get_or_init(path).unwrap();
+            let dds = ddsfile::Dds::read(Cursor::new(cache.as_bytes())).unwrap();
             TexturePool::get_or_init(
                 device, 
                 queue, 

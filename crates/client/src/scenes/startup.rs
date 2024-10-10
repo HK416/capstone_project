@@ -1,13 +1,11 @@
-use std::{collections::VecDeque, error::Error, fmt, net::ToSocketAddrs, thread::JoinHandle};
+use std::{error::Error, fmt, net::ToSocketAddrs, sync::Arc};
 
 use mod_app::{app::AppHandle, etc::AppEvent, net::IpAddress, scene::{GameScene, GameSceneFlow}};
-use mod_network::{InitPacket, PacketType, RawPacket};
+use mod_network::{InitPacket, PacketType, Player, RawPacket};
+use mod_parallelism::collections::Queue;
 use winit::window::Window;
 
 use super::TestBedScene;
-
-
-type Task = JoinHandle<Result<(), Box<dyn Error + Send>>>;
 
 
 
@@ -18,8 +16,14 @@ pub struct StartupScene {
     /// 서버의 주소입니다.
     address: IpAddress, 
 
-    /// 현재 실행 중인 작업 목록입니다.
-    running_task: VecDeque<Task>, 
+    client_id: u32, 
+    world: Vec<Player>, 
+
+    /// 작업의 갯수입니다.
+    num_tasks: usize, 
+
+    /// 실행이 완료된 작업 목록입니다.
+    results: Arc<Queue<Result<(), Box<dyn Error + Send>>>>, 
 }
 
 impl StartupScene {
@@ -32,7 +36,10 @@ impl StartupScene {
 
         Self { 
             address: addr, 
-            running_task: VecDeque::with_capacity(8),
+            client_id: 0, 
+            world: Vec::new(), 
+            num_tasks: 0, 
+            results: Arc::new(Queue::new()), 
         }
     }
 }
@@ -44,13 +51,41 @@ impl GameScene for StartupScene {
         window: &Window, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        self.num_tasks = 3;
+        let io_threads = app.io_threads();
+
+        // 네트워크 연결
         let addr = self.address.clone();
         let network = app.network().clone();
-        self.running_task.push_back(std::thread::spawn(move || {
-            network.connect(&addr)
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-            Ok(())
-        }));
+        let cloned_results = self.results.clone();
+        io_threads.spawn(move || {
+            let result = network.connect(&addr)
+                .map(|_| ())
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            cloned_results.push(result);
+        });
+
+        // `Aris_Original` 에셋 로드
+        let bundle = app.bundle().clone();
+        let cloned_results = self.results.clone();
+        io_threads.spawn(move || {
+            let result = bundle.load("characters/aris_original/Aris_Original_Mesh.ron")
+                .map(|_| ())
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            cloned_results.push(result);
+        });
+
+
+        // `Sphere` 에셋 로드
+        let bundle = app.bundle().clone();
+        let cloned_results = self.results.clone();
+        io_threads.spawn(move || {
+            let result = bundle.load("shape/sphere/Sphere.ron")
+                .map(|_| ())
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            cloned_results.push(result);
+        });
+
 
         Ok(())
     }
@@ -64,15 +99,8 @@ impl GameScene for StartupScene {
         // Init Packet에서 데이터를 수집하고 다음 게임 장면으로 전환합니다.
         if raw_packet.packet_type() == PacketType::INIT {
             let packet = InitPacket::from_raw(raw_packet);
-            app.event_loop_proxy().send_event(
-                AppEvent::SetGameSceneFlow(GameSceneFlow::Change(
-                    Box::new(TestBedScene::new(
-                        self.address, 
-                        packet.client_id, 
-                        packet.world
-                    ))
-                ))
-            ).unwrap();
+            self.client_id = packet.client_id;
+            self.world = packet.world;
         }
 
         Ok(())
@@ -86,20 +114,28 @@ impl GameScene for StartupScene {
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // 처리할 작업이 없는 경우 함수 실행을 생략합니다.
-        if self.running_task.is_empty() {
+        if self.num_tasks == 0 {
             return Ok(())
         }
 
-        let mut temp = VecDeque::with_capacity(8);
-        while let Some(task) = self.running_task.pop_front() {
-            // 작업이 끝난 경우 스레드를 `join` 합니다.
-            if task.is_finished() {
-                task.join().unwrap()?;
-            } else {
-                temp.push_back(task);
-            }
+        if let Some(result) = self.results.pop() {
+            self.num_tasks -= 1;
+            result?;
         }
-        self.running_task.append(&mut temp);
+
+        if self.num_tasks == 0 {
+            let mut players = Vec::new();
+            players.append(&mut self.world);
+            app.event_loop_proxy().send_event(
+                AppEvent::SetGameSceneFlow(GameSceneFlow::Change(
+                    Box::new(TestBedScene::new(
+                        self.address, 
+                        self.client_id, 
+                        players
+                    ))
+                ))
+            ).unwrap();
+        }
 
         Ok(())
     }

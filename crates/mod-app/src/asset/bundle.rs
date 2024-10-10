@@ -16,6 +16,22 @@ pub struct CachedAsset {
     bytes: Vec<u8>, 
 }
 
+impl CachedAsset {
+    /// 파일 이름을 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn filename(&self) -> &Path {
+        &self.filename
+    }
+
+    /// 바이트 배열을 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
 
 
 /// 에셋 번들의 내부 데이터입니다.
@@ -98,10 +114,11 @@ impl AssetBundle {
     /// 
     #[inline]
     #[must_use]
-    pub fn get_or_init<P: AsRef<PathBuf>>(&self, path: P) -> Result<Arc<CachedAsset>, AssetError> {
-        match self.0.cached.get(path.as_ref()) {
+    pub fn get_or_init<P: Into<PathBuf>>(&self, path: P) -> Result<Arc<CachedAsset>, AssetError> {
+        let path: PathBuf = path.into();
+        match self.0.cached.get(&path) {
             Some(guard) => Ok(guard.clone()), 
-            None => self.load(path.as_ref())
+            None => self.load(path)
         }
     }
 
@@ -110,8 +127,8 @@ impl AssetBundle {
     /// 해당 에셋이 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
     /// 
     #[inline]
-    pub fn remove<P: AsRef<PathBuf>>(&self, path: P) -> Option<Arc<CachedAsset>> {
-        self.0.cached.remove(path.as_ref())
+    pub fn remove<P: Into<PathBuf>>(&self, path: P) -> Option<Arc<CachedAsset>> {
+        self.0.cached.remove(&path.into())
     }
 }
 

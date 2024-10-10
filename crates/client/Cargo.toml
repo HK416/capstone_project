@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.3.0"
+version = "0.3.1"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -29,11 +29,6 @@ log = "0.4"
 # Rusty Object Notation
 # License: MIT OR Apache-2.0
 ron = "0.8"
-
-# Rust Custom Derive Macro which loads files into the rust binary at compile time during release 
-# and loads the file from the fs during dev
-# License: MIT
-rust-embed = "8.5"
 
 # Cross-platform window creation library.
 # License: Apache-2.0
