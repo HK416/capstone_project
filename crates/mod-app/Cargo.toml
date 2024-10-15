@@ -19,7 +19,13 @@ bitflags = "2.6"
 egui = "0.29"
 
 # Bindings for using egui natively using the wgpu library
+# License: MIT OR Apache-2.0
 egui-wgpu = "0.29"
+
+# Bindings for using egui with winit
+# License: MIT OR Apache-2.0
+egui-winit = "0.29"
+
 
 # A fast, minimal, and ergonomic entity-component-system library
 # License: MIT OR Apache-2.0

@@ -279,6 +279,7 @@ impl ApplicationHandler<AppEvent> for Application {
             event_loop, 
             attributes, 
             &self.flags, 
+            &self.egui_ctx, 
             &self.instance, 
             &self.adapter, 
             &self.device
@@ -299,7 +300,7 @@ impl ApplicationHandler<AppEvent> for Application {
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
         // `winit` 윈도우 핸들을 가져옵니다.
         let window = self.app_window.as_ref()
-            .map(|app_window| app_window.window().as_ref());
+            .map(|app_window| app_window.window.as_ref());
 
         // 게임 장면 스택을 정리합니다.
         let mut scene_stack = self.scene_stack.borrow_mut();
@@ -318,7 +319,7 @@ impl ApplicationHandler<AppEvent> for Application {
         };
 
         // 게임 장면 스택을 갱신합니다.
-        let window = app_window.window().as_ref();
+        let window = app_window.window.as_ref();
         let mut scene_stack = self.scene_stack.borrow_mut();
         if let Some(flow) = self.scene_flow.take() {
             if let Err(e) = match flow {
@@ -384,6 +385,10 @@ impl ApplicationHandler<AppEvent> for Application {
     ) {
         match event {
             DeviceEvent::MouseMotion { delta } => {
+                if let Some(app_window) = self.app_window.as_ref() {
+                    let mut state = app_window.egui_state.borrow_mut();
+                    state.on_mouse_motion(delta);
+                }
                 self.cursor_delta = delta.into();
             }, 
             _ => { }
@@ -399,14 +404,13 @@ impl ApplicationHandler<AppEvent> for Application {
     ) {
         // 애플리케이션 창을 가져옵니다. 
         // 애플리케이션 창이 존재하지 않는 경우 함수 실행을 생략합니다.
-        let mut app_window = match self.app_window.take() {
+        let app_window = match self.app_window.as_ref() {
             Some(app_window) => app_window, 
             None => return,
         };
 
         // `winit` 윈도우 식별자가 다른 경우 함수 실행을 생략합니다.
-        if window_id != app_window.window().id() {
-            self.app_window = Some(app_window);
+        if window_id != app_window.window.id() {
             return;
         }
 
@@ -415,26 +419,33 @@ impl ApplicationHandler<AppEvent> for Application {
         let mut scene_stack = self.scene_stack.borrow_mut();
         let curr_scene = match scene_stack.back_mut() {
             Some(curr_scene) => curr_scene, 
-            None => return self.app_window = Some(app_window),
+            None => return,
         };
 
+        #[allow(unused_must_use)] {
+            let mut state = app_window.egui_state.borrow_mut();
+            state.on_window_event(
+                &app_window.window, 
+                &event
+            );
+        }
+        
         // 윈도우 이벤트를 처리합니다.
         if let Err(e) = match event {
             WindowEvent::Resized(_) => {
-                app_window.on_resized(&self.instance, &self.device);
-                curr_scene.on_window_resized(&app_window.window(), self)
+                curr_scene.on_window_resized(&app_window.window, self)
             }, 
             WindowEvent::Moved(_) => {
-                curr_scene.on_window_moved(&app_window.window(), self)
+                curr_scene.on_window_moved(&app_window.window, self)
             }, 
             WindowEvent::CloseRequested => {
                 if curr_scene.on_close_request(self) {
+                    self.app_window.take();
                     return;
                 };
                 Ok(())
             },
             WindowEvent::Focused(focused) => {
-                app_window.on_focused(focused);
                 if focused {
                     curr_scene.on_resumed(self)
                 } else {
@@ -442,7 +453,6 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             }, 
             WindowEvent::KeyboardInput { event, .. } => {
-                app_window.on_keyboard_input(&event);
                 if let PhysicalKey::Code(code) = event.physical_key {
                     if event.state.is_pressed() {
                         curr_scene.on_keyboard_pressed(
@@ -450,7 +460,7 @@ impl ApplicationHandler<AppEvent> for Application {
                             event.location, 
                             self.modifier, 
                             event.repeat, 
-                            &app_window.window(), 
+                            &app_window.window, 
                             self
                         )
                     } else {
@@ -459,7 +469,7 @@ impl ApplicationHandler<AppEvent> for Application {
                             event.location, 
                             self.modifier, 
                             event.repeat, 
-                            &app_window.window(), 
+                            &app_window.window, 
                             self
                         )
                     }
@@ -474,50 +484,46 @@ impl ApplicationHandler<AppEvent> for Application {
                     position.y as f32, 
                     dx as f32, 
                     dy as f32, 
-                    &app_window.window(), 
+                    &app_window.window, 
                     self
                 )
             }, 
             WindowEvent::MouseWheel { delta, .. } => {
                 if let MouseScrollDelta::LineDelta(dx, dy) = delta {
-                    app_window.on_mouse_wheel(dx, dy);
-                    curr_scene.on_mouse_wheel(dx, dy, &app_window.window(), self)
+                    curr_scene.on_mouse_wheel(dx, dy, &app_window.window, self)
                 } else {
                     Ok(())
                 }
             }, 
             WindowEvent::MouseInput { state, button, .. } => {
                 let (x, y): (f64, f64) = self.cursor_delta.into();
-                app_window.on_mouse_input(x, y, &state, &button);
                 if state.is_pressed() {
-                    curr_scene.on_mouse_btn_pressed(x as f32, y as f32, button, &app_window.window(), self)
+                    curr_scene.on_mouse_btn_pressed(x as f32, y as f32, button, &app_window.window, self)
                 } else {
-                    curr_scene.on_mouse_btn_released(x as f32, y as f32, button, &app_window.window(), self)
+                    curr_scene.on_mouse_btn_released(x as f32, y as f32, button, &app_window.window, self)
                 }
             }, 
             WindowEvent::ScaleFactorChanged { .. } => {
                 app_window.on_resized(&self.instance, &self.device);
-                curr_scene.on_window_resized(&app_window.window(), self)
+                curr_scene.on_window_resized(&app_window.window, self)
             }, 
             WindowEvent::ModifiersChanged(modifier) => {
-                app_window.on_modifiers_changed(&modifier);
                 self.modifier = modifier;
                 Ok(())
             }, 
             WindowEvent::RedrawRequested => {
+                let depth_buffer_view = app_window.depth_buffer_view.borrow();
                 self.draw(
-                    &app_window.window(), 
-                    &app_window.surface(), 
-                    &app_window.depth_buffer_view(), 
+                    &app_window.window, 
+                    &app_window.surface, 
+                    &depth_buffer_view, 
                     curr_scene
                 )
             }, 
             _ => { Ok(()) }
         } {
-            alert_error("Runtime error", e.to_string(), Some(&app_window.window()));
+            alert_error("Runtime error", e.to_string(), Some(&app_window.window));
         } 
-
-        self.app_window = Some(app_window);
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
@@ -531,7 +537,7 @@ impl ApplicationHandler<AppEvent> for Application {
 
         // `winit` 창 핸들을 가져옵니다.
         let window = self.app_window.as_ref()
-            .map(|app_window| app_window.window().as_ref());
+            .map(|app_window| app_window.window.as_ref());
 
         match event {
             AppEvent::SetGameSceneFlow(flow) => {
@@ -641,20 +647,23 @@ impl AppHandle for Application {
     #[must_use]
     fn egui_raw_input(&self) -> egui::RawInput {
         self.app_window.as_ref()
-            .map(|app_window| app_window.egui_raw_input())
+            .map(|app_window| {
+                let mut state = app_window.egui_state.borrow_mut();
+                state.take_egui_input(&app_window.window)
+            })
             .unwrap_or_default()
     }
 
     #[inline]
     #[must_use]
     fn window(&self) -> Option<&Arc<Window>> {
-        self.app_window.as_ref().map(|app_window| app_window.window())
+        self.app_window.as_ref().map(|app_window| &app_window.window)
     }
 
     #[inline]
     #[must_use]
     fn render_surface(&self) -> Option<&Arc<wgpu::Surface<'static>>> {
-        self.app_window.as_ref().map(|app_window| app_window.surface())
+        self.app_window.as_ref().map(|app_window| &app_window.surface)
     }
 }
 

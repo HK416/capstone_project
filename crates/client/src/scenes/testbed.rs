@@ -83,7 +83,7 @@ impl TestBedScene {
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show(egui_ctx, |ui| {
-                ui.heading("Hello, World!")
+                ui.heading("Hello, World");
             });
     }
 
@@ -739,6 +739,7 @@ impl GameScene for TestBedScene {
 
         let egui_ctx = app.egui_ctx();
         let egui_raw_input = app.egui_raw_input();
+        // println!("{:?}", egui_raw_input);
         let egui_full_output = egui_ctx.run(egui_raw_input, Self::ui_callback);
         
         let egui_primitive = egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
