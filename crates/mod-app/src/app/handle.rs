@@ -45,6 +45,12 @@ pub trait AppHandle {
     /// `wgpu` 렌더링 명령 대기열을 가져옵니다.
     fn render_queue(&self) -> &Arc<wgpu::Queue>;
 
+    /// `egui` 컨텍스트를 가져옵니다.
+    fn egui_ctx(&self) -> &egui::Context;
+
+    /// `egui` 입력기를 가져옵니다.
+    fn egui_raw_input(&self) -> egui::RawInput;
+
     /// 애플리케이션 창을 가져옵니다.
     fn window(&self) -> Option<&Arc<Window>>;
 

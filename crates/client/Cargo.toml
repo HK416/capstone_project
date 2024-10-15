@@ -19,6 +19,13 @@ bytemuck = { version = "1.18", features = ["derive"] }
 # License: MIT 
 ddsfile = "0.5"
 
+# An easy-to-use immediate mode GUI that runs on both web and native
+# License: MIT OR Apache-2.0
+egui = "0.29"
+
+# Bindings for using egui natively using the wgpu library
+egui-wgpu = "0.29"
+
 # Math library for video games
 # License: MIT
 gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck"] }

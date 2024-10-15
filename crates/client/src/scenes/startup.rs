@@ -143,8 +143,10 @@ impl GameScene for StartupScene {
     #[allow(unused_variables)]
     fn on_draw(
         &self, 
+        window: &Window, 
         render_target_view: &wgpu::TextureView, 
         depth_stencil_view: &wgpu::TextureView, 
+        egui_renderer: &egui_wgpu::Renderer, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         // 게임을 초기화 하는 동안 검정색 화면을 출력합니다.

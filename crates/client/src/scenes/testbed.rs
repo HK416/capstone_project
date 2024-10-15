@@ -40,8 +40,12 @@ pub struct TestBedScene {
 
     /// 메쉬 렌더러 오브젝트를 관리합니다.
     renderer: Arc<Queue<Arc<dyn MeshRenderer>>>, 
+    render_list: Vec<Arc<dyn MeshRenderer>>, 
 
     lock_cursor: bool, 
+
+    egui_clip_primitives: Vec<egui::ClippedPrimitive>, 
+    egui_free_texture_ids: Vec<egui::TextureId>, 
 }
 
 impl TestBedScene {
@@ -67,9 +71,22 @@ impl TestBedScene {
             players: HashMap::with_capacity(10),
             bullets: HashMap::with_capacity(64), 
             renderer: Arc::new(Queue::new()), 
+            render_list: Vec::new(), 
             lock_cursor: true, 
+            egui_clip_primitives: Vec::new(), 
+            egui_free_texture_ids: Vec::new(), 
         }
     }
+
+
+    fn ui_callback(egui_ctx: &egui::Context) {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none())
+            .show(egui_ctx, |ui| {
+                ui.heading("Hello, World!")
+            });
+    }
+
 
     /// 플레이어를 추가합니다.
     fn insert_player(
@@ -706,13 +723,43 @@ impl GameScene for TestBedScene {
     }
 
     fn on_prepare_draw(
-        &self, 
-        _window: &Window, 
-        _surface: &wgpu::Surface, 
+        &mut self, 
+        window: &Window,
+        egui_renderer: &mut egui_wgpu::Renderer, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
         let queue = app.render_queue();
+
+        // 사용자 인터페이스를 준비합니다.
+        let screen_descriptor = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: window.inner_size().into(), 
+            pixels_per_point: window.scale_factor() as f32, 
+        };
+
+        let egui_ctx = app.egui_ctx();
+        let egui_raw_input = app.egui_raw_input();
+        let egui_full_output = egui_ctx.run(egui_raw_input, Self::ui_callback);
+        
+        let egui_primitive = egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut commands = egui_renderer.update_buffers(
+            device, 
+            queue, 
+            &mut encoder, 
+            &egui_primitive, 
+            &screen_descriptor
+        );
+        commands.push(encoder.finish());
+        queue.submit(commands);
+
+        for (id, image_delta) in &egui_full_output.textures_delta.set {
+            egui_renderer.update_texture(device, queue, *id, &image_delta);
+        }
+
+        self.egui_clip_primitives = egui_primitive;
+        self.egui_free_texture_ids = egui_full_output.textures_delta.free;
+
 
         // 카메라를 준비합니다.
         if let Some(camera_object) = self.world.get(&self.main_camera) {
@@ -737,7 +784,6 @@ impl GameScene for TestBedScene {
         }
 
         // 렌더러를 준비합니다.
-        let mut render_list = Vec::new();
         while let Some(renderer) = self.renderer.pop() {
             if self.world.contains_key(renderer.game_object()) {
                 match renderer.mesh() {
@@ -765,23 +811,19 @@ impl GameScene for TestBedScene {
                     }
                 }
 
-                render_list.push(renderer);
+                self.render_list.push(renderer);
             }
         }
-
-
-        while let Some(renderer) = render_list.pop() {
-            self.renderer.push(renderer);
-        }
-
 
         Ok(())
     }
 
-    fn on_draw(
-        &self, 
+    fn on_draw<'a>(
+        &'a self, 
+        window: &Window, 
         render_target_view: &wgpu::TextureView, 
         depth_stencil_view: &wgpu::TextureView, 
+        egui_renderer: &egui_wgpu::Renderer,
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
@@ -804,15 +846,6 @@ impl GameScene for TestBedScene {
                 return Ok(())
             }
         };
-
-
-        // 렌더러를 준비합니다.
-        let mut render_list = Vec::new();
-        while let Some(renderer) = self.renderer.pop() {
-            if self.world.contains_key(renderer.game_object()) {
-                render_list.push(renderer);
-            }
-        }
 
 
         let mut encoder = device.create_command_encoder(
@@ -846,18 +879,39 @@ impl GameScene for TestBedScene {
                 }
             );
 
-            for renderer in render_list.iter() {
+            for renderer in self.render_list.iter() {
                 renderer.bind(&camera, &mut rpass);
                 renderer.draw(&mut rpass);
             }
+
+            egui_renderer.render(
+                &mut rpass.forget_lifetime(), 
+                &self.egui_clip_primitives, 
+                &egui_wgpu::ScreenDescriptor {
+                size_in_pixels: window.inner_size().into(), 
+                pixels_per_point: window.scale_factor() as f32, 
+            });
         }
 
         // 그리기 명령(Draw Call)을 명령 대기열에 제출합니다.
         queue.submit([encoder.finish()]);
 
+        Ok(())
+    }
 
-        while let Some(renderer) = render_list.pop() {
+    fn on_finish_draw(
+        &mut self, 
+        _window: &Window, 
+        egui_renderer: &mut egui_wgpu::Renderer, 
+        _app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        while let Some(renderer) = self.render_list.pop() {
             self.renderer.push(renderer);
+        }
+
+        self.egui_clip_primitives.clear();
+        while let Some(id) = self.egui_free_texture_ids.pop() {
+            egui_renderer.free_texture(&id);
         }
 
         Ok(())

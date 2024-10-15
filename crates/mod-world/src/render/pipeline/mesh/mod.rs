@@ -11,7 +11,7 @@ use crate::{
 
 
 /// 메쉬를 그리는 렌더러가 구현해야 하는 `trait`입니다.
-pub trait MeshRenderer {
+pub trait MeshRenderer : Sync + Send {
     /// 렌더러의 게임 오브젝트 식별자를 가져옵니다.
     fn game_object(&self) -> &WorldID;
 
