@@ -4,6 +4,8 @@ use mod_network::RawPacket;
 
 use crate::{net::IpAddress, scene::GameSceneFlow};
 
+use super::WindowSize;
+
 
 
 /// 애플리케이션의 커스텀 이벤트 목록입니다.
@@ -11,6 +13,9 @@ use crate::{net::IpAddress, scene::GameSceneFlow};
 pub enum AppEvent {
     /// 게임 장면 흐름을 설정합니다.
     SetGameSceneFlow(GameSceneFlow), 
+
+    /// 애플리케이션 창의 크기를 조절합니다.
+    ResizeRequest(WindowSize), 
 
     /// 서버 연결이 끊어졌을 때 전달되는 이벤트입니다.
     ClosedSocket(IpAddress), 

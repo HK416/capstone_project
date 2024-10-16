@@ -129,21 +129,27 @@ impl fmt::Debug for WindowSize {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple(stringify!(Dpi))
-            .field(&match self {
-                WindowSize::W864H486 => "864x486", 
-                WindowSize::W960H540 => "960x540", 
-                WindowSize::W1024H576 => "1024x576", 
-                WindowSize::W1152H648 => "1152x648", 
-                WindowSize::W1280H720 => "1280x720", 
-                WindowSize::W1366H768 => "1366x768", 
-                WindowSize::W1600H900 => "1600x900", 
-                WindowSize::W1920H1080 => "1920x1080", 
-                WindowSize::W2048H1152 => "2048x1152", 
-                WindowSize::W2560H1440 => "2560x1440", 
-                WindowSize::W2880H1620 => "2880x1620", 
-                WindowSize::W3200H1800 => "3200x1800", 
-                WindowSize::W3840H2160 => "3840x2160", 
-            })
+            .field(&self.to_string())
             .finish()
+    }
+}
+
+impl ToString for WindowSize {
+    fn to_string(&self) -> String {
+        match self {
+            WindowSize::W864H486 => "864x486", 
+            WindowSize::W960H540 => "960x540", 
+            WindowSize::W1024H576 => "1024x576", 
+            WindowSize::W1152H648 => "1152x648", 
+            WindowSize::W1280H720 => "1280x720", 
+            WindowSize::W1366H768 => "1366x768", 
+            WindowSize::W1600H900 => "1600x900", 
+            WindowSize::W1920H1080 => "1920x1080", 
+            WindowSize::W2048H1152 => "2048x1152", 
+            WindowSize::W2560H1440 => "2560x1440", 
+            WindowSize::W2880H1620 => "2880x1620", 
+            WindowSize::W3200H1800 => "3200x1800", 
+            WindowSize::W3840H2160 => "3840x2160", 
+        }.to_owned()
     }
 }

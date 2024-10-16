@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
-use mod_app::{app::AppHandle, asset::AssetBundle, ext::AppWindowExt, net::{IpAddress, NetManager}, scene::GameScene};
+use mod_app::{app::AppHandle, asset::AssetBundle, etc::{GameTimer, WindowSize}, ext::AppWindowExt, net::{IpAddress, NetManager}, scene::GameScene};
 use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
@@ -79,12 +79,55 @@ impl TestBedScene {
     }
 
 
-    fn ui_callback(egui_ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::none())
-            .show(egui_ctx, |ui| {
-                ui.heading("Hello, World");
+    fn ui_callback(&mut self, app: &dyn AppHandle) {
+        const INFO_0: &'static str = "Escape 버튼을 누르면 마우스 커서를 활성화 할 수 있습니다.";
+        const INFO_1: &'static str = "Escape 버튼을 누르면 마우스 커서를 비활성화 할 수 있습니다.";
+
+        let timer = app.timer();
+        let head_txt = format!("Hello2Halo (v{}) - FPS:{}", env!("CARGO_PKG_VERSION"), timer.frame_rate());
+        let info_txt = if self.lock_cursor { INFO_0 } else { INFO_1 };
+
+        let mut selected_size = app.window_size().clone();
+
+        egui::Window::new("")
+            .title_bar(false)
+            .auto_sized()
+            .movable(false)
+            .frame(egui::Frame::none().fill(egui::Color32::from_black_alpha(128)))
+            .anchor(egui::Align2::LEFT_TOP, egui::vec2(4.0, 4.0))
+            .show(app.egui_ctx(), |ui| {
+                let head = egui::RichText::new(head_txt)
+                    .color(egui::Color32::LIGHT_GRAY);
+                let info = egui::RichText::new(info_txt)
+                    .color(egui::Color32::LIGHT_GRAY);
+                let size = egui::RichText::new("해상도")
+                    .color(egui::Color32::LIGHT_GRAY);
+
+                ui.label(head);
+                ui.label(info);
+
+                ui.add_space(8.0);
+                ui.label(size);
+
+                egui::ComboBox::from_label("")
+                    .selected_text(format!("{}", selected_size.to_string()))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut selected_size, WindowSize::W864H486, "864x486");
+                        ui.selectable_value(&mut selected_size, WindowSize::W960H540, "960x540");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1024H576, "1024x576");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1152H648, "1152x648");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1280H720, "1280x720");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1366H768, "1366x768");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1600H900, "1600x900");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1920H1080, "1920x1080");
+                    });
             });
+
+        if selected_size != *app.window_size() {
+            app.event_loop_proxy().send_event(
+                mod_app::etc::AppEvent::ResizeRequest(selected_size)
+            ).unwrap();
+        }
     }
 
 
@@ -590,6 +633,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -630,6 +677,9 @@ impl GameScene for TestBedScene {
             }
         }
 
+        if !self.lock_cursor {
+            return Ok(())
+        }
 
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
@@ -653,6 +703,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -672,6 +726,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -691,6 +749,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -707,12 +769,9 @@ impl GameScene for TestBedScene {
     fn on_update(
         &mut self, 
         elapsed_time_sec: f32, 
-        window: &Window, 
+        _window: &Window, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        let frame_rate = app.timer().frame_rate();
-        window.set_title(&format!("Hello to Halo! (FPS: {})", frame_rate));
-
         self.update_camera_pos();
         self.update_player(elapsed_time_sec);
         self.update_bullet(elapsed_time_sec, app.network());
@@ -739,9 +798,11 @@ impl GameScene for TestBedScene {
 
         let egui_ctx = app.egui_ctx();
         let egui_raw_input = app.egui_raw_input();
-        // println!("{:?}", egui_raw_input);
-        let egui_full_output = egui_ctx.run(egui_raw_input, Self::ui_callback);
-        
+
+        egui_ctx.begin_pass(egui_raw_input);
+        self.ui_callback(app);
+        let egui_full_output = egui_ctx.end_pass();
+
         let egui_primitive = egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let mut commands = egui_renderer.update_buffers(

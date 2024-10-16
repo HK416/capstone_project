@@ -202,6 +202,13 @@ impl Application {
         let frame = surface.get_current_texture()
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
+        // 현재 스왑체인 텍스처 버퍼가 갱신이 필요한 경우 렌더링을 생략합니다.
+        let (width, height): (u32, u32) = window.inner_size().into();
+        if width != frame.texture.width()
+        || height != frame.texture.height() {
+            return Ok(());
+        }
+
         // 렌더 타겟 뷰를 가져옵니다.
         let render_target_view = frame.texture.create_view(
             &wgpu::TextureViewDescriptor {
@@ -433,6 +440,7 @@ impl ApplicationHandler<AppEvent> for Application {
         // 윈도우 이벤트를 처리합니다.
         if let Err(e) = match event {
             WindowEvent::Resized(_) => {
+                app_window.on_resized(&self.instance, &self.device);
                 curr_scene.on_window_resized(&app_window.window, self)
             }, 
             WindowEvent::Moved(_) => {
@@ -527,6 +535,13 @@ impl ApplicationHandler<AppEvent> for Application {
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
+        // 애플리케이션 창을 가져옵니다. 
+        // 애플리케이션 창이 존재하지 않는 경우 함수 실행을 생략합니다.
+        let app_window = match self.app_window.as_ref() {
+            Some(app_window) => app_window, 
+            None => return,
+        };
+
         // 현재 게임 장면을 가져옵니다.
         // 현재 게임 장면이 존재하지 않는 경우 함수 실행을 생략합니다.
         let mut scene_stack = self.scene_stack.borrow_mut();
@@ -535,28 +550,49 @@ impl ApplicationHandler<AppEvent> for Application {
             None => return,
         };
 
-        // `winit` 창 핸들을 가져옵니다.
-        let window = self.app_window.as_ref()
-            .map(|app_window| app_window.window.as_ref());
-
         match event {
             AppEvent::SetGameSceneFlow(flow) => {
                 self.scene_flow = flow.into();
                 return;
             }, 
+            AppEvent::ResizeRequest(request_size) => {
+                // 현재 해상도와 같을 경우 이 이벤트를 무시합니다.
+                if self.window_size == request_size {
+                    return;
+                }
+
+                
+                match app_window.window.request_inner_size(request_size.size()) {
+                    Some(result_size) => {
+                        if request_size.size() == result_size {
+                            // 창의 크기가 즉시 적용됐습니다.
+                            self.window_size = request_size;
+                            app_window.on_resized(&self.instance, &self.device);
+                        } else {
+                            log::warn!("현재 시스템에서 애플리케이션 창의 크기를 변경할 수 없습니다!");
+                        }
+                    }, 
+                    None => {
+                        // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
+                        self.window_size = request_size;
+                    }
+                }
+
+                return;
+            }
             AppEvent::ClosedSocket(_) => {
                 // FIXME: 현재는 애플리케이션을 종료시킵니다.
-                alert_error("Runtime error", "서버와 연결이 끊어졌습니다.", window);
+                alert_error("Runtime error", "서버와 연결이 끊어졌습니다.", Some(&app_window.window));
                 std::process::exit(-1);
             }, 
             AppEvent::IOError(e) => {
-                alert_error("Runtime error", e.to_string(), window);
+                alert_error("Runtime error", e.to_string(), Some(&app_window.window));
                 std::process::exit(-1);
             }, 
             AppEvent::PacketReceived(packet) => {
                 log::debug!("received packet: {:?}", packet);
                 if let Err(e) = curr_scene.on_received_packet(packet, self) {
-                    alert_error("Runtime error", e.to_string(), window);
+                    alert_error("Runtime error", e.to_string(), Some(&app_window.window));
                     std::process::exit(-1);
                 }
             }
@@ -605,6 +641,18 @@ impl AppHandle for Application {
     #[must_use]
     fn locale(&self) -> Option<Locale> {
         self.locale
+    }
+
+    #[inline]
+    #[must_use]
+    fn window_title(&self) -> &str {
+        &self.window_title
+    }
+
+    #[inline]
+    #[must_use]
+    fn window_size(&self) -> &WindowSize {
+        &self.window_size
     }
 
     #[inline]

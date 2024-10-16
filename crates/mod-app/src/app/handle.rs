@@ -3,7 +3,11 @@ use std::{path::Path, sync::Arc};
 use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
-use crate::{asset::AssetBundle, etc::{AppEvent, AppFlags, GameTimer, Locale}, net::NetManager};
+use crate::{
+    asset::AssetBundle, 
+    etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize}, 
+    net::NetManager
+};
 
 
 
@@ -29,6 +33,12 @@ pub trait AppHandle {
 
     /// 애플리케이션 표시 언어를 가져옵니다.
     fn locale(&self) -> Option<Locale>;
+
+    /// 애플리케이션 창 타이틀 텍스트를 가져옵니다.
+    fn window_title(&self) -> &str;
+
+    /// 애플리케이션 창의 크기를 가져옵니다.
+    fn window_size(&self) -> &WindowSize;
 
     /// 애플리케이션 게임 타이머를 가져옵니다.
     fn timer(&self) -> &GameTimer;
