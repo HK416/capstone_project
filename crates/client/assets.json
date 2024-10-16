@@ -20,6 +20,12 @@
                 }
             }
         }, 
+        "font" : {
+            "files" : [
+                "NEXON Lv2 Gothic.ttf"
+            ],
+            "directories" : {}
+        },
         "shape" : {
             "files" : [], 
             "directories" : {

@@ -51,7 +51,7 @@ impl GameScene for StartupScene {
         window: &Window, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.num_tasks = 3;
+        self.num_tasks = 4;
         let io_threads = app.io_threads();
 
         // 네트워크 연결
@@ -84,6 +84,37 @@ impl GameScene for StartupScene {
                 .map(|_| ())
                 .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
             cloned_results.push(result);
+        });
+
+
+        // 폰트 추가
+        let bundle = app.bundle().clone();
+        let egui_ctx = app.egui_ctx().clone();
+        let cloned_results = self.results.clone();
+        io_threads.spawn(move || {
+            // 폰트 파일을 로드합니다.
+            let font_data = match bundle.load("font/NEXON Lv2 Gothic.ttf") {
+                Ok(cache) => cache.as_bytes().to_vec(), 
+                Err(e) => return cloned_results.push(Err(Box::new(e))),
+            };
+                
+            // 폰트 데이터를 추가합니다.
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.insert(
+                "NEXON Lv2 Gothic".to_owned(), 
+                egui::FontData::from_owned(font_data)
+            );
+            
+            fonts.families.entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, "NEXON Lv2 Gothic".to_owned());
+
+            fonts.families.entry(egui::FontFamily::Monospace)
+                .or_default()
+                .push("NEXON Lv2 Gothic".to_owned());
+
+            egui_ctx.set_fonts(fonts);
+            cloned_results.push(Ok(()));
         });
 
 
