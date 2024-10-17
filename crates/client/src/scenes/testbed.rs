@@ -150,8 +150,8 @@ impl TestBedScene {
             Some("Terrain"), 
             device, 
             queue, 
-            100.0, 
-            100.0, 
+            10.0, 
+            10.0, 
             1.0
         );
 

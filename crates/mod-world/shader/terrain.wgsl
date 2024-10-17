@@ -126,6 +126,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
-    out.color = textureSample(t_diffuse, s_diffuse, input.texcoord1);
+    // out.color = textureSample(t_diffuse, s_diffuse, input.texcoord1);
+    out.color = vec4<f32>(input.texcoord1.xy, 0.0, 1.0);
     return out;
 }

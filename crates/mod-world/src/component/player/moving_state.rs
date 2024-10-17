@@ -323,7 +323,7 @@ fn update_player_force(
     world: &Arc<SkipMap<WorldID, GameObject>>, 
     player_id: &WorldID
 ) -> Result<(), PlayerStateError> {
-    const FORCE: f32 = 500.0;
+    const FORCE: f32 = 750.0;
 
     // 플레이어 오브젝트를 가져옵니다.
     let mut player = match world.get_mut(player_id) {

@@ -323,7 +323,7 @@ fn fire_bullet(
                 kind, 
                 translation, 
                 direction, 
-                speed: 250.0, // meter per seconds
+                speed: 72.5, // meter per seconds
                 range: 850.0, // meter
             });
         } else {
