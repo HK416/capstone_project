@@ -6,6 +6,7 @@ mod control;
 mod identifier;
 mod player;
 mod projection;
+mod terrain;
 mod transform;
 mod weapon;
 
@@ -17,5 +18,6 @@ pub use self::control::*;
 pub use self::identifier::*;
 pub use self::player::*;
 pub use self::projection::*;
+pub use self::terrain::*;
 pub use self::transform::*;
 pub use self::weapon::*;

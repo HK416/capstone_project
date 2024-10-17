@@ -53,6 +53,12 @@ pub struct MaterialBuilder {
 
     /// 재질의 `Emissive` 텍스처 샘플러입니다.
     pub emissive_sampler: Arc<wgpu::Sampler>, 
+
+    /// 재질의 `Height` 텍스처 뷰입니다.
+    pub height_map: Arc<wgpu::TextureView>, 
+
+    /// 재질의 `Height` 텍스처 샘플러입니다.
+    pub height_sampler: Arc<wgpu::Sampler>, 
 }
 
 impl MaterialBuilder {
@@ -66,16 +72,17 @@ impl MaterialBuilder {
         let default_white = TexturePool::white(device, queue);
         let default_white = TextureViewPool::get_or_init(
             &default_white, 
-            &wgpu::TextureViewDescriptor {
-                ..Default::default()
-            }
+            &wgpu::TextureViewDescriptor::default()
         );
         let default_normal = TexturePool::normal(device, queue);
         let default_normal = TextureViewPool::get_or_init(
             &default_normal, 
-            &wgpu::TextureViewDescriptor {
-                ..Default::default()
-            }
+            &wgpu::TextureViewDescriptor::default()
+        );
+        let default_height = TexturePool::height(device, queue);
+        let default_height = TextureViewPool::get_or_init(
+            &default_height, 
+            &wgpu::TextureViewDescriptor::default()
         );
         let default_linear = SamplerPool::linear(device);
 
@@ -94,7 +101,9 @@ impl MaterialBuilder {
             normal_map: default_normal.clone(), 
             normal_sampler: default_linear.clone(), 
             emissive_map: default_white.clone(), 
-            emissive_sampler: default_linear.clone() 
+            emissive_sampler: default_linear.clone(), 
+            height_map: default_height.clone(), 
+            height_sampler: default_linear.clone()
         }
     }
 
@@ -169,6 +178,18 @@ impl MaterialBuilder {
                             &self.emissive_sampler
                         ), 
                     }, 
+                    wgpu::BindGroupEntry {
+                        binding: 9, 
+                        resource: wgpu::BindingResource::TextureView(
+                            &self.height_map
+                        ), 
+                    }, 
+                    wgpu::BindGroupEntry {
+                        binding: 10, 
+                        resource: wgpu::BindingResource::Sampler(
+                            &self.height_sampler
+                        ), 
+                    },
                 ]
             }
         );

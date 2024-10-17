@@ -117,6 +117,26 @@ impl Material {
                                 wgpu::SamplerBindingType::Filtering
                             ), 
                             count: None, 
+                        },
+                        // 9번 바인딩: `Height` 텍스처 
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 9, 
+                            visibility: wgpu::ShaderStages::VERTEX, 
+                            ty: wgpu::BindingType::Texture { 
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true }, 
+                                view_dimension: wgpu::TextureViewDimension::D2, 
+                                multisampled: false 
+                            }, 
+                            count: None, 
+                        }, 
+                        // 10번 바인딩: `Height` 텍스처 샘플러
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 10, 
+                            visibility: wgpu::ShaderStages::VERTEX, 
+                            ty: wgpu::BindingType::Sampler(
+                                wgpu::SamplerBindingType::Filtering
+                            ), 
+                            count: None, 
                         }, 
                     ]
                 }

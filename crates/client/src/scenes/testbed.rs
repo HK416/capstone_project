@@ -1,10 +1,10 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
-use mod_app::{app::AppHandle, asset::AssetBundle, etc::{GameTimer, WindowSize}, ext::AppWindowExt, net::{IpAddress, NetManager}, scene::GameScene};
+use mod_app::{app::AppHandle, asset::AssetBundle, etc::WindowSize, ext::AppWindowExt, net::{IpAddress, NetManager}, scene::GameScene};
 use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, Weapon, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
+use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, ThirdPersonCamera, Transform, Weapon, WorldID}, render::{camera::CameraDataLayout, material::MaterialBuilder, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
 use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -131,6 +131,51 @@ impl TestBedScene {
     }
 
 
+    /// 지형 오브젝트를 추가합니다.
+    fn spwan_terrain(
+        &mut self, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
+        bundle: &AssetBundle
+    ) {
+        // 지형 게임 오브젝트를 생성합니다.
+        let mut object = GameObject::new(
+            &self.id_generator, 
+            "Terrain", 
+            None
+        );
+
+        // 지형 메쉬를 생성합니다.
+        let mesh = TerrainFactory::mesh(
+            Some("Terrain"), 
+            device, 
+            queue, 
+            100.0, 
+            100.0, 
+            1.0
+        );
+
+        // 지형 재질을 생성합니다.
+        let materials = MaterialBuilder::new("Terrain", device, queue)
+            .build(device, queue);
+
+        // 지형 메쉬 렌더러를 생성합니다.
+        let renderer = Arc::new(TerrainRenderer::new(
+            object.id().clone(), 
+            mesh, 
+            vec![materials], 
+            device
+        ));
+
+        // 게임 오브젝트에 메쉬 렌더러를 추가합니다.
+        object.insert(renderer.clone());
+        self.world.insert(object.id().clone(), object);
+
+        // 렌더러 목록에 메쉬 렌더러를 추가합니다.
+        self.renderer.push(renderer);
+    }
+
+
     /// 플레이어를 추가합니다.
     fn insert_player(
         &mut self, 
@@ -196,7 +241,7 @@ impl TestBedScene {
             // 플레이어 오브젝트에 삼인칭 카메라를 추가합니다.
             object.insert(ThirdPersonCamera {
                 target: self.main_camera.clone(), 
-                distance: -2.0, 
+                distance: -1.0, 
                 polar: 180f32.to_radians(), 
                 azimuthal: 15f32.to_radians()
             });
@@ -303,7 +348,7 @@ impl TestBedScene {
         // 카메라 오브젝트에 원근 투영 변환 행렬을 추가합니다.
         let (width, height): (u32, u32) = window.inner_size().into();
         camera_object.insert(Projection::perspective(
-            50f32.to_radians(), 
+            80f32.to_radians(), 
             width as f32 / height as f32, 
             0.001, 
             1000.0
@@ -568,6 +613,9 @@ impl GameScene for TestBedScene {
         window.set_cursor_grab(CursorGrabMode::Confined)
             .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
             .unwrap();
+
+        // 지형을 생성합니다.
+        self.spwan_terrain(app.render_device(), app.render_queue(), app.bundle());
 
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());

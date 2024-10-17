@@ -1,5 +1,6 @@
 pub mod model;
 pub mod shape;
+pub mod terrain;
 
 use std::sync::Arc;
 

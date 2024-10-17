@@ -98,6 +98,33 @@ impl TexturePool {
             ).into()
         }).clone()
     }
+
+    /// 기본 `Height` 텍스처를 반환합니다.
+    #[must_use]
+    pub fn height(device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<wgpu::Texture> {
+        static TEXTURE: OnceLock<Arc<wgpu::Texture>> = OnceLock::new();
+        TEXTURE.get_or_init(|| {
+            device.create_texture_with_data(
+                queue, 
+                &wgpu::TextureDescriptor {
+                    label: Some("DefaultHeightTexture"), 
+                    size: wgpu::Extent3d {
+                        width: 1, 
+                        height: 1, 
+                        depth_or_array_layers: 1
+                    }, 
+                    dimension: wgpu::TextureDimension::D2, 
+                    format: wgpu::TextureFormat::R8Unorm, 
+                    mip_level_count: 1, 
+                    sample_count: 1, 
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING, 
+                    view_formats: &[]
+                }, 
+                wgpu::util::TextureDataOrder::LayerMajor, 
+                &[0]
+            ).into()
+        }).clone()
+    }
 }
 
 impl TexturePool {
