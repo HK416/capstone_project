@@ -3,7 +3,7 @@ use std::{any::type_name, sync::Arc};
 use mod_parallelism::collections::SkipMap;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::component::{AnimationSet, GameObject, InputController, ThirdPersonCamera, Transform, WorldID};
+use crate::{component::{AnimationSet, GameObject, InputController, Transform, WorldID}, render::camera::ThirdPersonCamera};
 
 use super::{PlayerFlags, PlayerState, PlayerStateError};
 

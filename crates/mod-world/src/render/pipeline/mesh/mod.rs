@@ -5,8 +5,8 @@ pub mod terrain;
 use std::sync::Arc;
 
 use crate::{
-    component::{WorldID, Camera}, 
-    render::{material::Material, mesh::Mesh}
+    component::WorldID, 
+    render::{camera::CameraResource, material::Material, mesh::Mesh}
 };
 
 
@@ -23,7 +23,7 @@ pub trait MeshRenderer : Sync + Send {
     fn materials(&self) -> &[Arc<Material>];
 
     /// 렌더러를 파이프라인 상태 머신에 바인드합니다.
-    fn bind<'a>(&'a self, camera: &Camera, rpass: &mut wgpu::RenderPass<'a>);
+    fn bind<'a>(&'a self, camera: &CameraResource, rpass: &mut wgpu::RenderPass<'a>);
 
     /// 렌더러를 사용하여 그립니다.
     fn draw<'a>(&'a self, rpass: &mut wgpu::RenderPass<'a>);

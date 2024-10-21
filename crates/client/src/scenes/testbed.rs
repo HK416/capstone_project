@@ -4,7 +4,7 @@ use mod_app::{app::AppHandle, asset::AssetBundle, etc::WindowSize, ext::AppWindo
 use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, ThirdPersonCamera, Transform, Weapon, WorldID}, render::{camera::CameraDataLayout, material::MaterialBuilder, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
+use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, Transform, Weapon, WorldID}, render::{camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, material::MaterialBuilder, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
 use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -355,7 +355,7 @@ impl TestBedScene {
         ));
 
         // 카메라 오브젝트에 카메라 요소를 추가합니다.
-        camera_object.insert(Arc::new(Camera::new(
+        camera_object.insert(Arc::new(CameraResource::new(
             Some(camera_object.name()), 
             device
         )));
@@ -883,11 +883,11 @@ impl GameScene for TestBedScene {
                 None => gmm::Matrix::IDENTITY
             };
 
-            if let Some(camera) = camera_object.get::<Arc<Camera>>() {
-                camera.camera_uniform().update(device, queue, CameraDataLayout {
-                    proj_view: (projection_matrix * camera_matrix).store_float4x4(), 
-                    position: eye.store_float3(), 
-                    direction: dir.store_float3(), 
+            if let Some(camera) = camera_object.get::<Arc<CameraResource>>() {
+                camera.uniform().write(device, queue, CameraDataLayout {
+                    proj_view: (projection_matrix * camera_matrix).into(), 
+                    position: eye.store_float3().into(), 
+                    direction: dir.store_float3().into(), 
                     ..Default::default()
                 });
             }
@@ -943,7 +943,7 @@ impl GameScene for TestBedScene {
         // 카메라 오브젝트의 카메라 요소를 가져옵니다.
         let camera = match self.world.get(&self.main_camera) {
             Some(camera) => {
-                match camera.get::<Arc<Camera>>() {
+                match camera.get::<Arc<CameraResource>>() {
                     Some(camera) => camera.clone(), 
                     None => {
                         log::warn!("카메라 오브젝트에 카메라 요소가 없습니다!");

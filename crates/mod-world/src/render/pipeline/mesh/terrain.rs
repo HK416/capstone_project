@@ -1,12 +1,9 @@
 use std::{mem, sync::{Arc, OnceLock}};
 
 use crate::{
-    component::{Camera, WorldID}, 
+    component::WorldID,  
     render::{
-        material::Material, 
-        mesh::{Attribute, Mesh, NonSkinnedMesh}, 
-        DEPTH_STENCIL_FORMAT, 
-        SWAPCHAIN_FORMAT
+        camera::CameraResource, material::Material, mesh::{Attribute, Mesh, NonSkinnedMesh}, DEPTH_STENCIL_FORMAT, SWAPCHAIN_FORMAT
     }
 };
 
@@ -67,7 +64,7 @@ impl MeshRenderer for TerrainRenderer {
         &self.materials
     }
 
-    fn bind<'a>(&'a self, camera: &Camera, rpass: &mut wgpu::RenderPass<'a>) {
+    fn bind<'a>(&'a self, camera: &CameraResource, rpass: &mut wgpu::RenderPass<'a>) {
         rpass.set_pipeline(&self.pipeline);
 
         rpass.set_bind_group(0, camera.bind_group(), &[]);
@@ -206,7 +203,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         &wgpu::PipelineLayoutDescriptor {
             label: Some("PipelineLayout(ModelRenderer)"), 
             bind_group_layouts: &[
-                Camera::layout(device), 
+                CameraResource::bind_group_layout(device), 
                 NonSkinnedMesh::bind_group_layout(device), 
                 Material::bind_group_layout(device)
             ], 
