@@ -246,7 +246,7 @@ impl CameraResource {
 /// 삼인칭 시점 카메라의 데이터입니다.
 #[derive(Debug, Clone)]
 pub struct ThirdPersonCamera {
-    pub target: crate::component::WorldID, 
+    pub target: crate::objects::ObjectId, 
 
     // 거리
     pub distance: f32, 

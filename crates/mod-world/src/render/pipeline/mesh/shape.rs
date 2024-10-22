@@ -1,9 +1,7 @@
 use std::{mem, sync::{Arc, OnceLock}};
 
-use mod_parallelism::collections::SkipMap;
-
 use crate::{
-    component::{GameObject, WorldID}, 
+    objects::{GameWorld, ObjectId}, 
     render::{
         camera::CameraResource, 
         material::{model::ModelMaterialResource, MaterialResource}, 
@@ -21,7 +19,7 @@ use super::MeshRenderer;
 #[derive(Debug)]
 pub struct ShapeRenderer {
     /// 렌더러의 게임 오브젝트 식별자입니다.
-    game_object_id: WorldID, 
+    game_object_id: ObjectId, 
 
     /// 렌더러에 연결된 메쉬입니다.
     mesh: Mesh, 
@@ -40,7 +38,7 @@ impl ShapeRenderer {
     /// 새로운 모델 메쉬 렌더러를 생성합니다.
     #[must_use]
     pub fn new(
-        id: WorldID, 
+        id: ObjectId, 
         mesh: Mesh, 
         resource: StaticMeshResource, 
         materials: Vec<Arc<dyn MaterialResource>>, 
@@ -59,7 +57,7 @@ impl ShapeRenderer {
 impl MeshRenderer for ShapeRenderer {
     #[inline]
     #[must_use]
-    fn game_object(&self) -> &WorldID {
+    fn game_object(&self) -> &ObjectId {
         &self.game_object_id
     }
 
@@ -75,12 +73,12 @@ impl MeshRenderer for ShapeRenderer {
         &self.materials
     }
 
-    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &SkipMap<WorldID, GameObject>) {
-        let object = world.get(&self.game_object_id)
-            .unwrap();
-        let world_transform = object.get_world_transform().clone();
+    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &GameWorld) {
+        let world_transform = world.get(&self.game_object_id)
+            .unwrap()
+            .world_transform;
         self.resource.mesh_uniform().write(device, queue, StaticMeshDataLayout {
-            trans: world_transform.0.into_column_array(), 
+            trans: world_transform.into_column_array(), 
             ..Default::default()
         });
     }

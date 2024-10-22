@@ -1,10 +1,9 @@
-use std::{any::type_name, sync::Arc};
+use std::any::type_name;
 
-use mod_parallelism::collections::SkipMap;
 use mod_physics::rigid_body::RigidBody;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::{component::{AnimationSet, GameObject, InputController, Transform, WorldID}, render::camera::ThirdPersonCamera};
+use crate::{component::{AnimationSet, InputController}, objects::{GameWorld, ObjectId, Transform}, render::camera::ThirdPersonCamera};
 
 use super::{PlayerFlags, PlayerState, PlayerStateError};
 
@@ -12,8 +11,8 @@ use super::{PlayerFlags, PlayerState, PlayerStateError};
 
 /// 애플리케이션에 키보드 눌림 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
 pub fn on_keyboard_pressed(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID,
+    world: &GameWorld, 
+    player_id: &ObjectId,
     keycode: KeyCode, 
     _location: KeyLocation, 
     _modifiers: Modifiers, 
@@ -78,8 +77,8 @@ pub fn on_keyboard_pressed(
 
 /// 애플리케이션에 키보드 떼임 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
 pub fn on_keyboard_released(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     keycode: KeyCode, 
     _location: KeyLocation, 
     _modifiers: Modifiers, 
@@ -144,8 +143,8 @@ pub fn on_keyboard_released(
 
 /// 애플리케이션 마우스 커서 움직임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_cursor_moved(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    camera_id: &WorldID, 
+    world: &GameWorld, 
+    camera_id: &ObjectId, 
     dx: f32, dy: f32
 ) -> Result<(), PlayerStateError> {
     // 카메라 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
@@ -161,8 +160,8 @@ pub fn on_cursor_moved(
 
 /// 애플리케이션 마우스 버튼 눌림 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_mouse_btn_pressed(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     _x: f32, _y: f32, 
     button: MouseButton
 ) -> Result<(), PlayerStateError> {
@@ -203,7 +202,7 @@ pub fn on_mouse_btn_pressed(
 
         // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
         let camera_transform = match world.get(&camera_id) {
-            Some(camera) => camera.get_world_transform().clone(), 
+            Some(camera) => camera.world_transform, 
             None => return Err(PlayerStateError::ObjectNotFound(camera_id))
         };
 
@@ -213,8 +212,8 @@ pub fn on_mouse_btn_pressed(
         let x_axis = y_axis.vec3_cross(z_axis);
         let z_axis = x_axis.vec3_cross(y_axis);
         let rotation = gmm::Quaternion::from_rotation_axes(x_axis, y_axis, z_axis);
-        let translation = player.get_local_transform().get_translation();
-        player.set_local_transform(Transform(gmm::Matrix::from_rotation_translation(rotation, translation)));
+        let translation = player.local_transform.get_translation();
+        player.local_transform = gmm::Matrix::from_rotation_translation(rotation, translation);
 
 
         // 플레이어 애니메이션을 가져옵니다.
@@ -238,8 +237,8 @@ pub fn on_mouse_btn_pressed(
 
 /// 애플리케이션 마우스 버튼 떼임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_mouse_btn_released(
-    _world: &Arc<SkipMap<WorldID, GameObject>>, 
-    _player_id: &WorldID, 
+    _world: &GameWorld, 
+    _player_id: &ObjectId, 
     _x: f32, _y: f32, 
     _button: MouseButton
 ) -> Result<(), PlayerStateError> {
@@ -250,14 +249,14 @@ pub fn on_mouse_btn_released(
 
 /// 애플리케이션 갱신 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
 pub fn on_update(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     update_player_force(world, player_id)?;
     update_animation(world, player_id, elapsed_time_sec)?;
     update_position(world, player_id, elapsed_time_sec)?;
-    super::update_hierarchy(world, Transform::new(), player_id);
+    super::update_hierarchy(world, gmm::Matrix::IDENTITY, player_id);
     Ok(())
 }
 
@@ -265,8 +264,8 @@ pub fn on_update(
 
 /// 플레이어 애니메이션을 갱신하는 함수입니다.
 pub fn update_animation(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
@@ -296,7 +295,7 @@ pub fn update_animation(
     };
 
     // 최상위 뼈 노드의 변환 행렬을 설정합니다.
-    root_object.set_local_transform(keyframe.root_bone());
+    root_object.local_transform = keyframe.root_bone();
 
     // 뼈 변환 행렬을 게임 오브젝트에 적용합니다.
     for skinning in keyframe.meshes() {
@@ -308,8 +307,8 @@ pub fn update_animation(
             };
 
             // 뼈 오브젝트의 로컬 변환 행렬을 설정합니다.
-            let bone_transform = Transform(skinning.transforms[index].into());
-            bone_object.set_local_transform(bone_transform);
+            let bone_transform = skinning.transforms[index].into();
+            bone_object.local_transform = bone_transform;
         }
     }
 
@@ -320,8 +319,8 @@ pub fn update_animation(
 
 /// 플레이어 힘의 총량을 계산합니다.
 fn update_player_force(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID
+    world: &GameWorld, 
+    player_id: &ObjectId
 ) -> Result<(), PlayerStateError> {
     const FORCE: f32 = 750.0;
 
@@ -339,7 +338,7 @@ fn update_player_force(
 
     // 카메라 오브젝트의 월드 변환 행렬을 가져옵니다.
     let camera = world.get(&camera_id).unwrap();
-    let camera_transform = camera.get_world_transform().clone();
+    let camera_transform = camera.world_transform;
 
     // 현재 사용자 상태 플래그를 가져옵니다.
     let flags = player.get::<PlayerFlags>().unwrap();
@@ -372,9 +371,9 @@ fn update_player_force(
             false => 360f32.to_radians() - dot.acos()
         } + 90f32.to_radians();
 
-        let mut transform = player.get_local_transform().clone();
+        let mut transform = player.local_transform;
         transform.set_rotation(gmm::Quaternion::from_rotation_y(theta));
-        player.set_local_transform(transform);
+        player.local_transform = transform;
     }
 
     Ok(())
@@ -384,8 +383,8 @@ fn update_player_force(
 
 /// 플레이어 위치를 갱신하는 함수입니다.
 fn update_position(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
@@ -395,7 +394,7 @@ fn update_position(
     };
 
     // 플레이어의 월드 변환 행렬을 가져옵니다.
-    let mut transform = player.get_local_transform().clone();
+    let mut transform = player.local_transform;
 
     // 강체 물리 요소를 가져옵니다.
     let rigid_body = match player.get_mut::<RigidBody>() {
@@ -409,7 +408,7 @@ fn update_position(
     rigid_body.reset_force();
 
     // 월드 변환 행렬을 적용합니다.
-    player.set_local_transform(transform);
+    player.local_transform = transform;
 
     Ok(())
 }

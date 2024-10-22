@@ -2,11 +2,15 @@ use std::{collections::HashMap, io::Cursor, sync::Arc};
 
 use mod_app::asset::AssetBundle;
 use mod_asset::model::{AnimationBlob, MaterialBlob, MeshBlob, ModelBlob, NodeBlob, TextureBlob};
-use mod_parallelism::collections::{Queue, SkipMap};
+use mod_parallelism::collections::Queue;
 use mod_world::{
-    component::{GameObject, IdGenerator, WorldID}, 
+    objects::{GameObjectDescriptor, GameWorld, ObjectId}, 
     render::{
-        animation::{AnimationClip, KeyFrame, SkinnedMeshInfo, SkinningData}, material::{model::{ModelMaterialDescriptor, ModelMaterialResource}, MaterialResource}, mesh::{AttributeValues, BoneMatrixDataLayout, DynamicMeshDataLayout, DynamicMeshResource, Indices, Mesh, StaticMeshResource, Vertices, MAX_BONES}, pipeline::mesh::{model::ModelRenderer, shape::ShapeRenderer, MeshRenderer}, pool::{SamplerPool, TexturePool, TextureViewPool}
+        animation::{AnimationClip, KeyFrame, SkinnedMeshInfo, SkinningData}, 
+        material::{model::{ModelMaterialDescriptor, ModelMaterialResource}, MaterialResource}, 
+        mesh::{AttributeValues, BoneMatrixDataLayout, DynamicMeshDataLayout, DynamicMeshResource, Indices, Mesh, StaticMeshResource, Vertices, MAX_BONES}, 
+        pipeline::mesh::{model::ModelRenderer, shape::ShapeRenderer, MeshRenderer}, 
+        pool::{SamplerPool, TexturePool, TextureViewPool}
     }
 };
 
@@ -19,23 +23,21 @@ const SPHERE_PATH: &'static str = "shape/sphere/Sphere.ron";
 
 
 pub fn spawn_sphere_shape(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    id_generator: &Arc<IdGenerator>, 
+    world: &GameWorld,  
     renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>,
     bundle: &AssetBundle, 
     device: &wgpu::Device, 
     queue: &wgpu::Queue
-) -> WorldID {
+) -> ObjectId {
     let cache = bundle.get_or_init(SPHERE_PATH).unwrap();
     let blob: ModelBlob = ron::de::from_bytes(cache.as_bytes()).unwrap();
     let root_id = spawn_shape_node(
         world, 
-        id_generator, 
         renderer, 
         bundle, 
         device, 
         queue, 
-        None, 
+        ObjectId::NIL, 
         blob.root, 
         Vec::new()
     );
@@ -46,49 +48,50 @@ pub fn spawn_sphere_shape(
 /// 모양 노드를 생성합니다.
 #[must_use]
 fn spawn_shape_node(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    id_generator: &Arc<IdGenerator>, 
+    world: &GameWorld, 
     renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     bundle: &AssetBundle,
     device: &wgpu::Device,
     queue: &wgpu::Queue, 
-    parent: Option<WorldID>, 
+    parent: ObjectId, 
     mut blob: NodeBlob, 
     mut sibling: Vec<NodeBlob>, 
-) -> WorldID {
-    // 새로운 게임 오브젝트를 생성합니다.
-    let name = blob.name.clone();
-    let mut object = GameObject::new(id_generator, name, parent.clone());
-
-
+) -> ObjectId {
     // 로컬 변환 행렬과 월드 변환 행렬을 생성하고 설정합니다.
     let local_transform = gmm::Matrix::load_float4x4(blob.transform);
     let world_transform = gmm::Matrix::IDENTITY;
-    object.set_local_transform(local_transform);
-    object.set_world_transform(world_transform);
+
+    // 새로운 게임 오브젝트를 생성합니다.
+    let name = blob.name.clone();
+    let desc = GameObjectDescriptor::new()
+        .with_name(name)
+        .with_parent(parent)
+        .with_local_transform(local_transform)
+        .with_world_transform(world_transform);
+    let id = world.spawn(desc);
 
 
     // 자식 데이터가 있는 경우 자식 오브젝트를 생성합니다.
     if let Some(child_blob) = blob.children.pop() {
         let child_id = spawn_shape_node(
             world, 
-            id_generator, 
             renderer, 
             bundle, 
             device, 
             queue, 
-            Some(object.id().clone()), 
+            id, 
             child_blob, 
             blob.children
         );
-        object.set_child(Some(child_id));
+
+        let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
+        object.child = child_id;
     }
 
     // 형제 데이터가 있는 경우 형제 오브젝트를 생성합니다.
     if let Some(sibling_blob) = sibling.pop() {
         let sibling_id = spawn_shape_node(
             world, 
-            id_generator, 
             renderer, 
             bundle, 
             device, 
@@ -97,7 +100,9 @@ fn spawn_shape_node(
             sibling_blob, 
             sibling
         );
-        object.set_sibling(Some(sibling_id));
+
+        let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
+        object.sibling = sibling_id;
     }
 
     // 메쉬 데이터가 있는 경우 모델 렌더러를 생성합니다.
@@ -117,31 +122,31 @@ fn spawn_shape_node(
             .collect();
 
         let mesh_renderer = Arc::new(ShapeRenderer::new(
-            object.id().clone(), 
+            id,
             mesh, 
             resource, 
             materials, 
             device
         ));
+
+
+        let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
         object.insert(mesh_renderer.clone());
         renderer.push(mesh_renderer);
     }
 
-    let id = object.id().clone();
-    world.insert(id.clone(), object);
     id
 }
 
 
 
 pub fn spawn_aris_original_model(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    id_generator: &Arc<IdGenerator>, 
+    world: &GameWorld, 
     renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     bundle: &AssetBundle,
     device: &wgpu::Device, 
     queue: &wgpu::Queue
-) -> (WorldID, Vec<AnimationClip>, HashMap<String, WorldID>) {
+) -> (ObjectId, Vec<AnimationClip>, HashMap<String, ObjectId>) {
     let cache = bundle.get_or_init(ARIS_ORIGINAL_PATH).unwrap();
     let blob: ModelBlob = ron::de::from_bytes(cache.as_bytes()).unwrap();
 
@@ -149,14 +154,13 @@ pub fn spawn_aris_original_model(
     let mut skinned_meshes = HashMap::new();
     let root_id = spawn_model_node(
         world, 
-        id_generator, 
         renderer, 
         bundle, 
         device, 
         queue, 
         &mut nodes, 
         &mut skinned_meshes, 
-        None, 
+        ObjectId::NIL, 
         blob.root, 
         Vec::new()
     );
@@ -176,53 +180,54 @@ pub fn spawn_aris_original_model(
 /// 모델 노드를 생성합니다.
 #[must_use]
 fn spawn_model_node(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    id_generator: &Arc<IdGenerator>, 
+    world: &GameWorld, 
     renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     bundle: &AssetBundle,
     device: &wgpu::Device,
     queue: &wgpu::Queue, 
-    nodes: &mut HashMap<String, WorldID>, 
+    nodes: &mut HashMap<String, ObjectId>, 
     skinned_meshes: &mut HashMap<String, Arc<SkinnedMeshInfo>>, 
-    parent: Option<WorldID>, 
+    parent: ObjectId, 
     mut blob: NodeBlob, 
     mut sibling: Vec<NodeBlob>, 
-) -> WorldID {
-    // 새로운 게임 오브젝트를 생성합니다.
-    let name = blob.name.clone();
-    let mut object = GameObject::new(id_generator, name, parent.clone());
-
-
+) -> ObjectId {
     // 로컬 변환 행렬과 월드 변환 행렬을 생성하고 설정합니다.
     let local_transform = gmm::Matrix::load_float4x4(blob.transform);
     let world_transform = gmm::Matrix::IDENTITY;
-    object.set_local_transform(local_transform);
-    object.set_world_transform(world_transform);
+
+    // 새로운 게임 오브젝트를 생성합니다.
+    let name = blob.name.clone();
+    let desc = GameObjectDescriptor::new()
+        .with_name(name)
+        .with_parent(parent)
+        .with_local_transform(local_transform)
+        .with_world_transform(world_transform);
+    let id = world.spawn(desc);
 
 
     // 자식 데이터가 있는 경우 자식 오브젝트를 생성합니다.
     if let Some(child_blob) = blob.children.pop() {
         let child_id = spawn_model_node(
             world, 
-            id_generator, 
             renderer, 
             bundle, 
             device, 
             queue, 
             nodes, 
             skinned_meshes, 
-            Some(object.id().clone()), 
+            id, 
             child_blob, 
             blob.children
         );
-        object.set_child(Some(child_id));
+
+        let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
+        object.child = child_id;
     }
 
     // 형제 데이터가 있는 경우 형제 오브젝트를 생성합니다.
     if let Some(sibling_blob) = sibling.pop() {
         let sibling_id = spawn_model_node(
             world, 
-            id_generator, 
             renderer, 
             bundle, 
             device, 
@@ -233,7 +238,9 @@ fn spawn_model_node(
             sibling_blob, 
             sibling
         );
-        object.set_sibling(Some(sibling_id));
+
+        let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
+        object.sibling = sibling_id;
     }
 
     // 메쉬 데이터가 있는 경우 모델 렌더러를 생성합니다.
@@ -286,7 +293,7 @@ fn spawn_model_node(
 
             // 렌더러를 게임 오브젝트에 추가합니다.
             let mesh_renderer = Arc::new(ModelRenderer::new(
-                object.id().clone(), 
+                id, 
                 mesh, 
                 resource, 
                 materials, 
@@ -294,14 +301,13 @@ fn spawn_model_node(
             ));
             renderer.push(mesh_renderer.clone());
 
+            let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
             object.insert(mesh_info);
             object.insert(mesh_renderer);
         };
     }
 
-    let id = object.id().clone();
     nodes.insert(blob.name, id.clone());
-    world.insert(id.clone(), object);
     id
 }
 
@@ -469,7 +475,7 @@ fn create_texture(
 }
 
 fn create_animations(
-    nodes: &HashMap<String, WorldID>,
+    nodes: &HashMap<String, ObjectId>,
     skinned_meshes: &HashMap<String, Arc<SkinnedMeshInfo>>,
     blob: AnimationBlob
 ) -> AnimationClip {

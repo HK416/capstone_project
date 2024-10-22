@@ -1,4 +1,4 @@
-use crate::component::WorldID;
+use crate::objects::ObjectId;
 
 use super::{KeyFrame, SkinningData};
 
@@ -10,7 +10,7 @@ pub struct AnimationClip {
     name: String, 
 
     /// 최상위 뼈 노드의 식별자입니다.
-    root_bone: WorldID, 
+    root_bone: ObjectId, 
 
     /// 애니메이션의 총 재생길이입니다.
     length: f32, 
@@ -32,7 +32,7 @@ impl AnimationClip {
     /// 주어진 애니메이션의 길이 또는 애니메이션 샘플링 프레임 레이트가 0보다 작거나 같을 경우
     /// 또는 주어진 키 프레임 데이터가 비어있는 경우 `panic!`을 호출합니다.
     /// 
-    pub fn new<N, I>(name: N, root_bone: WorldID, length: f32, frame_rate: f32, keyframes: I) -> Self 
+    pub fn new<N, I>(name: N, root_bone: ObjectId, length: f32, frame_rate: f32, keyframes: I) -> Self 
     where 
         N: Into<String>, 
         I: IntoIterator<Item = KeyFrame>, 
@@ -58,7 +58,7 @@ impl AnimationClip {
     /// 
     #[inline]
     #[must_use]
-    pub unsafe fn new_unchecked<N, I>(name: N, root_bone: WorldID, length: f32, frame_rate: f32, keyframes: I) -> Self 
+    pub unsafe fn new_unchecked<N, I>(name: N, root_bone: ObjectId, length: f32, frame_rate: f32, keyframes: I) -> Self 
     where 
         N: Into<String>, 
         I: IntoIterator<Item = KeyFrame>, 
@@ -77,7 +77,7 @@ impl AnimationClip {
     /// 최상위 뼈 노드의 식별자를 가져옵니다.
     #[inline]
     #[must_use]
-    pub fn root_bone_id(&self) -> &WorldID {
+    pub fn root_bone_id(&self) -> &ObjectId {
         &self.root_bone
     }
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    component::WorldID, 
+    objects::ObjectId, 
     render::mesh::{BoneMatrixUniform, DynamicMeshUniform}
 };
 
@@ -11,10 +11,10 @@ use crate::{
 #[derive(Debug)]
 pub struct SkinnedMeshInfo {
     /// 최상위 뼈 노드의 식별자입니다.
-    pub root_bone: WorldID, 
+    pub root_bone: ObjectId, 
 
     /// 스키닝 데이터를 구성하는 뼈 노드들의 식별자입니다.
-    pub bones: Vec<WorldID>, 
+    pub bones: Vec<ObjectId>, 
 
     /// 스키닝된 메쉬 데이터 유니폼 버퍼입니다.
     pub mesh_uniform: DynamicMeshUniform, 

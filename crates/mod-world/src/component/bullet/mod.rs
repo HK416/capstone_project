@@ -81,9 +81,3 @@ pub struct Bullet {
     /// 총알의 최대 사거리입니다.
     pub range: f32, 
 }
-
-
-
-mod pool;
-
-pub use self::pool::*;

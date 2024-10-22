@@ -1,9 +1,8 @@
-use std::{any::type_name, sync::Arc};
+use std::any::type_name;
 
-use mod_parallelism::collections::SkipMap;
 use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
 
-use crate::{component::{AnimationSet, Bullet, BulletKind, DelayTimer, GameObject, InputController, Transform, Weapon, WorldID}, render::camera::ThirdPersonCamera};
+use crate::{component::{AnimationSet, Bullet, BulletKind, DelayTimer, InputController, Weapon}, objects::{GameWorld, ObjectId, Transform}, render::camera::ThirdPersonCamera};
 
 use super::{PlayerFlags, PlayerState, PlayerStateError};
 
@@ -11,8 +10,8 @@ use super::{PlayerFlags, PlayerState, PlayerStateError};
 
 /// 애플리케이션에 키보드 눌림 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
 pub fn on_keyboard_pressed(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     keycode: KeyCode, 
     _location: KeyLocation, 
     _modifiers: Modifiers, 
@@ -55,8 +54,8 @@ pub fn on_keyboard_pressed(
 
 /// 애플리케이션에 키보드 떼임 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
 pub fn on_keyboard_released(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     keycode: KeyCode, 
     _location: KeyLocation, 
     _modifiers: Modifiers, 
@@ -99,8 +98,8 @@ pub fn on_keyboard_released(
 
 /// 애플리케이션 마우스 커서 움직임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_cursor_moved(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     dx: f32, dy: f32
 ) -> Result<(), PlayerStateError> {
     // 플레이어 오브젝트의 삼인칭 카메라 요소를 가져옵니다.
@@ -117,8 +116,8 @@ pub fn on_cursor_moved(
 
 /// 애플리케이션 마우스 버튼 눌림 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_mouse_btn_pressed(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     _x: f32, _y: f32, 
     button: MouseButton
 ) -> Result<(), PlayerStateError> {
@@ -150,8 +149,8 @@ pub fn on_mouse_btn_pressed(
 
 /// 애플리케이션 마우스 버튼 떼임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn on_mouse_btn_released(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     _x: f32, _y: f32, 
     button: MouseButton
 ) -> Result<(), PlayerStateError> {
@@ -183,21 +182,21 @@ pub fn on_mouse_btn_released(
 
 /// 애플리케이션 갱신 이벤트가 발생했을 때 호출되는 콜백 함수입니다.
 pub fn on_update(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     update_animation(world, player_id, elapsed_time_sec)?;
     fire_bullet(world, player_id, elapsed_time_sec)?;
-    super::update_hierarchy(world, Transform::new(), player_id);
+    super::update_hierarchy(world, gmm::Matrix::IDENTITY, player_id);
     Ok(())
 }
 
 
 /// 플레이어 애니메이션을 갱신하는 함수입니다.
 pub fn update_animation(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
@@ -242,7 +241,7 @@ pub fn update_animation(
     }
 
     // 최상위 뼈 노드의 변환 행렬을 설정합니다.
-    root_object.set_local_transform(keyframe.root_bone());
+    root_object.local_transform = keyframe.root_bone();
     
     // 뼈 변환 행렬을 게임 오브젝트에 적용합니다.
     for skinning in keyframe.meshes() {
@@ -254,8 +253,8 @@ pub fn update_animation(
             };
 
             // 뼈 오브젝트의 로컬 변환 행렬을 설정합니다.
-            let bone_transform = Transform(skinning.transforms[index].into());
-            bone_object.set_local_transform(bone_transform);
+            let bone_transform = skinning.transforms[index].into();
+            bone_object.local_transform = bone_transform;
         }
     }
 
@@ -263,8 +262,8 @@ pub fn update_animation(
 }
 
 fn fire_bullet(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
     // 게임 월드에서 플레이어 오브젝트를 가져옵니다.
@@ -304,7 +303,7 @@ fn fire_bullet(
             // let direction = camera.get_world_transform().get_look_vector();
 
             // 플레이어 오브젝트의 방향을 가져옵니다.
-            let direction = player.get_world_transform().get_look_vector();
+            let direction = player.world_transform.get_look_vector();
 
             // 플레이어 무기의 총구 오브젝트의 식별자를 가져옵니다.
             let muzzle_id = match player.get::<Weapon>() {
@@ -314,7 +313,7 @@ fn fire_bullet(
 
             // 총구 오브젝트의 위치를 가져옵니다.
             let translation = match world.get(&muzzle_id) {
-                Some(object) => object.get_world_transform().get_translation().clone(), 
+                Some(object) => object.world_transform.get_translation(), 
                 None => return Err(PlayerStateError::ObjectNotFound(muzzle_id))
             };
 

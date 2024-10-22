@@ -1,9 +1,7 @@
 use std::{mem, sync::{Arc, OnceLock}};
 
-use mod_parallelism::collections::SkipMap;
-
 use crate::{
-    component::{GameObject, WorldID}, 
+    objects::{GameWorld, ObjectId}, 
     render::{
         animation::SkinnedMeshInfo, 
         camera::CameraResource, 
@@ -22,7 +20,7 @@ use super::MeshRenderer;
 #[derive(Debug)]
 pub struct ModelRenderer {
     /// 렌더러의 게임 오브젝트 식별자입니다.
-    game_object_id: WorldID, 
+    game_object_id: ObjectId, 
 
     /// 렌더러에 연결된 메쉬입니다.
     mesh: Mesh, 
@@ -41,7 +39,7 @@ impl ModelRenderer {
     /// 새로운 모델 메쉬 렌더러를 생성합니다.
     #[must_use]
     pub fn new(
-        id: WorldID, 
+        id: ObjectId, 
         mesh: Mesh, 
         resource: DynamicMeshResource, 
         materials: Vec<Arc<dyn MaterialResource>>, 
@@ -60,7 +58,7 @@ impl ModelRenderer {
 impl MeshRenderer for ModelRenderer {
     #[inline]
     #[must_use]
-    fn game_object(&self) -> &WorldID {
+    fn game_object(&self) -> &ObjectId {
         &self.game_object_id
     }
 
@@ -76,15 +74,15 @@ impl MeshRenderer for ModelRenderer {
         &self.materials
     }
 
-    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &SkipMap<WorldID, GameObject>) {
+    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &GameWorld) {
         let object = world.get(&self.game_object_id).unwrap();
         let mesh_info = object.get::<Arc<SkinnedMeshInfo>>().unwrap().clone();
         let mut data = BoneMatrixDataLayout::new();
         for (index, id) in mesh_info.bones.iter().enumerate() {
             data[index] = world.get(id)
                 .expect("스키닝된 메쉬를 구성하는 게임 오브젝트를 찾을 수 없습니다!")
-                .get_world_transform()
-                .0.into_column_array();
+                .world_transform
+                .into_column_array();
         }
         self.resource.bone_transform_uniform().write(device, queue, data);
     }
