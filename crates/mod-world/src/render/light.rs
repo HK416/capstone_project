@@ -113,6 +113,9 @@ impl GlobalLightUniform {
     }
 }
 
+static_assertions::const_assert_ne!(GlobalLightUniform::SIZE, 0);
+static_assertions::const_assert_eq!(GlobalLightUniform::SIZE as usize, mem::size_of::<GlobalLightDataLayout>());
+
 
 
 
@@ -252,3 +255,6 @@ impl LocalLightUniform {
         &self.inner
     }
 }
+
+static_assertions::const_assert_ne!(LocalLightUniform::SIZE, 0);
+static_assertions::const_assert_eq!(LocalLightUniform::SIZE as usize, mem::size_of::<LocalLightSetLayout>());

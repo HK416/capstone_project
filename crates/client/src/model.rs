@@ -6,9 +6,9 @@ use mod_parallelism::collections::{Queue, SkipMap};
 use mod_world::{
     component::{GameObject, IdGenerator, WorldID}, 
     render::{
-        animation::{AnimationClip, KeyFrame, Skinning}, 
+        animation::{AnimationClip, KeyFrame, SkinnedMeshInfo, SkinningData}, 
         material::{Material, MaterialBuilder}, 
-        mesh::{Indices, Mesh, MeshBuilder, SkinnedMesh, SkinningData, VertexAttributeValues}, 
+        mesh::{AttributeValues, BoneMatrixDataLayout, DynamicMeshDataLayout, DynamicMeshResource, Indices, Mesh, StaticMeshResource, Vertices, MAX_BONES}, 
         pipeline::mesh::{model::ModelRenderer, shape::ShapeRenderer, MeshRenderer}, 
         pool::{SamplerPool, TexturePool, TextureViewPool}
     }
@@ -106,8 +106,13 @@ fn spawn_shape_node(
 
     // 메쉬 데이터가 있는 경우 모델 렌더러를 생성합니다.
     if let Some(mesh_blob) = blob.mesh {
-        let builder = create_mesh_builder(mesh_blob);
-        let mesh = builder.build(device, queue, None);
+        let name = mesh_blob.name.clone();
+        let mesh = create_mesh(device, queue, mesh_blob);
+
+        let resource = StaticMeshResource::new(
+            Some(&format!("StaticMeshResource({})", &name)), 
+            device
+        );
 
         let materials: Vec<_> = blob.materials.into_iter()
             .map(|material_blob| {
@@ -118,6 +123,7 @@ fn spawn_shape_node(
         let mesh_renderer = Arc::new(ShapeRenderer::new(
             object.id().clone(), 
             mesh, 
+            resource, 
             materials, 
             device
         ));
@@ -181,7 +187,7 @@ fn spawn_model_node(
     device: &wgpu::Device,
     queue: &wgpu::Queue, 
     nodes: &mut HashMap<String, WorldID>, 
-    skinned_meshes: &mut HashMap<String, Arc<SkinnedMesh>>, 
+    skinned_meshes: &mut HashMap<String, Arc<SkinnedMeshInfo>>, 
     parent: Option<WorldID>, 
     mut blob: NodeBlob, 
     mut sibling: Vec<NodeBlob>, 
@@ -236,40 +242,65 @@ fn spawn_model_node(
 
     // 메쉬 데이터가 있는 경우 모델 렌더러를 생성합니다.
     if let Some(mesh_blob) = blob.mesh {
-        let mesh_name = mesh_blob.name.clone();
-        let builder = create_mesh_builder(mesh_blob);
-        let skinning = blob.skin.map(|skin_blob| {
-            SkinningData {
+        let name = mesh_blob.name.clone();
+        let mesh = create_mesh(device, queue, mesh_blob);
+        if let Some(skin_blob) = blob.skin {
+            // 쉐이더 리소스를 생성합니다.
+            let resource = DynamicMeshResource::new(
+                Some(&format!("DynamicMeshResource({})", &name)), 
+                device
+            );
+            
+            // 메쉬 데이터 유니폼 버퍼 갱신
+            resource.mesh_uniform().write(device, queue, DynamicMeshDataLayout {
                 quality: skin_blob.quality.min(4), 
-                root_bone: nodes.get(&skin_blob.root_bone).unwrap().clone(), 
-                bones: skin_blob.bone_names.iter()
-                    .map(|name| {
-                        nodes.get(name).unwrap().clone()
-                    })
-                    .collect(), 
-                bindpose: skin_blob.bindposes
+                num_bones: skin_blob.bone_names.len().min(MAX_BONES) as u32, 
+                ..Default::default()
+            });
+
+            // 뼈 바인드 포즈 데이터 유니폼 버퍼 갱신.
+            let mut data = BoneMatrixDataLayout::new();
+            for (index, &transform) in skin_blob.bindposes.iter().enumerate() {
+                data[index] = transform.into();
             }
-        });
+            resource.bindpose_uniform().write(device, queue, data);
 
-        let mesh = builder.build(device, queue, skinning);
-        if let Mesh::SkinnedMesh(mesh) = mesh.clone() {
-            skinned_meshes.insert(mesh_name.clone(), mesh);
-        }
 
-        let materials: Vec<_> = blob.materials.into_iter()
-            .map(|material_blob| {
-                create_material(device, queue, bundle, material_blob)
-            })
-            .collect();
+            // 스키닝된 메쉬 데이터를 생성합니다.
+            let mesh_info = Arc::new(SkinnedMeshInfo {
+                root_bone: nodes.get(&skin_blob.root_bone).unwrap().clone(), 
+                mesh_uniform: resource.mesh_uniform().clone(), 
+                bindpose_uniform: resource.bindpose_uniform().clone(), 
+                bone_transform_uniform: resource.bone_transform_uniform().clone(), 
+                bones: skin_blob.bone_names.iter()
+                .map(|name| {
+                    nodes.get(name).unwrap().clone()
+                })
+                .collect()
+            });
 
-        let mesh_renderer = Arc::new(ModelRenderer::new(
-            object.id().clone(), 
-            mesh, 
-            materials, 
-            device
-        ));
-        object.insert(mesh_renderer.clone());
-        renderer.push(mesh_renderer);
+            skinned_meshes.insert(name.clone(), mesh_info.clone());
+            
+            // 재질을 생성합니다.
+            let materials: Vec<_> = blob.materials.into_iter()
+                .map(|material_blob| {
+                    create_material(device, queue, bundle, material_blob)
+                })
+                .collect();
+
+            // 렌더러를 게임 오브젝트에 추가합니다.
+            let mesh_renderer = Arc::new(ModelRenderer::new(
+                object.id().clone(), 
+                mesh, 
+                resource, 
+                materials, 
+                device
+            ));
+            renderer.push(mesh_renderer.clone());
+
+            object.insert(mesh_info);
+            object.insert(mesh_renderer);
+        };
     }
 
     let id = object.id().clone();
@@ -278,45 +309,49 @@ fn spawn_model_node(
     id
 }
 
-/// 메쉬 빌더를 생성합니다.
+/// 메쉬를 생성합니다.
 #[must_use]
-fn create_mesh_builder(blob: MeshBlob) -> MeshBuilder {
+fn create_mesh(
+    device: &wgpu::Device, 
+    queue: &wgpu::Queue, 
+    blob: MeshBlob
+) -> Mesh {
     // 메쉬 빌더를 생성합니다.
-    let mut builder = MeshBuilder::new(blob.name, blob.vertices);
+    let mut mesh = Mesh::new(&blob.name, device, queue, Vertices(blob.vertices));
 
     if !blob.colors.is_empty() {
-        builder = builder.with_attribute(VertexAttributeValues::Colors(blob.colors));
+        mesh.insert_attribute(device, queue, AttributeValues::Color(blob.colors));
     }
 
     if !blob.normals.is_empty() {
-        builder = builder.with_attribute(VertexAttributeValues::Normals(blob.normals));
+        mesh.insert_attribute(device, queue, AttributeValues::Normal(blob.normals));
     }
 
     if !blob.tangents.is_empty() {
-        builder = builder.with_attribute(VertexAttributeValues::Tangents(blob.tangents));
+        mesh.insert_attribute(device, queue, AttributeValues::Tangent(blob.tangents));
     }
 
     if !blob.texcoords0.is_empty() {
-        builder = builder.with_attribute(VertexAttributeValues::Texcoords0(blob.texcoords0));
+        mesh.insert_attribute(device, queue, AttributeValues::Texcoord0(blob.texcoords0));
     }
 
     if !blob.texcoords1.is_empty() {
-        builder = builder.with_attribute(VertexAttributeValues::Texcoords1(blob.texcoords1));
+        mesh.insert_attribute(device, queue, AttributeValues::Texcoord1(blob.texcoords1));
     }
 
     if !blob.bone_indices.is_empty() {
-        builder = builder.with_attribute(VertexAttributeValues::BoneIndices(blob.bone_indices));
+        mesh.insert_attribute(device, queue, AttributeValues::BoneIndex(blob.bone_indices));
     }
 
     if !blob.bone_weights.is_empty() {
-        builder = builder.with_attribute(VertexAttributeValues::BoneWeights(blob.bone_weights));
+        mesh.insert_attribute(device, queue, AttributeValues::BoneWeight(blob.bone_weights));
     }
 
     for submesh in blob.submeshes {
-        builder = builder.with_submesh(Indices(submesh));
+        mesh.insert_submesh(device, queue, Indices::U32(submesh));
     }
 
-    builder
+    mesh
 }
 
 fn create_material(
@@ -439,7 +474,7 @@ fn create_texture(
 
 fn create_animations(
     nodes: &HashMap<String, WorldID>,
-    skinned_meshes: &HashMap<String, Arc<SkinnedMesh>>,
+    skinned_meshes: &HashMap<String, Arc<SkinnedMeshInfo>>,
     blob: AnimationBlob
 ) -> AnimationClip {
     AnimationClip::new(
@@ -452,8 +487,8 @@ fn create_animations(
                 blob.time_point, 
                 blob.root.into(), 
                 blob.meshes.into_iter()
-                    .map(|blob| Skinning {
-                        skinned_mesh: skinned_meshes.get(&blob.name).unwrap().clone(), 
+                    .map(|blob| SkinningData {
+                        mesh: skinned_meshes.get(&blob.name).unwrap().clone(), 
                         transforms: blob.transforms.into_iter()
                             .map(|transform| transform.into())
                             .collect()

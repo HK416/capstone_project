@@ -4,7 +4,7 @@ use mod_app::{app::AppHandle, asset::AssetBundle, etc::WindowSize, ext::AppWindo
 use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, Transform, Weapon, WorldID}, render::{camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, material::MaterialBuilder, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
+use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, Transform, Weapon, WorldID}, render::{camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, material::MaterialBuilder, mesh::StaticMeshResource, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
 use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -155,6 +155,8 @@ impl TestBedScene {
             1.0
         );
 
+        let resource = StaticMeshResource::new(Some("Terrain"), device);
+
         // 지형 재질을 생성합니다.
         let materials = MaterialBuilder::new("Terrain", device, queue)
             .build(device, queue);
@@ -163,6 +165,7 @@ impl TestBedScene {
         let renderer = Arc::new(TerrainRenderer::new(
             object.id().clone(), 
             mesh, 
+            resource, 
             vec![materials], 
             device
         ));
@@ -896,31 +899,7 @@ impl GameScene for TestBedScene {
         // 렌더러를 준비합니다.
         while let Some(renderer) = self.renderer.pop() {
             if self.world.contains_key(renderer.game_object()) {
-                match renderer.mesh() {
-                    Mesh::NonSkinnedMesh(mesh) => {
-                        let world_transform = self.world.get(renderer.game_object())
-                            .unwrap()
-                            .get_world_transform()
-                            .clone();
-
-                        mesh.mesh_uniform().update(device, queue, MeshDataLayout {
-                            trans: world_transform.0.store_float4x4()
-                        });
-                    }, 
-                    Mesh::SkinnedMesh(mesh) => {
-                        let mut data = BoneDataLayout::default();
-                        for (index, id) in mesh.bones().iter().enumerate() {
-                            let bone_transform = self.world.get(id)
-                                .expect("스키닝된 메쉬를 구성하는 게임 오브젝트를 찾을 수 없습니다!")
-                                .get_world_transform()
-                                .clone();
-                            data[index] = bone_transform.0.store_float4x4();
-                        }
-
-                        mesh.bone_transforms_uniform().update(device, queue, data);
-                    }
-                }
-
+                renderer.prepare(device, queue, &self.world);
                 self.render_list.push(renderer);
             }
         }

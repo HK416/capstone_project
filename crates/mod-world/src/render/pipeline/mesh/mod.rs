@@ -4,8 +4,10 @@ pub mod terrain;
 
 use std::sync::Arc;
 
+use mod_parallelism::collections::SkipMap;
+
 use crate::{
-    component::WorldID, 
+    component::{GameObject, WorldID}, 
     render::{camera::CameraResource, material::Material, mesh::Mesh}
 };
 
@@ -21,6 +23,8 @@ pub trait MeshRenderer : Sync + Send {
 
     /// 렌더러의 재질을 가져옵니다.
     fn materials(&self) -> &[Arc<Material>];
+
+    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &SkipMap<WorldID, GameObject>);
 
     /// 렌더러를 파이프라인 상태 머신에 바인드합니다.
     fn bind<'a>(&'a self, camera: &CameraResource, rpass: &mut wgpu::RenderPass<'a>);

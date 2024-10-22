@@ -106,6 +106,7 @@ impl CameraUniform {
     }
 }
 
+static_assertions::const_assert_ne!(CameraUniform::SIZE, 0);
 static_assertions::const_assert_eq!(CameraUniform::SIZE as usize, mem::size_of::<CameraDataLayout>());
 
 

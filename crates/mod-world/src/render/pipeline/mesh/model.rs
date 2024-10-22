@@ -1,9 +1,11 @@
 use std::{mem, sync::{Arc, OnceLock}};
 
+use mod_parallelism::collections::SkipMap;
+
 use crate::{
-    component::WorldID, 
+    component::{GameObject, WorldID}, 
     render::{
-        camera::CameraResource, material::Material, mesh::{Attribute, Mesh, SkinnedMesh}, DEPTH_STENCIL_FORMAT, SWAPCHAIN_FORMAT
+        animation::SkinnedMeshInfo, camera::CameraResource, material::Material, mesh::{Attribute, BoneMatrixDataLayout, DynamicMeshResource, Mesh}, DEPTH_STENCIL_FORMAT, SWAPCHAIN_FORMAT
     }
 };
 
@@ -20,6 +22,9 @@ pub struct ModelRenderer {
     /// 렌더러에 연결된 메쉬입니다.
     mesh: Mesh, 
 
+    /// 동적 메쉬 데이터 쉐이더 리소스
+    resource: DynamicMeshResource, 
+
     /// 렌더러에 연결된 재질입니다.
     materials: Vec<Arc<Material>>, 
 
@@ -33,12 +38,14 @@ impl ModelRenderer {
     pub fn new(
         id: WorldID, 
         mesh: Mesh, 
+        resource: DynamicMeshResource, 
         materials: Vec<Arc<Material>>, 
         device: &wgpu::Device
     ) -> Self {
         Self { 
             game_object_id: id, 
             mesh, 
+            resource, 
             materials, 
             pipeline: get_render_pipeline(device) 
         }
@@ -64,18 +71,31 @@ impl MeshRenderer for ModelRenderer {
         &self.materials
     }
 
+    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &SkipMap<WorldID, GameObject>) {
+        let object = world.get(&self.game_object_id).unwrap();
+        let mesh_info = object.get::<Arc<SkinnedMeshInfo>>().unwrap().clone();
+        let mut data = BoneMatrixDataLayout::new();
+        for (index, id) in mesh_info.bones.iter().enumerate() {
+            data[index] = world.get(id)
+                .expect("스키닝된 메쉬를 구성하는 게임 오브젝트를 찾을 수 없습니다!")
+                .get_world_transform()
+                .0.into_column_array();
+        }
+        self.resource.bone_transform_uniform().write(device, queue, data);
+    }
+
     fn bind<'a>(&'a self, camera: &CameraResource, rpass: &mut wgpu::RenderPass<'a>) {
         rpass.set_pipeline(&self.pipeline);
 
         rpass.set_bind_group(0, camera.bind_group(), &[]);
-        rpass.set_bind_group(1, self.mesh().bind_group(), &[]);
+        rpass.set_bind_group(1, self.resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, self.mesh().vertex().slice(..));
-        rpass.set_vertex_buffer(1, self.mesh().attribute(&Attribute::Normals).unwrap().slice(..));
-        rpass.set_vertex_buffer(2, self.mesh().attribute(&Attribute::Tangents).unwrap().slice(..));
-        rpass.set_vertex_buffer(3, self.mesh().attribute(&Attribute::Texcoords0).unwrap().slice(..));
-        rpass.set_vertex_buffer(4, self.mesh().attribute(&Attribute::BoneIndices).unwrap().slice(..));
-        rpass.set_vertex_buffer(5, self.mesh().attribute(&Attribute::BoneWeights).unwrap().slice(..));
+        rpass.set_vertex_buffer(1, self.mesh().attribute(&Attribute::Normal).unwrap().slice(..));
+        rpass.set_vertex_buffer(2, self.mesh().attribute(&Attribute::Tangent).unwrap().slice(..));
+        rpass.set_vertex_buffer(3, self.mesh().attribute(&Attribute::Texcoord0).unwrap().slice(..));
+        rpass.set_vertex_buffer(4, self.mesh().attribute(&Attribute::BoneIndex).unwrap().slice(..));
+        rpass.set_vertex_buffer(5, self.mesh().attribute(&Attribute::BoneWeight).unwrap().slice(..));
     }
 
     fn draw<'a>(&'a self, rpass: &mut wgpu::RenderPass<'a>) {
@@ -243,7 +263,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
             label: Some("PipelineLayout(ModelRenderer)"), 
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device), 
-                SkinnedMesh::bind_group_layout(device), 
+                DynamicMeshResource::bind_group_layout(device), 
                 Material::bind_group_layout(device)
             ], 
             push_constant_ranges: &[]

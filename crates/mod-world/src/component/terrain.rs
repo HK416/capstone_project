@@ -1,4 +1,4 @@
-use crate::render::mesh::{Indices, Mesh, MeshBuilder, VertexAttributeValues};
+use crate::render::mesh::{AttributeValues, Indices, Mesh, Vertices};
 
 
 
@@ -62,10 +62,10 @@ impl TerrainFactory {
             }
         }
 
-        MeshBuilder::new(name, positions)
-            .with_attribute(VertexAttributeValues::Texcoords0(texcoords0))
-            .with_attribute(VertexAttributeValues::Texcoords1(texcoords1))
-            .with_submesh(Indices(indices))
-            .build(device, queue, None)
+        let mut mesh = Mesh::new(name, device, queue, Vertices(positions));
+        mesh.insert_attribute(device, queue, AttributeValues::Texcoord0(texcoords0));
+        mesh.insert_attribute(device, queue, AttributeValues::Texcoord1(texcoords1));
+        mesh.insert_submesh(device, queue, Indices::U32(indices));
+        mesh
     }
 }

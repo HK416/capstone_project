@@ -1,6 +1,6 @@
 use crate::component::WorldID;
 
-use super::{KeyFrame, Skinning};
+use super::{KeyFrame, SkinningData};
 
 
 
@@ -114,8 +114,8 @@ impl AnimationClip {
 
         let meshes = prev.meshes().iter().zip(next.meshes().iter())
             .map(|(prev, next)| {
-                Skinning {
-                    skinned_mesh: prev.skinned_mesh.clone(), 
+                SkinningData {
+                    mesh: prev.mesh.clone(), 
                     transforms: prev.transforms.iter().zip(next.transforms.iter())
                         .map(|(&a, &b)| {
                             (1.0 - t) * a + t * b

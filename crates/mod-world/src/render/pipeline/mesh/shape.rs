@@ -1,9 +1,15 @@
 use std::{mem, sync::{Arc, OnceLock}};
 
+use mod_parallelism::collections::SkipMap;
+
 use crate::{
-    component::WorldID, 
+    component::{GameObject, WorldID}, 
     render::{
-        camera::CameraResource, material::Material, mesh::{Attribute, Mesh, NonSkinnedMesh}, DEPTH_STENCIL_FORMAT, SWAPCHAIN_FORMAT
+        camera::CameraResource, 
+        material::Material, 
+        mesh::{Attribute, Mesh, StaticMeshDataLayout, StaticMeshResource}, 
+        DEPTH_STENCIL_FORMAT, 
+        SWAPCHAIN_FORMAT
     }
 };
 
@@ -20,6 +26,9 @@ pub struct ShapeRenderer {
     /// 렌더러에 연결된 메쉬입니다.
     mesh: Mesh, 
 
+    /// 정적 메쉬 데이터 쉐이더 리소스
+    resource: StaticMeshResource, 
+
     /// 렌더러에 연결된 재질입니다.
     materials: Vec<Arc<Material>>, 
 
@@ -33,12 +42,14 @@ impl ShapeRenderer {
     pub fn new(
         id: WorldID, 
         mesh: Mesh, 
+        resource: StaticMeshResource, 
         materials: Vec<Arc<Material>>, 
         device: &wgpu::Device
     ) -> Self {
         Self { 
             game_object_id: id, 
             mesh, 
+            resource, 
             materials, 
             pipeline: get_render_pipeline(device) 
         }
@@ -64,14 +75,24 @@ impl MeshRenderer for ShapeRenderer {
         &self.materials
     }
 
+    fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &SkipMap<WorldID, GameObject>) {
+        let object = world.get(&self.game_object_id)
+            .unwrap();
+        let world_transform = object.get_world_transform().clone();
+        self.resource.mesh_uniform().write(device, queue, StaticMeshDataLayout {
+            trans: world_transform.0.into_column_array(), 
+            ..Default::default()
+        });
+    }
+
     fn bind<'a>(&'a self, camera: &CameraResource, rpass: &mut wgpu::RenderPass<'a>) {
         rpass.set_pipeline(&self.pipeline);
 
         rpass.set_bind_group(0, camera.bind_group(), &[]);
-        rpass.set_bind_group(1, self.mesh().bind_group(), &[]);
+        rpass.set_bind_group(1, self.resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, self.mesh().vertex().slice(..));
-        rpass.set_vertex_buffer(1, self.mesh().attribute(&Attribute::Texcoords0).unwrap().slice(..));
+        rpass.set_vertex_buffer(1, self.mesh().attribute(&Attribute::Texcoord0).unwrap().slice(..));
     }
 
     fn draw<'a>(&'a self, rpass: &mut wgpu::RenderPass<'a>) {
@@ -191,7 +212,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
             label: Some("PipelineLayout(ModelRenderer)"), 
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device), 
-                NonSkinnedMesh::bind_group_layout(device), 
+                StaticMeshResource::bind_group_layout(device), 
                 Material::bind_group_layout(device)
             ], 
             push_constant_ranges: &[]

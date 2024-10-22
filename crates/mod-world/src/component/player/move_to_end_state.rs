@@ -323,7 +323,7 @@ pub fn update_animation(
     
     // 뼈 변환 행렬을 게임 오브젝트에 적용합니다.
     for skinning in keyframe.meshes() {
-        for (index, world_id) in skinning.skinned_mesh.bones().iter().enumerate() {
+        for (index, world_id) in skinning.mesh.bones.iter().enumerate() {
             // 게임 월드에서 뼈 오브젝트를 가져옵니다.
             let mut bone_object = match world.get_mut(world_id) {
                 Some(object) => object, 
