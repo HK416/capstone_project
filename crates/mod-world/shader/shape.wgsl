@@ -52,10 +52,12 @@ struct MaterialDataLayout {
     glossiness: f32, 
     smoothness: f32, 
     metallic: f32, 
+    ambient: vec4<f32>, 
     diffuse: vec4<f32>, 
     specular: vec4<f32>, 
     emissive: vec4<f32>, 
 };
+
 
 
 
@@ -87,16 +89,16 @@ var t_specular: texture_2d<f32>;
 var s_specular: sampler;
 
 @group(2) @binding(5)
-var t_normal: texture_2d<f32>;
-
-@group(2) @binding(6)
-var s_normal: sampler;
-
-@group(2) @binding(7)
 var t_emissive: texture_2d<f32>;
 
-@group(2) @binding(8)
+@group(2) @binding(6)
 var s_emissive: sampler;
+
+@group(2) @binding(7)
+var t_normal: texture_2d<f32>;
+
+@group(2) @binding(8)
+var s_normal: sampler;
 
 
 

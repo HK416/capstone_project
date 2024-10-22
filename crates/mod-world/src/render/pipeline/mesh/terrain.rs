@@ -6,7 +6,7 @@ use crate::{
     component::{GameObject, WorldID},  
     render::{
         camera::CameraResource, 
-        material::Material, 
+        material::{terrain::TerrainMaterialResource, MaterialResource}, 
         mesh::{Attribute, Mesh, StaticMeshDataLayout, StaticMeshResource}, 
         DEPTH_STENCIL_FORMAT, 
         SWAPCHAIN_FORMAT
@@ -30,7 +30,7 @@ pub struct TerrainRenderer {
     resource: StaticMeshResource, 
 
     /// 렌더러에 연결된 재질입니다.
-    materials: Vec<Arc<Material>>, 
+    materials: Vec<Arc<dyn MaterialResource>>, 
 
     /// 렌더러의 그래픽스 파이프라인입니다.
     pipeline: &'static wgpu::RenderPipeline,  
@@ -43,7 +43,7 @@ impl TerrainRenderer {
         id: WorldID, 
         mesh: Mesh, 
         resource: StaticMeshResource, 
-        materials: Vec<Arc<Material>>, 
+        materials: Vec<Arc<dyn MaterialResource>>, 
         device: &wgpu::Device
     ) -> Self {
         Self { 
@@ -71,7 +71,7 @@ impl MeshRenderer for TerrainRenderer {
 
     #[inline]
     #[must_use]
-    fn materials(&self) -> &[Arc<Material>] {
+    fn materials(&self) -> &[Arc<dyn MaterialResource>] {
         &self.materials
     }
 
@@ -226,7 +226,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device), 
                 StaticMeshResource::bind_group_layout(device), 
-                Material::bind_group_layout(device)
+                TerrainMaterialResource::bind_group_layout(device)
             ], 
             push_constant_ranges: &[]
         }

@@ -50,10 +50,12 @@ struct LocalLightArrayDataLayout {
 };
 
 /// 재질의 데이터 레이아웃입니다.
-struct MaterialDataLayout {
+struct TerrainMaterialDataLayout {
     glossiness: f32, 
     smoothness: f32, 
     metallic: f32, 
+    max_height: f32, 
+    ambient: vec4<f32>, 
     diffuse: vec4<f32>, 
     specular: vec4<f32>, 
     emissive: vec4<f32>, 
@@ -74,7 +76,7 @@ var<uniform> u_local_light: LocalLightArrayDataLayout;
 var<uniform> u_entity: mat4x4<f32>;
 
 @group(2) @binding(0)
-var<uniform> u_material: MaterialDataLayout;
+var<uniform> u_material: TerrainMaterialDataLayout;
 
 @group(2) @binding(1)
 var t_diffuse: texture_2d<f32>;
@@ -89,16 +91,16 @@ var t_specular: texture_2d<f32>;
 var s_specular: sampler;
 
 @group(2) @binding(5)
-var t_normal: texture_2d<f32>;
-
-@group(2) @binding(6)
-var s_normal: sampler;
-
-@group(2) @binding(7)
 var t_emissive: texture_2d<f32>;
 
-@group(2) @binding(8)
+@group(2) @binding(6)
 var s_emissive: sampler;
+
+@group(2) @binding(7)
+var t_normal: texture_2d<f32>;
+
+@group(2) @binding(8)
+var s_normal: sampler;
 
 @group(2) @binding(9)
 var t_height: texture_2d<f32>;
@@ -113,7 +115,7 @@ var s_height: sampler;
 @vertex
 fn vs_main(input: InputAttributes) -> VertexOutput {
     var out: VertexOutput;
-    let height = textureSampleLevel(t_height, s_height, input.texcoord0, 0.0).r;
+    let height = textureSampleLevel(t_height, s_height, input.texcoord0, 0.0).r * u_material.max_height;
     let position_w = (u_entity * vec4<f32>(input.position.x, input.position.y + height, input.position.z, 1.0)).xyz;
     out.clip_position = u_camera.proj_view * vec4<f32>(position_w, 1.0);
     out.texcoord0 = input.texcoord0;

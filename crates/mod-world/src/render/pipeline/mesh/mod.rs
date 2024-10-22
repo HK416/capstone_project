@@ -8,7 +8,7 @@ use mod_parallelism::collections::SkipMap;
 
 use crate::{
     component::{GameObject, WorldID}, 
-    render::{camera::CameraResource, material::Material, mesh::Mesh}
+    render::{camera::CameraResource, material::MaterialResource, mesh::Mesh}
 };
 
 
@@ -22,7 +22,7 @@ pub trait MeshRenderer : Sync + Send {
     fn mesh(&self) -> &Mesh;
 
     /// 렌더러의 재질을 가져옵니다.
-    fn materials(&self) -> &[Arc<Material>];
+    fn materials(&self) -> &[Arc<dyn MaterialResource>];
 
     fn prepare(&self, device: &wgpu::Device, queue: &wgpu::Queue, world: &SkipMap<WorldID, GameObject>);
 

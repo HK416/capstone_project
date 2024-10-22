@@ -4,7 +4,7 @@ use mod_app::{app::AppHandle, asset::AssetBundle, etc::WindowSize, ext::AppWindo
 use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, Transform, Weapon, WorldID}, render::{camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, material::MaterialBuilder, mesh::StaticMeshResource, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
+use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, Transform, Weapon, WorldID}, render::{camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, material::{model::{ModelMaterialDescriptor, ModelMaterialResource}, terrain::{TerrainMaterialDescriptor, TerrainMaterialResource}}, mesh::StaticMeshResource, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
 use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
@@ -157,16 +157,16 @@ impl TestBedScene {
 
         let resource = StaticMeshResource::new(Some("Terrain"), device);
 
-        // 지형 재질을 생성합니다.
-        let materials = MaterialBuilder::new("Terrain", device, queue)
-            .build(device, queue);
+        // 재질을 생성합니다.
+        let desc = TerrainMaterialDescriptor::new(device, queue, "Terrain");
+        let material = Arc::new(TerrainMaterialResource::new(device, queue, &desc));
 
         // 지형 메쉬 렌더러를 생성합니다.
         let renderer = Arc::new(TerrainRenderer::new(
             object.id().clone(), 
             mesh, 
             resource, 
-            vec![materials], 
+            vec![material], 
             device
         ));
 

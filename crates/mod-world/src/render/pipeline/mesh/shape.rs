@@ -6,7 +6,7 @@ use crate::{
     component::{GameObject, WorldID}, 
     render::{
         camera::CameraResource, 
-        material::Material, 
+        material::{model::ModelMaterialResource, MaterialResource}, 
         mesh::{Attribute, Mesh, StaticMeshDataLayout, StaticMeshResource}, 
         DEPTH_STENCIL_FORMAT, 
         SWAPCHAIN_FORMAT
@@ -30,7 +30,7 @@ pub struct ShapeRenderer {
     resource: StaticMeshResource, 
 
     /// 렌더러에 연결된 재질입니다.
-    materials: Vec<Arc<Material>>, 
+    materials: Vec<Arc<dyn MaterialResource>>, 
 
     /// 렌더러의 그래픽스 파이프라인입니다.
     pipeline: &'static wgpu::RenderPipeline,  
@@ -43,7 +43,7 @@ impl ShapeRenderer {
         id: WorldID, 
         mesh: Mesh, 
         resource: StaticMeshResource, 
-        materials: Vec<Arc<Material>>, 
+        materials: Vec<Arc<dyn MaterialResource>>, 
         device: &wgpu::Device
     ) -> Self {
         Self { 
@@ -71,7 +71,7 @@ impl MeshRenderer for ShapeRenderer {
 
     #[inline]
     #[must_use]
-    fn materials(&self) -> &[Arc<Material>] {
+    fn materials(&self) -> &[Arc<dyn MaterialResource>] {
         &self.materials
     }
 
@@ -213,7 +213,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device), 
                 StaticMeshResource::bind_group_layout(device), 
-                Material::bind_group_layout(device)
+                ModelMaterialResource::bind_group_layout(device)
             ], 
             push_constant_ranges: &[]
         }

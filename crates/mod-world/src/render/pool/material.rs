@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use lazy_static::lazy_static;
 
-use crate::render::material::{Material, MaterialBuilder};
+use crate::render::material::MaterialResource;
 
 lazy_static! {
     /// 생성된 재질을 관리하는 풀 객체입니다.
-    static ref POOL: Mutex<HashMap<String, Arc<Material>>> = Mutex::new(HashMap::with_capacity(32));
+    static ref POOL: Mutex<HashMap<String, Arc<dyn MaterialResource>>> = Mutex::new(HashMap::with_capacity(32));
 }
 
 
@@ -19,42 +19,38 @@ lazy_static! {
 pub struct MaterialPool;
 
 impl MaterialPool {
-    /// 재질을 가져옵니다.
-    /// 만약 재질이 풀 객체에 존재하지 않을 경우 재질을 생성합니다.
+    /// 주어진 이름에 해당하는 재질을 가져옵니다.
+    /// 만약 해당 재질이 풀 객체에 존재하지 않을 경우 재질을 생성합니다.
+    #[inline]
     #[must_use]
-    pub fn get_or_init(
-        device: &wgpu::Device, 
-        queue: &wgpu::Queue, 
-        builder: MaterialBuilder
-    ) -> Arc<Material> {
-        let material_name = builder.name.clone();
-        let mut pool_guard = POOL.lock().unwrap();
-        match pool_guard.get(&material_name) {
-            Some(material) => material.clone(), 
-            None => {
-                let material = builder.build(device, queue);
-                pool_guard.insert(material_name, material.clone());
-                material
-            }
-        }
+    pub fn get_or_init<S, F>(name: S, func: F) -> Arc<dyn MaterialResource> 
+    where S: Into<String>, F: FnOnce() -> Arc<dyn MaterialResource> {
+        let mut lock_guard = unsafe { POOL.lock().unwrap_unchecked() };
+        lock_guard.entry(name.into())
+            .or_insert(func())
+            .clone()
     }
     
-    /// 주어진 재질에 해당하는 재질이 풀 객체에 포함되어있는지 여부를 반환합니다.
+    /// 주어진 이름에 해당하는 재질이 풀 객체에 포함되어있는지 여부를 반환합니다.
+    #[inline]
     #[must_use]
-    pub fn contains<N: AsRef<String>>(material_name: N) -> bool {
-        let pool_guard = POOL.lock().unwrap();
-        pool_guard.contains_key(material_name.as_ref())
+    pub fn contains<S: AsRef<String>>(name: S) -> bool {
+        let lock_guard = unsafe { POOL.lock().unwrap_unchecked() };
+        lock_guard.contains_key(name.as_ref())
     }
 
-    /// 주어진 재질에 해당하는 재질을 풀 객체에서 제거합니다.
-    pub fn remove<N: AsRef<String>>(material_name: N) -> Option<Arc<Material>> {
-        let mut pool_guard = POOL.lock().unwrap();
-        pool_guard.remove(material_name.as_ref())
+    /// 주어진 이름에 해당하는 재질을 풀 객체에서 제거합니다.
+    /// 만약 해당 재질이 풀 객체에 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
+    #[inline]
+    pub fn remove<S: AsRef<String>>(name: S) -> Option<Arc<dyn MaterialResource>> {
+        let mut lock_guard = unsafe { POOL.lock().unwrap_unchecked() };
+        lock_guard.remove(name.as_ref())
     }
 
     /// 풀 객체에 존재하는 모든 재질을 제거합니다.
+    #[inline]
     pub fn clear() {
-        let mut pool_guard = POOL.lock().unwrap();
-        pool_guard.clear();
+        let mut lock_guard = unsafe { POOL.lock().unwrap_unchecked() };
+        lock_guard.clear()
     }
 }

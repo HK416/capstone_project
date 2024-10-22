@@ -6,11 +6,7 @@ use mod_parallelism::collections::{Queue, SkipMap};
 use mod_world::{
     component::{GameObject, IdGenerator, WorldID}, 
     render::{
-        animation::{AnimationClip, KeyFrame, SkinnedMeshInfo, SkinningData}, 
-        material::{Material, MaterialBuilder}, 
-        mesh::{AttributeValues, BoneMatrixDataLayout, DynamicMeshDataLayout, DynamicMeshResource, Indices, Mesh, StaticMeshResource, Vertices, MAX_BONES}, 
-        pipeline::mesh::{model::ModelRenderer, shape::ShapeRenderer, MeshRenderer}, 
-        pool::{SamplerPool, TexturePool, TextureViewPool}
+        animation::{AnimationClip, KeyFrame, SkinnedMeshInfo, SkinningData}, material::{model::{ModelMaterialDescriptor, ModelMaterialResource}, MaterialResource}, mesh::{AttributeValues, BoneMatrixDataLayout, DynamicMeshDataLayout, DynamicMeshResource, Indices, Mesh, StaticMeshResource, Vertices, MAX_BONES}, pipeline::mesh::{model::ModelRenderer, shape::ShapeRenderer, MeshRenderer}, pool::{SamplerPool, TexturePool, TextureViewPool}
     }
 };
 
@@ -359,59 +355,59 @@ fn create_material(
     queue: &wgpu::Queue, 
     bundle: &AssetBundle, 
     blob: MaterialBlob
-) -> Arc<Material> {
-    // 재질 빌더를 생성합니다.
-    let mut builder = MaterialBuilder::new(blob.name, device, queue);
+) -> Arc<dyn MaterialResource> {
+    // 재질 설명자를 생성합니다.
+    let mut desc = ModelMaterialDescriptor::new(device, queue, blob.name);
 
     if let Some(glossiness) = blob.glossiness {
-        builder.glossiness = glossiness;
+        desc.glossiness = glossiness;
     }
 
     if let Some(smoothness) = blob.smoothness {
-        builder.smoothness = smoothness;
+        desc.smoothness = smoothness;
     }
 
     if let Some(metallic) = blob.metallic {
-        builder.metallic = metallic;
+        desc.metallic = metallic;
     }
 
     if let Some(diffuse) = blob.diffuse {
-        builder.diffuse = diffuse;
+        desc.diffuse = diffuse.into();
     }
 
     if let Some(specular) = blob.specular {
-        builder.specular = specular;
+        desc.specular = specular.into();
     }
 
     if let Some(emissive) = blob.emissive {
-        builder.emissive = emissive;
+        desc.emissive = emissive.into();
     }
 
     if let Some(texture_blob) = blob.diffuse_map {
         let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
-        builder.diffuse_map = texture_view;
-        builder.diffuse_sampler = sampler;
+        desc.diffuse_map = texture_view;
+        desc.diffuse_sampler = sampler;
     }
 
     if let Some(texture_blob) = blob.specular_map {
         let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
-        builder.specular_map = texture_view;
-        builder.specular_sampler = sampler;
+        desc.specular_map = texture_view;
+        desc.specular_sampler = sampler;
     }
 
     if let Some(texture_blob) = blob.normal_map {
         let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
-        builder.normal_map = texture_view;
-        builder.normal_sampler = sampler;
+        desc.normal_map = texture_view;
+        desc.normal_sampler = sampler;
     }
 
     if let Some(texture_blob) = blob.emissive_map {
         let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
-        builder.emissive_map = texture_view;
-        builder.emissive_sampler = sampler;
+        desc.emissive_map = texture_view;
+        desc.emissive_sampler = sampler;
     }
 
-    builder.build(device, queue)
+    Arc::new(ModelMaterialResource::new(device, queue, &desc))
 }
 
 fn create_texture(

@@ -5,7 +5,12 @@ use mod_parallelism::collections::SkipMap;
 use crate::{
     component::{GameObject, WorldID}, 
     render::{
-        animation::SkinnedMeshInfo, camera::CameraResource, material::Material, mesh::{Attribute, BoneMatrixDataLayout, DynamicMeshResource, Mesh}, DEPTH_STENCIL_FORMAT, SWAPCHAIN_FORMAT
+        animation::SkinnedMeshInfo, 
+        camera::CameraResource, 
+        material::{model::ModelMaterialResource, MaterialResource}, 
+        mesh::{Attribute, BoneMatrixDataLayout, DynamicMeshResource, Mesh}, 
+        DEPTH_STENCIL_FORMAT, 
+        SWAPCHAIN_FORMAT
     }
 };
 
@@ -26,7 +31,7 @@ pub struct ModelRenderer {
     resource: DynamicMeshResource, 
 
     /// 렌더러에 연결된 재질입니다.
-    materials: Vec<Arc<Material>>, 
+    materials: Vec<Arc<dyn MaterialResource>>, 
 
     /// 렌더러의 그래픽스 파이프라인입니다.
     pipeline: &'static wgpu::RenderPipeline,  
@@ -39,7 +44,7 @@ impl ModelRenderer {
         id: WorldID, 
         mesh: Mesh, 
         resource: DynamicMeshResource, 
-        materials: Vec<Arc<Material>>, 
+        materials: Vec<Arc<dyn MaterialResource>>, 
         device: &wgpu::Device
     ) -> Self {
         Self { 
@@ -67,7 +72,7 @@ impl MeshRenderer for ModelRenderer {
 
     #[inline]
     #[must_use]
-    fn materials(&self) -> &[Arc<Material>] {
+    fn materials(&self) -> &[Arc<dyn MaterialResource>] {
         &self.materials
     }
 
@@ -264,7 +269,7 @@ fn pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device), 
                 DynamicMeshResource::bind_group_layout(device), 
-                Material::bind_group_layout(device)
+                ModelMaterialResource::bind_group_layout(device)
             ], 
             push_constant_ranges: &[]
         }
