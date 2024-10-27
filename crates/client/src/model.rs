@@ -1,5 +1,6 @@
 use std::{collections::HashMap, io::Cursor, sync::Arc};
 
+use ddsfile::Dds;
 use mod_app::asset::AssetBundle;
 use mod_asset::model::{AnimationBlob, MaterialBlob, MeshBlob, ModelBlob, NodeBlob, TextureBlob};
 use mod_parallelism::collections::Queue;
@@ -13,6 +14,7 @@ use mod_world::{
         pool::{SamplerPool, TexturePool, TextureViewPool}
     }
 };
+use wgpu::util::DeviceExt;
 
 /// `Aris_Original` 모델의 경로입니다.
 const ARIS_ORIGINAL_PATH: &'static str = "characters/aris_original/Aris_Original_Mesh.ron";
@@ -422,33 +424,35 @@ fn create_texture(
     bundle: &AssetBundle,
     blob: TextureBlob
 ) -> (Arc<wgpu::TextureView>, Arc<wgpu::Sampler>) {
-    let texture = match TexturePool::get(&blob.name) {
-        Some(texture) => texture, 
-        None => {
-            let path = format!("characters/aris_original/{}.dds", &blob.name);
-            let cache = bundle.get_or_init(path).unwrap();
-            let dds = ddsfile::Dds::read(Cursor::new(cache.as_bytes())).unwrap();
-            TexturePool::get_or_init(
-                device, 
-                queue, 
-                blob.name.clone(),&wgpu::TextureDescriptor {
-                    label: Some(&format!("Texture({})", &blob.name)), 
-                    size: wgpu::Extent3d {
-                        width: dds.get_width(), 
-                        height: dds.get_height(), 
-                        depth_or_array_layers: dds.get_depth(), 
-                    }, 
-                    dimension: if dds.get_depth() > 1 { wgpu::TextureDimension::D3 } else { wgpu::TextureDimension::D2 }, 
-                    format: wgpu::TextureFormat::Bc7RgbaUnorm, 
-                    mip_level_count: dds.get_num_mipmap_levels(), 
-                    sample_count: 1, 
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, 
-                    view_formats: &[]
+    let name = blob.name.clone();
+    let texture = TexturePool::get_or_init(&blob.name, move || {
+        let path = format!("characters/aris_original/{}.dds", &name);
+        let cache = bundle.get_or_init(&path).unwrap();
+        let dds = Dds::read(Cursor::new(cache.as_bytes())).unwrap();
+        let texture = Arc::new(device.create_texture_with_data(
+            queue, 
+            &wgpu::TextureDescriptor {
+                label: Some(&format!("Texture({})", &name)), 
+                size: wgpu::Extent3d {
+                    width: dds.get_width(), 
+                    height: dds.get_height(), 
+                    depth_or_array_layers: dds.get_depth(), 
                 }, 
-                &dds.data
-            )
-        }
-    };
+                dimension: if dds.get_depth() > 1 { wgpu::TextureDimension::D3 } else { wgpu::TextureDimension::D2 }, 
+                format: wgpu::TextureFormat::Bc7RgbaUnorm, 
+                mip_level_count: dds.get_num_mipmap_levels(), 
+                sample_count: 1, 
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST, 
+                view_formats: &[]
+            }, 
+            wgpu::util::TextureDataOrder::LayerMajor, 
+            &dds.data
+        ));
+
+        bundle.remove(&path);
+
+        texture
+    });
 
     let texture_view = TextureViewPool::get_or_init(
         &texture, 
