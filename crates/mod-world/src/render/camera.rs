@@ -120,7 +120,7 @@ pub struct CameraResource {
     camera_uniform: CameraUniform, 
 
     /// 지역 조명 유니폼 버퍼입니다.
-    local_light_uniform: LocalLightUniform, 
+    _local_light_uniform: LocalLightUniform, 
 
     /// 카메라 데이터의 [wgpu::BindGroup]입니다.
     bind_group: wgpu::BindGroup
@@ -219,7 +219,7 @@ impl CameraResource {
 
         Self { 
             camera_uniform, 
-            local_light_uniform, 
+            _local_light_uniform: local_light_uniform, 
             bind_group 
         }
     }

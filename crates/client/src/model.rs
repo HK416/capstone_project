@@ -3,16 +3,17 @@ use std::{collections::HashMap, io::Cursor, sync::Arc};
 use ddsfile::Dds;
 use mod_app::asset::AssetBundle;
 use mod_asset::model::{AnimationBlob, MaterialBlob, MeshBlob, ModelBlob, NodeBlob, TextureBlob};
-use mod_parallelism::collections::Queue;
 use mod_world::{
     objects::{GameObjectDescriptor, GameWorld, ObjectId}, 
     render::{
         animation::{AnimationClip, KeyFrame, SkinnedMeshInfo, SkinningData}, 
-        material::{model::{ModelMaterialDescriptor, ModelMaterialResource}, MaterialResource}, 
-        mesh::{AttributeValues, BoneMatrixDataLayout, DynamicMeshDataLayout, DynamicMeshResource, Indices, Mesh, StaticMeshResource, Vertices, MAX_BONES}, 
-        pipeline::mesh::{model::ModelRenderer, shape::ShapeRenderer, MeshRenderer}, 
-        pool::{SamplerPool, TexturePool, TextureViewPool}
-    }
+        brush::{bullet::BulletBrush, student::StudentBrush}, 
+        material::universal::{UniversalMaterialDescriptor, UniversalMaterialResource}, 
+        mesh::{
+            AttributeValues, BoneMatrixDataLayout, DynamicMeshDataLayout, DynamicMeshResource, Indices, Mesh, StaticMeshDataLayout, StaticMeshResource, Vertices, MAX_BONES
+        }, 
+        pool::{MeshPool, SamplerPool, TexturePool, TextureViewPool}
+    }, task::DrawTask
 };
 use wgpu::util::DeviceExt;
 
@@ -26,7 +27,6 @@ const SPHERE_PATH: &'static str = "shape/sphere/Sphere.ron";
 
 pub fn spawn_sphere_shape(
     world: &GameWorld,  
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>,
     bundle: &AssetBundle, 
     device: &wgpu::Device, 
     queue: &wgpu::Queue
@@ -35,7 +35,6 @@ pub fn spawn_sphere_shape(
     let blob: ModelBlob = ron::de::from_bytes(cache.as_bytes()).unwrap();
     let root_id = spawn_shape_node(
         world, 
-        renderer, 
         bundle, 
         device, 
         queue, 
@@ -51,7 +50,6 @@ pub fn spawn_sphere_shape(
 #[must_use]
 fn spawn_shape_node(
     world: &GameWorld, 
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     bundle: &AssetBundle,
     device: &wgpu::Device,
     queue: &wgpu::Queue, 
@@ -77,7 +75,6 @@ fn spawn_shape_node(
     if let Some(child_blob) = blob.children.pop() {
         let child_id = spawn_shape_node(
             world, 
-            renderer, 
             bundle, 
             device, 
             queue, 
@@ -94,7 +91,6 @@ fn spawn_shape_node(
     if let Some(sibling_blob) = sibling.pop() {
         let sibling_id = spawn_shape_node(
             world, 
-            renderer, 
             bundle, 
             device, 
             queue, 
@@ -110,31 +106,47 @@ fn spawn_shape_node(
     // 메쉬 데이터가 있는 경우 모델 렌더러를 생성합니다.
     if let Some(mesh_blob) = blob.mesh {
         let name = mesh_blob.name.clone();
+
+        // 메쉬를 생성합니다.
         let mesh = create_mesh(device, queue, mesh_blob);
 
-        let resource = StaticMeshResource::new(
+        // 메쉬 쉐이더 리소스를 생성합니다.
+        let mesh_resource = Arc::new(StaticMeshResource::new(
             Some(&format!("StaticMeshResource({})", &name)), 
             device
-        );
+        ));
 
+        // 재질을 쉐이더 리소스를 생성합니다.
         let materials: Vec<_> = blob.materials.into_iter()
             .map(|material_blob| {
                 create_material(device, queue, bundle, material_blob)
             })
             .collect();
 
-        let mesh_renderer = Arc::new(ShapeRenderer::new(
-            id,
+        // 그리기 브러쉬를 생성합니다.
+        let brush = BulletBrush::new(
+            device, 
             mesh, 
-            resource, 
-            materials, 
-            device
-        ));
+            mesh_resource.clone(), 
+            materials
+        );
 
+        // 그리기 작업을 생성합니다.
+        let mesh_resource_cloned = mesh_resource.clone();
+        let task = DrawTask::new(id)
+            .with_on_pre_draw(Some(Box::new(move |device, queue, world, id| {
+                let object = world.get(&id).unwrap();
+                mesh_resource_cloned.mesh_uniform().write(device, queue, StaticMeshDataLayout {
+                    trans: object.world_transform.into(), 
+                    ..Default::default()
+                });
 
-        let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
-        object.insert(mesh_renderer.clone());
-        renderer.push(mesh_renderer);
+                Ok(())
+            })))
+            .add_brush(brush);
+
+        // 게임 세상에 그리기 작업을 등록합니다.
+        world.regist_draw_task(task).unwrap();
     }
 
     id
@@ -144,7 +156,6 @@ fn spawn_shape_node(
 
 pub fn spawn_aris_original_model(
     world: &GameWorld, 
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     bundle: &AssetBundle,
     device: &wgpu::Device, 
     queue: &wgpu::Queue
@@ -156,7 +167,6 @@ pub fn spawn_aris_original_model(
     let mut skinned_meshes = HashMap::new();
     let root_id = spawn_model_node(
         world, 
-        renderer, 
         bundle, 
         device, 
         queue, 
@@ -183,7 +193,6 @@ pub fn spawn_aris_original_model(
 #[must_use]
 fn spawn_model_node(
     world: &GameWorld, 
-    renderer: &Arc<Queue<Arc<dyn MeshRenderer>>>, 
     bundle: &AssetBundle,
     device: &wgpu::Device,
     queue: &wgpu::Queue, 
@@ -211,7 +220,6 @@ fn spawn_model_node(
     if let Some(child_blob) = blob.children.pop() {
         let child_id = spawn_model_node(
             world, 
-            renderer, 
             bundle, 
             device, 
             queue, 
@@ -230,7 +238,6 @@ fn spawn_model_node(
     if let Some(sibling_blob) = sibling.pop() {
         let sibling_id = spawn_model_node(
             world, 
-            renderer, 
             bundle, 
             device, 
             queue, 
@@ -251,10 +258,10 @@ fn spawn_model_node(
         let mesh = create_mesh(device, queue, mesh_blob);
         if let Some(skin_blob) = blob.skin {
             // 쉐이더 리소스를 생성합니다.
-            let resource = DynamicMeshResource::new(
+            let resource = Arc::new(DynamicMeshResource::new(
                 Some(&format!("DynamicMeshResource({})", &name)), 
                 device
-            );
+            ));
             
             // 메쉬 데이터 유니폼 버퍼 갱신
             resource.mesh_uniform().write(device, queue, DynamicMeshDataLayout {
@@ -293,19 +300,37 @@ fn spawn_model_node(
                 })
                 .collect();
 
-            // 렌더러를 게임 오브젝트에 추가합니다.
-            let mesh_renderer = Arc::new(ModelRenderer::new(
-                id, 
+            // 그리기 브러쉬를 생성합니다.
+            let brush = StudentBrush::new(
+                device, 
                 mesh, 
                 resource, 
                 materials, 
-                device
-            ));
-            renderer.push(mesh_renderer.clone());
+            );
+            
+            // 그리기 작업을 생성합니다.
+            let task = DrawTask::new(id)
+                .with_on_pre_draw(Some(Box::new(|device, queue, world, id| {
+                    let object = world.get(&id).unwrap();
+                    let mesh_info = object.get::<Arc<SkinnedMeshInfo>>().unwrap();
+
+                    let mut data = BoneMatrixDataLayout::new();
+                    for (index, id) in mesh_info.bones.iter().enumerate() {
+                        let bone = world.get(id).unwrap();
+                        data[index] = bone.world_transform.into();
+                    }
+
+                    mesh_info.bone_transform_uniform.write(device, queue, data);
+
+                    Ok(())
+                })))
+                .add_brush(brush);
+
+            // 게임 세상에 그리기 작업을 등록합니다.
+            world.regist_draw_task(task).unwrap();
 
             let mut object = unsafe { world.get_mut(&id).unwrap_unchecked() };
             object.insert(mesh_info);
-            object.insert(mesh_renderer);
         };
     }
 
@@ -319,43 +344,46 @@ fn create_mesh(
     device: &wgpu::Device, 
     queue: &wgpu::Queue, 
     blob: MeshBlob
-) -> Mesh {
-    // 메쉬 빌더를 생성합니다.
-    let mut mesh = Mesh::new(&blob.name, device, queue, Vertices(blob.vertices));
-
-    if !blob.colors.is_empty() {
-        mesh.insert_attribute(device, queue, AttributeValues::Color(blob.colors));
-    }
-
-    if !blob.normals.is_empty() {
-        mesh.insert_attribute(device, queue, AttributeValues::Normal(blob.normals));
-    }
-
-    if !blob.tangents.is_empty() {
-        mesh.insert_attribute(device, queue, AttributeValues::Tangent(blob.tangents));
-    }
-
-    if !blob.texcoords0.is_empty() {
-        mesh.insert_attribute(device, queue, AttributeValues::Texcoord0(blob.texcoords0));
-    }
-
-    if !blob.texcoords1.is_empty() {
-        mesh.insert_attribute(device, queue, AttributeValues::Texcoord1(blob.texcoords1));
-    }
-
-    if !blob.bone_indices.is_empty() {
-        mesh.insert_attribute(device, queue, AttributeValues::BoneIndex(blob.bone_indices));
-    }
-
-    if !blob.bone_weights.is_empty() {
-        mesh.insert_attribute(device, queue, AttributeValues::BoneWeight(blob.bone_weights));
-    }
-
-    for submesh in blob.submeshes {
-        mesh.insert_submesh(device, queue, Indices::U32(submesh));
-    }
-
-    mesh
+) -> Arc<Mesh> {
+    let name = blob.name.clone();
+    MeshPool::get_or_init(name, move || {
+        // 메쉬 빌더를 생성합니다.
+        let mut mesh = Mesh::new(&blob.name, device, queue, Vertices(blob.vertices));
+    
+        if !blob.colors.is_empty() {
+            mesh.insert_attribute(device, queue, AttributeValues::Color(blob.colors));
+        }
+    
+        if !blob.normals.is_empty() {
+            mesh.insert_attribute(device, queue, AttributeValues::Normal(blob.normals));
+        }
+    
+        if !blob.tangents.is_empty() {
+            mesh.insert_attribute(device, queue, AttributeValues::Tangent(blob.tangents));
+        }
+    
+        if !blob.texcoords0.is_empty() {
+            mesh.insert_attribute(device, queue, AttributeValues::Texcoord0(blob.texcoords0));
+        }
+    
+        if !blob.texcoords1.is_empty() {
+            mesh.insert_attribute(device, queue, AttributeValues::Texcoord1(blob.texcoords1));
+        }
+    
+        if !blob.bone_indices.is_empty() {
+            mesh.insert_attribute(device, queue, AttributeValues::BoneIndex(blob.bone_indices));
+        }
+    
+        if !blob.bone_weights.is_empty() {
+            mesh.insert_attribute(device, queue, AttributeValues::BoneWeight(blob.bone_weights));
+        }
+    
+        for submesh in blob.submeshes {
+            mesh.insert_submesh(device, queue, Indices::U32(submesh));
+        }
+    
+        mesh.into()
+    })
 }
 
 fn create_material(
@@ -363,9 +391,9 @@ fn create_material(
     queue: &wgpu::Queue, 
     bundle: &AssetBundle, 
     blob: MaterialBlob
-) -> Arc<dyn MaterialResource> {
+) -> Arc<UniversalMaterialResource> {
     // 재질 설명자를 생성합니다.
-    let mut desc = ModelMaterialDescriptor::new(device, queue, blob.name);
+    let mut desc = UniversalMaterialDescriptor::new(device, queue, blob.name);
 
     if let Some(glossiness) = blob.glossiness {
         desc.glossiness = glossiness;
@@ -380,7 +408,7 @@ fn create_material(
     }
 
     if let Some(diffuse) = blob.diffuse {
-        desc.diffuse = diffuse.into();
+        desc.albedo = diffuse.into();
     }
 
     if let Some(specular) = blob.specular {
@@ -393,8 +421,8 @@ fn create_material(
 
     if let Some(texture_blob) = blob.diffuse_map {
         let (texture_view, sampler) = create_texture(device, queue, bundle, texture_blob);
-        desc.diffuse_map = texture_view;
-        desc.diffuse_sampler = sampler;
+        desc.albedo_map = texture_view;
+        desc.albedo_sampler = sampler;
     }
 
     if let Some(texture_blob) = blob.specular_map {
@@ -415,7 +443,7 @@ fn create_material(
         desc.emissive_sampler = sampler;
     }
 
-    Arc::new(ModelMaterialResource::new(device, queue, &desc))
+    Arc::new(UniversalMaterialResource::new(device, queue, &desc))
 }
 
 fn create_texture(

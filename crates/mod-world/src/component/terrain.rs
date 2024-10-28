@@ -1,4 +1,4 @@
-use crate::render::mesh::{AttributeValues, Indices, Mesh, Vertices};
+use crate::render::mesh::{AttributeValues, Mesh, Vertices};
 
 
 
@@ -27,45 +27,74 @@ impl TerrainFactory {
         let x_start = -0.5 * width; // `x` 좌표의 시작 위치
         let z_start = -0.5 * depth; // `z` 좌표의 시작 위치
 
-        let num_vertices = (num_width + 1) * (num_depth + 1);
+        let num_vertices = num_width * num_depth * 6;
         let mut positions = Vec::with_capacity(num_vertices);
+        let mut normals = Vec::with_capacity(num_vertices);
         let mut texcoords0 = Vec::with_capacity(num_vertices);
         let mut texcoords1 = Vec::with_capacity(num_vertices);
-        for z in 0..(num_depth + 1) {
-            for x in 0..(num_width + 1) {
-                let delta_x = x as f32 * spacing;
-                let delta_z = z as f32 * spacing;
-                positions.push(gmm::Float3::new(x_start + delta_x, 0.0, z_start + delta_z));
-                texcoords0.push(gmm::Float2::new(delta_x / width, delta_z / depth));
-                texcoords1.push(gmm::Float2::new(
-                    if x % 2 == 0 { 0.0 } else { 1.0 }, 
-                    if z % 2 == 0 { 0.0 } else { 1.0 }
-                ));
-            }
-        }
-
-        let num_indices = (num_width + 1) * num_depth * 2;
-        let mut indices = Vec::with_capacity(num_indices);
-
-        // TriangleStrip 인덱스 생성
         for z in 0..num_depth {
-            if z % 2 == 0 {
-                for x in 0..(num_width + 1) {
-                    indices.push((z * (num_width + 1) + x) as u32);
-                    indices.push(((z + 1) * (num_width + 1) + x) as u32);
-                }
-            } else {
-                for x in (0..(num_width + 1)).rev() {
-                    indices.push(((z + 1) * (num_width + 1) + x) as u32);
-                    indices.push((z * (num_width + 1) + x) as u32);
-                }
+            for x in 0..num_width {
+                let dx = (x + 0) as f32 * spacing;
+                let dz = (z + 0) as f32 * spacing;
+                let pos_x = x_start + dx;
+                let pos_z = z_start + dz;
+                positions.push([pos_x, 0.0, pos_z].into());
+                normals.push([0.0, 1.0, 0.0].into());
+                texcoords0.push([dx / width, dz / depth].into());
+                texcoords1.push([0.0, 1.0].into());
+
+                let dx = (x + 0) as f32 * spacing;
+                let dz = (z + 1) as f32 * spacing;
+                let pos_x = x_start + dx;
+                let pos_z = z_start + dz;
+                positions.push([pos_x, 0.0, pos_z].into());
+                normals.push([0.0, 1.0, 0.0].into());
+                texcoords0.push([dx / width, dz / depth].into());
+                texcoords1.push([0.0, 0.0].into());
+
+                let dx = (x + 1) as f32 * spacing;
+                let dz = (z + 0) as f32 * spacing;
+                let pos_x = x_start + dx;
+                let pos_z = z_start + dz;
+                positions.push([pos_x, 0.0, pos_z].into());
+                normals.push([0.0, 1.0, 0.0].into());
+                texcoords0.push([dx / width, dz / depth].into());
+                texcoords1.push([1.0, 1.0].into());
+
+
+                let dx = (x + 1) as f32 * spacing;
+                let dz = (z + 0) as f32 * spacing;
+                let pos_x = x_start + dx;
+                let pos_z = z_start + dz;
+                positions.push([pos_x, 0.0, pos_z].into());
+                normals.push([0.0, 1.0, 0.0].into());
+                texcoords0.push([dx / width, dz / depth].into());
+                texcoords1.push([1.0, 1.0].into());
+
+                let dx = (x + 0) as f32 * spacing;
+                let dz = (z + 1) as f32 * spacing;
+                let pos_x = x_start + dx;
+                let pos_z = z_start + dz;
+                positions.push([pos_x, 0.0, pos_z].into());
+                normals.push([0.0, 1.0, 0.0].into());
+                texcoords0.push([dx / width, dz / depth].into());
+                texcoords1.push([0.0, 1.0].into());
+
+                let dx = (x + 1) as f32 * spacing;
+                let dz = (z + 1) as f32 * spacing;
+                let pos_x = x_start + dx;
+                let pos_z = z_start + dz;
+                positions.push([pos_x, 0.0, pos_z].into());
+                normals.push([0.0, 1.0, 0.0].into());
+                texcoords0.push([dx / width, dz / depth].into());
+                texcoords1.push([1.0, 0.0].into());
             }
         }
 
         let mut mesh = Mesh::new(name, device, queue, Vertices(positions));
+        mesh.insert_attribute(device, queue, AttributeValues::Normal(normals));
         mesh.insert_attribute(device, queue, AttributeValues::Texcoord0(texcoords0));
         mesh.insert_attribute(device, queue, AttributeValues::Texcoord1(texcoords1));
-        mesh.insert_submesh(device, queue, Indices::U32(indices));
         mesh
     }
 }

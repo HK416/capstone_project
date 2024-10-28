@@ -1,11 +1,61 @@
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{collections::HashMap, error::Error, sync::{Arc, Once}};
 
-use mod_app::{app::AppHandle, asset::AssetBundle, etc::WindowSize, ext::AppWindowExt, net::{IpAddress, NetManager}, scene::GameScene};
-use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
-use mod_parallelism::collections::Queue;
+use mod_app::{
+    app::AppHandle, 
+    asset::AssetBundle, 
+    etc::WindowSize, 
+    ext::AppWindowExt, 
+    net::{IpAddress, NetManager}, 
+    scene::GameScene
+};
+use mod_network::{
+    BulletBlob, 
+    PacketType, 
+    Player, 
+    PullPacket, 
+    PushPacket, 
+    RawPacket, 
+    ShotPacket
+};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, InputController, PlayerFlags, PlayerState, Projection, TerrainFactory, Weapon}, objects::{GameObjectDescriptor, GameWorld, ObjectId, Transform}, render::{camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, material::terrain::{TerrainMaterialDescriptor, TerrainMaterialResource}, mesh::StaticMeshResource, pipeline::mesh::{terrain::TerrainRenderer, MeshRenderer}}};
-use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
+use mod_world::{
+    component::{
+        player_cursor_moved, 
+        player_keyboard_pressed, 
+        player_keyboard_released, 
+        player_mouse_btn_pressed, 
+        player_mouse_btn_released, 
+        player_update, 
+        AnimationSet, 
+        Bullet, 
+        BulletKind, 
+        InputController, 
+        PlayerFlags, 
+        PlayerState, 
+        Projection, 
+        TerrainFactory, 
+        Weapon
+    }, 
+    objects::{
+        GameObjectDescriptor, 
+        GameWorld, 
+        ObjectId, 
+        Transform
+    }, 
+    render::{
+        brush::{terrain::TerrainBrush, MeshBrush}, 
+        camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, 
+        material::universal::{UniversalMaterialDescriptor, UniversalMaterialResource}, 
+        mesh::{StaticMeshDataLayout, StaticMeshResource} 
+    }, 
+    task::DrawTask
+};
+use winit::{
+    dpi::PhysicalPosition, 
+    event::{Modifiers, MouseButton}, 
+    keyboard::{KeyCode, KeyLocation}, 
+    window::{CursorGrabMode, Window}
+};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
     r: 0.0, 
@@ -35,10 +85,6 @@ pub struct TestBedScene {
     /// 생성된 탄환 목록입니다.
     bullets: HashMap<u32, ObjectId>, 
 
-    /// 메쉬 렌더러 오브젝트를 관리합니다.
-    renderer: Arc<Queue<Arc<dyn MeshRenderer>>>, 
-    render_list: Vec<Arc<dyn MeshRenderer>>, 
-
     lock_cursor: bool, 
 
     egui_clip_primitives: Vec<egui::ClippedPrimitive>, 
@@ -66,8 +112,6 @@ impl TestBedScene {
             main_camera: ObjectId::NIL, 
             players: HashMap::with_capacity(10),
             bullets: HashMap::with_capacity(64), 
-            renderer: Arc::new(Queue::new()), 
-            render_list: Vec::new(), 
             lock_cursor: true, 
             egui_clip_primitives: Vec::new(), 
             egui_free_texture_ids: Vec::new(), 
@@ -132,7 +176,7 @@ impl TestBedScene {
         &mut self, 
         device: &wgpu::Device, 
         queue: &wgpu::Queue, 
-        bundle: &AssetBundle
+        _bundle: &AssetBundle
     ) {
         // 지형 오브젝트를 생성합니다.
         let desc = GameObjectDescriptor::new()
@@ -140,36 +184,40 @@ impl TestBedScene {
         let id = self.world.spawn(desc);
 
         // 지형 메쉬를 생성합니다.
-        let mesh = TerrainFactory::mesh(
+        let mesh = Arc::new(TerrainFactory::mesh(
             Some("Terrain"), 
             device, 
             queue, 
             10.0, 
             10.0, 
             1.0
-        );
-
-        let resource = StaticMeshResource::new(Some("Terrain"), device);
-
-        // 재질을 생성합니다.
-        let desc = TerrainMaterialDescriptor::new(device, queue, "Terrain");
-        let material = Arc::new(TerrainMaterialResource::new(device, queue, &desc));
-
-        // 지형 메쉬 렌더러를 생성합니다.
-        let renderer = Arc::new(TerrainRenderer::new(
-            id, 
-            mesh, 
-            resource, 
-            vec![material], 
-            device
         ));
 
-        // 게임 오브젝트에 메쉬 렌더러를 추가합니다.
-        let mut object = unsafe { self.world.get_mut(&id).unwrap_unchecked() };
-        object.insert(renderer.clone());
+        let mesh_resource = Arc::new(StaticMeshResource::new(Some("Terrain"), device));
 
-        // 렌더러 목록에 메쉬 렌더러를 추가합니다.
-        self.renderer.push(renderer);
+        // 재질을 생성합니다.
+        let desc = UniversalMaterialDescriptor::new(device, queue, "Terrain");
+        let materials = vec![Arc::new(UniversalMaterialResource::new(device, queue, &desc))];
+
+        // 지형 메쉬 브러쉬를 생성합니다.
+        let brush = TerrainBrush::new(device, mesh, mesh_resource.clone(), materials);
+
+        // 그리기 작업을 생성합니다.
+        let mesh_resource_cloned = mesh_resource.clone();
+        let task = DrawTask::new(id)
+            .with_on_pre_draw(Some(Box::new(move |device, queue, world, id| {
+                let object = world.get(&id).unwrap();
+                mesh_resource_cloned.mesh_uniform().write(device, queue, StaticMeshDataLayout {
+                    trans: object.world_transform.into(), 
+                    ..Default::default()
+                });
+
+                Ok(())
+            })))
+            .add_brush(brush);
+
+        // 게임 세상에 그리기 작업을 등록합니다.
+        self.world.regist_draw_task(task).unwrap();
     }
 
 
@@ -184,7 +232,6 @@ impl TestBedScene {
         // 모델 파일을 로드합니다.
         let (root_id, clips, nodes) = crate::model::spawn_aris_original_model(
             &self.world,  
-            &self.renderer, 
             bundle, 
             device, 
             queue
@@ -257,7 +304,6 @@ impl TestBedScene {
         // 임시 총알 모델을 로드합니다.
         let root_id = crate::model::spawn_sphere_shape(
             &self.world, 
-            &self.renderer, 
             bundle, 
             device, 
             queue
@@ -849,12 +895,9 @@ impl GameScene for TestBedScene {
             }
         }
 
-        // 렌더러를 준비합니다.
-        while let Some(renderer) = self.renderer.pop() {
-            if self.world.contains(renderer.game_object()) {
-                renderer.prepare(device, queue, &self.world);
-                self.render_list.push(renderer);
-            }
+        // 그리기 작업 목록을 준비합니다.
+        for guard in self.world.draw_tasks() {
+            guard.on_pre_draw(device, queue, &self.world)?;
         }
 
         Ok(())
@@ -890,6 +933,14 @@ impl GameScene for TestBedScene {
         };
 
 
+        let brushes: Vec<_> = self.world.draw_tasks()
+            .map(|guard| {
+                let brushes: Vec<_> = guard.brushes().into_iter().cloned().collect();
+                brushes
+            })
+            .flatten()
+            .collect();
+
         let mut encoder = device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor::default()
         );
@@ -921,9 +972,9 @@ impl GameScene for TestBedScene {
                 }
             );
 
-            for renderer in self.render_list.iter() {
-                renderer.bind(&camera, &mut rpass);
-                renderer.draw(&mut rpass);
+            for brush in brushes.iter() {
+                brush.bind(&camera, &mut rpass);
+                brush.draw(&mut rpass);
             }
 
             egui_renderer.render(
@@ -945,10 +996,13 @@ impl GameScene for TestBedScene {
         &mut self, 
         _window: &Window, 
         egui_renderer: &mut egui_wgpu::Renderer, 
-        _app: &dyn AppHandle
+        app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        while let Some(renderer) = self.render_list.pop() {
-            self.renderer.push(renderer);
+        let device = app.render_device();
+        let queue = app.render_queue();
+
+        for guard in self.world.draw_tasks() {
+            guard.on_post_draw(device, queue, &self.world)?;
         }
 
         self.egui_clip_primitives.clear();

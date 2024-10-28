@@ -20,7 +20,9 @@ fn main() {
     assert!(is_main_thread(), "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.
-    env_logger::init();
+    env_logger::builder()
+        .filter_module("wgpu_core", log::LevelFilter::Warn)
+        .init();
     log::info!("클라이언트 애플리케이션 실행...");
 
     AppBuilder::new(Box::new(scenes::StartupScene::new()))

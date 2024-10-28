@@ -4,7 +4,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering as MemOrdering}
 };
 
-use mod_parallelism::collections::{MutGuard, RefGuard, SkipMap};
+use mod_parallelism::collections::{MutGuard, RefGuard, SkipMap, Values};
+
+use crate::task::DrawTask;
 
 use super::GameObject;
 
@@ -42,11 +44,14 @@ impl Default for ObjectId {
 /// 생성된 게임 오브젝트를 관리하는 게임 월드
 #[derive(Debug)]
 pub struct GameWorld {
+    /// 게임 오브젝트 식별자를 생성하는데 사용됩니다.
+    value: AtomicU64, 
+
     /// 생성된 게임 오브젝트 목록입니다.
     objects: SkipMap<ObjectId, GameObject>, 
 
-    /// 게임 오브젝트 식별자를 생성하는데 사용됩니다.
-    value: AtomicU64, 
+    /// 게임 오브젝트 그리기 작업 집합입니다.
+    draw_task: SkipMap<ObjectId, DrawTask> 
 }
 
 impl GameWorld {
@@ -55,8 +60,9 @@ impl GameWorld {
     #[must_use]
     pub fn new() -> Self {
         Self { 
+            value: AtomicU64::new(1), 
             objects: SkipMap::new(), 
-            value: AtomicU64::new(1) 
+            draw_task: SkipMap::new() 
         }
     }
 
@@ -85,6 +91,7 @@ impl GameWorld {
     #[inline]
     pub fn despawn(&self, id: &ObjectId) {
         self.objects.remove(id);
+        self.draw_task.remove(id);
     }
 
     /// 주어진 식별자에 해당하는 게임 오브젝트가 게임 세상에 포함되어 있는지 여부를 반환합니다.
@@ -109,6 +116,49 @@ impl GameWorld {
     pub fn get_mut(&self, id: &ObjectId) -> Option<MutGuard<'_, ObjectId, GameObject>> {
         self.objects.get_mut(id)
     }
+}
+
+impl GameWorld {
+    /// 게임 오브젝트 그리기 작업을 등록합니다.
+    /// 이미 해당 오브젝트의 그리기 작업이 존재하는 경우 새로운 작업으로 교체됩니다.
+    /// 
+    /// # Errors
+    /// 그리기 작업의 대상 게임 오브젝트가 게임 세상에 존재하지 않을 경우
+    /// `TaskRegistError`를 반환합니다.
+    /// 
+    #[inline]
+    pub fn regist_draw_task(&self, task: DrawTask) -> Result<Option<DrawTask>, TaskRegistError> {
+        if !self.objects.contains_key(&task.id()) {
+            return Err(TaskRegistError::NoSuchObject(task.id()));
+        }
+        Ok(self.draw_task.insert(task.id(), task))
+    }
+
+    /// 게임 오브젝트 그리기 작업을 등록 해제합니다.
+    /// 해당 오브젝트가 존재하지 않거나, 해당 오브젝트의 그리기 작업이 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
+    #[inline]
+    pub fn unregist_draw_task(&self, id: &ObjectId) -> Option<DrawTask> {
+        self.draw_task.remove(id)
+    }
+
+    /// 그리기 작업 목록을 순회하는 반복자를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn draw_tasks(&self) -> Values<'_, ObjectId, DrawTask> {
+        self.draw_task.values()
+    }
+}
+
+
+
+
+
+/// 작업을 등록하는 도중 발생할 수 있는 오류 목록입니다.
+#[derive(Debug, thiserror::Error)]
+pub enum TaskRegistError {
+    /// 게임 세상에서 오브젝트를 찾을 수 없는 경우 발생하는 오류입니다.
+    #[error("Game object not found in game world! ({0:?})")]
+    NoSuchObject(ObjectId), 
 }
 
 
