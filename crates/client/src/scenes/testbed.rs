@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, sync::{Arc, Once}};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 use mod_app::{
     app::AppHandle, 
@@ -43,7 +43,7 @@ use mod_world::{
         Transform
     }, 
     render::{
-        brush::{terrain::TerrainBrush, MeshBrush}, 
+        brush::terrain::TerrainBrush, 
         camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, 
         material::universal::{UniversalMaterialDescriptor, UniversalMaterialResource}, 
         mesh::{StaticMeshDataLayout, StaticMeshResource} 
@@ -512,9 +512,7 @@ impl TestBedScene {
     fn pull_player_objects(
         &mut self, 
         players: Vec<Player>, 
-        device: &wgpu::Device, 
-        queue: &wgpu::Queue, 
-        bundle: &AssetBundle
+        app: &dyn AppHandle
     ) {
         let mut next = Vec::with_capacity(self.players.len());
         for data in players {
@@ -538,7 +536,14 @@ impl TestBedScene {
 
                 next.push((data.id, world_id));
             } else {
-                self.insert_player(data, device, queue, bundle);
+                let device = app.render_device().clone();
+                let queue = app.render_queue().clone();
+                let bundle = app.bundle().clone();
+                rayon::scope(|_| {
+                    self.insert_player(data, &device, &queue, &bundle);
+                });
+    
+                // self.insert_player(data, device, queue, bundle);
                 next.push((data.id, self.players.remove(&data.id).unwrap()));
             }
         }
@@ -560,9 +565,7 @@ impl TestBedScene {
     fn pull_bullet_objects(
         &mut self, 
         bullets: Vec<BulletBlob>, 
-        device: &wgpu::Device, 
-        queue: &wgpu::Queue, 
-        bundle: &AssetBundle
+        app: &dyn AppHandle
     ) {
         let mut next = Vec::with_capacity(self.players.len());
         for data in bullets {
@@ -576,7 +579,7 @@ impl TestBedScene {
 
                 next.push((data.id, world_id));
             } else {
-                self.insert_bullet(data, device, queue, bundle);
+                self.insert_bullet(data, app.render_device(), app.render_queue(), app.bundle());
                 next.push((data.id, self.bullets.remove(&data.id).unwrap()));
             }
         }
@@ -674,8 +677,8 @@ impl GameScene for TestBedScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         if raw_packet.packet_type() == PacketType::PULL {
             let packet = PullPacket::from_raw(raw_packet);
-            self.pull_player_objects(packet.players, app.render_device(), app.render_queue(), app.bundle());
-            self.pull_bullet_objects(packet.bullets, app.render_device(), app.render_queue(), app.bundle());
+            self.pull_player_objects(packet.players, app);
+            self.pull_bullet_objects(packet.bullets, app);
         }
 
         Ok(())
