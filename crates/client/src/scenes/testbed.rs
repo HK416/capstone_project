@@ -624,7 +624,14 @@ impl GameScene for TestBedScene {
 
         // 플레이어들을 생성합니다.
         while let Some(data) = self.stage_data.pop() {
-            self.insert_player(data, app.render_device(), app.render_queue(), app.bundle());
+            let device = app.render_device().clone();
+            let queue = app.render_queue().clone();
+            let bundle = app.bundle().clone();
+            rayon::scope(|_| {
+                self.insert_player(data, &device, &queue, &bundle);
+            });
+
+            // self.insert_player(data, app.render_device(), app.render_queue(), app.bundle());
         }
 
         Ok(())

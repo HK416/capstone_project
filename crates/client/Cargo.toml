@@ -34,6 +34,10 @@ gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck"] }
 # License: MIT OR Apache-2.0
 log = "0.4"
 
+# Simple work-stealing parallelism for Rust
+# License: MIT OR Apache-2.0
+rayon = "1.10"
+
 # Rusty Object Notation
 # License: MIT OR Apache-2.0
 ron = "0.8"
