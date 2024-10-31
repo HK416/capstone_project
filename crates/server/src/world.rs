@@ -60,7 +60,9 @@ impl World {
 
     pub fn update_player(&mut self, player: Player) {
         if let Some(old_player) = self.players.get_mut(&player.id) {
+            let old_hp = old_player.hp;
             *old_player = player;
+            old_player.hp = old_hp;
         }
     }
 
@@ -162,6 +164,14 @@ impl World {
                         // TODO: 플레이어에게 피해를 줌
                         // 해당 Session은 클라이언트에게 피해를 받았다는 패킷을 보내야함
                         println!("Player {} hit by bullet", id);
+                        let hp = &mut self.players.get_mut(&id).unwrap().hp;
+                        if *hp <= 40 {
+                            *hp = 0;
+                        }
+                        else {
+                            *hp -= 40;
+                        }
+                        println!("Player {} hp: {}", id, *hp);
                         bullet.alive = false;
                     },
 
