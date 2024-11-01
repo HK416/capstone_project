@@ -1,11 +1,61 @@
-use std::{collections::HashMap, error::Error, io::{BufWriter, Write}, net::TcpStream, sync::Arc};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
-use mod_app::{app::AppHandle, ext::AppWindowExt, scene::GameScene};
-use mod_network::{BulletBlob, PacketType, Player, PullPacket, PushPacket, RawPacket, ShotPacket};
-use mod_parallelism::collections::{Queue, SkipMap};
+use mod_app::{
+    app::AppHandle, 
+    asset::AssetBundle, 
+    etc::WindowSize, 
+    ext::AppWindowExt, 
+    net::{IpAddress, NetManager}, 
+    scene::GameScene
+};
+use mod_network::{
+    BulletBlob, 
+    PacketType, 
+    Player, 
+    PullPacket, 
+    PushPacket, 
+    RawPacket, 
+    ShotPacket
+};
 use mod_physics::rigid_body::RigidBody;
-use mod_world::{component::{player_cursor_moved, player_keyboard_pressed, player_keyboard_released, player_mouse_btn_pressed, player_mouse_btn_released, player_update, AnimationSet, Bullet, BulletKind, Camera, GameObject, IdGenerator, InputController, PlayerFlags, PlayerState, Projection, ThirdPersonCamera, Transform, Weapon, WorldID}, render::{camera::CameraDataLayout, mesh::{BoneDataLayout, Mesh, MeshDataLayout}, pipeline::mesh::MeshRenderer}};
-use winit::{dpi::PhysicalPosition, event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}, window::{CursorGrabMode, Window}};
+use mod_world::{
+    component::{
+        player_cursor_moved, 
+        player_keyboard_pressed, 
+        player_keyboard_released, 
+        player_mouse_btn_pressed, 
+        player_mouse_btn_released, 
+        player_update, 
+        AnimationSet, 
+        Bullet, 
+        BulletKind, 
+        InputController, 
+        PlayerFlags, 
+        PlayerState, 
+        Projection, 
+        TerrainFactory, 
+        Weapon
+    }, 
+    objects::{
+        GameObjectDescriptor, 
+        GameWorld, 
+        ObjectId, 
+        Transform
+    }, 
+    render::{
+        brush::terrain::TerrainBrush, 
+        camera::{CameraDataLayout, CameraResource, ThirdPersonCamera}, 
+        material::universal::{UniversalMaterialDescriptor, UniversalMaterialResource}, 
+        mesh::{StaticMeshDataLayout, StaticMeshResource} 
+    }, 
+    task::DrawTask
+};
+use winit::{
+    dpi::PhysicalPosition, 
+    event::{Modifiers, MouseButton}, 
+    keyboard::{KeyCode, KeyLocation}, 
+    window::{CursorGrabMode, Window}
+};
 
 const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
     r: 0.0, 
@@ -18,30 +68,27 @@ const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
 
 /// TestBed Game Scene
 pub struct TestBedScene {
-    stream: Arc<TcpStream>, 
+    address: IpAddress, 
     stage_data: Vec<Player>, 
 
     client_id: u32, 
 
-    /// 게임 오브젝트 식별자 생성기입니다.
-    id_generator: Arc<IdGenerator>, 
-
-    /// 게임 오브젝트를 관리하는 풀 객체입니다.
-    world: Arc<SkipMap<WorldID, GameObject>>, 
+    /// 게임 오브젝트를 관리하는 게임 세상입니다.
+    world: GameWorld, 
 
     /// 메인 카메라의 게임 오브젝트 식별자입니다.
-    main_camera: WorldID, 
+    main_camera: ObjectId, 
 
     /// 플레이어 목록입니다.
-    players: HashMap<u32, WorldID>, 
+    players: HashMap<u32, ObjectId>, 
 
     /// 생성된 탄환 목록입니다.
-    bullets: HashMap<u32, WorldID>, 
-
-    /// 메쉬 렌더러 오브젝트를 관리합니다.
-    renderer: Arc<Queue<Arc<dyn MeshRenderer>>>, 
+    bullets: HashMap<u32, ObjectId>, 
 
     lock_cursor: bool, 
+
+    egui_clip_primitives: Vec<egui::ClippedPrimitive>, 
+    egui_free_texture_ids: Vec<egui::TextureId>, 
 }
 
 impl TestBedScene {
@@ -49,7 +96,7 @@ impl TestBedScene {
     #[inline]
     #[must_use]
     pub fn new<I>(
-        stream: Arc<TcpStream>, 
+        address: IpAddress, 
         client_id: u32, 
         players: I, 
     ) -> Self 
@@ -58,116 +105,191 @@ impl TestBedScene {
         I::IntoIter: ExactSizeIterator
     {   
         Self { 
-            stream, 
+            address, 
             stage_data: players.into_iter().collect(), 
             client_id, 
-            id_generator: IdGenerator::new(), 
-            world: Arc::new(SkipMap::new()), 
-            main_camera: WorldID::default(), 
+            world: GameWorld::new(), 
+            main_camera: ObjectId::NIL, 
             players: HashMap::with_capacity(10),
             bullets: HashMap::with_capacity(64), 
-            renderer: Arc::new(Queue::new()), 
             lock_cursor: true, 
+            egui_clip_primitives: Vec::new(), 
+            egui_free_texture_ids: Vec::new(), 
         }
     }
+
+
+    fn ui_callback(&mut self, app: &dyn AppHandle) {
+        const INFO_0: &'static str = "Escape 버튼을 누르면 마우스 커서를 활성화 할 수 있습니다.";
+        const INFO_1: &'static str = "Escape 버튼을 누르면 마우스 커서를 비활성화 할 수 있습니다.";
+
+        let timer = app.timer();
+        let head_txt = format!("Hello2Halo (v{}) - FPS:{}", env!("CARGO_PKG_VERSION"), timer.frame_rate());
+        let info_txt = if self.lock_cursor { INFO_0 } else { INFO_1 };
+
+        let mut selected_size = app.window_size().clone();
+
+        egui::Window::new("")
+            .title_bar(false)
+            .auto_sized()
+            .movable(false)
+            .frame(egui::Frame::none().fill(egui::Color32::from_black_alpha(128)))
+            .anchor(egui::Align2::LEFT_TOP, egui::vec2(4.0, 4.0))
+            .show(app.egui_ctx(), |ui| {
+                let head = egui::RichText::new(head_txt)
+                    .color(egui::Color32::LIGHT_GRAY);
+                let info = egui::RichText::new(info_txt)
+                    .color(egui::Color32::LIGHT_GRAY);
+                let size = egui::RichText::new("해상도")
+                    .color(egui::Color32::LIGHT_GRAY);
+
+                ui.label(head);
+                ui.label(info);
+
+                ui.add_space(8.0);
+                ui.label(size);
+
+                egui::ComboBox::from_label("")
+                    .selected_text(format!("{}", selected_size.to_string()))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut selected_size, WindowSize::W864H486, "864x486");
+                        ui.selectable_value(&mut selected_size, WindowSize::W960H540, "960x540");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1024H576, "1024x576");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1152H648, "1152x648");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1280H720, "1280x720");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1366H768, "1366x768");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1600H900, "1600x900");
+                        ui.selectable_value(&mut selected_size, WindowSize::W1920H1080, "1920x1080");
+                    });
+            });
+
+        if selected_size != *app.window_size() {
+            app.event_loop_proxy().send_event(
+                mod_app::etc::AppEvent::ResizeRequest(selected_size)
+            ).unwrap();
+        }
+    }
+
+
+    /// 지형 오브젝트를 추가합니다.
+    fn spwan_terrain(
+        &mut self, 
+        device: &wgpu::Device, 
+        queue: &wgpu::Queue, 
+        _bundle: &AssetBundle
+    ) {
+        // 지형 오브젝트를 생성합니다.
+        let desc = GameObjectDescriptor::new()
+            .with_name("Terrain");
+        let id = self.world.spawn(desc);
+
+        // 지형 메쉬를 생성합니다.
+        let mesh = Arc::new(TerrainFactory::mesh(
+            Some("Terrain"), 
+            device, 
+            queue, 
+            10.0, 
+            10.0, 
+            1.0
+        ));
+
+        let mesh_resource = Arc::new(StaticMeshResource::new(Some("Terrain"), device));
+
+        // 재질을 생성합니다.
+        let desc = UniversalMaterialDescriptor::new(device, queue, "Terrain");
+        let materials = vec![Arc::new(UniversalMaterialResource::new(device, queue, &desc))];
+
+        // 지형 메쉬 브러쉬를 생성합니다.
+        let brush = TerrainBrush::new(device, mesh, mesh_resource.clone(), materials);
+
+        // 그리기 작업을 생성합니다.
+        let mesh_resource_cloned = mesh_resource.clone();
+        let task = DrawTask::new(id)
+            .with_on_pre_draw(Some(Box::new(move |device, queue, world, id| {
+                let object = world.get(&id).unwrap();
+                mesh_resource_cloned.mesh_uniform().write(device, queue, StaticMeshDataLayout {
+                    trans: object.world_transform.into(), 
+                    ..Default::default()
+                });
+
+                Ok(())
+            })))
+            .add_brush(brush);
+
+        // 게임 세상에 그리기 작업을 등록합니다.
+        self.world.regist_draw_task(task).unwrap();
+    }
+
 
     /// 플레이어를 추가합니다.
     fn insert_player(
         &mut self, 
         data: Player, 
         device: &wgpu::Device, 
-        queue: &wgpu::Queue
+        queue: &wgpu::Queue, 
+        bundle: &AssetBundle
     ) {
-        // 플레이어 게임 오브젝트를 생성합니다.
-        let mut object = GameObject::new(
-            &self.id_generator, 
-            format!("Player({})", &data.id), 
-            None
-        );
-
         // 모델 파일을 로드합니다.
         let (root_id, clips, nodes) = crate::model::spawn_aris_original_model(
-            &self.world, 
-            &self.renderer, 
-            &self.id_generator, 
-            &device, 
-            &queue
+            &self.world,  
+            bundle, 
+            device, 
+            queue
         );
 
-        // 로컬 변환 행렬(부모로 부터 변환 행렬)을 설정합니다.
-        object.set_local_transform(
-            gmm::Matrix::from_rotation_translation(
-                data.rotation.into(), 
-                data.translation.into()
+        // 플레이어 게임 오브젝트를 생성합니다.
+        let mut desc = GameObjectDescriptor::new()
+            .with_name(format!("Player({})", &data.id))
+            .with_child(root_id)
+            .with_local_transform(
+                gmm::Matrix::from_rotation_translation(
+                    data.rotation.into(), 
+                    data.translation.into()
+                )
             )
-        );
-
-        // 하위 오브젝트를 설정합니다.
-        object.set_child(Some(root_id));
-
-        // 게임 오브젝트에 모델 및 총알 발사 지연시간 정보를 추가합니다.
-        object.insert(BulletKind::ArisOriginal);
-
-        // 게임 오브젝트에 상태를 추가합니다.
-        object.insert(PlayerState::default());
-
-        // 게임 오브젝트에 애니메이션을 추가합니다.
-        object.insert(AnimationSet {
-            clips, 
-            index: 0, 
-            timer: 0.0
-        });
-
-        // 게임 오브젝트에 강체 물리 요소를 추가합니다.
-        let mut rigid_body = RigidBody::new(Some(43.0));
-        rigid_body.damping = 0.002;
-        object.insert(rigid_body);
+            .with_element(BulletKind::ArisOriginal)
+            .with_element(PlayerState::default())
+            .with_element(AnimationSet { clips, index: 0, timer: 0.0 })
+            .with_element({
+                let mut rigid_body = RigidBody::new(Some(43.0));
+                rigid_body.damping = 0.002;
+                rigid_body
+            });
 
         
         if self.client_id == data.id {
-            // 플레이어 오브젝트에 TCP 소켓을 추가합니다.
-            // ※ 추후 변경될 예정입니다.
-            object.insert(self.stream.clone());
-
-            // 플레이어 오브젝트에 입력 제어기를 추가합니다.
-            object.insert(InputController::default());
-
-            // 플레이어 오브젝트에 플래그 변수를 추가합니다.
-            object.insert(PlayerFlags::default());
-
-            // 플레이어 오브젝트에 삼인칭 카메라를 추가합니다.
-            object.insert(ThirdPersonCamera {
-                target: self.main_camera.clone(), 
-                distance: -2.0, 
-                polar: 180f32.to_radians(), 
-                azimuthal: 15f32.to_radians()
-            });
-
-            // 플레이어 오브젝트에 무기 요소를 추가합니다.
-            object.insert(Weapon {
-                muzzle: nodes.get("fire_01").unwrap().clone()
-            });
+            desc = desc.with_element(InputController::default())
+                .with_element(PlayerFlags::default())
+                .with_element(ThirdPersonCamera {
+                    target: self.main_camera, 
+                    distance: -1.0, 
+                    polar: 180f32.to_radians(), 
+                    azimuthal:15f32.to_radians()
+                })
+                .with_element(Weapon {
+                    muzzle: nodes.get("fire_01").unwrap().clone()
+                });
         }
 
 
         // 플레이어를 게임 세상에 추가합니다.
-        let world_id = object.id().clone();
-        self.players.insert(data.id, world_id.clone());
-        self.world.insert(object.id().clone(), object);
+        let id = self.world.spawn(desc);
+        self.players.insert(data.id, id);
     }
 
 
     /// 게임 오브젝트 계층 구조를 제거합니다.
-    fn remove_hierarchy(&self, object_id: &WorldID) {
-        if let Some(object) = self.world.remove(object_id) {
-            if let Some(sibling_id) = object.get_sibling() {
-                self.remove_hierarchy(sibling_id);
+    fn remove_hierarchy(&self, object_id: &ObjectId) {
+        if let Some(object) = self.world.get(object_id) {
+            if !object.sibling.is_nil() {
+                self.remove_hierarchy(&object.sibling);
             }
 
-            if let Some(child_id) = object.get_child() {
-                self.remove_hierarchy(child_id);
+            if !object.child.is_nil() {
+                self.remove_hierarchy(&object.child);
             }
         }
+        self.world.despawn(object_id);
     }
 
 
@@ -176,26 +298,16 @@ impl TestBedScene {
         &mut self,
         data: BulletBlob, 
         device: &wgpu::Device, 
-        queue: &wgpu::Queue
+        queue: &wgpu::Queue, 
+        bundle: &AssetBundle
     ) {
-        // 게임 오브젝트를 생성합니다.
-        let mut object = GameObject::new(
-            &self.id_generator, 
-            format!("Bullet({})", &data.id), 
-            None
-        );
-
         // 임시 총알 모델을 로드합니다.
         let root_id = crate::model::spawn_sphere_shape(
             &self.world, 
-            &self.renderer, 
-            &self.id_generator, 
+            bundle, 
             device, 
             queue
         );
-
-        // 모델을 게임 오브젝트의 하위 오브젝트로 추가합니다.
-        object.set_child(Some(root_id));
 
         // 게임 오브젝트의 변환 행렬을 생성합니다.
         let z_axis = gmm::Vector::from(data.direction);
@@ -205,25 +317,26 @@ impl TestBedScene {
         let scale = gmm::Vector::fill(1.0);
         let rotation = gmm::Quaternion::from_rotation_axes(x_axis, y_axis, z_axis);
         let translation = gmm::Vector::from(data.translation);
-        object.set_local_transform(Transform(gmm::Matrix::from_scale_rotation_translation(
-            scale, 
-            rotation, 
-            translation
-        )));
 
-        // 게임 오브젝트에 탄환 요소를 추가합니다.
-        object.insert(Bullet {
-            kind: BulletKind::from_id(data.kind), 
-            direction: data.direction.into(), 
-            translation: data.translation.into(), 
-            speed: data.speed, 
-            range: data.range, 
-        });
+        let desc = GameObjectDescriptor::new()
+            .with_name(format!("Bullet({})", &data.id))
+            .with_child(root_id)
+            .with_local_transform(gmm::Matrix::from_scale_rotation_translation(
+                scale, 
+                rotation, 
+                translation
+            ))
+            .with_element(Bullet {
+                kind: BulletKind::from_id(data.kind), 
+                direction: data.direction.into(), 
+                translation: data.translation.into(), 
+                speed: data.speed, 
+                range: data.range, 
+            });
 
         // 게임 월드에 추가합니다.
-        let world_id = object.id().clone();
-        self.bullets.insert(data.id, world_id.clone());
-        self.world.insert(object.id().clone(), object);
+        let id = self.world.spawn(desc);
+        self.bullets.insert(data.id, id);
     }
 
 
@@ -234,31 +347,25 @@ impl TestBedScene {
         device: &wgpu::Device, 
     ) {
         // 카메라 오브젝트를 생성합니다.
-        let mut camera_object = GameObject::new(
-            &self.id_generator, 
-            "Main_Camera".to_string(), 
-            None
-        );
-
-        // 카메라 오브젝트에 원근 투영 변환 행렬을 추가합니다.
-        let (width, height): (u32, u32) = window.inner_size().into();
-        camera_object.insert(Projection::perspective(
-            50f32.to_radians(), 
-            width as f32 / height as f32, 
-            0.001, 
-            1000.0
-        ));
-
-        // 카메라 오브젝트에 카메라 요소를 추가합니다.
-        camera_object.insert(Arc::new(Camera::new(
-            Some(camera_object.name()), 
-            device
-        )));
+        let desc = GameObjectDescriptor::new()
+            .with_name("Main_Camera")
+            .with_element({
+                let (width, height): (u32, u32) = window.inner_size().into();
+                Projection::perspective(
+                    80f32.to_radians(), 
+                    width as f32 / height as f32, 
+                    0.001, 
+                    1000.0
+                )
+            })
+            .with_element(Arc::new(CameraResource::new(
+                Some("Main_Camera"), 
+                device
+            )));
 
         // 게임 월드에 카메라 오브젝트를 추가합니다.
-        let world_id = camera_object.id().clone();
-        self.world.insert(world_id.clone(), camera_object);
-        self.main_camera = world_id.clone();
+        let id = self.world.spawn(desc);
+        self.main_camera = id;
     }
 
 
@@ -278,7 +385,7 @@ impl TestBedScene {
         let offset = azimuthal.transform_vector(offset);
 
         // 플레이어 오브젝트의 위치를 가져옵니다.
-        let position = player.get_world_transform().get_translation();
+        let position = player.world_transform.get_translation();
         let pivot = position + gmm::Vector::Y * 0.85;
         
         // 최종 카메라의 위치를 계산합니다.
@@ -288,11 +395,11 @@ impl TestBedScene {
         let y_axis = z_axis.vec3_cross(x_axis);
 
         let rotation = gmm::Quaternion::from_rotation_axes(x_axis, y_axis, z_axis);
-        let transform = Transform(gmm::Matrix::from_rotation_translation(rotation, translation));
+        let transform = gmm::Matrix::from_rotation_translation(rotation, translation);
 
         // 카메라 오브젝트의 변환 행렬을 설정합니다.
         let mut camera = self.world.get_mut(&self.main_camera).unwrap();
-        camera.set_world_transform(transform);
+        camera.world_transform = transform;
     }
 
 
@@ -305,7 +412,7 @@ impl TestBedScene {
 
 
     /// 총알을 생성 및 삭제하고, 총알의 위치를 갱신합니다.
-    fn update_bullet(&self, elapsed_time_sec: f32) {
+    fn update_bullet(&self, elapsed_time_sec: f32, network: &NetManager) {
         // 플레이어 오브젝트를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
         let mut player = self.world.get_mut(player_id).unwrap();
@@ -323,8 +430,8 @@ impl TestBedScene {
             )).as_raw();
             
             // 패킷을 서버에 전송합니다.
-            let mut writer = BufWriter::new(self.stream.as_ref());
-            writer.write_all(&packet.as_bytes()).unwrap();
+            let socket = network.get(&self.address).unwrap();
+            socket.push_packet(packet);
         }
 
         self.update_bullet_pos(elapsed_time_sec);
@@ -345,15 +452,15 @@ impl TestBedScene {
             bullet.translation = translation;
             
             // 변환 행렬을 갱신합니다.
-            let mut transform = object.get_local_transform().clone();
+            let mut transform = object.local_transform;
             transform.set_translation(translation);
-            object.set_local_transform(transform);
+            object.local_transform = transform;
 
-            self.update_object_hierarchy(id, Transform::default());
+            self.update_object_hierarchy(id, gmm::Matrix::IDENTITY);
         }
     }
 
-    fn update_object_hierarchy(&self, id: &WorldID, parent: Transform) {
+    fn update_object_hierarchy(&self, id: &ObjectId, parent: gmm::Matrix) {
         // 현재 게임 오브젝트를 가져옵니다.
         let mut object = match self.world.get_mut(id) {
             Some(object) => object, 
@@ -361,28 +468,28 @@ impl TestBedScene {
         };
 
         // 게임 오브젝트의 월드 변환 행렬을 갱신합니다.
-        let local_transform = object.get_local_transform().clone();
+        let local_transform = object.local_transform;
         let world_transform = parent * local_transform;
-        object.set_world_transform(world_transform);
+        object.world_transform = world_transform;
 
         // 형제 게임 오브젝트를 갱신합니다.
-        if let Some(sibling_id) = object.get_sibling() {
-            self.update_object_hierarchy(sibling_id, parent);
+        if !object.sibling.is_nil() {
+            self.update_object_hierarchy(&object.sibling, parent);
         }
 
         // 자식 게임 오브젝트를 갱신합니다.
-        if let Some(child_id) = object.get_child() {
-            self.update_object_hierarchy(child_id, world_transform);
+        if !object.child.is_nil() {
+            self.update_object_hierarchy(&object.child, world_transform);
         }
     }
 
 
     /// 플레이어 데이터를 서버로 전송합니다.
-    fn upload_player_data(&self) {
+    fn upload_player_data(&self, network: &NetManager) {
         // 플레이어 오브젝트를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
         let player = self.world.get(player_id).unwrap();
-        let player_transform = player.get_world_transform().clone();
+        let player_transform = player.world_transform;
         let animation = player.get::<AnimationSet>().unwrap();
 
         // 업로드 데이터를 생성합니다.
@@ -394,10 +501,10 @@ impl TestBedScene {
             anim_timer: animation.timer
         };
         
-        // 패킷을 생성합니다.
+        // 패킷을 생성하고 전송합니다.
         let packet = PushPacket::new(push_data).as_raw();
-        let mut writer = BufWriter::new(self.stream.as_ref());
-        writer.write_all(&packet.as_bytes()).unwrap();
+        let socket = network.get(&self.address).unwrap();
+        socket.push_packet(packet);
     }
 
 
@@ -405,8 +512,7 @@ impl TestBedScene {
     fn pull_player_objects(
         &mut self, 
         players: Vec<Player>, 
-        device: &wgpu::Device, 
-        queue: &wgpu::Queue
+        app: &dyn AppHandle
     ) {
         let mut next = Vec::with_capacity(self.players.len());
         for data in players {
@@ -418,10 +524,10 @@ impl TestBedScene {
 
                 // 플레이어 오브젝트의 로컬 변환 행렬(부모로 부터 변환 행렬)을 설정합니다.
                 let mut object = self.world.get_mut(&world_id).unwrap();
-                let mut local_transform = object.get_local_transform().clone();
+                let mut local_transform = object.local_transform;
                 local_transform.set_rotation(data.rotation);
                 local_transform.set_translation(data.translation);
-                object.set_local_transform(local_transform);
+                object.local_transform = local_transform;
 
                 // 플레이어 오브젝트의 애니메이션을 설정합니다.
                 let animation = object.get_mut::<AnimationSet>().unwrap();
@@ -430,7 +536,14 @@ impl TestBedScene {
 
                 next.push((data.id, world_id));
             } else {
-                self.insert_player(data, device, queue);
+                let device = app.render_device().clone();
+                let queue = app.render_queue().clone();
+                let bundle = app.bundle().clone();
+                rayon::scope(|_| {
+                    self.insert_player(data, &device, &queue, &bundle);
+                });
+    
+                // self.insert_player(data, device, queue, bundle);
                 next.push((data.id, self.players.remove(&data.id).unwrap()));
             }
         }
@@ -452,8 +565,7 @@ impl TestBedScene {
     fn pull_bullet_objects(
         &mut self, 
         bullets: Vec<BulletBlob>, 
-        device: &wgpu::Device, 
-        queue: &wgpu::Queue
+        app: &dyn AppHandle
     ) {
         let mut next = Vec::with_capacity(self.players.len());
         for data in bullets {
@@ -467,7 +579,7 @@ impl TestBedScene {
 
                 next.push((data.id, world_id));
             } else {
-                self.insert_bullet(data, device, queue);
+                self.insert_bullet(data, app.render_device(), app.render_queue(), app.bundle());
                 next.push((data.id, self.bullets.remove(&data.id).unwrap()));
             }
         }
@@ -507,12 +619,22 @@ impl GameScene for TestBedScene {
             .or_else(|_| window.set_cursor_grab(CursorGrabMode::Locked))
             .unwrap();
 
+        // 지형을 생성합니다.
+        self.spwan_terrain(app.render_device(), app.render_queue(), app.bundle());
+
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
 
         // 플레이어들을 생성합니다.
         while let Some(data) = self.stage_data.pop() {
-            self.insert_player(data, app.render_device(), app.render_queue());
+            let device = app.render_device().clone();
+            let queue = app.render_queue().clone();
+            let bundle = app.bundle().clone();
+            rayon::scope(|_| {
+                self.insert_player(data, &device, &queue, &bundle);
+            });
+
+            // self.insert_player(data, app.render_device(), app.render_queue(), app.bundle());
         }
 
         Ok(())
@@ -555,8 +677,8 @@ impl GameScene for TestBedScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         if raw_packet.packet_type() == PacketType::PULL {
             let packet = PullPacket::from_raw(raw_packet);
-            self.pull_player_objects(packet.players, app.render_device(), app.render_queue());
-            self.pull_bullet_objects(packet.bullets, app.render_device(), app.render_queue());
+            self.pull_player_objects(packet.players, app);
+            self.pull_bullet_objects(packet.bullets, app);
         }
 
         Ok(())
@@ -571,6 +693,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -611,6 +737,9 @@ impl GameScene for TestBedScene {
             }
         }
 
+        if !self.lock_cursor {
+            return Ok(())
+        }
 
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
@@ -634,6 +763,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -653,6 +786,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -672,6 +809,10 @@ impl GameScene for TestBedScene {
         _window: &Window, 
         _app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
+        if !self.lock_cursor {
+            return Ok(())
+        }
+
         // 유저의 게임 월드 식별자를 가져옵니다.
         let player_id = self.players.get(&self.client_id).unwrap();
 
@@ -688,33 +829,63 @@ impl GameScene for TestBedScene {
     fn on_update(
         &mut self, 
         elapsed_time_sec: f32, 
-        window: &Window, 
+        _window: &Window, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
-        let frame_rate = app.timer().frame_rate();
-        window.set_title(&format!("Hello to Halo! (FPS: {})", frame_rate));
-
         self.update_camera_pos();
         self.update_player(elapsed_time_sec);
-        self.update_bullet(elapsed_time_sec);
+        self.update_bullet(elapsed_time_sec, app.network());
 
-        self.upload_player_data();
+        self.upload_player_data(app.network());
 
         Ok(())
     }
 
     fn on_prepare_draw(
-        &self, 
-        _window: &Window, 
-        _surface: &wgpu::Surface, 
+        &mut self, 
+        window: &Window,
+        egui_renderer: &mut egui_wgpu::Renderer, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
         let queue = app.render_queue();
 
+        // 사용자 인터페이스를 준비합니다.
+        let screen_descriptor = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: window.inner_size().into(), 
+            pixels_per_point: window.scale_factor() as f32, 
+        };
+
+        let egui_ctx = app.egui_ctx();
+        let egui_raw_input = app.egui_raw_input();
+
+        egui_ctx.begin_pass(egui_raw_input);
+        self.ui_callback(app);
+        let egui_full_output = egui_ctx.end_pass();
+
+        let egui_primitive = egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut commands = egui_renderer.update_buffers(
+            device, 
+            queue, 
+            &mut encoder, 
+            &egui_primitive, 
+            &screen_descriptor
+        );
+        commands.push(encoder.finish());
+        queue.submit(commands);
+
+        for (id, image_delta) in &egui_full_output.textures_delta.set {
+            egui_renderer.update_texture(device, queue, *id, &image_delta);
+        }
+
+        self.egui_clip_primitives = egui_primitive;
+        self.egui_free_texture_ids = egui_full_output.textures_delta.free;
+
+
         // 카메라를 준비합니다.
         if let Some(camera_object) = self.world.get(&self.main_camera) {
-            let world_transform = camera_object.get_world_transform();
+            let world_transform = camera_object.world_transform;
             let eye = world_transform.get_translation();
             let dir = world_transform.get_look_vector();
             let up = world_transform.get_up_vector();
@@ -724,62 +895,30 @@ impl GameScene for TestBedScene {
                 None => gmm::Matrix::IDENTITY
             };
 
-            if let Some(camera) = camera_object.get::<Arc<Camera>>() {
-                camera.camera_uniform().update(device, queue, CameraDataLayout {
-                    proj_view: (projection_matrix * camera_matrix).store_float4x4(), 
-                    position: eye.store_float3(), 
-                    direction: dir.store_float3(), 
+            if let Some(camera) = camera_object.get::<Arc<CameraResource>>() {
+                camera.uniform().write(device, queue, CameraDataLayout {
+                    proj_view: (projection_matrix * camera_matrix).into(), 
+                    position: eye.store_float3().into(), 
+                    direction: dir.store_float3().into(), 
                     ..Default::default()
                 });
             }
         }
 
-        // 렌더러를 준비합니다.
-        let mut render_list = Vec::new();
-        while let Some(renderer) = self.renderer.pop() {
-            if self.world.contains_key(renderer.game_object()) {
-                match renderer.mesh() {
-                    Mesh::NonSkinnedMesh(mesh) => {
-                        let world_transform = self.world.get(renderer.game_object())
-                            .unwrap()
-                            .get_world_transform()
-                            .clone();
-
-                        mesh.mesh_uniform().update(device, queue, MeshDataLayout {
-                            trans: world_transform.0.store_float4x4()
-                        });
-                    }, 
-                    Mesh::SkinnedMesh(mesh) => {
-                        let mut data = BoneDataLayout::default();
-                        for (index, id) in mesh.bones().iter().enumerate() {
-                            let bone_transform = self.world.get(id)
-                                .expect("스키닝된 메쉬를 구성하는 게임 오브젝트를 찾을 수 없습니다!")
-                                .get_world_transform()
-                                .clone();
-                            data[index] = bone_transform.0.store_float4x4();
-                        }
-
-                        mesh.bone_transforms_uniform().update(device, queue, data);
-                    }
-                }
-
-                render_list.push(renderer);
-            }
+        // 그리기 작업 목록을 준비합니다.
+        for guard in self.world.draw_tasks() {
+            guard.on_pre_draw(device, queue, &self.world)?;
         }
-
-
-        while let Some(renderer) = render_list.pop() {
-            self.renderer.push(renderer);
-        }
-
 
         Ok(())
     }
 
-    fn on_draw(
-        &self, 
+    fn on_draw<'a>(
+        &'a self, 
+        window: &Window, 
         render_target_view: &wgpu::TextureView, 
         depth_stencil_view: &wgpu::TextureView, 
+        egui_renderer: &egui_wgpu::Renderer,
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
@@ -789,7 +928,7 @@ impl GameScene for TestBedScene {
         // 카메라 오브젝트의 카메라 요소를 가져옵니다.
         let camera = match self.world.get(&self.main_camera) {
             Some(camera) => {
-                match camera.get::<Arc<Camera>>() {
+                match camera.get::<Arc<CameraResource>>() {
                     Some(camera) => camera.clone(), 
                     None => {
                         log::warn!("카메라 오브젝트에 카메라 요소가 없습니다!");
@@ -804,14 +943,13 @@ impl GameScene for TestBedScene {
         };
 
 
-        // 렌더러를 준비합니다.
-        let mut render_list = Vec::new();
-        while let Some(renderer) = self.renderer.pop() {
-            if self.world.contains_key(renderer.game_object()) {
-                render_list.push(renderer);
-            }
-        }
-
+        let brushes: Vec<_> = self.world.draw_tasks()
+            .map(|guard| {
+                let brushes: Vec<_> = guard.brushes().into_iter().cloned().collect();
+                brushes
+            })
+            .flatten()
+            .collect();
 
         let mut encoder = device.create_command_encoder(
             &wgpu::CommandEncoderDescriptor::default()
@@ -844,18 +982,42 @@ impl GameScene for TestBedScene {
                 }
             );
 
-            for renderer in render_list.iter() {
-                renderer.bind(&camera, &mut rpass);
-                renderer.draw(&mut rpass);
+            for brush in brushes.iter() {
+                brush.bind(&camera, &mut rpass);
+                brush.draw(&mut rpass);
             }
+
+            egui_renderer.render(
+                &mut rpass.forget_lifetime(), 
+                &self.egui_clip_primitives, 
+                &egui_wgpu::ScreenDescriptor {
+                size_in_pixels: window.inner_size().into(), 
+                pixels_per_point: window.scale_factor() as f32, 
+            });
         }
 
         // 그리기 명령(Draw Call)을 명령 대기열에 제출합니다.
         queue.submit([encoder.finish()]);
 
+        Ok(())
+    }
 
-        while let Some(renderer) = render_list.pop() {
-            self.renderer.push(renderer);
+    fn on_finish_draw(
+        &mut self, 
+        _window: &Window, 
+        egui_renderer: &mut egui_wgpu::Renderer, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let device = app.render_device();
+        let queue = app.render_queue();
+
+        for guard in self.world.draw_tasks() {
+            guard.on_post_draw(device, queue, &self.world)?;
+        }
+
+        self.egui_clip_primitives.clear();
+        while let Some(id) = self.egui_free_texture_ids.pop() {
+            egui_renderer.free_texture(&id);
         }
 
         Ok(())

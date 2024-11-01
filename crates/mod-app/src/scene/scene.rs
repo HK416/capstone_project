@@ -243,9 +243,9 @@ pub trait GameScene : Debug + Send {
     #[inline]
     #[allow(unused_variables)]
     fn on_prepare_draw(
-        &self, 
+        &mut self, 
         window: &Window, 
-        surface: &wgpu::Surface, 
+        egui_renderer: &mut egui_wgpu::Renderer, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
@@ -254,8 +254,22 @@ pub trait GameScene : Debug + Send {
     /// 애플리케이션이 게임 장면을 그릴 때 호출하는 콜백 함수입니다.
     fn on_draw(
         &self, 
+        window: &Window, 
         render_target_view: &wgpu::TextureView, 
-        depth_stencil_view: &wgpu::TextureView, 
+        depth_buffer_view: &wgpu::TextureView, 
+        egui_renderer: &egui_wgpu::Renderer, 
         app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>>;
+
+    /// 애플리케이션이 게임 장면을 그린 후에 호출하는 콜백 함수입니다.
+    #[inline]
+    #[allow(unused_variables)]
+    fn on_finish_draw(
+        &mut self, 
+        window: &Window, 
+        egui_renderer: &mut egui_wgpu::Renderer, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
+    }
 }

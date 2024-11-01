@@ -1,7 +1,12 @@
-mod builder;
-mod material;
-mod uniform;
+use std::fmt::Debug;
 
-pub use self::builder::*;
-pub use self::material::*;
-pub use self::uniform::*;
+/// 재질 쉐이더 리소스 `trait`
+pub trait MaterialResource : Sync + Send + Debug {
+    fn bind_group(&self) -> &wgpu::BindGroup;
+}
+
+
+
+
+
+pub mod universal;

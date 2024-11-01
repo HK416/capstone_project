@@ -1,0 +1,39 @@
+{
+    "files" : [],
+    "directories" : {
+        "characters" : {
+            "files" : [],
+            "directories" : {
+                "aris_original" : {
+                    "files" : [
+                        "Aris_Original_Body_Mask.dds", 
+                        "Aris_Original_Body.dds", 
+                        "Aris_Original_EyeMouth.dds", 
+                        "Aris_Original_Face.dds", 
+                        "Aris_Original_Halo.ron", 
+                        "Aris_Original_Hair.dds", 
+                        "Aris_Original_Halo.dds", 
+                        "Aris_Original_Mesh.ron", 
+                        "Aris_Original_Weapon.dds"
+                    ], 
+                    "directories" : {}
+                }
+            }
+        }, 
+        "font" : {
+            "files" : [
+                "NEXON Lv2 Gothic.ttf"
+            ],
+            "directories" : {}
+        },
+        "shape" : {
+            "files" : [], 
+            "directories" : {
+                "sphere" : {
+                    "files" : [ "Sphere.ron" ],
+                    "directories" : {}
+                }
+            }
+        }
+    }
+}

@@ -1,9 +1,11 @@
-use std::{any::type_name, sync::Arc};
+use std::any::type_name;
 
-use mod_parallelism::collections::SkipMap;
-use winit::{event::{Modifiers, MouseButton}, keyboard::{KeyCode, KeyLocation}};
+use winit::{
+    event::{Modifiers, MouseButton}, 
+    keyboard::{KeyCode, KeyLocation}
+};
 
-use super::{GameObject, Transform, WorldID};
+use crate::objects::{GameWorld, ObjectId};
 
 
 
@@ -33,7 +35,7 @@ impl Default for PlayerState {
 pub enum PlayerStateError {
     /// 게임 월드에서 게임 오브젝트를 찾을 수 없는 경우 발생하는 오류입니다.
     #[error("GameObject not found in game world! ({0:?})")]
-    ObjectNotFound(WorldID), 
+    ObjectNotFound(ObjectId), 
 
     /// 게임 오브젝트에서 요소를 찾을 수 없는 경우 발생하는 오류입니다.
     #[error("Could not find ({0}) element on the game object!")]
@@ -43,24 +45,20 @@ pub enum PlayerStateError {
 
 
 /// 플레이어 오브젝트의 계층 구조를 갱신합니다.
-fn update_hierarchy(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    parent: Transform, 
-    id: &WorldID
-) {
+fn update_hierarchy(world: &GameWorld, parent: gmm::Matrix, id: &ObjectId) {
     let mut object = world.get_mut(&id).unwrap();
-    let local_transform = object.get_local_transform().clone();
+    let local_transform = object.local_transform;
     let world_transform = parent * local_transform;
-    object.set_world_transform(world_transform);
+    object.world_transform = world_transform;
 
-    let sibling_id = object.get_sibling().cloned();
-    let child_id = object.get_child().cloned();
+    let sibling_id = object.sibling;
+    let child_id = object.child;
 
-    if let Some(sibling_id) = sibling_id {
+    if !sibling_id.is_nil() {
         update_hierarchy(world, parent, &sibling_id);
     }
 
-    if let Some(child_id) = child_id {
+    if !child_id.is_nil() {
         update_hierarchy(world, world_transform, &child_id);
     }
 }
@@ -69,21 +67,14 @@ fn update_hierarchy(
 
 /// 플레이어 오브젝트의 키보드 눌림 이벤트를 처리하는 함수입니다.
 pub fn player_keyboard_pressed(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     keycode: KeyCode, 
     location: KeyLocation, 
     modifiers: Modifiers, 
     repeat: bool
 ) -> Result<(), PlayerStateError> {
-    type CallbackFn = fn(
-        &Arc<SkipMap<WorldID, GameObject>>, 
-        &WorldID, 
-        KeyCode, 
-        KeyLocation, 
-        Modifiers, 
-        bool
-    ) -> Result<(), PlayerStateError>;
+    type CallbackFn = fn(&GameWorld, &ObjectId, KeyCode, KeyLocation, Modifiers, bool) -> Result<(), PlayerStateError>;
     const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_keyboard_pressed as CallbackFn, 
         moving_state::on_keyboard_pressed as CallbackFn, 
@@ -119,21 +110,14 @@ pub fn player_keyboard_pressed(
 
 /// 플레이어 오브젝트의 키보드 떼임 이벤트를 처리하는 함수입니다.
 pub fn player_keyboard_released(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     keycode: KeyCode, 
     location: KeyLocation, 
     modifiers: Modifiers, 
     repeat: bool
 ) -> Result<(), PlayerStateError> {
-    type CallbackFn = fn(
-        &Arc<SkipMap<WorldID, GameObject>>, 
-        &WorldID, 
-        KeyCode, 
-        KeyLocation, 
-        Modifiers, 
-        bool
-    ) -> Result<(), PlayerStateError>;
+    type CallbackFn = fn(&GameWorld, &ObjectId, KeyCode, KeyLocation, Modifiers, bool) -> Result<(), PlayerStateError>;
     const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_keyboard_released as CallbackFn, 
         moving_state::on_keyboard_released as CallbackFn, 
@@ -169,15 +153,11 @@ pub fn player_keyboard_released(
 
 /// 애플리케이션 마우스 커서 움직임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn player_cursor_moved(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     dx: f32, dy: f32
 ) -> Result<(), PlayerStateError> {
-    type CallbackFn = fn(
-        &Arc<SkipMap<WorldID, GameObject>>, 
-        &WorldID, 
-        f32, f32
-    ) -> Result<(), PlayerStateError>;
+    type CallbackFn = fn(&GameWorld, &ObjectId, f32, f32) -> Result<(), PlayerStateError>;
     const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_cursor_moved as CallbackFn, 
         moving_state::on_cursor_moved as CallbackFn, 
@@ -206,17 +186,12 @@ pub fn player_cursor_moved(
 
 /// 애플리케이션 마우스 버튼 눌림 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn player_mouse_btn_pressed(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     x: f32, y: f32, 
     button: MouseButton
 ) -> Result<(), PlayerStateError> {
-    type CallbackFn = fn(
-        &Arc<SkipMap<WorldID, GameObject>>, 
-        &WorldID, 
-        f32, f32, 
-        MouseButton
-    ) -> Result<(), PlayerStateError>;
+    type CallbackFn = fn(&GameWorld, &ObjectId, f32, f32, MouseButton) -> Result<(), PlayerStateError>;
     const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_mouse_btn_pressed as CallbackFn, 
         moving_state::on_mouse_btn_pressed as CallbackFn, 
@@ -251,17 +226,12 @@ pub fn player_mouse_btn_pressed(
 
 /// 애플리케이션 마우스 버튼 떼임 이벤트가 발생할 때 호출되는 콜백 함수입니다.
 pub fn player_mouse_btn_released(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     x: f32, y: f32, 
     button: MouseButton
 ) -> Result<(), PlayerStateError> {
-    type CallbackFn = fn(
-        &Arc<SkipMap<WorldID, GameObject>>, 
-        &WorldID, 
-        f32, f32, 
-        MouseButton
-    ) -> Result<(), PlayerStateError>;
+    type CallbackFn = fn(&GameWorld, &ObjectId, f32, f32, MouseButton) -> Result<(), PlayerStateError>;
     const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_mouse_btn_released as CallbackFn, 
         moving_state::on_mouse_btn_released as CallbackFn, 
@@ -297,15 +267,11 @@ pub fn player_mouse_btn_released(
 
 /// 플레이어 오브젝트를 갱신하는 함수입니다.
 pub fn player_update(
-    world: &Arc<SkipMap<WorldID, GameObject>>, 
-    player_id: &WorldID, 
+    world: &GameWorld, 
+    player_id: &ObjectId, 
     elapsed_time_sec: f32
 ) -> Result<(), PlayerStateError> {
-    type CallbackFn = fn(
-        &Arc<SkipMap<WorldID, GameObject>>, 
-        &WorldID, 
-        f32
-    ) -> Result<(), PlayerStateError>;
+    type CallbackFn = fn(&GameWorld, &ObjectId, f32) -> Result<(), PlayerStateError>;
     const CALLBACK_FN: [CallbackFn; 6] = [
         idle_state::on_update as CallbackFn, 
         moving_state::on_update as CallbackFn, 

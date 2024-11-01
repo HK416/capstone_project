@@ -274,6 +274,13 @@ impl<'a, T: Default> EBRGuard<'a, T> {
     }
 }
 
+impl<'a, T> Clone for EBRGuard<'a, T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        EBRGuard::new(&self.inner)
+    }
+}
+
 impl<'a, T> Drop for EBRGuard<'a, T> {
     fn drop(&mut self) {
         let local = self.inner.get_local();

@@ -2,6 +2,7 @@ mod application;
 mod builder;
 mod error;
 mod handle;
+mod window;
 
 pub mod command;
 

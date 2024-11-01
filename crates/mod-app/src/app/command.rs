@@ -2,7 +2,6 @@ use std::{
     collections::HashMap, 
     env::{self, Args}, 
     io, 
-    net::ToSocketAddrs, 
     num::{ParseFloatError, ParseIntError}, 
     path::Path
 };
@@ -23,7 +22,6 @@ lazy_static! {
         ("--show-frame-rate", show_frame_rate_fn as CmdFunc), 
         ("--no-vsync", no_vsync_fn as CmdFunc), 
         ("--enable-debug-layer", enable_debug_layer_fn as CmdFunc), 
-        ("--server-addr", server_addr_fn as CmdFunc)
     ]);
 }
 
@@ -104,29 +102,6 @@ fn enable_debug_layer_fn(_: &mut Args, mut builder: AppBuilder) -> Result<AppBui
     Ok(builder)
 }
 
-fn server_addr_fn(args: &mut Args, mut builder: AppBuilder) -> Result<AppBuilder, CmdParsingError> {
-    // 다음 명령줄 인자를 가져옵니다.
-    let argument = match args.next() {
-        Some(argument) => argument, 
-        None => return Err(CmdParsingError::EmptyCommand),
-    };
-
-    // 명령줄 인자를 구문 분석합니다.
-    let address = match argument.to_socket_addrs() {
-        Ok(mut iter) => iter.next(), 
-        Err(e) => return Err(CmdParsingError::from(e))
-    };
-
-    // 서버 주소가 존재할 경우 서버 주소를 설정합니다.
-    if let Some(address) = address {
-        builder = builder.with_server_address(address);
-    } else {
-        log::warn!("서버 주소를 설정하지 못했습니다.");
-    }
-
-    Ok(builder)
-}
-
 
 
 /// 명령줄 인수를 구문 분석합니다.
@@ -144,7 +119,7 @@ pub(crate) fn parse_command_line_args(mut builder: AppBuilder) -> Result<AppBuil
     };
     let current_exe = Path::new(&argument);
     let current_dir = match current_exe.parent() {
-        Some(path) => path, 
+        Some(path) => path.canonicalize()?, 
         None => return Err(CmdParsingError::RootPathNotFound), 
     };
     builder = builder.with_current_path(current_dir);

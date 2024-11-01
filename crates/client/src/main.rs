@@ -1,3 +1,4 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod scenes;
 mod model;
 
@@ -19,12 +20,14 @@ fn main() {
     assert!(is_main_thread(), "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.
-    env_logger::init();
+    env_logger::builder()
+        .filter_module("wgpu_core", log::LevelFilter::Warn)
+        .init();
     log::info!("클라이언트 애플리케이션 실행...");
 
     AppBuilder::new(Box::new(scenes::StartupScene::new()))
         .with_window_title("Hello to Halo!")
-        .with_window_size(WindowSize::W1600H900)
+        .with_window_size(WindowSize::W1280H720)
         .with_fullscreen(false)
         .build_and_run()
 }

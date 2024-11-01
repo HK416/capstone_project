@@ -122,6 +122,113 @@ impl<'a, K, V> ops::DerefMut for MutGuard<'a, K, V> {
 
 
 
+/// `SkipMap`의 값을 순회하는 반복자
+#[derive(Debug)]
+pub struct Values<'a, K, V> {
+    _ebr_guard: EBRGuard<'a, Node<K, V>>, 
+    curr: *mut Node<K, V>
+}
+
+impl<'a, K, V> Iterator for Values<'a, K, V> {
+    type Item = RefGuard<'a, K, V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            loop {
+                // 현재 노드가 `nullptr`인지 확인합니다.
+                if self.curr.is_null() {
+                    return None;
+                }
+
+                // 다음 노드로 이동합니다.
+                self.curr = (*self.curr).next[0];
+
+                // 이동한 노드가 `tail`노드인지 확인합니다.
+                if (*self.curr).key.is_none() {
+                    // 더 이상 노드가 진행하지 않도록 
+                    // 현재 노드를 `nullptr`로 바꿉니다.
+                    self.curr = ptr::null_mut();
+                    return None;
+                }
+
+                // 노드가 유효한지 확인합니다.
+                if (*self.curr).key.is_some()
+                && (*self.curr).fully_linked.load(MemOrdering::Relaxed)
+                && !(*self.curr).removed.load(MemOrdering::Relaxed) {
+                    // lock을 획득합니다.
+                    let lock_guard = (*self.curr).mtx.lock();
+
+                    // lock을 획득하는 동안 노드가 제거됬는지 확인합니다.
+                    if !(*self.curr).removed.load(MemOrdering::Relaxed) {
+                        return Some(RefGuard {
+                            _ebr_guard: self._ebr_guard.clone(), 
+                            _lock_guard: lock_guard, 
+                            value: (*self.curr).value.as_ref().unwrap_unchecked()
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+/// `SkipMap`의 값을 순회하는 반복자
+#[derive(Debug)]
+pub struct ValuesMut<'a, K, V> {
+    _ebr_guard: EBRGuard<'a, Node<K, V>>, 
+    curr: *mut Node<K, V>
+}
+
+impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
+    type Item = MutGuard<'a, K, V>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            loop {
+                // 현재 노드가 `nullptr`인지 확인합니다.
+                if self.curr.is_null() {
+                    return None;
+                }
+
+                // 다음 노드로 이동합니다.
+                self.curr = (*self.curr).next[0];
+
+                // 이동한 노드가 `tail`노드인지 확인합니다.
+                if (*self.curr).key.is_none() {
+                    // 더 이상 노드가 진행하지 않도록 
+                    // 현재 노드를 `nullptr`로 바꿉니다.
+                    self.curr = ptr::null_mut();
+                    return None;
+                }
+
+                // 노드가 유효한지 확인합니다.
+                if (*self.curr).key.is_some()
+                && (*self.curr).fully_linked.load(MemOrdering::Relaxed)
+                && !(*self.curr).removed.load(MemOrdering::Relaxed) {
+                    // lock을 획득합니다.
+                    let lock_guard = (*self.curr).mtx.lock();
+
+                    // lock을 획득하는 동안 노드가 제거됬는지 확인합니다.
+                    if !(*self.curr).removed.load(MemOrdering::Relaxed) {
+                        return Some(MutGuard {
+                            _ebr_guard: self._ebr_guard.clone(), 
+                            _lock_guard: lock_guard, 
+                            value: (*self.curr).value.as_mut().unwrap_unchecked()
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
+
+
 /// ### Skip Map
 /// 게으른 동기화(Lazy-synchronization)로 구현된 Skip List를 사용하는 Map 자료구조입니다.
 /// 
@@ -436,6 +543,26 @@ impl<K, V> SkipMap<K, V> {
             });
         }
         None
+    }
+
+    /// `SkipMap`의 값을 순회하는 반복자를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn values(&self) -> Values<'_, K, V> {
+        Values { 
+            _ebr_guard: self.ebr.pin(), 
+            curr: self.head.load(MemOrdering::Relaxed) 
+        }
+    }
+
+    /// `SkipMap`의 값을 순회하는 반복자를 가져옵니다.
+    #[inline]
+    #[must_use]
+    pub fn values_mut(&self) -> ValuesMut<'_, K, V> {
+        ValuesMut { 
+            _ebr_guard: self.ebr.pin(), 
+            curr: self.head.load(MemOrdering::Relaxed) 
+        }
     }
 }
 

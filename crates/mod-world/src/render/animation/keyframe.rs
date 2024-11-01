@@ -1,4 +1,4 @@
-use super::Skinning;
+use super::SkinningData;
 
 
 
@@ -12,7 +12,7 @@ pub struct KeyFrame {
     root_bone: gmm::Matrix, 
 
     /// 키 프레임에 영향을 받는 스키닝 데이터입니다.
-    meshes: Vec<Skinning>
+    meshes: Vec<SkinningData>
 }
 
 
@@ -24,7 +24,7 @@ impl KeyFrame {
     /// 
     #[must_use]
     pub fn new<I>(time_point: f32, root: gmm::Matrix, meshes: I) -> Self 
-    where I: IntoIterator<Item = Skinning>, I::IntoIter: ExactSizeIterator {
+    where I: IntoIterator<Item = SkinningData>, I::IntoIter: ExactSizeIterator {
         let meshes: Vec<_> = meshes.into_iter().collect();
         assert!(!meshes.is_empty(), "The given skinning data is empty!");
         unsafe { Self::new_unchecked(time_point, root, meshes) } // Safe: 키 프레임 스키닝 데이터는 비어있지 않음
@@ -38,7 +38,7 @@ impl KeyFrame {
     #[inline]
     #[must_use]
     pub unsafe fn new_unchecked<I>(time_point: f32, root: gmm::Matrix, meshes: I) -> Self 
-    where I: IntoIterator<Item = Skinning>, I::IntoIter: ExactSizeIterator {
+    where I: IntoIterator<Item = SkinningData>, I::IntoIter: ExactSizeIterator {
         Self { time_point, root_bone: root, meshes: meshes.into_iter().collect() }
     }
 
@@ -59,7 +59,7 @@ impl KeyFrame {
     /// 키 프레임 스키닝 메쉬를 가져옵니다.
     #[inline]
     #[must_use]
-    pub fn meshes(&self) -> &[Skinning] {
+    pub fn meshes(&self) -> &[SkinningData] {
         &self.meshes
     }
 }
