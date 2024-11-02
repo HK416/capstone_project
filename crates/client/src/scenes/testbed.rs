@@ -128,15 +128,29 @@ impl TestBedScene {
         let timer = app.timer();
         let head_txt = format!("Hello2Halo (v{}) - FPS:{}", env!("CARGO_PKG_VERSION"), timer.frame_rate());
         let info_txt = if self.lock_cursor { INFO_0 } else { INFO_1 };
-
-        let player_id = self.client_id;
-        let player = self.players.get(&player_id).unwrap();
-        let player = self.world.get(player).unwrap();
         let hp_txt = format!("HP: {}", self.hp);
 
         let mut selected_size = app.window_size().clone();
 
-        egui::Window::new("")
+        let (width, height): (f32, f32) = app.window_size().size().into();
+
+        egui::Area::new(egui::Id::new("hp_bar"))
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -16.0))
+            .show(app.egui_ctx(), |ui| {
+                let hp = egui::RichText::new("HP")
+                    .color(egui::Color32::DARK_GRAY);
+                let prograss = egui::ProgressBar::new(self.hp as f32 / 100.0)
+                    .text(hp)
+                    .animate(true)
+                    .rounding(egui::Rounding::same(6.0))
+                    .desired_width(width * 0.175)
+                    .desired_height(height * 0.02)
+                    .fill(egui::Color32::LIGHT_GREEN);
+                ui.add(prograss);
+            });
+
+
+        egui::Window::new("debug")
             .title_bar(false)
             .auto_sized()
             .movable(false)
