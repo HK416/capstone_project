@@ -1,4 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#[cfg(feature = "enable-debug-tools")]
+mod dbg;
+
 mod scenes;
 mod model;
 

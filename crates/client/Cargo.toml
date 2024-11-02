@@ -81,3 +81,11 @@ serde = { version = "1.0", features = ["derive"] }
 # A JSON serialization file format
 # License: MIT OR Apache-2.0
 serde_json = "1.0"
+
+
+
+[features]
+default = ["enable-debug-tools"]
+
+# 디버깅 툴을 활성화 합니다.
+enable-debug-tools = []
