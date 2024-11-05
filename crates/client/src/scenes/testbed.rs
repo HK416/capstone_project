@@ -72,6 +72,7 @@ pub struct TestBedScene {
     stage_data: Vec<Player>, 
 
     client_id: u32, 
+    hp: u32,
 
     /// 게임 오브젝트를 관리하는 게임 세상입니다.
     world: GameWorld, 
@@ -108,6 +109,7 @@ impl TestBedScene {
             address, 
             stage_data: players.into_iter().collect(), 
             client_id, 
+            hp: 100,
             world: GameWorld::new(), 
             main_camera: ObjectId::NIL, 
             players: HashMap::with_capacity(10),
@@ -126,10 +128,29 @@ impl TestBedScene {
         let timer = app.timer();
         let head_txt = format!("Hello2Halo (v{}) - FPS:{}", env!("CARGO_PKG_VERSION"), timer.frame_rate());
         let info_txt = if self.lock_cursor { INFO_0 } else { INFO_1 };
+        let hp_txt = format!("HP: {}", self.hp);
 
         let mut selected_size = app.window_size().clone();
 
-        egui::Window::new("")
+        let (width, height): (f32, f32) = app.window_size().size().into();
+
+        egui::Area::new(egui::Id::new("hp_bar"))
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -16.0))
+            .show(app.egui_ctx(), |ui| {
+                let hp = egui::RichText::new("HP")
+                    .color(egui::Color32::DARK_GRAY);
+                let prograss = egui::ProgressBar::new(self.hp as f32 / 100.0)
+                    .text(hp)
+                    .animate(true)
+                    .rounding(egui::Rounding::same(6.0))
+                    .desired_width(width * 0.175)
+                    .desired_height(height * 0.02)
+                    .fill(egui::Color32::LIGHT_GREEN);
+                ui.add(prograss);
+            });
+
+
+        egui::Window::new("debug")
             .title_bar(false)
             .auto_sized()
             .movable(false)
@@ -140,11 +161,16 @@ impl TestBedScene {
                     .color(egui::Color32::LIGHT_GRAY);
                 let info = egui::RichText::new(info_txt)
                     .color(egui::Color32::LIGHT_GRAY);
+                let hp = egui::RichText::new(hp_txt)
+                    .color(egui::Color32::LIGHT_GRAY);
                 let size = egui::RichText::new("해상도")
                     .color(egui::Color32::LIGHT_GRAY);
 
                 ui.label(head);
                 ui.label(info);
+
+                ui.add_space(8.0);
+                ui.label(hp);
 
                 ui.add_space(8.0);
                 ui.label(size);
@@ -495,6 +521,7 @@ impl TestBedScene {
         // 업로드 데이터를 생성합니다.
         let push_data = Player {
             id: self.client_id, 
+            hp: self.hp,
             translation: player_transform.get_translation().into(), 
             rotation: player_transform.get_rotation().into(), 
             anim_index: animation.index as u32, 
@@ -518,6 +545,7 @@ impl TestBedScene {
         for data in players {
             if let Some(world_id) = self.players.remove(&data.id) {
                 if data.id == self.client_id {
+                    self.hp = data.hp;
                     next.push((data.id, world_id));
                     continue;
                 }

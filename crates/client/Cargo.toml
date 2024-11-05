@@ -81,3 +81,14 @@ serde = { version = "1.0", features = ["derive"] }
 # A JSON serialization file format
 # License: MIT OR Apache-2.0
 serde_json = "1.0"
+
+
+
+[features]
+default = ["enable-debug-tools", "enable-shader-validation"]
+
+# 디버깅 툴을 활성화 합니다.
+enable-debug-tools = []
+
+# 쉐이더 유효성 검증을 활성화 합니다.
+enable-shader-validation = ["mod-world/enable-shader-validation"]
