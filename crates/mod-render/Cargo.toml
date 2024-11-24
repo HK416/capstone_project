@@ -6,3 +6,18 @@ rust-version.workspace = true
 description.workspace = true
 authors.workspace = true
 publish.workspace = true
+
+
+[dependencies]
+thiserror = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+
+
+
+[features]
+# 쉐이더 디버깅 레이어를 활성화합니다.
+enable-debug-layer = []
+
+# 쉐이더 생성시 유효성 검사를 활성화합니다.
+enable-shader-validation = []
