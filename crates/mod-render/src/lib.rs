@@ -134,4 +134,5 @@ pub fn config_swapchain(
     );
 }
 
-mod error;
+pub mod error;
+pub mod mesh;

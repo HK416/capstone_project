@@ -9,6 +9,8 @@ publish.workspace = true
 
 
 [dependencies]
+bitflags = { workspace = true }
+bytemuck = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
