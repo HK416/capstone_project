@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.82"
 description = "2024년 한국공학대학교 게임공학과 졸업작품"
 authors = [
     "HK416 <powerspirit127@gmail.com>", 
@@ -12,3 +12,70 @@ authors = [
     "HA0_TUK <hayoungtuk@gmail.com>"
 ]
 publish = false
+
+
+
+[workspace.dependencies]
+# A macro to generate structures which behave like bitflags.
+# License: MIT OR Apache-2.0
+bitflags = "2.6"
+
+# A crate for mucking around with piles of bytes.
+# License: Zlib OR Apache-2.0 OR MIT
+bytemuck = { version = "1.20", features = ["derive"] }
+
+# An easy-to-use immediate mode GUI that runs on both web and native
+# License: MIT OR Apache-2.0
+egui = "0.29"
+
+# Bindings for using egui natively using the wgpu library
+# License: MIT OR Apache-2.0
+egui-wgpu = { git = "https://github.com/emilk/egui" }
+
+# Bindings for using egui with winit
+# License: MIT OR Apache-2.0
+egui-winit = "0.29"
+
+# A simple and fast 3D math library for games and graphics
+# License: MIT OR Apache-2.0
+glam = { version = "0.29", features = ["bytemuck", "rand"] }
+
+# A fast, minimal, and ergonomic entity-component-system library
+# License: MIT OR Apache-2.0
+hecs = "0.10"
+
+# A macro for declaring lazily evaluated statics in Rust.
+# License: MIT OR Apache-2.0
+lazy_static = "1.5"
+
+# A lightweight logging facade for Rust
+# License MIT OR Apache-2.0
+log = "0.4"
+
+# More compact and efficient implementations of the standard synchronization primitives.
+# License: MIT OR Apache-2.0
+parking_lot = { version = "0.12", features = ["hardware-lock-elision"] }
+
+# Random number generators and other randomness functionality.
+# License: MIT OR Apache-2.0
+rand = "0.8"
+
+# Simple work-stealing parallelism for Rust
+# License: MIT OR Apache-2.0
+rayon = "1.10"
+
+# A generic serialization/deserialization framework
+# License: MIT or Apache-2.0
+serde = { version = "1.0", features = ["derive"] }
+
+# derive(Error)
+# License: MIT OR Apache-2.0
+thiserror = "2.0"
+
+# Rusty WebGPU API wrapper
+# License: MIT OR Apache-2.0
+wgpu = "23"
+
+# Cross-platform window creation library.
+# License: Apache-2.0
+winit = "0.30"
