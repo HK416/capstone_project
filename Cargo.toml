@@ -16,6 +16,10 @@ publish = false
 
 
 [workspace.dependencies]
+# A non-cryptographic hash function using AES-NI for high performance
+# License: MIT OR Apache-2.0
+ahash = "0.8"
+
 # A macro to generate structures which behave like bitflags.
 # License: MIT OR Apache-2.0
 bitflags = "2.6"
@@ -23,6 +27,10 @@ bitflags = "2.6"
 # A crate for mucking around with piles of bytes.
 # License: Zlib OR Apache-2.0 OR MIT
 bytemuck = { version = "1.20", features = ["derive"] }
+
+# Blazing fast concurrent HashMap for Rust.
+# License: MIT
+dashmap = "6.1"
 
 # An easy-to-use immediate mode GUI that runs on both web and native
 # License: MIT OR Apache-2.0

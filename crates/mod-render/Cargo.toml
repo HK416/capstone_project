@@ -9,8 +9,10 @@ publish.workspace = true
 
 
 [dependencies]
+ahash = { workspace = true }
 bitflags = { workspace = true }
 bytemuck = { workspace = true }
+dashmap = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
