@@ -59,10 +59,10 @@ impl TextureViewPool {
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove(
-        texture: &Arc<wgpu::Texture>,
-    ) -> Option<(Arc<wgpu::Texture>, HashMap<u64, Arc<wgpu::TextureView>>)> {
-        get_pool().remove(texture)
+    pub fn remove(texture: &Arc<wgpu::Texture>) -> Option<Vec<Arc<wgpu::TextureView>>> {
+        get_pool()
+            .remove(texture)
+            .map(|(_, pool)| pool.into_values().collect())
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 뷰 객체를 제거합니다.

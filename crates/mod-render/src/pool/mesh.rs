@@ -36,8 +36,8 @@ impl MeshPool {
 
     /// 이름에 해당하는 메쉬 객체를 풀 객체에서 제거합니다.  
     /// 해당 메쉬 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove<S: AsRef<String>>(name: S) -> Option<(String, Arc<Mesh>)> {
-        get_pool().remove(name.as_ref())
+    pub fn remove<S: AsRef<String>>(name: S) -> Option<Arc<Mesh>> {
+        get_pool().remove(name.as_ref()).map(|(_, mesh)| mesh)
     }
 
     /// 풀 객체에 존재하는 모든 메쉬 객체를 제거합니다.

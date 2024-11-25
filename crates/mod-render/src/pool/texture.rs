@@ -141,8 +141,8 @@ impl TexturePool {
 
     /// 이름에 해당하는 텍스처 객체를 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove<S: AsRef<String>>(name: S) -> Option<(String, Arc<wgpu::Texture>)> {
-        get_pool().remove(name.as_ref())
+    pub fn remove<S: AsRef<String>>(name: S) -> Option<Arc<wgpu::Texture>> {
+        get_pool().remove(name.as_ref()).map(|(_, texture)| texture)
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 객체를 제거합니다.

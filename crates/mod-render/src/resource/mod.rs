@@ -1,7 +1,7 @@
-pub mod camera;
-pub mod light;
-pub mod material;
-pub mod mesh;
+mod camera;
+mod light;
+mod material;
+mod mesh;
 
 pub use self::camera::*;
 pub use self::light::*;
