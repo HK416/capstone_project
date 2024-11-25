@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use error::{SurfaceInitError, WgpuInitError};
 use winit::window::Window;
 
 /// 프레임 버퍼의 텍스처 포맷
@@ -136,3 +135,8 @@ pub fn config_swapchain(
 
 pub mod error;
 pub mod mesh;
+pub mod resource;
+
+pub use self::error::*;
+pub use self::mesh::*;
+pub use self::resource::*;

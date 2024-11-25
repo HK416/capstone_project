@@ -11,9 +11,14 @@ publish.workspace = true
 [dependencies]
 bitflags = { workspace = true }
 bytemuck = { workspace = true }
+log = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
+
+# Compile-time assertions to ensure that invariants are met.
+# License: MIT OR Apache-2.0
+static_assertions = "1.1"
 
 
 
