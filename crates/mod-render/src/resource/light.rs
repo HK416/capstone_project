@@ -55,6 +55,7 @@ impl GlobalLightUniform {
     }
 
     /// 전역 조명 유니폼 버퍼의 내용을 갱신합니다.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: GlobalLightDataLayout) {
         let capturable = self.0.clone();
         self.0
@@ -70,7 +71,35 @@ impl GlobalLightUniform {
                     capturable.unmap();
                 }
                 Err(e) => {
-                    log::warn!("failed to update uniform buffer (REASONS:{})", e);
+                    log::warn!("failed to update uniform buffer! (REASON:{})", e)
+                }
+            });
+
+        let index = queue.submit([]);
+        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+    }
+
+    /// 전역 조명 유니폼 버퍼의 내용을 갱신합니다.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    pub unsafe fn update_from_bytes(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        data: Vec<u8>,
+    ) {
+        let capturable = self.0.clone();
+        self.0
+            .slice(..)
+            .map_async(wgpu::MapMode::Write, move |result| match result {
+                Ok(_) => {
+                    let mut view = capturable.slice(..).get_mapped_range_mut();
+                    view.copy_from_slice(&data);
+
+                    drop(view);
+                    capturable.unmap();
+                }
+                Err(e) => {
+                    log::warn!("failed to update uniform buffer! (REASON:{})", e)
                 }
             });
 
@@ -176,6 +205,7 @@ impl LocalLightUniform {
     }
 
     /// 지역 조명 유니폼 버퍼의 내용을 갱신합니다.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: LocalLightSetLayout) {
         let capturable = self.0.clone();
         self.0
@@ -191,7 +221,35 @@ impl LocalLightUniform {
                     capturable.unmap();
                 }
                 Err(e) => {
-                    log::warn!("failed to update uniform buffer (REASONS:{})", e);
+                    log::warn!("failed to update uniform buffer! (REASON:{})", e)
+                }
+            });
+
+        let index = queue.submit([]);
+        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+    }
+
+    /// 지역 조명 유니폼 버퍼의 내용을 갱신합니다.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    pub unsafe fn update_from_bytes(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        data: Vec<u8>,
+    ) {
+        let capturable = self.0.clone();
+        self.0
+            .slice(..)
+            .map_async(wgpu::MapMode::Write, move |result| match result {
+                Ok(_) => {
+                    let mut view = capturable.slice(..).get_mapped_range_mut();
+                    view.copy_from_slice(&data);
+
+                    drop(view);
+                    capturable.unmap();
+                }
+                Err(e) => {
+                    log::warn!("failed to update uniform buffer! (REASON:{})", e)
                 }
             });
 

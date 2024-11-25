@@ -60,6 +60,7 @@ impl CameraUniform {
     }
 
     /// 카메라 유니폼 버퍼의 내용을 갱신합니다.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: CameraDataLayout) {
         let capturable = self.0.clone();
         self.0
@@ -70,6 +71,34 @@ impl CameraUniform {
                     let layout: &mut CameraDataLayout = bytemuck::from_bytes_mut(&mut view);
 
                     *layout = data;
+
+                    drop(view);
+                    capturable.unmap();
+                }
+                Err(e) => {
+                    log::warn!("failed to update uniform buffer! (REASON:{})", e)
+                }
+            });
+
+        let index = queue.submit([]);
+        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+    }
+
+    /// 카메라 유니폼 버퍼의 내용을 갱신합니다.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    pub unsafe fn update_from_bytes(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        data: Vec<u8>,
+    ) {
+        let capturable = self.0.clone();
+        self.0
+            .slice(..)
+            .map_async(wgpu::MapMode::Write, move |result| match result {
+                Ok(_) => {
+                    let mut view = capturable.slice(..).get_mapped_range_mut();
+                    view.copy_from_slice(&data);
 
                     drop(view);
                     capturable.unmap();
@@ -117,6 +146,7 @@ pub struct CameraResource {
 }
 
 impl CameraResource {
+    /// 카메라 쉐이더 리소스의 [wgpu::BindGroupLayout]을 반환합니다.
     pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
@@ -171,12 +201,14 @@ impl CameraResource {
 impl CameraResource {
     /// 초기화되지 않은 새로운 카메라 쉐이더 리소스를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
-        let camera_uniform = CameraUniform::uninit(label, device);
+        let tag = &format!("Uniform(Camera({}))", label.unwrap_or("Unknown"));
+        let camera_uniform = CameraUniform::uninit(Some(&tag), device);
         let global_light_uniform = GlobalLightUniform::get_or_uninit(device);
-        let local_light_uniform = LocalLightUniform::uninit(label, device);
+        let tag = &format!("Uniform(LocalLight({}))", label.unwrap_or("Unknown"));
+        let local_light_uniform = LocalLightUniform::uninit(Some(tag), device);
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label,
+            label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
             layout: &Self::bind_group_layout(device),
             entries: &[
                 wgpu::BindGroupEntry {
