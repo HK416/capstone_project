@@ -10,7 +10,10 @@ build = "build.rs"
 
 
 [dependencies]
+ahash = { workspace = true }
+hecs = { workspace = true }
 log = { workspace = true }
+serde = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
 
