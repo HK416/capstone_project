@@ -4,12 +4,10 @@ use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
-    asset::AssetBundle, 
-    etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize}, 
-    net::NetManager
+    asset::AssetManager,
+    etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize},
+    net::NetManager,
 };
-
-
 
 /// 외부에서 애플리케이션에 접근할 수 있는 `trait`입니다.
 pub trait AppHandle {
@@ -23,7 +21,7 @@ pub trait AppHandle {
     fn current_dir(&self) -> &Path;
 
     /// 애플리케이션 에셋 관리자를 가져옵니다.
-    fn bundle(&self) -> &AssetBundle;
+    fn bundle(&self) -> &AssetManager;
 
     /// 애플리케이션 네트워크 매니저를 가져옵니다.
     fn network(&self) -> &NetManager;

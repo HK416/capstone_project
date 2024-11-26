@@ -1,6 +1,6 @@
 [package]
 name = "mod-app"
-version = "0.5.0"
+version = "0.6.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -10,69 +10,28 @@ publish.workspace = true
 
 
 [dependencies]
-# A macro to generate structures which behave like bitflags.
-# License: MIT OR Apache-2.0
-bitflags = "2.6"
-
-# An easy-to-use immediate mode GUI that runs on both web and native
-# License: MIT OR Apache-2.0
-egui = "0.29"
-
-# Bindings for using egui natively using the wgpu library
-# License: MIT OR Apache-2.0
-egui-wgpu = "0.29"
-
-# Bindings for using egui with winit
-# License: MIT OR Apache-2.0
-egui-winit = "0.29"
-
-
-# A fast, minimal, and ergonomic entity-component-system library
-# License: MIT OR Apache-2.0
-hecs = "0.10"
-
-# A macro for declaring lazily evaluated statics in Rust.
-# License: MIT OR Apache-2.0
-lazy_static = "1.5"
-
-# A lightweight logging facade for Rust
-# License: MIT OR Apache-2.0
-log = "0.4"
-
-# Random number generators and other randomness functionality.
-# License: MIT OR Apache-2.0
-rand = "0.8"
-
-# Simple work-stealing parallelism for Rust
-# License: MIT OR Apache-2.0
-rayon = "1.10"
+ahash = { workspace = true }
+bitflags = { workspace = true }
+dashmap = { workspace = true }
+egui = { workspace = true }
+egui-winit = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+num_cpus = { workspace = true }
+parking_lot = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
 
 # Rusty File Dialog
 # License: MIT
 rfd = "0.15"
 
-# A generic serialization/deserialization framework
-# License: MIT OR Apache-2.0
-serde = "1.0"
-
-# derive(Error)
-# License: MIT OR Apache-2.0
-thiserror = "1.0"
-
-# Cross-platform window creation library.
-# License: Apache-2.0
-winit = "0.30"
-
-# Rusty WebGPU API wrapper
-# License: MIT OR Apache-2.0
-wgpu = "22"
-
-
-
 # 자체 프레임워크 라이브러리
 mod-network = { path = "../mod-network" }
-mod-parallelism = { path = "../mod-parallelism" }
-mod-world = { path = "../mod-world" }
+mod-render = { path = "../mod-render" }
 
 
 
@@ -88,9 +47,7 @@ windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsA
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 # Synchronously block the thread until a future completes
 # License: Apache-2.0 OR MIT
-pollster = "0.3"
-
-
+pollster = "0.4"
 
 
 

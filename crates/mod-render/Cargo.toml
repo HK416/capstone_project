@@ -13,6 +13,7 @@ ahash = { workspace = true }
 bitflags = { workspace = true }
 bytemuck = { workspace = true }
 dashmap = { workspace = true }
+egui = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
@@ -25,6 +26,8 @@ static_assertions = "1.1"
 
 
 [features]
+default = ["enable-debug-layer", "enable-shader-validation"]
+
 # 쉐이더 디버깅 레이어를 활성화합니다.
 enable-debug-layer = []
 

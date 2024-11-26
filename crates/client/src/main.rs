@@ -1,9 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-#[cfg(feature = "enable-debug-tools")]
-mod dbg;
-
 mod scenes;
-mod model;
 
 
 
@@ -18,9 +14,6 @@ mod model;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
     use mod_app::{app::AppBuilder, etc::WindowSize};
-    use mod_parallelism::is_main_thread;
-
-    assert!(is_main_thread(), "Invalid main thread id!");
 
     // 로그 시스템을 초기화 합니다.
     env_logger::builder()
