@@ -6,6 +6,8 @@ use std::{
 
 use bytemuck::{Pod, Zeroable};
 
+use crate::{SamplerPool, TexturePool, TextureViewPool};
+
 /// ## Material Uniform Buffer Data Layout
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -13,7 +15,10 @@ pub struct MaterialDataLayout {
     pub glossiness: f32,
     pub smoothness: f32,
     pub metallic: f32,
-    pub height: f32,
+    pub bump_scale: f32, 
+    pub parallax: f32, 
+    pub strength: f32, 
+    pub _padding: [u8; 8], 
     pub albedo: [f32; 4],
     pub specular: [f32; 4],
     pub emissive: [f32; 4],
@@ -25,7 +30,10 @@ impl Default for MaterialDataLayout {
             glossiness: 0.0,
             smoothness: 0.0,
             metallic: 0.0,
-            height: 0.0,
+            bump_scale: 0.0, 
+            parallax: 0.0, 
+            strength: 0.0, 
+            _padding: [0; 8], 
             albedo: [0.0; 4],
             specular: [0.0; 4],
             emissive: [0.0; 4],
@@ -139,19 +147,53 @@ static_assertions::const_assert_eq!(
 
 /// ## Material Shader Resource Descriptor
 #[derive(Debug, Clone)]
-pub struct MaterialDescriptor<'a> {
-    pub name: &'a str,
+pub struct MaterialDescriptor {
+    pub name: String,
     pub layout: MaterialDataLayout,
-    pub albedo_map: &'a wgpu::TextureView,
-    pub albedo_sampler: &'a wgpu::Sampler,
-    pub specular_map: &'a wgpu::TextureView,
-    pub specular_sampler: &'a wgpu::Sampler,
-    pub emissive_map: &'a wgpu::TextureView,
-    pub emissive_sampler: &'a wgpu::Sampler,
-    pub normal_map: &'a wgpu::TextureView,
-    pub normal_sampler: &'a wgpu::Sampler,
-    pub height_map: &'a wgpu::TextureView,
-    pub height_sampler: &'a wgpu::Sampler,
+    pub albedo_map: Arc<wgpu::TextureView>,
+    pub albedo_sampler: Arc<wgpu::Sampler>,
+    pub specular_map: Arc<wgpu::TextureView>,
+    pub specular_sampler: Arc<wgpu::Sampler>,
+    pub emissive_map: Arc<wgpu::TextureView>,
+    pub emissive_sampler: Arc<wgpu::Sampler>,
+    pub normal_map: Arc<wgpu::TextureView>,
+    pub normal_sampler: Arc<wgpu::Sampler>,
+    pub parallax_map: Arc<wgpu::TextureView>,
+    pub parallax_sampler: Arc<wgpu::Sampler>,
+    pub occlusion_map: Arc<wgpu::TextureView>, 
+    pub occlusion_sampler: Arc<wgpu::Sampler>, 
+}
+
+impl MaterialDescriptor {
+    pub fn new(name: &str, device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let black_texture = TexturePool::black(device, queue);
+        let black_texture_view =
+            TextureViewPool::get_or_init(&black_texture, &wgpu::TextureViewDescriptor::default());
+        let normal_texture = TexturePool::normal(device, queue);
+        let normal_texture_view =
+            TextureViewPool::get_or_init(&normal_texture, &wgpu::TextureViewDescriptor::default());
+        let height_texture = TexturePool::height(device, queue);
+        let height_texture_view =
+            TextureViewPool::get_or_init(&height_texture, &wgpu::TextureViewDescriptor::default());
+        let sampler = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+        Self {
+            name: name.to_string(),
+            layout: MaterialDataLayout::default(),
+            albedo_map: black_texture_view.clone(),
+            albedo_sampler: sampler.clone(),
+            specular_map: black_texture_view.clone(),
+            specular_sampler: sampler.clone(),
+            emissive_map: black_texture_view.clone(),
+            emissive_sampler: sampler.clone(),
+            normal_map: normal_texture_view.clone(),
+            normal_sampler: sampler.clone(),
+            parallax_map: height_texture_view.clone(), 
+            parallax_sampler: sampler.clone(), 
+            occlusion_map: height_texture_view.clone(), 
+            occlusion_sampler: sampler.clone()
+        }
+    }
 }
 
 /// ## Material Shader Resource
@@ -255,7 +297,7 @@ impl MaterialResource {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
-                    // 9번 바인딩: Height 텍스처
+                    // 9번 바인딩: Parallax 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 9,
                         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -266,9 +308,27 @@ impl MaterialResource {
                         },
                         count: None,
                     },
-                    // 10번 바인딩: Height 텍스처 샘플러
+                    // 10번 바인딩: Parallax 텍스처 샘플러
                     wgpu::BindGroupLayoutEntry {
                         binding: 10,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    // 11번 바인딩: Occlusion 텍스처
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 11,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 12번 바인딩: Occlusion 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 12,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
@@ -281,7 +341,7 @@ impl MaterialResource {
 
 impl MaterialResource {
     /// 새로운 재질 쉐이더 리소스를 생성합니다.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, desc: MaterialDescriptor<'_>) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, desc: &MaterialDescriptor) -> Self {
         let tag = format!("Uniform(Material({}))", desc.name);
         let material_uniform = MaterialUniform::uninit(Some(&tag), device);
         material_uniform.update(device, queue, desc.layout);
@@ -296,43 +356,51 @@ impl MaterialResource {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(desc.albedo_map),
+                    resource: wgpu::BindingResource::TextureView(&desc.albedo_map),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(desc.albedo_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.albedo_sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: wgpu::BindingResource::TextureView(desc.specular_map),
+                    resource: wgpu::BindingResource::TextureView(&desc.specular_map),
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: wgpu::BindingResource::Sampler(desc.specular_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.specular_sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
-                    resource: wgpu::BindingResource::TextureView(desc.emissive_map),
+                    resource: wgpu::BindingResource::TextureView(&desc.emissive_map),
                 },
                 wgpu::BindGroupEntry {
                     binding: 6,
-                    resource: wgpu::BindingResource::Sampler(desc.emissive_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.emissive_sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 7,
-                    resource: wgpu::BindingResource::TextureView(desc.normal_map),
+                    resource: wgpu::BindingResource::TextureView(&desc.normal_map),
                 },
                 wgpu::BindGroupEntry {
                     binding: 8,
-                    resource: wgpu::BindingResource::Sampler(desc.normal_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.normal_sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 9,
-                    resource: wgpu::BindingResource::TextureView(desc.height_map),
+                    resource: wgpu::BindingResource::TextureView(&desc.parallax_map),
                 },
                 wgpu::BindGroupEntry {
                     binding: 10,
-                    resource: wgpu::BindingResource::Sampler(desc.height_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.parallax_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: wgpu::BindingResource::TextureView(&desc.occlusion_map),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 12,
+                    resource: wgpu::BindingResource::Sampler(&desc.occlusion_sampler),
                 },
             ],
         });

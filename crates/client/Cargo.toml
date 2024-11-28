@@ -11,11 +11,23 @@ build = "build.rs"
 
 [dependencies]
 ahash = { workspace = true }
+dashmap = { workspace = true }
+glam = { workspace = true }
 hecs = { workspace = true }
 log = { workspace = true }
+parking_lot = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
+
+# DirectDraw Surface file format parser/composer
+# License: MIT
+ddsfile = "0.5"
+
+# A JSON serialization file format
+# License: MIT OR Apache-2.0
+serde_json = "1.0"
 
 # 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }

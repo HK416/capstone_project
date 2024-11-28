@@ -1,4 +1,7 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+    error::Error,
+    sync::{Arc, OnceLock},
+};
 
 use ahash::RandomState;
 use dashmap::DashMap;
@@ -126,12 +129,13 @@ impl TexturePool {
 impl TexturePool {
     /// 이름에 해당하는 텍스처 객체를 가져옵니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 새로운 텍스처 객체를 생성합니다.
-    pub fn get_or_init<S, F>(name: S, func: F) -> Arc<wgpu::Texture>
+    pub fn get_or_init<S, F, E>(name: S, func: F) -> Result<Arc<wgpu::Texture>, E>
     where
         S: Into<String>,
-        F: FnOnce() -> Arc<wgpu::Texture>,
+        F: FnOnce() -> Result<Arc<wgpu::Texture>, E>,
+        E: Error + Send,
     {
-        get_pool().entry(name.into()).or_insert(func()).clone()
+        Ok(get_pool().entry(name.into()).or_insert(func()?).clone())
     }
 
     /// 이름에 해당하는 텍스처 객체가 풀 객체에 존재할 경우 `true`를 반환합니다.

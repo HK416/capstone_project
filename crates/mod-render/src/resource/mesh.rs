@@ -247,7 +247,7 @@ static_assertions::const_assert_eq!(
 );
 
 /// 최대 뼈의 개수입니다.
-const MAX_BONES: usize = 256;
+pub const MAX_BONES: usize = 256;
 
 /// ## Bone Transform Uniform Buffer
 #[derive(Debug, Clone, PartialEq, Eq)]
