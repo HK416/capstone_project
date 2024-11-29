@@ -25,7 +25,7 @@ impl GameScene for StartupScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         let mut world = World::new();
-        let (_, v, _) = ModelPool::spawn(
+        let (_, _, batch_commands) = ModelPool::spawn(
             "aris_original",
             "characters/aris_original",
             app.bundle(),
@@ -35,9 +35,10 @@ impl GameScene for StartupScene {
         )
         .unwrap();
 
-        for (entity, mut builder) in v {
+        for (entity, mut builder) in batch_commands {
             world.spawn_at(entity, builder.build());
         }
+
         println!("finish!");
 
         Ok(())

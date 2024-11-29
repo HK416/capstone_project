@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     io::{self, Cursor},
     path::PathBuf,
     sync::{Arc, OnceLock},
@@ -18,7 +19,9 @@ use wgpu::util::DeviceExt;
 
 use crate::component::{BoneCollection, Child, Parent, Sibling, ToParentTrans, WorldTransform};
 
-use super::blob::{MaterialBlob, MeshBlob, ModelBlob, NodeBlob, SkinningBlob, TextureBlob};
+use super::blob::{
+    AnimationBlob, MaterialBlob, MeshBlob, ModelBlob, NodeBlob, SkinningBlob, TextureBlob,
+};
 
 /// 로드된 모델 데이터를 관리하는 풀 객체입니다.
 static POOL: OnceLock<DashMap<String, Root, RandomState>> = OnceLock::new();
@@ -34,6 +37,8 @@ fn get_pool() -> &'static DashMap<String, Root, RandomState> {
 pub struct ModelPool;
 
 impl ModelPool {
+    /// 모델을 로드하고, 모델을 구성하는 새로운 `Entity`를 생성합니다.  
+    /// 모델 데이터를 로드하는 도중 오류가 발생한 경우 `ModelSpawnError`를 반환합니다.  
     pub fn spawn(
         name: &str,
         workspace: &str,
@@ -43,9 +48,9 @@ impl ModelPool {
         world: &World,
     ) -> Result<
         (
+            Entity,
             HashMap<String, Entity>,
             Vec<(Entity, EntityBuilder)>,
-            Entity,
         ),
         ModelSpawnError,
     > {
@@ -59,6 +64,27 @@ impl ModelPool {
         )?);
 
         spawn_model(world, device, queue, &root)
+    }
+
+    /// 모델 데이터의 애니메이션을 가져옵니다.
+    pub fn get_animation<F, E>(name: &str, func: F) -> Result<(), E>
+    where
+        F: FnOnce(Option<&HashMap<String, AnimationBlob>>) -> Result<(), E>,
+        E: Error + Send,
+    {
+        let animations = get_pool().get(name);
+        let animations = animations.as_ref().map(|root| &root.animations);
+        func(animations)
+    }
+
+    /// 캐싱된 모델 데이터를 풀 객체에서 제거합니다.
+    pub fn remove(name: &str) -> Option<Root> {
+        get_pool().remove(name).map(|(_, root)| root)
+    }
+
+    /// 풀 객체에 있는 모든 캐시 데이터를 제거합니다.
+    pub fn clear() {
+        get_pool().clear()
     }
 }
 
@@ -89,6 +115,7 @@ pub enum ModelSpawnError {
 #[derive(Debug, Clone)]
 struct Root {
     root: Node,
+    animations: HashMap<String, AnimationBlob>,
 }
 
 /// ## Model Node
@@ -112,6 +139,7 @@ struct Skinning {
     bindposes: Vec<[f32; 16]>,
 }
 
+/// 모델을 구성하는 노드들을 생성합니다.
 fn spawn_model(
     world: &World,
     device: &wgpu::Device,
@@ -119,9 +147,9 @@ fn spawn_model(
     root: &Root,
 ) -> Result<
     (
+        Entity,
         HashMap<String, Entity>,
         Vec<(Entity, EntityBuilder)>,
-        Entity,
     ),
     ModelSpawnError,
 > {
@@ -138,9 +166,10 @@ fn spawn_model(
         &[],
     )?;
 
-    Ok((entities, batch_commands, root))
+    Ok((root, entities, batch_commands))
 }
 
+/// 모델을 구성하는 노드의 계층 구조를 생성합니다.
 fn spawn_model_node_recursive<'a>(
     world: &World,
     device: &wgpu::Device,
@@ -255,8 +284,14 @@ fn load_model_root(
         serde_json::de::from_reader(reader).map_err(|e| ModelSpawnError::from(e))?;
 
     let root = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
+    let animations = blob
+        .animations
+        .into_iter()
+        .map(|blob| (blob.name.clone(), blob))
+        .collect();
+
     asset_manager.remove(path);
-    Ok(Root { root })
+    Ok(Root { root, animations })
 }
 
 /// 모델을 구성하는 노드의 계층구조를 구성합니다.
