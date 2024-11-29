@@ -17,8 +17,9 @@
                         "aris_original_halo.dds", 
                         "aris_original_weapon_mask.dds", 
                         "aris_original_weapon.dds", 
-                        "aris_original_halo.json",
-                        "aris_original.json"
+                        "aris_original_halo.hierarchy",
+                        "aris_original.hierarchy",
+                        "aris_original.action"
                     ], 
                     "directories" : {}
                 }

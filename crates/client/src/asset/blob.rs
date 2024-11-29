@@ -156,13 +156,6 @@ impl Into<wgpu::FilterMode> for FilterMode {
     }
 }
 
-/// ## 3D Model Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ModelBlob {
-    pub root: NodeBlob,
-    pub animations: Vec<AnimationBlob>,
-}
-
 /// ## Node Data
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NodeBlob {
@@ -236,24 +229,25 @@ pub struct SkinningBlob {
 
 /// ## Animation Data
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AnimationBlob {
+pub struct Action {
     pub name: String,
+    pub root: String, 
     pub length: f32,
     pub frame_rate: f32,
-    pub keyframes: Vec<KeyFrameBlob>,
+    pub keyframes: Vec<KeyFrame>,
 }
 
 /// ## Animation Key Frame Data
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct KeyFrameBlob {
+pub struct KeyFrame {
     pub time_point: f32,
     pub root_matrix: Matrix,
-    pub meshes: Vec<KeyFrameMeshBlob>,
+    pub meshes: Vec<KeyFrameMesh>,
 }
 
-/// ## Animation Key Frame Skinned Mesh Data Blob
+/// ## Animation Key Frame Skinned Mesh Data
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct KeyFrameMeshBlob {
+pub struct KeyFrameMesh {
     pub name: String,
     pub bone_trans: Vec<Matrix>,
 }

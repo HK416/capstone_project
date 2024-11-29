@@ -106,7 +106,9 @@ pub fn cleanup(world: &mut World, entity: Entity) {
 }
 
 mod animation;
+mod student;
 mod transform;
 
 pub use self::animation::*;
+pub use self::student::*;
 pub use self::transform::*;

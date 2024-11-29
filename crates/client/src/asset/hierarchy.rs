@@ -1,5 +1,4 @@
 use std::{
-    error::Error,
     io::{self, Cursor},
     path::PathBuf,
     sync::{Arc, OnceLock},
@@ -19,26 +18,28 @@ use wgpu::util::DeviceExt;
 
 use crate::component::{BoneCollection, Child, Parent, Sibling, ToParentTrans, WorldTransform};
 
-use super::blob::{
-    AnimationBlob, MaterialBlob, MeshBlob, ModelBlob, NodeBlob, SkinningBlob, TextureBlob,
-};
+use super::blob::{MaterialBlob, MeshBlob, NodeBlob, SkinningBlob, TextureBlob};
 
-/// 로드된 모델 데이터를 관리하는 풀 객체입니다.
-static POOL: OnceLock<DashMap<String, Root, RandomState>> = OnceLock::new();
+/// 로드된 모델의 노드 데이터를 관리하는 풀 객체입니다.
+static POOL: OnceLock<DashMap<String, Node, RandomState>> = OnceLock::new();
 
-/// 풀 객체를 가져옵니다.
-fn get_pool() -> &'static DashMap<String, Root, RandomState> {
+/// 노드 데이터를 관리하는 풀 객체를 가져옵니다.
+fn get_pool() -> &'static DashMap<String, Node, RandomState> {
     POOL.get_or_init(|| DashMap::default())
 }
 
 /// ## Model Pool
-/// 로드된 모델 데이터를 관리하는 풀 객체입니다.  
-/// 실제 풀 객체는 static 변수로 선언되어 있으며, `ModelPool`은 풀 객체에 접근할 수 있는 인터페이스를 제공합니다.
-pub struct ModelPool;
+/// 로드된 모델의 계층 구조 데이터를 관리하는 풀 객체입니다.  
+/// 실제 풀 객체는 static 변수로 선언되어 있으며, `ModelHierarchyPool`은 풀 객체에 접근할 수 있는 인터페이스를 제공합니다.
+pub struct ModelHierarchyPool;
 
-impl ModelPool {
-    /// 모델을 로드하고, 모델을 구성하는 새로운 `Entity`를 생성합니다.  
-    /// 모델 데이터를 로드하는 도중 오류가 발생한 경우 `ModelSpawnError`를 반환합니다.  
+impl ModelHierarchyPool {
+    /// 모델 계층 구조 데이터를 읽어 모델을 구성하는 `Entity`를 생성합니다.  
+    /// 풀 객체에 모델 계층 구조 데이터가 존재하지 않는 경우 파일에서 로드합니다.  
+    ///
+    /// # Errors
+    /// 모델 계층 구조 데이터를 로드하는 도중 오류가 발생하거나, `Entity`를 생성하는 도중 오류가 발생한 경우 `Error`를 반환합니다.
+    ///
     pub fn spawn(
         name: &str,
         workspace: &str,
@@ -52,37 +53,28 @@ impl ModelPool {
             HashMap<String, Entity>,
             Vec<(Entity, EntityBuilder)>,
         ),
-        ModelSpawnError,
+        Error,
     > {
-        let name: String = name.into();
-        let root = get_pool().entry(name.clone()).or_insert(load_model_root(
-            &name,
-            workspace,
-            asset_manager,
-            device,
-            queue,
-        )?);
+        let root = get_pool()
+            .entry(name.to_string())
+            .or_insert(load_model_root(
+                &name,
+                workspace,
+                asset_manager,
+                device,
+                queue,
+            )?);
 
         spawn_model(world, device, queue, &root)
     }
 
-    /// 모델 데이터의 애니메이션을 가져옵니다.
-    pub fn get_animation<F, E>(name: &str, func: F) -> Result<(), E>
-    where
-        F: FnOnce(Option<&HashMap<String, AnimationBlob>>) -> Result<(), E>,
-        E: Error + Send,
-    {
-        let animations = get_pool().get(name);
-        let animations = animations.as_ref().map(|root| &root.animations);
-        func(animations)
-    }
-
-    /// 캐싱된 모델 데이터를 풀 객체에서 제거합니다.
-    pub fn remove(name: &str) -> Option<Root> {
+    /// 풀 객체에 해당 모델 계층 데이터를 제거합니다.  
+    /// 풀 객체에 해당 모델 계층 데이터가 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
+    pub fn remove(name: &str) -> Option<Node> {
         get_pool().remove(name).map(|(_, root)| root)
     }
 
-    /// 풀 객체에 있는 모든 캐시 데이터를 제거합니다.
+    /// 풀 객체에 있는 모든 모델 계층 데이터를 제거합니다.
     pub fn clear() {
         get_pool().clear()
     }
@@ -90,7 +82,7 @@ impl ModelPool {
 
 /// ## Model Load Error List
 #[derive(Debug, thiserror::Error)]
-pub enum ModelSpawnError {
+pub enum Error {
     /// 모델을 구성하는 노드를 찾을 수 없는 경우 발생하는 오류입니다.
     #[error("model node not found (NODE:{0})")]
     NodeNotFound(String),
@@ -103,19 +95,13 @@ pub enum ModelSpawnError {
     #[error("failed to read texture for the following reason:{0}")]
     TextureError(#[from] ddsfile::Error),
 
+    /// 에셋 파일을 구문 분석하는데 실패한 경우 발생하는 오류입니다.
     #[error("failed to parse asset for the following reason:{0}")]
     ParsingFailed(#[from] serde_json::Error),
 
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
     #[error("failed to read file for the following reason:{0}")]
     IOError(#[from] io::Error),
-}
-
-/// ## Root Model Node
-#[derive(Debug, Clone)]
-struct Root {
-    root: Node,
-    animations: HashMap<String, AnimationBlob>,
 }
 
 /// ## Model Node
@@ -144,14 +130,14 @@ fn spawn_model(
     world: &World,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    root: &Root,
+    root: &Node,
 ) -> Result<
     (
         Entity,
         HashMap<String, Entity>,
         Vec<(Entity, EntityBuilder)>,
     ),
-    ModelSpawnError,
+    Error,
 > {
     let mut entities = HashMap::default();
     let mut batch_commands = Vec::with_capacity(256);
@@ -162,7 +148,7 @@ fn spawn_model(
         &mut entities,
         &mut batch_commands,
         Entity::DANGLING,
-        &root.root,
+        root,
         &[],
     )?;
 
@@ -179,7 +165,7 @@ fn spawn_model_node_recursive<'a>(
     parent: Entity,
     current: &'a Node,
     siblings: &'a [Node],
-) -> Result<Entity, ModelSpawnError> {
+) -> Result<Entity, Error> {
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
     builder.add(Parent(parent));
@@ -236,14 +222,14 @@ fn spawn_model_node_recursive<'a>(
             let root = entities
                 .get(&skinning.root_bone)
                 .cloned()
-                .ok_or(ModelSpawnError::NodeNotFound(skinning.root_bone.clone()))?;
+                .ok_or(Error::NodeNotFound(skinning.root_bone.clone()))?;
             let mut bones = Vec::with_capacity(skinning.bones.len());
             for name in skinning.bones.iter() {
                 bones.push(
                     entities
                         .get(name)
                         .cloned()
-                        .ok_or(ModelSpawnError::NodeNotFound(name.clone()))?,
+                        .ok_or(Error::NodeNotFound(name.clone()))?,
                 );
             }
             builder.add(BoneCollection { root, bones });
@@ -266,32 +252,26 @@ fn spawn_model_node_recursive<'a>(
     Ok(entity)
 }
 
-/// 모델을 구성합니다.
+/// 모델의 노드 데이터를 로드합니다.
 fn load_model_root(
     name: &str,
     workspace: &str,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<Root, ModelSpawnError> {
-    let path = format!("{}/{}.json", workspace, name);
+) -> Result<Node, Error> {
+    let path = format!("{}/{}.hierarchy", workspace, name);
     let cached_asset = asset_manager.get_or_init(&path).map_err(|e| match e {
-        AssetLoadError::IOError(e) => ModelSpawnError::IOError(e),
-        AssetLoadError::PathNotFound(path) => ModelSpawnError::FileNotFound(path),
+        AssetLoadError::IOError(e) => Error::IOError(e),
+        AssetLoadError::PathNotFound(path) => Error::FileNotFound(path),
     })?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: ModelBlob =
-        serde_json::de::from_reader(reader).map_err(|e| ModelSpawnError::from(e))?;
+    let blob: NodeBlob = serde_json::de::from_reader(reader).map_err(|e| Error::from(e))?;
 
-    let root = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
-    let animations = blob
-        .animations
-        .into_iter()
-        .map(|blob| (blob.name.clone(), blob))
-        .collect();
+    let node = load_model_node_recursive(workspace, asset_manager, device, queue, blob)?;
 
     asset_manager.remove(path);
-    Ok(Root { root, animations })
+    Ok(node)
 }
 
 /// 모델을 구성하는 노드의 계층구조를 구성합니다.
@@ -301,7 +281,7 @@ fn load_model_node_recursive(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     mut blob: NodeBlob,
-) -> Result<Node, ModelSpawnError> {
+) -> Result<Node, Error> {
     let name = blob.name.clone();
     let transform = ToParentTrans(blob.transform.into());
     let (skinning, mesh) = match blob.mesh.take() {
@@ -471,7 +451,7 @@ fn create_material(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     blob: MaterialBlob,
-) -> Result<Arc<MaterialResource>, ModelSpawnError> {
+) -> Result<Arc<MaterialResource>, Error> {
     MaterialPool::get_or_init(blob.name.clone(), move || {
         let mut desc = MaterialDescriptor::new(&blob.name, device, queue);
 
@@ -539,18 +519,18 @@ fn load_dds_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     blob: TextureBlob,
-) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), ModelSpawnError> {
+) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), Error> {
     let texture = TexturePool::get_or_init(
         blob.name.clone(),
-        move || -> Result<Arc<wgpu::Texture>, ModelSpawnError> {
+        move || -> Result<Arc<wgpu::Texture>, Error> {
             let path = format!("{}/{}.dds", workspace, &blob.name);
             let cached_asset = asset_manager.get_or_init(&path).map_err(|e| match e {
-                AssetLoadError::IOError(e) => ModelSpawnError::IOError(e),
-                AssetLoadError::PathNotFound(path) => ModelSpawnError::FileNotFound(path),
+                AssetLoadError::IOError(e) => Error::IOError(e),
+                AssetLoadError::PathNotFound(path) => Error::FileNotFound(path),
             })?;
 
-            let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
-                .map_err(|e| ModelSpawnError::from(e))?;
+            let dds =
+                Dds::read(Cursor::new(cached_asset.as_bytes())).map_err(|e| Error::from(e))?;
 
             let texture = device.create_texture_with_data(
                 queue,
