@@ -20,7 +20,7 @@ use winit::{
 use crate::{
     asset::AssetManager,
     error::alert_error,
-    etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize},
+    etc::{AppEvent, AppFlags, GameTimer, WindowSize},
     net::NetManager,
     scene::{GameScene, GameSceneFlow},
 };
@@ -45,16 +45,13 @@ pub struct Application {
     current_dir: PathBuf,
 
     /// 애플리케이션 에셋 관리자입니다.
-    bundle: AssetManager,
+    asset_manager: AssetManager,
 
     /// 애플리케이션 네트워크 매니저입니다.
-    network: NetManager,
+    net_manager: NetManager,
 
     /// 애플리케이션 플래그 옵션입니다.
     flags: AppFlags,
-
-    /// 현재 애플리케이션 표시 언어입니다.
-    locale: Option<Locale>,
 
     /// 애플리케이션 창 제목 텍스트입니다.
     window_title: String,
@@ -150,10 +147,9 @@ impl Application {
             event_loop_proxy,
             io_threads,
             current_dir: unsafe { builder.current_dir.unwrap_unchecked() }, // Safe: 빌더 생성 중 확인함.
-            bundle,
-            network,
+            asset_manager: bundle,
+            net_manager: network,
             flags: builder.flags,
-            locale: None,
             window_title: builder.title.unwrap_or("Hello to Halo".to_string()),
             window_icon: builder.icon,
             window_size: builder.size.unwrap_or(WindowSize::MAX),
@@ -634,26 +630,20 @@ impl AppHandle for Application {
 
     #[inline]
     #[must_use]
-    fn bundle(&self) -> &AssetManager {
-        &self.bundle
+    fn asset_manager(&self) -> &AssetManager {
+        &self.asset_manager
     }
 
     #[inline]
     #[must_use]
-    fn network(&self) -> &NetManager {
-        &self.network
+    fn net_manager(&self) -> &NetManager {
+        &self.net_manager
     }
 
     #[inline]
     #[must_use]
     fn flags(&self) -> AppFlags {
         self.flags
-    }
-
-    #[inline]
-    #[must_use]
-    fn locale(&self) -> Option<Locale> {
-        self.locale
     }
 
     #[inline]

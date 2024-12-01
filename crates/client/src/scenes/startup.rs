@@ -28,7 +28,7 @@ impl GameScene for StartupScene {
         let (_, _, batch_commands) = ModelHierarchyPool::spawn(
             "aris_original",
             "characters/aris_original",
-            app.bundle(),
+            app.asset_manager(),
             app.render_device(),
             app.render_queue(),
             &world,
@@ -38,7 +38,7 @@ impl GameScene for StartupScene {
         MotionPool::get_or_init(
             "aris_original",
             "characters/aris_original",
-            app.bundle(),
+            app.asset_manager(),
             |map| println!("okay!"),
         )
         .unwrap();

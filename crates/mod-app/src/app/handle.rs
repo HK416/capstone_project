@@ -5,7 +5,7 @@ use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     asset::AssetManager,
-    etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize},
+    etc::{AppEvent, AppFlags, GameTimer, WindowSize},
     net::NetManager,
 };
 
@@ -21,16 +21,13 @@ pub trait AppHandle {
     fn current_dir(&self) -> &Path;
 
     /// 애플리케이션 에셋 관리자를 가져옵니다.
-    fn bundle(&self) -> &AssetManager;
+    fn asset_manager(&self) -> &AssetManager;
 
     /// 애플리케이션 네트워크 매니저를 가져옵니다.
-    fn network(&self) -> &NetManager;
+    fn net_manager(&self) -> &NetManager;
 
     /// 애플리케이션 생성 플래그를 가져옵니다.
     fn flags(&self) -> AppFlags;
-
-    /// 애플리케이션 표시 언어를 가져옵니다.
-    fn locale(&self) -> Option<Locale>;
 
     /// 애플리케이션 창 타이틀 텍스트를 가져옵니다.
     fn window_title(&self) -> &str;
