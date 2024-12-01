@@ -14,11 +14,12 @@ use mod_render::{
     MeshResource, SamplerPool, SkinningDataLayout, TexturePool, TextureViewPool, Vertices,
     MAX_BONES,
 };
-use wgpu::util::DeviceExt;
+use serde::{Deserialize, Serialize};
+use wgpu::util::DeviceExt as _;
 
 use crate::component::{BoneCollection, Child, Parent, Sibling, ToParentTrans, WorldTransform};
 
-use super::blob::{MaterialBlob, MeshBlob, NodeBlob, SkinningBlob, TextureBlob};
+use super::{AddressMode, FilterMode, Float2, Float3, Float4, Matrix, Uint4, ViewDimension};
 
 /// 로드된 모델의 노드 데이터를 관리하는 풀 객체입니다.
 static POOL: OnceLock<DashMap<String, Node, RandomState>> = OnceLock::new();
@@ -28,7 +29,7 @@ fn get_pool() -> &'static DashMap<String, Node, RandomState> {
     POOL.get_or_init(|| DashMap::default())
 }
 
-/// ## Model Pool
+/// ## Model Hierarchy Pool
 /// 로드된 모델의 계층 구조 데이터를 관리하는 풀 객체입니다.  
 /// 실제 풀 객체는 static 변수로 선언되어 있으며, `ModelHierarchyPool`은 풀 객체에 접근할 수 있는 인터페이스를 제공합니다.
 pub struct ModelHierarchyPool;
@@ -102,6 +103,77 @@ pub enum Error {
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
     #[error("failed to read file for the following reason:{0}")]
     IOError(#[from] io::Error),
+}
+
+/// ## Node Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NodeBlob {
+    pub name: String,
+    pub transform: Matrix,
+    pub mesh: Option<MeshBlob>,
+    pub materials: Vec<MaterialBlob>,
+    pub children: Vec<NodeBlob>,
+}
+
+/// ## Mesh Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MeshBlob {
+    pub name: String,
+    pub minimum: Float3,
+    pub maximum: Float3,
+    pub vertices: Vec<Float3>,
+    pub colors: Vec<Float4>,
+    pub normals: Vec<Float3>,
+    pub tangents: Vec<Float3>,
+    pub texcoords0: Vec<Float2>,
+    pub texcoords1: Vec<Float2>,
+    pub texcoords2: Vec<Float2>,
+    pub texcoords3: Vec<Float2>,
+    pub bone_indices: Vec<Uint4>,
+    pub bone_weights: Vec<Float4>,
+    pub submeshes: Vec<Vec<u32>>,
+    pub skinning: Option<SkinningBlob>,
+}
+
+/// ## Material Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MaterialBlob {
+    pub name: String,
+    pub glossiness: Option<f32>,
+    pub smoothness: Option<f32>,
+    pub metallic: Option<f32>,
+    pub bump_scale: Option<f32>,
+    pub parallax: Option<f32>,
+    pub strength: Option<f32>,
+    pub albedo: Option<Float4>,
+    pub specular: Option<Float4>,
+    pub emissive: Option<Float4>,
+    pub albedo_map: Option<TextureBlob>,
+    pub specular_map: Option<TextureBlob>,
+    pub emissive_map: Option<TextureBlob>,
+    pub normal_map: Option<TextureBlob>,
+    pub parallax_map: Option<TextureBlob>,
+    pub occlusion_map: Option<TextureBlob>,
+}
+
+/// ## Texture View Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TextureBlob {
+    pub name: String, // Texture는 다른 파일에 저장됨.
+    pub dimension: ViewDimension,
+    pub address_u: AddressMode,
+    pub address_v: AddressMode,
+    pub address_w: AddressMode,
+    pub filter_mode: FilterMode,
+}
+
+/// ## Skinning Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SkinningBlob {
+    pub quality: u32,
+    pub root_bone: String,
+    pub bones: Vec<String>,
+    pub bindposes: Vec<Matrix>,
 }
 
 /// ## Model Node

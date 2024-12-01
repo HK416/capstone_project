@@ -5,7 +5,7 @@ use mod_app::{app::AppHandle, scene::GameScene};
 use mod_render::UiRenderer;
 use winit::window::Window;
 
-use crate::asset::{ActionPool, ModelHierarchyPool};
+use crate::asset::{ModelHierarchyPool, MotionPool};
 
 /// 게임을 초기화 하는 장면입니다.
 /// 게임 모델을 불러오거나 게임 서버와 연결을 하는 작업을 수행합니다.
@@ -35,11 +35,13 @@ impl GameScene for StartupScene {
         )
         .unwrap();
 
-        ActionPool::get_or_init(
-            "aris_original", 
-            "characters/aris_original", 
-            app.bundle(), 
-            |map| println!("okay!")).unwrap();
+        MotionPool::get_or_init(
+            "aris_original",
+            "characters/aris_original",
+            app.bundle(),
+            |map| println!("okay!"),
+        )
+        .unwrap();
 
         for (entity, mut builder) in batch_commands {
             world.spawn_at(entity, builder.build());

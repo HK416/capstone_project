@@ -7,23 +7,24 @@ use std::{
 use ahash::{HashMap, RandomState};
 use dashmap::DashMap;
 use mod_app::{asset::AssetManager, error::AssetLoadError};
+use serde::{Deserialize, Serialize};
 
-use super::blob::Action;
+use super::Matrix;
 
 /// 로드된 애니메이션 데이터를 관리하는 풀 객체입니다.
-static POOL: OnceLock<DashMap<String, HashMap<String, Action>, RandomState>> = OnceLock::new();
+static POOL: OnceLock<DashMap<String, HashMap<String, Motion>, RandomState>> = OnceLock::new();
 
 /// 애니메이션 데이터를 관리하는 풀 객체를 가져옵니다.
-fn get_pool() -> &'static DashMap<String, HashMap<String, Action>, RandomState> {
+fn get_pool() -> &'static DashMap<String, HashMap<String, Motion>, RandomState> {
     POOL.get_or_init(|| DashMap::default())
 }
 
-/// ## Action Pool
+/// ## Motion Pool
 /// 로드된 모델의 애니메이션 데이터를 관리하는 풀 객체입니다.  
-/// 실제 풀 객체는 static 변수로 선언되어 있으며, `ActionPool`은 풀 객체에 접근할 수 있는 인터페이스를 제공합니다.
-pub struct ActionPool;
+/// 실제 풀 객체는 static 변수로 선언되어 있으며, `MotionPool`은 풀 객체에 접근할 수 있는 인터페이스를 제공합니다.
+pub struct MotionPool;
 
-impl ActionPool {
+impl MotionPool {
     /// 모델의 애니메이션 데이터를 가져옵니다.  
     /// 모델의 애니메이션 데이터가 풀 객체에 존재하지 않는 경우 파일에서 로드합니다.  
     ///
@@ -37,7 +38,7 @@ impl ActionPool {
         func: F,
     ) -> Result<(), Error>
     where
-        F: FnOnce(&HashMap<String, Action>),
+        F: FnOnce(&HashMap<String, Motion>),
     {
         let actions = get_pool()
             .entry(name.to_string())
@@ -48,7 +49,7 @@ impl ActionPool {
 
     /// 풀 객체에 존재하는 해당 애니메이션 데이터를 제거합니다.  
     /// 풀 객체에 해당 애니메이션 데이터가 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
-    pub fn remove(name: &str) -> Option<HashMap<String, Action>> {
+    pub fn remove(name: &str) -> Option<HashMap<String, Motion>> {
         get_pool().remove(name).map(|(_, actions)| actions)
     }
 
@@ -58,7 +59,7 @@ impl ActionPool {
     }
 }
 
-/// ## Action Load Error List
+/// ## Animation Load Error List
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// 에셋 파일을 구문 분석하는데 실패한 경우 발생하는 오류입니다.
@@ -79,14 +80,14 @@ fn load_model_animation(
     name: &str,
     workspace: &str,
     asset_manager: &AssetManager,
-) -> Result<HashMap<String, Action>, Error> {
+) -> Result<HashMap<String, Motion>, Error> {
     let path = format!("{}/{}.action", workspace, name);
     let cached_asset = asset_manager.get_or_init(&path).map_err(|e| match e {
         AssetLoadError::IOError(e) => Error::IOError(e),
         AssetLoadError::PathNotFound(path) => Error::FileNotFound(path),
     })?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: Vec<Action> = serde_json::de::from_reader(reader).map_err(|e| Error::from(e))?;
+    let blob: Vec<Motion> = serde_json::de::from_reader(reader).map_err(|e| Error::from(e))?;
     let blob = blob
         .into_iter()
         .map(|blob| (blob.name.clone(), blob))
@@ -94,4 +95,29 @@ fn load_model_animation(
 
     asset_manager.remove(path);
     Ok(blob)
+}
+
+/// ## Animation Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Motion {
+    pub name: String,
+    pub root: String,
+    pub length: f32,
+    pub frame_rate: f32,
+    pub keyframes: Vec<KeyFrame>,
+}
+
+/// ## Animation Key Frame Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct KeyFrame {
+    pub time_point: f32,
+    pub root_matrix: Matrix,
+    pub meshes: Vec<KeyFrameMesh>,
+}
+
+/// ## Animation Key Frame Skinned Mesh Data
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct KeyFrameMesh {
+    pub name: String,
+    pub bone_trans: Vec<Matrix>,
 }
