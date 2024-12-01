@@ -1,7 +1,3 @@
+pub mod backoff;
 pub mod collections;
-
-mod backoff;
-mod epoch;
-
-mod util;
-pub use self::util::*;
+pub mod epoch;
