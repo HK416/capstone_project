@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod asset;
 mod component;
+mod config;
 mod scenes;
 
 /// 64bit `Windows`, `macOS` 플랫폼의
