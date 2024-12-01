@@ -8,7 +8,7 @@ use ahash::{HashMap, RandomState};
 use dashmap::DashMap;
 use ddsfile::Dds;
 use hecs::{Entity, EntityBuilder, World};
-use mod_app::{asset::AssetManager, error::AssetLoadError};
+use mod_app::asset::AssetManager;
 use mod_render::{
     Attributes, Indices, MaterialDescriptor, MaterialPool, MaterialResource, Mesh, MeshPool,
     MeshResource, SamplerPool, SkinningDataLayout, TexturePool, TextureViewPool, Vertices,
@@ -88,10 +88,6 @@ pub enum Error {
     #[error("model node not found (NODE:{0})")]
     NodeNotFound(String),
 
-    /// 파일을 찾을 수 없는 경우 발생하는 오류입니다.
-    #[error("file not found (PATH:{0})")]
-    FileNotFound(PathBuf),
-
     /// dds 포맷의 텍스처를 읽는데 실패한 경우 발생하는 오류입니다.
     #[error("failed to read texture for the following reason:{0}")]
     TextureError(#[from] ddsfile::Error),
@@ -101,7 +97,7 @@ pub enum Error {
     ParsingFailed(#[from] serde_json::Error),
 
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
-    #[error("failed to read file for the following reason:{0}")]
+    #[error("failed to read asset for the following reason:{0}")]
     IOError(#[from] io::Error),
 }
 
@@ -333,10 +329,9 @@ fn load_model_root(
     queue: &wgpu::Queue,
 ) -> Result<Node, Error> {
     let path = format!("{}/{}.hierarchy", workspace, name);
-    let cached_asset = asset_manager.get_or_init(&path).map_err(|e| match e {
-        AssetLoadError::IOError(e) => Error::IOError(e),
-        AssetLoadError::PathNotFound(path) => Error::FileNotFound(path),
-    })?;
+    let cached_asset = asset_manager
+        .get_or_init(&path)
+        .map_err(|e| Error::from(e))?;
     let reader = Cursor::new(cached_asset.as_bytes());
     let blob: NodeBlob = serde_json::de::from_reader(reader).map_err(|e| Error::from(e))?;
 
@@ -596,10 +591,9 @@ fn load_dds_texture(
         blob.name.clone(),
         move || -> Result<Arc<wgpu::Texture>, Error> {
             let path = format!("{}/{}.dds", workspace, &blob.name);
-            let cached_asset = asset_manager.get_or_init(&path).map_err(|e| match e {
-                AssetLoadError::IOError(e) => Error::IOError(e),
-                AssetLoadError::PathNotFound(path) => Error::FileNotFound(path),
-            })?;
+            let cached_asset = asset_manager
+                .get_or_init(&path)
+                .map_err(|e| Error::from(e))?;
 
             let dds =
                 Dds::read(Cursor::new(cached_asset.as_bytes())).map_err(|e| Error::from(e))?;

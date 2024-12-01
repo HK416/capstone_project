@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
-use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop};
+use winit::{dpi::PhysicalSize, monitor::MonitorHandle};
+
+/// ## No Suitable Window Size Error
+/// 적합한 윈도우 크기를 찾지 못한 경우 발생하는 오류입니다.
+#[derive(Debug, thiserror::Error)]
+#[error("no suitable resolution found")]
+pub struct NoSuitableWndSize;
 
 /// ## Application Window Size
 #[repr(C)]
@@ -32,9 +38,7 @@ impl WindowSize {
 
     /// 현재 시스템에서 사용가능한 최대 창 크기를 반환합니다.  
     /// 출력 장치가 없거나, 출력 장치의 창 크기가 호환되지 않는 경우 `None`을 반환합니다.
-    pub fn find_maximize_size(event_loop: &ActiveEventLoop) -> Option<WindowSize> {
-        // 현재 주 모니터의 정보를 가져옵니다.
-        let monitor = event_loop.primary_monitor()?;
+    pub fn find_maximize_size(monitor: MonitorHandle) -> Option<WindowSize> {
         let px_size = monitor.size();
 
         // 가장 큰 창 크기부터 모니터의 물리적 창 크기보다 작은지 확인합니다.

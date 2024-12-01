@@ -6,7 +6,7 @@ use std::{
 
 use ahash::{HashMap, RandomState};
 use dashmap::DashMap;
-use mod_app::{asset::AssetManager, error::AssetLoadError};
+use mod_app::asset::AssetManager;
 use serde::{Deserialize, Serialize};
 
 use super::Matrix;
@@ -66,12 +66,8 @@ pub enum Error {
     #[error("failed to parse asset for the following reason:{0}")]
     ParsingFailed(#[from] serde_json::Error),
 
-    /// 파일을 찾을 수 없는 경우 발생하는 오류입니다.
-    #[error("file not found (PATH:{0})")]
-    FileNotFound(PathBuf),
-
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
-    #[error("failed to read file for the following reason:{0}")]
+    #[error("failed to read asset for the following reason:{0}")]
     IOError(#[from] io::Error),
 }
 
@@ -82,10 +78,9 @@ fn load_model_animation(
     asset_manager: &AssetManager,
 ) -> Result<HashMap<String, Motion>, Error> {
     let path = format!("{}/{}.action", workspace, name);
-    let cached_asset = asset_manager.get_or_init(&path).map_err(|e| match e {
-        AssetLoadError::IOError(e) => Error::IOError(e),
-        AssetLoadError::PathNotFound(path) => Error::FileNotFound(path),
-    })?;
+    let cached_asset = asset_manager
+        .get_or_init(&path)
+        .map_err(|e| Error::from(e))?;
     let reader = Cursor::new(cached_asset.as_bytes());
     let blob: Vec<Motion> = serde_json::de::from_reader(reader).map_err(|e| Error::from(e))?;
     let blob = blob

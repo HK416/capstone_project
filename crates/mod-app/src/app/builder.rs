@@ -30,6 +30,9 @@ pub struct AppBuilder {
     /// 애플리케이션 창의 전체화면 여부입니다.
     pub(crate) fullscreen: bool,
 
+    /// 애플리케이션 창의 표시 여부입니다.
+    pub(crate) visible: bool,
+
     /// 애플리케이션에서 사용 가능한 최대 스레드의 수입니다.
     pub(crate) num_threads: usize,
 
@@ -49,6 +52,7 @@ impl AppBuilder {
             icon: None,
             size: None,
             fullscreen: true,
+            visible: true,
             num_threads: num_cpus::get_physical(),
             flags: AppFlags::empty(),
         }
@@ -91,6 +95,14 @@ impl AppBuilder {
     #[must_use]
     pub fn with_fullscreen(mut self, fullscreen: bool) -> Self {
         self.fullscreen = fullscreen;
+        self
+    }
+
+    /// 애플리케이션 창의 표시 여부를 설정합니다.
+    #[inline]
+    #[must_use]
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
         self
     }
 

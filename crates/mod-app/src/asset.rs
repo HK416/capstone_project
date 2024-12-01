@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufReader, Read},
+    io::{self, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -8,7 +8,7 @@ use std::{
 use ahash::RandomState;
 use dashmap::DashMap;
 
-use crate::error::{AssetLoadError, PathNotFound};
+use crate::error::PathNotFound;
 
 /// ## Cached Asset Data
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -68,45 +68,62 @@ impl AssetManager {
     ///
     /// 이미 에셋 번들에 캐싱되어 있는 경우 새로 읽은 데이터로 교체됩니다.
     ///
-    pub fn load<P>(&self, path: P) -> Result<Arc<CachedAsset>, AssetLoadError>
+    pub fn load<P>(&self, path: P) -> Result<Arc<CachedAsset>, io::Error>
     where
         P: Into<PathBuf>,
     {
         // 에셋 파일의 경로를 생성합니다.
-        let filename: PathBuf = path.into();
-        let mut path = self.get_root_dir().to_path_buf();
-        path.push(filename.clone());
-
-        // 에셋 파일이 존재하는지 확인합니다.
-        if !path.is_file() {
-            return Err(AssetLoadError::PathNotFound(path));
-        }
+        let relative_path: PathBuf = path.into();
+        let mut absolute_path = self.get_root_dir().to_path_buf();
+        absolute_path.push(relative_path.clone());
 
         // 파일 핸들을 생성하고, 파일을 엽니다.
-        let file = File::open(path).map_err(|e| AssetLoadError::from(e))?;
-        let mut reader = BufReader::new(file);
+        let file = File::open(absolute_path)?;
 
         // 파일 내용을 읽습니다.
-        let mut bytes = Vec::new();
-        reader
-            .read_to_end(&mut bytes)
-            .map_err(|e| AssetLoadError::from(e))?;
+        let mut reader = BufReader::new(file);
+        let mut data = Vec::new();
+        reader.read_to_end(&mut data)?;
 
         // 에셋 캐쉬를 생성합니다.
         let cache = Arc::new(CachedAsset {
-            filename: filename.clone(),
-            bytes,
+            filename: relative_path.clone(),
+            bytes: data,
         });
 
-        // 에셋 번들에 캐싱된 에셋을 추가합니다.
-        let cache_cloned = cache.clone();
-        self.0.cached.insert(filename, cache_cloned);
+        self.0.cached.insert(relative_path, cache.clone());
+        Ok(cache)
+    }
+
+    pub fn create<P>(&self, path: P, data: &[u8]) -> Result<Arc<CachedAsset>, io::Error>
+    where
+        P: Into<PathBuf>,
+    {
+        // 에셋 파일의 경로를 생성합니다.
+        let relative_path: PathBuf = path.into();
+        let mut absolute_path = self.get_root_dir().to_path_buf();
+        absolute_path.push(relative_path.clone());
+
+        // 파일을 생성합니다. 파일이 이미 존재하는 경우 오류를 발생시킵니다.
+        let file = File::create_new(absolute_path)?;
+
+        // 파일에 내용을 작성합니다.
+        let mut writer = BufWriter::new(file);
+        writer.write_all(data)?;
+
+        // 에셋 캐쉬를 생성합니다.
+        let cache = Arc::new(CachedAsset {
+            filename: relative_path.clone(),
+            bytes: data.to_vec(),
+        });
+
+        self.0.cached.insert(relative_path, cache.clone());
         Ok(cache)
     }
 
     /// 에셋 번들에 주어진 경로에 해당하는 캐싱된 에셋을 가져옵니다.  
     /// 해당 에셋이 존재하지 않는 경우 에셋을 로드하고, 에셋 번들에 캐싱합니다.
-    pub fn get_or_init<P>(&self, path: P) -> Result<Arc<CachedAsset>, AssetLoadError>
+    pub fn get_or_init<P>(&self, path: P) -> Result<Arc<CachedAsset>, io::Error>
     where
         P: Into<PathBuf>,
     {

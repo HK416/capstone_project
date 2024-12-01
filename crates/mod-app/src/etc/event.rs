@@ -15,6 +15,9 @@ pub enum AppEvent {
     /// 애플리케이션 창의 크기를 조절합니다.
     ResizeRequest(WindowSize),
 
+    /// 애플리케이션 창을 전체화면으로 변경합니다.
+    FullScreenRequest(bool),
+
     /// 서버 연결이 끊어졌을 때 전달되는 이벤트입니다.
     ClosedSocket(IpAddress),
 

@@ -1,4 +1,4 @@
-use std::{io, path::PathBuf};
+use std::path::PathBuf;
 
 use rfd::{MessageButtons, MessageDialog, MessageLevel};
 use winit::window::Window;
@@ -27,15 +27,3 @@ pub fn alert_error(
 #[derive(Debug, thiserror::Error)]
 #[error("The given path could not be found (PATH:{0})")]
 pub struct PathNotFound(pub PathBuf);
-
-/// ## Asset Loading Error
-#[derive(Debug, thiserror::Error)]
-pub enum AssetLoadError {
-    /// 주어진 경로를 찾을 수 없는 경우 이 오류를 발생시킵니다.
-    #[error("The given path could not be found (PATH:{0})")]
-    PathNotFound(PathBuf),
-
-    /// 파일을 읽거나 쓰는 도중 오류가 발생한 경우 이 오류를 발생시킵니다.
-    #[error("File access failed for the following reason: {0}")]
-    IOError(#[from] io::Error),
-}

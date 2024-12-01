@@ -14,7 +14,7 @@ mod scenes;
 #[cfg(target_pointer_width = "64")]
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn main() {
-    use mod_app::{app::AppBuilder, etc::WindowSize};
+    use mod_app::app::AppBuilder;
 
     // 로그 시스템을 초기화 합니다.
     env_logger::builder()
@@ -24,7 +24,7 @@ fn main() {
 
     AppBuilder::new(Box::new(scenes::StartupScene::new()))
         .with_window_title("Hello to Halo!")
-        .with_window_size(WindowSize::W1280H720)
         .with_fullscreen(false)
+        .with_visible(false)
         .build_and_run()
 }

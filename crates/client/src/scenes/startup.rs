@@ -1,15 +1,27 @@
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+    io::{Cursor, ErrorKind},
+};
 
-use hecs::World;
-use mod_app::{app::AppHandle, scene::GameScene};
+use mod_app::{
+    app::AppHandle,
+    etc::{AppEvent, NoSuitableWndSize, WindowSize},
+    scene::{GameScene, GameSceneFlow},
+};
 use mod_render::UiRenderer;
 use winit::window::Window;
 
-use crate::asset::{ModelHierarchyPool, MotionPool};
+use crate::config::{InvalidConfig, UserConfig};
 
-/// 게임을 초기화 하는 장면입니다.
-/// 게임 모델을 불러오거나 게임 서버와 연결을 하는 작업을 수행합니다.
-//
+use super::DraftScene;
+
+/// ## Startup Scene
+/// 게임을 실행하면 제일 먼저 진입하는 장면입니다.
+///
+/// `UserConfig` 파일을 읽고, 애플리케이션 창을 조정합니다.  
+/// 시스템에서 파일을 찾을 수 없는 경우 초기 설정 장면으로 전환합니다.
+///
 pub struct StartupScene {}
 
 impl StartupScene {
@@ -24,34 +36,58 @@ impl GameScene for StartupScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let mut world = World::new();
-        let (_, _, batch_commands) = ModelHierarchyPool::spawn(
-            "aris_original",
-            "characters/aris_original",
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-            &world,
-        )
-        .unwrap();
+        let asset_manager = app.asset_manager();
+        let result = asset_manager.get_or_init("user_config");
+        let config = match result {
+            Ok(cached_asset) => {
+                let reader = Cursor::new(cached_asset.as_bytes());
+                let config: UserConfig = serde_json::from_reader(reader)
+                    .map_err(|e| InvalidConfig(e))
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
-        MotionPool::get_or_init(
-            "aris_original",
-            "characters/aris_original",
-            app.asset_manager(),
-            |map| println!("okay!"),
-        )
-        .unwrap();
+                config
+            }
+            Err(ref e) if e.kind() == ErrorKind::NotFound => {
+                // 최대 윈도우 크기를 가져옵니다.
+                let max_window_size = window
+                    .primary_monitor()
+                    .map(|monitor| WindowSize::find_maximize_size(monitor))
+                    .flatten();
+                let max_window_size = match max_window_size {
+                    Some(size) => size,
+                    None => return Err(Box::new(NoSuitableWndSize)),
+                };
 
-        for (entity, mut builder) in batch_commands {
-            world.spawn_at(entity, builder.build());
+                // 사용자 구성 파일을 생성합니다.
+                let config = UserConfig::new(max_window_size);
+                let data = serde_json::ser::to_vec_pretty(&config)
+                    .map_err(|e| InvalidConfig(e))
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+                asset_manager
+                    .create("user_config", &data)
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+                config
+            }
+            Err(e) => return Err(Box::new(e)),
+        };
+
+        // 애플리케이션 창을 조정합니다.
+        let proxy = app.event_loop_proxy();
+        proxy.send_event(AppEvent::ResizeRequest(config.window_size)).unwrap();
+        proxy.send_event(AppEvent::FullScreenRequest(config.fullscreen)).unwrap();
+
+        // 다음 게임 장면으로 이동합니다.
+        if config.locale.is_none() {
+            proxy.send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(DraftScene { })))).unwrap();
+        } else {
+            proxy.send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(DraftScene { })))).unwrap();
         }
-
-        println!("finish!");
 
         Ok(())
     }
 
+    #[allow(unused_variables)]
     fn on_draw(
         &self,
         window: &Window,

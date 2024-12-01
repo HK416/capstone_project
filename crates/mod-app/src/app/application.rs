@@ -65,6 +65,9 @@ pub struct Application {
     /// 애플리케이션 창의 전체화면 여부입니다.
     fullscreen: bool,
 
+    /// 애플리케이션 창의 표시 여부입니다.
+    visible: bool,
+
     /// 애플리케이션 키보드 수정자 상태정보입니다.
     modifier: Modifiers,
 
@@ -154,6 +157,7 @@ impl Application {
             window_icon: builder.icon,
             window_size: builder.size.unwrap_or(WindowSize::MAX),
             fullscreen: builder.fullscreen,
+            visible: builder.visible,
             modifier: Modifiers::default(),
             cursor_delta: PhysicalPosition::default(),
             scene_flow: Some(GameSceneFlow::Reset(builder.start_scene)),
@@ -241,10 +245,15 @@ impl ApplicationHandler<AppEvent> for Application {
     ///
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         // 시스템에서 사용 가능한 창의 최대 크기를 가져옵니다.
-        let max_window_size = match WindowSize::find_maximize_size(event_loop) {
+        let max_window_size = event_loop
+            .primary_monitor()
+            .map(|monitor| WindowSize::find_maximize_size(monitor))
+            .flatten();
+
+        let max_window_size = match max_window_size {
             Some(size) => size,
             None => {
-                alert_error("Runtime error", "No suitable resolution found!", None);
+                alert_error("Runtime error", "no suitable resolution found", None);
                 return event_loop.exit();
             }
         };
@@ -261,7 +270,7 @@ impl ApplicationHandler<AppEvent> for Application {
             .with_fullscreen(self.fullscreen.then_some(Fullscreen::Borderless(None)))
             .with_enabled_buttons(WindowButtons::CLOSE | WindowButtons::MINIMIZE)
             .with_resizable(false)
-            .with_visible(true)
+            .with_visible(self.visible)
             .with_active(true);
 
         #[cfg(target_os = "windows")]
@@ -584,6 +593,23 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
 
                 return;
+            }
+            AppEvent::FullScreenRequest(fullscreen) => {
+                if self.fullscreen != fullscreen {
+                    self.fullscreen = fullscreen;
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        use winit::platform::macos::WindowExtMacOS;
+                        app_window.window.set_simple_fullscreen(self.fullscreen);
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        app_window.window.set_fullscreen(
+                            self.fullscreen.then_some(Fullscreen::Borderless(None)),
+                        );
+                    }
+                }
             }
             AppEvent::ClosedSocket(_) => {
                 // FIXME: 현재는 애플리케이션을 종료시킵니다.

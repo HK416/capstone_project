@@ -5,14 +5,31 @@ use winit::{
     keyboard::{KeyCode, KeyLocation},
 };
 
+#[derive(Debug, thiserror::Error)]
+#[error("failed to parse user configuration for the following reason:{0}")]
+pub struct InvalidConfig(pub serde_json::Error);
+
 /// ## Application User Configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub struct UserConfig {
-    pub locale: Locale,
-    pub resolution: WindowSize,
+    pub locale: Option<Locale>,
+    pub window_size: WindowSize,
     pub fullscreen: bool,
     pub keyboard: KeyboardConfig,
     pub mouse: MouseConfig,
+}
+
+impl UserConfig {
+    /// 새로운 사용자 구성을 생성합니다.
+    pub fn new(window_size: WindowSize) -> Self {
+        Self {
+            locale: None,
+            window_size,
+            fullscreen: true,
+            keyboard: KeyboardConfig::default(),
+            mouse: MouseConfig::default(),
+        }
+    }
 }
 
 /// ## Application Locale
