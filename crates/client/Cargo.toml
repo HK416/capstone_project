@@ -33,6 +33,7 @@ serde_json = "1.0"
 
 # 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }
+mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-render = { path = "../mod-render" }
 

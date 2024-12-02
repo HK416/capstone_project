@@ -1,6 +1,5 @@
 use std::{
     io::{self, Cursor},
-    path::PathBuf,
     sync::{Arc, OnceLock},
 };
 
@@ -35,6 +34,26 @@ fn get_pool() -> &'static DashMap<String, Node, RandomState> {
 pub struct ModelHierarchyPool;
 
 impl ModelHierarchyPool {
+    /// 모델 계층 구조 데이터를 로드합니다.  
+    /// 이 함수는 항상 파일에서 모델 계층 구조 데이터를 읽어 저장합니다.
+    ///
+    /// # Errors
+    /// 모델 계층 구조 데이터를 로드하는 도중 오류가 발생한 경우 `Error`를 반환합니다.
+    ///
+    pub fn load(
+        name: &str,
+        workspace: &str,
+        asset_manager: &AssetManager,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), Error> {
+        get_pool().insert(
+            name.to_string(),
+            load_model_root(&name, workspace, asset_manager, device, queue)?,
+        );
+        Ok(())
+    }
+
     /// 모델 계층 구조 데이터를 읽어 모델을 구성하는 `Entity`를 생성합니다.  
     /// 풀 객체에 모델 계층 구조 데이터가 존재하지 않는 경우 파일에서 로드합니다.  
     ///

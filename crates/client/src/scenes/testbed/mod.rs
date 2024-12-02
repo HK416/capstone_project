@@ -1,18 +1,21 @@
-use std::{error::Error, fmt, io::Cursor};
+use std::{error::Error, fmt};
 
 use mod_app::{
     app::AppHandle,
     etc::{AppEvent, WindowSize},
-    scene::GameScene,
+    scene::{GameScene, GameSceneFlow},
 };
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
-use crate::{component::StudentKind, config::{InvalidConfig, UserConfig}};
+use crate::{
+    component::StudentKind,
+    config::{InvalidConfig, UserConfig},
+};
 
 /// ## Testbed Title Scene
 pub struct TestbedTitleScene {
-    config: UserConfig, 
+    config: UserConfig,
 
     fullscreen: bool,
     window_size: WindowSize,
@@ -25,7 +28,7 @@ pub struct TestbedTitleScene {
 impl TestbedTitleScene {
     pub fn new(config: UserConfig) -> Self {
         Self {
-            config, 
+            config,
             fullscreen: false,
             window_size: WindowSize::MAX,
             student_kind: StudentKind::ArisOriginal,
@@ -38,8 +41,7 @@ impl TestbedTitleScene {
 impl TestbedTitleScene {
     /// 사용자 구성이 변경된 경우 `true`를 반환합니다.
     fn config_changed(&self) -> bool {
-        self.fullscreen != self.config.fullscreen
-        || self.window_size != self.config.window_size
+        self.fullscreen != self.config.fullscreen || self.window_size != self.config.window_size
     }
 
     /// 사용자 구성을 저장합니다.
@@ -51,7 +53,8 @@ impl TestbedTitleScene {
             .map_err(|e| InvalidConfig(e))
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
         let asset_manager = app.asset_manager();
-        asset_manager.store("user_config", &data)
+        asset_manager
+            .store("user_config", &data)
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         Ok(())
@@ -71,7 +74,7 @@ impl TestbedTitleScene {
         let scale_factor = window.scale_factor() as f32;
         let (width, height): (f32, f32) = window.inner_size().into();
 
-        let title_text = egui::RichText::new("Hello2Halo (개발자모드)")
+        let title_text = egui::RichText::new("Hello to Halo (개발자모드)")
             .color(egui::Color32::WHITE)
             .size((height * 0.075) / scale_factor);
         let fullscreen_text = egui::RichText::new("전체 화면")
@@ -93,6 +96,7 @@ impl TestbedTitleScene {
         self.fullscreen = app.is_fullscreen();
         self.window_size = app.window_size();
         let mut store_config = false;
+        let mut change_scene = false;
 
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
@@ -165,9 +169,9 @@ impl TestbedTitleScene {
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui.button(enter_text).clicked() {
-
+                            change_scene = true;
                         }
-                    })
+                    });
                 });
             });
 
@@ -181,6 +185,14 @@ impl TestbedTitleScene {
         if self.window_size != app.window_size() {
             proxy
                 .send_event(AppEvent::ResizeRequest(self.window_size))
+                .unwrap();
+        }
+
+        if change_scene {
+            proxy
+                .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
+                    TestbedEnterScene::new(),
+                ))))
                 .unwrap();
         }
 
@@ -315,3 +327,7 @@ impl fmt::Debug for TestbedTitleScene {
         write!(f, "{}", stringify!(TestbedTitleScene))
     }
 }
+
+mod enter;
+
+pub use self::enter::*;
