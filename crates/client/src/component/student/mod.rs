@@ -4,6 +4,20 @@ use hecs::World;
 /// `Entity`가 학생임을 식별하는 태그입니다.
 pub struct StudentTag;
 
+/// ## Student Kind
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StudentKind {
+    ArisOriginal,
+}
+
+impl ToString for StudentKind {
+    fn to_string(&self) -> String {
+        match self {
+            StudentKind::ArisOriginal => "Aris Original".to_string(),
+        }
+    }
+}
+
 /// ## Player Behavior States
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BehaviorState {

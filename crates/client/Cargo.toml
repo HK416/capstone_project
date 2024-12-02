@@ -12,10 +12,12 @@ build = "build.rs"
 [dependencies]
 ahash = { workspace = true }
 dashmap = { workspace = true }
+egui = { workspace = true }
 glam = { workspace = true }
 hecs = { workspace = true }
 log = { workspace = true }
 parking_lot = { workspace = true }
+rayon = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
@@ -31,6 +33,7 @@ serde_json = "1.0"
 
 # 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }
+mod-parallelism = { path = "../mod-parallelism" }
 mod-render = { path = "../mod-render" }
 
 

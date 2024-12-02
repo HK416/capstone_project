@@ -14,7 +14,6 @@ pub struct NoSuitableWndSize;
 )]
 pub enum WindowSize {
     #[default]
-    W864H486,
     W960H540,
     W1024H576,
     W1152H648,
@@ -31,7 +30,7 @@ pub enum WindowSize {
 
 impl WindowSize {
     /// 사용 가능한 최소 창 크기입니다.
-    pub const MIN: Self = Self::W864H486;
+    pub const MIN: Self = Self::W960H540;
 
     /// 사용 가능한 최대 창 크기입니다.
     pub const MAX: Self = Self::W3840H2160;
@@ -59,8 +58,7 @@ impl WindowSize {
     /// 한 단계 낮은 창 크기가 존재하지 않는 경우 `None`을 반환합니다.
     pub fn downgrade(self) -> Option<Self> {
         match self {
-            WindowSize::W864H486 => None,
-            WindowSize::W960H540 => Some(WindowSize::W864H486),
+            WindowSize::W960H540 => None,
             WindowSize::W1024H576 => Some(WindowSize::W960H540),
             WindowSize::W1152H648 => Some(WindowSize::W1024H576),
             WindowSize::W1280H720 => Some(WindowSize::W1152H648),
@@ -79,7 +77,6 @@ impl WindowSize {
     /// 한 단계 높은 창 크기가 존재하지 않는 경우 `None`을 반환합니다.
     pub fn upgrade(self) -> Option<Self> {
         match self {
-            WindowSize::W864H486 => Some(WindowSize::W960H540),
             WindowSize::W960H540 => Some(WindowSize::W1024H576),
             WindowSize::W1024H576 => Some(WindowSize::W1152H648),
             WindowSize::W1152H648 => Some(WindowSize::W1280H720),
@@ -98,7 +95,6 @@ impl WindowSize {
     /// [PhysicalSize](winit::dpi::PhysicalSize)를 반환합니다.
     pub fn size(self) -> PhysicalSize<u32> {
         match self {
-            WindowSize::W864H486 => (864, 486),
             WindowSize::W960H540 => (960, 540),
             WindowSize::W1024H576 => (1024, 576),
             WindowSize::W1152H648 => (1152, 648),
@@ -119,7 +115,6 @@ impl WindowSize {
 impl ToString for WindowSize {
     fn to_string(&self) -> String {
         match self {
-            WindowSize::W864H486 => "864x486",
             WindowSize::W960H540 => "960x540",
             WindowSize::W1024H576 => "1024x576",
             WindowSize::W1152H648 => "1152x648",

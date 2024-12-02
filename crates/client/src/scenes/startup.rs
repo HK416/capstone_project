@@ -2,6 +2,7 @@ use std::{
     error::Error,
     fmt,
     io::{Cursor, ErrorKind},
+    sync::Arc,
 };
 
 use mod_app::{
@@ -9,12 +10,13 @@ use mod_app::{
     etc::{AppEvent, NoSuitableWndSize, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
+use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::config::{InvalidConfig, UserConfig};
 
-use super::DraftScene;
+use super::TestbedTitleScene;
 
 /// ## Startup Scene
 /// 게임을 실행하면 제일 먼저 진입하는 장면입니다.
@@ -22,11 +24,23 @@ use super::DraftScene;
 /// `UserConfig` 파일을 읽고, 애플리케이션 창을 조정합니다.  
 /// 시스템에서 파일을 찾을 수 없는 경우 초기 설정 장면으로 전환합니다.
 ///
-pub struct StartupScene {}
+pub struct StartupScene {
+    config: Option<UserConfig>,
+
+    /// 작업 결과물 대기열
+    queue: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
+
+    /// 남은 작업의 개수
+    num_tasks: usize,
+}
 
 impl StartupScene {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            config: None,
+            queue: Arc::new(Queue::new()),
+            num_tasks: 0,
+        }
     }
 }
 
@@ -36,6 +50,18 @@ impl GameScene for StartupScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        let pool = app.io_threads();
+        let queue = self.queue.clone();
+        let asset_manager = app.asset_manager().clone();
+        pool.spawn(move || {
+            let result = asset_manager
+                .load("font/nexon_lv2_gothic.ttf")
+                .map(|_| {})
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            queue.push(result);
+        });
+        self.num_tasks += 1;
+
         let asset_manager = app.asset_manager();
         let result = asset_manager.get_or_init("user_config");
         let config = match result {
@@ -74,14 +100,76 @@ impl GameScene for StartupScene {
 
         // 애플리케이션 창을 조정합니다.
         let proxy = app.event_loop_proxy();
-        proxy.send_event(AppEvent::ResizeRequest(config.window_size)).unwrap();
-        proxy.send_event(AppEvent::FullScreenRequest(config.fullscreen)).unwrap();
+        proxy
+            .send_event(AppEvent::ResizeRequest(config.window_size))
+            .unwrap();
+        proxy
+            .send_event(AppEvent::FullScreenRequest(config.fullscreen))
+            .unwrap();
 
-        // 다음 게임 장면으로 이동합니다.
-        if config.locale.is_none() {
-            proxy.send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(DraftScene { })))).unwrap();
-        } else {
-            proxy.send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(DraftScene { })))).unwrap();
+        self.config = Some(config);
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_exit(
+        &mut self,
+        window: Option<&Window>,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let egui_ctx = app.egui_ctx();
+        let asset_manager = app.asset_manager();
+        let nexon_lv2_gothic = asset_manager
+            .get_or_init("font/nexon_lv2_gothic.ttf")
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // UI 폰트 데이터를 추가합니다.
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "NEXON Lv2 Gothic".to_owned(),
+            egui::FontData::from_owned(nexon_lv2_gothic.as_bytes().to_vec()),
+        );
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "NEXON Lv2 Gothic".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .push("NEXON Lv2 Gothic".to_owned());
+
+        egui_ctx.set_fonts(fonts);
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_update(
+        &mut self,
+        elapsed_time_sec: f32,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if self.config.is_none() {
+            return Ok(());
+        }
+
+        if let Some(result) = self.queue.pop() {
+            self.num_tasks -= 1;
+            result?;
+        }
+
+        if self.num_tasks == 0 {
+            let proxy = app.event_loop_proxy();
+            proxy
+                .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
+                    TestbedTitleScene::new(self.config.take().unwrap()),
+                ))))
+                .unwrap();
         }
 
         Ok(())

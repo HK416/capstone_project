@@ -33,7 +33,10 @@ pub trait AppHandle {
     fn window_title(&self) -> &str;
 
     /// 애플리케이션 창의 크기를 가져옵니다.
-    fn window_size(&self) -> &WindowSize;
+    fn window_size(&self) -> WindowSize;
+
+    /// 애플리케이션 창의 전체화면 여부를 가져옵니다.
+    fn is_fullscreen(&self) -> bool;
 
     /// 애플리케이션 게임 타이머를 가져옵니다.
     fn timer(&self) -> &GameTimer;

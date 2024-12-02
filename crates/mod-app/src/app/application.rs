@@ -269,7 +269,7 @@ impl ApplicationHandler<AppEvent> for Application {
             .with_inner_size(self.window_size.size())
             .with_fullscreen(self.fullscreen.then_some(Fullscreen::Borderless(None)))
             .with_enabled_buttons(WindowButtons::CLOSE | WindowButtons::MINIMIZE)
-            .with_resizable(false)
+            .with_resizable(true)
             .with_visible(self.visible)
             .with_active(true);
 
@@ -636,92 +636,66 @@ impl ApplicationHandler<AppEvent> for Application {
 }
 
 impl AppHandle for Application {
-    #[inline]
-    #[must_use]
     fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>> {
         &self.event_loop_proxy
     }
 
-    #[inline]
-    #[must_use]
     fn io_threads(&self) -> &ThreadPool {
         &self.io_threads
     }
 
-    #[inline]
-    #[must_use]
     fn current_dir(&self) -> &Path {
         &self.current_dir
     }
 
-    #[inline]
-    #[must_use]
     fn asset_manager(&self) -> &AssetManager {
         &self.asset_manager
     }
 
-    #[inline]
-    #[must_use]
     fn net_manager(&self) -> &NetManager {
         &self.net_manager
     }
 
-    #[inline]
-    #[must_use]
     fn flags(&self) -> AppFlags {
         self.flags
     }
 
-    #[inline]
-    #[must_use]
     fn window_title(&self) -> &str {
         &self.window_title
     }
 
-    #[inline]
-    #[must_use]
-    fn window_size(&self) -> &WindowSize {
-        &self.window_size
+    fn window_size(&self) -> WindowSize {
+        self.window_size
     }
 
-    #[inline]
-    #[must_use]
+    fn is_fullscreen(&self) -> bool {
+        self.fullscreen
+    }
+
     fn timer(&self) -> &GameTimer {
         &self.timer
     }
 
-    #[inline]
-    #[must_use]
     fn render_instance(&self) -> &Arc<wgpu::Instance> {
         &self.instance
     }
 
-    #[inline]
-    #[must_use]
     fn render_adapter(&self) -> &Arc<wgpu::Adapter> {
         &self.adapter
     }
 
-    #[inline]
-    #[must_use]
     fn render_device(&self) -> &Arc<wgpu::Device> {
         &self.device
     }
 
-    #[inline]
-    #[must_use]
     fn render_queue(&self) -> &Arc<wgpu::Queue> {
         &self.queue
     }
 
-    #[inline]
-    #[must_use]
     fn egui_ctx(&self) -> &egui::Context {
         &self.egui_ctx
     }
 
-    #[inline]
-    #[must_use]
     fn egui_raw_input(&self) -> egui::RawInput {
         self.app_window
             .as_ref()
@@ -732,16 +706,12 @@ impl AppHandle for Application {
             .unwrap_or_default()
     }
 
-    #[inline]
-    #[must_use]
     fn window(&self) -> Option<&Arc<Window>> {
         self.app_window
             .as_ref()
             .map(|app_window| &app_window.window)
     }
 
-    #[inline]
-    #[must_use]
     fn render_surface(&self) -> Option<&Arc<wgpu::Surface<'static>>> {
         self.app_window
             .as_ref()
