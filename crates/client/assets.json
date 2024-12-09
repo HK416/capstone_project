@@ -19,7 +19,7 @@
                         "aris_original_weapon.dds", 
                         "aris_original_halo.hierarchy",
                         "aris_original.hierarchy",
-                        "aris_original.action"
+                        "aris_original.motion"
                     ], 
                     "directories" : {}
                 }
@@ -30,15 +30,6 @@
                 "nexon_lv2_gothic.ttf"
             ],
             "directories" : {}
-        },
-        "shape" : {
-            "files" : [], 
-            "directories" : {
-                "sphere" : {
-                    "files" : [ "Sphere.ron" ],
-                    "directories" : {}
-                }
-            }
         }
     }
 }

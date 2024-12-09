@@ -57,3 +57,11 @@ serde = { version = "1.0", features = ["derive"] }
 # A JSON serialization file format
 # License: MIT OR Apache-2.0
 serde_json = "1.0"
+
+
+
+[features]
+default = ["enable-shader-validation"]
+
+# 쉐이더 생성시 유효성 검사를 활성화합니다.
+enable-shader-validation = []

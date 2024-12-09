@@ -1,4 +1,11 @@
+mod hierarchy;
+mod motion;
+
+use std::io;
+
 use serde::{Deserialize, Serialize};
+
+pub use self::{hierarchy::*, motion::*};
 
 /// ## Two-Dimensional Vector Data
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -76,6 +83,17 @@ pub struct Matrix {
     pub m31: f32,
     pub m32: f32,
     pub m33: f32,
+}
+
+impl Matrix {
+    pub fn into_mat4(&self) -> glam::Mat4 {
+        glam::mat4(
+            glam::vec4(self.m00, self.m01, self.m02, self.m03),
+            glam::vec4(self.m10, self.m11, self.m12, self.m13),
+            glam::vec4(self.m20, self.m21, self.m22, self.m23),
+            glam::vec4(self.m30, self.m31, self.m32, self.m33),
+        )
+    }
 }
 
 impl Into<[f32; 16]> for Matrix {
@@ -156,8 +174,22 @@ impl Into<wgpu::FilterMode> for FilterMode {
     }
 }
 
-mod hierarchy;
-mod motion;
+/// ## Model Load Error List
+#[derive(Debug, thiserror::Error)]
+pub enum ModelAssetError {
+    /// 모델을 구성하는 노드를 찾을 수 없는 경우 발생하는 오류입니다.
+    #[error("no such entity")]
+    NoSuchEntity,
 
-pub use self::hierarchy::*;
-pub use self::motion::*;
+    /// dds 포맷의 텍스처를 읽는데 실패한 경우 발생하는 오류입니다.
+    #[error("failed to read texture for the following reason:{0}")]
+    TextureError(#[from] ddsfile::Error),
+
+    /// 에셋 파일을 구문 분석하는데 실패한 경우 발생하는 오류입니다.
+    #[error("failed to parse asset for the following reason:{0}")]
+    ParsingFailed(#[from] serde_json::Error),
+
+    /// 파일을 열거나 읽을 때 발생하는 오류입니다.
+    #[error("failed to read asset for the following reason:{0}")]
+    IOError(#[from] io::Error),
+}

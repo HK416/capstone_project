@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ops::RangeBounds};
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    ops::RangeBounds,
+};
 
 /// ## Vertex Input Attribute Kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -70,7 +74,7 @@ impl Indices {
 }
 
 /// ## Index Buffer
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct IndexBuffer {
     count: u32,
     format: wgpu::IndexFormat,
@@ -276,7 +280,7 @@ impl Attributes {
 }
 
 /// ## Vertex Buffer
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct VertexBuffer(wgpu::Buffer);
 
 impl VertexBuffer {
@@ -368,7 +372,7 @@ impl VertexBuffer {
 }
 
 /// ## Model Mesh
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Mesh {
     name: String,
     num_vertices: u32,
@@ -464,5 +468,11 @@ impl Mesh {
     /// 하위 메쉬 집합을 반환합니다.
     pub fn submeshes(&self) -> &[IndexBuffer] {
         &self.submeshes
+    }
+}
+
+impl Hash for Mesh {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
     }
 }

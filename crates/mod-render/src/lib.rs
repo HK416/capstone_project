@@ -3,7 +3,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 /// 프레임 버퍼의 텍스처 포맷
-pub const SWAPCHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8UnormSrgb;
+pub const SWAPCHAIN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
 /// 깊이 버퍼 텍스처 포맷
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;

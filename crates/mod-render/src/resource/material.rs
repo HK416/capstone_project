@@ -15,10 +15,10 @@ pub struct MaterialDataLayout {
     pub glossiness: f32,
     pub smoothness: f32,
     pub metallic: f32,
-    pub bump_scale: f32, 
-    pub parallax: f32, 
-    pub strength: f32, 
-    pub _padding: [u8; 8], 
+    pub bump_scale: f32,
+    pub parallax: f32,
+    pub strength: f32,
+    pub _padding: [u8; 8],
     pub albedo: [f32; 4],
     pub specular: [f32; 4],
     pub emissive: [f32; 4],
@@ -30,10 +30,10 @@ impl Default for MaterialDataLayout {
             glossiness: 0.0,
             smoothness: 0.0,
             metallic: 0.0,
-            bump_scale: 0.0, 
-            parallax: 0.0, 
-            strength: 0.0, 
-            _padding: [0; 8], 
+            bump_scale: 0.0,
+            parallax: 0.0,
+            strength: 0.0,
+            _padding: [0; 8],
             albedo: [0.0; 4],
             specular: [0.0; 4],
             emissive: [0.0; 4],
@@ -160,8 +160,8 @@ pub struct MaterialDescriptor {
     pub normal_sampler: Arc<wgpu::Sampler>,
     pub parallax_map: Arc<wgpu::TextureView>,
     pub parallax_sampler: Arc<wgpu::Sampler>,
-    pub occlusion_map: Arc<wgpu::TextureView>, 
-    pub occlusion_sampler: Arc<wgpu::Sampler>, 
+    pub occlusion_map: Arc<wgpu::TextureView>,
+    pub occlusion_sampler: Arc<wgpu::Sampler>,
 }
 
 impl MaterialDescriptor {
@@ -188,10 +188,10 @@ impl MaterialDescriptor {
             emissive_sampler: sampler.clone(),
             normal_map: normal_texture_view.clone(),
             normal_sampler: sampler.clone(),
-            parallax_map: height_texture_view.clone(), 
-            parallax_sampler: sampler.clone(), 
-            occlusion_map: height_texture_view.clone(), 
-            occlusion_sampler: sampler.clone()
+            parallax_map: height_texture_view.clone(),
+            parallax_sampler: sampler.clone(),
+            occlusion_map: height_texture_view.clone(),
+            occlusion_sampler: sampler.clone(),
         }
     }
 }

@@ -191,7 +191,7 @@ impl TestbedTitleScene {
         if change_scene {
             proxy
                 .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
-                    TestbedEnterScene::new(),
+                    TestbedEnterScene::new(self.student_kind),
                 ))))
                 .unwrap();
         }
@@ -329,5 +329,7 @@ impl fmt::Debug for TestbedTitleScene {
 }
 
 mod enter;
+mod in_game;
 
 pub use self::enter::*;
+pub use self::in_game::*;

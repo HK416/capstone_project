@@ -61,7 +61,7 @@ impl CameraUniform {
 
     /// 카메라 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: CameraDataLayout) {
+    pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: CameraDataLayout) {
         let capturable = self.0.clone();
         self.0
             .slice(..)
@@ -80,8 +80,8 @@ impl CameraUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 카메라 유니폼 버퍼의 내용을 갱신합니다.

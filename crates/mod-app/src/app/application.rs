@@ -544,6 +544,7 @@ impl ApplicationHandler<AppEvent> for Application {
             _ => Ok(()),
         } {
             alert_error("Runtime error", e.to_string(), Some(&app_window.window));
+            self.app_window.take();
         }
     }
 

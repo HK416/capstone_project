@@ -1,16 +1,19 @@
 use std::sync::{Arc, OnceLock};
 
-use ahash::RandomState;
-use dashmap::DashMap;
+use ahash::HashMap;
+use parking_lot::{FairMutex, FairMutexGuard};
 
 use crate::Mesh;
 
+type PoolType = HashMap<String, Arc<Mesh>>;
+
 /// 생성된 메쉬 객체를 관리하는 풀 객체입니다.
-static POOL: OnceLock<DashMap<String, Arc<Mesh>, RandomState>> = OnceLock::new();
+static POOL: OnceLock<FairMutex<PoolType>> = OnceLock::new();
 
 /// 풀 객체를 가져옵니다.
-fn get_pool() -> &'static DashMap<String, Arc<Mesh>, RandomState> {
-    POOL.get_or_init(|| DashMap::default())
+fn get_pool() -> FairMutexGuard<'static, PoolType> {
+    POOL.get_or_init(|| FairMutex::new(HashMap::default()))
+        .lock()
 }
 
 /// ## Mesh Pool  
@@ -21,23 +24,30 @@ pub struct MeshPool;
 impl MeshPool {
     /// 이름에 해당하는 메쉬 객체를 가져옵니다.  
     /// 해당 메쉬 객체가 풀 객체에 존재하지 않는 경우 새로운 메쉬 객체를 생성합니다.
-    pub fn get_or_init<S, F>(name: S, func: F) -> Arc<Mesh>
+    pub fn get_or_init<F>(name: &str, func: F) -> Arc<Mesh>
     where
-        S: Into<String>,
         F: FnOnce() -> Arc<Mesh>,
     {
-        get_pool().entry(name.into()).or_insert(func()).clone()
+        let mut pool = get_pool();
+        match pool.get(name).cloned() {
+            Some(mesh) => mesh,
+            None => {
+                let mesh = func();
+                pool.insert(name.to_string(), mesh.clone());
+                mesh
+            }
+        }
     }
 
     /// 이름에 해당하는 메쉬 객체가 풀 객체에 존재할 경우 `true`를 반환합니다.
-    pub fn contains<S: AsRef<String>>(name: S) -> bool {
-        get_pool().contains_key(name.as_ref())
+    pub fn contains(name: &str) -> bool {
+        get_pool().contains_key(name)
     }
 
     /// 이름에 해당하는 메쉬 객체를 풀 객체에서 제거합니다.  
     /// 해당 메쉬 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove<S: AsRef<String>>(name: S) -> Option<Arc<Mesh>> {
-        get_pool().remove(name.as_ref()).map(|(_, mesh)| mesh)
+    pub fn remove(name: &str) -> Option<Arc<Mesh>> {
+        get_pool().remove(name)
     }
 
     /// 풀 객체에 존재하는 모든 메쉬 객체를 제거합니다.

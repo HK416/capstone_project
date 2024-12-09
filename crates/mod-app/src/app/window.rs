@@ -64,8 +64,8 @@ impl AppWindow {
         );
 
         // `wgpu` 스왑체인을 설정합니다.
-        let disable_vsync = flags.contains(AppFlags::DISABLE_VSYNC);
-        config_swapchain(width, height, device, &surface, disable_vsync);
+        let vsync = !flags.contains(AppFlags::DISABLE_VSYNC);
+        config_swapchain(width, height, device, &surface, vsync);
 
         // 깊이 버퍼 뷰를 생성합니다.
         let depth_buffer_view = Arc::new(
@@ -104,7 +104,7 @@ impl AppWindow {
             egui_state,
             surface,
             depth_buffer_view,
-            disable_vsync,
+            disable_vsync: vsync,
         })
     }
 

@@ -3,18 +3,18 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use ahash::{AHasher, HashMap, RandomState};
-use dashmap::DashMap;
+use ahash::{AHasher, HashMap};
+use parking_lot::{FairMutex, FairMutexGuard};
+
+type PoolType = HashMap<Arc<wgpu::Texture>, HashMap<u64, Arc<wgpu::TextureView>>>;
 
 /// 생성된 텍스처 뷰 객체를 관리하는 풀 객체입니다.
-static POOL: OnceLock<
-    DashMap<Arc<wgpu::Texture>, HashMap<u64, Arc<wgpu::TextureView>>, RandomState>,
-> = OnceLock::new();
+static POOL: OnceLock<FairMutex<PoolType>> = OnceLock::new();
 
 /// 풀 객체를 가져옵니다.
-fn get_pool(
-) -> &'static DashMap<Arc<wgpu::Texture>, HashMap<u64, Arc<wgpu::TextureView>>, RandomState> {
-    POOL.get_or_init(|| DashMap::default())
+fn get_pool() -> FairMutexGuard<'static, PoolType> {
+    POOL.get_or_init(|| FairMutex::new(HashMap::default()))
+        .lock()
 }
 
 /// [wgpu::TextureViewDescriptor]의 해시 값을 가져옵니다.
@@ -42,12 +42,24 @@ impl TextureViewPool {
         texture: &Arc<wgpu::Texture>,
         desc: &wgpu::TextureViewDescriptor,
     ) -> Arc<wgpu::TextureView> {
-        get_pool()
-            .entry(texture.clone())
-            .or_default()
-            .entry(get_hash(desc))
-            .or_insert(Arc::new(texture.create_view(desc)))
-            .clone()
+        let mut pool = get_pool();
+        match pool.get(texture).cloned() {
+            Some(mut map) => match map.get(&get_hash(desc)).cloned() {
+                Some(view) => view,
+                None => {
+                    let view = Arc::new(texture.create_view(desc));
+                    map.insert(get_hash(desc), view.clone());
+                    view
+                }
+            },
+            None => {
+                let mut map = HashMap::default();
+                let view = Arc::new(texture.create_view(desc));
+                map.insert(get_hash(desc), view.clone());
+                pool.insert(texture.clone(), map);
+                view
+            }
+        }
     }
 
     /// 텍스처 객체와 설명자에 해당하는 텍스처 뷰 객체가 풀 객체에 존재할 경우 `true`를 반환합니다.
@@ -62,7 +74,7 @@ impl TextureViewPool {
     pub fn remove(texture: &Arc<wgpu::Texture>) -> Option<Vec<Arc<wgpu::TextureView>>> {
         get_pool()
             .remove(texture)
-            .map(|(_, pool)| pool.into_values().collect())
+            .map(|pool| pool.into_values().collect())
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 뷰 객체를 제거합니다.

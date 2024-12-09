@@ -3,6 +3,7 @@ mod asset;
 mod component;
 mod config;
 mod scenes;
+mod system;
 
 /// 64bit `Windows`, `macOS` 플랫폼의
 /// 애플리케이션 진입점입니다.
@@ -19,6 +20,8 @@ fn main() {
     // 로그 시스템을 초기화 합니다.
     env_logger::builder()
         .filter_module("wgpu_core", log::LevelFilter::Warn)
+        .filter_module("wgpu_hal", log::LevelFilter::Warn)
+        .filter_module("naga", log::LevelFilter::Warn)
         .init();
     log::info!("클라이언트 애플리케이션 실행...");
 

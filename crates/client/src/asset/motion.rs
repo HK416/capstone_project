@@ -1,22 +1,24 @@
 use std::{
-    io::{self, Cursor},
-    path::PathBuf,
-    sync::OnceLock,
+    io::Cursor,
+    sync::{Arc, OnceLock},
 };
 
-use ahash::{HashMap, RandomState};
-use dashmap::DashMap;
+use ahash::HashMap;
 use mod_app::asset::AssetManager;
+use parking_lot::{FairMutex, FairMutexGuard};
 use serde::{Deserialize, Serialize};
 
-use super::Matrix;
+use super::{Matrix, ModelAssetError};
+
+type PoolType = HashMap<String, Arc<HashMap<String, Motion>>>;
 
 /// 로드된 애니메이션 데이터를 관리하는 풀 객체입니다.
-static POOL: OnceLock<DashMap<String, HashMap<String, Motion>, RandomState>> = OnceLock::new();
+static POOL: OnceLock<FairMutex<PoolType>> = OnceLock::new();
 
 /// 애니메이션 데이터를 관리하는 풀 객체를 가져옵니다.
-fn get_pool() -> &'static DashMap<String, HashMap<String, Motion>, RandomState> {
-    POOL.get_or_init(|| DashMap::default())
+fn get_pool() -> FairMutexGuard<'static, PoolType> {
+    POOL.get_or_init(|| FairMutex::new(HashMap::default()))
+        .lock()
 }
 
 /// ## Motion Pool
@@ -31,26 +33,26 @@ impl MotionPool {
     /// # Errors
     /// 애니메이션 데이터를 로드하는 도중 오류가 발생한 경우 `Error`를 반환합니다.
     ///
-    pub fn get_or_init<F>(
+    pub fn get_or_init(
         name: &str,
         workspace: &str,
         asset_manager: &AssetManager,
-        func: F,
-    ) -> Result<(), Error>
-    where
-        F: FnOnce(&HashMap<String, Motion>),
-    {
-        let actions = get_pool()
-            .entry(name.to_string())
-            .or_insert(load_model_animation(name, workspace, asset_manager)?);
-        func(&actions);
-        Ok(())
+    ) -> Result<Arc<HashMap<String, Motion>>, ModelAssetError> {
+        let mut pool = get_pool();
+        match pool.get(name).cloned() {
+            Some(motion) => Ok(motion),
+            None => {
+                let motion = load_model_animation(name, workspace, asset_manager)?;
+                pool.insert(name.to_string(), motion.clone());
+                Ok(motion)
+            }
+        }
     }
 
     /// 풀 객체에 존재하는 해당 애니메이션 데이터를 제거합니다.  
     /// 풀 객체에 해당 애니메이션 데이터가 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
-    pub fn remove(name: &str) -> Option<HashMap<String, Motion>> {
-        get_pool().remove(name).map(|(_, actions)| actions)
+    pub fn remove(name: &str) -> Option<Arc<HashMap<String, Motion>>> {
+        get_pool().remove(name)
     }
 
     /// 풀 객체에 존재하는 모든 애니메이션 데이터를 제거합니다.
@@ -59,43 +61,34 @@ impl MotionPool {
     }
 }
 
-/// ## Animation Load Error List
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// 에셋 파일을 구문 분석하는데 실패한 경우 발생하는 오류입니다.
-    #[error("failed to parse asset for the following reason:{0}")]
-    ParsingFailed(#[from] serde_json::Error),
-
-    /// 파일을 열거나 읽을 때 발생하는 오류입니다.
-    #[error("failed to read asset for the following reason:{0}")]
-    IOError(#[from] io::Error),
-}
-
 /// 모델의 애니메이션 데이터를 로드합니다.
 fn load_model_animation(
     name: &str,
     workspace: &str,
     asset_manager: &AssetManager,
-) -> Result<HashMap<String, Motion>, Error> {
-    let path = format!("{}/{}.action", workspace, name);
+) -> Result<Arc<HashMap<String, Motion>>, ModelAssetError> {
+    let path = format!("{}/{}.motion", workspace, name);
     let cached_asset = asset_manager
         .get_or_init(&path)
-        .map_err(|e| Error::from(e))?;
+        .map_err(|e| ModelAssetError::from(e))?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: Vec<Motion> = serde_json::de::from_reader(reader).map_err(|e| Error::from(e))?;
+    let blob: Vec<Motion> =
+        serde_json::de::from_reader(reader).map_err(|e| ModelAssetError::from(e))?;
     let blob = blob
         .into_iter()
         .map(|blob| (blob.name.clone(), blob))
         .collect();
 
     asset_manager.remove(path);
-    Ok(blob)
+    Ok(Arc::new(blob))
 }
 
 /// ## Animation Data
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Motion {
     pub name: String,
+    /// NOTE: 스키닝된 메쉬의 최상위 뼈 노드가 아닌 모델의 최상위 뼈 노드
+    /// 차후 제거 예정
     pub root: String,
     pub length: f32,
     pub frame_rate: f32,
@@ -106,6 +99,7 @@ pub struct Motion {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KeyFrame {
     pub time_point: f32,
+    /// NOTE: 스키닝된 메쉬의 최상위 뼈 노드가 아닌 모델의 최상위 뼈 노드 변환 행렬
     pub root_matrix: Matrix,
     pub meshes: Vec<KeyFrameMesh>,
 }

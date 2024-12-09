@@ -3,15 +3,18 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use ahash::{AHasher, RandomState};
-use dashmap::DashMap;
+use ahash::{AHasher, HashMap};
+use parking_lot::{FairMutex, FairMutexGuard};
+
+type PoolType = HashMap<u64, Arc<wgpu::Sampler>>;
 
 /// 생성된 텍스처 샘플러 객체를 관리하는 풀 객체입니다.
-static POOL: OnceLock<DashMap<u64, Arc<wgpu::Sampler>, RandomState>> = OnceLock::new();
+static POOL: OnceLock<FairMutex<PoolType>> = OnceLock::new();
 
 /// 풀 객체를 가져옵니다.
-fn get_pool() -> &'static DashMap<u64, Arc<wgpu::Sampler>, RandomState> {
-    POOL.get_or_init(|| DashMap::default())
+fn get_pool() -> FairMutexGuard<'static, PoolType> {
+    POOL.get_or_init(|| FairMutex::new(HashMap::default()))
+        .lock()
 }
 
 /// [wgpu::SamplerDescriptor]의 해시 값을 가져옵니다.
@@ -41,10 +44,15 @@ impl SamplerPool {
         device: &wgpu::Device,
         desc: &wgpu::SamplerDescriptor,
     ) -> Arc<wgpu::Sampler> {
-        get_pool()
-            .entry(get_hash(desc))
-            .or_insert(Arc::new(device.create_sampler(desc)))
-            .clone()
+        let mut pool = get_pool();
+        match pool.get(&get_hash(desc)).cloned() {
+            Some(sampler) => sampler,
+            None => {
+                let sampler = Arc::new(device.create_sampler(desc));
+                pool.insert(get_hash(desc), sampler.clone());
+                sampler
+            }
+        }
     }
 
     /// 설명자에 해당하는 텍스처 샘플러 객체가 풀 객체에 존재할 경우 `true`를 반환합니다.
@@ -55,9 +63,7 @@ impl SamplerPool {
     /// 설명자에 해당하는 텍스처 샘플러 객체를 풀 객체에서 제거합니다.  
     /// 해당 텍스처 샘플러 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
     pub fn remove(desc: &wgpu::SamplerDescriptor) -> Option<Arc<wgpu::Sampler>> {
-        get_pool()
-            .remove(&get_hash(desc))
-            .map(|(_, sampler)| sampler)
+        get_pool().remove(&get_hash(desc))
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 샘플러 객체를 제거합니다.

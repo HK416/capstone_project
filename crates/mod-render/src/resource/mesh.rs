@@ -47,7 +47,7 @@ impl TransformUniform {
 
     /// 월드 변환 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: TransformDataLayout) {
+    pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: TransformDataLayout) {
         let capturable = self.0.clone();
         self.0
             .slice(..)
@@ -66,16 +66,16 @@ impl TransformUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 월드 변환 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub unsafe fn update_from_bytes(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
         data: Vec<u8>,
     ) {
         let capturable = self.0.clone();
@@ -94,8 +94,8 @@ impl TransformUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.
@@ -170,7 +170,7 @@ impl SkinningUniform {
 
     /// 스키닝 메쉬 데이터 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: SkinningDataLayout) {
+    pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: SkinningDataLayout) {
         let capturable = self.0.clone();
         self.0
             .slice(..)
@@ -189,16 +189,16 @@ impl SkinningUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 스키닝 메쉬 데이터 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub unsafe fn update_from_bytes(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
         data: Vec<u8>,
     ) {
         let capturable = self.0.clone();
@@ -217,8 +217,8 @@ impl SkinningUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.
@@ -277,7 +277,7 @@ impl BoneTransformUniform {
 
     /// 뼈 변환 행렬 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: Vec<[f32; 16]>) {
+    pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: Vec<[f32; 16]>) {
         let capturable = self.0.clone();
         self.0
             .slice(..)
@@ -300,8 +300,8 @@ impl BoneTransformUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.
