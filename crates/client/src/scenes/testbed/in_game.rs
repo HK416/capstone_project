@@ -7,7 +7,9 @@ use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWA
 use winit::window::Window;
 
 use crate::{
-    component::{add_child, CameraBehaviorState, CameraTag, Projection, ToParentTrans, WorldTransform},
+    component::{
+        add_child, CameraBehaviorState, CameraTag, Projection, ToParentTrans, WorldTransform,
+    },
     system::{
         sys_prepare_camera_resource, sys_prepare_mesh_resource, sys_student_animation,
         sys_student_draw, sys_student_hierarchy,

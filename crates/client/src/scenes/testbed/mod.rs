@@ -286,8 +286,8 @@ impl GameScene for TestbedTitleScene {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_buffer_view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load, 
-                        store: wgpu::StoreOp::Discard, 
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Discard,
                     }),
                     stencil_ops: None,
                 }),

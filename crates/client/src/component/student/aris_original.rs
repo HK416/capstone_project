@@ -18,19 +18,19 @@ const MODEL_NAME: &'static str = "aris_original";
 const MODEL_HALO_NAME: &'static str = "aris_original_halo";
 const WORKSPACE: &'static str = "characters/aris_original";
 
-/// ## Model Mesh Tag
+/// ## Model Tag
 /// `Entity`가 `Aris_Original` 모델임을 식별하는 태그입니다.
-pub struct ArisOriginalMesh;
+pub struct ArisOriginal;
 
-/// ## Model Mesh Tag
+/// ## Model Tag
 /// `Entity`가 `Aris_Original_Halo` 모델임을 식별하는 태그입니다.
-pub struct ArisOriginalHaloMesh;
+pub struct ArisOriginalHalo;
 
 /// `aris_original` 모델을 구성하는 `Entity`를 생성합니다.
 ///
 /// 기본으로 가지는 `Component`: `Parent`, `ToParentTrans`, `WorldTransform`  
 /// 말단 노드가 아닌 경우 가질 수 있는 `Component`: `Child`, `Sibling`  
-/// 메쉬가 존재하는 경우 가질 수 있는 `Component`: `ArisOriginalMesh`, `Arc<Mesh>`, `Arc<MeshResource>`,
+/// 메쉬가 존재하는 경우 가질 수 있는 `Component`: `ArisOriginal`, `Arc<Mesh>`, `Arc<MeshResource>`,
 /// `BoneCollection`, `Vec<Arc<MaterialResource>>`  
 ///
 pub(super) fn spawn_aris_original_model(
@@ -152,7 +152,7 @@ fn spawn_model_recursive(
 
         builder.add(mesh);
         builder.add(mesh_resource);
-        builder.add(ArisOriginalMesh);
+        builder.add(ArisOriginal);
 
         meshes.insert(mesh_name, entity);
     }
@@ -174,7 +174,7 @@ fn spawn_model_recursive(
 ///
 /// 기본으로 가지는 `Component`: `Parent`, `ToParentTrans`, `WorldTransform`  
 /// 말단 노드가 아닌 경우 가질 수 있는 `Component`: `Child`, `Sibling`  
-/// 메쉬가 존재하는 경우 가질 수 있는 `Component`: `ArisOriginalHaloMesh`, `Arc<Mesh>`, `Arc<MeshResource>`, `Vec<Arc<MaterialResource>>`
+/// 메쉬가 존재하는 경우 가질 수 있는 `Component`: `ArisOriginalHalo`, `Arc<Mesh>`, `Arc<MeshResource>`, `Vec<Arc<MaterialResource>>`
 ///
 pub(super) fn spawn_aris_original_halo_model(
     world: &World,
@@ -256,7 +256,7 @@ fn spawn_model_halo_recursive(
 
         builder.add(mesh);
         builder.add(mesh_resource);
-        builder.add(ArisOriginalHaloMesh);
+        builder.add(ArisOriginalHalo);
     }
 
     if !current.materials.is_empty() {

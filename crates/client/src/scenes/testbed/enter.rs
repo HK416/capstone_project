@@ -19,8 +19,8 @@ use winit::window::Window;
 use crate::{
     asset::{ModelHierarchyPool, MotionPool},
     component::{
-        create_student_render_pipeline, spawn_student, AnimationTimer, StudentBehaviorState,
-        StudentKind,
+        create_student_halo_render_pipeline, create_student_render_pipeline, spawn_student,
+        AnimationTimer, StudentBehaviorState, StudentKind,
     },
     scenes::TestbedInGameScene,
 };
@@ -187,6 +187,17 @@ impl GameScene for TestbedEnterScene {
         });
         self.num_tasks += 1;
 
+        // `Student Halo` 렌더링 파이프라인 생성
+        let results = self.results.clone();
+        let device = app.render_device().clone();
+        pool.spawn(move || {
+            GraphicsPipelinePool::get_or_init("student_halo", move || {
+                create_student_halo_render_pipeline(&device, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            });
+            results.push(Ok(()));
+        });
+        self.num_tasks += 1;
+
         Ok(())
     }
 
@@ -319,7 +330,7 @@ impl GameScene for TestbedEnterScene {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_buffer_view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load, 
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Discard,
                     }),
                     stencil_ops: None,
@@ -409,16 +420,15 @@ fn spawn_entities(
         StudentKind::ArisOriginal,  // 차후 패킷에 포함되어야 함.
         StudentBehaviorState::Idle, // 차후 패킷 수정이 필요
         AnimationTimer(data.anim_timer),
-        glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 1.0)),
-        // glam::Mat4::from_rotation_translation(
-        //     glam::quat(
-        //         data.rotation.x,
-        //         data.rotation.y,
-        //         data.rotation.z,
-        //         data.rotation.w,
-        //     ),
-        //     glam::vec3(data.translation.x, data.translation.y, data.translation.z),
-        // )
+        glam::Mat4::from_rotation_translation(
+            glam::quat(
+                data.rotation.x,
+                data.rotation.y,
+                data.rotation.z,
+                data.rotation.w,
+            ),
+            glam::vec3(data.translation.x, data.translation.y, data.translation.z),
+        ),
     )
     .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
     Ok((data.id, entity, batch_commands))

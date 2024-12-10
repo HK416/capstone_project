@@ -7,8 +7,9 @@ use mod_render::{AttributeKind, CameraResource, MaterialResource, Mesh, MeshReso
 use crate::{
     asset::MotionPool,
     component::{
-        aris_original::ArisOriginalMesh, AnimationTimer, BoneCollection, MotionCollection,
-        StudentBehaviorState, StudentTag, ToParentTrans,
+        aris_original::{ArisOriginal, ArisOriginalHalo},
+        AnimationTimer, BoneCollection, MotionCollection, StudentBehaviorState, StudentTag,
+        ToParentTrans,
     },
 };
 
@@ -82,7 +83,7 @@ pub fn sys_aris_original_draw<'a>(
         &'a Arc<MeshResource>,
         &'a Vec<Arc<MaterialResource>>,
     );
-    type R<'a> = &'a ArisOriginalMesh;
+    type R<'a> = &'a ArisOriginal;
 
     let mut query = world.query::<Q>().with::<R>();
     for (_, (mesh, mesh_resource, materials)) in query.iter() {
@@ -93,6 +94,42 @@ pub fn sys_aris_original_draw<'a>(
         rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
         rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
         rpass.set_vertex_buffer(5, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+        // 쉐이더 리소스를 바인드합니다.
+        rpass.set_bind_group(0, &camera.bind_group, &[]);
+        rpass.set_bind_group(1, &mesh_resource.bind_group, &[]);
+
+        for (index, submesh) in mesh.submeshes().iter().enumerate() {
+            // 메쉬의 인덱스 버퍼를 바인드합니다.
+            rpass.set_index_buffer(submesh.slice(..), submesh.format());
+
+            // 재질의 쉐이더 리소스를 바인드합니다.
+            rpass.set_bind_group(2, &materials[index].bind_group, &[]);
+
+            // 인덱스 버퍼를 사용하여 그립니다.
+            rpass.draw_indexed(0..submesh.count(), 0, 0..1);
+        }
+    }
+}
+
+/// `Aris_Original_Halo` 모델을 그립니다.
+pub fn sys_aris_original_halo_draw<'a>(
+    world: &'a World,
+    camera: &'a CameraResource,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    type Q<'a> = (
+        &'a Arc<Mesh>,
+        &'a Arc<MeshResource>,
+        &'a Vec<Arc<MaterialResource>>,
+    );
+    type R<'a> = &'a ArisOriginalHalo;
+
+    let mut query = world.query::<Q>().with::<R>();
+    for (_, (mesh, mesh_resource, materials)) in query.iter() {
+        // 메쉬의 정점 속성을 바인드합니다.
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
 
         // 쉐이더 리소스를 바인드합니다.
         rpass.set_bind_group(0, &camera.bind_group, &[]);

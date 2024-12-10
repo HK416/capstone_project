@@ -1,8 +1,15 @@
+mod aris_original;
+
 use hecs::{Entity, QueryOneError, World};
 use mod_app::asset::AssetManager;
 use mod_render::{CameraResource, GraphicsPipelinePool};
 
-use crate::component::{create_student_render_pipeline, update_hierarchy, StudentTag};
+use crate::component::{
+    create_student_halo_render_pipeline, create_student_render_pipeline, update_hierarchy,
+    StudentTag,
+};
+
+use self::aris_original::*;
 
 /// 학생의 모델 계층 구조를 갱신합니다.
 pub fn sys_student_hierarchy(world: &mut World) -> Result<(), QueryOneError> {
@@ -42,13 +49,12 @@ pub fn sys_student_draw<'a>(
     let pipeline = GraphicsPipelinePool::get_or_init("student", || {
         create_student_render_pipeline(device, depth_stencil_format, render_target_format)
     });
-
-    // 렌더링 파이프라인을 바인드합니다.
     rpass.set_pipeline(&pipeline);
-
     sys_aris_original_draw(world, camera, rpass);
+
+    let pipeline = GraphicsPipelinePool::get_or_init("student_halo", || {
+        create_student_halo_render_pipeline(device, depth_stencil_format, render_target_format)
+    });
+    rpass.set_pipeline(&pipeline);
+    sys_aris_original_halo_draw(world, camera, rpass);
 }
-
-mod aris_original;
-
-use self::aris_original::*;
