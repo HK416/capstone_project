@@ -56,7 +56,7 @@ impl GlobalLightUniform {
 
     /// 전역 조명 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: GlobalLightDataLayout) {
+    pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: GlobalLightDataLayout) {
         let capturable = self.0.clone();
         self.0
             .slice(..)
@@ -75,16 +75,16 @@ impl GlobalLightUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 전역 조명 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub unsafe fn update_from_bytes(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
         data: Vec<u8>,
     ) {
         let capturable = self.0.clone();
@@ -103,8 +103,8 @@ impl GlobalLightUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.
@@ -206,7 +206,7 @@ impl LocalLightUniform {
 
     /// 지역 조명 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub fn update(&self, device: &wgpu::Device, queue: &wgpu::Queue, data: LocalLightSetLayout) {
+    pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: LocalLightSetLayout) {
         let capturable = self.0.clone();
         self.0
             .slice(..)
@@ -225,16 +225,16 @@ impl LocalLightUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 지역 조명 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub unsafe fn update_from_bytes(
         &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
         data: Vec<u8>,
     ) {
         let capturable = self.0.clone();
@@ -253,8 +253,8 @@ impl LocalLightUniform {
                 }
             });
 
-        let index = queue.submit([]);
-        device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
+        // let index = queue.submit([]);
+        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.
