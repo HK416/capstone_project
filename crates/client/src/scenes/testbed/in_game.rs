@@ -166,7 +166,12 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        sys_student_animation(&mut self.world, app.asset_manager(), elapsed_time_sec);
+        sys_student_animation(
+            &mut self.world,
+            app.asset_manager(),
+            elapsed_time_sec,
+            rayon::current_num_threads() as u32,
+        );
         Ok(())
     }
 

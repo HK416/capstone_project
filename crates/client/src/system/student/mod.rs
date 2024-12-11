@@ -33,8 +33,9 @@ pub fn sys_student_animation(
     world: &mut World,
     asset_manager: &AssetManager,
     elapsed_time_sec: f32,
+    batch_size: u32,
 ) {
-    aris_original::sys_aris_original_animation(world, asset_manager, elapsed_time_sec);
+    aris_original::sys_aris_original_animation(world, asset_manager, elapsed_time_sec, batch_size);
 }
 
 /// 학생 모델을 그립니다.

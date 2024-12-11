@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hecs::World;
+use hecs::{QueryOneError, World};
 use mod_app::asset::AssetManager;
 use mod_render::{AttributeKind, CameraResource, MaterialResource, Mesh, MeshResource};
 
@@ -17,29 +17,50 @@ const MOTION_NAME: &'static str = "aris_original";
 const WORKSPACE: &'static str = "characters/aris_original";
 const IDLE_ANIMATION: &'static str = "aris_original_normal_idle";
 
+type FuncType = fn(
+    &World,
+    &AssetManager,
+    &mut AnimationTimer,
+    &mut StudentBehaviorState,
+    &MotionCollection,
+    f32,
+) -> Result<(), QueryOneError>;
+
+const FUNC: [FuncType; 1] = [aris_original_idle_animation];
+
 pub fn sys_aris_original_animation(
-    world: &mut World,
+    world: &World,
     asset_manager: &AssetManager,
     elapsed_time_sec: f32,
+    batch_size: u32,
 ) {
     type Q<'a> = (
         &'a mut AnimationTimer,
         &'a mut StudentBehaviorState,
         &'a MotionCollection,
     );
-    type R<'a> = &'a StudentTag;
+    type R<'a> = (&'a StudentTag, &'a ArisOriginal);
 
     let mut query = world.query::<Q>().with::<R>();
-    for (_, (timer, state, collection)) in query.iter() {
-        aris_original_idle_animation(
-            world,
-            asset_manager,
-            timer,
-            state,
-            collection,
-            elapsed_time_sec,
-        );
-    }
+    let mut batched_iter = query.iter_batched(batch_size);
+    rayon::scope(|scope| {
+        while let Some(query) = batched_iter.next() {
+            scope.spawn(move |_| {
+                for (_, (timer, state, collection)) in query {
+                    let index: usize = (*state).into();
+                    FUNC[index](
+                        world,
+                        asset_manager,
+                        timer,
+                        state,
+                        collection,
+                        elapsed_time_sec,
+                    )
+                    .unwrap();
+                }
+            });
+        }
+    });
 }
 
 fn aris_original_idle_animation(
@@ -47,29 +68,45 @@ fn aris_original_idle_animation(
     asset_manager: &AssetManager,
     timer: &mut AnimationTimer,
     state: &mut StudentBehaviorState,
-    motion_collection: &MotionCollection,
+    collection: &MotionCollection,
     elapsed_time_sec: f32,
-) {
+) -> Result<(), QueryOneError> {
     let motions = MotionPool::get_or_init(&MOTION_NAME, &WORKSPACE, asset_manager).unwrap();
     let motion = motions.get(IDLE_ANIMATION).unwrap();
 
-    let keyframe = motion.keyframes.first().unwrap();
-    let mut transform = world
-        .get::<&mut ToParentTrans>(motion_collection.root)
-        .unwrap();
-    *transform = ToParentTrans(keyframe.root_matrix.into());
-    drop(transform);
+    // 애니메이션 타이머를 갱신합니다. (Loop)
+    timer.0 = (timer.0 + elapsed_time_sec) % motion.length;
+    let keyframe = motion.linear_sampling(timer.0);
+
+    {
+        let mut transform = world
+            .query_one::<&mut ToParentTrans>(collection.root)
+            .map_err(|_| QueryOneError::NoSuchEntity)?;
+        let transform = transform.get().ok_or(QueryOneError::Unsatisfied)?;
+        transform.0 = keyframe.root_matrix;
+    }
 
     for keyframe_mesh in keyframe.meshes.iter() {
-        let entity = motion_collection.meshes.get(&keyframe_mesh.name).unwrap();
-        let bone_collection = world.get::<&BoneCollection>(*entity).unwrap();
-        for (index, bone_transform) in keyframe_mesh.bone_trans.iter().enumerate() {
-            let entity = bone_collection.bones[index];
-            let mut transform = world.get::<&mut ToParentTrans>(entity).unwrap();
-            *transform = ToParentTrans(bone_transform.into_mat4());
-            drop(transform);
+        let entity = collection
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+        let mut collection = world
+            .query_one::<&BoneCollection>(entity)
+            .map_err(|_| QueryOneError::NoSuchEntity)?;
+        let collection = collection.get().ok_or(QueryOneError::Unsatisfied)?;
+        for (index, &bone_transform) in keyframe_mesh.bone_trans.iter().enumerate() {
+            let entity = collection.bones[index];
+            let mut transform = world
+                .query_one::<&mut ToParentTrans>(entity)
+                .map_err(|_| QueryOneError::NoSuchEntity)?;
+            let transform = transform.get().ok_or(QueryOneError::Unsatisfied)?;
+            transform.0 = bone_transform;
         }
     }
+
+    Ok(())
 }
 
 /// `Aris_Original` 모델을 그립니다.
