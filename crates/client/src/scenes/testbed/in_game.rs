@@ -4,15 +4,20 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::{app::AppHandle, scene::GameScene};
 use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
-use winit::window::Window;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
     component::{
-        add_child, CameraBehaviorState, CameraTag, Projection, ToParentTrans, WorldTransform,
+        CameraBehaviorState, CameraTag, MovementState, Projection, ToParentTrans, WorldTransform,
     },
+    config::UserConfig,
     system::{
-        sys_prepare_camera_resource, sys_prepare_mesh_resource, sys_student_animation,
-        sys_student_draw, sys_student_hierarchy,
+        draw_character, prepare_camera_resource, prepare_mesh_resource, update_character_animation,
+        update_character_animation_system, update_entity_hierarchy, update_third_person_camera,
     },
 };
 
@@ -24,6 +29,8 @@ const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
 };
 
 pub struct TestbedInGameScene {
+    user_config: Option<Box<UserConfig>>,
+
     /// 메인 카메라의 `Entity`
     main_camera: Entity,
 
@@ -35,17 +42,27 @@ pub struct TestbedInGameScene {
 
     world: World,
 
+    /// 플레이어의 움직임 상태입니다.
+    movement_state: MovementState,
+
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
 impl TestbedInGameScene {
-    pub fn new(client_id: u32, entities: HashMap<u32, Entity>, world: World) -> Self {
+    pub fn new(
+        client_id: u32,
+        entities: HashMap<u32, Entity>,
+        world: World,
+        user_config: Box<UserConfig>,
+    ) -> Self {
         Self {
+            user_config: Some(user_config),
             main_camera: Entity::DANGLING,
             client_id,
             entities,
             world,
+            movement_state: MovementState::Idle,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -142,9 +159,9 @@ impl TestbedInGameScene {
         log::debug!("TestbedInGameScene :: 메인 카메라를 생성");
         self.main_camera = self.world.spawn(builder.build());
 
-        log::debug!("TestbedInGameScene :: 메인 카메라를 학생에게 부착");
-        let entity = self.entities.get(&self.client_id).cloned().unwrap();
-        add_child(&mut self.world, entity, self.main_camera).unwrap();
+        // log::debug!("TestbedInGameScene :: 메인 카메라를 학생에게 부착");
+        // let entity = self.entities.get(&self.client_id).cloned().unwrap();
+        // add_child(&mut self.world, entity, self.main_camera).unwrap();
     }
 }
 
@@ -160,15 +177,61 @@ impl GameScene for TestbedInGameScene {
     }
 
     #[allow(unused_variables)]
+    fn on_keyboard_pressed(
+        &mut self,
+        keycode: KeyCode,
+        location: KeyLocation,
+        modifiers: Modifiers,
+        repeat: bool,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if repeat || self.user_config.is_none() {
+            return Ok(());
+        }
+
+        let user_config = self
+            .user_config
+            .as_ref()
+            .expect("user configuration must exist");
+        self.movement_state
+            .handle_keyboard_pressed(&user_config, keycode, location);
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_keyboard_released(
+        &mut self,
+        keycode: KeyCode,
+        location: KeyLocation,
+        modifiers: Modifiers,
+        repeat: bool,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if repeat || self.user_config.is_none() {
+            return Ok(());
+        }
+
+        let user_config = self
+            .user_config
+            .as_ref()
+            .expect("user configuration must exist");
+        self.movement_state
+            .handle_keyboard_released(&user_config, keycode, location);
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
     fn on_update(
         &mut self,
         elapsed_time_sec: f32,
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        sys_student_animation(
-            &mut self.world,
+        update_character_animation_system(
             app.asset_manager(),
+            &self.world,
             elapsed_time_sec,
             rayon::current_num_threads() as u32,
         );
@@ -182,25 +245,33 @@ impl GameScene for TestbedInGameScene {
         egui_renderer: &mut UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        sys_student_hierarchy(&mut self.world).map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        let entities: Vec<Entity> = self.entities.values().cloned().collect();
 
-        sys_prepare_mesh_resource(
+        // 캐릭터 애니메이션을 갱신합니다.
+        update_character_animation(app.asset_manager(), &mut self.world, &entities);
+
+        // 엔터티 계층 구조를 갱신합니다.
+        for &entity in entities.iter() {
+            update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
+        }
+
+        // 카메라 위치를 갱신합니다.
+        let target_entity = self.entities.get(&self.client_id).cloned().unwrap();
+        update_third_person_camera(&mut self.world, target_entity, self.main_camera);
+
+        prepare_mesh_resource(
             &self.world,
-            &self.main_camera,
+            &entities,
             app.render_device(),
             app.render_queue(),
-            rayon::current_num_threads() as u32,
         );
-
-        sys_prepare_camera_resource(
+        prepare_camera_resource(
             &self.world,
             &[self.main_camera],
             app.render_device(),
             app.render_queue(),
         );
-
         self.prepare_ui(window, egui_renderer, app)?;
-
         Ok(())
     }
 
@@ -216,10 +287,13 @@ impl GameScene for TestbedInGameScene {
         let device = app.render_device();
         let queue = app.render_queue();
 
-        let camera = self
+        let mut query = self
             .world
-            .get::<&Arc<CameraResource>>(self.main_camera)
-            .unwrap();
+            .query_one::<&Arc<CameraResource>>(self.main_camera)
+            .expect("invalid entity");
+        let camera_resource = query.get().expect("invalid entity component");
+
+        let entities: Vec<Entity> = self.entities.values().cloned().collect();
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             ..Default::default()
@@ -248,12 +322,13 @@ impl GameScene for TestbedInGameScene {
                 occlusion_query_set: None,
             });
 
-            sys_student_draw(
+            draw_character(
                 &self.world,
+                &entities,
+                camera_resource,
                 device,
                 SWAPCHAIN_FORMAT,
                 DEPTH_FORMAT,
-                &camera,
                 &mut rpass,
             );
 

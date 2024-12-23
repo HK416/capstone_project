@@ -1,0 +1,218 @@
+mod aris_original;
+
+use std::sync::Arc;
+
+use ahash::RandomState;
+use dashmap::DashMap;
+use hecs::{Entity, QueryOneError, ViewBorrow, With, World};
+use mod_app::asset::AssetManager;
+use mod_parallelism::collections::Queue;
+use mod_render::{
+    AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
+};
+
+use crate::component::{
+    create_character_render_pipeline, AnimationState, AnimationTimer, Character, Child, Sibling,
+};
+
+/// # System
+/// 캐릭터 엔터티의 애니메이션 타이머를 갱신하는 시스템입니다.
+///
+/// # Panics
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않은 경우 [`panic!`]을 호출합니다.
+///
+pub fn update_character_animation_system(
+    asset_manager: &AssetManager,
+    world: &World,
+    elapsed_time_sec: f32,
+    batch_size: u32,
+) {
+    type Q<'a> = (
+        &'a Character,
+        &'a mut AnimationTimer,
+        &'a mut AnimationState,
+    );
+
+    let mut query = world.query::<Q>();
+    let mut batched_iter = query.iter_batched(batch_size);
+    while let Some(query) = batched_iter.next() {
+        for (_, (kind, timer, state)) in query {
+            match kind {
+                Character::ArisOriginal => aris_original::update_aris_original_animation_timer(
+                    asset_manager,
+                    timer,
+                    state,
+                    elapsed_time_sec,
+                ),
+            };
+        }
+    }
+}
+
+/// 주어진 엔터티의 캐릭터 애니메이션을 갱신합니다.
+///
+/// 주어진 엔터티 가 캐릭터 식별자(`Character`)를 갖고 있지 않는 경우 해당 엔터티를 생략합니다.
+///
+/// # Panics
+/// - 주어진 엔터티는 유효한 엔터티여야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+pub fn update_character_animation(
+    asset_manager: &AssetManager,
+    world: &mut World,
+    entities: &[Entity],
+) {
+    for &entity in entities {
+        let query = world.query_one_mut::<&Character>(entity).cloned();
+        match query {
+            Ok(kind) => match kind {
+                Character::ArisOriginal => {
+                    aris_original::update_aris_original_animation(asset_manager, world, entity)
+                }
+            },
+            Err(e) => match e {
+                QueryOneError::NoSuchEntity => panic!("invalid entity"),
+                _ => {}
+            },
+        }
+    }
+}
+
+/// 캐릭터 모델을 그립니다.
+pub fn draw_character<'a>(
+    world: &'a World,
+    entities: &[Entity],
+    camera_resource: &'a CameraResource,
+    device: &wgpu::Device,
+    render_target_format: wgpu::TextureFormat,
+    depth_stencil_format: wgpu::TextureFormat,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    // 엔터티의 쉐이더 리소스를 분류합니다.
+    let map = categorize_character_resource(world, &entities);
+
+    // 캐릭터 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
+    let pipeline = GraphicsPipelinePool::get_or_init("character", || {
+        create_character_render_pipeline(device, depth_stencil_format, render_target_format)
+    });
+    rpass.set_pipeline(&pipeline);
+
+    // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
+    rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
+
+    for pair in map.iter() {
+        let mesh = pair.key();
+        let queue = pair.value();
+
+        // 메쉬의 정점 속성을 바인드합니다.
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
+        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Tangent, ..).unwrap());
+        rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+        rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+        rpass.set_vertex_buffer(5, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+        while let Some((mesh_resource, materials)) = queue.pop() {
+            // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
+            rpass.set_bind_group(1, &mesh_resource.bind_group, &[]);
+
+            for (index, submesh) in mesh.submeshes().iter().enumerate() {
+                // 메쉬의 인덱스 버퍼를 바인드합니다.
+                rpass.set_index_buffer(submesh.slice(..), submesh.format());
+
+                // 재질의 쉐이더 리소스를 바인드합니다.
+                rpass.set_bind_group(2, &materials[index].bind_group, &[]);
+
+                // 인덱스 버퍼를 사용하여 그립니다.
+                rpass.draw_indexed(0..submesh.count(), 0, 0..1);
+            }
+        }
+    }
+}
+
+/// 캐릭터 메쉬 - 쉐이더 리소스 맵 자료형
+type MeshResourcesMap =
+    DashMap<Arc<Mesh>, Queue<(Arc<MeshResource>, Vec<Arc<MaterialResource>>)>, RandomState>;
+
+/// 캐릭터 모델을 그릴 때 사용되는 쉐이더 리소스 자료형
+type DrawQuery<'a> = (
+    &'a Arc<Mesh>,
+    &'a Arc<MeshResource>,
+    &'a Vec<Arc<MaterialResource>>,
+);
+
+/// 주어진 엔터티의 쉐이더 리소스를 분류합니다.
+///
+/// 엔터티가 메쉬(`Arc<Mesh>`), 메쉬 쉐이더 리소스(`Arc<MeshResource>`), 머태리얼(`Vec<Arc<MaterialResource>>`)을
+/// 갖고 있지 않는 경우 해당 엔터티를 생략합니다.
+///
+/// # Panics
+/// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn categorize_character_resource(world: &World, entities: &[Entity]) -> MeshResourcesMap {
+    let child_view = &world.view::<&Child>();
+    let sibling_view = &world.view::<&Sibling>();
+    let resource_view = &world.view::<With<DrawQuery, &Character>>();
+    let map: MeshResourcesMap = DashMap::default();
+    let mesh_resource_map = &map;
+    for &entity in entities {
+        categorize_character_resource_recursion(
+            child_view,
+            sibling_view,
+            resource_view,
+            mesh_resource_map,
+            entity,
+        );
+    }
+    map
+}
+
+/// 주어진 엔터티의 쉐이더 리소스를 분류합니다.
+///
+/// 엔터티가 메쉬(`Arc<Mesh>`), 메쉬 쉐이더 리소스(`Arc<MeshResource>`), 머태리얼(`Vec<Arc<MaterialResource>>`)을
+/// 갖고 있지 않는 경우 해당 엔터티를 생략합니다.
+///
+/// # Panics
+/// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn categorize_character_resource_recursion(
+    child_view: &ViewBorrow<'_, &Child>,
+    sibling_view: &ViewBorrow<'_, &Sibling>,
+    resource_view: &ViewBorrow<'_, With<DrawQuery, &Character>>,
+    mesh_resource_map: &MeshResourcesMap,
+    entity: Entity,
+) {
+    // 형제 엔터티가 존재하는 경우 형제 엔터티의 계층 구조를 탐색합니다.
+    if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
+        categorize_character_resource_recursion(
+            child_view,
+            sibling_view,
+            resource_view,
+            mesh_resource_map,
+            *sibling_entity,
+        );
+    }
+
+    // 자식 엔터티가 존재하는 경우 자식 엔터티의 계층 구조를 탐색합니다.
+    if let Some(child_entity) = child_view.get(entity).cloned() {
+        categorize_character_resource_recursion(
+            child_view,
+            sibling_view,
+            resource_view,
+            mesh_resource_map,
+            *child_entity,
+        );
+    }
+
+    // 엔터티의 쉐이더 리소스 데이터를 가져옵니다.
+    let results = resource_view.get(entity);
+    if let Some((mesh, mesh_resource, materials)) = results {
+        // 쉐이더 리소스 데이터를 분류합니다.
+        let queue = mesh_resource_map
+            .entry(mesh.clone())
+            .or_insert(Queue::new());
+        queue.push((mesh_resource.clone(), materials.clone()));
+    }
+}

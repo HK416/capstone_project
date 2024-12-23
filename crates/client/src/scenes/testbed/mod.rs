@@ -9,29 +9,29 @@ use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
-    component::StudentKind,
+    component::Character,
     config::{InvalidConfig, UserConfig},
 };
 
 /// ## Testbed Title Scene
 pub struct TestbedTitleScene {
-    config: UserConfig,
+    user_config: Option<Box<UserConfig>>,
 
     fullscreen: bool,
     window_size: WindowSize,
-    student_kind: StudentKind,
+    character_kind: Character,
 
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
 impl TestbedTitleScene {
-    pub fn new(config: UserConfig) -> Self {
+    pub fn new(user_config: Box<UserConfig>) -> Self {
         Self {
-            config,
+            user_config: Some(user_config),
             fullscreen: false,
             window_size: WindowSize::MAX,
-            student_kind: StudentKind::ArisOriginal,
+            character_kind: Character::ArisOriginal,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -41,21 +41,26 @@ impl TestbedTitleScene {
 impl TestbedTitleScene {
     /// 사용자 구성이 변경된 경우 `true`를 반환합니다.
     fn config_changed(&self) -> bool {
-        self.fullscreen != self.config.fullscreen || self.window_size != self.config.window_size
+        self.user_config.as_ref().is_some_and(|user_config| {
+            user_config.fullscreen != self.fullscreen || user_config.window_size != self.window_size
+        })
     }
 
     /// 사용자 구성을 저장합니다.
     fn config_store(&mut self, app: &dyn AppHandle) -> Result<(), Box<dyn Error + Send>> {
-        self.config.fullscreen = self.fullscreen;
-        self.config.window_size = self.window_size;
-
-        let data = serde_json::ser::to_vec_pretty(&self.config)
-            .map_err(|e| InvalidConfig(e))
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-        let asset_manager = app.asset_manager();
-        asset_manager
-            .store("user_config", &data)
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        if let Some(user_config) = self.user_config.as_mut() {
+            user_config.fullscreen = self.fullscreen;
+            user_config.window_size = self.window_size;
+            let data = serde_json::ser::to_vec_pretty(&user_config)
+                .map_err(|e| InvalidConfig(e))
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+            let asset_manager = app.asset_manager();
+            asset_manager
+                .store("user_config", &data)
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        } else {
+            panic!("user configuration must exist")
+        }
 
         Ok(())
     }
@@ -156,12 +161,12 @@ impl TestbedTitleScene {
                         .show(ui, |ui| {
                             ui.label(student_text);
                             egui::ComboBox::from_label("")
-                                .selected_text(format!("{}", self.student_kind.to_string()))
+                                .selected_text(format!("{}", self.character_kind.to_string()))
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(
-                                        &mut self.student_kind,
-                                        StudentKind::ArisOriginal,
-                                        StudentKind::ArisOriginal.to_string(),
+                                        &mut self.character_kind,
+                                        Character::ArisOriginal,
+                                        Character::ArisOriginal.to_string(),
                                     );
                                 });
                         });
@@ -188,10 +193,15 @@ impl TestbedTitleScene {
                 .unwrap();
         }
 
-        if change_scene {
+        if change_scene && self.user_config.is_some() {
             proxy
                 .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
-                    TestbedEnterScene::new(self.student_kind),
+                    TestbedEnterScene::new(
+                        self.character_kind,
+                        self.user_config
+                            .take()
+                            .expect("user configuration must exist"),
+                    ),
                 ))))
                 .unwrap();
         }
@@ -265,6 +275,8 @@ impl GameScene for TestbedTitleScene {
         egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        //! UI를 띄웁니다.
+        //!
         let device = app.render_device();
         let queue = app.render_queue();
 

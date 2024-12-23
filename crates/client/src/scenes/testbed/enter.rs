@@ -19,9 +19,10 @@ use winit::window::Window;
 use crate::{
     asset::{ModelHierarchyPool, MotionPool},
     component::{
-        create_student_halo_render_pipeline, create_student_render_pipeline, spawn_student,
-        AnimationTimer, StudentBehaviorState, StudentKind,
+        create_character_render_pipeline, create_student_halo_render_pipeline, spawn_character,
+        AnimationState, AnimationTimer, Character,
     },
+    config::UserConfig,
     scenes::TestbedInGameScene,
 };
 
@@ -38,9 +39,11 @@ type LocalResult = Result<(u32, Entity, Vec<(Entity, EntityBuilder)>), Box<dyn E
 
 /// ## Testbed Enter Scene
 pub struct TestbedEnterScene {
+    user_config: Option<Box<UserConfig>>,
+
     /// 사용자의 학생 종류
     /// <차후 사용 예정>
-    _kind: StudentKind,
+    _kind: Character,
 
     /// 월드 생성 결과 대기열
     channel: Arc<Queue<SpawnResult>>,
@@ -59,8 +62,9 @@ pub struct TestbedEnterScene {
 }
 
 impl TestbedEnterScene {
-    pub fn new(kind: StudentKind) -> Self {
+    pub fn new(kind: Character, user_config: Box<UserConfig>) -> Self {
         Self {
+            user_config: Some(user_config),
             _kind: kind,
             channel: Arc::new(Queue::new()),
             results: Arc::new(Queue::new()),
@@ -130,7 +134,7 @@ impl GameScene for TestbedEnterScene {
         let asset_manager = app.asset_manager().clone();
         pool.spawn(move || {
             let result = ModelHierarchyPool::get_or_init(
-                "aris_original",
+                "Aris_Original",
                 "characters/aris_original",
                 &asset_manager,
                 &device,
@@ -149,7 +153,7 @@ impl GameScene for TestbedEnterScene {
         let asset_manager = app.asset_manager().clone();
         pool.spawn(move || {
             let result = ModelHierarchyPool::get_or_init(
-                "aris_original_halo",
+                "Aris_Original_Halo",
                 "characters/aris_original",
                 &asset_manager,
                 &device,
@@ -166,7 +170,7 @@ impl GameScene for TestbedEnterScene {
         let asset_manager = app.asset_manager().clone();
         pool.spawn(move || {
             let result = MotionPool::get_or_init(
-                "aris_original",
+                "Aris_Original",
                 "characters/aris_original",
                 &asset_manager,
             )
@@ -180,8 +184,8 @@ impl GameScene for TestbedEnterScene {
         let results = self.results.clone();
         let device = app.render_device().clone();
         pool.spawn(move || {
-            GraphicsPipelinePool::get_or_init("student", move || {
-                create_student_render_pipeline(&device, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            GraphicsPipelinePool::get_or_init("character", move || {
+                create_character_render_pipeline(&device, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
             });
             results.push(Ok(()));
         });
@@ -191,7 +195,7 @@ impl GameScene for TestbedEnterScene {
         let results = self.results.clone();
         let device = app.render_device().clone();
         pool.spawn(move || {
-            GraphicsPipelinePool::get_or_init("student_halo", move || {
+            GraphicsPipelinePool::get_or_init("character_halo", move || {
                 create_student_halo_render_pipeline(&device, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
             });
             results.push(Ok(()));
@@ -228,7 +232,14 @@ impl GameScene for TestbedEnterScene {
                     let proxy = app.event_loop_proxy();
                     proxy
                         .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
-                            TestbedInGameScene::new(client_id, entities, world),
+                            TestbedInGameScene::new(
+                                client_id,
+                                entities,
+                                world,
+                                self.user_config
+                                    .take()
+                                    .expect("user configuration must exist"),
+                            ),
                         ))))
                         .unwrap();
                 }
@@ -412,13 +423,13 @@ fn spawn_entities(
     queue: Arc<wgpu::Queue>,
     world: &World,
 ) -> LocalResult {
-    let (entity, batch_commands) = spawn_student(
+    let (entity, batch_commands) = spawn_character(
         world,
         &asset_manager,
         &device,
         &queue,
-        StudentKind::ArisOriginal,  // 차후 패킷에 포함되어야 함.
-        StudentBehaviorState::Idle, // 차후 패킷 수정이 필요
+        Character::ArisOriginal, // 차후 패킷에 포함되어야 함.
+        AnimationState::Idle,    // 차후 패킷 수정이 필요
         AnimationTimer(data.anim_timer),
         glam::Mat4::from_rotation_translation(
             glam::quat(

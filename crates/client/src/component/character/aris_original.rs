@@ -8,30 +8,30 @@ use mod_render::{MeshResource, SkinningDataLayout};
 use crate::{
     asset::{ModelAssetError, ModelHierarchyPool, Node},
     component::{
-        BoneCollection, Child, MotionCollection, Parent, Sibling, ToParentTrans, WorldTransform,
+        BoneCollection, Child, Parent, Sibling, SkinningAnimation, ToParentTrans, WorldTransform,
     },
 };
 
-use super::MODEL_BONE_ROOT;
+use super::{Character, CharacterHalo, MODEL_BONE_ROOT};
 
-const MODEL_NAME: &'static str = "aris_original";
-const MODEL_HALO_NAME: &'static str = "aris_original_halo";
 const WORKSPACE: &'static str = "characters/aris_original";
+const MODEL_NAME: &'static str = "Aris_Original";
+const MODEL_HALO_NAME: &'static str = "Aris_Original_Halo";
 
-/// ## Model Tag
-/// `Entity`가 `Aris_Original` 모델임을 식별하는 태그입니다.
-pub struct ArisOriginal;
-
-/// ## Model Tag
-/// `Entity`가 `Aris_Original_Halo` 모델임을 식별하는 태그입니다.
-pub struct ArisOriginalHalo;
-
-/// `aris_original` 모델을 구성하는 `Entity`를 생성합니다.
+/// `aris_original` 캐릭터 모델을 구성하는 엔터티를 생성합니다.
 ///
-/// 기본으로 가지는 `Component`: `Parent`, `ToParentTrans`, `WorldTransform`  
-/// 말단 노드가 아닌 경우 가질 수 있는 `Component`: `Child`, `Sibling`  
-/// 메쉬가 존재하는 경우 가질 수 있는 `Component`: `ArisOriginal`, `Arc<Mesh>`, `Arc<MeshResource>`,
-/// `BoneCollection`, `Vec<Arc<MaterialResource>>`  
+/// 생성된 엔터티는 다음 컴포넌트를 기본으로 가집니다.
+/// - `Parent`
+/// - `ToParentTrans`
+/// - `WorldTransform`
+///
+/// 생성된 엔터티는 선택적으로 다음 컴포넌트를 가집니다.
+/// - `Arc<Mesh>`
+/// - `Arc<MeshResource>`
+/// - `Arc<BoneCollection>`
+/// - `Child`
+/// - `Sibling`
+/// - `Vec<Arc<MaterialResource>>`
 ///
 pub(super) fn spawn_aris_original_model(
     world: &World,
@@ -39,7 +39,7 @@ pub(super) fn spawn_aris_original_model(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     parent: Entity,
-) -> Result<(Entity, MotionCollection, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Arc<SkinningAnimation>, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
     let root =
         ModelHierarchyPool::get_or_init(&MODEL_NAME, &WORKSPACE, asset_manager, device, queue)?;
 
@@ -59,13 +59,13 @@ pub(super) fn spawn_aris_original_model(
     )
     .map_err(|_| ModelAssetError::NoSuchEntity)?;
 
-    let collection = MotionCollection {
+    let collection = Arc::new(SkinningAnimation {
         root: entities
             .get(MODEL_BONE_ROOT)
             .cloned()
             .ok_or(ModelAssetError::NoSuchEntity)?,
         meshes,
-    };
+    });
 
     Ok((entity, collection, batch_commands))
 }
@@ -147,12 +147,12 @@ fn spawn_model_recursive(
             for name in skinning.bones.iter() {
                 bones.push(entities.get(name).cloned().ok_or(NoSuchEntity)?);
             }
-            builder.add(BoneCollection { root, bones });
+            builder.add(Arc::new(BoneCollection { root, bones }));
         }
 
         builder.add(mesh);
         builder.add(mesh_resource);
-        builder.add(ArisOriginal);
+        builder.add(Character::ArisOriginal);
 
         meshes.insert(mesh_name, entity);
     }
@@ -170,11 +170,19 @@ fn spawn_model_recursive(
     Ok(entity)
 }
 
-/// `aris_original_halo` 모델을 구성하는 `Entity`를 생성합니다.
+/// `aris_original_halo` 모델을 구성하는 엔터티를 생성합니다.
 ///
-/// 기본으로 가지는 `Component`: `Parent`, `ToParentTrans`, `WorldTransform`  
-/// 말단 노드가 아닌 경우 가질 수 있는 `Component`: `Child`, `Sibling`  
-/// 메쉬가 존재하는 경우 가질 수 있는 `Component`: `ArisOriginalHalo`, `Arc<Mesh>`, `Arc<MeshResource>`, `Vec<Arc<MaterialResource>>`
+/// 생성된 엔터티는 다음 컴포넌트를 기본으로 가집니다.
+/// - `Parent`
+/// - `ToParentTrans`
+/// - `WorldTransform`
+///
+/// 생성된 엔터티는 다음 컴포넌트를 선택적으로 가집니다.
+/// - `Arc<Mesh>`
+/// - `Arc<MeshResource>`
+/// - `Child`
+/// - `Sibling`
+/// - `Vec<Arc<MaterialResource>>`
 ///
 pub(super) fn spawn_aris_original_halo_model(
     world: &World,
@@ -216,7 +224,6 @@ fn spawn_model_halo_recursive(
     current: &Node,
     siblings: &[Node],
 ) -> Result<Entity, NoSuchEntity> {
-    let name = current.name.clone();
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
 
@@ -256,7 +263,7 @@ fn spawn_model_halo_recursive(
 
         builder.add(mesh);
         builder.add(mesh_resource);
-        builder.add(ArisOriginalHalo);
+        builder.add(CharacterHalo::ArisOriginalHalo);
     }
 
     if !current.materials.is_empty() {

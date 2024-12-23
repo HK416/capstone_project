@@ -14,53 +14,61 @@ use crate::{
 use super::{AnimationTimer, Parent};
 
 /// 모든 학생 모델의 최상위 뼈 노드 이름입니다.
-const MODEL_BONE_ROOT: &'static str = "bip001";
+const MODEL_BONE_ROOT: &'static str = "Bip001";
 
-/// ## Student Tag
-/// `Entity`가 학생임을 식별하는 태그입니다.
-pub struct StudentTag;
-
-/// ## Student Halo Tag
-/// `Entity`가 학생의 헤일로임을 식별하는 태그입니다.
-pub struct StudentHaloTag;
-
-/// ## Student Kind
+/// ## Tag
+/// 엔터티가 캐릭터임을 식별하는 태그입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum StudentKind {
+pub enum Character {
     ArisOriginal,
 }
 
-impl ToString for StudentKind {
+impl ToString for Character {
     fn to_string(&self) -> String {
         match self {
-            StudentKind::ArisOriginal => "Aris Original".to_string(),
+            Character::ArisOriginal => "Aris Original",
+        }
+        .to_string()
+    }
+}
+
+impl Into<CharacterHalo> for Character {
+    fn into(self) -> CharacterHalo {
+        match self {
+            Character::ArisOriginal => CharacterHalo::ArisOriginalHalo,
         }
     }
 }
 
-/// ## Player Behavior States
+/// ## Tag
+/// 엔터티가 캐릭터의 헤일로임을 식별하는 태그입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum StudentBehaviorState {
+pub enum CharacterHalo {
+    ArisOriginalHalo,
+}
+
+impl ToString for CharacterHalo {
+    fn to_string(&self) -> String {
+        match self {
+            CharacterHalo::ArisOriginalHalo => "Aris Original Halo",
+        }
+        .to_string()
+    }
+}
+
+/// ## Character Animation States
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AnimationState {
     Idle,
     Moving,
     MoveToEnd,
 }
 
-impl Into<usize> for StudentBehaviorState {
-    fn into(self) -> usize {
-        match self {
-            StudentBehaviorState::Idle => 0,
-            StudentBehaviorState::Moving => 1,
-            StudentBehaviorState::MoveToEnd => 2,
-        }
-    }
-}
-
-/// 쉐이더 모듈을 생성합니다.
-fn create_student_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
+/// 캐릭터 쉐이더 모듈을 생성합니다.
+fn create_character_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     let desc = wgpu::include_wgsl!(concat!(
         env!("CARGO_WORKSPACE_DIR"),
-        "/assets/shaders/student.wgsl"
+        "/assets/shaders/character.wgsl"
     ));
 
     if cfg!(feature = "enable-shader-validation") {
@@ -70,11 +78,11 @@ fn create_student_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     }
 }
 
-/// 쉐이더 모듈을 생성합니다.
-fn create_student_halo_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
+/// 캐릭터 헤일로 쉐이더 모듈을 생성합니다.
+fn create_character_halo_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     let desc = wgpu::include_wgsl!(concat!(
         env!("CARGO_WORKSPACE_DIR"),
-        "/assets/shaders/student_halo.wgsl"
+        "/assets/shaders/character_halo.wgsl"
     ));
 
     if cfg!(feature = "enable-shader-validation") {
@@ -97,16 +105,16 @@ fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     })
 }
 
-/// 렌더링 파이프라인을 생성합니다.
-pub fn create_student_render_pipeline(
+/// 캐릭터 모델 렌더링 파이프라인을 생성합니다.
+pub fn create_character_render_pipeline(
     device: &wgpu::Device,
     depth_stencil_format: wgpu::TextureFormat,
     render_target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
-    let module = create_student_shader_module(device);
+    let module = create_character_shader_module(device);
     let layout = create_pipeline_layout(device);
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("RenderPipeline(Student)"),
+        label: Some("RenderPipeline(Character)"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &module,
@@ -207,16 +215,16 @@ pub fn create_student_render_pipeline(
     Arc::new(pipeline)
 }
 
-/// 렌더링 파이프라인을 생성합니다.
+/// 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
 pub fn create_student_halo_render_pipeline(
     device: &wgpu::Device,
     depth_stencil_format: wgpu::TextureFormat,
     render_target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
-    let module = create_student_halo_shader_module(device);
+    let module = create_character_halo_shader_module(device);
     let layout = create_pipeline_layout(device);
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("RenderPipeline(Student)"),
+        label: Some("RenderPipeline(CharacterHalo)"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &module,
@@ -277,49 +285,55 @@ pub fn create_student_halo_render_pipeline(
     Arc::new(pipeline)
 }
 
-/// 학생 모델을 구성하는 `Entity`를 생성합니다.
+/// 캐릭터 모델을 구성하는 엔터티를 생성합니다.
 ///
-/// 기본으로 가지는 `Component`: `StudentTag`, `ToParentTrans`, `WorldTransform`,
-/// `AnimationTimer`, `StudentBehaviorState`, `MotionCollection`, `Child`
+/// 생성된 엔터티는 다음 컴포넌트를 가집니다.
+/// - `AnimationState`
+/// - `AnimationTimer`
+/// - `Arc<SkinningAnimation>`
+/// - `Character`
+/// - `Child`
+/// - `ToParentTrans`
+/// - `WorldTransform`
 ///
-/// 학생 모델별로 가지는 `Component`
-/// - `Aris_Original`: `ArisOriginal`
-///
-pub fn spawn_student(
+pub fn spawn_character(
     world: &World,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    kind: StudentKind,
-    state: StudentBehaviorState,
+    kind: Character,
+    state: AnimationState,
     timer: AnimationTimer,
     transform: glam::Mat4,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
 
-    builder.add(StudentTag);
+    builder.add(kind);
     builder.add(ToParentTrans(transform));
     builder.add(WorldTransform::default());
 
-    let (tag, spawn_model) = match kind {
-        StudentKind::ArisOriginal => (
-            aris_original::ArisOriginal,
-            aris_original::spawn_aris_original_model,
-        ),
+    let spawn_model_fn = match kind {
+        Character::ArisOriginal => aris_original::spawn_aris_original_model,
     };
 
     let (model, collection, mut batch_commands) =
-        spawn_model(world, asset_manager, device, queue, entity)?;
+        spawn_model_fn(world, asset_manager, device, queue, entity)?;
 
-    builder.add(tag);
     builder.add(timer);
     builder.add(state);
     builder.add(collection);
     builder.add(Child(model));
 
-    let (halo, mut batch_commands_1) =
-        spawn_student_halo(world, asset_manager, device, queue, kind, entity, transform)?;
+    let (halo, mut batch_commands_1) = spawn_character_halo(
+        world,
+        asset_manager,
+        device,
+        queue,
+        kind.into(),
+        entity,
+        transform,
+    )?;
     let (last_entity, last_builder) = batch_commands.last_mut().unwrap();
     debug_assert_eq!(*last_entity, model);
     last_builder.add(Sibling(halo));
@@ -329,32 +343,33 @@ pub fn spawn_student(
     Ok((entity, batch_commands))
 }
 
-/// 학생 헤일로 모델을 구성하는 `Entity`를 생성합니다.
+/// 학생 캐릭터 헤일로 모델을 구성하는 엔터티를 생성합니다.
 ///
-/// 기본으로 가지는 `Component`: `StudentHaloTag`, `ToParentTrans`, `WorldTransform`, `Child`
+/// 생성된 엔터티는 다음 컴포넌트를 가집니다.
+/// - `Child`
+/// - `CharacterHalo`
+/// - `ToParentTrans`
+/// - `WorldTransform`
 ///
-/// 학생 모델별로 가지는 `Component`
-/// - `Aris_Original`: `ArisOriginalHalo`
-///
-pub fn spawn_student_halo(
+pub fn spawn_character_halo(
     world: &World,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    kind: StudentKind,
+    kind: CharacterHalo,
     parent: Entity,
     transform: glam::Mat4,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
 
+    builder.add(kind);
     builder.add(Parent(parent));
-    builder.add(StudentHaloTag);
     builder.add(ToParentTrans(transform));
     builder.add(WorldTransform::default());
 
     let spawn_model = match kind {
-        StudentKind::ArisOriginal => aris_original::spawn_aris_original_halo_model,
+        CharacterHalo::ArisOriginalHalo => aris_original::spawn_aris_original_halo_model,
     };
 
     let (model, mut batch_commands) = spawn_model(world, asset_manager, device, queue, entity)?;

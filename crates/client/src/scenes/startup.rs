@@ -25,7 +25,8 @@ use super::TestbedTitleScene;
 /// 시스템에서 파일을 찾을 수 없는 경우 초기 설정 장면으로 전환합니다.
 ///
 pub struct StartupScene {
-    config: Option<UserConfig>,
+    /// 사용자 구성 데이터
+    user_config: Option<Box<UserConfig>>,
 
     /// 작업 결과물 대기열
     queue: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
@@ -37,7 +38,7 @@ pub struct StartupScene {
 impl StartupScene {
     pub fn new() -> Self {
         Self {
-            config: None,
+            user_config: None,
             queue: Arc::new(Queue::new()),
             num_tasks: 0,
         }
@@ -50,21 +51,26 @@ impl GameScene for StartupScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        //! 유저 구성 설정 파일을 로드하고, IO 스레드 풀에서 기본 에셋을 로드합니다.
+        //!
         let pool = app.io_threads();
         let queue = self.queue.clone();
         let asset_manager = app.asset_manager().clone();
         pool.spawn(move || {
+            // `NEXON LV2 gothic` 폰트를 로드합니다.
             let result = asset_manager
-                .load("font/nexon_lv2_gothic.ttf")
+                .load("font/NEXON_Lv2_Gothic.ttf")
                 .map(|_| {})
                 .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
             queue.push(result);
         });
         self.num_tasks += 1;
 
+        // 유저 구성 설정 파일을 읽습니다.
         let asset_manager = app.asset_manager();
         let result = asset_manager.get_or_init("user_config");
-        let config = match result {
+        let user_config = Box::new(match result {
+            // 유저 구성 설정 파일이 존재하는 경우
             Ok(cached_asset) => {
                 let reader = Cursor::new(cached_asset.as_bytes());
                 let config: UserConfig = serde_json::from_reader(reader)
@@ -73,6 +79,7 @@ impl GameScene for StartupScene {
 
                 config
             }
+            // 유저 구성 설정 파일이 존재하지 않는 경우: 기본 설정 파일을 생성한다.
             Err(ref e) if e.kind() == ErrorKind::NotFound => {
                 // 최대 윈도우 크기를 가져옵니다.
                 let max_window_size = window
@@ -96,18 +103,19 @@ impl GameScene for StartupScene {
                 config
             }
             Err(e) => return Err(Box::new(e)),
-        };
+        });
 
         // 애플리케이션 창을 조정합니다.
         let proxy = app.event_loop_proxy();
         proxy
-            .send_event(AppEvent::ResizeRequest(config.window_size))
+            .send_event(AppEvent::ResizeRequest(user_config.window_size))
             .unwrap();
         proxy
-            .send_event(AppEvent::FullScreenRequest(config.fullscreen))
+            .send_event(AppEvent::FullScreenRequest(user_config.fullscreen))
             .unwrap();
 
-        self.config = Some(config);
+        self.user_config = Some(user_config);
+
         Ok(())
     }
 
@@ -117,16 +125,18 @@ impl GameScene for StartupScene {
         window: Option<&Window>,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        //! 로드된 폰트를 UI 시스템에서 사용할 수 있도록 초기화합니다.
+        //!
         let egui_ctx = app.egui_ctx();
         let asset_manager = app.asset_manager();
         let nexon_lv2_gothic = asset_manager
-            .get_or_init("font/nexon_lv2_gothic.ttf")
+            .get_or_init("font/NEXON_Lv2_Gothic.ttf")
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         // UI 폰트 데이터를 추가합니다.
         let mut fonts = egui::FontDefinitions::default();
         fonts.font_data.insert(
-            "NEXON Lv2 Gothic".to_owned(),
+            "NEXON_Lv2_Gothic".to_owned(),
             egui::FontData::from_owned(nexon_lv2_gothic.as_bytes().to_vec()),
         );
 
@@ -134,13 +144,13 @@ impl GameScene for StartupScene {
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .insert(0, "NEXON Lv2 Gothic".to_owned());
+            .insert(0, "NEXON_Lv2_Gothic".to_owned());
 
         fonts
             .families
             .entry(egui::FontFamily::Monospace)
             .or_default()
-            .push("NEXON Lv2 Gothic".to_owned());
+            .push("NEXON_Lv2_Gothic".to_owned());
 
         egui_ctx.set_fonts(fonts);
 
@@ -154,20 +164,27 @@ impl GameScene for StartupScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if self.config.is_none() {
+        // 이미 다른 장면으로 전환된 경우 함수 실행을 생략합니다.
+        if self.user_config.is_none() {
             return Ok(());
         }
 
+        // IO 스레드 풀 작업 결과를 기다립니다.
         if let Some(result) = self.queue.pop() {
             self.num_tasks -= 1;
             result?;
         }
 
+        // 모든 작업이 완료된 경우 다음 장면으로 전환합니다.
         if self.num_tasks == 0 {
             let proxy = app.event_loop_proxy();
             proxy
                 .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
-                    TestbedTitleScene::new(self.config.take().unwrap()),
+                    TestbedTitleScene::new(
+                        self.user_config
+                            .take()
+                            .expect("user configuration must exist"),
+                    ),
                 ))))
                 .unwrap();
         }
@@ -184,8 +201,8 @@ impl GameScene for StartupScene {
         egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 게임을 초기화 하는 동안 검정색 화면을 출력합니다.
-        //
+        //! 게임을 초기화 하는 동안 검정색 화면을 출력합니다.
+        //!
         let device = app.render_device();
         let queue = app.render_queue();
 

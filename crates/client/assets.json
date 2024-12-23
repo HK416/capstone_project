@@ -6,20 +6,20 @@
             "directories" : {
                 "aris_original" : {
                     "files" : [
-                        "aris_original_body_mask.dds", 
-                        "aris_original_body.dds", 
-                        "aris_original_eyemouth.dds",
-                        "aris_original_face_mask.dds", 
-                        "aris_original_face.dds", 
-                        "aris_original_hair_mask.dds", 
-                        "aris_original_hair_spec.dds", 
-                        "aris_original_hair.dds", 
-                        "aris_original_halo.dds", 
-                        "aris_original_weapon_mask.dds", 
-                        "aris_original_weapon.dds", 
-                        "aris_original_halo.hierarchy",
-                        "aris_original.hierarchy",
-                        "aris_original.motion"
+                        "Aris_Original_Body_Mask.dds", 
+                        "Aris_Original_Body.dds", 
+                        "Aris_Original_EyeMouth.dds",
+                        "Aris_Original_Face_Mask.dds", 
+                        "Aris_Original_Face.dds", 
+                        "Aris_Original_Hair_Mask.dds", 
+                        "Aris_Original_Hair_Spec.dds", 
+                        "Aris_Original_Hair.dds", 
+                        "Aris_Original_Halo.dds", 
+                        "Aris_Original_Weapon_Mask.dds", 
+                        "Aris_Original_Weapon.dds", 
+                        "Aris_Original_Halo.hierarchy",
+                        "Aris_Original.hierarchy",
+                        "Aris_Original.motion"
                     ], 
                     "directories" : {}
                 }
@@ -27,7 +27,7 @@
         }, 
         "font" : {
             "files" : [
-                "nexon_lv2_gothic.ttf"
+                "NEXON_Lv2_Gothic.ttf"
             ],
             "directories" : {}
         }

@@ -151,7 +151,7 @@ pub struct Motion {
 
 impl Motion {
     pub fn linear_sampling(&self, time_point: f32) -> KeyFrame {
-        debug_assert!(self.keyframes.is_empty(), "invalid animation data");
+        debug_assert!(!self.keyframes.is_empty(), "invalid animation data");
 
         let time_point = time_point.min(self.length);
         let delta_time = 1.0 / self.frame_rate; // 애니메이션 키 프레임 간격
