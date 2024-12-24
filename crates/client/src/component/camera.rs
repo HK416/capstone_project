@@ -6,9 +6,6 @@ pub struct CameraTag;
 #[derive(Debug, Clone, Copy)]
 pub enum CameraState {
     Idle,
-    Aimming,
-    EnterAimming(f32),
-    ExitAimming(f32),
 }
 
 /// ## View Frustum

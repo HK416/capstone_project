@@ -22,3 +22,10 @@ pub struct BoneCollection {
 /// ## Animation Timer
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct AnimationTimer(pub f32);
+
+impl AnimationTimer {
+    /// 타이머를 초기화합니다.
+    pub fn reset(&mut self) {
+        self.0 = 0.0;
+    }
+}

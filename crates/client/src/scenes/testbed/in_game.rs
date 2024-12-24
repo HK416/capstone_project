@@ -12,14 +12,12 @@ use winit::{
 
 use crate::{
     component::{
-        CameraState, CameraTag, CharacterInvMass, ControlDelayTime, Direction,
-        MaxCharacterSpeed, MovementState, Projection, ToParentTrans, WorldTransform,
+        CameraState, CameraTag, CharacterInvMass, ControlDelayTime, Direction, MaxCharacterSpeed,
+        MovementState, Projection, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     system::{
-        assist_player_character_translation, draw_character, prepare_camera_resource,
-        prepare_mesh_resource, update_character_animation, update_character_animation_system,
-        update_entity_hierarchy, update_player_direction, update_third_person_camera,
+        assist_player_character_translation, draw_character, prepare_camera_resource, prepare_mesh_resource, update_character_animation, update_character_animation_system, update_entity_hierarchy, update_player_character_animation_state, update_player_character_direction, update_player_direction, update_third_person_camera
     },
 };
 
@@ -274,6 +272,20 @@ impl GameScene for TestbedInGameScene {
             &MaxCharacterSpeed(1.5),
             &self.keyboard_input_time,
             fixed_time_sec,
+        );
+
+        // 플레이어 캐릭터의 방향을 갱신합니다.
+        update_player_character_direction(
+            &mut self.world, 
+            player_entity, 
+            &self.direction
+        );
+
+        // 플레이어 캐릭터의 애니메이션 상태 머신을 갱신합니다.
+        update_player_character_animation_state(
+            &mut self.world, 
+            player_entity, 
+            &self.movement_state
         );
 
         Ok(())

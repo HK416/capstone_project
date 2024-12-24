@@ -12,9 +12,7 @@ use mod_render::{
 };
 
 use crate::component::{
-    create_character_render_pipeline, Acceleration, AnimationState, AnimationTimer, Character,
-    CharacterInvMass, Child, ControlDelayTime, Direction, Force, MaxCharacterSpeed, MovementState,
-    Sibling, ToParentTrans, Velocity,
+    create_character_render_pipeline, Acceleration, AnimationState, AnimationTimer, CameraState, Character, CharacterInvMass, Child, ControlDelayTime, Direction, Force, MaxCharacterSpeed, MovementState, Sibling, ToParentTrans, Velocity
 };
 
 /// 방향 전환 오프셋
@@ -23,7 +21,7 @@ const TURN_OFFSET: f32 = 1.4792;
 /// 컨트롤러 입력 시간 오프셋
 const CTRL_TIME_OFFSET: f32 = 4.0;
 
-/// 컨트롤러가 눌려 있을 때 입력 지연 시간을 갱신하는 함수입니다.
+/// 컨트롤러가 눌려있을 때 입력 지연 시간을 갱신하는 함수입니다.
 fn update_ctrl_time_when_pressed(keyboard_input_time: &mut ControlDelayTime, fixed_time_sec: f32) {
     // 키보드 입력 시간을 갱신합니다.
     keyboard_input_time.0 = (keyboard_input_time.0 + CTRL_TIME_OFFSET * fixed_time_sec).min(1.0);
@@ -196,6 +194,24 @@ fn update_player_direction_when_moving_right_backward_state(
     direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
 }
 
+/// 플레이어 캐릭터 엔터티의 방향을 갱신하는 함수입니다.  
+/// 이 함수는 캐릭터가 바라보는 방향을 변경합니다. (플레이어 방향과 다름에 주의)
+/// 
+/// # Note
+/// - 이 함수는 플레이어 방향을 갱신한 후 호출되어야 합니다.
+/// 
+/// # Panics
+/// - 주어진 엔터티는 유효한 엔터티여야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// 
+pub fn update_player_character_direction(
+    world: &mut World, 
+    entity: Entity, 
+    direction: &Direction,
+) {
+    let local_transform = world.query_one_mut::<With<&mut ToParentTrans, &Character>>(entity).expect("invalid entity or invalid entity component");
+    local_transform.look_to(direction.0, glam::Vec4::Y);
+}
+
 /// 플레이어 캐릭터 엔터티의 위치를 갱신하는 함수입니다.
 ///
 /// # Note
@@ -234,8 +250,52 @@ pub fn assist_player_character_translation(
 
     // 플레이어의 위치를 갱신합니다.
     let distance = velocity.0 * fixed_time_sec;
-    println!("{}", distance);
     local_transform.translate_world(distance);
+}
+
+/// 플레이어 캐릭터 엔터티의 애니메이션 상태를 갱신하는 함수입니다.
+///
+/// # Panics
+/// - 주어진 엔터티는 유효해야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 주어진 엔터티는 캐릭터 식별자(`Character`), 애니메이션 타이머(`AnimationTimer`), 애니메이션 상태 머신(`AnimationState`)을
+/// 갖고 있어야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+///
+pub fn update_player_character_animation_state(
+    world: &mut World,
+    entity: Entity,
+    movement_state: &MovementState,
+) {
+    // 엔터티의 애니메이션 타이머와 애니메이션 상태 머신을 가져옵니다.
+    type Q<'a> = (&'a mut AnimationTimer, &'a mut AnimationState);
+    let (timer, state) = world
+        .query_one_mut::<With<Q, &Character>>(entity)
+        .expect("invalid entity or invalid entity component");
+
+    // 애니메이션 상태 머신을 갱신합니다.
+    let (reset_timer, next_state) = match movement_state {
+        MovementState::Idle => match state {
+            AnimationState::Idle => (false, AnimationState::Idle),
+            AnimationState::Moving => (true, AnimationState::MoveToEnd),
+            AnimationState::MoveToEnd => (false, AnimationState::MoveToEnd),
+        },
+        MovementState::MovingLeft
+        | MovementState::MovingRight
+        | MovementState::MovingForward
+        | MovementState::MovingBackward
+        | MovementState::MovingLeftForward
+        | MovementState::MovingRightForward
+        | MovementState::MovingLeftBackward
+        | MovementState::MovingRightBackward => match state {
+            AnimationState::Idle => (true, AnimationState::Moving),
+            AnimationState::Moving => (false, AnimationState::Moving),
+            AnimationState::MoveToEnd => (true, AnimationState::Moving),
+        },
+    };
+
+    *state = next_state;
+    if reset_timer {
+        timer.reset();
+    }
 }
 
 /// # System
