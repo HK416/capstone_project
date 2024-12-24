@@ -8,7 +8,7 @@ use mod_render::{CameraResource, MaterialResource, MeshResource};
 
 use crate::{
     asset::ModelAssetError,
-    component::{Child, Sibling, ToParentTrans, WorldTransform},
+    component::{Acceleration, Child, Force, Sibling, ToParentTrans, Velocity, WorldTransform},
 };
 
 use super::{AnimationTimer, Parent};
@@ -312,6 +312,9 @@ pub fn spawn_character(
     builder.add(kind);
     builder.add(ToParentTrans(transform));
     builder.add(WorldTransform::default());
+    builder.add(Force(glam::Vec4::ZERO));
+    builder.add(Acceleration(glam::Vec4::ZERO));
+    builder.add(Velocity(glam::Vec4::ZERO));
 
     let spawn_model_fn = match kind {
         Character::ArisOriginal => aris_original::spawn_aris_original_model,

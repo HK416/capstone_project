@@ -12,8 +12,231 @@ use mod_render::{
 };
 
 use crate::component::{
-    create_character_render_pipeline, AnimationState, AnimationTimer, Character, Child, Sibling,
+    create_character_render_pipeline, Acceleration, AnimationState, AnimationTimer, Character,
+    CharacterInvMass, Child, ControlDelayTime, Direction, Force, MaxCharacterSpeed, MovementState,
+    Sibling, ToParentTrans, Velocity,
 };
+
+/// 방향 전환 오프셋
+const TURN_OFFSET: f32 = 1.4792;
+
+/// 컨트롤러 입력 시간 오프셋
+const CTRL_TIME_OFFSET: f32 = 4.0;
+
+/// 컨트롤러가 눌려 있을 때 입력 지연 시간을 갱신하는 함수입니다.
+fn update_ctrl_time_when_pressed(keyboard_input_time: &mut ControlDelayTime, fixed_time_sec: f32) {
+    // 키보드 입력 시간을 갱신합니다.
+    keyboard_input_time.0 = (keyboard_input_time.0 + CTRL_TIME_OFFSET * fixed_time_sec).min(1.0);
+}
+
+/// 컨트롤러가 눌려있지 않을 때 입력 지연 시간을 갱신하는 함수입니다.
+fn update_ctrl_time_when_released(keyboard_input_time: &mut ControlDelayTime, fixed_time_sec: f32) {
+    // 키보드 입력 시간을 갱신합니다.
+    keyboard_input_time.0 = (keyboard_input_time.0 - CTRL_TIME_OFFSET * fixed_time_sec).max(0.0);
+}
+
+/// 플레이어 캐릭터 속력 함수입니다.
+fn speed_function(t: f32) -> f32 {
+    debug_assert!(0.0 <= t && t <= 1.0, "out of bounds");
+    3.0 * t * t - 2.0 * t * t * t
+}
+
+/// 입력 방향에 따라 플레이어의 방향을 갱신합니다.
+pub fn update_player_direction(
+    direction: &mut Direction,
+    movement_state: &MovementState,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    const FUNC_TABLE: [fn(&mut Direction, &mut ControlDelayTime, f32); 9] = [
+        update_player_direction_when_idle_state,
+        update_player_direction_when_moving_left_state,
+        update_player_direction_when_moving_right_state,
+        update_player_direction_when_moving_forward_state,
+        update_player_direction_when_moving_backward_state,
+        update_player_direction_when_moving_left_forward_state,
+        update_player_direction_when_moving_right_forward_state,
+        update_player_direction_when_moving_left_backward_state,
+        update_player_direction_when_moving_right_backward_state,
+    ];
+    let index = *movement_state as usize;
+    FUNC_TABLE[index](direction, keyboard_input_time, fixed_time_sec);
+}
+
+fn update_player_direction_when_idle_state(
+    _direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_released(keyboard_input_time, fixed_time_sec);
+}
+
+/// `MovementState::MovingLeft`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_left_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    const DIR: glam::Vec4 = glam::Vec4::new(-1.0, 0.0, 0.0, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// `MovementState::MovingRight`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_right_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    const DIR: glam::Vec4 = glam::Vec4::new(1.0, 0.0, 0.0, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// `MovementState::MovingForward`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_forward_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    const DIR: glam::Vec4 = glam::Vec4::new(0.0, 0.0, 1.0, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// `MovementState::MovingBackward`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_backward_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    const DIR: glam::Vec4 = glam::Vec4::new(0.0, 0.0, -1.0, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// `MovementState::MovingLeftForward`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_left_forward_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    use core::f32::consts::SQRT_2;
+    const DIR: glam::Vec4 = glam::Vec4::new(-SQRT_2, 0.0, SQRT_2, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// `MovementState::MovingRightForward`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_right_forward_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    use core::f32::consts::SQRT_2;
+    const DIR: glam::Vec4 = glam::Vec4::new(SQRT_2, 0.0, SQRT_2, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// `MovementState::MovingLeftBackward`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_left_backward_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    use core::f32::consts::SQRT_2;
+    const DIR: glam::Vec4 = glam::Vec4::new(-SQRT_2, 0.0, -SQRT_2, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// `MovementState::MovingRightBackward`상태에서 플레이어의 방향을 갱신합니다.
+fn update_player_direction_when_moving_right_backward_state(
+    direction: &mut Direction,
+    keyboard_input_time: &mut ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    use core::f32::consts::SQRT_2;
+    const DIR: glam::Vec4 = glam::Vec4::new(SQRT_2, 0.0, -SQRT_2, 0.0);
+
+    // 키보드 입력 시간을 갱신합니다.
+    update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
+
+    // 플레이어 방향을 갱신합니다.
+    direction.0 = (direction.0 + DIR * TURN_OFFSET).normalize_or(DIR);
+}
+
+/// 플레이어 캐릭터 엔터티의 위치를 갱신하는 함수입니다.
+///
+/// # Note
+/// - 이 함수는 플레이어 방향을 갱신한 후 호출되어야 합니다.
+/// - 이 함수는 클라이언트에서 위치를 보정하는 용도로 사용됩니다. 실제 플레이어의 위치는 서버에서 계산됩니다.
+///
+pub fn assist_player_character_translation(
+    world: &mut World,
+    entity: Entity,
+    direction: &Direction,
+    inv_mass: &CharacterInvMass,
+    max_speed: &MaxCharacterSpeed,
+    keyboard_input_time: &ControlDelayTime,
+    fixed_time_sec: f32,
+) {
+    // 플레이어 캐릭터 엔터티에서 컴포넌트를 가져옵니다.
+    type Q<'a> = (
+        &'a mut Force,
+        &'a mut Acceleration,
+        &'a mut Velocity,
+        &'a mut ToParentTrans,
+    );
+    let (force, acceleration, velocity, local_transform) = world
+        .query_one_mut::<With<Q, &Character>>(entity)
+        .expect("invalid entity or invalid entity component");
+
+    // 플레이어 캐릭터의 가속도를 갱신합니다.
+    acceleration.0 = force.0 * inv_mass.0;
+
+    // 플레이어 키보드 입력 시간에 따른 캐릭터의 이동 속력을 계산합니다.
+    let delta_t = speed_function(keyboard_input_time.0);
+    let speed = max_speed.0 * delta_t;
+
+    // 플레이어 캐릭터의 속도를 갱신합니다.
+    velocity.0 = acceleration.0 * fixed_time_sec + direction.0 * speed;
+
+    // 플레이어의 위치를 갱신합니다.
+    let distance = velocity.0 * fixed_time_sec;
+    println!("{}", distance);
+    local_transform.translate_world(distance);
+}
 
 /// # System
 /// 캐릭터 엔터티의 애니메이션 타이머를 갱신하는 시스템입니다.

@@ -398,7 +398,7 @@ fn spawn_world_objects(
     let client_id = packet.client_id;
     let num_entities = packet.world.len();
     let local_channel: Arc<Queue<LocalResult>> = Arc::new(Queue::new());
-    rayon::scope(|scope| {
+    rayon::in_place_scope(|scope| {
         for player in packet.world.iter() {
             let local_channel = local_channel.clone();
             let asset_manager = asset_manager.clone();

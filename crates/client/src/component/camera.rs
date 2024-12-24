@@ -2,9 +2,9 @@
 /// 엔터티가 카메라임을 식별하는 태그입니다.
 pub struct CameraTag;
 
-/// ## Camera Behavior State
+/// ## Camera State
 #[derive(Debug, Clone, Copy)]
-pub enum CameraBehaviorState {
+pub enum CameraState {
     Idle,
     Aimming,
     EnterAimming(f32),

@@ -28,7 +28,8 @@ pub fn update_third_person_camera(world: &mut World, target_entity: Entity, came
     let translation = world_transform.get_translation();
 
     // 부모 변환 행렬을 생성합니다.
-    let parent_transform = glam::Mat4::from_translation(translation);
+    // let parent_transform = glam::Mat4::from_translation(translation);
+    let parent_transform = glam::Mat4::IDENTITY;
 
     // 카메라의 월드 변환 행렬을 갱신합니다.
     update_entity_hierarchy(world, camera_entity, parent_transform);

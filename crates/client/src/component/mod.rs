@@ -2,13 +2,14 @@ mod animation;
 mod camera;
 mod character;
 mod movement;
+mod physics;
 mod transform;
 
 use std::ops::{Deref, DerefMut};
 
 use hecs::Entity;
 
-pub use self::{animation::*, camera::*, character::*, movement::*, transform::*};
+pub use self::{animation::*, camera::*, character::*, movement::*, physics::*, transform::*};
 
 /// ## Parent Entity
 #[repr(transparent)]

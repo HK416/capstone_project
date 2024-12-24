@@ -2,6 +2,16 @@ use winit::keyboard::{KeyCode, KeyLocation};
 
 use crate::config::UserConfig;
 
+/// ## Player Control Delay Time
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct ControlDelayTime(pub f32);
+
+impl Default for ControlDelayTime {
+    fn default() -> Self {
+        Self(0.0)
+    }
+}
+
 /// ## Player Movement States
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MovementState {
