@@ -13,11 +13,15 @@ use winit::{
 use crate::{
     component::{
         CameraState, CameraTag, CharacterInvMass, ControlDelayTime, Direction, MaxCharacterSpeed,
-        MovementState, Projection, ToParentTrans, WorldTransform,
+        MovementState, Projection, ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     system::{
-        assist_player_character_translation, draw_character, prepare_camera_resource, prepare_mesh_resource, update_character_animation, update_character_animation_system, update_entity_hierarchy, update_player_character_animation_state, update_player_character_direction, update_player_direction, update_third_person_camera
+        assist_player_character_translation, compute_local_transform_of_third_person_camera,
+        draw_character, prepare_camera_resource, prepare_mesh_resource, rotate_third_person_camera,
+        update_character_animation, update_character_animation_system, update_entity_hierarchy,
+        update_player_character_animation_state, update_player_character_direction,
+        update_player_direction, update_third_person_camera,
     },
 };
 
@@ -159,6 +163,11 @@ impl TestbedInGameScene {
             0.0001,
             1000.0,
         )));
+        builder.add(ThirdPersonCamera {
+            yaw_angle: 0f32.to_radians(),
+            pitch_angle: 20f32.to_radians(),
+            distance: -1.2,
+        });
         builder.add(Arc::new(CameraResource::uninit(
             Some("main_camera"),
             app.render_device(),
@@ -227,12 +236,27 @@ impl GameScene for TestbedInGameScene {
     }
 
     #[allow(unused_variables)]
+    fn on_cursor_moved(
+        &mut self,
+        x: f32,
+        y: f32,
+        dx: f32,
+        dy: f32,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        rotate_third_person_camera(&mut self.world, self.main_camera, dx, dy, 1.0);
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
     fn on_update(
         &mut self,
         elapsed_time_sec: f32,
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        compute_local_transform_of_third_person_camera(&mut self.world, self.main_camera);
         update_character_animation_system(
             app.asset_manager(),
             &self.world,
@@ -275,17 +299,13 @@ impl GameScene for TestbedInGameScene {
         );
 
         // 플레이어 캐릭터의 방향을 갱신합니다.
-        update_player_character_direction(
-            &mut self.world, 
-            player_entity, 
-            &self.direction
-        );
+        update_player_character_direction(&mut self.world, player_entity, &self.direction);
 
         // 플레이어 캐릭터의 애니메이션 상태 머신을 갱신합니다.
         update_player_character_animation_state(
-            &mut self.world, 
-            player_entity, 
-            &self.movement_state
+            &mut self.world,
+            player_entity,
+            &self.movement_state,
         );
 
         Ok(())

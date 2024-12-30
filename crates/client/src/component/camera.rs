@@ -8,6 +8,19 @@ pub enum CameraState {
     Idle,
 }
 
+/// ## Third Person Camera Data
+#[derive(Debug, Clone, Copy)]
+pub struct ThirdPersonCamera {
+    /// 카메라가 대상의 y축을 기준으로 회전하는 각도입니다.
+    pub yaw_angle: f32,
+
+    /// 카메라가 대상의 x축을 기준으로 회전하는 각도입니다.
+    pub pitch_angle: f32,
+
+    /// 카메라와 대상 사이의 거리입니다.
+    pub distance: f32,
+}
+
 /// ## View Frustum
 #[derive(Debug, Clone, Copy)]
 pub struct Frustum {

@@ -6,7 +6,7 @@ use glam::Vec4Swizzles;
 pub struct ToParentTrans(pub glam::Mat4);
 
 impl ToParentTrans {
-    /// 로컬 변환 행렬의 z축을 주어진 방향과 같도록 합니다. 
+    /// 로컬 변환 행렬의 z축을 주어진 방향과 같도록 합니다.
     pub fn look_to(&mut self, look: glam::Vec4, up: glam::Vec4) {
         // 세 축의 방향 벡터를 계산합니다.
         let z_axis = glam::Vec3A::from_vec4(look).normalize();
@@ -20,11 +20,7 @@ impl ToParentTrans {
         let (scale, _, translation) = self.0.to_scale_rotation_translation();
 
         // 새로운 변환 행렬을 적용합니다.
-        self.0 = glam::Mat4::from_scale_rotation_translation(
-            scale, 
-            rotation, 
-            translation
-        );
+        self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
     }
 
     /// 로컬 변환 행렬의 위치를 주어진 거리만큼 이동시킵니다.
@@ -34,13 +30,30 @@ impl ToParentTrans {
     }
 
     /// 로컬 변환 행렬의 위치를 반환합니다.
-    pub fn get_translation(&self) -> glam::Vec3 {
-        self.0.w_axis.xyz()
+    ///
+    /// # Note
+    /// SIMD 명령어를 사용하기 위해 4차원 벡터를 반환합니다.
+    ///
+    pub fn get_translation(&self) -> glam::Vec4 {
+        self.0.w_axis
     }
 
     /// 로컬 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
-    pub fn get_look_vector(&self) -> glam::Vec3 {
-        self.0.z_axis.xyz().normalize()
+    ///
+    /// # Note
+    /// SIMD 명령어를 사용하기 위해 4차원 벡터를 반환합니다.
+    ///
+    pub fn get_look_vector(&self) -> glam::Vec4 {
+        self.0.z_axis.normalize()
+    }
+
+    /// 로컬 변환 행렬의 오른쪽 방향 벡터를 반환합니다.
+    ///
+    /// # Note
+    /// SIMD 명령어를 사용하기 위해 4차원 벡터를 반환합니다.
+    ///
+    pub fn get_right_vector(&self) -> glam::Vec4 {
+        self.0.x_axis.normalize()
     }
 }
 
