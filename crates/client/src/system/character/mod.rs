@@ -77,37 +77,6 @@ pub fn update_player_direction(
     FUNC_TABLE[index](view_right, view_forward, direction, keyboard_input_time, fixed_time_sec);
 }
 
-// /// 입력 방향에 따라 플레이어의 방향을 갱신합니다.
-// pub fn update_player_direction(
-//     direction: &mut Direction,
-//     movement_state: &MovementState,
-//     keyboard_input_time: &mut ControlDelayTime,
-//     fixed_time_sec: f32,
-// ) {
-//     const FUNC_TABLE: [fn(&mut Direction, &mut ControlDelayTime, f32); 9] = [
-//         update_player_direction_when_idle_state,
-//         update_player_direction_when_moving_left_state,
-//         update_player_direction_when_moving_right_state,
-//         update_player_direction_when_moving_forward_state,
-//         update_player_direction_when_moving_backward_state,
-//         update_player_direction_when_moving_left_forward_state,
-//         update_player_direction_when_moving_right_forward_state,
-//         update_player_direction_when_moving_left_backward_state,
-//         update_player_direction_when_moving_right_backward_state,
-//     ];
-//     let index = *movement_state as usize;
-//     FUNC_TABLE[index](direction, keyboard_input_time, fixed_time_sec);
-// }
-
-/// 이전 방향과 이후 방향의 크기에 따라 오프셋을 설정하는 함수입니다.
-fn get_direction_offset(src: glam::Vec4, dst: glam::Vec4) -> f32 {
-    use core::f32::consts::PI;
-    let src = glam::Vec3A::from_vec4(src).normalize();
-    let dst = glam::Vec3A::from_vec4(dst).normalize();
-    let t = src.angle_between(dst) / PI;
-    t * t * t * t * t + 1.0
-}
-
 /// `MovementState::Idle`상태에서 플레이어의 방향을 갱신합니다.
 fn update_player_direction_when_idle_state(
     _view_right: glam::Vec4,
@@ -135,8 +104,9 @@ fn update_player_direction_when_moving_left_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    // let offset = get_direction_offset(direction.0, dir);
+    // direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// `MovementState::MovingRight`상태에서 플레이어의 방향을 갱신합니다.
@@ -154,8 +124,7 @@ fn update_player_direction_when_moving_right_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// `MovementState::MovingForward`상태에서 플레이어의 방향을 갱신합니다.
@@ -173,8 +142,7 @@ fn update_player_direction_when_moving_forward_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// `MovementState::MovingBackward`상태에서 플레이어의 방향을 갱신합니다.
@@ -192,8 +160,7 @@ fn update_player_direction_when_moving_backward_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// `MovementState::MovingLeftForward`상태에서 플레이어의 방향을 갱신합니다.
@@ -213,8 +180,7 @@ fn update_player_direction_when_moving_left_forward_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// `MovementState::MovingRightForward`상태에서 플레이어의 방향을 갱신합니다.
@@ -234,8 +200,7 @@ fn update_player_direction_when_moving_right_forward_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// `MovementState::MovingLeftBackward`상태에서 플레이어의 방향을 갱신합니다.
@@ -255,8 +220,7 @@ fn update_player_direction_when_moving_left_backward_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// `MovementState::MovingRightBackward`상태에서 플레이어의 방향을 갱신합니다.
@@ -276,8 +240,7 @@ fn update_player_direction_when_moving_right_backward_state(
     update_ctrl_time_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
-    let offset = get_direction_offset(direction.0, dir);
-    direction.0 = (direction.0 + dir * offset).normalize_or(dir);
+    direction.0 = direction.0.lerp(dir, 0.1);
 }
 
 /// 플레이어 캐릭터 엔터티의 방향을 갱신하는 함수입니다.  
