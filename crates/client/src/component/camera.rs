@@ -1,3 +1,5 @@
+use glam::Vec4Swizzles;
+
 /// ## Tag
 /// 엔터티가 카메라임을 식별하는 태그입니다.
 pub struct CameraTag;
@@ -11,14 +13,55 @@ pub enum CameraState {
 /// ## Third Person Camera Data
 #[derive(Debug, Clone, Copy)]
 pub struct ThirdPersonCamera {
-    /// 카메라가 대상의 y축을 기준으로 회전하는 각도입니다.
-    pub yaw_angle: f32,
+    /// xz평면에서 카메라가 바라보는 방향을 나타냅니다.
+    pub view_matrix_xz: glam::Mat4,
 
-    /// 카메라가 대상의 x축을 기준으로 회전하는 각도입니다.
+    /// 삼인칭 카메라의 위치 오프셋입니다.
+    pub position_offset: glam::Vec4,
+
+    /// 카메라가 대상을 바라보는 각도입니다.
     pub pitch_angle: f32,
 
     /// 카메라와 대상 사이의 거리입니다.
     pub distance: f32,
+}
+
+impl ThirdPersonCamera {
+    /// 카메라가 바라보는 방향 벡터를 갱신합니다.
+    pub fn update_direction(&mut self, dx: f32, dy: f32, offset: f32) {
+        use core::f32::consts::FRAC_PI_3;
+
+        // 삼인칭 카메라가 바라보는 방향을 갱신합니다.
+        let angle = (dx * offset).to_radians();
+        let mat = glam::Mat4::from_rotation_y(angle);
+        self.view_matrix_xz = mat * self.view_matrix_xz;
+
+        // 삼인칭 카메라의 바라보는 회전 각도를 갱신합니다.
+        let angle = (dy * offset).to_radians();
+        self.pitch_angle = (self.pitch_angle + angle).clamp(-FRAC_PI_3, FRAC_PI_3);
+    }
+
+    /// 카메라의 바라보는 방향을 행렬로 반환합니다.
+    pub fn to_matrix(&self) -> glam::Mat4 {
+        let mut transform = glam::Mat4::from_translation(glam::vec3(0.0, 0.0, -self.distance));
+        transform = self.view_matrix_xz * transform;
+        let pitch_dir_mat = glam::Mat4::from_axis_angle(transform.x_axis.xyz(), self.pitch_angle);
+        transform = pitch_dir_mat * transform;
+        let offset_mat = glam::Mat4::from_translation(self.position_offset.xyz());
+        transform = transform * offset_mat;
+        transform
+    }
+}
+
+impl Default for ThirdPersonCamera {
+    fn default() -> Self {
+        Self {
+            position_offset: glam::Vec4::ZERO,
+            view_matrix_xz: glam::Mat4::IDENTITY,
+            pitch_angle: 20f32.to_radians(),
+            distance: 1.2,
+        }
+    }
 }
 
 /// ## View Frustum

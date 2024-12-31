@@ -17,9 +17,9 @@ use crate::{
     },
     config::UserConfig,
     system::{
-        assist_player_character_translation, compute_local_transform_of_third_person_camera,
-        draw_character, prepare_camera_resource, prepare_mesh_resource, rotate_third_person_camera,
-        update_character_animation, update_character_animation_system, update_entity_hierarchy,
+        assist_player_character_translation, draw_character, prepare_camera_resource,
+        prepare_mesh_resource, rotate_third_person_camera, update_character_animation,
+        update_character_animation_system, update_entity_hierarchy,
         update_player_character_animation_state, update_player_character_direction,
         update_player_direction, update_third_person_camera,
     },
@@ -153,9 +153,7 @@ impl TestbedInGameScene {
         let mut builder = EntityBuilder::new();
         builder.add(CameraTag);
         builder.add(CameraState::Idle);
-        builder.add(ToParentTrans(glam::Mat4::from_translation(glam::vec3(
-            0.25, 0.75, -1.2,
-        ))));
+        builder.add(ToParentTrans(glam::Mat4::IDENTITY));
         builder.add(WorldTransform::default());
         builder.add(Projection(glam::Mat4::perspective_lh(
             75f32.to_radians(),
@@ -164,9 +162,10 @@ impl TestbedInGameScene {
             1000.0,
         )));
         builder.add(ThirdPersonCamera {
-            yaw_angle: 0f32.to_radians(),
-            pitch_angle: 20f32.to_radians(),
-            distance: -1.2,
+            view_matrix_xz: glam::Mat4::IDENTITY,
+            position_offset: glam::Vec4::new(0.25, 0.85, 0.0, 0.0),
+            pitch_angle: 10f32.to_radians(),
+            distance: 1.5,
         });
         builder.add(Arc::new(CameraResource::uninit(
             Some("main_camera"),
@@ -256,7 +255,6 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        compute_local_transform_of_third_person_camera(&mut self.world, self.main_camera);
         update_character_animation_system(
             app.asset_manager(),
             &self.world,
@@ -281,6 +279,8 @@ impl GameScene for TestbedInGameScene {
 
         // 키보드 입력에 따라 플레이어 방향을 갱신합니다.
         update_player_direction(
+            &mut self.world,
+            self.main_camera,
             &mut self.direction,
             &self.movement_state,
             &mut self.keyboard_input_time,
