@@ -269,7 +269,7 @@ impl ApplicationHandler<AppEvent> for Application {
             .with_inner_size(self.window_size.size())
             .with_fullscreen(self.fullscreen.then_some(Fullscreen::Borderless(None)))
             .with_enabled_buttons(WindowButtons::CLOSE | WindowButtons::MINIMIZE)
-            .with_resizable(true)
+            .with_resizable(false)
             .with_visible(self.visible)
             .with_active(true);
 
@@ -602,6 +602,7 @@ impl ApplicationHandler<AppEvent> for Application {
                     #[cfg(target_os = "macos")]
                     {
                         use winit::platform::macos::WindowExtMacOS;
+                        app_window.window.set_borderless_game(self.fullscreen);
                         app_window.window.set_simple_fullscreen(self.fullscreen);
                     }
                     #[cfg(not(target_os = "macos"))]

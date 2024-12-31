@@ -34,11 +34,11 @@ dashmap = "6.1"
 
 # An easy-to-use immediate mode GUI that runs on both web and native
 # License: MIT OR Apache-2.0
-egui = "0.29"
+egui = "0.30"
 
 # Bindings for using egui with winit
 # License: MIT OR Apache-2.0
-egui-winit = "0.29"
+egui-winit = "0.30"
 
 # A simple and fast 3D math library for games and graphics
 # License: MIT OR Apache-2.0

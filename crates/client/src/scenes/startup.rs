@@ -137,7 +137,7 @@ impl GameScene for StartupScene {
         let mut fonts = egui::FontDefinitions::default();
         fonts.font_data.insert(
             "NEXON_Lv2_Gothic".to_owned(),
-            egui::FontData::from_owned(nexon_lv2_gothic.as_bytes().to_vec()),
+            egui::FontData::from_owned(nexon_lv2_gothic.as_bytes().to_vec()).into(),
         );
 
         fonts
