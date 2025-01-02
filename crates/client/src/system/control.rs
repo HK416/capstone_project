@@ -31,11 +31,12 @@ pub fn update_player_direction(
     world: &mut World,
     camera_entity: Entity,
     direction: &mut Direction,
-    movement_state: &MovementState,
-    keyboard_input_time: &mut Timer,
+    view_state: ViewState, 
+    movement_state: MovementState,
+    controller_input_time: &mut Timer,
     fixed_time_sec: f32,
 ) {
-    const FUNC_TABLE: [fn(glam::Vec4, glam::Vec4, &mut Direction, &mut Timer, f32); 9] = [
+    const FUNC_TABLE: [fn(glam::Vec4, glam::Vec4, ViewState, &mut Direction, &mut Timer, f32); 9] = [
         update_player_direction_when_idle_state,
         update_player_direction_when_moving_left_state,
         update_player_direction_when_moving_right_state,
@@ -54,12 +55,13 @@ pub fn update_player_direction(
     let view_right = third_person_camera.view_matrix_xz.x_axis.normalize();
     let view_forward = third_person_camera.view_matrix_xz.z_axis.normalize();
 
-    let index = *movement_state as usize;
+    let index = movement_state as usize;
     FUNC_TABLE[index](
         view_right,
         view_forward,
+        view_state,
         direction,
-        keyboard_input_time,
+        controller_input_time,
         fixed_time_sec,
     );
 }
@@ -67,19 +69,29 @@ pub fn update_player_direction(
 /// `MovementState::Idle`상태에서 플레이어의 방향을 갱신합니다.
 fn update_player_direction_when_idle_state(
     _view_right: glam::Vec4,
-    _view_forward: glam::Vec4,
-    _direction: &mut Direction,
+    view_forward: glam::Vec4,
+    view_state: ViewState, 
+    direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
 ) {
     // 키보드 입력 시간을 갱신합니다.
     update_ctrl_timer_when_released(keyboard_input_time, fixed_time_sec);
+    
+    // 뷰 상태가 `Idle`이 아닌 경우 플레이어 방향과 카메라 방향을 일치시킵니다.
+    match view_state {
+        ViewState::ZoomIn | ViewState::ZoomOut | ViewState::Aimming => {
+            direction.0 = view_forward;
+        }
+        _ => { }
+    };
 }
 
 /// `MovementState::MovingLeft`상태에서 플레이어의 방향을 갱신합니다.
 fn update_player_direction_when_moving_left_state(
     view_right: glam::Vec4,
     _view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -100,6 +112,7 @@ fn update_player_direction_when_moving_left_state(
 fn update_player_direction_when_moving_right_state(
     view_right: glam::Vec4,
     _view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -118,6 +131,7 @@ fn update_player_direction_when_moving_right_state(
 fn update_player_direction_when_moving_forward_state(
     _view_right: glam::Vec4,
     view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -136,6 +150,7 @@ fn update_player_direction_when_moving_forward_state(
 fn update_player_direction_when_moving_backward_state(
     _view_right: glam::Vec4,
     view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -154,6 +169,7 @@ fn update_player_direction_when_moving_backward_state(
 fn update_player_direction_when_moving_left_forward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -174,6 +190,7 @@ fn update_player_direction_when_moving_left_forward_state(
 fn update_player_direction_when_moving_right_forward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -194,6 +211,7 @@ fn update_player_direction_when_moving_right_forward_state(
 fn update_player_direction_when_moving_left_backward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -214,6 +232,7 @@ fn update_player_direction_when_moving_left_backward_state(
 fn update_player_direction_when_moving_right_backward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
+    _view_state: ViewState, 
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,

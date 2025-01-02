@@ -359,7 +359,8 @@ impl GameScene for TestbedInGameScene {
             &mut self.world,
             self.main_camera,
             &mut self.direction,
-            &self.movement_state,
+            self.view_state,
+            self.movement_state,
             &mut self.keyboard_input_time,
             fixed_time_sec,
         );
@@ -376,7 +377,14 @@ impl GameScene for TestbedInGameScene {
         );
 
         // 플레이어 캐릭터의 방향을 갱신합니다.
-        update_player_character_direction(&mut self.world, player_entity, &self.direction);
+        update_player_character_direction(
+            &mut self.world, 
+            player_entity, 
+            self.main_camera, 
+            self.direction, 
+            self.view_state, 
+            self.view_state_timer,
+        );
 
         // 플레이어 캐릭터의 애니메이션 상태 머신을 갱신합니다.
         update_player_character_animation_state(
@@ -414,8 +422,8 @@ impl GameScene for TestbedInGameScene {
             self.view_state_timer, 
             glam::Vec4::new(0.25, 0.85, 0.0, 0.0), 
             1.5, 
-            glam::Vec4::new(0.2, 0.5, 0.0, 0.0), 
-            0.25
+            glam::Vec4::new(0.2, 0.6, 0.0, 0.0), 
+            0.7
         );
         update_third_person_camera_hierarchy(&mut self.world, target_entity, self.main_camera);
 
