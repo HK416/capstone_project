@@ -1,18 +1,12 @@
-use winit::keyboard::{KeyCode, KeyLocation};
+use winit::{
+    event::MouseButton,
+    keyboard::{KeyCode, KeyLocation},
+};
 
 use crate::config::UserConfig;
 
-/// ## Player Control Delay Time
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct ControlDelayTime(pub f32);
-
-impl Default for ControlDelayTime {
-    fn default() -> Self {
-        Self(0.0)
-    }
-}
-
 /// ## Player Movement States
+#[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MovementState {
     Idle = 0,
@@ -24,6 +18,12 @@ pub enum MovementState {
     MovingRightForward = 6,
     MovingLeftBackward = 7,
     MovingRightBackward = 8,
+}
+
+impl Default for MovementState {
+    fn default() -> Self {
+        MovementState::Idle
+    }
 }
 
 impl MovementState {
@@ -363,5 +363,97 @@ fn handle_keyboard_released_moving_right_backward_state(
         MovementState::MovingRight
     } else {
         MovementState::MovingRightBackward
+    }
+}
+
+/// ## Player Focus States
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FocusState {
+    Idle = 0,
+    Aimming = 1,
+}
+
+impl Default for FocusState {
+    fn default() -> Self {
+        FocusState::Idle
+    }
+}
+
+impl FocusState {
+    /// 마우스 버튼 눌림이 발생했을 때 `FocusState`를 변경합니다.
+    pub fn handle_mouse_btn_pressed(&mut self, config: &UserConfig, button: MouseButton) {
+        const FUNC_TABLE: [fn(&UserConfig, MouseButton) -> FocusState; 2] = [
+            handle_mouse_btn_pressed_when_idle_state,
+            handle_mouse_btn_pressed_when_aimming_state,
+        ];
+        let index = *self as usize;
+        *self = FUNC_TABLE[index](config, button);
+    }
+
+    /// 마우스 버튼 떼임이 발생했을 때 `FocusState`를 변경합니다.
+    pub fn handle_mouse_btn_released(&mut self, config: &UserConfig, button: MouseButton) {
+        const FUNC_TABLE: [fn(&UserConfig, MouseButton) -> FocusState; 2] = [
+            handle_mouse_btn_released_when_idle_state,
+            handle_mouse_btn_released_when_aimming_state,
+        ];
+        let index = *self as usize;
+        *self = FUNC_TABLE[index](config, button);
+    }
+}
+
+/// `FocusState::Idle` 상태에서 마우스 버튼 눌림 이벤트를 처리합니다.
+fn handle_mouse_btn_pressed_when_idle_state(
+    config: &UserConfig,
+    button: MouseButton,
+) -> FocusState {
+    if config.mouse.aimming == button {
+        FocusState::Aimming
+    } else {
+        FocusState::Idle
+    }
+}
+
+/// `FocusState::Idle` 상태에서 마우스 버튼 떼임 이벤트를 처리합니다.
+fn handle_mouse_btn_released_when_idle_state(
+    _config: &UserConfig,
+    _button: MouseButton,
+) -> FocusState {
+    FocusState::Idle
+}
+
+/// `FocusState::Aimming` 상태에서 마우스 버튼 눌림 이벤트를 처리합니다.
+fn handle_mouse_btn_pressed_when_aimming_state(
+    _config: &UserConfig,
+    _button: MouseButton,
+) -> FocusState {
+    FocusState::Aimming
+}
+
+/// `FocusState::Aimming` 상태에서 마우스 버튼 떼임 이벤트를 처리합니다.
+fn handle_mouse_btn_released_when_aimming_state(
+    config: &UserConfig,
+    button: MouseButton,
+) -> FocusState {
+    if config.mouse.aimming == button {
+        FocusState::Idle
+    } else {
+        FocusState::Aimming
+    }
+}
+
+/// ## Player View States
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ViewState {
+    Idle = 0,
+    ZoomIn = 1,
+    ZoomOut = 2,
+    Aimming = 3,
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        ViewState::Idle
     }
 }

@@ -20,6 +20,7 @@ log = { workspace = true }
 parking_lot = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
+static_assertions = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }

@@ -1,5 +1,6 @@
 mod camera;
 mod character;
+mod control;
 
 use std::sync::Arc;
 
@@ -8,7 +9,7 @@ use mod_render::{MeshResource, TransformDataLayout, MAX_BONES};
 
 use crate::component::{BoneCollection, Child, Parent, Sibling, ToParentTrans, WorldTransform};
 
-pub use self::{camera::*, character::*};
+pub use self::{camera::*, character::*, control::*};
 
 /// 주어진 엔터티에 자식 엔터티를 추가합니다.
 /// 이미 엔터티의 자식 엔터티가 존재하는 경우 자식 엔터티의 형제 엔터티로 추가됩니다.

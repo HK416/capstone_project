@@ -76,6 +76,10 @@ rayon = "1.10"
 # License: MIT or Apache-2.0
 serde = { version = "1.0", features = ["derive"] }
 
+# Compile-time assertions to ensure that invariants are met.
+# License: MIT OR Apache-2.0
+static_assertions = "1.1"
+
 # derive(Error)
 # License: MIT OR Apache-2.0
 thiserror = "2.0"

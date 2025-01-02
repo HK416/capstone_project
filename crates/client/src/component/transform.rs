@@ -28,33 +28,6 @@ impl ToParentTrans {
         debug_assert_eq!(distance.w, 0.0);
         self.0.w_axis += distance;
     }
-
-    /// 로컬 변환 행렬의 위치를 반환합니다.
-    ///
-    /// # Note
-    /// SIMD 명령어를 사용하기 위해 4차원 벡터를 반환합니다.
-    ///
-    pub fn get_translation(&self) -> glam::Vec4 {
-        self.0.w_axis
-    }
-
-    /// 로컬 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
-    ///
-    /// # Note
-    /// SIMD 명령어를 사용하기 위해 4차원 벡터를 반환합니다.
-    ///
-    pub fn get_look_vector(&self) -> glam::Vec4 {
-        self.0.z_axis.normalize()
-    }
-
-    /// 로컬 변환 행렬의 오른쪽 방향 벡터를 반환합니다.
-    ///
-    /// # Note
-    /// SIMD 명령어를 사용하기 위해 4차원 벡터를 반환합니다.
-    ///
-    pub fn get_right_vector(&self) -> glam::Vec4 {
-        self.0.x_axis.normalize()
-    }
 }
 
 impl Default for ToParentTrans {

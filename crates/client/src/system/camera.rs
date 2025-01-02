@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
+use glam::FloatExt;
 use hecs::{Entity, World};
 use mod_render::{CameraDataLayout, CameraResource};
 
-use crate::component::{Projection, ThirdPersonCamera, ToParentTrans, WorldTransform};
+use crate::component::{Projection, ThirdPersonCamera, Timer, ToParentTrans, ViewState, WorldTransform, MAX_IN_OUT_TIME};
 
 use super::update_entity_hierarchy;
 
@@ -29,7 +30,104 @@ pub fn rotate_third_person_camera(
     third_person_camera.update_direction(dx, dy, offset);
 }
 
-/// 3인칭 카메라를 갱신합니다.
+/// 3인칭 카메라의 거리와 오프셋을 갱신합니다.
+/// 
+/// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 주어진 엔터티는 삼인칭 카메라 요소(`ThirdPersonCamera`)를 갖고 있어야 합니다.
+/// 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// 
+pub fn update_third_person_camera(
+    world: &mut World,
+    camera_entity: Entity,
+    view_state: ViewState,
+    view_state_timer: Timer,
+    idle_offset: glam::Vec4,
+    idle_distance: f32,
+    aimming_offset: glam::Vec4,
+    aimming_distance: f32,
+) {
+    const FUNC_TABLE: [fn(&mut ThirdPersonCamera, Timer, glam::Vec4, f32, glam::Vec4, f32); 4] = [
+        update_third_person_camera_when_idle_state, 
+        update_third_person_camera_when_zoom_in_state, 
+        update_third_person_camera_when_zoom_out_state, 
+        update_third_person_camera_when_aimming_state
+    ];
+
+    // 엔터티의 삼인칭 카메라 요소를 가져옵니다.
+    let third_person_camera = world
+        .query_one_mut::<&mut ThirdPersonCamera>(camera_entity)
+        .expect("invalid entity or invalid entity component");
+
+    let index = view_state as usize;
+    FUNC_TABLE[index](
+        third_person_camera, 
+        view_state_timer, 
+        idle_offset, 
+        idle_distance, 
+        aimming_offset, 
+        aimming_distance
+    );
+}
+
+/// `ViewState::Idle`일 때 삼인칭 카메라를 갱신합니다.
+fn update_third_person_camera_when_idle_state(
+    third_person_camera: &mut ThirdPersonCamera, 
+    _view_state_timer: Timer,
+    idle_offset: glam::Vec4,
+    idle_distance: f32,
+    _aimming_offset: glam::Vec4,
+    _aimming_distance: f32,
+) {
+    third_person_camera.position_offset = idle_offset;
+    third_person_camera.distance = idle_distance;
+}
+
+/// `ViewState::ZoomIn`일 때 삼인칭 카메라를 갱신합니다.
+fn update_third_person_camera_when_zoom_in_state(
+    third_person_camera: &mut ThirdPersonCamera, 
+    view_state_timer: Timer,
+    idle_offset: glam::Vec4,
+    idle_distance: f32,
+    aimming_offset: glam::Vec4,
+    aimming_distance: f32,
+) {
+    let t = view_state_timer.0 / MAX_IN_OUT_TIME;
+    let position_offset = idle_offset.lerp(aimming_offset, t);
+    let distance = idle_distance.lerp(aimming_distance, t);
+    third_person_camera.position_offset = position_offset;
+    third_person_camera.distance = distance;
+}
+
+/// `ViewState::ZoomOut`일 때 삼인칭 카메라를 갱신합니다.
+fn update_third_person_camera_when_zoom_out_state(
+    third_person_camera: &mut ThirdPersonCamera, 
+    view_state_timer: Timer,
+    idle_offset: glam::Vec4,
+    idle_distance: f32,
+    aimming_offset: glam::Vec4,
+    aimming_distance: f32,
+) {
+    let t = view_state_timer.0 / MAX_IN_OUT_TIME;
+    let position_offset = aimming_offset.lerp(idle_offset, t);
+    let distance = aimming_distance.lerp(idle_distance, t);
+    third_person_camera.position_offset = position_offset;
+    third_person_camera.distance = distance;
+}
+
+/// `ViewState::Aimming`일 때 삼인칭 카메라를 갱신합니다.
+fn update_third_person_camera_when_aimming_state(
+    third_person_camera: &mut ThirdPersonCamera, 
+    _view_state_timer: Timer,
+    _idle_offset: glam::Vec4,
+    _idle_distance: f32,
+    aimming_offset: glam::Vec4,
+    aimming_distance: f32,
+) {
+    third_person_camera.position_offset = aimming_offset;
+    third_person_camera.distance = aimming_distance;
+}
+
+/// 3인칭 카메라의 월드 변환 행렬을 계산합니다.
 ///
 /// 주어진 `target` 엔터티의 위치를 기준으로 카메라의 월드 변환 행렬이 계산됩니다.
 ///
@@ -42,7 +140,7 @@ pub fn rotate_third_person_camera(
 /// - 주어진 `camera` 엔터티는 로컬 변환 행렬(`ToParentTrans`), 월드 변환 행렬(`WorldTransform`),
 /// 삼인칭 카메라(`ThirdPersonCamera`)를 갖고 있어야 합니다. 그렇지 않은 경우 [`panic!`]을 호출합니다.
 ///
-pub fn update_third_person_camera(world: &mut World, target_entity: Entity, camera_entity: Entity) {
+pub fn update_third_person_camera_hierarchy(world: &mut World, target_entity: Entity, camera_entity: Entity) {
     // `target` 엔터티의 월드 변환 행렬로부터 `target`의 위치를 가져옵니다.
     let world_transform = world
         .query_one_mut::<&WorldTransform>(target_entity)

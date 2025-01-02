@@ -5,23 +5,18 @@ use hecs::{Entity, EntityBuilder, World};
 use mod_app::{app::AppHandle, scene::GameScene};
 use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use winit::{
-    event::Modifiers,
+    event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
     window::Window,
 };
 
 use crate::{
     component::{
-        CameraState, CameraTag, CharacterInvMass, ControlDelayTime, Direction, MaxCharacterSpeed,
-        MovementState, Projection, ThirdPersonCamera, ToParentTrans, WorldTransform,
+        CameraTag, CharacterInvMass, Direction, FocusState, MaxCharacterSpeed, MovementState, Projection, ThirdPersonCamera, Timer, ToParentTrans, ViewState, WorldTransform
     },
     config::UserConfig,
     system::{
-        assist_player_character_translation, draw_character, prepare_camera_resource,
-        prepare_mesh_resource, rotate_third_person_camera, update_character_animation,
-        update_character_animation_system, update_entity_hierarchy,
-        update_player_character_animation_state, update_player_character_direction,
-        update_player_direction, update_third_person_camera,
+        assist_player_character_translation, draw_character, prepare_camera_resource, prepare_mesh_resource, rotate_third_person_camera, update_character_animation, update_character_animation_system, update_entity_hierarchy, update_player_character_animation_state, update_player_character_direction, update_player_direction, update_player_view_state, update_third_person_camera, update_third_person_camera_hierarchy
     },
 };
 
@@ -35,25 +30,28 @@ const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
 pub struct TestbedInGameScene {
     user_config: Option<Box<UserConfig>>,
 
-    /// 메인 카메라의 `Entity`
+    /// 메인 카메라의 엔터티 식별자입니다.
     main_camera: Entity,
-
+    /// 게임 월드에 존재하는 엔터티 목록입니다.
+    entities: HashMap<u32, Entity>,
     /// 유저의 클라이언트 식별자입니다.
     client_id: u32,
-
-    /// 엔티티 목록입니다.
-    entities: HashMap<u32, Entity>,
-
+    /// 엔터티를 관리하는 월드입니다.
     world: World,
 
-    /// 플레이어 방향입니다.
-    direction: Direction,
+    /// 플레이어의 초점 상태입니다.
+    focus_state: FocusState,
+    /// 플레이어 뷰 상태입니다.
+    view_state: ViewState,
+    /// 플레이어의 뷰 상태 경과 시간입니다.
+    view_state_timer: Timer,
 
+    /// 플레이어의 이동 방향입니다.
+    direction: Direction,
     /// 플레이어의 움직임 상태입니다.
     movement_state: MovementState,
-
     /// 플레이어가 키보드를 누른 시간입니다.
-    keyboard_input_time: ControlDelayTime,
+    keyboard_input_time: Timer,
 
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
@@ -69,12 +67,15 @@ impl TestbedInGameScene {
         Self {
             user_config: Some(user_config),
             main_camera: Entity::DANGLING,
-            client_id,
             entities,
+            client_id,
             world,
+            focus_state: FocusState::default(),
+            view_state: ViewState::default(),
+            view_state_timer: Timer::default(),
             direction: Direction(glam::Vec4::new(0.0, 0.0, 1.0, 0.0)),
-            movement_state: MovementState::Idle,
-            keyboard_input_time: ControlDelayTime(0.0),
+            movement_state: MovementState::default(),
+            keyboard_input_time: Timer::default(),
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -152,7 +153,6 @@ impl TestbedInGameScene {
 
         let mut builder = EntityBuilder::new();
         builder.add(CameraTag);
-        builder.add(CameraState::Idle);
         builder.add(ToParentTrans(glam::Mat4::IDENTITY));
         builder.add(WorldTransform::default());
         builder.add(Projection(glam::Mat4::perspective_lh(
@@ -161,12 +161,7 @@ impl TestbedInGameScene {
             0.0001,
             1000.0,
         )));
-        builder.add(ThirdPersonCamera {
-            view_matrix_xz: glam::Mat4::IDENTITY,
-            position_offset: glam::Vec4::new(0.25, 0.85, 0.0, 0.0),
-            pitch_angle: 10f32.to_radians(),
-            distance: 1.5,
-        });
+        builder.add(ThirdPersonCamera::default());
         builder.add(Arc::new(CameraResource::uninit(
             Some("main_camera"),
             app.render_device(),
@@ -198,7 +193,12 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if repeat || self.user_config.is_none() {
+        if repeat {
+            return Ok(());
+        }
+
+        if self.user_config.is_none() {
+            log::warn!("사용자 구성 설정 데이터가 비어있습니다!");
             return Ok(());
         }
 
@@ -221,7 +221,12 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if repeat || self.user_config.is_none() {
+        if repeat {
+            return Ok(());
+        }
+
+        if self.user_config.is_none() {
+            log::warn!("사용자 구성 설정 데이터가 비어있습니다!");
             return Ok(());
         }
 
@@ -235,15 +240,79 @@ impl GameScene for TestbedInGameScene {
     }
 
     #[allow(unused_variables)]
+    fn on_mouse_btn_pressed(
+        &mut self,
+        x: f32,
+        y: f32,
+        button: MouseButton,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if self.user_config.is_none() {
+            log::warn!("사용자 구성 설정 데이터가 비어있습니다!");
+            return Ok(());
+        }
+
+        let user_config = self
+            .user_config
+            .as_ref()
+            .expect("user configuration must exist");
+        self.focus_state
+            .handle_mouse_btn_pressed(&user_config, button);
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_mouse_btn_released(
+        &mut self,
+        x: f32,
+        y: f32,
+        button: MouseButton,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        if self.user_config.is_none() {
+            log::warn!("사용자 구성 설정 데이터가 비어있습니다!");
+            return Ok(());
+        }
+
+        let user_config = self
+            .user_config
+            .as_ref()
+            .expect("user configuration must exist");
+        self.focus_state
+            .handle_mouse_btn_released(&user_config, button);
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
     fn on_cursor_moved(
         &mut self,
         x: f32,
         y: f32,
-        dx: f32,
-        dy: f32,
+        mut dx: f32,
+        mut dy: f32,
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        if self.user_config.is_none() {
+            log::warn!("사용자 구성 설정 데이터가 비어있습니다!");
+            return Ok(());
+        }
+
+        let user_config = self
+            .user_config
+            .as_ref()
+            .expect("user configuration must exist");
+
+        if user_config.mouse.left_right_reversal {
+            dx *= -1.0;
+        }
+
+        if user_config.mouse.up_down_reversal {
+            dy *= -1.0;
+        }
+
         rotate_third_person_camera(&mut self.world, self.main_camera, dx, dy, 1.0);
         Ok(())
     }
@@ -276,6 +345,14 @@ impl GameScene for TestbedInGameScene {
             .get(&self.client_id)
             .cloned()
             .expect("no such entity");
+
+        // 플레이어 뷰 상태를 갱신합니다.
+        update_player_view_state(
+            self.focus_state, 
+            &mut self.view_state, 
+            &mut self.view_state_timer, 
+            fixed_time_sec
+        );
 
         // 키보드 입력에 따라 플레이어 방향을 갱신합니다.
         update_player_direction(
@@ -330,7 +407,17 @@ impl GameScene for TestbedInGameScene {
 
         // 카메라 위치를 갱신합니다.
         let target_entity = self.entities.get(&self.client_id).cloned().unwrap();
-        update_third_person_camera(&mut self.world, target_entity, self.main_camera);
+        update_third_person_camera(
+            &mut self.world, 
+            self.main_camera, 
+            self.view_state, 
+            self.view_state_timer, 
+            glam::Vec4::new(0.25, 0.85, 0.0, 0.0), 
+            1.5, 
+            glam::Vec4::new(0.2, 0.5, 0.0, 0.0), 
+            0.25
+        );
+        update_third_person_camera_hierarchy(&mut self.world, target_entity, self.main_camera);
 
         prepare_mesh_resource(
             &self.world,
