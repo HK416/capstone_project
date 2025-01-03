@@ -1,18 +1,21 @@
 use std::sync::Arc;
 
+use constcat::concat;
 use hecs::{Entity, QueryOneError, World};
 use mod_app::asset::AssetManager;
 
 use crate::{
     asset::MotionPool,
     component::{AnimationState, AnimationTimer, BoneCollection, SkinningAnimation, ToParentTrans},
+    system::{IDLE_ANIMATION_SUFFIX, MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX},
 };
+
+const IDLE_ANIMATION: &'static str = concat!(MOTION_NAME, IDLE_ANIMATION_SUFFIX);
+const MOVING_ANIMATION: &'static str = concat!(MOTION_NAME, MOVING_ANIMATION_SUFFIX);
+const MOVE_TO_END_ANIMATION: &'static str = concat!(MOTION_NAME, MOVE_TO_END_ANIMATION_SUFFIX);
 
 const WORKSPACE: &'static str = "characters/aris_original";
 const MOTION_NAME: &'static str = "Aris_Original";
-const IDLE_ANIMATION: &'static str = "Aris_Original_Normal_Idle";
-const MOVING_ANIMATION: &'static str = "Aris_Original_Move_Ing";
-const MOVE_TO_END_ANIMATION: &'static str = "Aris_Original_Move_End_Normal";
 
 /// `Aris Original` 캐릭터 모델의 애니메이션 타이머를 갱신합니다.
 pub fn update_aris_original_animation_timer(

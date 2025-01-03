@@ -18,6 +18,7 @@ const MODEL_BONE_ROOT: &'static str = "Bip001";
 
 /// ## Tag
 /// 엔터티가 캐릭터임을 식별하는 태그입니다.
+#[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Character {
     ArisOriginal,
@@ -42,6 +43,7 @@ impl Into<CharacterHalo> for Character {
 
 /// ## Tag
 /// 엔터티가 캐릭터의 헤일로임을 식별하는 태그입니다.
+#[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CharacterHalo {
     ArisOriginalHalo,
@@ -57,11 +59,12 @@ impl ToString for CharacterHalo {
 }
 
 /// ## Character Animation States
+#[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnimationState {
-    Idle,
-    Moving,
-    MoveToEnd,
+    Idle = 0,
+    Moving = 1,
+    MoveToEnd = 2,
 }
 
 /// 캐릭터 쉐이더 모듈을 생성합니다.

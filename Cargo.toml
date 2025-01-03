@@ -28,6 +28,11 @@ bitflags = "2.6"
 # License: Zlib OR Apache-2.0 OR MIT
 bytemuck = { version = "1.20", features = ["derive"] }
 
+
+# concat! with support for const variables and expressions
+# License: MIT OR Apache-2.0
+constcat = "0.5"
+
 # Blazing fast concurrent HashMap for Rust.
 # License: MIT
 dashmap = "6.1"

@@ -371,7 +371,7 @@ fn handle_keyboard_released_moving_right_backward_state(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FocusState {
     Idle = 0,
-    Aimming = 1,
+    Aiming = 1,
 }
 
 impl Default for FocusState {
@@ -385,7 +385,7 @@ impl FocusState {
     pub fn handle_mouse_btn_pressed(&mut self, config: &UserConfig, button: MouseButton) {
         const FUNC_TABLE: [fn(&UserConfig, MouseButton) -> FocusState; 2] = [
             handle_mouse_btn_pressed_when_idle_state,
-            handle_mouse_btn_pressed_when_aimming_state,
+            handle_mouse_btn_pressed_when_aiming_state,
         ];
         let index = *self as usize;
         *self = FUNC_TABLE[index](config, button);
@@ -395,7 +395,7 @@ impl FocusState {
     pub fn handle_mouse_btn_released(&mut self, config: &UserConfig, button: MouseButton) {
         const FUNC_TABLE: [fn(&UserConfig, MouseButton) -> FocusState; 2] = [
             handle_mouse_btn_released_when_idle_state,
-            handle_mouse_btn_released_when_aimming_state,
+            handle_mouse_btn_released_when_aiming_state,
         ];
         let index = *self as usize;
         *self = FUNC_TABLE[index](config, button);
@@ -407,8 +407,8 @@ fn handle_mouse_btn_pressed_when_idle_state(
     config: &UserConfig,
     button: MouseButton,
 ) -> FocusState {
-    if config.mouse.aimming == button {
-        FocusState::Aimming
+    if config.mouse.aiming == button {
+        FocusState::Aiming
     } else {
         FocusState::Idle
     }
@@ -422,23 +422,23 @@ fn handle_mouse_btn_released_when_idle_state(
     FocusState::Idle
 }
 
-/// `FocusState::Aimming` 상태에서 마우스 버튼 눌림 이벤트를 처리합니다.
-fn handle_mouse_btn_pressed_when_aimming_state(
+/// `FocusState::Aiming` 상태에서 마우스 버튼 눌림 이벤트를 처리합니다.
+fn handle_mouse_btn_pressed_when_aiming_state(
     _config: &UserConfig,
     _button: MouseButton,
 ) -> FocusState {
-    FocusState::Aimming
+    FocusState::Aiming
 }
 
-/// `FocusState::Aimming` 상태에서 마우스 버튼 떼임 이벤트를 처리합니다.
-fn handle_mouse_btn_released_when_aimming_state(
+/// `FocusState::Aiming` 상태에서 마우스 버튼 떼임 이벤트를 처리합니다.
+fn handle_mouse_btn_released_when_aiming_state(
     config: &UserConfig,
     button: MouseButton,
 ) -> FocusState {
-    if config.mouse.aimming == button {
+    if config.mouse.aiming == button {
         FocusState::Idle
     } else {
-        FocusState::Aimming
+        FocusState::Aiming
     }
 }
 
@@ -449,7 +449,7 @@ pub enum ViewState {
     Idle = 0,
     ZoomIn = 1,
     ZoomOut = 2,
-    Aimming = 3,
+    Aiming = 3,
 }
 
 impl Default for ViewState {

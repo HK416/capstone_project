@@ -80,7 +80,7 @@ impl Default for KeyboardConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct MouseConfig {
     pub attack: MouseButton,
-    pub aimming: MouseButton,
+    pub aiming: MouseButton,
     pub left_right_reversal: bool,
     pub up_down_reversal: bool,
 }
@@ -89,7 +89,7 @@ impl Default for MouseConfig {
     fn default() -> Self {
         Self {
             attack: MouseButton::Left,
-            aimming: MouseButton::Right,
+            aiming: MouseButton::Right,
             left_right_reversal: false,
             up_down_reversal: false,
         }

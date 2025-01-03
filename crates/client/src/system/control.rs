@@ -6,14 +6,12 @@ use crate::component::{
 };
 
 /// 컨트롤러가 눌려있을 때 입력 지연 시간을 갱신하는 함수입니다.
-fn update_ctrl_timer_when_pressed(keyboard_input_time: &mut Timer, fixed_time_sec: f32) {
-    // 키보드 입력 시간을 갱신합니다.
+fn update_controller_timer_when_pressed(keyboard_input_time: &mut Timer, fixed_time_sec: f32) {
     keyboard_input_time.0 = (keyboard_input_time.0 + fixed_time_sec).min(MAX_CONTROL_INPUT_TIME);
 }
 
 /// 컨트롤러가 눌려있지 않을 때 입력 지연 시간을 갱신하는 함수입니다.
-fn update_ctrl_timer_when_released(keyboard_input_time: &mut Timer, fixed_time_sec: f32) {
-    // 키보드 입력 시간을 갱신합니다.
+fn update_controller_timer_when_released(keyboard_input_time: &mut Timer, fixed_time_sec: f32) {
     keyboard_input_time.0 = (keyboard_input_time.0 - fixed_time_sec).max(0.0);
 }
 
@@ -31,7 +29,7 @@ pub fn update_player_direction(
     world: &mut World,
     camera_entity: Entity,
     direction: &mut Direction,
-    view_state: ViewState, 
+    view_state: ViewState,
     movement_state: MovementState,
     controller_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -52,8 +50,14 @@ pub fn update_player_direction(
     let third_person_camera = world
         .query_one_mut::<&ThirdPersonCamera>(camera_entity)
         .expect("invalid entity or invalid entity component");
-    let view_right = third_person_camera.view_matrix_xz.x_axis.normalize();
-    let view_forward = third_person_camera.view_matrix_xz.z_axis.normalize();
+    let view_right = third_person_camera
+        .view_matrix_xz
+        .x_axis
+        .normalize_or(glam::Vec4::X);
+    let view_forward = third_person_camera
+        .view_matrix_xz
+        .z_axis
+        .normalize_or(glam::Vec4::Z);
 
     let index = movement_state as usize;
     FUNC_TABLE[index](
@@ -70,28 +74,28 @@ pub fn update_player_direction(
 fn update_player_direction_when_idle_state(
     _view_right: glam::Vec4,
     view_forward: glam::Vec4,
-    view_state: ViewState, 
+    view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
 ) {
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_released(keyboard_input_time, fixed_time_sec);
-    
+    update_controller_timer_when_released(keyboard_input_time, fixed_time_sec);
+
     // 뷰 상태가 `Idle`이 아닌 경우 플레이어 방향과 카메라 방향을 일치시킵니다.
-    match view_state {
-        ViewState::ZoomIn | ViewState::ZoomOut | ViewState::Aimming => {
-            direction.0 = view_forward;
-        }
-        _ => { }
-    };
+    if view_state == ViewState::ZoomIn
+        || view_state == ViewState::ZoomOut
+        || view_state == ViewState::Aiming
+    {
+        direction.0 = view_forward;
+    }
 }
 
 /// `MovementState::MovingLeft`상태에서 플레이어의 방향을 갱신합니다.
 fn update_player_direction_when_moving_left_state(
     view_right: glam::Vec4,
     _view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -100,7 +104,7 @@ fn update_player_direction_when_moving_left_state(
     let dir = -view_right;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     // let offset = get_direction_offset(direction.0, dir);
@@ -112,7 +116,7 @@ fn update_player_direction_when_moving_left_state(
 fn update_player_direction_when_moving_right_state(
     view_right: glam::Vec4,
     _view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -121,7 +125,7 @@ fn update_player_direction_when_moving_right_state(
     let dir = view_right;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, 0.1);
@@ -131,7 +135,7 @@ fn update_player_direction_when_moving_right_state(
 fn update_player_direction_when_moving_forward_state(
     _view_right: glam::Vec4,
     view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -140,7 +144,7 @@ fn update_player_direction_when_moving_forward_state(
     let dir = view_forward;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, 0.1);
@@ -150,7 +154,7 @@ fn update_player_direction_when_moving_forward_state(
 fn update_player_direction_when_moving_backward_state(
     _view_right: glam::Vec4,
     view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -159,7 +163,7 @@ fn update_player_direction_when_moving_backward_state(
     let dir = -view_forward;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, 0.1);
@@ -169,7 +173,7 @@ fn update_player_direction_when_moving_backward_state(
 fn update_player_direction_when_moving_left_forward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -180,7 +184,7 @@ fn update_player_direction_when_moving_left_forward_state(
     let dir = -SQRT_2 * view_right + SQRT_2 * view_forward;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, 0.1);
@@ -190,7 +194,7 @@ fn update_player_direction_when_moving_left_forward_state(
 fn update_player_direction_when_moving_right_forward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -201,7 +205,7 @@ fn update_player_direction_when_moving_right_forward_state(
     let dir = SQRT_2 * view_right + SQRT_2 * view_forward;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, 0.1);
@@ -211,7 +215,7 @@ fn update_player_direction_when_moving_right_forward_state(
 fn update_player_direction_when_moving_left_backward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -222,7 +226,7 @@ fn update_player_direction_when_moving_left_backward_state(
     let dir = -SQRT_2 * view_right - SQRT_2 * view_forward;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, 0.1);
@@ -232,7 +236,7 @@ fn update_player_direction_when_moving_left_backward_state(
 fn update_player_direction_when_moving_right_backward_state(
     view_right: glam::Vec4,
     view_forward: glam::Vec4,
-    _view_state: ViewState, 
+    _view_state: ViewState,
     direction: &mut Direction,
     keyboard_input_time: &mut Timer,
     fixed_time_sec: f32,
@@ -243,7 +247,7 @@ fn update_player_direction_when_moving_right_backward_state(
     let dir = SQRT_2 * view_right - SQRT_2 * view_forward;
 
     // 키보드 입력 시간을 갱신합니다.
-    update_ctrl_timer_when_pressed(keyboard_input_time, fixed_time_sec);
+    update_controller_timer_when_pressed(keyboard_input_time, fixed_time_sec);
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, 0.1);
@@ -260,7 +264,7 @@ pub fn update_player_view_state(
         update_player_view_state_when_idle_state,
         update_player_view_state_when_zoom_in_state,
         update_player_view_state_when_zoom_out_state,
-        update_player_view_state_when_aimming_state,
+        update_player_view_state_when_aiming_state,
     ];
     let index = *view_state as usize;
     FUNC_TABLE[index](focus_state, view_state, view_state_timer, fixed_time_sec);
@@ -275,7 +279,7 @@ fn update_player_view_state_when_idle_state(
 ) {
     (*view_state, view_state_timer.0) = match focus_state {
         FocusState::Idle => (ViewState::Idle, 0.0),
-        FocusState::Aimming => (ViewState::ZoomIn, fixed_time_sec),
+        FocusState::Aiming => (ViewState::ZoomIn, fixed_time_sec),
     }
 }
 
@@ -297,10 +301,10 @@ fn update_player_view_state_when_zoom_in_state(
                 (ViewState::ZoomOut, time)
             }
         }
-        FocusState::Aimming => {
+        FocusState::Aiming => {
             let time = view_state_timer.0 + fixed_time_sec;
             if time >= MAX_IN_OUT_TIME {
-                (ViewState::Aimming, 0.0)
+                (ViewState::Aiming, 0.0)
             } else {
                 (ViewState::ZoomIn, time)
             }
@@ -326,10 +330,10 @@ fn update_player_view_state_when_zoom_out_state(
                 (ViewState::ZoomOut, time)
             }
         }
-        FocusState::Aimming => {
+        FocusState::Aiming => {
             let time = (MAX_IN_OUT_TIME - view_state_timer.0) + fixed_time_sec;
             if time >= MAX_IN_OUT_TIME {
-                (ViewState::Aimming, 0.0)
+                (ViewState::Aiming, 0.0)
             } else {
                 (ViewState::ZoomIn, time)
             }
@@ -337,8 +341,8 @@ fn update_player_view_state_when_zoom_out_state(
     }
 }
 
-/// `ViewState::Aimming`일 때 플레이어 뷰 상태를 갱신합니다.
-fn update_player_view_state_when_aimming_state(
+/// `ViewState::Aiming`일 때 플레이어 뷰 상태를 갱신합니다.
+fn update_player_view_state_when_aiming_state(
     focus_state: FocusState,
     view_state: &mut ViewState,
     view_state_timer: &mut Timer,
@@ -346,6 +350,6 @@ fn update_player_view_state_when_aimming_state(
 ) {
     (*view_state, view_state_timer.0) = match focus_state {
         FocusState::Idle => (ViewState::ZoomOut, fixed_time_sec),
-        FocusState::Aimming => (ViewState::Aimming, 0.0),
+        FocusState::Aiming => (ViewState::Aiming, 0.0),
     }
 }

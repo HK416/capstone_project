@@ -12,8 +12,21 @@ use mod_render::{
 };
 
 use crate::component::{
-    create_character_render_pipeline, Acceleration, AnimationState, AnimationTimer, Character, CharacterInvMass, Child, Direction, Force, MaxCharacterSpeed, MovementState, Sibling, ThirdPersonCamera, Timer, ToParentTrans, Velocity, ViewState, MAX_CONTROL_INPUT_TIME, MAX_IN_OUT_TIME
+    create_character_render_pipeline, Acceleration, AnimationState, AnimationTimer, Character,
+    CharacterInvMass, Child, Direction, Force, MaxCharacterSpeed, MovementState, Sibling,
+    ThirdPersonCamera, Timer, ToParentTrans, Velocity, ViewState, MAX_CONTROL_INPUT_TIME,
+    MAX_IN_OUT_TIME,
 };
+
+pub const IDLE_ANIMATION_SUFFIX: &'static str = "_Normal_Idle";
+pub const MOVING_ANIMATION_SUFFIX: &'static str = "_Move_Ing";
+pub const MOVE_TO_END_ANIMATION_SUFFIX: &'static str = "_Move_End_Normal";
+pub const CAFE_WALK_ANIMATION_SUFFIX: &'static str = "_Cafe_Walk";
+pub const ATTACK_START_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Start";
+pub const ATTACK_ING_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Ing";
+pub const ATTACK_END_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_End";
+pub const RELOAD_ANIMATION_SUFFIX: &'static str = "_Normal_Reload";
+pub const EXS_ANIMATION_SUFFIX: &'static str = "_Exs";
 
 /// 플레이어 캐릭터 속력 함수입니다.
 fn speed_function(t: f32) -> f32 {
@@ -35,18 +48,18 @@ fn speed_function(t: f32) -> f32 {
 /// 그렇지 않는 경우 [`panic!`]을 호출합니다.
 ///
 pub fn update_player_character_direction(
-    world: &mut World, 
-    player_entity: Entity, 
+    world: &mut World,
+    player_entity: Entity,
     camera_entity: Entity,
-    direction: Direction, 
-    view_state: ViewState, 
-    view_state_timer: Timer
+    direction: &Direction,
+    view_state: ViewState,
+    view_state_timer: Timer,
 ) {
-    const FUNC_TABLE: [fn(&mut World, Entity, Direction, Timer) -> glam::Vec4; 4] = [
-        update_player_character_direction_when_idle_state, 
-        update_player_character_direction_when_zoom_in_state, 
-        update_player_character_direction_when_zoom_out_state, 
-        update_player_character_direction_when_aimming_state
+    const FUNC_TABLE: [fn(&mut World, Entity, &Direction, Timer) -> glam::Vec4; 4] = [
+        update_player_character_direction_when_idle_state,
+        update_player_character_direction_when_zoom_in_state,
+        update_player_character_direction_when_zoom_out_state,
+        update_player_character_direction_when_aiming_state,
     ];
     let index = view_state as usize;
     let direction = FUNC_TABLE[index](world, camera_entity, direction, view_state_timer);
@@ -60,20 +73,20 @@ pub fn update_player_character_direction(
 
 /// `ViewState::Idle`일 때 플레이어 캐릭터의 방향을 갱신합니다.
 fn update_player_character_direction_when_idle_state(
-    _world: &mut World, 
-    _camera_entity: Entity, 
-    direction: Direction, 
-    _view_state_timer: Timer
+    _world: &mut World,
+    _camera_entity: Entity,
+    direction: &Direction,
+    _view_state_timer: Timer,
 ) -> glam::Vec4 {
     direction.0
 }
 
 /// `ViewState::ZoomIn`일 때 플레이어 캐릭터의 방향을 갱신합니다.
 fn update_player_character_direction_when_zoom_in_state(
-    world: &mut World, 
-    camera_entity: Entity, 
-    direction: Direction, 
-    view_state_timer: Timer
+    world: &mut World,
+    camera_entity: Entity,
+    direction: &Direction,
+    view_state_timer: Timer,
 ) -> glam::Vec4 {
     // 카메라 엔터티의 삼인칭 카메라 요소를 가져옵니다.
     let third_person_camera = world
@@ -82,16 +95,19 @@ fn update_player_character_direction_when_zoom_in_state(
 
     // 뷰 상태 경과 시간에 따라 플레이어 방향과 삼인칭 카메라가 바라보는 방향을 선형보간합니다.
     let t = view_state_timer.0 / MAX_IN_OUT_TIME;
-    let look = third_person_camera.view_matrix_xz.z_axis.normalize();
+    let look = third_person_camera
+        .view_matrix_xz
+        .z_axis
+        .normalize_or(glam::Vec4::Z);
     direction.0.lerp(look, t)
 }
 
 /// `ViewState::ZoomOut`일 때 플레이어 캐릭터의 방향을 갱신합니다.
 fn update_player_character_direction_when_zoom_out_state(
-    world: &mut World, 
-    camera_entity: Entity, 
-    direction: Direction, 
-    view_state_timer: Timer
+    world: &mut World,
+    camera_entity: Entity,
+    direction: &Direction,
+    view_state_timer: Timer,
 ) -> glam::Vec4 {
     // 카메라 엔터티의 삼인칭 카메라 요소를 가져옵니다.
     let third_person_camera = world
@@ -100,16 +116,20 @@ fn update_player_character_direction_when_zoom_out_state(
 
     // 뷰 상태 경과 시간에 따라 플레이어 방향과 삼인칭 카메라가 바라보는 방향을 선형보간합니다.
     let t = view_state_timer.0 / MAX_IN_OUT_TIME;
-    let look = third_person_camera.view_matrix_xz.z_axis.normalize();
+    let look = third_person_camera
+        .view_matrix_xz
+        .z_axis
+        .normalize_or(glam::Vec4::Z);
+
     look.lerp(direction.0, t)
 }
 
-/// `ViewState::Aimming`일 때 플레이어 캐릭터의 방향을 갱신합니다.
-fn update_player_character_direction_when_aimming_state(
-    world: &mut World, 
-    camera_entity: Entity, 
-    _direction: Direction, 
-    _view_state_timer: Timer
+/// `ViewState::Aiming`일 때 플레이어 캐릭터의 방향을 갱신합니다.
+fn update_player_character_direction_when_aiming_state(
+    world: &mut World,
+    camera_entity: Entity,
+    _direction: &Direction,
+    _view_state_timer: Timer,
 ) -> glam::Vec4 {
     // 카메라 엔터티의 삼인칭 카메라 요소를 가져옵니다.
     let third_person_camera = world
@@ -117,7 +137,10 @@ fn update_player_character_direction_when_aimming_state(
         .expect("invalid entity or invalid entity component");
 
     // 삼인칭 카메라가 바라보는 방향을 반환합니다.
-    third_person_camera.view_matrix_xz.z_axis.normalize()
+    third_person_camera
+        .view_matrix_xz
+        .z_axis
+        .normalize_or(glam::Vec4::Z)
 }
 
 /// 플레이어 캐릭터 엔터티의 위치를 갱신하는 함수입니다.
@@ -130,9 +153,9 @@ pub fn assist_player_character_translation(
     world: &mut World,
     entity: Entity,
     direction: &Direction,
-    inv_mass: &CharacterInvMass,
-    max_speed: &MaxCharacterSpeed,
-    keyboard_input_time: &Timer,
+    inv_mass: CharacterInvMass,
+    max_speed: MaxCharacterSpeed,
+    keyboard_input_time: Timer,
     fixed_time_sec: f32,
 ) {
     // 플레이어 캐릭터 엔터티에서 컴포넌트를 가져옵니다.
@@ -172,7 +195,7 @@ pub fn assist_player_character_translation(
 pub fn update_player_character_animation_state(
     world: &mut World,
     entity: Entity,
-    movement_state: &MovementState,
+    movement_state: MovementState,
 ) {
     // 엔터티의 애니메이션 타이머와 애니메이션 상태 머신을 가져옵니다.
     type Q<'a> = (&'a mut AnimationTimer, &'a mut AnimationState);

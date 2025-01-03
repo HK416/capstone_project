@@ -12,13 +12,11 @@ use crate::component::{BoneCollection, Child, Parent, Sibling, ToParentTrans, Wo
 pub use self::{camera::*, character::*, control::*};
 
 /// 주어진 엔터티에 자식 엔터티를 추가합니다.
-/// 이미 엔터티의 자식 엔터티가 존재하는 경우 자식 엔터티의 형제 엔터티로 추가됩니다.
+/// 이미 엔터티의 자식 엔터티가 존재하는 경우 자식 엔터티의 마지막 형제 엔터티로 추가됩니다.
 ///
 /// # Panics
 /// - 주어진 엔터티는 모두 유효한 엔터티여야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 ///
-/// 주어진 `entity`에 자식 `Entity`를 추가합니다.  
-/// 이미 `Child`가 존재하는 경우 `Child`의 마지막 `Sibling`으로 추가됩니다.
 pub fn add_child(world: &mut World, target_entity: Entity, new_entity: Entity) {
     let query = world.query_one_mut::<&Child>(target_entity);
     match query.cloned() {
@@ -38,7 +36,7 @@ pub fn add_child(world: &mut World, target_entity: Entity, new_entity: Entity) {
 }
 
 /// 주어진 엔터티의 형제 엔터티를 추가합니다.
-/// 이미 엔터티의 형제 엔터티가 존재하는 경우 형제 엔터티의 형제 엔터티로 추가합니다.
+/// 이미 엔터티의 형제 엔터티가 존재하는 경우 형제 엔터티의 마지막 형제 엔터티로 추가합니다.
 ///
 /// # Panics
 /// - 주어진 엔터티는 모두 유효한 엔터티여야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.

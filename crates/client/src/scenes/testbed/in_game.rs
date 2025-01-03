@@ -12,11 +12,17 @@ use winit::{
 
 use crate::{
     component::{
-        CameraTag, CharacterInvMass, Direction, FocusState, MaxCharacterSpeed, MovementState, Projection, ThirdPersonCamera, Timer, ToParentTrans, ViewState, WorldTransform
+        CameraTag, CharacterInvMass, Direction, FocusState, MaxCharacterSpeed, MovementState,
+        Projection, ThirdPersonCamera, Timer, ToParentTrans, ViewState, WorldTransform,
     },
     config::UserConfig,
     system::{
-        assist_player_character_translation, draw_character, prepare_camera_resource, prepare_mesh_resource, rotate_third_person_camera, update_character_animation, update_character_animation_system, update_entity_hierarchy, update_player_character_animation_state, update_player_character_direction, update_player_direction, update_player_view_state, update_third_person_camera, update_third_person_camera_hierarchy
+        assist_player_character_translation, draw_character, prepare_camera_resource,
+        prepare_mesh_resource, rotate_third_person_camera, update_character_animation,
+        update_character_animation_system, update_entity_hierarchy,
+        update_player_character_animation_state, update_player_character_direction,
+        update_player_direction, update_player_view_state, update_third_person_camera,
+        update_third_person_camera_hierarchy,
     },
 };
 
@@ -348,10 +354,10 @@ impl GameScene for TestbedInGameScene {
 
         // 플레이어 뷰 상태를 갱신합니다.
         update_player_view_state(
-            self.focus_state, 
-            &mut self.view_state, 
-            &mut self.view_state_timer, 
-            fixed_time_sec
+            self.focus_state,
+            &mut self.view_state,
+            &mut self.view_state_timer,
+            fixed_time_sec,
         );
 
         // 키보드 입력에 따라 플레이어 방향을 갱신합니다.
@@ -370,19 +376,19 @@ impl GameScene for TestbedInGameScene {
             &mut self.world,
             player_entity,
             &self.direction,
-            &CharacterInvMass(1.0 / 43.0),
-            &MaxCharacterSpeed(1.5),
-            &self.keyboard_input_time,
+            CharacterInvMass(1.0 / 43.0),
+            MaxCharacterSpeed(1.5),
+            self.keyboard_input_time,
             fixed_time_sec,
         );
 
         // 플레이어 캐릭터의 방향을 갱신합니다.
         update_player_character_direction(
-            &mut self.world, 
-            player_entity, 
-            self.main_camera, 
-            self.direction, 
-            self.view_state, 
+            &mut self.world,
+            player_entity,
+            self.main_camera,
+            &self.direction,
+            self.view_state,
             self.view_state_timer,
         );
 
@@ -390,7 +396,7 @@ impl GameScene for TestbedInGameScene {
         update_player_character_animation_state(
             &mut self.world,
             player_entity,
-            &self.movement_state,
+            self.movement_state,
         );
 
         Ok(())
@@ -416,14 +422,14 @@ impl GameScene for TestbedInGameScene {
         // 카메라 위치를 갱신합니다.
         let target_entity = self.entities.get(&self.client_id).cloned().unwrap();
         update_third_person_camera(
-            &mut self.world, 
-            self.main_camera, 
-            self.view_state, 
-            self.view_state_timer, 
-            glam::Vec4::new(0.25, 0.85, 0.0, 0.0), 
-            1.5, 
-            glam::Vec4::new(0.2, 0.6, 0.0, 0.0), 
-            0.7
+            &mut self.world,
+            self.main_camera,
+            self.view_state,
+            self.view_state_timer,
+            glam::Vec4::new(0.25, 0.85, 0.0, 0.0),
+            1.5,
+            glam::Vec4::new(0.2, 0.6, 0.0, 0.0),
+            0.7,
         );
         update_third_person_camera_hierarchy(&mut self.world, target_entity, self.main_camera);
 
