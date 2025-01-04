@@ -12,15 +12,15 @@ use winit::{
 
 use crate::{
     component::{
-        CameraTag, CharacterInvMass, Direction, FocusState, MaxCharacterSpeed, MovementState,
-        Projection, ThirdPersonCamera, Timer, ToParentTrans, ViewState, WorldTransform,
+        CameraTag, CharacterInvMass, ControllerState, Direction, FocusState, MaxCharacterSpeed,
+        Projection, ThirdPersonCamera, Timer, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     system::{
         assist_player_character_translation, draw_character, prepare_camera_resource,
         prepare_mesh_resource, rotate_third_person_camera, update_character_animation,
-        update_character_animation_system, update_entity_hierarchy,
-        update_player_character_animation_state, update_player_character_direction,
+        update_character_state_and_timer_system, update_entity_hierarchy,
+        update_player_character_direction, update_player_character_movement_state,
         update_player_direction, update_player_view_state, update_third_person_camera,
         update_third_person_camera_hierarchy,
     },
@@ -47,17 +47,12 @@ pub struct TestbedInGameScene {
 
     /// 플레이어의 초점 상태입니다.
     focus_state: FocusState,
-    /// 플레이어 뷰 상태입니다.
-    view_state: ViewState,
-    /// 플레이어의 뷰 상태 경과 시간입니다.
-    view_state_timer: Timer,
-
     /// 플레이어의 이동 방향입니다.
     direction: Direction,
-    /// 플레이어의 움직임 상태입니다.
-    movement_state: MovementState,
-    /// 플레이어가 키보드를 누른 시간입니다.
-    keyboard_input_time: Timer,
+    /// 플레이어의 컨트롤러의 상태입니다.
+    controller_state: ControllerState,
+    /// 플레이어가 컨트롤러를 누른 시간입니다.
+    controller_input_time: Timer,
 
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
@@ -77,11 +72,9 @@ impl TestbedInGameScene {
             client_id,
             world,
             focus_state: FocusState::default(),
-            view_state: ViewState::default(),
-            view_state_timer: Timer::default(),
             direction: Direction(glam::Vec4::new(0.0, 0.0, 1.0, 0.0)),
-            movement_state: MovementState::default(),
-            keyboard_input_time: Timer::default(),
+            controller_state: ControllerState::default(),
+            controller_input_time: Timer::default(),
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -212,7 +205,7 @@ impl GameScene for TestbedInGameScene {
             .user_config
             .as_ref()
             .expect("user configuration must exist");
-        self.movement_state
+        self.controller_state
             .handle_keyboard_pressed(&user_config, keycode, location);
         Ok(())
     }
@@ -240,7 +233,7 @@ impl GameScene for TestbedInGameScene {
             .user_config
             .as_ref()
             .expect("user configuration must exist");
-        self.movement_state
+        self.controller_state
             .handle_keyboard_released(&user_config, keycode, location);
         Ok(())
     }
@@ -330,9 +323,9 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        update_character_animation_system(
+        update_character_state_and_timer_system(
             app.asset_manager(),
-            &self.world,
+            &mut self.world,
             elapsed_time_sec,
             rayon::current_num_threads() as u32,
         );
@@ -354,20 +347,20 @@ impl GameScene for TestbedInGameScene {
 
         // 플레이어 뷰 상태를 갱신합니다.
         update_player_view_state(
+            &mut self.world,
+            player_entity,
             self.focus_state,
-            &mut self.view_state,
-            &mut self.view_state_timer,
             fixed_time_sec,
         );
 
         // 키보드 입력에 따라 플레이어 방향을 갱신합니다.
         update_player_direction(
             &mut self.world,
+            player_entity,
             self.main_camera,
             &mut self.direction,
-            self.view_state,
-            self.movement_state,
-            &mut self.keyboard_input_time,
+            self.controller_state,
+            &mut self.controller_input_time,
             fixed_time_sec,
         );
 
@@ -378,7 +371,7 @@ impl GameScene for TestbedInGameScene {
             &self.direction,
             CharacterInvMass(1.0 / 43.0),
             MaxCharacterSpeed(1.5),
-            self.keyboard_input_time,
+            self.controller_input_time,
             fixed_time_sec,
         );
 
@@ -388,15 +381,13 @@ impl GameScene for TestbedInGameScene {
             player_entity,
             self.main_camera,
             &self.direction,
-            self.view_state,
-            self.view_state_timer,
         );
 
         // 플레이어 캐릭터의 애니메이션 상태 머신을 갱신합니다.
-        update_player_character_animation_state(
+        update_player_character_movement_state(
             &mut self.world,
             player_entity,
-            self.movement_state,
+            self.controller_state,
         );
 
         Ok(())
@@ -419,13 +410,18 @@ impl GameScene for TestbedInGameScene {
             update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
         }
 
+        let player_entity = self
+            .entities
+            .get(&self.client_id)
+            .cloned()
+            .expect("no such entity");
+
         // 카메라 위치를 갱신합니다.
         let target_entity = self.entities.get(&self.client_id).cloned().unwrap();
         update_third_person_camera(
             &mut self.world,
+            player_entity,
             self.main_camera,
-            self.view_state,
-            self.view_state_timer,
             glam::Vec4::new(0.25, 0.85, 0.0, 0.0),
             1.5,
             glam::Vec4::new(0.2, 0.6, 0.0, 0.0),

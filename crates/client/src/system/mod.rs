@@ -1,6 +1,6 @@
-mod camera;
-mod character;
-mod control;
+pub mod camera;
+pub mod character;
+pub mod control;
 
 use std::sync::Arc;
 

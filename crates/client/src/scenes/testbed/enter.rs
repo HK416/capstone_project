@@ -18,12 +18,12 @@ use winit::window::Window;
 
 use crate::{
     asset::{ModelHierarchyPool, MotionPool},
-    component::{
-        create_character_render_pipeline, create_student_halo_render_pipeline, spawn_character,
-        AnimationState, AnimationTimer, Character,
-    },
+    component::{Character, MovementState, MovementStateTimer, ViewState, ViewStateTimer},
     config::UserConfig,
     scenes::TestbedInGameScene,
+    system::{
+        create_character_render_pipeline, create_student_halo_render_pipeline, spawn_character,
+    },
 };
 
 /// ## Testbed Enter Scene State
@@ -423,14 +423,17 @@ fn spawn_entities(
     queue: Arc<wgpu::Queue>,
     world: &World,
 ) -> LocalResult {
+    // FIXME: 차후 패킷 수정이 필요
     let (entity, batch_commands) = spawn_character(
         world,
         &asset_manager,
         &device,
         &queue,
-        Character::ArisOriginal, // 차후 패킷에 포함되어야 함.
-        AnimationState::Idle,    // 차후 패킷 수정이 필요
-        AnimationTimer(data.anim_timer),
+        Character::ArisOriginal,
+        MovementState::default(),
+        MovementStateTimer::default(),
+        ViewState::default(),
+        ViewStateTimer::default(),
         glam::Mat4::from_rotation_translation(
             glam::quat(
                 data.rotation.x,

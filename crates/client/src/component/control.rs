@@ -5,10 +5,10 @@ use winit::{
 
 use crate::config::UserConfig;
 
-/// ## Player Movement States
-#[repr(usize)]
+/// ## Player Controller States
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum MovementState {
+pub enum ControllerState {
     Idle = 0,
     MovingLeft = 1,
     MovingRight = 2,
@@ -20,21 +20,21 @@ pub enum MovementState {
     MovingRightBackward = 8,
 }
 
-impl Default for MovementState {
+impl Default for ControllerState {
     fn default() -> Self {
-        MovementState::Idle
+        ControllerState::Idle
     }
 }
 
-impl MovementState {
-    /// 키보드 입력이 발생했을 때 `MovementState`를 변경합니다.
+impl ControllerState {
+    /// 키보드 입력이 발생했을 때 `ControllerState`를 변경합니다.
     pub fn handle_keyboard_pressed(
         &mut self,
         config: &UserConfig,
         keycode: KeyCode,
         location: KeyLocation,
     ) {
-        const FUNC_TABLE: [fn(&UserConfig, KeyCode, KeyLocation) -> MovementState; 9] = [
+        const FUNC_TABLE: [fn(&UserConfig, KeyCode, KeyLocation) -> ControllerState; 9] = [
             handle_keyboard_pressed_idle_state,
             handle_keyboard_pressed_moving_left_state,
             handle_keyboard_pressed_moving_right_state,
@@ -49,14 +49,14 @@ impl MovementState {
         *self = FUNC_TABLE[index](config, keycode, location);
     }
 
-    /// 키보드 입력이 해제되었을 때 `MovementState`를 변경합니다.   
+    /// 키보드 입력이 해제되었을 때 `ControllerState`를 변경합니다.   
     pub fn handle_keyboard_released(
         &mut self,
         config: &UserConfig,
         keycode: KeyCode,
         location: KeyLocation,
     ) {
-        const FUNC_TABLE: [fn(&UserConfig, KeyCode, KeyLocation) -> MovementState; 9] = [
+        const FUNC_TABLE: [fn(&UserConfig, KeyCode, KeyLocation) -> ControllerState; 9] = [
             handle_keyboard_released_idle_state,
             handle_keyboard_released_moving_left_state,
             handle_keyboard_released_moving_right_state,
@@ -72,302 +72,335 @@ impl MovementState {
     }
 }
 
-/// `MovementState::Idle` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::Idle` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_idle_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     } else if config.keyboard.right == (keycode, location) {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else {
-        MovementState::Idle
+        ControllerState::Idle
     }
 }
 
-/// `MovementState::Idle` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::Idle` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_idle_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     } else if config.keyboard.right == (keycode, location) {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else {
-        MovementState::Idle
+        ControllerState::Idle
     }
 }
 
-/// `MovementState::MovingLeft` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingLeft` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_left_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.right == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingLeftForward
+        ControllerState::MovingLeftForward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingLeftBackward
+        ControllerState::MovingLeftBackward
     } else {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     }
 }
 
-/// `MovementState::MovingLeft` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingLeft` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_left_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     }
 }
 
-/// `MovementState::MovingRight` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingRight` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_right_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingRightForward
+        ControllerState::MovingRightForward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingRightBackward
+        ControllerState::MovingRightBackward
     } else {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     }
 }
 
-/// `MovementState::MovingRight` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingRight` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_right_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.right == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     }
 }
 
-/// `MovementState::MovingForward` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingForward` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_forward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.backward == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.left == (keycode, location) {
-        MovementState::MovingLeftForward
+        ControllerState::MovingLeftForward
     } else if config.keyboard.right == (keycode, location) {
-        MovementState::MovingRightForward
+        ControllerState::MovingRightForward
     } else {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     }
 }
 
-/// `MovementState::MovingForward` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingForward` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_forward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.forward == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.left == (keycode, location) {
-        MovementState::MovingRightForward
+        ControllerState::MovingRightForward
     } else if config.keyboard.right == (keycode, location) {
-        MovementState::MovingLeftForward
+        ControllerState::MovingLeftForward
     } else {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     }
 }
 
-/// `MovementState::MovingBackward` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingBackward` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_backward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.forward == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.left == (keycode, location) {
-        MovementState::MovingLeftBackward
+        ControllerState::MovingLeftBackward
     } else if config.keyboard.right == (keycode, location) {
-        MovementState::MovingRightBackward
+        ControllerState::MovingRightBackward
     } else {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     }
 }
 
-/// `MovementState::MovingBackward` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingBackward` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_backward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.backward == (keycode, location) {
-        MovementState::Idle
+        ControllerState::Idle
     } else if config.keyboard.left == (keycode, location) {
-        MovementState::MovingRightBackward
+        ControllerState::MovingRightBackward
     } else if config.keyboard.right == (keycode, location) {
-        MovementState::MovingLeftBackward
+        ControllerState::MovingLeftBackward
     } else {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     }
 }
 
-/// `MovementState::MovingLeftForward` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingLeftForward` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_left_forward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.right == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     } else {
-        MovementState::MovingLeftForward
+        ControllerState::MovingLeftForward
     }
 }
 
-/// `MovementState::MovingLeftForward` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingLeftForward` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_left_forward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     } else {
-        MovementState::MovingLeftForward
+        ControllerState::MovingLeftForward
     }
 }
 
-/// `MovementState::MovingRightForward` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingRightForward` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_right_forward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     } else {
-        MovementState::MovingRightForward
+        ControllerState::MovingRightForward
     }
 }
 
-/// `MovementState::MovingRightForward` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingRightForward` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_right_forward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.right == (keycode, location) {
-        MovementState::MovingForward
+        ControllerState::MovingForward
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     } else {
-        MovementState::MovingRightForward
+        ControllerState::MovingRightForward
     }
 }
 
-/// `MovementState::MovingLeftBackward` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingLeftBackward` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_left_backward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.right == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     } else {
-        MovementState::MovingLeftBackward
+        ControllerState::MovingLeftBackward
     }
 }
 
-/// `MovementState::MovingLeftBackward` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingLeftBackward` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_left_backward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingLeft
+        ControllerState::MovingLeft
     } else {
-        MovementState::MovingLeftBackward
+        ControllerState::MovingLeftBackward
     }
 }
 
-/// `MovementState::MovingRightBackward` 상태에서 키보드 눌림 이벤트를 처리합니다.
+/// `ControllerState::MovingRightBackward` 상태에서 키보드 눌림 이벤트를 처리합니다.
 fn handle_keyboard_pressed_moving_right_backward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.left == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else if config.keyboard.forward == (keycode, location) {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     } else {
-        MovementState::MovingRightBackward
+        ControllerState::MovingRightBackward
     }
 }
 
-/// `MovementState::MovingRightBackward` 상태에서 키보드 떼임 이벤트를 처리합니다.
+/// `ControllerState::MovingRightBackward` 상태에서 키보드 떼임 이벤트를 처리합니다.
 fn handle_keyboard_released_moving_right_backward_state(
     config: &UserConfig,
     keycode: KeyCode,
     location: KeyLocation,
-) -> MovementState {
+) -> ControllerState {
     if config.keyboard.right == (keycode, location) {
-        MovementState::MovingBackward
+        ControllerState::MovingBackward
     } else if config.keyboard.backward == (keycode, location) {
-        MovementState::MovingRight
+        ControllerState::MovingRight
     } else {
-        MovementState::MovingRightBackward
+        ControllerState::MovingRightBackward
+    }
+}
+
+/// ## Player Movement States
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MovementState {
+    Idle = 0,
+    Moving = 1,
+    MoveToEnd = 2,
+}
+
+impl Default for MovementState {
+    fn default() -> Self {
+        MovementState::Idle
+    }
+}
+
+/// ## Player Movement State Timer
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct MovementStateTimer(pub f32);
+
+impl MovementStateTimer {
+    /// 타이머를 초기화합니다.
+    pub fn reset(&mut self) {
+        self.0 = 0.0
+    }
+}
+
+impl Default for MovementStateTimer {
+    fn default() -> Self {
+        Self(0.0)
     }
 }
 
 /// ## Player Focus States
-#[repr(usize)]
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FocusState {
     Idle = 0,
@@ -443,7 +476,7 @@ fn handle_mouse_btn_released_when_aiming_state(
 }
 
 /// ## Player View States
-#[repr(usize)]
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ViewState {
     Idle = 0,
@@ -455,5 +488,39 @@ pub enum ViewState {
 impl Default for ViewState {
     fn default() -> Self {
         ViewState::Idle
+    }
+}
+
+/// ## Player View Zoom Length
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct ZoomLength {
+    pub in_time: f32,
+    pub out_time: f32,
+}
+
+impl Default for ZoomLength {
+    fn default() -> Self {
+        Self {
+            in_time: 0.0,
+            out_time: 0.0,
+        }
+    }
+}
+
+/// ## Player View State Timer
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct ViewStateTimer(pub f32);
+
+impl ViewStateTimer {
+    /// 타이머를 초기화합니다.
+    pub fn reset(&mut self) {
+        self.0 = 0.0
+    }
+}
+
+impl Default for ViewStateTimer {
+    fn default() -> Self {
+        Self(0.0)
     }
 }

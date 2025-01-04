@@ -8,16 +8,11 @@ mod transform;
 use std::ops::{Deref, DerefMut};
 
 use hecs::Entity;
-use mod_app::app::FIXED_TIME_SEC;
 
 pub use self::{animation::*, camera::*, character::*, control::*, physics::*, transform::*};
 
 /// 최대 컨트롤러 입력 시간입니다.
 pub const MAX_CONTROL_INPUT_TIME: f32 = 0.3;
-
-/// 최대 줌 인/아웃 시간입니다.
-pub const MAX_IN_OUT_TIME: f32 = 0.15;
-static_assertions::const_assert!(MAX_IN_OUT_TIME > FIXED_TIME_SEC);
 
 /// ## Parent Entity
 #[repr(transparent)]

@@ -5,7 +5,8 @@ use hecs::{Entity, World};
 use mod_render::{CameraDataLayout, CameraResource};
 
 use crate::component::{
-    Projection, ThirdPersonCamera, Timer, ToParentTrans, ViewState, WorldTransform, MAX_IN_OUT_TIME,
+    Projection, ThirdPersonCamera, ToParentTrans, ViewState, ViewStateTimer, WorldTransform,
+    ZoomLength,
 };
 
 use super::update_entity_hierarchy;
@@ -40,22 +41,35 @@ pub fn rotate_third_person_camera(
 ///
 pub fn update_third_person_camera(
     world: &mut World,
+    player_entity: Entity,
     camera_entity: Entity,
-    view_state: ViewState,
-    view_state_timer: Timer,
     idle_offset: glam::Vec4,
     idle_distance: f32,
     aiming_offset: glam::Vec4,
     aiming_distance: f32,
 ) {
-    const FUNC_TABLE: [fn(&mut ThirdPersonCamera, Timer, glam::Vec4, f32, glam::Vec4, f32); 4] = [
+    type Func = for<'a> fn(
+        &'a mut ThirdPersonCamera,
+        ViewStateTimer,
+        ZoomLength,
+        glam::Vec4,
+        f32,
+        glam::Vec4,
+        f32,
+    );
+    const FUNC_TABLE: [Func; 4] = [
         update_third_person_camera_when_idle_state,
         update_third_person_camera_when_zoom_in_state,
         update_third_person_camera_when_zoom_out_state,
         update_third_person_camera_when_aiming_state,
     ];
 
-    // 엔터티의 삼인칭 카메라 요소를 가져옵니다.
+    // 플레이어 엔터티로 부터 뷰 상태와 뷰 타이머를 가져옵니다.
+    let (&view_state, &view_state_timer, &length) = world
+        .query_one_mut::<(&ViewState, &ViewStateTimer, &ZoomLength)>(player_entity)
+        .expect("invalid entity or invalid entity component");
+
+    // 카메라 엔터티의 삼인칭 카메라 요소를 가져옵니다.
     let third_person_camera = world
         .query_one_mut::<&mut ThirdPersonCamera>(camera_entity)
         .expect("invalid entity or invalid entity component");
@@ -64,6 +78,7 @@ pub fn update_third_person_camera(
     FUNC_TABLE[index](
         third_person_camera,
         view_state_timer,
+        length,
         idle_offset,
         idle_distance,
         aiming_offset,
@@ -74,7 +89,8 @@ pub fn update_third_person_camera(
 /// `ViewState::Idle`일 때 삼인칭 카메라를 갱신합니다.
 fn update_third_person_camera_when_idle_state(
     third_person_camera: &mut ThirdPersonCamera,
-    _view_state_timer: Timer,
+    _view_state_timer: ViewStateTimer,
+    _length: ZoomLength,
     idle_offset: glam::Vec4,
     idle_distance: f32,
     _aiming_offset: glam::Vec4,
@@ -87,13 +103,15 @@ fn update_third_person_camera_when_idle_state(
 /// `ViewState::ZoomIn`일 때 삼인칭 카메라를 갱신합니다.
 fn update_third_person_camera_when_zoom_in_state(
     third_person_camera: &mut ThirdPersonCamera,
-    view_state_timer: Timer,
+    view_state_timer: ViewStateTimer,
+    length: ZoomLength,
     idle_offset: glam::Vec4,
     idle_distance: f32,
     aiming_offset: glam::Vec4,
     aiming_distance: f32,
 ) {
-    let t = view_state_timer.0 / MAX_IN_OUT_TIME;
+    debug_assert!(length.in_time.abs() > f32::EPSILON, "divide zero");
+    let t = view_state_timer.0 / length.in_time;
     let position_offset = idle_offset.lerp(aiming_offset, t);
     let distance = idle_distance.lerp(aiming_distance, t);
     third_person_camera.position_offset = position_offset;
@@ -103,13 +121,15 @@ fn update_third_person_camera_when_zoom_in_state(
 /// `ViewState::ZoomOut`일 때 삼인칭 카메라를 갱신합니다.
 fn update_third_person_camera_when_zoom_out_state(
     third_person_camera: &mut ThirdPersonCamera,
-    view_state_timer: Timer,
+    view_state_timer: ViewStateTimer,
+    length: ZoomLength,
     idle_offset: glam::Vec4,
     idle_distance: f32,
     aiming_offset: glam::Vec4,
     aiming_distance: f32,
 ) {
-    let t = view_state_timer.0 / MAX_IN_OUT_TIME;
+    debug_assert!(length.out_time.abs() > f32::EPSILON, "divide zero");
+    let t = view_state_timer.0 / length.out_time;
     let position_offset = aiming_offset.lerp(idle_offset, t);
     let distance = aiming_distance.lerp(idle_distance, t);
     third_person_camera.position_offset = position_offset;
@@ -119,7 +139,8 @@ fn update_third_person_camera_when_zoom_out_state(
 /// `ViewState::Aiming`일 때 삼인칭 카메라를 갱신합니다.
 fn update_third_person_camera_when_aiming_state(
     third_person_camera: &mut ThirdPersonCamera,
-    _view_state_timer: Timer,
+    _view_state_timer: ViewStateTimer,
+    _length: ZoomLength,
     _idle_offset: glam::Vec4,
     _idle_distance: f32,
     aiming_offset: glam::Vec4,
