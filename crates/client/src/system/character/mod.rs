@@ -449,10 +449,9 @@ fn update_player_character_direction_when_zoom_in_state(
     // 뷰 상태 경과 시간에 따라 플레이어 방향과 삼인칭 카메라가 바라보는 방향을 선형보간합니다.
     debug_assert!(length.in_time > f32::EPSILON, "divide zero");
     let t = view_state_timer.0 / length.in_time;
-    let look = third_person_camera
-        .view_matrix_xz
-        .z_axis
-        .normalize_or(glam::Vec4::Z);
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
+
     direction.0.lerp(look, t)
 }
 
@@ -472,10 +471,8 @@ fn update_player_character_direction_when_zoom_out_state(
     // 뷰 상태 경과 시간에 따라 플레이어 방향과 삼인칭 카메라가 바라보는 방향을 선형보간합니다.
     debug_assert!(length.out_time > f32::EPSILON, "divide zero");
     let t = view_state_timer.0 / length.out_time;
-    let look = third_person_camera
-        .view_matrix_xz
-        .z_axis
-        .normalize_or(glam::Vec4::Z);
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
 
     look.lerp(direction.0, t)
 }
@@ -494,10 +491,10 @@ fn update_player_character_direction_when_aiming_state(
         .expect("invalid entity or invalid entity component");
 
     // 삼인칭 카메라가 바라보는 방향을 반환합니다.
-    third_person_camera
-        .view_matrix_xz
-        .z_axis
-        .normalize_or(glam::Vec4::Z)
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
+
+    look
 }
 
 /// 플레이어 캐릭터 엔터티의 위치를 갱신하는 함수입니다.

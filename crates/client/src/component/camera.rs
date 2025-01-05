@@ -7,11 +7,11 @@ pub struct CameraTag;
 /// ## Third Person Camera Data
 #[derive(Debug, Clone, Copy)]
 pub struct ThirdPersonCamera {
-    /// xz평면에서 카메라가 바라보는 방향을 나타냅니다.
-    pub view_matrix_xz: glam::Mat4,
-
     /// 삼인칭 카메라의 위치 오프셋입니다.
     pub position_offset: glam::Vec4,
+
+    /// 카메라가 대상을 바라보는 방향입니다.
+    pub yaw_angle: f32,
 
     /// 카메라가 대상을 바라보는 각도입니다.
     pub pitch_angle: f32,
@@ -23,14 +23,13 @@ pub struct ThirdPersonCamera {
 impl ThirdPersonCamera {
     /// 카메라가 바라보는 방향 벡터를 갱신합니다.
     pub fn update_direction(&mut self, dx: f32, dy: f32, offset: f32) {
-        use core::f32::consts::FRAC_PI_3;
+        use core::f32::consts::{FRAC_PI_3, TAU};
 
         // 삼인칭 카메라가 바라보는 방향을 갱신합니다.
         let angle = (dx * offset).to_radians();
-        let mat = glam::Mat4::from_rotation_y(angle);
-        self.view_matrix_xz = mat * self.view_matrix_xz;
+        self.yaw_angle = (self.yaw_angle + angle) % TAU;
 
-        // 삼인칭 카메라의 바라보는 회전 각도를 갱신합니다.
+        // 삼인칭 카메라의 바라보는 각도를 갱신합니다.
         let angle = (dy * offset).to_radians();
         self.pitch_angle = (self.pitch_angle + angle).clamp(-FRAC_PI_3, FRAC_PI_3);
     }
@@ -38,9 +37,15 @@ impl ThirdPersonCamera {
     /// 카메라의 바라보는 방향을 행렬로 반환합니다.
     pub fn to_matrix(&self) -> glam::Mat4 {
         let mut transform = glam::Mat4::from_translation(glam::vec3(0.0, 0.0, -self.distance));
-        transform = self.view_matrix_xz * transform;
-        let pitch_dir_mat = glam::Mat4::from_axis_angle(transform.x_axis.xyz(), self.pitch_angle);
-        transform = pitch_dir_mat * transform;
+
+        let rotation = glam::Mat4::from_rotation_y(self.yaw_angle);
+        transform = rotation * transform;
+
+        let z_axis = -transform.w_axis.xyz().normalize_or(glam::Vec3::Z);
+        let x_axis = glam::Vec3::Y.cross(z_axis);
+        let rotation = glam::Mat4::from_axis_angle(x_axis, self.pitch_angle);
+        transform = rotation * transform;
+
         let offset_mat = glam::Mat4::from_translation(self.position_offset.xyz());
         transform = transform * offset_mat;
         transform
@@ -50,8 +55,8 @@ impl ThirdPersonCamera {
 impl Default for ThirdPersonCamera {
     fn default() -> Self {
         Self {
-            view_matrix_xz: glam::Mat4::IDENTITY,
             position_offset: glam::Vec4::new(0.25, 0.85, 0.0, 0.0),
+            yaw_angle: 0.0f32.to_radians(),
             pitch_angle: 10f32.to_radians(),
             distance: 1.5,
         }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use glam::FloatExt;
+use glam::{FloatExt, Vec4Swizzles};
 use hecs::{Entity, World};
 use mod_render::{CameraDataLayout, CameraResource};
 
@@ -172,7 +172,7 @@ pub fn update_third_person_camera_hierarchy(
     let world_transform = world
         .query_one_mut::<&WorldTransform>(target_entity)
         .expect("invalid entity or invalid entity component");
-    let translation = world_transform.get_translation();
+    let translation = world_transform.get_translation().xyz();
 
     // 부모 변환 행렬을 생성합니다.
     let parent_transform = glam::Mat4::from_translation(translation);
@@ -220,8 +220,8 @@ pub fn prepare_camera_resource(
                     queue,
                     CameraDataLayout {
                         proj_view: (projection.0 * world_transform.to_view_trans()).to_cols_array(),
-                        position_w: world_transform.get_translation().to_array(),
-                        direction_w: world_transform.get_look_vector().to_array(),
+                        position_w: world_transform.get_translation().xyz().to_array(),
+                        direction_w: world_transform.get_look_vector().xyz().to_array(),
                         ..Default::default()
                     },
                 );

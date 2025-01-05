@@ -51,14 +51,9 @@ pub fn update_player_direction(
     let third_person_camera = world
         .query_one_mut::<&ThirdPersonCamera>(camera_entity)
         .expect("invalid entity or invalid entity component");
-    let view_right = third_person_camera
-        .view_matrix_xz
-        .x_axis
-        .normalize_or(glam::Vec4::X);
-    let view_forward = third_person_camera
-        .view_matrix_xz
-        .z_axis
-        .normalize_or(glam::Vec4::Z);
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let view_right = mat.x_axis.normalize_or(glam::Vec4::X);
+    let view_forward = mat.z_axis.normalize_or(glam::Vec4::Z);
 
     // 플레이어 엔터티에서 뷰 상태를 가져옵니다.
     let &view_state = world
@@ -79,22 +74,14 @@ pub fn update_player_direction(
 /// `ControllerState::Idle`상태에서 플레이어의 방향을 갱신합니다.
 fn update_player_direction_when_idle_state(
     _view_right: glam::Vec4,
-    view_forward: glam::Vec4,
-    view_state: ViewState,
-    direction: &mut Direction,
+    _view_forward: glam::Vec4,
+    _view_state: ViewState,
+    _direction: &mut Direction,
     controller_input_time: &mut Timer,
     fixed_time_sec: f32,
 ) {
     // 키보드 입력 시간을 갱신합니다.
     update_controller_timer_when_released(controller_input_time, fixed_time_sec);
-
-    // 뷰 상태가 `Idle`이 아닌 경우 플레이어 방향과 카메라 방향을 일치시킵니다.
-    if view_state == ViewState::ZoomIn
-        || view_state == ViewState::ZoomOut
-        || view_state == ViewState::Aiming
-    {
-        direction.0 = view_forward;
-    }
 }
 
 /// `ControllerState::MovingLeft`상태에서 플레이어의 방향을 갱신합니다.

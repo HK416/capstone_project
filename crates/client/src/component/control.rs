@@ -512,13 +512,6 @@ impl Default for ZoomLength {
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct ViewStateTimer(pub f32);
 
-impl ViewStateTimer {
-    /// 타이머를 초기화합니다.
-    pub fn reset(&mut self) {
-        self.0 = 0.0
-    }
-}
-
 impl Default for ViewStateTimer {
     fn default() -> Self {
         Self(0.0)
