@@ -21,6 +21,12 @@ impl BigEndian for ActionState {
     }
 }
 
+impl Default for ActionState {
+    fn default() -> Self {
+        ActionState::Idle
+    }
+}
+
 impl TryFromBigEndian for ActionState {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         let index = u8::from_big_endian_bytes(bytes);
@@ -47,6 +53,12 @@ impl BigEndian for AnimationTimer {
     }
 }
 
+impl Default for AnimationTimer {
+    fn default() -> Self {
+        AnimationTimer(0.0)
+    }
+}
+
 /// 캐릭터 모델 종류입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -63,6 +75,12 @@ impl BigEndian for CharacterKind {
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         let index = *self as u8;
         index.to_big_endian_bytes()
+    }
+}
+
+impl Default for CharacterKind {
+    fn default() -> Self {
+        CharacterKind::ArisOriginal
     }
 }
 
@@ -271,6 +289,12 @@ impl BigEndian for MovementState {
     }
 }
 
+impl Default for MovementState {
+    fn default() -> Self {
+        MovementState::Idle
+    }
+}
+
 impl TryFromBigEndian for MovementState {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         let index = u8::from_big_endian_bytes(bytes);
@@ -298,6 +322,12 @@ impl BigEndian for StageKind {
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         let index = *self as u8;
         index.to_big_endian_bytes()
+    }
+}
+
+impl Default for StageKind {
+    fn default() -> Self {
+        StageKind::School
     }
 }
 
@@ -333,6 +363,12 @@ impl BigEndian for ViewState {
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         let index = *self as u8;
         index.to_big_endian_bytes()
+    }
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        ViewState::Idle
     }
 }
 
