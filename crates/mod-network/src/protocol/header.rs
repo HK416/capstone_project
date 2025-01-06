@@ -18,6 +18,10 @@ impl PacketType {
     pub const PULL: Self = Self(7);
     pub const FIRED: Self = Self(8);
 
+    pub const CONNECT: Self = Self(9);
+    pub const ENTERSTAGE: Self = Self(10);
+    pub const INITSTAGE: Self = Self(11);
+
     // 크기가 u8보다 커지면 이 함수 활성화
     // pub fn as_bytes(&self) -> [u8; size_of::<PacketType>()] {
     //     self.0.to_be_bytes()
