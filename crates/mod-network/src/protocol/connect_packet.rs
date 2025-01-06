@@ -31,3 +31,21 @@ impl ConnectPacket {
         RawPacket::new(PacketType::CONNECT, &bytes)
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_connect_packet() {
+        let client_id = ClientId::new(1234);
+        let packet = ConnectPacket::new(client_id);
+        let raw = packet.as_raw();
+        let packet2 = ConnectPacket::from_raw(raw);
+
+        assert_eq!(packet, packet2);
+        assert_eq!(packet2.client_id, client_id);
+    }
+}

@@ -24,8 +24,8 @@ impl InitStagePacket {
     /// RawPacket내의 데이터는 유효하다고 가정한다.
     pub fn from_raw(raw: RawPacket) -> Self {
         let data = raw.data();
-        let num_players = u32::from_big_endian_bytes(&data);
-        let players = data[size_of::<u32>()..]
+        let num_players = u32::from_big_endian_bytes(&data[..size_of::<u32>()]);
+        let players = data[size_of::<u32>()..size_of::<u32>() + size_of::<Player>() * 10]
             .chunks_exact(size_of::<Player>())
             .map(|chunk| Player::from_bytes(chunk))
             .collect::<Vec<_>>()
@@ -49,5 +49,37 @@ impl InitStagePacket {
         bytes.extend_from_slice(&self.stage_kind.to_big_endian_bytes());
 
         RawPacket::new(PacketType::INITSTAGE, &bytes)
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init_stage_packet() {
+        let players = [
+            Player::default(),
+            Player::default(),
+            Player::default(),
+            Player::default(),
+            Player::default(),
+            Player::default(),
+            Player::default(),
+            Player::default(),
+            Player::default(),
+            Player::default(),
+        ];
+        let stage_kind = StageKind::School;
+        let packet = InitStagePacket::new(players.len() as u32, players, stage_kind);
+        let raw = packet.as_raw();
+        let packet2 = InitStagePacket::from_raw(raw);
+
+        assert_eq!(packet, packet2);
+        assert_eq!(packet2.num_players, players.len() as u32);
+        assert_eq!(packet2.players, players);
+        assert_eq!(packet2.stage_kind, stage_kind);
     }
 }

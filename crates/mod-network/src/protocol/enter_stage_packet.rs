@@ -21,7 +21,7 @@ impl EnterStagePacket {
 
     /// RawPacket내의 데이터는 유효하다고 가정한다.
     pub fn from_raw(raw: RawPacket) -> Self {
-        let client_id = ClientId::from_big_endian_bytes(&raw.data());
+        let client_id = ClientId::from_big_endian_bytes(&raw.data()[..size_of::<ClientId>()]);
         let character_kind = CharacterKind::from_big_endian_bytes(&raw.data()[size_of::<ClientId>()..]);
 
         Self {
@@ -36,5 +36,25 @@ impl EnterStagePacket {
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
 
         RawPacket::new(PacketType::ENTERSTAGE, &bytes)
+    }
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_enter_stage_packet() {
+        let client_id = ClientId::new(1234);
+        let character_kind = CharacterKind::ArisOriginal;
+        let packet = EnterStagePacket::new(client_id, character_kind);
+        let raw = packet.as_raw();
+        let packet2 = EnterStagePacket::from_raw(raw);
+
+        assert_eq!(packet, packet2);
+        assert_eq!(packet2.client_id, client_id);
+        assert_eq!(packet2.character_kind, character_kind);
     }
 }
