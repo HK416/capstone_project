@@ -157,7 +157,7 @@ impl TestbedInGameScene {
         builder.add(Projection(glam::Mat4::perspective_lh(
             75f32.to_radians(),
             width / height,
-            0.0001,
+            0.01,
             1000.0,
         )));
         builder.add(ThirdPersonCamera::default());
