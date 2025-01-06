@@ -412,7 +412,7 @@ fn spawn_world_objects(
         }
     });
 
-    channel.push(poll_results(local_channel, num_entities, client_id, world));
+    channel.push(poll_results(local_channel, num_entities, client_id.into(), world));       // TODO: into() 대신에 ClientId를 그대로 사용하도록 해야함
 }
 
 /// 게임 세상에 존재하는 `Entity`를 생성합니다.
@@ -445,7 +445,7 @@ fn spawn_entities(
         ),
     )
     .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-    Ok((data.id, entity, batch_commands))
+    Ok((data.id.into(), entity, batch_commands))
 }
 
 fn poll_results(

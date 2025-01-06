@@ -1,3 +1,8 @@
+use crate::components::BigEndian;
+
+use super::super::components::ObjectId;
+
+
 /// 총알 오브젝트
 /// 
 /// 데이터
@@ -19,12 +24,12 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BulletBlob {
     pub kind: u32, 
-    pub shooter: u32, 
+    pub shooter: ObjectId, 
     pub translation: gmm::Float3, 
     pub direction: gmm::Float3, 
     pub speed: f32, 
     pub range: f32, 
-    pub id: u32,
+    pub id: ObjectId,
     // TODO: 충돌체 추가
 }
 
@@ -33,7 +38,7 @@ impl BulletBlob {
     #[must_use]
     pub fn new(
         kind: u32, 
-        shooter: u32, 
+        shooter: ObjectId, 
         translation: impl Into<gmm::Float3>, 
         direction: impl Into<gmm::Float3>, 
         speed: f32, 
@@ -47,19 +52,19 @@ impl BulletBlob {
             direction: direction.into(), 
             speed, 
             range, 
-            id: 0,      // 클라이언트에서 서버로 보낼때는 일단 아무 값이나 넣어서 보냄
+            id: ObjectId::new(0),      // 클라이언트에서 서버로 보낼때는 일단 아무 값이나 넣어서 보냄
             // TODO: 충돌체 추가
         }
     }
 
     pub fn with_id(
         kind: u32, 
-        shooter: u32, 
+        shooter: ObjectId, 
         translation: impl Into<gmm::Float3>, 
         direction: impl Into<gmm::Float3>, 
         speed: f32, 
         range: f32, 
-        id: u32,
+        id: ObjectId,
     ) -> Self {
         Self { 
             kind, 
@@ -78,7 +83,7 @@ impl BulletBlob {
     pub fn from_bytes(data: &[u8]) -> Self {
         Self::with_id(
             u32::from_be_bytes(data[0..4].try_into().unwrap()), 
-            u32::from_be_bytes(data[4..8].try_into().unwrap()), 
+            ObjectId::from_big_endian_bytes(&data[4..8]), 
             gmm::Float3::new(
                 f32::from_be_bytes(data[8..12].try_into().unwrap()), 
                 f32::from_be_bytes(data[12..16].try_into().unwrap()), 
@@ -91,7 +96,7 @@ impl BulletBlob {
             ), 
             f32::from_be_bytes(data[32..36].try_into().unwrap()), 
             f32::from_be_bytes(data[36..40].try_into().unwrap()),
-            u32::from_be_bytes(data[40..44].try_into().unwrap()),
+            ObjectId::from_big_endian_bytes(&data[40..44]),
         )
     }
 
@@ -100,7 +105,7 @@ impl BulletBlob {
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(std::mem::size_of::<Self>());
         bytes.extend_from_slice(&self.kind.to_be_bytes());
-        bytes.extend_from_slice(&self.shooter.to_be_bytes());
+        bytes.extend_from_slice(&self.shooter.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.x.to_be_bytes());
         bytes.extend_from_slice(&self.translation.y.to_be_bytes());
         bytes.extend_from_slice(&self.translation.z.to_be_bytes());
@@ -109,7 +114,7 @@ impl BulletBlob {
         bytes.extend_from_slice(&self.direction.z.to_be_bytes());
         bytes.extend_from_slice(&self.speed.to_be_bytes());
         bytes.extend_from_slice(&self.range.to_be_bytes());
-        bytes.extend_from_slice(&self.id.to_be_bytes());
+        bytes.extend_from_slice(&self.id.to_big_endian_bytes());
         // TODO: 충돌체를 big-endian 바이트 배열로 변환
         bytes
     }

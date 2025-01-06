@@ -32,7 +32,7 @@ async fn run_client(addr: &str) {
         if let Some(raw_packet) = parser.pop() {
             if raw_packet.packet_type() == PacketType::INIT {
                 let packet = InitPacket::from_raw(raw_packet);
-                player.id = packet.client_id;
+                player.id = packet.client_id.into();
 
                 break;
             }

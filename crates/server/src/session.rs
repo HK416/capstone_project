@@ -4,10 +4,11 @@ use tokio::{
 };
 use super::world::WorldInterface;
 use mod_network::*;
+use mod_network::components::{ClientId, ObjectId};
 
 
 pub struct Session {
-    id: u32,
+    id: ClientId,
     
     stream: TcpStream,
     packet_parser: PacketParser,
@@ -20,7 +21,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(id: u32, stream: TcpStream, world: WorldInterface) -> Self {
+    pub fn new(id: ClientId, stream: TcpStream, world: WorldInterface) -> Self {
         Self {
             id,
             stream,
@@ -32,7 +33,7 @@ impl Session {
     }
 
     pub async fn handle_connection(&mut self) {
-        self.world.add_player(self.id);
+        self.world.add_player(self.id.into());
 
         match self.stream_write(InitPacket::new(self.id, self.world.get_players()).as_raw()).await {
             Ok(_) => {
@@ -60,7 +61,7 @@ impl Session {
             };
         }
 
-        self.world.remove_player(self.id);
+        self.world.remove_player(self.id.into());
     }
 
     
@@ -89,7 +90,7 @@ impl Session {
 
                 PacketType::MOVE => {
                     let move_packet = MovePacket::from_raw(packet);
-                    self.world.move_player(self.id, move_packet.x, move_packet.y, move_packet.z);
+                    self.world.move_player(self.id.into(), move_packet.x, move_packet.y, move_packet.z);
                 },
 
                 PacketType::MESSAGE => {
@@ -106,7 +107,8 @@ impl Session {
                     self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
 
                     let mut bullet = fired_packet.bullet;
-                    bullet.id = self.id * 1000 + self.shot_count;           // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
+                    let bid: u32 = self.id.into();
+                    bullet.id = ObjectId::new(bid * 1000 + self.shot_count);     // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
 
                     self.world.add_bullet(bullet);
                 }

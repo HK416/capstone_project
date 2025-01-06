@@ -11,7 +11,10 @@ use server::{
     session::Session,
 };
 
-use mod_network::Addr;
+use mod_network::{
+    Addr,
+    components::ClientId,
+};
 
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
@@ -53,7 +56,7 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
                 match slots.iter().position(|x| x.is_none()) {
                     Some(id) => {
                         slots[id] = Some(());
-                        println!("Accepted connection from: {}", id);
+                        println!("Accepted connection from: {}", id + 1);
                         tokio::spawn(handle_connection(id as u32, stream, world));
                     },
                     None => {
@@ -71,7 +74,7 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
 
 /// 별개의 스레드에서 동작하며, 시작시와 종료시 Mutex lock을 걸어서 클라이언트 개수 파악
 async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
-    let mut session = Session::new(id, stream, WorldInterface::new(world));
+    let mut session = Session::new(ClientId::new(id as u64 + 1), stream, WorldInterface::new(world));
 
     {
         let slots = CLIENT_SLOTS.lock().unwrap();
@@ -83,7 +86,7 @@ async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
     {
         let mut slots = CLIENT_SLOTS.lock().unwrap();
         slots[id as usize] = None;
-        println!("Connection {} closed", id);
+        println!("Connection {} closed", id + 1);
 
         println!("num clients: {}", slots.iter().filter(|x| x.is_some()).count());
     }
@@ -159,7 +162,7 @@ mod tests {
             assert_eq!(packet.packet_type(), PacketType::INIT);
     
             let packet = InitPacket::from_raw(packet);
-            assert_eq!(packet.client_id, 0);
+            assert_eq!(packet.client_id, ClientId::new(1));
         }
     }
 }

@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use mod_network::{
     Player,
     BulletBlob,
+    components::ObjectId,
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
@@ -31,7 +32,7 @@ impl Bullet {
 pub struct World {
     timer: tokio::time::Instant,
     
-    players: HashMap<u32, Player>,
+    players: HashMap<ObjectId, Player>,
     
     alive_bullets: VecDeque<Bullet>,    // get_objects에서 Queue::pop을 하지 않기 위해 사용, 중간값 삭제가 빈번할것으로 예상되어 VecDeque로 사용
     bullet_blobs: Queue<BulletBlob>,        // Session에서 총알을 추가할 때 사용
@@ -50,11 +51,11 @@ impl World {
     }
 
 
-    pub fn add_player(&mut self, id: u32) {
+    pub fn add_player(&mut self, id: ObjectId) {
         self.players.insert(id, Player { id, ..Default::default() });
     }
     
-    pub fn remove_player(&mut self, id: u32) {
+    pub fn remove_player(&mut self, id: ObjectId) {
         self.players.remove(&id);
     }
 
@@ -66,7 +67,7 @@ impl World {
         }
     }
 
-    pub fn move_player(&mut self, id: u32, x: f32, y: f32, z: f32) {
+    pub fn move_player(&mut self, id: ObjectId, x: f32, y: f32, z: f32) {
         if let Some(player) = self.players.get_mut(&id) {
             player.translation.x += x;
             player.translation.y += y;
@@ -150,7 +151,7 @@ impl World {
                     };
 
                     if let Some(dist) = ray.intersect(&player_capsule) {
-                        println!("Bullet find player (player id: {})", player.id);
+                        println!("Bullet find player (player id: {:?})", player.id);
                         if dist < nearest_distance {
                             nearest_distance = dist;
                             nearest_player_id = Some(player.id);
@@ -163,7 +164,7 @@ impl World {
                         // 총알 제거 -> pop했으므로 제거됨
                         // TODO: 플레이어에게 피해를 줌
                         // 해당 Session은 클라이언트에게 피해를 받았다는 패킷을 보내야함
-                        println!("Player {} hit by bullet", id);
+                        println!("Player {:?} hit by bullet", id);
                         let hp = &mut self.players.get_mut(&id).unwrap().hp;
                         if *hp <= 40 {
                             *hp = 0;
@@ -171,7 +172,7 @@ impl World {
                         else {
                             *hp -= 40;
                         }
-                        println!("Player {} hp: {}", id, *hp);
+                        println!("Player {:?} hp: {}", id, *hp);
                         bullet.alive = false;
                     },
 
@@ -237,11 +238,11 @@ impl WorldInterface {
     /// 1. mpsc를 사용해서 한 스레드에서만 add/remove를 수행하도록 한다.    >>>>>>> 자주 호출되지 않는 add/remove를 위해 task를 하나 할당해줘야함.
     /// 2. lockfree HashMap을 사용한다.
     /// 3. 배열을 사용한다. (Vec<Option<Player>> 또는 [Option<Player>; MAX_PLAYER])     >>>>>>> 오브젝트용 HashMap과 플레이어용 배열을 따로 관리해야한다.
-    pub fn add_player(&self, id: u32) {
+    pub fn add_player(&self, id: ObjectId) {
         self.as_mut().add_player(id);
     }
 
-    pub fn remove_player(&self, id: u32) {
+    pub fn remove_player(&self, id: ObjectId) {
         self.as_mut().remove_player(id);
     }
 
@@ -249,7 +250,7 @@ impl WorldInterface {
         self.as_mut().update_player(player);
     }
 
-    pub fn move_player(&self, id: u32, x: f32, y: f32, z: f32) {
+    pub fn move_player(&self, id: ObjectId, x: f32, y: f32, z: f32) {
         self.as_mut().move_player(id, x, y, z);
     }
 

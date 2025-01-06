@@ -126,6 +126,24 @@ impl TryFromBigEndian for ClientId {
     }
 }
 
+impl Into<u64> for ClientId {
+    fn into(self) -> u64 {
+        self.0
+    }
+}
+
+impl Into<u32> for ClientId {
+    fn into(self) -> u32 {
+        self.0 as u32
+    }
+}
+
+impl Into<ObjectId> for ClientId {
+    fn into(self) -> ObjectId {
+        ObjectId(self.0 as u32)
+    }
+}
+
 /// 게임 월드의 시대를 나타냅니다.
 ///
 /// 클라이언트에서 항상 마지막으로 전송된 네트워크 패킷을 처리하기 위해 사용됩니다.
@@ -221,6 +239,12 @@ impl TryFromBigEndian for ObjectId {
         } else {
             None
         }
+    }
+}
+
+impl Into<u32> for ObjectId {
+    fn into(self) -> u32 {
+        self.0
     }
 }
 
