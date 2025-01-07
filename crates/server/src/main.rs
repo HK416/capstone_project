@@ -145,6 +145,7 @@ mod tests {
     use super::*;
     use tokio::io::AsyncReadExt;
     use mod_network::*;
+    use mod_network::components::{ClientId, CharacterKind};
 
     #[tokio::test]
     async fn test_connection() {
@@ -160,9 +161,17 @@ mod tests {
 
             let packet = parser.pop().unwrap();
             assert_eq!(packet.packet_type(), PacketType::CONNECT);
-    
-            let packet = EnterStagePacket::from_raw(packet);
-            assert_eq!(packet.client_id, ClientId::new(1));
+        }
+
+        let packet = EnterStagePacket::new(ClientId::new(1), CharacterKind::ArisOriginal).as_raw();
+        client_stream.write(&packet.as_bytes()).await.unwrap();
+
+        let mut buf = [0; 1024];
+        if let Ok(n) = client_stream.read(&mut buf).await {
+            parser.push(&buf[..n]);
+
+            let packet = parser.pop().unwrap();
+            assert_eq!(packet.packet_type(), PacketType::INITSTAGE);
         }
     }
 }

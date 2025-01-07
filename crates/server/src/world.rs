@@ -2,7 +2,10 @@ use std::collections::{HashMap, VecDeque};
 use mod_network::{
     Player,
     BulletBlob,
-    components::ObjectId,
+    components::{
+        ObjectId, 
+        CharacterKind
+    },
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
@@ -51,8 +54,8 @@ impl World {
     }
 
 
-    pub fn add_player(&mut self, id: ObjectId) {
-        self.players.insert(id, Player { id, ..Default::default() });
+    pub fn add_player(&mut self, id: ObjectId, character_kind: CharacterKind) {
+        self.players.insert(id, Player { id, character_kind, ..Default::default() });
     }
     
     pub fn remove_player(&mut self, id: ObjectId) {
@@ -238,8 +241,8 @@ impl WorldInterface {
     /// 1. mpsc를 사용해서 한 스레드에서만 add/remove를 수행하도록 한다.    >>>>>>> 자주 호출되지 않는 add/remove를 위해 task를 하나 할당해줘야함.
     /// 2. lockfree HashMap을 사용한다.
     /// 3. 배열을 사용한다. (Vec<Option<Player>> 또는 [Option<Player>; MAX_PLAYER])     >>>>>>> 오브젝트용 HashMap과 플레이어용 배열을 따로 관리해야한다.
-    pub fn add_player(&self, id: ObjectId) {
-        self.as_mut().add_player(id);
+    pub fn add_player(&self, id: ObjectId, character_kind: CharacterKind) {
+        self.as_mut().add_player(id, character_kind);
     }
 
     pub fn remove_player(&self, id: ObjectId) {

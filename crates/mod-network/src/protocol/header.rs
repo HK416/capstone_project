@@ -10,10 +10,8 @@ pub struct PacketType(u8);
 impl PacketType {
     pub const RAW: Self = Self(0);
     pub const MESSAGE: Self = Self(1);
-    pub const MOVE: Self = Self(2);
     pub const ANIMATION: Self = Self(3);
     pub const UPDATE: Self = Self(4);
-    pub const INIT: Self = Self(5);
     pub const PUSH: Self = Self(6);
     pub const PULL: Self = Self(7);
     pub const FIRED: Self = Self(8);

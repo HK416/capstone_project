@@ -4,7 +4,7 @@ use tokio::{
 };
 use super::world::WorldInterface;
 use mod_network::*;
-use mod_network::components::{ClientId, ObjectId};
+use mod_network::components::{ClientId, ObjectId, StageKind};
 
 
 pub struct Session {
@@ -33,8 +33,6 @@ impl Session {
     }
 
     pub async fn handle_connection(&mut self) {
-        self.world.add_player(self.id.into());
-
         match self.stream_write(ConnectPacket::new(self.id).as_raw()).await {
             Ok(_) => {
                 // println!("Client {} connected", self.id);
@@ -70,6 +68,32 @@ impl Session {
 
         while let Some(packet) = self.packet_parser.pop() {
             match packet.packet_type() {
+                PacketType::ENTERSTAGE => {
+                    let enter_packet = EnterStagePacket::from_raw(packet);
+                    self.world.add_player(self.id.into(), enter_packet.character_kind);
+
+                    println!("Client {:?} entered stage", self.id);
+
+                    let mut players = self.world.get_players();
+                    let num_players = players.len() as u32;
+                    // 플레이어 수가 10명이 안되면 빈 플레이어 추가
+                    for _ in 0..10-num_players {
+                        players.push(Player::default());
+                    }
+                    assert_eq!(players.len(), 10);
+                    let players_array = players.try_into().unwrap();
+                    let raw_packet = InitStagePacket::new(num_players, players_array, StageKind::School).as_raw();
+                    match self.stream_write(raw_packet).await {
+                        Ok(_) => {
+
+                        }, 
+                        Err(_) => {
+                            self.running = false;
+                            return;
+                        }
+                    }
+                },
+                
                 PacketType::PUSH => {
                     let push_packet = PushPacket::from_raw(packet);
                     self.world.update_player(push_packet.player);
@@ -87,11 +111,6 @@ impl Session {
                         }
                     }
                 }, 
-
-                PacketType::MOVE => {
-                    let move_packet = MovePacket::from_raw(packet);
-                    self.world.move_player(self.id.into(), move_packet.x, move_packet.y, move_packet.z);
-                },
 
                 PacketType::MESSAGE => {
                     let message_packet = MessagePacket::from_raw(packet);
