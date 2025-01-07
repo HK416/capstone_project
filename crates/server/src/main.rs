@@ -159,9 +159,9 @@ mod tests {
             parser.push(&buf[..n]);
 
             let packet = parser.pop().unwrap();
-            assert_eq!(packet.packet_type(), PacketType::INIT);
+            assert_eq!(packet.packet_type(), PacketType::CONNECT);
     
-            let packet = InitPacket::from_raw(packet);
+            let packet = EnterStagePacket::from_raw(packet);
             assert_eq!(packet.client_id, ClientId::new(1));
         }
     }
