@@ -7,14 +7,14 @@ use super::super::game_objects::{Player, BulletBlob};
 /// 서버에서 클라이언트로 보내는 
 /// 월드 정보 갱신을 위한 패킷.
 #[derive(Debug, PartialEq)]
-pub struct PullPacket {
+pub struct PullStagePacket {
     pub num_players: u16,   // max 65535 로 충분
     pub num_bullets: u16,
     pub players: Vec<Player>,
     pub bullets: Vec<BulletBlob>,
 }
 
-impl PullPacket {
+impl PullStagePacket {
     pub fn new(players: Vec<Player>, bullets: Vec<BulletBlob>) -> Self {
         Self {
             num_players: players.len() as u16,
@@ -64,6 +64,6 @@ impl PullPacket {
             .flat_map(|bullet| bullet.as_bytes())
             .collect::<Vec<u8>>());
 
-        RawPacket::new(PacketType::PULL, &bytes)
+        RawPacket::new(PacketType::PullStage, &bytes)
     }
 }

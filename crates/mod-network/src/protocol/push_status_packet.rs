@@ -6,11 +6,12 @@ use super::super::game_objects::Player;
 /// 클라이언트에서 서버로 보내는 
 /// 플레이어 정보를 갱신하기 위한 패킷
 #[derive(Debug, PartialEq)]
-pub struct PushPacket {
+pub struct PushStatusPacket {
+    // TODO: 이동방향, 시선, 발사 및 스킬사용 정보 등을 포함해야한다.
     pub player: Player, 
 }
 
-impl PushPacket {
+impl PushStatusPacket {
     pub fn new(player: Player) -> Self {
         Self {
             player,
@@ -23,6 +24,6 @@ impl PushPacket {
     }
 
     pub fn as_raw(&self) -> RawPacket {
-        RawPacket::new(PacketType::PUSH, &self.player.as_bytes())
+        RawPacket::new(PacketType::PushStatus, &self.player.as_bytes())
     }
 }

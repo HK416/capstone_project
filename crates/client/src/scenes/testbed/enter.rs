@@ -9,7 +9,7 @@ use mod_app::{
     net::IpAddress,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{InitPacket, PacketType, Player, RawPacket};
+use mod_network::{PacketType, Player, RawPacket};
 use mod_parallelism::collections::Queue;
 use mod_render::{
     GraphicsPipelinePool, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
@@ -255,16 +255,16 @@ impl GameScene for TestbedEnterScene {
         packet: RawPacket,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if packet.packet_type() == PacketType::INIT {
-            let packet = InitPacket::from_raw(packet);
-            spawn_world_objects(
-                packet,
-                self.channel.clone(),
-                app.asset_manager().clone(),
-                app.render_device().clone(),
-                app.render_queue().clone(),
-            );
-        }
+        // if packet.packet_type() == PacketType::INIT {
+        //     let packet = InitPacket::from_raw(packet);
+        //     spawn_world_objects(
+        //         packet,
+        //         self.channel.clone(),
+        //         app.asset_manager().clone(),
+        //         app.render_device().clone(),
+        //         app.render_queue().clone(),
+        //     );
+        // }
 
         Ok(())
     }
@@ -387,33 +387,33 @@ impl fmt::Debug for TestbedEnterScene {
 }
 
 /// 게임 세상을 생성합니다.
-fn spawn_world_objects(
-    packet: InitPacket,
-    channel: Arc<Queue<SpawnResult>>,
-    asset_manager: AssetManager,
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
-) {
-    let world = World::new();
-    let client_id = packet.client_id;
-    let num_entities = packet.world.len();
-    let local_channel: Arc<Queue<LocalResult>> = Arc::new(Queue::new());
-    rayon::in_place_scope(|scope| {
-        for player in packet.world.iter() {
-            let local_channel = local_channel.clone();
-            let asset_manager = asset_manager.clone();
-            let device = device.clone();
-            let queue = queue.clone();
-            let world = &world;
-            let data = player;
-            scope.spawn(move |_| {
-                local_channel.push(spawn_entities(data, asset_manager, device, queue, world));
-            });
-        }
-    });
+// fn spawn_world_objects(
+//     packet: InitPacket,
+//     channel: Arc<Queue<SpawnResult>>,
+//     asset_manager: AssetManager,
+//     device: Arc<wgpu::Device>,
+//     queue: Arc<wgpu::Queue>,
+// ) {
+//     let world = World::new();
+//     let client_id = packet.client_id;
+//     let num_entities = packet.world.len();
+//     let local_channel: Arc<Queue<LocalResult>> = Arc::new(Queue::new());
+//     rayon::in_place_scope(|scope| {
+//         for player in packet.world.iter() {
+//             let local_channel = local_channel.clone();
+//             let asset_manager = asset_manager.clone();
+//             let device = device.clone();
+//             let queue = queue.clone();
+//             let world = &world;
+//             let data = player;
+//             scope.spawn(move |_| {
+//                 local_channel.push(spawn_entities(data, asset_manager, device, queue, world));
+//             });
+//         }
+//     });
 
-    channel.push(poll_results(local_channel, num_entities, client_id.into(), world));       // TODO: into() 대신에 ClientId를 그대로 사용하도록 해야함
-}
+//     channel.push(poll_results(local_channel, num_entities, client_id.into(), world));       // TODO: into() 대신에 ClientId를 그대로 사용하도록 해야함
+// }
 
 /// 게임 세상에 존재하는 `Entity`를 생성합니다.
 fn spawn_entities(

@@ -68,7 +68,7 @@ impl Session {
 
         while let Some(packet) = self.packet_parser.pop() {
             match packet.packet_type() {
-                PacketType::ENTERSTAGE => {
+                PacketType::EnterStage => {
                     let enter_packet = EnterStagePacket::from_raw(packet);
                     self.world.add_player(self.id.into(), enter_packet.character_kind);
 
@@ -94,13 +94,13 @@ impl Session {
                     }
                 },
                 
-                PacketType::PUSH => {
-                    let push_packet = PushPacket::from_raw(packet);
+                PacketType::PushStatus => {
+                    let push_packet = PushStatusPacket::from_raw(packet);
                     self.world.update_player(push_packet.player);
 
                     let players = self.world.get_players();
                     let bullets = self.world.get_bullets();
-                    let raw_packet = PullPacket::new(players, bullets).as_raw();
+                    let raw_packet = PullStagePacket::new(players, bullets).as_raw();
                     match self.stream_write(raw_packet).await {
                         Ok(_) => {
 
@@ -112,25 +112,18 @@ impl Session {
                     }
                 }, 
 
-                PacketType::MESSAGE => {
-                    let message_packet = MessagePacket::from_raw(packet);
-                    if message_packet.msg == "ping" {
-                        self.stream_write(MessagePacket::new(message_packet.time, "pong").as_raw()).await.unwrap();
-                    }
-                },
-
-                PacketType::FIRED => {
-                    let fired_packet = ShotPacket::from_raw(packet);
+                // PacketType::FIRED => {
+                //     let fired_packet = ShotPacket::from_raw(packet);
                     
-                    self.shot_count += 1;
-                    self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
+                //     self.shot_count += 1;
+                //     self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
 
-                    let mut bullet = fired_packet.bullet;
-                    let bid: u32 = self.id.into();
-                    bullet.id = ObjectId::new(bid * 1000 + self.shot_count);     // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
+                //     let mut bullet = fired_packet.bullet;
+                //     let bid: u32 = self.id.into();
+                //     bullet.id = ObjectId::new(bid * 1000 + self.shot_count);     // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
 
-                    self.world.add_bullet(bullet);
-                }
+                //     self.world.add_bullet(bullet);
+                // }
 
                 _ => {},
             }

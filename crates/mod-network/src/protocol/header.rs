@@ -1,29 +1,46 @@
 use std::mem::size_of;
+use super::super::components::{BigEndian, TryFromBigEndian};
 
 
 pub type PacketSize = u16;
 
 
 // 새로운 패킷 추가시 여기에 추가
+#[repr(u8)]
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub struct PacketType(u8);
-impl PacketType {
-    pub const RAW: Self = Self(0);
-    pub const MESSAGE: Self = Self(1);
-    pub const ANIMATION: Self = Self(3);
-    pub const UPDATE: Self = Self(4);
-    pub const PUSH: Self = Self(6);
-    pub const PULL: Self = Self(7);
-    pub const FIRED: Self = Self(8);
+pub enum PacketType {
+    Raw = 0,
+    Connect = 1,
+    EnterStage = 2,
+    InitStage = 3,
+    PullStage = 4,
+    PushStatus = 5,
+}
 
-    pub const CONNECT: Self = Self(9);
-    pub const ENTERSTAGE: Self = Self(10);
-    pub const INITSTAGE: Self = Self(11);
+impl BigEndian for PacketType {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    }
 
-    // 크기가 u8보다 커지면 이 함수 활성화
-    // pub fn as_bytes(&self) -> [u8; size_of::<PacketType>()] {
-    //     self.0.to_be_bytes()
-    // }
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let index = *self as u8;
+        index.to_big_endian_bytes()
+    }
+}
+
+impl TryFromBigEndian for PacketType {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        let index = u8::from_big_endian_bytes(bytes);
+        match index {
+            0 => Some(PacketType::Raw),
+            1 => Some(PacketType::Connect),
+            2 => Some(PacketType::EnterStage),
+            3 => Some(PacketType::InitStage),
+            4 => Some(PacketType::PullStage),
+            5 => Some(PacketType::PushStatus),
+            _ => None,
+        }
+    }
 }
 
 
@@ -37,14 +54,13 @@ impl PacketHeader {
     pub fn as_bytes(&self) -> [u8; size_of::<PacketHeader>()] {
         let mut bytes = [0; size_of::<PacketHeader>()];
         bytes[..size_of::<PacketSize>()].copy_from_slice(&self.size.to_be_bytes());
-        bytes[size_of::<PacketSize>()] = self.packet_type.0;
-        // bytes[size_of::<PacketSize>()..].copy_from_slice(&self.packet_type.to_be_bytes());   // 크기가 u8보다 커지면 이 코드 활성화
+        bytes[size_of::<PacketSize>()..].copy_from_slice(&self.packet_type.to_big_endian_bytes());
         bytes
     }
 
     pub fn from_bytes(data: &[u8]) -> Self {
         let size = PacketSize::from_be_bytes([data[0], data[1]]);       // size가 변하면 이 코드 수정
-        let packet_type = PacketType(data[2]);                          // 크기가 u8보다 커지면 이 코드 수정
+        let packet_type = PacketType::from_big_endian_bytes(&data[2..]);
 
         Self {
             size,
@@ -67,5 +83,26 @@ impl std::fmt::Debug for PacketHeader {     // packed 와 derive(Debug)가 충�
 impl std::cmp::PartialEq for PacketHeader { // packed 와 derive(PartialEq)가 충돌하여 직접 구현
     fn eq(&self, other: &Self) -> bool {
         self.size == other.size && self.packet_type == other.packet_type
+    }
+}
+
+
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_packet_type() {
+        // match로 변환하는 과정에서 순서가 바뀌는 등의 문제 발생시 테스트 실패
+        assert_eq!(PacketType::from_big_endian_bytes(&[PacketType::Raw as u8]), PacketType::Raw);
+        assert_eq!(PacketType::from_big_endian_bytes(&[PacketType::Connect as u8]), PacketType::Connect);
+        assert_eq!(PacketType::from_big_endian_bytes(&[PacketType::EnterStage as u8]), PacketType::EnterStage);
+        assert_eq!(PacketType::from_big_endian_bytes(&[PacketType::InitStage as u8]), PacketType::InitStage);
+        assert_eq!(PacketType::from_big_endian_bytes(&[PacketType::PullStage as u8]), PacketType::PullStage);
+        assert_eq!(PacketType::from_big_endian_bytes(&[PacketType::PushStatus as u8]), PacketType::PushStatus);
     }
 }

@@ -48,7 +48,7 @@ impl InitStagePacket {
             .collect::<Vec<u8>>());
         bytes.extend_from_slice(&self.stage_kind.to_big_endian_bytes());
 
-        RawPacket::new(PacketType::INITSTAGE, &bytes)
+        RawPacket::new(PacketType::InitStage, &bytes)
     }
 }
 

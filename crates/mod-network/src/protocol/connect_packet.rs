@@ -28,7 +28,7 @@ impl ConnectPacket {
     pub fn as_raw(&self) -> RawPacket {
         let bytes = self.client_id.to_big_endian_bytes();
 
-        RawPacket::new(PacketType::CONNECT, &bytes)
+        RawPacket::new(PacketType::Connect, &bytes)
     }
 }
 

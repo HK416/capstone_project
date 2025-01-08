@@ -35,7 +35,7 @@ impl EnterStagePacket {
         bytes.extend_from_slice(&self.client_id.to_big_endian_bytes());
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
 
-        RawPacket::new(PacketType::ENTERSTAGE, &bytes)
+        RawPacket::new(PacketType::EnterStage, &bytes)
     }
 }
 
