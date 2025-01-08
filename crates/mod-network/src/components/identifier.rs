@@ -300,8 +300,8 @@ impl TryFromBigEndian for MovementState {
         let index = u8::from_big_endian_bytes(bytes);
         match index {
             0 => Some(MovementState::Idle),
-            1 => Some(MovementState::MoveToEnd),
-            2 => Some(MovementState::Moving),
+            1 => Some(MovementState::Moving),
+            2 => Some(MovementState::MoveToEnd),
             _ => None,
         }
     }
