@@ -27,6 +27,7 @@
         }, 
         "font" : {
             "files" : [
+                "NEXON_Lv2_Gothic_Bold.ttf",
                 "NEXON_Lv2_Gothic.ttf"
             ],
             "directories" : {}

@@ -7,29 +7,71 @@ use std::{
 
 use mod_app::{
     app::AppHandle,
-    etc::{AppEvent, NoSuitableWndSize, WindowSize},
+    asset::AssetManager,
+    etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
+use rayon::ThreadPool;
 use winit::window::Window;
 
-use crate::config::{InvalidConfig, UserConfig};
+use crate::{
+    config::{InvalidConfig, UserConfig},
+    FONT_STYLE_0, FONT_STYLE_0_BOLD, USER_CONFIG,
+};
 
-use super::TestbedTitleScene;
+use super::IntroScene;
+
+/// 작업 결과를 전송하는 채널입니다.
+#[derive(Debug, Clone)]
+struct TaskResultChannel {
+    inner: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
+}
+
+impl TaskResultChannel {
+    /// 새로운 작업 결과 채널을 생성합니다.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 작업 결과를 전송합니다.
+    pub fn send<E>(&self, result: Result<(), E>)
+    where
+        E: Error + Send + 'static,
+    {
+        self.inner
+            .push(result.map_err(|e| Box::new(e) as Box<dyn Error + Send>));
+    }
+
+    /// 작업 결과를 수신합니다.
+    pub fn recv(&self) -> Option<Result<(), Box<dyn Error + Send>>> {
+        self.inner.pop()
+    }
+}
+
+impl Default for TaskResultChannel {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(Queue::default()),
+        }
+    }
+}
 
 /// ## Startup Scene
 /// 게임을 실행하면 제일 먼저 진입하는 장면입니다.
 ///
-/// `UserConfig` 파일을 읽고, 애플리케이션 창을 조정합니다.  
+/// 1. `UserConfig` 파일을 읽고, 애플리케이션 창을 조정합니다.  
 /// 시스템에서 파일을 찾을 수 없는 경우 초기 설정 장면으로 전환합니다.
 ///
+/// 2. 시스템 기본 구성 리소스를 로드합니다. (예: 폰트, 자주 사용되는 텍스처, 등)
+///
 pub struct StartupScene {
-    /// 사용자 구성 데이터
+    /// 사용자 구성 설정 데이터
     user_config: Option<Box<UserConfig>>,
 
-    /// 작업 결과물 대기열
-    queue: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
+    /// 작업 결과 채널
+    task_result_channel: TaskResultChannel,
 
     /// 남은 작업의 개수
     num_tasks: usize,
@@ -39,13 +81,14 @@ impl StartupScene {
     pub fn new() -> Self {
         Self {
             user_config: None,
-            queue: Arc::new(Queue::new()),
+            task_result_channel: TaskResultChannel::new(),
             num_tasks: 0,
         }
     }
 }
 
 impl GameScene for StartupScene {
+    #[allow(unused_variables)]
     fn on_enter(
         &mut self,
         window: &Window,
@@ -54,56 +97,19 @@ impl GameScene for StartupScene {
         //! 유저 구성 설정 파일을 로드하고, IO 스레드 풀에서 기본 에셋을 로드합니다.
         //!
         let pool = app.io_threads();
-        let queue = self.queue.clone();
+        let channel = self.task_result_channel.clone();
         let asset_manager = app.asset_manager().clone();
-        pool.spawn(move || {
-            // `NEXON LV2 gothic` 폰트를 로드합니다.
-            let result = asset_manager
-                .load("font/NEXON_Lv2_Gothic.ttf")
-                .map(|_| {})
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
-            queue.push(result);
-        });
+        preload_font_style_0(pool, channel, asset_manager);
         self.num_tasks += 1;
 
-        // 유저 구성 설정 파일을 읽습니다.
-        let asset_manager = app.asset_manager();
-        let result = asset_manager.get_or_init("user_config");
-        let user_config = Box::new(match result {
-            // 유저 구성 설정 파일이 존재하는 경우
-            Ok(cached_asset) => {
-                let reader = Cursor::new(cached_asset.as_bytes());
-                let config: UserConfig = serde_json::from_reader(reader)
-                    .map_err(|e| InvalidConfig(e))
-                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        let channel = self.task_result_channel.clone();
+        let asset_manager = app.asset_manager().clone();
+        preload_font_style_0_bold(pool, channel, asset_manager);
+        self.num_tasks += 1;
 
-                config
-            }
-            // 유저 구성 설정 파일이 존재하지 않는 경우: 기본 설정 파일을 생성한다.
-            Err(ref e) if e.kind() == ErrorKind::NotFound => {
-                // 최대 윈도우 크기를 가져옵니다.
-                let max_window_size = window
-                    .primary_monitor()
-                    .map(|monitor| WindowSize::find_maximize_size(monitor))
-                    .flatten();
-                let max_window_size = match max_window_size {
-                    Some(size) => size,
-                    None => return Err(Box::new(NoSuitableWndSize)),
-                };
-
-                // 사용자 구성 파일을 생성합니다.
-                let config = UserConfig::new(max_window_size);
-                let data = serde_json::ser::to_vec_pretty(&config)
-                    .map_err(|e| InvalidConfig(e))
-                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-                asset_manager
-                    .create("user_config", &data)
-                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-
-                config
-            }
-            Err(e) => return Err(Box::new(e)),
-        });
+        // 사용자 구성 설정 파일을 로드합니다.
+        let user_config = load_user_configuration(app.asset_manager())?;
+        let user_config = Box::new(user_config);
 
         // 애플리케이션 창을 조정합니다.
         let proxy = app.event_loop_proxy();
@@ -127,30 +133,38 @@ impl GameScene for StartupScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         //! 로드된 폰트를 UI 시스템에서 사용할 수 있도록 초기화합니다.
         //!
+
+        // 로드된 폰트 에셋 데이터를 가져옵니다.
         let egui_ctx = app.egui_ctx();
         let asset_manager = app.asset_manager();
-        let nexon_lv2_gothic = asset_manager
-            .get_or_init("font/NEXON_Lv2_Gothic.ttf")
+        let font_style_0 = asset_manager
+            .get_or_init(FONT_STYLE_0)
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        let font_style_0_bold = asset_manager
+            .get_or_init(FONT_STYLE_0_BOLD)
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // UI 폰트 데이터를 생성합니다.
+        let font_style_0 = egui::FontData::from_owned(font_style_0.as_bytes().to_vec());
+        let font_style_0_bold = egui::FontData::from_owned(font_style_0_bold.as_bytes().to_vec());
 
         // UI 폰트 데이터를 추가합니다.
         let mut fonts = egui::FontDefinitions::default();
-        fonts.font_data.insert(
-            "NEXON_Lv2_Gothic".to_owned(),
-            egui::FontData::from_owned(nexon_lv2_gothic.as_bytes().to_vec()).into(),
-        );
+        let font_data = &mut fonts.font_data;
+        font_data.insert(FONT_STYLE_0.to_owned(), font_style_0.into());
+        font_data.insert(FONT_STYLE_0_BOLD.to_owned(), font_style_0_bold.into());
 
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .insert(0, "NEXON_Lv2_Gothic".to_owned());
+            .insert(0, FONT_STYLE_0.to_owned());
 
         fonts
             .families
             .entry(egui::FontFamily::Monospace)
             .or_default()
-            .push("NEXON_Lv2_Gothic".to_owned());
+            .push(FONT_STYLE_0.to_owned());
 
         egui_ctx.set_fonts(fonts);
 
@@ -164,29 +178,21 @@ impl GameScene for StartupScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 이미 다른 장면으로 전환된 경우 함수 실행을 생략합니다.
-        if self.user_config.is_none() {
-            return Ok(());
-        }
-
-        // IO 스레드 풀 작업 결과를 기다립니다.
-        if let Some(result) = self.queue.pop() {
+        // 작업 결과를 기다립니다.
+        if let Some(result) = self.task_result_channel.recv() {
             self.num_tasks -= 1;
             result?;
         }
 
-        // 모든 작업이 완료된 경우 다음 장면으로 전환합니다.
+        // 모든 작업이 끝난 경우 다음 게임 장면으로 전환합니다.
         if self.num_tasks == 0 {
-            let proxy = app.event_loop_proxy();
-            proxy
-                .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
-                    TestbedTitleScene::new(
-                        self.user_config
-                            .take()
-                            .expect("user configuration must exist"),
-                    ),
-                ))))
-                .unwrap();
+            if let Some(user_config) = self.user_config.take() {
+                let next_scene = Box::new(IntroScene::new(user_config));
+                let scene_flow = GameSceneFlow::Change(next_scene);
+                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let proxy = app.event_loop_proxy();
+                proxy.send_event(event).unwrap();
+            }
         }
 
         Ok(())
@@ -228,6 +234,7 @@ impl GameScene for StartupScene {
         }
 
         queue.submit([encoder.finish()]);
+
         Ok(())
     }
 }
@@ -236,5 +243,61 @@ impl fmt::Debug for StartupScene {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(StartupScene))
+    }
+}
+
+/// 주어진 스레드 풀에서 "font:style_0" 에셋을 로드합니다.
+/// 에셋의 로드 결과를 주어진 작업 결과 채널로 전송합니다.
+fn preload_font_style_0(
+    pool: &ThreadPool,
+    channels: TaskResultChannel,
+    asset_manager: AssetManager,
+) {
+    pool.spawn(move || {
+        let result = asset_manager.load(FONT_STYLE_0).map(|_| ());
+        channels.send(result);
+    });
+}
+
+/// 주어진 스레드 풀에서 "font:style_0_bold" 에셋을 로드합니다.
+/// 에셋의 로드 결과를 주어진 작업 결과 채널로 전송합니다.
+fn preload_font_style_0_bold(
+    pool: &ThreadPool,
+    channel: TaskResultChannel,
+    asset_manager: AssetManager,
+) {
+    pool.spawn(move || {
+        let result = asset_manager.load(FONT_STYLE_0_BOLD).map(|_| ());
+        channel.send(result);
+    });
+}
+
+/// 사용자 구성 설정 파일을 로드합니다.
+fn load_user_configuration(
+    asset_manager: &AssetManager,
+) -> Result<UserConfig, Box<dyn Error + Send>> {
+    let result = asset_manager.get_or_init(USER_CONFIG);
+    match result {
+        Ok(cached) => {
+            // 사용자 구성 파일 데이터를 구문 분석합니다.
+            let reader = Cursor::new(cached.as_bytes());
+            let result: Result<UserConfig, _> = serde_json::from_reader(reader);
+            result
+                .map_err(|e| InvalidConfig(e))
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+        }
+        Err(ref e) if e.kind() == ErrorKind::NotFound => {
+            // 사용자 구성 파일을 생성합니다.
+            let user_config = UserConfig::new();
+            let data = serde_json::ser::to_vec_pretty(&user_config)
+                .map_err(|e| InvalidConfig(e))
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+            asset_manager
+                .create(USER_CONFIG, &data)
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+            Ok(user_config)
+        }
+        Err(e) => Err(Box::new(e)),
     }
 }

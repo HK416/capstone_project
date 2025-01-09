@@ -21,10 +21,16 @@ pub struct UserConfig {
 
 impl UserConfig {
     /// 새로운 사용자 구성을 생성합니다.
-    pub fn new(window_size: WindowSize) -> Self {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for UserConfig {
+    fn default() -> Self {
         Self {
             locale: None,
-            window_size,
+            window_size: WindowSize::MAX,
             fullscreen: true,
             keyboard: KeyboardConfig::default(),
             mouse: MouseConfig::default(),

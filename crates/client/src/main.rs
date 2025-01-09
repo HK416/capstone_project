@@ -5,6 +5,14 @@ mod config;
 mod scenes;
 mod system;
 
+use constcat::concat;
+
+pub const USER_CONFIG: &'static str = "user_config";
+
+pub const FONT_WORKSPACE: &'static str = "font/";
+pub const FONT_STYLE_0: &'static str = concat!(FONT_WORKSPACE, "NEXON_Lv2_Gothic.ttf");
+pub const FONT_STYLE_0_BOLD: &'static str = concat!(FONT_WORKSPACE, "NEXON_Lv2_Gothic_Bold.ttf");
+
 /// 64bit `Windows`, `macOS` 플랫폼의
 /// 애플리케이션 진입점입니다.
 ///
