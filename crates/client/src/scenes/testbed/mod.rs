@@ -1,18 +1,24 @@
+mod enter;
+mod in_game;
+
 use std::{error::Error, fmt};
 
 use mod_app::{
     app::AppHandle,
+    asset::AssetManager,
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::ClientId;
+use mod_network::components::{CharacterKind, ClientId};
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
-    component::Character,
     config::{InvalidConfig, UserConfig},
+    USER_CONFIG,
 };
+
+pub use {self::enter::*, self::in_game::*};
 
 /// ## Testbed Title Scene
 pub struct TestbedTitleScene {
@@ -21,15 +27,19 @@ pub struct TestbedTitleScene {
     /// 클라이언트 식별자
     client_id: ClientId,
 
+    /// 선택된 전체 화면 여부
     fullscreen: bool,
+    /// 선택된 윈도우 창 크기
     window_size: WindowSize,
-    character_kind: Character,
+    /// 선택된 캐릭터 종류
+    character_kind: CharacterKind,
 
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
 impl TestbedTitleScene {
+    /// 새로운 `TestbedTitleScene`을 생성합니다.
     pub fn new(user_config: Box<UserConfig>, client_id: ClientId) -> Self {
         assert_ne!(client_id, ClientId::NULL, "invalid client id");
         Self {
@@ -37,38 +47,42 @@ impl TestbedTitleScene {
             client_id,
             fullscreen: false,
             window_size: WindowSize::MAX,
-            character_kind: Character::ArisOriginal,
+            character_kind: CharacterKind::default(),
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
     }
-}
 
-impl TestbedTitleScene {
     /// 사용자 구성이 변경된 경우 `true`를 반환합니다.
-    fn config_changed(&self) -> bool {
+    fn is_configuration_changed(&self) -> bool {
         self.user_config.as_ref().is_some_and(|user_config| {
             user_config.fullscreen != self.fullscreen || user_config.window_size != self.window_size
         })
     }
 
     /// 사용자 구성을 저장합니다.
-    fn config_store(&mut self, app: &dyn AppHandle) -> Result<(), Box<dyn Error + Send>> {
-        if let Some(user_config) = self.user_config.as_mut() {
-            user_config.fullscreen = self.fullscreen;
-            user_config.window_size = self.window_size;
-            let data = serde_json::ser::to_vec_pretty(&user_config)
-                .map_err(|e| InvalidConfig(e))
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-            let asset_manager = app.asset_manager();
-            asset_manager
-                .store("user_config", &data)
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-        } else {
-            panic!("user configuration must exist")
-        }
+    fn store_configuration(
+        &mut self,
+        asset_manager: &AssetManager,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 사용자 구성 설정 데이터를 변경합니다.
+        let user_config = self
+            .user_config
+            .as_mut()
+            .expect("user configuration must exist");
+        user_config.fullscreen = self.fullscreen;
+        user_config.window_size = self.window_size;
 
-        Ok(())
+        // 파일 데이터를 가져옵니다.
+        let data = serde_json::to_vec_pretty(&user_config)
+            .map_err(|e| InvalidConfig(e))
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 사용자 구성 설정 파일에 데이터를 저장합니다.
+        asset_manager
+            .store(USER_CONFIG, &data)
+            .map(|_| ())
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }
 
     /// 사용자 인터페이스 콜백 함수입니다.
@@ -79,34 +93,35 @@ impl TestbedTitleScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let egui_ctx = app.egui_ctx();
 
-        // 픽셀 크기에 따른 폰트 크기 계산
-        // Point Size(폰트 크기) = Pixel Size / Scale Factor
-        //
+        let client_id: u32 = self.client_id.into();
         let scale_factor = window.scale_factor() as f32;
-        let (width, height): (f32, f32) = window.inner_size().into();
+        let (width, _): (f32, f32) = window.inner_size().into();
 
-        let title_text = egui::RichText::new("Hello to Halo (개발자모드)")
+        let title_text = egui::RichText::new("Hello2Halo (개발자 모드)")
             .color(egui::Color32::WHITE)
-            .size((height * 0.075) / scale_factor);
-        let fullscreen_text = egui::RichText::new("전체 화면")
-            .color(egui::Color32::WHITE)
-            .size(18.0);
-        let size_text = egui::RichText::new("창 크기")
+            .size(24.0);
+        let fullscreen_option_text = egui::RichText::new("전체 화면")
             .color(egui::Color32::WHITE)
             .size(18.0);
-        let save_text = egui::RichText::new("설정 저장")
+        let window_size_option_text = egui::RichText::new("창 크기")
             .color(egui::Color32::WHITE)
             .size(18.0);
-        let student_text = egui::RichText::new("학생 선택")
+        let character_option_text = egui::RichText::new("캐릭터 선택")
             .color(egui::Color32::WHITE)
             .size(18.0);
-        let enter_text = egui::RichText::new("테스트 필드 입장")
+        let save_button_text = egui::RichText::new("설정 저장")
             .color(egui::Color32::WHITE)
             .size(18.0);
+        let join_button_text = egui::RichText::new("게임 월드 입장")
+            .color(egui::Color32::WHITE)
+            .size(18.0);
+        let client_id_text = egui::RichText::new(format!("클라이언트 ID: {}", client_id))
+            .color(egui::Color32::WHITE)
+            .size(12.0);
 
         self.fullscreen = app.is_fullscreen();
         self.window_size = app.window_size();
-        let mut store_config = false;
+        let mut pressed_save_button = false;
         let mut change_scene = false;
 
         egui::CentralPanel::default()
@@ -124,11 +139,11 @@ impl TestbedTitleScene {
                         .num_columns(2)
                         .spacing([(width * 0.02) / scale_factor, 4.0])
                         .show(ui, |ui| {
-                            ui.label(fullscreen_text);
+                            ui.label(fullscreen_option_text);
                             ui.checkbox(&mut self.fullscreen, "");
                             ui.end_row();
 
-                            ui.label(size_text);
+                            ui.label(window_size_option_text);
                             ui.add_enabled_ui(!self.fullscreen, |ui| {
                                 egui::ComboBox::from_label("")
                                     .selected_text(format!("{}", self.window_size.to_string()))
@@ -153,9 +168,9 @@ impl TestbedTitleScene {
 
                     ui.separator();
                     ui.horizontal(|ui| {
-                        ui.add_enabled_ui(self.config_changed(), |ui| {
-                            if ui.button(save_text).clicked() {
-                                store_config = true;
+                        ui.add_enabled_ui(self.is_configuration_changed(), |ui| {
+                            if ui.button(save_button_text).clicked() {
+                                pressed_save_button = true;
                             }
                         });
                     });
@@ -165,21 +180,22 @@ impl TestbedTitleScene {
                         .num_columns(2)
                         .spacing([40.0, 4.0])
                         .show(ui, |ui| {
-                            ui.label(student_text);
+                            ui.label(character_option_text);
                             egui::ComboBox::from_label("")
                                 .selected_text(format!("{}", self.character_kind.to_string()))
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(
                                         &mut self.character_kind,
-                                        Character::ArisOriginal,
-                                        Character::ArisOriginal.to_string(),
+                                        CharacterKind::ArisOriginal,
+                                        CharacterKind::ArisOriginal.to_string(),
                                     );
                                 });
                         });
 
                     ui.separator();
+                    ui.label(client_id_text);
                     ui.horizontal(|ui| {
-                        if ui.button(enter_text).clicked() {
+                        if ui.button(join_button_text).clicked() {
                             change_scene = true;
                         }
                     });
@@ -200,20 +216,20 @@ impl TestbedTitleScene {
         }
 
         if change_scene && self.user_config.is_some() {
-            proxy
-                .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
-                    TestbedEnterScene::new(
-                        self.character_kind,
-                        self.user_config
-                            .take()
-                            .expect("user configuration must exist"),
-                    ),
-                ))))
-                .unwrap();
+            // proxy
+            //     .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
+            //         TestbedEnterScene::new(
+            //             self.character_kind,
+            //             self.user_config
+            //                 .take()
+            //                 .expect("user configuration must exist"),
+            //         ),
+            //     ))))
+            //     .unwrap();
         }
 
-        if store_config {
-            self.config_store(app)?;
+        if pressed_save_button {
+            self.store_configuration(app.asset_manager())?;
         }
 
         Ok(())
@@ -348,9 +364,3 @@ impl fmt::Debug for TestbedTitleScene {
         write!(f, "{}", stringify!(TestbedTitleScene))
     }
 }
-
-mod enter;
-mod in_game;
-
-pub use self::enter::*;
-pub use self::in_game::*;

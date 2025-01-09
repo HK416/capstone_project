@@ -95,6 +95,15 @@ impl TryFromBigEndian for CharacterKind {
     }
 }
 
+impl ToString for CharacterKind {
+    fn to_string(&self) -> String {
+        match self {
+            CharacterKind::ArisOriginal => "Aris Original",
+            CharacterKind::MomoiOriginal => "Momoi Original",
+        }.to_string()
+    }
+}
+
 /// 클라이언트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
