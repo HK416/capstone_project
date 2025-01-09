@@ -216,16 +216,13 @@ impl TestbedTitleScene {
         }
 
         if change_scene && self.user_config.is_some() {
-            // proxy
-            //     .send_event(AppEvent::SetGameSceneFlow(GameSceneFlow::Change(Box::new(
-            //         TestbedEnterScene::new(
-            //             self.character_kind,
-            //             self.user_config
-            //                 .take()
-            //                 .expect("user configuration must exist"),
-            //         ),
-            //     ))))
-            //     .unwrap();
+            if let Some(user_config) = self.user_config.take() {
+                let next_scene =
+                    EnterStageScene::new(user_config, self.client_id, self.character_kind);
+                let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                proxy.send_event(event).unwrap();
+            }
         }
 
         if pressed_save_button {
