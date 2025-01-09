@@ -2,7 +2,6 @@ use std::{
     error::Error,
     fmt,
     io::{Cursor, ErrorKind},
-    sync::Arc,
 };
 
 use mod_app::{
@@ -11,52 +10,17 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
+    channel::TaskResultChannel,
     config::{InvalidConfig, UserConfig},
     FONT_STYLE_0, FONT_STYLE_0_BOLD, USER_CONFIG,
 };
 
 use super::IntroScene;
-
-/// 작업 결과를 전송하는 채널입니다.
-#[derive(Debug, Clone)]
-struct TaskResultChannel {
-    inner: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
-}
-
-impl TaskResultChannel {
-    /// 새로운 작업 결과 채널을 생성합니다.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// 작업 결과를 전송합니다.
-    pub fn send<E>(&self, result: Result<(), E>)
-    where
-        E: Error + Send + 'static,
-    {
-        self.inner
-            .push(result.map_err(|e| Box::new(e) as Box<dyn Error + Send>));
-    }
-
-    /// 작업 결과를 수신합니다.
-    pub fn recv(&self) -> Option<Result<(), Box<dyn Error + Send>>> {
-        self.inner.pop()
-    }
-}
-
-impl Default for TaskResultChannel {
-    fn default() -> Self {
-        Self {
-            inner: Arc::new(Queue::default()),
-        }
-    }
-}
 
 /// ## Startup Scene
 /// 게임을 실행하면 제일 먼저 진입하는 장면입니다.
@@ -254,8 +218,7 @@ fn preload_font_style_0(
     asset_manager: AssetManager,
 ) {
     pool.spawn(move || {
-        let result = asset_manager.load(FONT_STYLE_0).map(|_| ());
-        channels.send(result);
+        channels.send(asset_manager.load(FONT_STYLE_0));
     });
 }
 
@@ -267,8 +230,7 @@ fn preload_font_style_0_bold(
     asset_manager: AssetManager,
 ) {
     pool.spawn(move || {
-        let result = asset_manager.load(FONT_STYLE_0_BOLD).map(|_| ());
-        channel.send(result);
+        channel.send(asset_manager.load(FONT_STYLE_0_BOLD));
     });
 }
 

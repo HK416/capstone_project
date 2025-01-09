@@ -1,11 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod asset;
+mod channel;
 mod component;
 mod config;
 mod scenes;
 mod system;
 
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+
 use constcat::concat;
+use mod_app::net::IpAddress;
+
+pub const SERVER_IP: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
+pub const SERVER_ADDR: IpAddress = IpAddress::Tcp(SocketAddr::new(SERVER_IP, 7878));
 
 pub const USER_CONFIG: &'static str = "user_config";
 

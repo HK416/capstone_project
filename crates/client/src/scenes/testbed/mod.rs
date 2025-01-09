@@ -5,6 +5,7 @@ use mod_app::{
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
+use mod_network::components::ClientId;
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
@@ -15,7 +16,10 @@ use crate::{
 
 /// ## Testbed Title Scene
 pub struct TestbedTitleScene {
+    /// 사용자 구성 설정 데이터
     user_config: Option<Box<UserConfig>>,
+    /// 클라이언트 식별자
+    client_id: ClientId,
 
     fullscreen: bool,
     window_size: WindowSize,
@@ -26,9 +30,11 @@ pub struct TestbedTitleScene {
 }
 
 impl TestbedTitleScene {
-    pub fn new(user_config: Box<UserConfig>) -> Self {
+    pub fn new(user_config: Box<UserConfig>, client_id: ClientId) -> Self {
+        assert_ne!(client_id, ClientId::NULL, "invalid client id");
         Self {
             user_config: Some(user_config),
+            client_id,
             fullscreen: false,
             window_size: WindowSize::MAX,
             character_kind: Character::ArisOriginal,
