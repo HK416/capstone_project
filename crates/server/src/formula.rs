@@ -1,5 +1,6 @@
-//게임 내 공식 파일
-impl movement_formulas {
+//게임 내 공식
+
+mod movement_formulas {
     // 이동 속력 계산 함수
     pub fn cal_speed(t_duration: f64, s_move_speed: f64) -> (f64, f64, f64) {
         let t = 2.0 * f64::min(0.5, t_duration);
@@ -30,48 +31,52 @@ impl movement_formulas {
         (a_total, v_speed, d_distance)
     }
 
-    //==========damage=================
+    //========damage==========
 
-    //기본
-    pub fn default_damage(attack: f64, defense: f64, k:f64,) -> f64{
-        attack*defense/(defense+k)
+    // 기본 데미지 계산 함수
+    pub fn default_damage(attack: f64, defense: f64, k: f64) -> f64 {
+        attack * defense / (defense + k)
     }
 
-    //명중확률
-    pub fn cal_hitrate(hit:f64, evasion: f64, d: f64) -> f64{
-        hit/ (hit+evasion+d)
+    // 명중 확률 계산 함수
+    pub fn cal_hit_rate(hit: f64, evasion: f64, d: f64) -> f64 {
+        hit / (hit + evasion + d)
     }
 
-    //치명타 확률
-    pub fn cal_crtrate (random_value: f64, crt: f64, c:f64)-> f64{
-        (random_value*(crt/(crt+c))).ceil()
+    // 치명타 확률 계산 함수
+    pub fn cal_crt_rate(random_value: f64, critical: f64, c: f64) -> f64 {
+        (random_value * (critical / (critical + c))).ceil()
     }
 
-    //최종 데미지 계산
+    // 최종 데미지 계산 함수
     pub fn final_damage(
-        default_dam: f64,
+        default_damage: f64,
         hit_rate: f64,
         crt_rate: f64,
-        crt_dam: f64
-    ) -> f64{
-        default_dam * hit_rate * (1.0 + crt_rate * ((crt_dam/100.0)-1.0))
+        crt_damage: f64,
+    ) -> f64 {
+        default_damage * hit_rate * (1.0 + crt_rate * ((crt_damage / 100.0) - 1.0))
     }
-    
-    //회복량 공식식
-    pub fn cal_heal(
-        heal_rate: f64,
-        target_heal_rate: f64,
-        target_max_hp: f64,
-        h: f64,
-        n: f64
-    ) -> f64{
-        heal_rate * (1 + (target_heal_rate/(target_max_hp+h)) * (1/n))
-    }
-        
 
+    //==============게임목표===============
+
+    // 초당 거점 포인트 상승량 계산 함수
+    pub fn cal_point_gain() -> f64 {
+        1.0 // 포인트 상승량: 1 Pt/Sec
+    }
+
+    // 추가 시간 제공 계산 함수
+    pub fn cal_additional_time(current_points: f64) -> (f64, f64) {
+        let delta = (current_points + 60.0) / (2.0 * 60.0);
+
+        let f = |x: f64| {
+            if (0.0..=0.35).contains(&x) || (0.65..=1.0).contains(&x) {
+                0.0
+            } else {
+                (x * std::f64::consts::PI).sin()
+            }
+        };
+
+        (delta, f(delta))
+    }
 }
-
-
-
-
-
