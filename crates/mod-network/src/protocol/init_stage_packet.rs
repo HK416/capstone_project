@@ -8,14 +8,14 @@ use super::super::components::BigEndian;
 #[derive(Debug, PartialEq)]
 pub struct InitStagePacket {
     pub num_players: u32,
-    pub players: [Player; 10],
+    pub players: Vec<Player>,
     pub stage_kind: StageKind,
 }
 
 impl InitStagePacket {
-    pub fn new(num_players: u32, players: [Player; 10], stage_kind: StageKind) -> Self {
+    pub fn new(players: Vec<Player>, stage_kind: StageKind) -> Self {
         Self {
-            num_players,
+            num_players: players.len() as u32,
             players,
             stage_kind,
         }
@@ -25,13 +25,12 @@ impl InitStagePacket {
     pub fn from_raw(raw: RawPacket) -> Self {
         let data = raw.data();
         let num_players = u32::from_big_endian_bytes(&data[..size_of::<u32>()]);
-        let players = data[size_of::<u32>()..size_of::<u32>() + size_of::<Player>() * 10]
+        let boundary = size_of::<u32>() + size_of::<Player>() * num_players as usize;
+        let players = data[size_of::<u32>()..boundary]
             .chunks_exact(size_of::<Player>())
             .map(|chunk| Player::from_bytes(chunk))
-            .collect::<Vec<_>>()
-            .try_into()                 // [Player; 10]으로 변환한다.
-            .expect("out of bounds");
-        let stage_kind = StageKind::from_big_endian_bytes(&data[size_of::<u32>() + size_of::<Player>() * 10..]);
+            .collect::<Vec<_>>();
+        let stage_kind = StageKind::from_big_endian_bytes(&data[boundary..]);
 
         Self {
             num_players,
@@ -41,7 +40,7 @@ impl InitStagePacket {
     }
 
     pub fn as_raw(&self) -> RawPacket {
-        let mut bytes = Vec::with_capacity(size_of::<u32>() + size_of::<[Player; 10]>() + size_of::<StageKind>());
+        let mut bytes = Vec::with_capacity(size_of::<u32>() + size_of::<Player>() * self.num_players as usize + size_of::<StageKind>());
         bytes.extend_from_slice(&self.num_players.to_big_endian_bytes());
         bytes.extend_from_slice(&self.players.iter()
             .flat_map(|player| player.as_bytes())
@@ -60,12 +59,7 @@ mod tests {
 
     #[test]
     fn test_init_stage_packet() {
-        let players = [
-            Player::default(),
-            Player::default(),
-            Player::default(),
-            Player::default(),
-            Player::default(),
+        let players = vec![
             Player::default(),
             Player::default(),
             Player::default(),
@@ -73,7 +67,7 @@ mod tests {
             Player::default(),
         ];
         let stage_kind = StageKind::School;
-        let packet = InitStagePacket::new(players.len() as u32, players, stage_kind);
+        let packet = InitStagePacket::new(players.clone(), stage_kind);
         let raw = packet.as_raw();
         let packet2 = InitStagePacket::from_raw(raw);
 

@@ -74,15 +74,8 @@ impl Session {
 
                     println!("Client {:?} entered stage", self.id);
 
-                    let mut players = self.world.get_players();
-                    let num_players = players.len() as u32;
-                    // 플레이어 수가 10명이 안되면 빈 플레이어 추가
-                    for _ in 0..10-num_players {
-                        players.push(Player::default());
-                    }
-                    assert_eq!(players.len(), 10);
-                    let players_array = players.try_into().unwrap();
-                    let raw_packet = InitStagePacket::new(num_players, players_array, StageKind::School).as_raw();
+                    let players = self.world.get_players();
+                    let raw_packet = InitStagePacket::new(players, StageKind::School).as_raw();
                     match self.stream_write(raw_packet).await {
                         Ok(_) => {
 
