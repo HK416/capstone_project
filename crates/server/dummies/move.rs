@@ -8,6 +8,7 @@ use std::env;
 use std::str::FromStr;
 
 use mod_network::*;
+use mod_math::LatLon;
 
 
 async fn run_client(addr: &str) {
@@ -39,7 +40,7 @@ async fn run_client(addr: &str) {
         }
     }
 
-    let packet = PushStatusPacket::new(player).as_raw();
+    let packet = PushStatusPacket::new(player, LatLon::default(), 0, false).as_raw();
     stream.write_all(&packet.as_bytes()).await.unwrap();
 
     let mut start = std::time::Instant::now();
@@ -82,7 +83,7 @@ async fn run_client(addr: &str) {
 
         player.translation.x += x * 0.00001;
         player.translation.z += y * 0.00001;
-        let packet = PushStatusPacket::new(player).as_raw();
+        let packet = PushStatusPacket::new(player, LatLon::default(), 0, false).as_raw();
         stream.write_all(&packet.as_bytes()).await.unwrap();
     }
 }
