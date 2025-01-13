@@ -35,7 +35,7 @@ pub struct StartupScene {
     user_config: Option<Box<UserConfig>>,
 
     /// 작업 결과 채널
-    task_result_channel: TaskResultChannel,
+    task_result_channel: TaskResultChannel<()>,
 
     /// 남은 작업의 개수
     num_tasks: usize,
@@ -214,11 +214,12 @@ impl fmt::Debug for StartupScene {
 /// 에셋의 로드 결과를 주어진 작업 결과 채널로 전송합니다.
 fn preload_font_style_0(
     pool: &ThreadPool,
-    channels: TaskResultChannel,
+    channels: TaskResultChannel<()>,
     asset_manager: AssetManager,
 ) {
     pool.spawn(move || {
-        channels.send(asset_manager.load(FONT_STYLE_0));
+        let result = asset_manager.load(FONT_STYLE_0);
+        channels.send(result.map(|_| ()));
     });
 }
 
@@ -226,11 +227,12 @@ fn preload_font_style_0(
 /// 에셋의 로드 결과를 주어진 작업 결과 채널로 전송합니다.
 fn preload_font_style_0_bold(
     pool: &ThreadPool,
-    channel: TaskResultChannel,
+    channel: TaskResultChannel<()>,
     asset_manager: AssetManager,
 ) {
     pool.spawn(move || {
-        channel.send(asset_manager.load(FONT_STYLE_0_BOLD));
+        let result = asset_manager.load(FONT_STYLE_0_BOLD);
+        channel.send(result.map(|_| ()));
     });
 }
 

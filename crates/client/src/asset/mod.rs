@@ -177,10 +177,6 @@ impl Into<wgpu::FilterMode> for FilterMode {
 /// ## Model Load Error List
 #[derive(Debug, thiserror::Error)]
 pub enum ModelAssetError {
-    /// 모델을 구성하는 노드를 찾을 수 없는 경우 발생하는 오류입니다.
-    #[error("no such entity")]
-    NoSuchEntity,
-
     /// dds 포맷의 텍스처를 읽는데 실패한 경우 발생하는 오류입니다.
     #[error("failed to read texture for the following reason:{0}")]
     TextureError(#[from] ddsfile::Error),

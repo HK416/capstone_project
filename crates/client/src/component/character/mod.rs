@@ -1,271 +1,137 @@
-use std::sync::Arc;
-
-use mod_render::{CameraResource, MaterialResource, MeshResource};
-
+pub mod animation;
 pub mod aris_original;
 
-pub const CHARACTER_PIPELINE_NAME: &'static str = "Character";
-pub const CHARACTER_HALO_PIPELINE_NAME: &'static str = "CharacterHalo";
+use hecs::{Entity, EntityBuilder, World};
+use mod_app::asset::AssetManager;
+use mod_network::{components::CharacterKind, Player};
 
-/// ## Tag
-/// 엔터티가 캐릭터임을 식별하는 태그입니다.
+use crate::{
+    asset::ModelAssetError,
+    component::{
+        Acceleration, ActionStateTimer, Child, Force, MovementStateTimer, Sibling, ToParentTrans,
+        Velocity, ViewStateTimer, WorldTransform,
+    },
+};
+
+pub use self::animation::*;
+
+/// 캐릭터 헤일로의 종류입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Character {
-    ArisOriginal = 0,
-}
-
-impl ToString for Character {
-    fn to_string(&self) -> String {
-        match self {
-            Character::ArisOriginal => "Aris Original",
-        }
-        .to_string()
-    }
-}
-
-impl Into<CharacterHalo> for Character {
-    fn into(self) -> CharacterHalo {
-        match self {
-            Character::ArisOriginal => CharacterHalo::ArisOriginalHalo,
-        }
-    }
-}
-
-/// ## Tag
-/// 엔터티가 캐릭터의 헤일로임을 식별하는 태그입니다.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CharacterHalo {
+pub enum CharacterHaloKind {
     ArisOriginalHalo = 0,
 }
 
-impl ToString for CharacterHalo {
+impl From<CharacterKind> for CharacterHaloKind {
+    fn from(value: CharacterKind) -> Self {
+        match value {
+            CharacterKind::ArisOriginal => CharacterHaloKind::ArisOriginalHalo,
+            CharacterKind::MomoiOriginal => todo!(),
+        }
+    }
+}
+
+impl ToString for CharacterHaloKind {
     fn to_string(&self) -> String {
         match self {
-            CharacterHalo::ArisOriginalHalo => "Aris Original Halo",
+            CharacterHaloKind::ArisOriginalHalo => "Aris Original Halo",
         }
         .to_string()
     }
 }
 
-/// 캐릭터 쉐이더 모듈을 생성합니다.
-fn create_character_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
-    let desc = wgpu::include_wgsl!(concat!(
-        env!("CARGO_WORKSPACE_DIR"),
-        "/assets/shaders/character.wgsl"
-    ));
-
-    if cfg!(feature = "enable-shader-validation") {
-        device.create_shader_module(desc)
-    } else {
-        unsafe { device.create_shader_module_unchecked(desc) }
-    }
-}
-
-/// 캐릭터 헤일로 쉐이더 모듈을 생성합니다.
-fn create_character_halo_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
-    let desc = wgpu::include_wgsl!(concat!(
-        env!("CARGO_WORKSPACE_DIR"),
-        "/assets/shaders/character_halo.wgsl"
-    ));
-
-    if cfg!(feature = "enable-shader-validation") {
-        device.create_shader_module(desc)
-    } else {
-        unsafe { device.create_shader_module_unchecked(desc) }
-    }
-}
-
-/// 파이프라인 레이아웃을 생성합니다.
-fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
-    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("PipelineLayout(Character)"),
-        bind_group_layouts: &[
-            CameraResource::bind_group_layout(device),
-            MeshResource::bind_group_layout(device),
-            MaterialResource::bind_group_layout(device),
-        ],
-        push_constant_ranges: &[],
-    })
-}
-
-/// 캐릭터 모델 렌더링 파이프라인을 생성합니다.
-pub fn create_character_render_pipeline(
+/// 플레이어 캐릭터를 구성하는 엔터티를 생성합니다.
+///
+/// 생성된 엔터티는 아래 컴포넌트를 가집니다
+/// - 자식 엔터티(`Child`)
+/// - 캐릭터 종류(`CharacterKind`)
+/// - 로컬 변환 행렬(`ToParentTrans`)
+/// - 월드 변환 행렬(`WorldTransform`)
+/// - 스키닝 애니메이션(`SkinningAnimation`)
+/// - 힘의 총량(`Force`)
+/// - 가속도(`Acceleration`)
+/// - 속도(`Velocity`)
+/// - 행동 상태(`ActionState`)
+/// - 행동 상태 지속 시간 타이머(`ActionStateTimer`)
+/// - 움직임 상태(`MovementState`)
+/// - 움직임 상태 지속 시간 타이머(`MovementStateTimer`)
+/// - 시야 상태(`ViewState`)
+/// - 시야 상태 지속 시간 타이머(`ViewStateTimer`)
+///
+pub fn spawn_player_character(
+    player_data: &Player,
+    asset_manager: &AssetManager,
     device: &wgpu::Device,
-    depth_stencil_format: wgpu::TextureFormat,
-    render_target_format: wgpu::TextureFormat,
-) -> Arc<wgpu::RenderPipeline> {
-    let module = create_character_shader_module(device);
-    let layout = create_pipeline_layout(device);
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("RenderPipeline(Character)"),
-        layout: Some(&layout),
-        vertex: wgpu::VertexState {
-            module: &module,
-            entry_point: Some("vs_main"),
-            buffers: &[
-                // 0번 입력 속성: 위치
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x3,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-                // 1번 입력 속성: 노멀
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 1,
-                        format: wgpu::VertexFormat::Float32x3,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-                // 2번 입력 속성: 탄젠트 공간 노멀
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 2,
-                        format: wgpu::VertexFormat::Float32x3,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-                // 3번 입력 속성: 0번 텍스처 좌표
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 3,
-                        format: wgpu::VertexFormat::Float32x2,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-                // 4번 입력 속성: 뼈 번호
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[u32; 4]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 4,
-                        format: wgpu::VertexFormat::Uint32x4,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-                // 5번 입력 속성: 뼈 가중치
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 5,
-                        format: wgpu::VertexFormat::Float32x4,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-            ],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        primitive: wgpu::PrimitiveState {
-            cull_mode: Some(wgpu::Face::Back),
-            front_face: wgpu::FrontFace::Cw,
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            ..Default::default()
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            depth_compare: wgpu::CompareFunction::Less,
-            depth_write_enabled: true,
-            format: depth_stencil_format,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState::default(),
-        fragment: Some(wgpu::FragmentState {
-            module: &module,
-            entry_point: Some("fs_main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                blend: None,
-                format: render_target_format,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview: None,
-        cache: None,
-    });
+    queue: &wgpu::Queue,
+    world: &World,
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+    // 엔터티를 하나 할당받습니다.
+    let entity = world.reserve_entity();
+    let mut builder = EntityBuilder::new();
 
-    Arc::new(pipeline)
-}
+    // 컴포넌트 데이터를 준비합니다.
+    let character_kind = player_data.character_kind;
+    let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
+        glam::Quat::from_array(player_data.rotation.to_array()),
+        glam::Vec3::from_array(player_data.translation.to_array()),
+    ));
+    let world_transform = WorldTransform::default();
+    let action_state = player_data.action_state;
+    let action_state_timer = ActionStateTimer::default();
+    let movement_state = player_data.movement_state;
+    let movement_state_timer = MovementStateTimer::default();
+    let view_state = player_data.view_state;
+    let view_state_timer = ViewStateTimer::default();
 
-/// 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
-pub fn create_student_halo_render_pipeline(
-    device: &wgpu::Device,
-    depth_stencil_format: wgpu::TextureFormat,
-    render_target_format: wgpu::TextureFormat,
-) -> Arc<wgpu::RenderPipeline> {
-    let module = create_character_halo_shader_module(device);
-    let layout = create_pipeline_layout(device);
-    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("RenderPipeline(CharacterHalo)"),
-        layout: Some(&layout),
-        vertex: wgpu::VertexState {
-            module: &module,
-            entry_point: Some("vs_main"),
-            buffers: &[
-                // 0번 입력 속성: 위치
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x3,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-                // 1번 입력 속성: 0번 텍스처 좌표
-                wgpu::VertexBufferLayout {
-                    array_stride: core::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 1,
-                        format: wgpu::VertexFormat::Float32x2,
-                    }],
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                },
-            ],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        primitive: wgpu::PrimitiveState {
-            cull_mode: Some(wgpu::Face::Back),
-            front_face: wgpu::FrontFace::Cw,
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            ..Default::default()
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            depth_compare: wgpu::CompareFunction::Less,
-            depth_write_enabled: true,
-            format: depth_stencil_format,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState::default(),
-        fragment: Some(wgpu::FragmentState {
-            module: &module,
-            entry_point: Some("fs_main"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                blend: None,
-                format: render_target_format,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview: None,
-        cache: None,
-    });
+    // 컴포넌트를 추가합니다.
+    builder.add(character_kind);
+    builder.add(local_transform);
+    builder.add(world_transform);
+    builder.add_bundle((
+        Force::default(),
+        Acceleration::default(),
+        Velocity::default(),
+    ));
+    builder.add_bundle((action_state, action_state_timer));
+    builder.add_bundle((movement_state, movement_state_timer));
+    builder.add_bundle((view_state, view_state_timer));
 
-    Arc::new(pipeline)
+    // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
+    let parent = entity;
+    let (model_root_entity, skinning_animation, mut batch_commands) = match character_kind {
+        CharacterKind::ArisOriginal => {
+            aris_original::spawn_aris_original_model(asset_manager, device, queue, world, parent)
+        }
+        CharacterKind::MomoiOriginal => todo!(),
+    }?;
+
+    // 캐릭터 모델 루트 노드와 스키닝 애니메이션 컴포넌트를 추가합니다.
+    builder.add(Child(model_root_entity));
+    builder.add(skinning_animation);
+
+    // 캐릭터 종류에 따른 캐릭터 헤일로 모델을 구성하는 엔터티를 생성합니다.
+    let parent = entity;
+    let (halo_root_entity, mut halo_batch_commands) = match character_kind {
+        CharacterKind::ArisOriginal => aris_original::spawn_aris_original_model_halo(
+            asset_manager,
+            device,
+            queue,
+            world,
+            parent,
+        ),
+        CharacterKind::MomoiOriginal => todo!(),
+    }?;
+
+    // 캐릭터 헤일로 모델의 최상위 엔터티를 캐릭터 모델 엔터티의 형제 엔터티로 추가합니다.
+    let (last_entity, last_builder) = batch_commands
+        .last_mut()
+        .expect("entity builder must not be empty");
+    assert_eq!(*last_entity, model_root_entity);
+    last_builder.add(Sibling(halo_root_entity));
+
+    // 엔터티 생성 명령어를 추가합니다.
+    batch_commands.append(&mut halo_batch_commands);
+    batch_commands.push((entity, builder));
+
+    Ok((entity, batch_commands))
 }

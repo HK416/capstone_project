@@ -3,8 +3,8 @@ mod asset;
 mod channel;
 mod component;
 mod config;
+mod render;
 mod scenes;
-mod system;
 
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 

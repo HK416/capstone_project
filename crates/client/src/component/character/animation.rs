@@ -1,0 +1,49 @@
+use ahash::{HashMap, HashSet};
+use hecs::Entity;
+
+/// 모든 캐릭터 모델의 최상위 뼈 노드 이름입니다.
+pub const MODEL_BONE_ROOT: &'static str = "Bip001";
+/// 모든 캐릭터 모델의 골반 뼈 노드 이름입니다.
+pub const MODEL_BONE_PELVIS: &'static str = "Bip001_Pelvis";
+/// 모든 캐릭터 모델의 왼쪽 허벅지 안쪽 뼈 노드 이름입니다.
+pub const MODEL_BONE_L_THIGH: &'static str = "Bip001_L_Thigh";
+/// 모든 캐릭터 모델의 오른쪽 허벅지 안쪽 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_THIGH: &'static str = "Bip001_R_Thigh";
+
+/// 모든 캐릭터 모델의 Idle 애니메이션 접미사입니다.
+pub const IDLE_ANIMATION_SUFFIX: &'static str = "_Normal_Idle";
+/// 모든 캐릭터 모델의 Moving 애니메이션 접미사입니다.
+pub const MOVING_ANIMATION_SUFFIX: &'static str = "_Move_Ing";
+/// 모든 캐릭터 모델의 MoveToEnd 애니메이션 접미사입니다.
+pub const MOVE_TO_END_ANIMATION_SUFFIX: &'static str = "_Move_End_Normal";
+/// 모든 캐릭터 모델의 CafeWalk 애니메이션 접미사입니다.
+pub const CAFE_WALK_ANIMATION_SUFFIX: &'static str = "_Cafe_Walk";
+/// 모든 캐릭터 모델의 AttackStart 애니메이션 접미사입니다.
+pub const ATTACK_START_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Start";
+/// 모든 캐릭터 모델의 Attacking 애니메이션 접미사입니다.
+pub const ATTACK_ING_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Ing";
+/// 모든 캐릭터 모델의 AttackEnd 애니메이션 접미사입니다.
+pub const ATTACK_END_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_End";
+/// 모든 캐릭터 모델의 Reload 애니메이션 접미사입니다.
+pub const RELOAD_ANIMATION_SUFFIX: &'static str = "_Normal_Reload";
+/// 모든 캐릭터 모델의 Ex스킬 애니메이션 접미사입니다.
+pub const EXS_ANIMATION_SUFFIX: &'static str = "_Exs";
+
+/// ## Skinning Animation
+/// 스키닝 애니메이션에 사용되는 스키닝 메쉬 엔터티와 최상위 뼈 노드 엔터티의 모음입니다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkinningAnimation {
+    /// NOTE: `BoneCollection`의 `root`와 다름!
+    pub root: Entity,
+    pub meshes: HashMap<String, Entity>,
+    pub animation_mixing_bones: HashSet<Entity>,
+}
+
+/// ## Bone Collection
+/// 스키닝된 메쉬를 구성하는 뼈의 엔터티 모음입니다.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BoneCollection {
+    /// NOTE: 스키닝된 메쉬의 최상위 뼈를 나타냅니다.
+    pub root: Entity,
+    pub bones: Vec<Entity>,
+}

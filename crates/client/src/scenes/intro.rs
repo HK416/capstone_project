@@ -33,7 +33,7 @@ pub struct IntroScene {
     client_id: ClientId,
 
     /// 작업 결과 채널
-    task_result_channel: TaskResultChannel,
+    task_result_channel: TaskResultChannel<()>,
 
     /// 작업의 개수
     num_task: usize,
@@ -161,8 +161,9 @@ impl fmt::Debug for IntroScene {
 
 /// 주어진 스레드 풀에서 게임 서버에 연결합니다.
 /// 네트워크 연결 결과를 주어진 작업 결과 채널로 전송합니다.
-fn connect_game_server(pool: &ThreadPool, channel: TaskResultChannel, net_manager: NetManager) {
+fn connect_game_server(pool: &ThreadPool, channel: TaskResultChannel<()>, net_manager: NetManager) {
     pool.spawn(move || {
-        channel.send(net_manager.connect(&SERVER_ADDR));
+        let result = net_manager.connect(&SERVER_ADDR);
+        channel.send(result.map(|_| ()));
     });
 }

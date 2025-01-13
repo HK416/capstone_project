@@ -6,8 +6,14 @@ use super::{BigEndian, TryFromBigEndian};
 pub enum ActionState {
     /// 아무 것도 하지 않는 상태
     Idle = 0,
-    /// 공격 상태
-    Attack = 1,
+    /// 조준하고 있는 동작 상태
+    Aiming = 1,
+    /// 조준을 시작하는 동작 상태
+    AimAt = 2,
+    /// 조준을 해제하는 동작 상태
+    AimOff = 3,
+    /// 공격 동작 상태
+    Attack = 4,
 }
 
 impl BigEndian for ActionState {
@@ -32,7 +38,10 @@ impl TryFromBigEndian for ActionState {
         let index = u8::from_big_endian_bytes(bytes);
         match index {
             0 => Some(ActionState::Idle),
-            1 => Some(ActionState::Attack),
+            1 => Some(ActionState::Aiming),
+            2 => Some(ActionState::AimAt), 
+            3 => Some(ActionState::AimOff),
+            4 => Some(ActionState::Attack),
             _ => None,
         }
     }
@@ -350,7 +359,7 @@ impl TryFromBigEndian for StageKind {
     }
 }
 
-/// 캐릭터 뷰 상태 목록입니다.
+/// 플레이어 카메라의 상태 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ViewState {
