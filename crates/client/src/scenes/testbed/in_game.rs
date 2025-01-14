@@ -1,14 +1,40 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, sync::Arc};
 
 use ahash::HashMap;
-use hecs::{Entity, World};
-use mod_app::{app::AppHandle, scene::GameScene};
-use mod_network::components::{ClientId, ObjectId};
-use mod_render::UiRenderer;
-use winit::window::Window;
+use hecs::{Entity, EntityBuilder, With, World};
+use mod_app::{app::AppHandle, asset::AssetManager, scene::GameScene};
+use mod_network::components::{
+    ActionState, ActionStateTimer, CharacterKind, ClientId, MovementState, MovementStateTimer,
+    ObjectId, ViewState, ViewStateTimer,
+};
+use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use winit::{
+    event::{Modifiers, MouseButton},
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
-use crate::config::UserConfig;
+use crate::{
+    component::{
+        aris_original, draw_character, update_character_direction, update_entity_hierarchy,
+        update_movement_state_by_controller_state, update_third_person_camera_hierarchy,
+        update_view_state_timer, BoneCollection, ControllerInputTimer, ControllerState,
+        MoveDirection, Projection, SkinningAnimation, ThirdPersonCamera, ToParentTrans,
+        WorldTransform,
+    },
+    config::UserConfig,
+    render::{prepare_camera_resource, prepare_mesh_resource},
+};
 
+/// 배경 화면의 색상입니다.
+const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
+    r: 0.0,
+    g: 116.0 / 255.0,
+    b: 183.0 / 255.0,
+    a: 1.0,
+};
+
+/// 기본 게임 구조를 테스트하는 공간입니다.
 pub struct TestbedInGameScene {
     /// 사용자 설정 구성 데이터
     user_config: Option<Box<UserConfig>>,
@@ -19,6 +45,19 @@ pub struct TestbedInGameScene {
     world: World,
     /// 게임 월드 엔터티 목록
     entities: HashMap<ObjectId, Entity>,
+    /// 메인 카메라 엔터티
+    main_camera: Entity,
+
+    /// 플레이어 움직임 방향
+    move_direction: MoveDirection,
+    /// 사용자 입력 상태
+    controller_state: ControllerState,
+    /// 사용자 입력 상태 지속 시간
+    controller_state_timer: ControllerInputTimer,
+
+    // ----- UI -----
+    egui_clip_primitives: Vec<egui::ClippedPrimitive>,
+    egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
 impl TestbedInGameScene {
@@ -39,11 +78,645 @@ impl TestbedInGameScene {
             client_id,
             world,
             entities,
+            main_camera: Entity::DANGLING,
+            move_direction: MoveDirection::default(),
+            controller_state: ControllerState::default(),
+            controller_state_timer: ControllerInputTimer::default(),
+            egui_clip_primitives: Vec::new(),
+            egui_free_texture_ids: Vec::new(),
         }
+    }
+
+    /// 사용자 인터페이스 콜백 함수
+    #[allow(unused_variables)]
+    fn ui_callback(
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let egui_ctx = app.egui_ctx();
+        let frame_rate = app.timer().frame_rate();
+
+        let connect_server_text = egui::RichText::new(format!("FPS:{}", frame_rate))
+            .color(egui::Color32::WHITE)
+            .background_color(egui::Color32::from_black_alpha(128))
+            .size(18.0);
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none())
+            .show(egui_ctx, |ui| {
+                ui.label(connect_server_text);
+            });
+
+        Ok(())
+    }
+
+    /// 사용자 인터페이스를 그릴 준비를 합니다.
+    #[allow(unused_variables)]
+    fn prepare_ui(
+        &mut self,
+        window: &Window,
+        egui_renderer: &mut UiRenderer,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let device = app.render_device();
+        let queue = app.render_queue();
+
+        let egui_ctx = app.egui_ctx();
+        let egui_raw_input = app.egui_raw_input();
+
+        // 윈도우 창 설명자를 생성합니다.
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: window.inner_size().into(),
+            pixels_per_point: window.scale_factor() as f32,
+        };
+
+        egui_ctx.begin_pass(egui_raw_input);
+        self.ui_callback(window, app)?;
+        let egui_full_output = egui_ctx.end_pass();
+
+        let egui_primitive =
+            egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut commands = egui_renderer.update_buffers(
+            device,
+            queue,
+            &mut encoder,
+            &egui_primitive,
+            &screen_descriptor,
+        );
+        commands.push(encoder.finish());
+        queue.submit(commands);
+
+        for (id, image_delta) in &egui_full_output.textures_delta.set {
+            egui_renderer.update_texture(device, queue, *id, image_delta);
+        }
+
+        self.egui_clip_primitives = egui_primitive;
+        self.egui_free_texture_ids = egui_full_output.textures_delta.free;
+
+        Ok(())
+    }
+
+    /// 메인 카메라를 생성합니다.
+    fn create_main_camera(&mut self, window: &Window, device: &wgpu::Device) {
+        // 애플리케이션 창의 가로와 세로 크기를 가져옵니다.
+        let (w, h): (f32, f32) = window.inner_size().into();
+
+        // 로컬 변환 행렬, 월드 변환 행렬, 투영 변환 행렬 컴포넌트를 추가합니다.
+        let mut builder = EntityBuilder::new();
+        builder.add(ToParentTrans::default());
+        builder.add(WorldTransform::default());
+        builder.add(Projection::perspective(75f32.to_radians(), w / h, 0.01, 500.0));
+
+        // 삼인칭 카메라 데이터와 카메라 쉐이더 리소스 컴포넌트를 추가합니다.
+        builder.add(ThirdPersonCamera::default());
+        builder.add(Arc::new(CameraResource::uninit(Some("main"), device)));
+
+        // 생성된 메인 카메라 엔터티를 저장합니다.
+        self.main_camera = self.world.spawn(builder.build());
+    }
+
+    /// 메인 카메라를 회전시킵니다.
+    fn rotate_main_camera(&mut self, mut dx: f32, mut dy: f32) {
+        // 사용자 설정한 마우스 좌/우, 상/하 반전을 적용합니다.
+        let offset = 1.0;
+        if let Some(config) = &self.user_config {
+            if config.mouse.left_right_reversal {
+                dx *= -1.0;
+            }
+
+            if config.mouse.up_down_reversal {
+                dy *= -1.0;
+            }
+        }
+
+        // 카메라 엔터티에서 삼인칭 카메라 컴포넌트를 가져옵니다.
+        let third_person_camera = self
+            .world
+            .query_one_mut::<&mut ThirdPersonCamera>(self.main_camera)
+            .expect("invalid entity or invalid entity component");
+
+        // 카메라를 회전시킵니다.
+        third_person_camera.rotate(dx, dy, offset);
+    }
+
+    /// 메인 카메라의 오프셋을 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 카메라 상태와 카메라 상태 타이머를 갱신해야합니다.
+    ///
+    fn update_main_camera_offset(&mut self) {
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        // 플레이어 캐릭터의 카메라 상태, 카메라 상태 타이머를 가져옵니다.
+        let (&view_state, &view_state_timer) = self
+            .world
+            .query_one_mut::<(&ViewState, &ViewStateTimer)>(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 메인 카메라의 삼인칭 카메라 요소를 가져옵니다.
+        let third_person_camera = self
+            .world
+            .query_one_mut::<&mut ThirdPersonCamera>(self.main_camera)
+            .expect("invalid entity or invalid entity component");
+
+        // 삼인칭 카메라의 위치 오프셋을 갱신합니다.
+        third_person_camera.update_offset(view_state, view_state_timer);
+    }
+
+    /// 메인 카메라의 계층 구조를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 카메라의 회전과 위치 오프셋을 갱신해야합니다.
+    ///
+    fn update_main_camera_hierarchy(&mut self) {
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        // 플레이어 캐릭터의 위치를 가져옵니다.
+        let world_transform = self
+            .world
+            .query_one_mut::<&WorldTransform>(entity)
+            .expect("invalid entity or invalid entity component");
+        let target_position = world_transform.get_translation();
+
+        // 카메라의 계층 구조를 갱신합니다.
+        update_third_person_camera_hierarchy(&mut self.world, self.main_camera, target_position);
+    }
+
+    /// 메인 카메라 쉐이더 리소스를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 메인 카메라의 월드 변환 행렬이 갱신되어야합니다.
+    ///
+    fn prepare_main_camera_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let camera_entities = [self.main_camera];
+        prepare_camera_resource(&self.world, &camera_entities, device, queue);
+    }
+
+    /// 플레이어 움직임 방향을 갱신합니다.
+    fn update_player_move_direction(&mut self) {
+        // 카메라 엔터티에서 삼인칭 카메라 컴포넌트를 가져옵니다.
+        let third_person_camera = self
+            .world
+            .query_one_mut::<&ThirdPersonCamera>(self.main_camera)
+            .expect("invalid entity or invalid entity component");
+
+        // 플레이어 움직임 방향을 갱신합니다.
+        self.move_direction
+            .update_from_third_person_camera(self.controller_state, third_person_camera);
+    }
+
+    /// 컨트롤러 입력 지속 시간을 갱신합니다.
+    fn update_player_controller_input_timer(&mut self, fixed_time_sec: f32) {
+        match self.controller_state {
+            ControllerState::Idle => self
+                .controller_state_timer
+                .update_when_controller_released(fixed_time_sec),
+            _ => self
+                .controller_state_timer
+                .update_when_controller_preesed(fixed_time_sec),
+        }
+    }
+
+    /// 플레이어의 움직임 상태를 갱신합니다.
+    fn update_player_movement_state(&mut self) {
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        // 플레이어 캐릭터 엔터티에서 `MovementState`, `MovementStateTimer`를 가져옵니다.
+        let (movement_state, movement_state_timer) = self
+            .world
+            .query_one_mut::<(&mut MovementState, &mut MovementStateTimer)>(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 움직임 상태를 갱신합니다.
+        update_movement_state_by_controller_state(
+            movement_state,
+            movement_state_timer,
+            self.controller_state,
+        );
+    }
+
+    /// 플레이어 카메라 상태 타이머를 갱신합니다.
+    fn update_player_view_state_timer(&mut self, fixed_time_sec: f32) {
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        // 플레이어 캐릭터 엔터티에서 `ViewState`, `ViewStateTimer`를 가져옵니다.
+        let (view_state, view_state_timer) = self
+            .world
+            .query_one_mut::<(&mut ViewState, &mut ViewStateTimer)>(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // `ViewState`와 `ViewStateTimer`를 갱신합니다.
+        update_view_state_timer(view_state, view_state_timer, fixed_time_sec);
+    }
+
+    /// 플레이어 행동 상태 지속 시간을 갱신합니다.
+    fn update_player_action_state_timer(
+        &mut self,
+        asset_manager: &AssetManager,
+        elapsed_time_sec: f32,
+    ) {
+        type Func = fn(&AssetManager, &mut ActionState, &mut ActionStateTimer, f32);
+        const FUNC_TABLE: [Func; 1] = [aris_original::update_action_state_timer];
+
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
+        let (&kind, action_state, action_state_timer) = self
+            .world
+            .query_one_mut::<(&CharacterKind, &mut ActionState, &mut ActionStateTimer)>(entity)
+            .expect("invalid entity or invalid entity component");
+
+        let i = kind as usize;
+        FUNC_TABLE[i](
+            asset_manager,
+            action_state,
+            action_state_timer,
+            elapsed_time_sec,
+        );
+    }
+
+    /// 플레이어 움직임 상태 지속 시간을 갱신합니다.
+    fn update_player_movement_state_timer(
+        &mut self,
+        asset_manager: &AssetManager,
+        elapsed_time_sec: f32,
+    ) {
+        type Func =
+            fn(&AssetManager, ActionState, &mut MovementState, &mut MovementStateTimer, f32);
+        const FUNC_TABLE: [Func; 1] = [aris_original::update_movement_state_timer];
+
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
+        type Q<'a> = (
+            &'a CharacterKind,
+            &'a ActionState,
+            &'a mut MovementState,
+            &'a mut MovementStateTimer,
+        );
+        let (&kind, &action_state, movement_state, movement_state_timer) = self
+            .world
+            .query_one_mut::<Q>(entity)
+            .expect("invalid entity or invalid entity component");
+
+        let i = kind as usize;
+        FUNC_TABLE[i](
+            asset_manager,
+            action_state,
+            movement_state,
+            movement_state_timer,
+            elapsed_time_sec,
+        );
+    }
+
+    /// 플레이어 캐릭터 엔터티의 방향을 갱신합니다.
+    ///  
+    /// # Panics
+    /// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    /// - 주어진 엔터티는 요구되는 컴포넌트를 갖고 있어야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    ///
+    fn update_player_character_direction(&mut self) {
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        let mut query = self
+            .world
+            .query_one::<&ThirdPersonCamera>(self.main_camera)
+            .expect("invalid entity");
+        let third_person_camera = query.get().expect("invalid entity component");
+
+        type Components<'a> = (
+            &'a MovementState,
+            &'a ViewState,
+            &'a ViewStateTimer,
+            &'a mut ToParentTrans,
+        );
+        let mut query = self
+            .world
+            .query_one::<Components>(entity)
+            .expect("invalid entity");
+        let (&movement_state, &view_state, &view_state_timer, local_transform) =
+            query.get().expect("invalid entity component");
+        
+        // 플레이어 캐릭터의 방향을 갱신합니다.
+        update_character_direction(
+            movement_state,
+            view_state,
+            view_state_timer,
+            &self.move_direction,
+            third_person_camera,
+            local_transform,
+        );
+    }
+
+    /// 플레이어들의 캐릭터 엔터티를 반환합니다.
+    fn get_character_entities(&self) -> Vec<Entity> {
+        type R<'a> = (
+            &'a CharacterKind,
+            &'a ActionState,
+            &'a ActionStateTimer,
+            &'a MovementState,
+            &'a MovementStateTimer,
+            &'a ViewState,
+            &'a ViewStateTimer,
+        );
+        let mut query = self.world.query::<With<(), R>>();
+        query.iter().map(|(entity, _)| entity).collect()
+    }
+
+    /// 캐릭터 애니메이션을 재생합니다.
+    ///
+    /// # Note
+    /// 엔터티에 요구되는 컴포넌트 목록
+    /// - 캐릭터 종류(`CharacterKind`)
+    /// - 스키닝 애니메이션(`SkinningAnimation`)
+    /// - 행동 상태(`ActionState`)
+    /// - 행동 상태 타이머(`ActionStateTimer`)
+    /// - 움직임 상태(`MovementState`)
+    /// - 움직임 상태 타이머(`MovementStateTimer`)
+    ///
+    /// # Panics
+    /// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    /// - 주어진 엔터티는 요구되는 컴포넌트를 갖고 있어야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    ///
+    fn animate_characters(&mut self, entities: &[Entity], asset_manager: &AssetManager) {
+        type Components<'a> = (
+            &'a CharacterKind,
+            &'a SkinningAnimation,
+            &'a ActionState,
+            &'a ActionStateTimer,
+            &'a MovementState,
+            &'a MovementStateTimer,
+        );
+
+        // 컴포넌트 뷰를 준비합니다.
+        let character_view = self.world.view::<Components>();
+        let collection_view = self.world.view::<&BoneCollection>();
+        let mut transform_view = self.world.view::<&mut ToParentTrans>();
+
+        // 플레이어 캐릭터의 애니메이션을 재생합니다.
+        for &entity in entities {
+            let (
+                &kind,
+                skinning_animation,
+                &action_state,
+                &action_state_timer,
+                &movement_state,
+                &movement_state_timer,
+            ) = character_view
+                .get(entity)
+                .expect("invalid entity or invalid entity component");
+
+            let func = match kind {
+                CharacterKind::ArisOriginal => aris_original::animate_aris_original,
+                CharacterKind::MomoiOriginal => todo!(),
+            };
+
+            func(
+                asset_manager,
+                action_state,
+                action_state_timer,
+                movement_state,
+                movement_state_timer,
+                skinning_animation,
+                &collection_view,
+                &mut transform_view,
+            );
+        }
+    }
+
+    /// 캐릭터 엔터티의 계층 구조를 갱신합니다.
+    ///
+    /// # Note
+    /// 엔터티에 요구되는 컴포넌트 목록
+    /// - 로컬 변환 행렬(`ToParentTrans`)
+    /// - 월드 변환 행렬(`WorldTransform`)
+    ///
+    /// # Panics
+    /// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    /// - 주어진 엔터티는 요구되는 컴포넌트를 갖고 있어야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    ///
+    fn update_character_hierarchy(&mut self, entities: &[Entity]) {
+        // 캐릭터 엔터티의 계층 구조를 갱신합니다.
+        for &entity in entities {
+            update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
+        }
+    }
+
+    /// 캐릭터 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
+    ///
+    fn prepare_character_mesh_resource(
+        &mut self,
+        entities: &[Entity],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
+        prepare_mesh_resource(&self.world, entities, device, queue);
     }
 }
 
 impl GameScene for TestbedInGameScene {
+    fn on_enter(
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.create_main_camera(window, app.render_device());
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_keyboard_pressed(
+        &mut self,
+        keycode: KeyCode,
+        location: KeyLocation,
+        modifiers: Modifiers,
+        repeat: bool,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 사용자 입력 상태를 갱신합니다.
+        if !repeat && self.user_config.is_some() {
+            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
+            self.controller_state
+                .handle_keyboard_pressed(config, keycode, location);
+        }
+
+        // TODO: 사용자 행동 상태를 갱신합니다.
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_keyboard_released(
+        &mut self,
+        keycode: KeyCode,
+        location: KeyLocation,
+        modifiers: Modifiers,
+        repeat: bool,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 사용자 입력 상태를 갱신합니다.
+        if !repeat && self.user_config.is_some() {
+            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
+            self.controller_state
+                .handle_keyboard_released(config, keycode, location);
+        }
+
+        // TODO: 사용자 행동 상태를 갱신합니다.
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_mouse_btn_pressed(
+        &mut self,
+        x: f32,
+        y: f32,
+        button: MouseButton,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // TODO: 사용자 행동 상태를 갱신합니다.
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_mouse_btn_released(
+        &mut self,
+        x: f32,
+        y: f32,
+        button: MouseButton,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // TODO: 사용자 행동 상태를 갱신합니다.
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_cursor_moved(
+        &mut self,
+        x: f32,
+        y: f32,
+        dx: f32,
+        dy: f32,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 메인 카메라를 회전시킵니다.
+        self.rotate_main_camera(dx, dy);
+
+        // TODO: 삼인칭 카메라를 회전시킵니다.
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_pre_update(
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 플레이어 움직임 방향을 갱신합니다.
+        self.update_player_move_direction();
+        // 플레이어 움직임 상태를 갱신합니다.
+        self.update_player_movement_state();
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_update(
+        &mut self,
+        elapsed_time_sec: f32,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 플레이어 행동 상태 지속 시간을 갱신합니다.
+        self.update_player_action_state_timer(app.asset_manager(), elapsed_time_sec);
+        // 플레이어 움직임 지속 시간을 갱신합니다.
+        self.update_player_movement_state_timer(app.asset_manager(), elapsed_time_sec);
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_fixed_update(
+        &mut self,
+        fixed_time_sec: f32,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 플레이어 컨트롤러 입력 지속 시간을 갱신합니다.
+        self.update_player_controller_input_timer(fixed_time_sec);
+        // 플레이어 카메라 상태 지속 시간을 갱신합니다.
+        self.update_player_view_state_timer(fixed_time_sec);
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_post_update(
+        &mut self, 
+        window: &Window, 
+        app: &dyn AppHandle, 
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 플레이어 캐릭터의 방향을 갱신합니다.
+        self.update_player_character_direction();
+
+        Ok(())
+    }
+
+    fn on_prepare_draw(
+        &mut self,
+        window: &Window,
+        egui_renderer: &mut UiRenderer,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 캐릭터 엔터티들을 가져옵니다.
+        let characters_entities = self.get_character_entities();
+        // 캐릭터 애니메이션을 재생합니다.
+        self.animate_characters(&characters_entities, app.asset_manager());
+        // 캐릭터 엔터티의 계층 구조를 갱신합니다.
+        self.update_character_hierarchy(&characters_entities);
+        // 캐릭터 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
+        self.prepare_character_mesh_resource(
+            &characters_entities,
+            app.render_device(),
+            app.render_queue(),
+        );
+
+        // 메인 카메라의 위치 오프셋을 갱신합니다.
+        self.update_main_camera_offset();
+        // 메인 카메라의 계층 구조를 갱신합니다.
+        self.update_main_camera_hierarchy();
+        // 메인 카메라의 쉐이더 리소스를 갱신합니다.
+        self.prepare_main_camera_resource(app.render_device(), app.render_queue());
+
+        // 사용자 인터페이스를 갱신합니다.
+        self.prepare_ui(window, egui_renderer, app)?;
+
+        Ok(())
+    }
+
     #[allow(unused_variables)]
     fn on_draw(
         &self,
@@ -58,6 +731,16 @@ impl GameScene for TestbedInGameScene {
         let device = app.render_device();
         let queue = app.render_queue();
 
+        // 캐릭터 엔터티 목록을 가져옵니다.
+        let character_entities = self.get_character_entities();
+
+        // 카메라 쉐이더 리소스를 가져옵니다.
+        let mut query = self
+            .world
+            .query_one::<&Arc<CameraResource>>(self.main_camera)
+            .expect("invalid entity");
+        let camera_resource = query.get().expect("invalid entity component");
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             ..Default::default()
         });
@@ -67,7 +750,7 @@ impl GameScene for TestbedInGameScene {
                 label: Some("RenderPass(TestbedInGameScene)"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(BACKGROUND_COLOR),
                         store: wgpu::StoreOp::Store,
                     },
                     view: render_target_view,
@@ -76,17 +759,51 @@ impl GameScene for TestbedInGameScene {
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_buffer_view,
                     depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Discard,
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
+            draw_character(
+                &self.world,
+                &character_entities,
+                camera_resource,
+                device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+
+            egui_renderer.render(
+                &mut rpass,
+                &self.egui_clip_primitives,
+                &ScreenDescriptor {
+                    size_in_pixels: window.inner_size().into(),
+                    pixels_per_point: window.scale_factor() as f32,
+                },
+            );
         }
 
         queue.submit([encoder.finish()]);
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_finish_draw(
+        &mut self,
+        window: &Window,
+        egui_renderer: &mut UiRenderer,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.egui_clip_primitives.clear();
+        while let Some(id) = self.egui_free_texture_ids.pop() {
+            egui_renderer.free_texture(&id);
+        }
 
         Ok(())
     }

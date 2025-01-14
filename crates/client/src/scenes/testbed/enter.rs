@@ -12,11 +12,9 @@ use mod_network::{
     components::{CharacterKind, ClientId, ObjectId},
     EnterStagePacket, InitStagePacket, PacketType, RawPacket,
 };
-use mod_parallelism::collections::Queue;
 use mod_render::{
     GraphicsPipelinePool, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
-use parking_lot::Mutex;
 use rayon::ThreadPool;
 use winit::window::Window;
 
@@ -232,6 +230,21 @@ impl GameScene for EnterStageScene {
         }
 
         queue.submit([encoder.finish()]);
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_finish_draw(
+        &mut self,
+        window: &Window,
+        egui_renderer: &mut UiRenderer,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.egui_clip_primitives.clear();
+        while let Some(id) = self.egui_free_texture_ids.pop() {
+            egui_renderer.free_texture(&id);
+        }
 
         Ok(())
     }
@@ -475,6 +488,21 @@ impl GameScene for LoadStageResourceScene {
         }
 
         queue.submit([encoder.finish()]);
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_finish_draw(
+        &mut self,
+        window: &Window,
+        egui_renderer: &mut UiRenderer,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.egui_clip_primitives.clear();
+        while let Some(id) = self.egui_free_texture_ids.pop() {
+            egui_renderer.free_texture(&id);
+        }
 
         Ok(())
     }
@@ -753,6 +781,21 @@ impl GameScene for InitStageScene {
         }
 
         queue.submit([encoder.finish()]);
+
+        Ok(())
+    }
+
+    #[allow(unused_variables)]
+    fn on_finish_draw(
+        &mut self,
+        window: &Window,
+        egui_renderer: &mut UiRenderer,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.egui_clip_primitives.clear();
+        while let Some(id) = self.egui_free_texture_ids.pop() {
+            egui_renderer.free_texture(&id);
+        }
 
         Ok(())
     }

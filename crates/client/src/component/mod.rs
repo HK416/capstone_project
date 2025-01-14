@@ -157,6 +157,7 @@ pub fn update_entity_hierarchy(world: &mut World, entity: Entity, parent_transfo
     let child_view = world.view::<&Child>();
     let sibling_view = world.view::<&Sibling>();
     let mut transform_view = world.view::<(&ToParentTrans, &mut WorldTransform)>();
+
     update_entity_hierarchy_recursion(
         &child_view,
         &sibling_view,

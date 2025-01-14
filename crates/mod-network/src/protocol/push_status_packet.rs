@@ -32,7 +32,7 @@ impl PushStatusPacket {
 
         let mut start = 0;
         let mut end = start + size_of::<Player>();
-        let player = Player::from_bytes(&data[start..end]);
+        let player = Player::from_big_endian_bytes(&data[start..end]);
 
         start = end;
         end = start + size_of::<LatLon>();
@@ -56,7 +56,7 @@ impl PushStatusPacket {
 
     pub fn as_raw(&self) -> RawPacket {
         let mut bytes = Vec::with_capacity(size_of::<Player>() + size_of::<LatLon>() + size_of::<u8>() * 2);
-        bytes.extend_from_slice(&self.player.as_bytes());
+        bytes.extend_from_slice(&self.player.to_big_endian_bytes());
         bytes.extend_from_slice(&self.look_direction.to_big_endian_bytes());
         bytes.extend_from_slice(&self.move_direction.to_big_endian_bytes());
         bytes.extend_from_slice(&(self.jump as u8).to_big_endian_bytes());

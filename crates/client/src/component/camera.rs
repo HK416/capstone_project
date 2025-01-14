@@ -1,8 +1,8 @@
 use glam::Vec4Swizzles;
 use hecs::{Entity, World};
-use mod_network::components::ViewState;
+use mod_network::components::{ViewState, ViewStateTimer};
 
-use super::{update_entity_hierarchy, ToParentTrans, ViewStateTimer};
+use super::{update_entity_hierarchy, ToParentTrans};
 
 /// ## Third Person Camera Data
 #[derive(Debug, Clone, Copy)]
@@ -38,6 +38,10 @@ impl ThirdPersonCamera {
     }
 
     /// 현재 삼인칭 카메라의 위치 오프셋을 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 `ViewState`가 먼저 갱신되어야 합니다.
+    ///
     pub fn update_offset(&mut self, view_state: ViewState, view_state_timer: ViewStateTimer) {
         const FUNC_TABLE: [fn(glam::Vec4, glam::Vec4, f32) -> glam::Vec4; 4] = [
             update_offset_when_idle_state,
@@ -53,14 +57,19 @@ impl ThirdPersonCamera {
 
     /// 카메라의 바라보는 방향을 행렬로 반환합니다.
     pub fn to_matrix(&self) -> glam::Mat4 {
-        let mut transform = glam::Mat4::from_translation(self.position_offset.xyz());
+        let distance = self.position_offset.z;
+        let mut transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.0, -distance));
         let rotation = glam::Mat4::from_rotation_y(self.yaw_angle);
         transform = rotation * transform;
 
-        let z_axis = -transform.w_axis.xyz().normalize_or(glam::Vec3::Z);
+        let z_axis = transform.z_axis.xyz().normalize_or(glam::Vec3::Z);
         let x_axis = glam::Vec3::Y.cross(z_axis);
         let rotation = glam::Mat4::from_axis_angle(x_axis, self.pitch_angle);
         transform = rotation * transform;
+
+        let offset = self.position_offset.xyw();
+        let offset_mat = glam::Mat4::from_translation(offset);
+        transform = transform * offset_mat;
 
         transform
     }
@@ -69,9 +78,9 @@ impl ThirdPersonCamera {
 impl Default for ThirdPersonCamera {
     fn default() -> Self {
         Self {
-            default_offset: glam::Vec4::new(0.25, 0.85, -1.5, 0.0),
-            zoom_offset: glam::Vec4::new(0.2, 0.6, -0.7, 0.0),
-            position_offset: glam::Vec4::new(0.25, 0.85, -1.5, 0.0),
+            default_offset: glam::Vec4::new(0.25, 0.85, 1.5, 0.0),
+            zoom_offset: glam::Vec4::new(0.2, 0.6, 0.7, 0.0),
+            position_offset: glam::Vec4::new(0.25, 0.85, 1.5, 0.0),
             yaw_angle: 0.0f32.to_radians(),
             pitch_angle: 10f32.to_radians(),
         }

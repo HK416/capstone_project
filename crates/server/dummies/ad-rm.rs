@@ -16,8 +16,8 @@ async fn run_client(addr: &str, idx: usize, wait: f32) {
     let mut parser = PacketParser::new();
 
     let mut player = Player::default();
-    player.translation.x = (0.0 + idx as f32 % 10.0) / 10.0;
-    player.translation.z = (0.0 + idx as f32 / 10.0) / 10.0;
+    player.translation[0] = (0.0 + idx as f32 % 10.0) / 10.0;
+    player.translation[2] = (0.0 + idx as f32 / 10.0) / 10.0;
 
     let mut buffer = [0; 1024];
 

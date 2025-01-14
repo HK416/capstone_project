@@ -24,10 +24,10 @@ pub const ATTACK_START_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Start";
 pub const ATTACK_ING_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Ing";
 /// 모든 캐릭터 모델의 AttackEnd 애니메이션 접미사입니다.
 pub const ATTACK_END_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_End";
-/// 모든 캐릭터 모델의 Reload 애니메이션 접미사입니다.
-pub const RELOAD_ANIMATION_SUFFIX: &'static str = "_Normal_Reload";
-/// 모든 캐릭터 모델의 Ex스킬 애니메이션 접미사입니다.
-pub const EXS_ANIMATION_SUFFIX: &'static str = "_Exs";
+// /// 모든 캐릭터 모델의 Reload 애니메이션 접미사입니다.
+// pub const RELOAD_ANIMATION_SUFFIX: &'static str = "_Normal_Reload";
+// /// 모든 캐릭터 모델의 Ex스킬 애니메이션 접미사입니다.
+// pub const EXS_ANIMATION_SUFFIX: &'static str = "_Exs";
 
 /// ## Skinning Animation
 /// 스키닝 애니메이션에 사용되는 스키닝 메쉬 엔터티와 최상위 뼈 노드 엔터티의 모음입니다.

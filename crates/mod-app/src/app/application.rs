@@ -354,6 +354,12 @@ impl ApplicationHandler<AppEvent> for Application {
             None => return event_loop.exit(),
         };
 
+        // 게임 장면 갱신 전에 콜백 함수를 호출합니다.
+        if let Err(e) = curr_scene.on_pre_update(window, self) {
+            alert_error("Runtime error", e.to_string(), Some(&window));;
+            return event_loop.exit();
+        }
+
         // 총 경과 시간을 갱신합니다.
         let elapsed_time_sec = self.timer.elapsed_time_sec();
         self.accum_time += elapsed_time_sec;
@@ -383,6 +389,12 @@ impl ApplicationHandler<AppEvent> for Application {
                 return event_loop.exit();
             }
             self.accum_time = 0.0;
+        }
+
+        // 게임 장면 갱신 후에 콜백 함수를 호출합니다.
+        if let Err(e) = curr_scene.on_post_update(window, self) {
+            alert_error("Runtime error", e.to_string(), Some(&window));;
+            return event_loop.exit();
         }
 
         // 애플리케이션 창을 갱신합니다.

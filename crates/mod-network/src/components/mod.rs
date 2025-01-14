@@ -117,6 +117,44 @@ impl BigEndian for f64 {
     }
 }
 
+impl BigEndian for [f32; 3] {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        [
+            f32::from_big_endian_bytes(&bytes[0..4]), 
+            f32::from_big_endian_bytes(&bytes[4..8]), 
+            f32::from_big_endian_bytes(&bytes[8..12]), 
+        ]
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(12);
+        bytes.extend_from_slice(&self[0].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[1].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[2].to_big_endian_bytes());
+        bytes
+    }
+}
+
+impl BigEndian for [f32; 4] {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        [
+            f32::from_big_endian_bytes(&bytes[0..4]), 
+            f32::from_big_endian_bytes(&bytes[4..8]), 
+            f32::from_big_endian_bytes(&bytes[8..12]), 
+            f32::from_big_endian_bytes(&bytes[12..16]), 
+        ]
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(16);
+        bytes.extend_from_slice(&self[0].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[1].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[2].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[3].to_big_endian_bytes());
+        bytes
+    }
+}
+
 /// 자료형을 Big-endian 바이트 배열로 변환하거나, Big-endian 바이트 배열로부터 자료형을 생성하는 함수 인터페이스를 제공합니다.
 pub trait TryFromBigEndian: BigEndian {
     /// Big-endian 바이트 배열로부터 자료형을 생성합니다.

@@ -1,4 +1,6 @@
 use std::mem::size_of;
+use crate::components::BigEndian;
+
 use super::*;
 use super::super::game_objects::{Player, BulletBlob};
 
@@ -33,7 +35,7 @@ impl PullStagePacket {
 
         let players = raw.data()[4..player_end]
             .chunks_exact(size_of::<Player>())
-            .map(|chunk| Player::from_bytes(chunk))
+            .map(|chunk| Player::from_big_endian_bytes(chunk))
             .collect();
 
         let bullets = raw.data()[player_end..]
@@ -58,7 +60,7 @@ impl PullStagePacket {
         bytes.extend_from_slice(&self.num_players.to_be_bytes());
         bytes.extend_from_slice(&self.num_bullets.to_be_bytes());
         bytes.extend_from_slice(&self.players.iter()
-            .flat_map(|player| player.as_bytes())
+            .flat_map(|player| player.to_big_endian_bytes())
             .collect::<Vec<u8>>());
         bytes.extend_from_slice(&self.bullets.iter()
             .flat_map(|bullet| bullet.as_bytes())

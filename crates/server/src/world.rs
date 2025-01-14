@@ -72,9 +72,9 @@ impl World {
 
     pub fn move_player(&mut self, id: ObjectId, x: f32, y: f32, z: f32) {
         if let Some(player) = self.players.get_mut(&id) {
-            player.translation.x += x;
-            player.translation.y += y;
-            player.translation.z += z;
+            player.translation[0] += x;
+            player.translation[1] += y;
+            player.translation[2] += z;
         }
     }
 
@@ -128,7 +128,8 @@ impl World {
                         continue;
                     }
                     
-                    let player_position = gmm::Vector::from(player.translation);
+                    let player_position = gmm::Float3::from_array(player.translation);
+                    let player_position = gmm::Vector::from(player_position);
 
                     // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
                     const BULLET_RADIUS: f32 = 0.5;
@@ -144,11 +145,11 @@ impl World {
                     // 총알은 점으로 raycasting
                     
                     let mut center = player.translation;
-                    center.y -= BULLET_RADIUS;
+                    center[1] -= BULLET_RADIUS;
 
                     // mod-network의 Player에 make_collider()를 추가해서 클라이언트에서도 표시할 수 있도록 해도 좋아보임.
                     let player_capsule = YCapsule {
-                        center,
+                        center: gmm::Float3::from_array(center),
                         radius: PLAYER_RADIUS + BULLET_RADIUS,
                         height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
                     };

@@ -193,6 +193,16 @@ pub trait GameScene: Debug + Send {
         Ok(())
     }
 
+    /// 게임 장면을 갱신 전에 호출되는 콜백 함수입니다.
+    #[allow(unused_variables)]
+    fn on_pre_update(
+        &mut self, 
+        window: &Window, 
+        app: &dyn AppHandle
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
+    }
+
     /// 게임 장면을 갱신할 때 호출되는 콜백 함수입니다.
     #[allow(unused_variables)]
     fn on_update(
@@ -215,6 +225,16 @@ pub trait GameScene: Debug + Send {
         fixed_time_sec: f32,
         window: &Window,
         app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
+    }
+
+    /// 게임 장면을 갱신 후에 호출되는 콜백 함수입니다.
+    #[allow(unused_variables)]
+    fn on_post_update(
+        &mut self, 
+        window: &Window, 
+        app: &dyn AppHandle, 
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }

@@ -39,7 +39,7 @@ impl TryFromBigEndian for ActionState {
         match index {
             0 => Some(ActionState::Idle),
             1 => Some(ActionState::Aiming),
-            2 => Some(ActionState::AimAt), 
+            2 => Some(ActionState::AimAt),
             3 => Some(ActionState::AimOff),
             4 => Some(ActionState::Attack),
             _ => None,
@@ -47,12 +47,22 @@ impl TryFromBigEndian for ActionState {
     }
 }
 
-/// 캐릭터 애니메이션 타이머입니다.
+/// 플레이어 캐릭터의 행동이 지속된 시간을 측정하는 타이머입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct AnimationTimer(pub f32);
+pub struct ActionStateTimer(pub f32);
 
-impl BigEndian for AnimationTimer {
+impl ActionStateTimer {
+    /// 타이머가 가질 수 있는 최소 시간입니다.
+    pub const MIN_TIME: f32 = 0.0;
+
+    /// 타이머를 초기화합니다.
+    pub fn reset(&mut self) {
+        self.0 = Self::MIN_TIME
+    }
+}
+
+impl BigEndian for ActionStateTimer {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self(f32::from_big_endian_bytes(bytes))
     }
@@ -62,9 +72,9 @@ impl BigEndian for AnimationTimer {
     }
 }
 
-impl Default for AnimationTimer {
+impl Default for ActionStateTimer {
     fn default() -> Self {
-        AnimationTimer(0.0)
+        Self(Self::MIN_TIME)
     }
 }
 
@@ -109,7 +119,8 @@ impl ToString for CharacterKind {
         match self {
             CharacterKind::ArisOriginal => "Aris Original",
             CharacterKind::MomoiOriginal => "Momoi Original",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -325,6 +336,42 @@ impl TryFromBigEndian for MovementState {
     }
 }
 
+/// 플레이어 움직임 상태의 지속 시간을 나타냅니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct MovementStateTimer(pub f32);
+
+impl MovementStateTimer {
+    /// 타이머가 가질 수 있는 최소 시간입니다.
+    pub const MIN_TIME: f32 = 0.0;
+
+    /// 타이머를 초기화합니다.
+    pub fn reset(&mut self) {
+        self.0 = Self::MIN_TIME
+    }
+
+    /// 타이머를 갱신합니다.
+    pub fn update(&mut self, fixed_time_sec: f32) {
+        self.0 = self.0 + fixed_time_sec
+    }
+}
+
+impl BigEndian for MovementStateTimer {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self(f32::from_big_endian_bytes(bytes))
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.0.to_big_endian_bytes()
+    }
+}
+
+impl Default for MovementStateTimer {
+    fn default() -> Self {
+        Self(Self::MIN_TIME)
+    }
+}
+
 /// 스테이지 종류 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -400,5 +447,49 @@ impl TryFromBigEndian for ViewState {
             3 => Some(ViewState::Aiming),
             _ => None,
         }
+    }
+}
+
+/// 플레이어 뷰 상태의 지속 시간을 나타냅니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct ViewStateTimer(pub f32);
+
+impl ViewStateTimer {
+    /// 타이머가 가질 수 있는 최대 시간입니다.
+    pub const MAX_TIME: f32 = 0.15;
+
+    /// 타이머가 가질 수 있는 최소 시간입니다.
+    pub const MIN_TIME: f32 = 0.0;
+
+    /// 타이머를 초기화합니다.
+    pub fn reset(&mut self) {
+        self.0 = Self::MIN_TIME
+    }
+
+    /// 타이머를 갱신합니다.
+    pub fn update(&mut self, fixed_time_sec: f32) {
+        self.0 = (self.0 + fixed_time_sec).min(Self::MAX_TIME)
+    }
+
+    /// 타이머의 값을 0에서 1사이의 값을 반환합니다.
+    pub fn normalize(&self) -> f32 {
+        self.0 / Self::MAX_TIME
+    }
+}
+
+impl BigEndian for ViewStateTimer {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self(f32::from_big_endian_bytes(bytes))
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.0.to_big_endian_bytes()
+    }
+}
+
+impl Default for ViewStateTimer {
+    fn default() -> Self {
+        Self(Self::MIN_TIME)
     }
 }

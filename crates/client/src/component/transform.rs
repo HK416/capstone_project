@@ -29,6 +29,11 @@ impl ToParentTrans {
         debug_assert_eq!(distance.w, 0.0);
         self.0.w_axis += distance;
     }
+
+    /// 월드 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
+    pub fn get_look_vector(&self) -> glam::Vec4 {
+        self.0.z_axis.normalize_or(glam::Vec4::Z)
+    }
 }
 
 impl Default for ToParentTrans {

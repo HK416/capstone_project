@@ -35,7 +35,7 @@ pub fn prepare_mesh_resource(
     let sibling_view = &world.view::<&Sibling>();
     let transform_view = &world.view::<&WorldTransform>();
     let resource_view = &world.view::<&Arc<MeshResource>>();
-    let bone_collection_view = &world.view::<&Arc<BoneCollection>>();
+    let bone_collection_view = &world.view::<&BoneCollection>();
     rayon::in_place_scope(|scope| {
         for &entity in entities {
             scope.spawn(move |_| {
@@ -74,7 +74,7 @@ fn prepare_mesh_resource_recursion(
     sibling_view: &ViewBorrow<'_, &Sibling>,
     transform_view: &ViewBorrow<'_, &WorldTransform>,
     resource_view: &ViewBorrow<'_, &Arc<MeshResource>>,
-    bone_collection_view: &ViewBorrow<'_, &Arc<BoneCollection>>,
+    bone_collection_view: &ViewBorrow<'_, &BoneCollection>,
     entity: Entity,
     device: &wgpu::Device,
     queue: &wgpu::Queue,

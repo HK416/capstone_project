@@ -28,7 +28,7 @@ impl InitStagePacket {
         let boundary = size_of::<u32>() + size_of::<Player>() * num_players as usize;
         let players = data[size_of::<u32>()..boundary]
             .chunks_exact(size_of::<Player>())
-            .map(|chunk| Player::from_bytes(chunk))
+            .map(|chunk| Player::from_big_endian_bytes(chunk))
             .collect::<Vec<_>>();
         let stage_kind = StageKind::from_big_endian_bytes(&data[boundary..]);
 
@@ -43,7 +43,7 @@ impl InitStagePacket {
         let mut bytes = Vec::with_capacity(size_of::<u32>() + size_of::<Player>() * self.num_players as usize + size_of::<StageKind>());
         bytes.extend_from_slice(&self.num_players.to_big_endian_bytes());
         bytes.extend_from_slice(&self.players.iter()
-            .flat_map(|player| player.as_bytes())
+            .flat_map(|player| player.to_big_endian_bytes())
             .collect::<Vec<u8>>());
         bytes.extend_from_slice(&self.stage_kind.to_big_endian_bytes());
 
