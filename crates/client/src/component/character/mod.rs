@@ -352,7 +352,7 @@ fn update_character_direction_when_moving(
 
     // 플레이어 이동 방향을 가져옵니다.
     let direction = move_direction.0;
-    
+
     // 두 방향을 각도에 따라 선형 보간합니다.
     let dir = look.lerp(direction, 0.1);
 

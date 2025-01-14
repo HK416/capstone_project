@@ -11,18 +11,18 @@ use mod_math::LatLon;
 #[derive(Debug, PartialEq)]
 pub struct PushStatusPacket {
     pub player: Player,
-    pub look_direction: LatLon, // 카메라 방향
-    pub move_direction: u8, // 8방향 입력 정보
-    pub jump: bool, // 점프키 입력 여부
+    // pub look_direction: LatLon, // 카메라 방향
+    // pub move_direction: u8, // 8방향 입력 정보
+    // pub jump: bool, // 점프키 입력 여부
 }
 
 impl PushStatusPacket {
     pub fn new(player: Player, look_direction: LatLon, move_direction: u8, jump: bool) -> Self {
         Self {
             player,
-            look_direction,
-            move_direction,
-            jump,
+            // look_direction,
+            // move_direction,
+            // jump,
         }
     }
 
@@ -34,32 +34,33 @@ impl PushStatusPacket {
         let mut end = start + size_of::<Player>();
         let player = Player::from_big_endian_bytes(&data[start..end]);
 
-        start = end;
-        end = start + size_of::<LatLon>();
-        let look_direction = LatLon::from_big_endian_bytes(&data[start..end]);
+        // start = end;
+        // end = start + size_of::<LatLon>();
+        // let look_direction = LatLon::from_big_endian_bytes(&data[start..end]);
 
-        start = end;
-        end = start + size_of::<u8>();
-        let move_direction = u8::from_big_endian_bytes(&data[start..end]);
+        // start = end;
+        // end = start + size_of::<u8>();
+        // let move_direction = u8::from_big_endian_bytes(&data[start..end]);
 
-        start = end;
-        end = start + size_of::<u8>();
-        let jump = u8::from_big_endian_bytes(&data[start..end]);
+        // start = end;
+        // end = start + size_of::<u8>();
+        // let jump = u8::from_big_endian_bytes(&data[start..end]);
 
         Self { 
             player,
-            look_direction,
-            move_direction,
-            jump: jump != 0,
+            // look_direction,
+            // move_direction,
+            // jump: jump != 0,
         }
     }
 
     pub fn as_raw(&self) -> RawPacket {
-        let mut bytes = Vec::with_capacity(size_of::<Player>() + size_of::<LatLon>() + size_of::<u8>() * 2);
+        // let mut bytes = Vec::with_capacity(size_of::<Player>() + size_of::<LatLon>() + size_of::<u8>() * 2);
+        let mut bytes = Vec::with_capacity(size_of::<Player>());
         bytes.extend_from_slice(&self.player.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.look_direction.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.move_direction.to_big_endian_bytes());
-        bytes.extend_from_slice(&(self.jump as u8).to_big_endian_bytes());
+        // bytes.extend_from_slice(&self.look_direction.to_big_endian_bytes());
+        // bytes.extend_from_slice(&self.move_direction.to_big_endian_bytes());
+        // bytes.extend_from_slice(&(self.jump as u8).to_big_endian_bytes());
 
         RawPacket::new(PacketType::PushStatus, &bytes)
     }

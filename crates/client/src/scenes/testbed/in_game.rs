@@ -1,11 +1,15 @@
 use std::{error::Error, fmt, sync::Arc};
 
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
+use glam::Vec4Swizzles;
 use hecs::{Entity, EntityBuilder, With, World};
-use mod_app::{app::AppHandle, asset::AssetManager, scene::GameScene};
-use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, ClientId, MovementState, MovementStateTimer,
-    ObjectId, ViewState, ViewStateTimer,
+use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
+use mod_network::{
+    components::{
+        ActionState, ActionStateTimer, CharacterKind, ClientId, MovementState, MovementStateTimer,
+        ObjectId, ViewState, ViewStateTimer,
+    },
+    PacketType, Player, PullStagePacket, PushStatusPacket, RawPacket,
 };
 use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use winit::{
@@ -16,14 +20,15 @@ use winit::{
 
 use crate::{
     component::{
-        aris_original, draw_character, update_character_direction, update_entity_hierarchy,
-        update_movement_state_by_controller_state, update_third_person_camera_hierarchy,
-        update_view_state_timer, BoneCollection, ControllerInputTimer, ControllerState,
-        MoveDirection, Projection, SkinningAnimation, ThirdPersonCamera, ToParentTrans,
-        WorldTransform,
+        aris_original, cleanup, draw_character, spawn_player_character, update_character_direction,
+        update_entity_hierarchy, update_movement_state_by_controller_state,
+        update_third_person_camera_hierarchy, update_view_state_timer, BoneCollection,
+        ControllerInputTimer, ControllerState, MoveDirection, Projection, SkinningAnimation,
+        ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     render::{prepare_camera_resource, prepare_mesh_resource},
+    SERVER_ADDR,
 };
 
 /// 배경 화면의 색상입니다.
@@ -167,7 +172,12 @@ impl TestbedInGameScene {
         let mut builder = EntityBuilder::new();
         builder.add(ToParentTrans::default());
         builder.add(WorldTransform::default());
-        builder.add(Projection::perspective(75f32.to_radians(), w / h, 0.01, 500.0));
+        builder.add(Projection::perspective(
+            75f32.to_radians(),
+            w / h,
+            0.01,
+            500.0,
+        ));
 
         // 삼인칭 카메라 데이터와 카메라 쉐이더 리소스 컴포넌트를 추가합니다.
         builder.add(ThirdPersonCamera::default());
@@ -412,7 +422,7 @@ impl TestbedInGameScene {
             .expect("invalid entity");
         let (&movement_state, &view_state, &view_state_timer, local_transform) =
             query.get().expect("invalid entity component");
-        
+
         // 플레이어 캐릭터의 방향을 갱신합니다.
         update_character_direction(
             movement_state,
@@ -531,6 +541,171 @@ impl TestbedInGameScene {
     ) {
         prepare_mesh_resource(&self.world, entities, device, queue);
     }
+
+    /// 게임 서버에 플레이어 데이터를 전송합니다.
+    fn push_player_data(&mut self, net_manager: &NetManager) {
+        // 플레이어 캐릭터 엔터티를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        let entity = self.entities.get(&id).cloned().expect("no such entity");
+
+        // 플레이어 엔터티로부터 필요한 컴포넌트 데이터를 가져옵니다.
+        type Components<'a> = (
+            &'a WorldTransform,
+            &'a CharacterKind,
+            &'a ActionState,
+            &'a ActionStateTimer,
+            &'a MovementState,
+            &'a MovementStateTimer,
+            &'a ViewState,
+            &'a ViewStateTimer,
+        );
+        let (
+            world_transform,
+            &character_kind,
+            &action_state,
+            &action_state_timer,
+            &movement_state,
+            &movement_state_timer,
+            &view_state,
+            &view_state_timer,
+        ) = self
+            .world
+            .query_one_mut::<Components>(entity)
+            .expect("invalid entity or invalid entity component");
+        let translation = world_transform.get_translation().xyz().to_array();
+        let rotation = world_transform.get_rotation().to_array();
+
+        // 플레이어 데이터를 작성합니다.
+        let player = Player {
+            id,
+            hp: 100,
+            translation,
+            rotation,
+            character_kind,
+            action_state,
+            view_state,
+            movement_state,
+            action_state_timer,
+            view_state_timer,
+            movement_state_timer,
+        };
+
+        // 패킷을 생성하고, 전송합니다.
+        let pakcet = PushStatusPacket { player };
+        let socket = net_manager.get(&SERVER_ADDR).expect("no such socket");
+        socket.push_packet(pakcet.as_raw());
+    }
+
+    /// 서버 데이터를 게임 월드에 반영합니다.
+    fn pull_game_world(
+        &mut self,
+        mut packet: PullStagePacket,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 컴포넌트 뷰를 준비합니다.
+        let mut action_state_view = self
+            .world
+            .view::<(&mut ActionState, &mut ActionStateTimer)>();
+        let mut movement_state_view = self
+            .world
+            .view::<(&mut MovementState, &mut MovementStateTimer)>();
+        let mut view_state_view = self.world.view::<(&mut ViewState, &mut ViewStateTimer)>();
+        let mut local_transform_view = self.world.view::<&mut ToParentTrans>();
+
+        // 현재 플레이어의 오브젝트 식별자를 가져옵니다.
+        let id: ObjectId = self.client_id.into();
+        // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
+        let mut objects: HashSet<ObjectId> = self.entities.keys().cloned().collect();
+        // 새로운 플레이어 데이터를 수집합니다.
+        let mut new_players: Vec<Player> = Vec::with_capacity(10);
+
+        while let Some(player_data) = packet.players.pop() {
+            // 현재 플레이어의 경우 데이터 갱신을 하지 않습니다.
+            if player_data.id == id {
+                objects.remove(&player_data.id);
+                continue;
+            }
+
+            // 이미 존재했던 오브젝트인 경우 오브젝트의 데이터를 갱신합니다.
+            if objects.remove(&player_data.id) {
+                // 오브젝트의 엔터티를 가져옵니다.
+                let entity = self
+                    .entities
+                    .get(&player_data.id)
+                    .cloned()
+                    .expect("no such entity");
+
+                // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
+                let (action_state, action_state_timer) = action_state_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                *action_state = player_data.action_state;
+                *action_state_timer = player_data.action_state_timer;
+
+                // 움직임 상태, 움직임 상태 지속 시간을 갱신합니다.
+                let (movement_state, movement_state_timer) = movement_state_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                *movement_state = player_data.movement_state;
+                *movement_state_timer = player_data.movement_state_timer;
+
+                // 카메라 상태, 카메라 상태 지속 시간을 갱신합니다.
+                let (view_state, view_state_timer) = view_state_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                *view_state = player_data.view_state;
+                *view_state_timer = player_data.view_state_timer;
+
+                // 위치와 방향을 갱신합니다.
+                let local_transform = local_transform_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                local_transform.set_rotation_translation(
+                    glam::Quat::from_array(player_data.rotation),
+                    glam::Vec3::from_array(player_data.translation),
+                );
+            } else {
+                // 존재하지 않은 오브젝트의 경우 새로운 데이터에 추가합니다.
+                new_players.push(player_data);
+            }
+        }
+
+        drop(action_state_view);
+        drop(movement_state_view);
+        drop(view_state_view);
+        drop(local_transform_view);
+
+        // 새로운 플레이어를 추가합니다.
+        while let Some(player_data) = new_players.pop() {
+            // 새로운 플레이어 계층 구조를 생성합니다.
+            let (root_entity, batch_commands) = spawn_player_character(
+                &player_data,
+                app.asset_manager(),
+                app.render_device(),
+                app.render_queue(),
+                &self.world,
+            )
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+            // 명령어를 실행합니다.
+            for (entity, mut builder) in batch_commands {
+                self.world
+                    .insert(entity, builder.build())
+                    .expect("no such entity");
+            }
+
+            // 엔터티 목록에 새로운 엔터티를 추가합니다.
+            self.entities.insert(player_data.id, root_entity);
+        }
+
+        // 제거된 엔터티를 엔터티 목록에서 제거합니다.
+        for id in objects.into_iter() {
+            let entity = self.entities.remove(&id).expect("no such entity");
+            cleanup(&mut self.world, entity);
+        }
+
+        Ok(())
+    }
 }
 
 impl GameScene for TestbedInGameScene {
@@ -630,6 +805,23 @@ impl GameScene for TestbedInGameScene {
         Ok(())
     }
 
+    fn on_received_packet(
+        &mut self,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let kind = packet.packet_type();
+        match kind {
+            PacketType::PullStage => {
+                let packet = PullStagePacket::from_raw(packet);
+                self.pull_game_world(packet, app)?;
+            }
+            _ => panic!("invalid packet"),
+        }
+
+        Ok(())
+    }
+
     #[allow(unused_variables)]
     fn on_pre_update(
         &mut self,
@@ -675,12 +867,15 @@ impl GameScene for TestbedInGameScene {
 
     #[allow(unused_variables)]
     fn on_post_update(
-        &mut self, 
-        window: &Window, 
-        app: &dyn AppHandle, 
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // 플레이어 캐릭터의 방향을 갱신합니다.
         self.update_player_character_direction();
+
+        // 플레이어 데이터를 서버에 전송합니다.
+        self.push_player_data(app.net_manager());
 
         Ok(())
     }

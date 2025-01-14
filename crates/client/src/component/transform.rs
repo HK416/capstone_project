@@ -24,6 +24,12 @@ impl ToParentTrans {
         self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
     }
 
+    /// 로컬 변환 행렬의 방향과 위치를 설정합니다.
+    pub fn set_rotation_translation(&mut self, rotation: glam::Quat, translation: glam::Vec3) {
+        let (scale, _, _) = self.0.to_scale_rotation_translation();
+        self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
+    }
+
     /// 로컬 변환 행렬의 위치를 주어진 거리만큼 이동시킵니다.
     pub fn translate_world(&mut self, distance: glam::Vec4) {
         debug_assert_eq!(distance.w, 0.0);
@@ -51,6 +57,11 @@ impl WorldTransform {
     /// 월드 변환 행렬의 위치를 반환합니다.
     pub fn get_translation(&self) -> glam::Vec4 {
         self.0.w_axis
+    }
+
+    /// 월드 변환 행렬의 회전 데이터를 가져옵니다.
+    pub fn get_rotation(&self) -> glam::Quat {
+        glam::Quat::from_mat4(&self.0).normalize()
     }
 
     /// 월드 변환 행렬의 위쪽 방향 벡터를 반환합니다.
