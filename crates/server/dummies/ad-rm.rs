@@ -42,7 +42,7 @@ async fn run_client(addr: &str, idx: usize, wait: f32) {
         }
     }
 
-    let packet = PushStatusPacket::new(player, LatLon::default(), 0, false).as_raw();
+    let packet = PushStatusPacket::default().as_raw();
     stream.write_all(&packet.as_bytes()).await.unwrap();
 
     let start = std::time::Instant::now();
@@ -79,7 +79,7 @@ async fn run_client(addr: &str, idx: usize, wait: f32) {
             return;
         }
 
-        let packet = PushStatusPacket::new(player, LatLon::default(), 0, false).as_raw();
+        let packet = PushStatusPacket::default().as_raw();
         stream.write_all(&packet.as_bytes()).await.unwrap();
     }
 }

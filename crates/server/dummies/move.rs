@@ -40,7 +40,7 @@ async fn run_client(addr: &str) {
         }
     }
 
-    let packet = PushStatusPacket::new(player, LatLon::default(), 0, false).as_raw();
+    let packet = PushStatusPacket::default().as_raw();
     stream.write_all(&packet.as_bytes()).await.unwrap();
 
     let mut start = std::time::Instant::now();
@@ -83,7 +83,7 @@ async fn run_client(addr: &str) {
 
         player.translation[0] += x * 0.00001;
         player.translation[2] += y * 0.00001;
-        let packet = PushStatusPacket::new(player, LatLon::default(), 0, false).as_raw();
+        let packet = PushStatusPacket::default().as_raw();
         stream.write_all(&packet.as_bytes()).await.unwrap();
     }
 }
