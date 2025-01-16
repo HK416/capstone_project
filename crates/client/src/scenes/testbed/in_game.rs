@@ -613,9 +613,10 @@ impl TestbedInGameScene {
             view_state_timer,
             movement_state_timer,
         };
+        let move_direction = self.move_direction.0.xyz().to_array();
 
         // 패킷을 생성하고, 전송합니다.
-        let pakcet = PushStatusPacket { player };
+        let pakcet = PushStatusPacket { player, move_direction };
         let socket = net_manager.get(&SERVER_ADDR).expect("no such socket");
         socket.push_packet(pakcet.as_raw());
     }

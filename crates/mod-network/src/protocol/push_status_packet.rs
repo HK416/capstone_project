@@ -1,3 +1,5 @@
+use crate::components::TryFromBigEndian;
+
 use super::*;
 use super::super::game_objects::Player;
 use super::super::components::BigEndian;
@@ -11,58 +13,60 @@ use mod_math::LatLon;
 #[derive(Debug, PartialEq)]
 pub struct PushStatusPacket {
     pub player: Player,
+    pub move_direction: [f32; 3], // XY평면상의 플레이어 이동 방향
     // pub look_direction: LatLon, // 카메라 방향
     // pub move_direction: u8, // 8방향 입력 정보
     // pub jump: bool, // 점프키 입력 여부
 }
 
 impl PushStatusPacket {
-    pub fn new(player: Player, look_direction: LatLon, move_direction: u8, jump: bool) -> Self {
-        Self {
-            player,
-            // look_direction,
-            // move_direction,
-            // jump,
+    /// 패킷의 바이트 단위 크기입니다. 
+    pub const SIZE: usize = size_of::<Player>() + 12;
+}
+
+impl Default for PushStatusPacket {
+    fn default() -> Self {
+        Self { 
+            player: Player::default(), 
+            move_direction: [0.0, 0.0, 1.0] 
         }
     }
+}
 
-    /// RawPacket내의 데이터는 유효하다고 가정한다.
-    pub fn from_raw(raw: RawPacket) -> Self {
-        let data = raw.data();
+impl BigEndian for PushStatusPacket {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data")
+    }
 
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(Self::SIZE);
+        bytes.extend_from_slice(&self.player.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.move_direction.to_big_endian_bytes());
+        bytes
+    }
+}
+
+impl TryFromBigEndian for PushStatusPacket {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         let mut start = 0;
         let mut end = start + size_of::<Player>();
-        let player = Player::from_big_endian_bytes(&data[start..end]);
+        let player = Player::try_from_big_endian_bytes(&bytes[start..end])?;
 
-        // start = end;
-        // end = start + size_of::<LatLon>();
-        // let look_direction = LatLon::from_big_endian_bytes(&data[start..end]);
+        start = end;
+        end = start + 12;
+        let move_direction = <[f32; 3]>::from_big_endian_bytes(&bytes[start..end]);
+        Some(Self { player, move_direction })
+    }
+}
 
-        // start = end;
-        // end = start + size_of::<u8>();
-        // let move_direction = u8::from_big_endian_bytes(&data[start..end]);
-
-        // start = end;
-        // end = start + size_of::<u8>();
-        // let jump = u8::from_big_endian_bytes(&data[start..end]);
-
-        Self { 
-            player,
-            // look_direction,
-            // move_direction,
-            // jump: jump != 0,
-        }
+impl PushStatusPacket {
+    /// RawPacket내의 데이터는 유효하다고 가정한다.
+    pub fn from_raw(raw: RawPacket) -> Self {
+        Self::from_big_endian_bytes(&raw.data())
     }
 
     pub fn as_raw(&self) -> RawPacket {
-        // let mut bytes = Vec::with_capacity(size_of::<Player>() + size_of::<LatLon>() + size_of::<u8>() * 2);
-        let mut bytes = Vec::with_capacity(size_of::<Player>());
-        bytes.extend_from_slice(&self.player.to_big_endian_bytes());
-        // bytes.extend_from_slice(&self.look_direction.to_big_endian_bytes());
-        // bytes.extend_from_slice(&self.move_direction.to_big_endian_bytes());
-        // bytes.extend_from_slice(&(self.jump as u8).to_big_endian_bytes());
-
-        RawPacket::new(PacketType::PushStatus, &bytes)
+        RawPacket::new(PacketType::PushStatus, &self.to_big_endian_bytes())
     }
 }
 
@@ -74,12 +78,7 @@ mod tests {
 
     #[test]
     fn test_push_status_packet() {
-        let player = Player::default();
-        let look_direction = LatLon::default();
-        let move_direction = 0;
-        let jump = false;
-
-        let packet = PushStatusPacket::new(player, look_direction, move_direction, jump);
+        let packet = PushStatusPacket::default();
         let raw = packet.as_raw();
         let packet2 = PushStatusPacket::from_raw(raw);
 
