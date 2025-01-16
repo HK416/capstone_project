@@ -15,12 +15,31 @@
                         "Aris_Original_Hair_Spec.dds", 
                         "Aris_Original_Hair.dds", 
                         "Aris_Original_Halo.dds", 
+                        "Aris_Original_Halo.hierarchy",
                         "Aris_Original_Weapon_Mask.dds", 
                         "Aris_Original_Weapon.dds", 
-                        "Aris_Original_Halo.hierarchy",
                         "Aris_Original.hierarchy",
                         "Aris_Original.motion"
                     ], 
+                    "directories" : {}
+                },
+                "momoi_original" : {
+                    "files" : [
+                        "Momoi_Original_Body_Mask.dds",
+                        "Momoi_Original_Body.dds",
+                        "Momoi_Original_EyeMouth.dds",
+                        "Momoi_Original_Face_Mask.dds",
+                        "Momoi_Original_Face.dds",
+                        "Momoi_Original_Hair_Mask_Spec.dds",
+                        "Momoi_Original_Hair_Mask.dds",
+                        "Momoi_Original_Hair.dds",
+                        "Momoi_Original_Halo.dds",
+                        "Momoi_Original_Halo.hierarchy",
+                        "Momoi_Original_Weapon_Mask.dds",
+                        "Momoi_Original_Weapon.dds",
+                        "Momoi_Original.hierarchy",
+                        "Momoi_Original.motion"
+                    ],
                     "directories" : {}
                 }
             }

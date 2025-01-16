@@ -22,26 +22,26 @@ use crate::{
 };
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
-pub const NORMAL_IDLE_LEN: f32 = 2.8;
+pub const NORMAL_IDLE_LEN: f32 = 2.0;
 /// 캐릭터 모델의 Moving 애니메이션 길이입니다.
-pub const MOVE_ING_LEN: f32 = 0.667;
+pub const MOVE_ING_LEN: f32 = 0.6;
 /// 캐릭터 모델의 Move_To_End 애니메이션 길이입니다.
-pub const MOVE_TO_END_LEN: f32 = 2.0;
+pub const MOVE_TO_END_LEN: f32 = 1.3;
 /// 캐릭터 모델의 Cafe_Walk 애니메이션 길이입니다.
-pub const CAFE_WALK_LEN: f32 = 1.267;
+pub const CAFE_WALK_LEN: f32 = 1.333;
 /// 캐릭터 모델의 Attack_Start 애니메이션 길이입니다.
-pub const ATTACK_START_LEN: f32 = 0.667;
+pub const ATTACK_START_LEN: f32 = 0.433;
 /// 캐릭터 모델의 Attack_Ing 애니메이션 길이입니다.
-pub const ATTACK_ING_LEN: f32 = 2.667;
+pub const ATTACK_ING_LEN: f32 = 0.7;
 /// 캐릭터 모델의 Attack_End 애니메이션 길이입니다.
-pub const ATTACK_END_LEN: f32 = 0.667;
+pub const ATTACK_END_LEN: f32 = 0.533;
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
-pub const WORKSPACE: &'static str = "characters/aris_original/";
+pub const WORKSPACE: &'static str = "characters/momoi_original/";
 /// 캐릭터 모델의 이름입니다.
-pub const MODEL_NAME: &'static str = "Aris_Original";
+pub const MODEL_NAME: &'static str = "Momoi_Original";
 /// 캐릭터 헤일로 모델의 이름입니다.
-pub const MODEL_HALO_NAME: &'static str = "Aris_Original_Halo";
+pub const MODEL_HALO_NAME: &'static str = "Momoi_Original_Halo";
 
 /// 캐릭터의 Idle 애니메이션 이름입니다.
 const IDLE_ANIMATION: &'static str = concat!(MODEL_NAME, IDLE_ANIMATION_SUFFIX);

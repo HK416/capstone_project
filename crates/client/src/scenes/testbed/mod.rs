@@ -189,6 +189,11 @@ impl TestbedTitleScene {
                                         CharacterKind::ArisOriginal,
                                         CharacterKind::ArisOriginal.to_string(),
                                     );
+                                    ui.selectable_value(
+                                        &mut self.character_kind,
+                                        CharacterKind::MomoiOriginal,
+                                        CharacterKind::MomoiOriginal.to_string(),
+                                    );
                                 });
                         });
 

@@ -1,5 +1,6 @@
 pub mod animation;
 mod aris_original;
+mod momoi_original;
 
 use std::sync::Arc;
 
@@ -28,18 +29,21 @@ pub use self::animation::*;
 
 use super::{ControllerInputFlags, MoveDirection, ThirdPersonCamera};
 
+const NUM_CHARACTERS: usize = 2;
+
 /// 캐릭터 헤일로의 종류입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CharacterHaloKind {
     ArisOriginalHalo = 0,
+    MomoiOriginalHalo = 1,
 }
 
 impl From<CharacterKind> for CharacterHaloKind {
     fn from(value: CharacterKind) -> Self {
         match value {
             CharacterKind::ArisOriginal => CharacterHaloKind::ArisOriginalHalo,
-            CharacterKind::MomoiOriginal => todo!(),
+            CharacterKind::MomoiOriginal => CharacterHaloKind::MomoiOriginalHalo,
         }
     }
 }
@@ -48,6 +52,7 @@ impl ToString for CharacterHaloKind {
     fn to_string(&self) -> String {
         match self {
             CharacterHaloKind::ArisOriginalHalo => "Aris Original Halo",
+            CharacterHaloKind::MomoiOriginalHalo => "Momoi Original Halo",
         }
         .to_string()
     }
@@ -60,11 +65,18 @@ pub fn load_character_model(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> Result<(), ModelAssetError> {
-    const MODELS: [(&'static str, &'static str, &'static str); 1] = [(
-        aris_original::WORKSPACE,
-        aris_original::MODEL_NAME,
-        aris_original::MODEL_HALO_NAME,
-    )];
+    const MODELS: [(&'static str, &'static str, &'static str); NUM_CHARACTERS] = [
+        (
+            aris_original::WORKSPACE,
+            aris_original::MODEL_NAME,
+            aris_original::MODEL_HALO_NAME,
+        ),
+        (
+            momoi_original::WORKSPACE,
+            momoi_original::MODEL_NAME,
+            momoi_original::MODEL_HALO_NAME,
+        ),
+    ];
 
     let i = character_kind as usize;
     let (workspace, model_name, model_halo_name) = MODELS[i];
@@ -106,6 +118,32 @@ pub fn spawn_player_character(
     queue: &wgpu::Queue,
     world: &World,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+    type CharacterFunc =
+        fn(
+            &AssetManager,
+            &wgpu::Device,
+            &wgpu::Queue,
+            &World,
+            Entity,
+        )
+            -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), ModelAssetError>;
+    type CharacterHaloFunc = fn(
+        &AssetManager,
+        &wgpu::Device,
+        &wgpu::Queue,
+        &World,
+        Entity,
+    )
+        -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError>;
+    const CHARACTER_FN: [CharacterFunc; NUM_CHARACTERS] = [
+        aris_original::spawn_character_model,
+        momoi_original::spawn_character_model,
+    ];
+    const CHARACTER_HALO_FN: [CharacterHaloFunc; NUM_CHARACTERS] = [
+        aris_original::spawn_character_model_halo,
+        momoi_original::spawn_character_model_halo,
+    ];
+
     // 엔터티를 하나 할당받습니다.
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
@@ -138,13 +176,10 @@ pub fn spawn_player_character(
     builder.add_bundle((view_state, view_state_timer));
 
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
+    let i = character_kind as usize;
     let parent = entity;
-    let (model_root_entity, skinning_animation, mut batch_commands) = match character_kind {
-        CharacterKind::ArisOriginal => {
-            aris_original::spawn_character_model(asset_manager, device, queue, world, parent)
-        }
-        CharacterKind::MomoiOriginal => todo!(),
-    }?;
+    let (model_root_entity, skinning_animation, mut batch_commands) =
+        CHARACTER_FN[i](asset_manager, device, queue, world, parent)?;
 
     // 캐릭터 모델 루트 노드와 스키닝 애니메이션 컴포넌트를 추가합니다.
     builder.add(Child(model_root_entity));
@@ -152,16 +187,8 @@ pub fn spawn_player_character(
 
     // 캐릭터 종류에 따른 캐릭터 헤일로 모델을 구성하는 엔터티를 생성합니다.
     let parent = entity;
-    let (halo_root_entity, mut halo_batch_commands) = match character_kind {
-        CharacterKind::ArisOriginal => aris_original::spawn_character_model_halo(
-            asset_manager,
-            device,
-            queue,
-            world,
-            parent,
-        ),
-        CharacterKind::MomoiOriginal => todo!(),
-    }?;
+    let (halo_root_entity, mut halo_batch_commands) =
+        CHARACTER_HALO_FN[i](asset_manager, device, queue, world, parent)?;
 
     // 캐릭터 헤일로 모델의 최상위 엔터티를 캐릭터 모델 엔터티의 형제 엔터티로 추가합니다.
     let (last_entity, last_builder) = batch_commands
@@ -407,7 +434,10 @@ fn set_character_direction_to_camera_from_current(
     third_person_camera: &ThirdPersonCamera,
     local_transform: &mut ToParentTrans,
 ) {
-    const ZOOM_IN_LEN: [f32; 1] = [aris_original::ATTACK_START_LEN];
+    const ZOOM_IN_LEN: [f32; NUM_CHARACTERS] = [
+        aris_original::ATTACK_START_LEN,
+        momoi_original::ATTACK_START_LEN,
+    ];
 
     // 삼인칭 카메라의 방향을 계산합니다.
     let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
@@ -433,7 +463,10 @@ fn set_character_direction_to_current_from_camera(
     _third_person_camera: &ThirdPersonCamera,
     local_transform: &mut ToParentTrans,
 ) {
-    const ZOOM_OUT_LEN: [f32; 1] = [aris_original::ATTACK_END_LEN];
+    const ZOOM_OUT_LEN: [f32; NUM_CHARACTERS] = [
+        aris_original::ATTACK_END_LEN,
+        momoi_original::ATTACK_END_LEN,
+    ];
 
     // 캐릭터의 방향을 가져옵니다.
     let look = local_transform.get_look_vector();
@@ -479,7 +512,10 @@ pub fn update_action_state_by_controller_input_flags(
     controller_input_flags: ControllerInputFlags,
 ) {
     type Func = fn(&mut ActionState, &mut ActionStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_action_state];
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::update_character_action_state,
+        momoi_original::update_character_action_state,
+    ];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
@@ -493,7 +529,10 @@ pub fn update_action_state_timer(
     elapsed_time_sec: f32,
 ) {
     type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_action_state_timer];
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::update_character_action_state_timer,
+        momoi_original::update_character_action_state_timer,
+    ];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
@@ -508,7 +547,10 @@ pub fn update_movement_state_timer(
     elapsed_time_sec: f32,
 ) {
     type Func = fn(ActionState, &mut MovementState, &mut MovementStateTimer, f32);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_movement_state_timer];
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::update_character_movement_state_timer,
+        momoi_original::update_character_movement_state_timer,
+    ];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](
@@ -527,7 +569,10 @@ pub fn update_view_state_by_controller_input_flags(
     controller_input_flags: ControllerInputFlags,
 ) {
     type Func = fn(&mut ViewState, &mut ViewStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_view_state];
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::update_character_view_state,
+        momoi_original::update_character_view_state,
+    ];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](view_state, view_state_timer, controller_input_flags);
@@ -541,7 +586,10 @@ pub fn update_view_state_timer(
     elapsed_time_sec: f32,
 ) {
     type Func = fn(&mut ViewState, &mut ViewStateTimer, f32);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_view_state_timer];
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::update_character_view_state_timer,
+        momoi_original::update_character_view_state_timer,
+    ];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](view_state, view_state_timer, elapsed_time_sec);
@@ -553,15 +601,23 @@ pub fn normalize_view_state_timer(
     view_state: ViewState,
     view_state_timer: ViewStateTimer,
 ) -> f32 {
-    const ZOOM_LEN: [[f32; 1]; 4] = [
-        [aris_original::NORMAL_IDLE_LEN],
-        [aris_original::ATTACK_START_LEN],
-        [aris_original::ATTACK_END_LEN],
-        [aris_original::NORMAL_IDLE_LEN],
+    const ZOOM_LEN: [[f32; 4]; NUM_CHARACTERS] = [
+        [
+            aris_original::NORMAL_IDLE_LEN,
+            aris_original::ATTACK_START_LEN,
+            aris_original::ATTACK_END_LEN,
+            aris_original::NORMAL_IDLE_LEN,
+        ],
+        [
+            momoi_original::NORMAL_IDLE_LEN,
+            momoi_original::ATTACK_START_LEN,
+            momoi_original::ATTACK_END_LEN,
+            momoi_original::NORMAL_IDLE_LEN,
+        ],
     ];
 
-    let i = view_state as usize;
-    let j = character_kind as usize;
+    let i = character_kind as usize;
+    let j = view_state as usize;
     view_state_timer.0 / ZOOM_LEN[i][j]
 }
 
@@ -586,7 +642,10 @@ pub fn animate_character(
         &ViewBorrow<&BoneCollection>,
         &mut ViewBorrow<&mut ToParentTrans>,
     );
-    const FUNC_TABLE: [Func; 1] = [aris_original::animate_character];
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::animate_character,
+        momoi_original::animate_character,
+    ];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](
