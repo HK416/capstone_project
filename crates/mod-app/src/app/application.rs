@@ -356,7 +356,7 @@ impl ApplicationHandler<AppEvent> for Application {
 
         // 게임 장면 갱신 전에 콜백 함수를 호출합니다.
         if let Err(e) = curr_scene.on_pre_update(window, self) {
-            alert_error("Runtime error", e.to_string(), Some(&window));;
+            alert_error("Runtime error", e.to_string(), Some(&window));
             return event_loop.exit();
         }
 
@@ -393,7 +393,7 @@ impl ApplicationHandler<AppEvent> for Application {
 
         // 게임 장면 갱신 후에 콜백 함수를 호출합니다.
         if let Err(e) = curr_scene.on_post_update(window, self) {
-            alert_error("Runtime error", e.to_string(), Some(&window));;
+            alert_error("Runtime error", e.to_string(), Some(&window));
             return event_loop.exit();
         }
 

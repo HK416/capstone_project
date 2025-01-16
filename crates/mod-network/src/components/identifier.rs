@@ -349,11 +349,6 @@ impl MovementStateTimer {
     pub fn reset(&mut self) {
         self.0 = Self::MIN_TIME
     }
-
-    /// 타이머를 갱신합니다.
-    pub fn update(&mut self, fixed_time_sec: f32) {
-        self.0 = self.0 + fixed_time_sec
-    }
 }
 
 impl BigEndian for MovementStateTimer {
@@ -456,25 +451,12 @@ impl TryFromBigEndian for ViewState {
 pub struct ViewStateTimer(pub f32);
 
 impl ViewStateTimer {
-    /// 타이머가 가질 수 있는 최대 시간입니다.
-    pub const MAX_TIME: f32 = 0.15;
-
     /// 타이머가 가질 수 있는 최소 시간입니다.
     pub const MIN_TIME: f32 = 0.0;
 
     /// 타이머를 초기화합니다.
     pub fn reset(&mut self) {
         self.0 = Self::MIN_TIME
-    }
-
-    /// 타이머를 갱신합니다.
-    pub fn update(&mut self, fixed_time_sec: f32) {
-        self.0 = (self.0 + fixed_time_sec).min(Self::MAX_TIME)
-    }
-
-    /// 타이머의 값을 0에서 1사이의 값을 반환합니다.
-    pub fn normalize(&self) -> f32 {
-        self.0 / Self::MAX_TIME
     }
 }
 

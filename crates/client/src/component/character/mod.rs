@@ -1,5 +1,5 @@
 pub mod animation;
-pub mod aris_original;
+mod aris_original;
 
 use std::sync::Arc;
 
@@ -7,7 +7,10 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::{
-    components::{CharacterKind, MovementState, ViewState, ViewStateTimer},
+    components::{
+        ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer, ViewState,
+        ViewStateTimer,
+    },
     Player,
 };
 use mod_parallelism::collections::Queue;
@@ -16,14 +19,14 @@ use mod_render::{
 };
 
 use crate::{
-    asset::ModelAssetError,
+    asset::{ModelAssetError, ModelHierarchyPool, MotionPool},
     component::{Acceleration, Child, Force, Sibling, ToParentTrans, Velocity, WorldTransform},
     render::{create_character_render_pipeline, CHARACTER_PIPELINE_NAME},
 };
 
 pub use self::animation::*;
 
-use super::{MoveDirection, ThirdPersonCamera};
+use super::{ControllerInputFlags, MoveDirection, ThirdPersonCamera};
 
 /// 캐릭터 헤일로의 종류입니다.
 #[repr(u8)]
@@ -48,6 +51,34 @@ impl ToString for CharacterHaloKind {
         }
         .to_string()
     }
+}
+
+/// 플레이어 캐릭터 모델의 애니메이션과 계층 구조 데이터를 풀 객체에 로드합니다.
+pub fn load_character_model(
+    asset_manager: &AssetManager,
+    character_kind: CharacterKind,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> Result<(), ModelAssetError> {
+    const MODELS: [(&'static str, &'static str, &'static str); 1] = [(
+        aris_original::WORKSPACE,
+        aris_original::MODEL_NAME,
+        aris_original::MODEL_HALO_NAME,
+    )];
+
+    let i = character_kind as usize;
+    let (workspace, model_name, model_halo_name) = MODELS[i];
+
+    // 캐릭터 모델 애니메이션을 로드합니다.
+    MotionPool::get_or_init(model_name, workspace, asset_manager)?;
+
+    // 캐릭터 모델 계층 구조를 로드합니다.
+    ModelHierarchyPool::get_or_init(model_name, workspace, asset_manager, device, queue)?;
+
+    // 캐릭터 헤일로 모델 계층 구조를 로드합니다.
+    ModelHierarchyPool::get_or_init(model_halo_name, workspace, asset_manager, device, queue)?;
+
+    Ok(())
 }
 
 /// 플레이어 캐릭터를 구성하는 엔터티를 생성합니다.
@@ -288,51 +319,58 @@ fn categorize_character_resource_recursion(
 /// 갱신되어야 합니다.
 ///
 pub fn update_character_direction(
+    character_kind: CharacterKind,
     movement_state: MovementState,
-    view_state: ViewState,
-    view_state_timer: ViewStateTimer,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
     move_direction: &MoveDirection,
     third_person_camera: &ThirdPersonCamera,
     local_transform: &mut ToParentTrans,
 ) {
-    type Func = fn(ViewStateTimer, &MoveDirection, &ThirdPersonCamera, &mut ToParentTrans);
-    const FUNC_TABLE: [[Func; 4]; 3] = [
+    type Func =
+        fn(CharacterKind, ActionStateTimer, &MoveDirection, &ThirdPersonCamera, &mut ToParentTrans);
+    const FUNC_TABLE: [[Func; 5]; 3] = [
         // `MovementState::Idle`
         [
-            update_character_direction_when_idle,     // ViewState::Idle
-            update_character_direction_when_zoom_in,  // ViewState::ZoomIn
-            update_character_direction_when_zoom_out, // ViewState::ZoomOut
-            update_character_direction_when_aiming,   // ViewState::Aiming
+            set_character_direction_to_none,                // ActionState::Idle
+            set_character_direction_to_camera,              // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_none,                // ActionState::AimOff
+            set_character_direction_to_camera,              // ActionState::Attack
         ],
         // `MovementState::Moving`
         [
-            update_character_direction_when_moving, // ViewState::Idle
-            update_character_direction_when_zoom_in_move, // ViewState::ZoomIn
-            update_character_direction_when_zoom_out_move, // ViewState::ZoomOut
-            update_character_direction_when_aiming, // ViewState::Aiming
+            set_character_direction_to_movement, // ActionState::Idle
+            set_character_direction_to_camera,   // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_current_from_camera, // ActionState::AimOff
+            set_character_direction_to_camera,   // ActionState::Attack
         ],
         // `MovementState::MoveToEnd`
         [
-            update_character_direction_when_idle,     // ViewState::Idle
-            update_character_direction_when_zoom_in,  // ViewState::ZoomIn
-            update_character_direction_when_zoom_out, // ViewState::ZoomOut
-            update_character_direction_when_aiming,   // ViewState::Aiming
+            set_character_direction_to_none,                // ActionState::Idle
+            set_character_direction_to_camera,              // ActionState::Aiminig
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_none,                // ActionState::AimOff
+            set_character_direction_to_camera,              // ActionState::Attack
         ],
     ];
 
     let i = movement_state as usize;
-    let j = view_state as usize;
+    let j = action_state as usize;
     FUNC_TABLE[i][j](
-        view_state_timer,
+        character_kind,
+        action_state_timer,
         move_direction,
         third_person_camera,
         local_transform,
     );
 }
 
-/// `MovementState::Idle` 또는 `MovementState::MoveToEnd`, `ViewState::Idle`일 때 캐릭터의 방향을 갱신합니다.
-fn update_character_direction_when_idle(
-    _view_state_timer: ViewStateTimer,
+/// `MovementState::Idle` 또는 `MovementState::MoveToEnd`, `ActionState::Idle`일 때 캐릭터의 방향을 갱신합니다.
+fn set_character_direction_to_none(
+    _character_kind: CharacterKind,
+    _view_state_timer: ActionStateTimer,
     _move_direction: &MoveDirection,
     _third_person_camera: &ThirdPersonCamera,
     _local_transform: &mut ToParentTrans,
@@ -340,9 +378,10 @@ fn update_character_direction_when_idle(
     /* empty */
 }
 
-/// `MovementState::Moving`, `ViewState::Idle`일 때 캐릭터의 방향을 갱신합니다.
-fn update_character_direction_when_moving(
-    _view_state_timer: ViewStateTimer,
+/// `MovementState::Moving`, `ActionState::Idle`일 때 캐릭터의 방향을 갱신합니다.
+fn set_character_direction_to_movement(
+    _character_kind: CharacterKind,
+    _view_state_timer: ActionStateTimer,
     move_direction: &MoveDirection,
     _third_person_camera: &ThirdPersonCamera,
     local_transform: &mut ToParentTrans,
@@ -354,19 +393,22 @@ fn update_character_direction_when_moving(
     let direction = move_direction.0;
 
     // 두 방향을 각도에 따라 선형 보간합니다.
-    let dir = look.lerp(direction, 0.1);
+    let dir = look.lerp(direction, 0.5);
 
     // 로컬 변환 행렬을 갱신합니다.
     local_transform.look_to(dir, glam::Vec4::Y);
 }
 
 /// `MovementState::Idle` 또는 `MovementState::MoveToEnd`, `ViewState::ZoomIn`일 때 캐릭터의 방향을 갱신합니다.
-fn update_character_direction_when_zoom_in(
-    view_state_timer: ViewStateTimer,
+fn set_character_direction_to_camera_from_current(
+    character_kind: CharacterKind,
+    view_state_timer: ActionStateTimer,
     _move_direction: &MoveDirection,
     third_person_camera: &ThirdPersonCamera,
     local_transform: &mut ToParentTrans,
 ) {
+    const ZOOM_IN_LEN: [f32; 1] = [aris_original::ATTACK_START_LEN];
+
     // 삼인칭 카메라의 방향을 계산합니다.
     let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
     let look = mat.z_axis.normalize_or(glam::Vec4::Z);
@@ -375,57 +417,30 @@ fn update_character_direction_when_zoom_in(
     let direction = local_transform.get_look_vector();
 
     // 선형 보간된 방향을 계산합니다.
-    let s = view_state_timer.normalize();
+    let i = character_kind as usize;
+    let s = view_state_timer.0 / ZOOM_IN_LEN[i];
     let look = look.lerp(direction, s).normalize_or(look);
 
     // 로컬 변환 행렬을 갱신합니다.
     local_transform.look_to(look, glam::Vec4::Y);
-}
-
-/// `MovementState::Moving`, `ViewState::ZoomIn`일 때 캐릭터의 방향을 갱신합니다.
-fn update_character_direction_when_zoom_in_move(
-    view_state_timer: ViewStateTimer,
-    _move_direction: &MoveDirection,
-    third_person_camera: &ThirdPersonCamera,
-    local_transform: &mut ToParentTrans,
-) {
-    // 삼인칭 카메라의 방향을 계산합니다.
-    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
-    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
-
-    // 캐릭터의 방향을 가져옵니다.
-    let direction = local_transform.get_look_vector();
-
-    // 선형 보간된 방향을 계산합니다.
-    let s = view_state_timer.normalize();
-    let look = look.lerp(direction, s).normalize_or(look);
-
-    // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(look, glam::Vec4::Y);
-}
-
-/// `MovementState::Idle` 또는 `MovementState::MoveToEnd`, `ViewState::ZoomOut`일 때 캐릭터의 방향을 갱신합니다.
-fn update_character_direction_when_zoom_out(
-    _view_state_timer: ViewStateTimer,
-    _move_direction: &MoveDirection,
-    _third_person_camera: &ThirdPersonCamera,
-    _local_transform: &mut ToParentTrans,
-) {
-    /* empty */
 }
 
 /// `MovementState::Moving`, `ViewState::ZoomOut`일 때 캐릭터의 방향을 갱신합니다.
-fn update_character_direction_when_zoom_out_move(
-    view_state_timer: ViewStateTimer,
+fn set_character_direction_to_current_from_camera(
+    character_kind: CharacterKind,
+    view_state_timer: ActionStateTimer,
     move_direction: &MoveDirection,
     _third_person_camera: &ThirdPersonCamera,
     local_transform: &mut ToParentTrans,
 ) {
+    const ZOOM_OUT_LEN: [f32; 1] = [aris_original::ATTACK_END_LEN];
+
     // 캐릭터의 방향을 가져옵니다.
     let look = local_transform.get_look_vector();
 
     // 선형 보간된 방향을 계산합니다.
-    let s = view_state_timer.normalize();
+    let i = character_kind as usize;
+    let s = view_state_timer.0 / ZOOM_OUT_LEN[i];
     let look = move_direction
         .0
         .lerp(look, s)
@@ -435,8 +450,9 @@ fn update_character_direction_when_zoom_out_move(
     local_transform.look_to(look, glam::Vec4::Y);
 }
 
-fn update_character_direction_when_aiming(
-    _view_state_timer: ViewStateTimer,
+fn set_character_direction_to_camera(
+    _character_kind: CharacterKind,
+    _view_state_timer: ActionStateTimer,
     _move_direction: &MoveDirection,
     third_person_camera: &ThirdPersonCamera,
     local_transform: &mut ToParentTrans,
@@ -453,4 +469,134 @@ fn update_character_direction_when_aiming(
 
     // 로컬 변환 행렬을 갱신합니다.
     local_transform.look_to(look, glam::Vec4::Y);
+}
+
+/// `ControllerInputFlags`에 따라 `ActionState`를 갱신합니다.
+pub fn update_action_state_by_controller_input_flags(
+    character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    type Func = fn(&mut ActionState, &mut ActionStateTimer, ControllerInputFlags);
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_action_state];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
+}
+
+/// 주어진 경과 시간 만큼 `ActionStateTimer`를 갱신합니다.
+pub fn update_action_state_timer(
+    character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_action_state_timer];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
+}
+
+/// 주어진 경과 시간 만큼 `MovementStateTimer`를 갱신합니다.
+pub fn update_movement_state_timer(
+    character_kind: CharacterKind,
+    action_state: ActionState,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(ActionState, &mut MovementState, &mut MovementStateTimer, f32);
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_movement_state_timer];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](
+        action_state,
+        movement_state,
+        movement_state_timer,
+        elapsed_time_sec,
+    );
+}
+
+/// `ControllerInputFlags`에 따라 `ViewState`를 갱신합니다.
+pub fn update_view_state_by_controller_input_flags(
+    character_kind: CharacterKind,
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, ControllerInputFlags);
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_view_state];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](view_state, view_state_timer, controller_input_flags);
+}
+
+/// 주어진 경과 시간 만큼 `ViewStateTimer`를 갱신합니다.
+pub fn update_view_state_timer(
+    character_kind: CharacterKind,
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, f32);
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_view_state_timer];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](view_state, view_state_timer, elapsed_time_sec);
+}
+
+/// `ViewStateTimer`를 정규화한 값을 반환합니다.
+pub fn normalize_view_state_timer(
+    character_kind: CharacterKind,
+    view_state: ViewState,
+    view_state_timer: ViewStateTimer,
+) -> f32 {
+    const ZOOM_LEN: [[f32; 1]; 4] = [
+        [aris_original::NORMAL_IDLE_LEN],
+        [aris_original::ATTACK_START_LEN],
+        [aris_original::ATTACK_END_LEN],
+        [aris_original::NORMAL_IDLE_LEN],
+    ];
+
+    let i = view_state as usize;
+    let j = character_kind as usize;
+    view_state_timer.0 / ZOOM_LEN[i][j]
+}
+
+pub fn animate_character(
+    asset_manager: &AssetManager,
+    character_kind: CharacterKind,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
+    movement_state: MovementState,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    type Func = fn(
+        &AssetManager,
+        ActionState,
+        ActionStateTimer,
+        MovementState,
+        MovementStateTimer,
+        &SkinningAnimation,
+        &ViewBorrow<&BoneCollection>,
+        &mut ViewBorrow<&mut ToParentTrans>,
+    );
+    const FUNC_TABLE: [Func; 1] = [aris_original::animate_aris_original];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](
+        asset_manager,
+        action_state,
+        action_state_timer,
+        movement_state,
+        movement_state_timer,
+        skinning_animation,
+        collection_view,
+        transform_view,
+    );
 }

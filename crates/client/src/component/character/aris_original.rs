@@ -5,20 +5,36 @@ use constcat::concat;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer, ViewState,
+    ViewStateTimer,
 };
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
 use crate::{
     asset::{ModelAssetError, ModelHierarchyPool, Motion, MotionPool, Node},
     component::{
-        BoneCollection, CharacterHaloKind, Child, Parent, Sibling, SkinningAnimation,
-        ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
-        ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX,
-        MODEL_BONE_L_THIGH, MODEL_BONE_PELVIS, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH,
-        MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
+        BoneCollection, CharacterHaloKind, Child, ControllerInputFlags, Parent, Sibling,
+        SkinningAnimation, ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX,
+        ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
+        IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_PELVIS, MODEL_BONE_ROOT,
+        MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
     },
 };
+
+/// 캐릭터 모델의 Idle 애니메이션 길이입니다.
+pub const NORMAL_IDLE_LEN: f32 = 2.8;
+/// 캐릭터 모델의 Moving 애니메이션 길이입니다.
+pub const MOVE_ING_LEN: f32 = 0.667;
+/// 캐릭터 모델의 Move_To_End 애니메이션 길이입니다.
+pub const MOVE_TO_END_LEN: f32 = 2.0;
+/// 캐릭터 모델의 Cafe_Walk 애니메이션 길이입니다.
+pub const CAFE_WALK_LEN: f32 = 1.267;
+/// 캐릭터 모델의 Attack_Start 애니메이션 길이입니다.
+pub const ATTACK_START_LEN: f32 = 0.667;
+/// 캐릭터 모델의 Attack_Ing 애니메이션 길이입니다.
+pub const ATTACK_ING_LEN: f32 = 2.667;
+/// 캐릭터 모델의 Attack_End 애니메이션 길이입니다.
+pub const ATTACK_END_LEN: f32 = 0.667;
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
 pub const WORKSPACE: &'static str = "characters/aris_original/";
@@ -421,136 +437,213 @@ fn spawn_aris_original_model_halo_recursive(
     entity
 }
 
-//
-// # 애니메이션 테이블
-// 애니메이션은 `ActionState`와 `MovementState`로 결정된다.
-//
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// |                      | MovementState::Idle   | MovementState::Moving   | MovementState::MoveToEnd |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::Idle    | Idle                  | Moving                  | MoveToEnd                |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::Aiming  | Aim                   | Aim_Move                | Aim                      |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::AimAt   | Idle_To_Aim           | Move_To_Aim_Move        | Idle_To_Aim              |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::AimOff  | Aim_To_Idle           | Aim_Move_To_Move        | Aim_To_Idle              |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::Attack  | Attack_Ing            | Attack_Move             | Attack_Ing               |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-//
-// # 애니메이션 목록 & 사용 타이머
-// - Idle
-// - Moving
-// - MoveToEnd
-// - Aim
-// - AimMove
-// - IdleToAim
-// - MoveToAimMove
-// - AimToIdle
-// - AimMoveToMove
-// - Attacking
-// - AttackMove
-//
+/// `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+pub fn update_aris_original_action_state(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    type Func = fn(&mut ActionState, &mut ActionStateTimer, ControllerInputFlags);
+    const FUNC_TABLE: [Func; 5] = [
+        update_action_state_when_idle,
+        update_action_state_when_aiming,
+        update_action_state_when_aim_at,
+        update_action_state_when_aim_off,
+        update_action_state_when_attack,
+    ];
+
+    let i = *action_state as usize;
+    FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
+}
+
+/// `ActionState::Idle`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+pub fn update_action_state_when_idle(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    // 가능한 다음 행동 상태
+    // - ActionState::AimAt
+    // - ActionState::Attack
+    //
+    // 입력 우선 순위: ExSkill < Skill < Attack < Aiming < Jump < Reload
+    //
+    if controller_input_flags.contains(ControllerInputFlags::ExSkill) {
+        // TODO
+    } else if controller_input_flags.contains(ControllerInputFlags::Skill) {
+        // TODO
+    } else if controller_input_flags.contains(ControllerInputFlags::Attack) {
+        *action_state = ActionState::Attack;
+        action_state_timer.reset();
+    } else if controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *action_state = ActionState::AimAt;
+        action_state_timer.reset();
+    } else if controller_input_flags.contains(ControllerInputFlags::Jump) {
+        // TODO
+    } else if controller_input_flags.contains(ControllerInputFlags::Reload) {
+        // TODO
+    }
+}
+
+/// `ActionState::Aiming`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+pub fn update_action_state_when_aiming(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    // 가능한 다음 상태
+    // - ActionState::Attack
+    // - ActionState::AimOff
+    //
+    // 입력 우선 순위: ExSkill < Skill < Attack < Aiming
+    //
+    if controller_input_flags.contains(ControllerInputFlags::ExSkill) {
+        // TODO
+    } else if controller_input_flags.contains(ControllerInputFlags::Skill) {
+        // TODO
+    } else if controller_input_flags.contains(ControllerInputFlags::Attack) {
+        *action_state = ActionState::Attack;
+        action_state_timer.reset();
+    } else if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *action_state = ActionState::AimOff;
+        action_state_timer.reset();
+    }
+}
+
+/// `ActionState::AimAt`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+pub fn update_action_state_when_aim_at(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    // 가능한 다음 상태
+    // - ActionState::AimOff
+    //
+    // 입력 우선 순위: Aiming
+    //
+    if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *action_state = ActionState::AimOff;
+        action_state_timer.0 = (1.0 - action_state_timer.0 / ATTACK_START_LEN) * ATTACK_END_LEN;
+    }
+}
+
+/// `ActionState::AimOff`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+pub fn update_action_state_when_aim_off(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    // 가능한 다음 상태
+    // - ActionState::AimAt
+    //
+    // 입력 우선 순위: Aiming
+    //
+    if controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *action_state = ActionState::AimAt;
+        action_state_timer.0 = (1.0 - action_state_timer.0 / ATTACK_END_LEN) * ATTACK_START_LEN;
+    }
+}
+
+/// `ActionState::Attack`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+pub fn update_action_state_when_attack(
+    _action_state: &mut ActionState,
+    _action_state_timer: &mut ActionStateTimer,
+    _controller_input_flags: ControllerInputFlags,
+) {
+    /* empty */
+}
 
 /// `ArisOriginal` 모델의 `ActionState`와 `ActionStateTimer`를 갱신합니다.
 ///
 /// # Note
 /// - 이 함수를 호출하기 전에 사용자 입력에 따른 ActionState를 먼저 갱신해야합니다.
 ///
-pub fn update_action_state_timer(
-    asset_manager: &AssetManager,
+pub fn update_aris_original_action_state_timer(
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     elapsed_time_sec: f32,
 ) {
-    type Func = fn(&Arc<HashMap<String, Motion>>, &mut ActionState, &mut ActionStateTimer, f32);
-    const FUNC_TABLE: [Func; 4] = [
+    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
+    const FUNC_TABLE: [Func; 5] = [
         update_action_state_timer_when_idle,
         update_action_state_timer_when_aiming,
         update_action_state_timer_when_aim_at,
         update_action_state_timer_when_aim_off,
+        update_action_state_timer_when_attack,
     ];
 
-    // 캐릭터 애니메이션 데이터를 가져옵니다.
-    let motions = MotionPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager)
-        .expect("no such character motions");
-
     let i = *action_state as usize;
-    FUNC_TABLE[i](&motions, action_state, action_state_timer, elapsed_time_sec);
+    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
 }
 
 /// `ActionState::Idle`일 때 `ActionStateTimer`를 갱신합니다.
 fn update_action_state_timer_when_idle(
-    motions: &Arc<HashMap<String, Motion>>,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Normal_Idle` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(IDLE_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
-    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % length;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_LEN;
 }
 
 /// `ActionState::Aiming`일 때 `ActionStateTimer`를 갱신합니다.
 fn update_action_state_timer_when_aiming(
-    motions: &Arc<HashMap<String, Motion>>,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Normal_Idle` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(IDLE_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
-    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % length;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_LEN;
 }
 
 /// `ActionState::AimAt`일 때 `ActionState`와 `ActionStateTimer`를 갱신합니다.
 fn update_action_state_timer_when_aim_at(
-    motions: &Arc<HashMap<String, Motion>>,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Normal_Attack_Start` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
     // `Aris_Original_Normal_Attack_Start` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - length;
+    let diff_t = action_state_timer.0 - ATTACK_START_LEN;
     if diff_t >= 0.0 {
         *action_state = ActionState::Aiming;
-        action_state_timer.0 = diff_t;
+        action_state_timer.0 = diff_t % NORMAL_IDLE_LEN;
     }
 }
 
 /// `ActionState::AimOff`일 때 `ActionState`와 `ActionStateTimer`를 갱신합니다.
 fn update_action_state_timer_when_aim_off(
-    motions: &Arc<HashMap<String, Motion>>,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Normal_Attack_End` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
     // `Aris_Original_Normal_Attack_End` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - length;
+    let diff_t = action_state_timer.0 - ATTACK_END_LEN;
     if diff_t >= 0.0 {
         *action_state = ActionState::Idle;
-        action_state_timer.0 = diff_t;
+        action_state_timer.0 = diff_t % NORMAL_IDLE_LEN;
+    }
+}
+
+/// `ActionState::Attack`일 때 `ActionState`와 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_attack(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    // 타이머를 갱신합니다.
+    action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
+
+    // `Aris_Original_Normal_Attack_Ing` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
+    let diff_t = action_state_timer.0 - ATTACK_ING_LEN;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t % NORMAL_IDLE_LEN;
     }
 }
 
@@ -560,15 +653,14 @@ fn update_action_state_timer_when_aim_off(
 /// - 이 함수를 호출하기 전에 ActionState를 먼저 갱신해야합니다.
 /// - 이 함수를 호출하기 전에 ControllerState에 따른 MovementState 갱신이 필요합니다.
 ///
-pub fn update_movement_state_timer(
-    asset_manager: &AssetManager,
+pub fn update_aris_original_movement_state_timer(
     action_state: ActionState,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     elapsed_time_sec: f32,
 ) {
-    type Func = fn(&Arc<HashMap<String, Motion>>, &mut MovementState, &mut MovementStateTimer, f32);
-    const FUNC_TABLE: [[Func; 3]; 4] = [
+    type Func = fn(&mut MovementState, &mut MovementStateTimer, f32);
+    const FUNC_TABLE: [[Func; 3]; 5] = [
         // `ActionState::Idle`
         [
             update_movement_state_timer_when_idle,
@@ -593,68 +685,50 @@ pub fn update_movement_state_timer(
             update_movement_state_timer_when_walking,
             update_movement_state_timer_when_idle,
         ],
+        // `ActionState::Attack`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+        ],
     ];
-
-    // 캐릭터 애니메이션 데이터를 가져옵니다.
-    let motions = MotionPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager)
-        .expect("no such character motions");
 
     let i = action_state as usize;
     let j = *movement_state as usize;
-    FUNC_TABLE[i][j](
-        &motions,
-        movement_state,
-        movement_state_timer,
-        elapsed_time_sec,
-    );
+    FUNC_TABLE[i][j](movement_state, movement_state_timer, elapsed_time_sec);
 }
 
 /// `Aris_Original_Normal_Idle` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_idle(
-    motions: &Arc<HashMap<String, Motion>>,
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Normal_Idle` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(IDLE_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % length;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_LEN;
 }
 
 /// `Aris_Original_Move_Ing` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_moving(
-    motions: &Arc<HashMap<String, Motion>>,
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Move_Ing` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(MOVING_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % length;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % MOVE_ING_LEN;
 }
 
 /// `Aris_Original_Move_End_Normal` 애니메이션 데이터로 `MovementState`와 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_move_to_end(
-    motions: &Arc<HashMap<String, Motion>>,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Move_End_Normal` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(MOVE_TO_END_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
     movement_state_timer.0 = movement_state_timer.0 + elapsed_time_sec;
 
     // `Aris_Original_Move_End_Normal` 애니메이션 길이보다 클 경우 `MovemenetState`를 갱신합니다.
-    let diff_t = movement_state_timer.0 - length;
+    let diff_t = movement_state_timer.0 - MOVE_TO_END_LEN;
     if diff_t >= 0.0 {
         *movement_state = MovementState::Idle;
         movement_state_timer.0 = diff_t;
@@ -663,17 +737,131 @@ fn update_movement_state_timer_when_move_to_end(
 
 /// `Aris_Original_Cafe_Walk` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_walking(
-    motions: &Arc<HashMap<String, Motion>>,
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     elapsed_time_sec: f32,
 ) {
-    // `Aris_Original_Cafe_Walk` 애니메이션 길이를 가져옵니다.
-    let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
-    let length = motion.length;
-
     // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % length;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % CAFE_WALK_LEN;
+}
+
+/// `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+pub fn update_aris_original_view_state(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, ControllerInputFlags);
+    const FUNC_TABLE: [Func; 4] = [
+        update_view_state_when_idle,
+        update_view_state_when_zoom_in,
+        update_view_state_when_zoom_out,
+        update_view_state_when_aiming,
+    ];
+
+    let i = *view_state as usize;
+    FUNC_TABLE[i](view_state, view_state_timer, controller_input_flags);
+}
+
+/// `ViewState::Idle`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+fn update_view_state_when_idle(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    if controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *view_state = ViewState::ZoomIn;
+        view_state_timer.reset();
+    }
+}
+
+/// `ViewState::ZoomIn`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+fn update_view_state_when_zoom_in(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *view_state = ViewState::ZoomOut;
+        view_state_timer.0 = (1.0 - view_state_timer.0 / ATTACK_START_LEN) * ATTACK_END_LEN;
+    }
+}
+
+/// `ViewState::ZoomOut`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+fn update_view_state_when_zoom_out(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    if controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *view_state = ViewState::ZoomIn;
+        view_state_timer.0 = (1.0 - view_state_timer.0 / ATTACK_END_LEN) * ATTACK_START_LEN;
+    }
+}
+
+/// `ViewState::Aiming`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+fn update_view_state_when_aiming(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    controller_input_flags: ControllerInputFlags,
+) {
+    if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
+        *view_state = ViewState::ZoomOut;
+        view_state_timer.reset();
+    }
+}
+
+/// `ArisOriginal` 캐릭터 모델의 `ViewStateTimer`를 갱신하는 함수입니다.
+pub fn update_aris_original_view_state_timer(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    elapsed_time_sec: f32,
+) {
+    const FUNC_TABLE: [fn(&mut ViewState, &mut ViewStateTimer, f32); 4] = [
+        update_timer_when_idle_state,
+        update_timer_when_zoom_in_state,
+        update_timer_when_zoom_out_state,
+        update_timer_when_aiming_state,
+    ];
+
+    let i = *view_state as usize;
+    FUNC_TABLE[i](view_state, view_state_timer, elapsed_time_sec);
+}
+
+/// `ViewState::Idle`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
+fn update_timer_when_idle_state(_: &mut ViewState, _: &mut ViewStateTimer, _: f32) {
+    /* empty */
+}
+
+/// `ViewState::ZoomIn`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
+fn update_timer_when_zoom_in_state(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    elapsed_time_sec: f32,
+) {
+    view_state_timer.0 = view_state_timer.0 + elapsed_time_sec;
+    if view_state_timer.0 >= ATTACK_START_LEN {
+        *view_state = ViewState::Aiming;
+        view_state_timer.reset();
+    }
+}
+
+/// `ViewState::ZoomOut`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
+fn update_timer_when_zoom_out_state(
+    view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    elapsed_time_sec: f32,
+) {
+    view_state_timer.0 = view_state_timer.0 + elapsed_time_sec;
+    if view_state_timer.0 >= ATTACK_END_LEN {
+        *view_state = ViewState::Idle;
+        view_state_timer.reset();
+    }
+}
+
+/// `ViewState::Aiming`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
+fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: f32) {
+    /* empty */
 }
 
 /// `Aris_Original` 모델의 애니메이션을 재생합니다.
@@ -703,7 +891,7 @@ pub fn animate_aris_original(
         &ViewBorrow<&BoneCollection>,
         &mut ViewBorrow<&mut ToParentTrans>,
     );
-    const FUNC_TABLE: [[Func; 3]; 4] = [
+    const FUNC_TABLE: [[Func; 3]; 5] = [
         // `ActionState::Idle`
         [
             animate_aris_original_when_idle,        // `MovementState::Idle`
@@ -727,6 +915,12 @@ pub fn animate_aris_original(
             animate_aris_original_when_aim_to_idle, // `MovementState::Idle`
             animate_aris_original_when_aim_move_to_move, // `MovementState::Moving`
             animate_aris_original_when_aim_to_idle, // `MovementState::MoveToEnd`
+        ],
+        // `ActionState::Attack`
+        [
+            animate_aris_original_when_attacking,   // `MovementState::Idle`
+            animate_aris_original_when_attack_move, // `MovementState::Moving`
+            animate_aris_original_when_attacking,   // `MovementState::MoveToEnd`
         ],
     ];
 
@@ -1278,6 +1472,150 @@ fn animate_aris_original_when_aim_move(
         .keyframes
         .first()
         .expect("keyframes must not be empty");
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // `Aris_Original_Cafe_Walk` 애니메이션을 가져옵니다.
+    let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let keyframe = motion.linear_sampling(movement_state_timer.0);
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            // 뼈 엔터티가 애니메이션 믹싱 뼈 집합에 포함되는 겨우 로컬 변환 행렬을 선형 보간합니다.
+            let bone_entity = bone_collection.bones[bone_index];
+            if skinning_animation
+                .animation_mixing_bones
+                .contains(&bone_entity)
+            {
+                let local_transform = transform_view
+                    .get_mut(bone_entity)
+                    .expect("invalid entity or invalid entity component");
+                local_transform.0 = local_transform.0 * 0.2 + bone_transform * 0.8;
+            }
+        }
+    }
+}
+
+/// `Aris_Original_Normal_Attack_Ing` 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_aris_original_when_attacking(
+    motions: &Arc<HashMap<String, Motion>>,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `Aris_Original_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let keyframe = motion.linear_sampling(action_state_timer.0);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+}
+
+/// `Aris_Original_Normal_Attack_Ing`와 `Aris_Original_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_aris_original_when_attack_move(
+    motions: &Arc<HashMap<String, Motion>>,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `Aris_Original_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let keyframe = motion.linear_sampling(action_state_timer.0);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view

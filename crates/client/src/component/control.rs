@@ -1,6 +1,5 @@
-use mod_network::components::{
-    ActionState, MovementState, MovementStateTimer, ViewState, ViewStateTimer,
-};
+use bitflags::bitflags;
+use mod_network::components::{MovementState, MovementStateTimer};
 use winit::{
     event::MouseButton,
     keyboard::{KeyCode, KeyLocation},
@@ -9,25 +8,6 @@ use winit::{
 use crate::config::UserConfig;
 
 use super::ThirdPersonCamera;
-
-/// 마우스 버튼 입력 이벤트가 발생했을 때, `ActionState`를 갱신하는 함수입니다.
-pub fn update_action_state_on_mouse_click(
-    config: &UserConfig,
-    button: MouseButton,
-    action_state: &mut ActionState,
-) {
-    // TODO:
-}
-
-/// 키보드 입력 이벤트가 발생했을 때, `ActionState`를 갱신하는 함수입니다.
-pub fn update_action_state_on_keyboard_pressed(
-    config: &UserConfig,
-    keycode: KeyCode,
-    location: KeyLocation,
-    action_state: &mut ActionState,
-) {
-    // TODO:
-}
 
 /// 컨트롤러 입력이 지속된 시간을 측정하는 타이머입니다.
 #[repr(transparent)]
@@ -49,11 +29,6 @@ impl ControllerInputTimer {
     /// 컨트롤러가 눌려있지 않을 때 타이머를 갱신하는 함수입니다.
     pub fn update_when_controller_released(&mut self, fixed_time_sec: f32) {
         self.0 = (self.0 - fixed_time_sec).max(Self::MAX_TIME)
-    }
-
-    /// 타이머의 값을 0에서 1사이의 값을 반환합니다.
-    pub fn normalize(&self) -> f32 {
-        self.0 / Self::MAX_TIME
     }
 }
 
@@ -127,6 +102,109 @@ impl ControllerState {
         ];
         let index = *self as usize;
         *self = FUNC_TABLE[index](config, keycode, location);
+    }
+}
+
+/// 플레이어 액션 컨트롤러의 눌림 상태를 나타냅니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ControllerInputFlags(pub u16);
+
+bitflags! {
+    impl ControllerInputFlags : u16 {
+        const Aiming = 0x0001;
+        const Attack = 0x0002;
+        const Skill = 0x0004;
+        const ExSkill = 0x0008;
+        const Jump = 0x0010;
+        const Reload = 0x0020;
+        const Status = 0x0040;
+        const Emotion1 = 0x0100;
+        const Emotion2 = 0x0200;
+        const Emotion3 = 0x0400;
+        const Emotion4 = 0x0800;
+    }
+}
+
+impl ControllerInputFlags {
+    /// 마우스 버튼 눌림 이벤트를 처리합니다.
+    pub fn handle_mouse_btn_pressed(&mut self, config: &UserConfig, button: MouseButton) {
+        if config.mouse.aiming == button {
+            *self |= ControllerInputFlags::Aiming;
+        } else if config.mouse.attack == button {
+            *self |= ControllerInputFlags::Attack;
+        }
+    }
+
+    /// 마우스 버튼 떼임 이벤트를 처리합니다.
+    pub fn handle_mouse_btn_released(&mut self, config: &UserConfig, button: MouseButton) {
+        if config.mouse.aiming == button {
+            *self &= !ControllerInputFlags::Aiming;
+        } else if config.mouse.attack == button {
+            *self &= !ControllerInputFlags::Attack;
+        }
+    }
+
+    /// 키보드 눌림 이벤트를 처리합니다.
+    pub fn handle_keyboard_pressed(
+        &mut self,
+        config: &UserConfig,
+        keycode: KeyCode,
+        location: KeyLocation,
+    ) {
+        if config.keyboard.skill == (keycode, location) {
+            *self |= ControllerInputFlags::Skill;
+        } else if config.keyboard.ex_skill == (keycode, location) {
+            *self |= ControllerInputFlags::ExSkill;
+        } else if config.keyboard.reloading == (keycode, location) {
+            *self |= ControllerInputFlags::Reload;
+        } else if config.keyboard.jumping == (keycode, location) {
+            *self |= ControllerInputFlags::Jump;
+        } else if config.keyboard.status == (keycode, location) {
+            *self |= ControllerInputFlags::Status;
+        } else if config.keyboard.emotion_1 == (keycode, location) {
+            *self |= ControllerInputFlags::Emotion1;
+        } else if config.keyboard.emotion_2 == (keycode, location) {
+            *self |= ControllerInputFlags::Emotion2;
+        } else if config.keyboard.emotion_3 == (keycode, location) {
+            *self |= ControllerInputFlags::Emotion3;
+        } else if config.keyboard.emotion_4 == (keycode, location) {
+            *self |= ControllerInputFlags::Emotion4;
+        }
+    }
+
+    /// 키보드 떼임 이벤트를 처리합니다.
+    pub fn handle_keyboard_released(
+        &mut self,
+        config: &UserConfig,
+        keycode: KeyCode,
+        location: KeyLocation,
+    ) {
+        if config.keyboard.skill == (keycode, location) {
+            *self &= !ControllerInputFlags::Skill;
+        } else if config.keyboard.ex_skill == (keycode, location) {
+            *self &= !ControllerInputFlags::ExSkill;
+        } else if config.keyboard.reloading == (keycode, location) {
+            *self &= !ControllerInputFlags::Reload;
+        } else if config.keyboard.jumping == (keycode, location) {
+            *self &= !ControllerInputFlags::Jump;
+        } else if config.keyboard.status == (keycode, location) {
+            *self &= !ControllerInputFlags::Status;
+        } else if config.keyboard.emotion_1 == (keycode, location) {
+            *self &= !ControllerInputFlags::Emotion1;
+        } else if config.keyboard.emotion_2 == (keycode, location) {
+            *self &= !ControllerInputFlags::Emotion2;
+        } else if config.keyboard.emotion_3 == (keycode, location) {
+            *self &= !ControllerInputFlags::Emotion3;
+        } else if config.keyboard.emotion_4 == (keycode, location) {
+            *self &= !ControllerInputFlags::Emotion4;
+        }
+    }
+}
+
+impl Default for ControllerInputFlags {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 
@@ -495,7 +573,7 @@ fn update_move_direction_when_moving_left_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -519,7 +597,7 @@ fn update_move_direction_when_moving_right_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -543,7 +621,7 @@ fn update_move_direction_when_moving_forward_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -567,7 +645,7 @@ fn update_move_direction_when_moving_backward_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -591,7 +669,7 @@ fn update_move_direction_when_moving_left_forward_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -615,7 +693,7 @@ fn update_move_direction_when_moving_right_forward_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -639,7 +717,7 @@ fn update_move_direction_when_moving_left_backward_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -663,7 +741,7 @@ fn update_move_direction_when_moving_right_backward_state(
     // 두 벡터의 각도로 부터 보정 값을 계산합니다.
     let dst_v = glam::Vec3A::from_vec4(dir);
     let src_v = glam::Vec3A::from_vec4(direction.0);
-    let s = dst_v.angle_between(src_v) / PI;
+    let s = dst_v.angle_between(src_v) / PI * 0.5 + 0.5;
 
     // 플레이어 방향을 갱신합니다.
     direction.0 = direction.0.lerp(dir, s).normalize_or(dir);
@@ -725,55 +803,4 @@ pub fn update_movement_state_by_controller_state(
     if previous_state != *movement_state {
         movement_state_timer.reset();
     }
-}
-
-/// `ViewStateTimer`를 갱신하는 함수입니다.
-pub fn update_view_state_timer(
-    view_state: &mut ViewState,
-    view_state_timer: &mut ViewStateTimer,
-    fixed_time_sec: f32,
-) {
-    const FUNC_TABLE: [fn(&mut ViewState, &mut ViewStateTimer, f32); 4] = [
-        update_timer_when_idle_state,
-        update_timer_when_zoom_in_state,
-        update_timer_when_zoom_out_state,
-        update_timer_when_aiming_state,
-    ];
-
-    let i = *view_state as usize;
-    FUNC_TABLE[i](view_state, view_state_timer, fixed_time_sec);
-}
-
-/// `ViewState::Idle`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
-fn update_timer_when_idle_state(_: &mut ViewState, _: &mut ViewStateTimer, _: f32) {
-    /* empty */
-}
-
-/// `ViewState::ZoomIn`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
-fn update_timer_when_zoom_in_state(
-    view_state: &mut ViewState,
-    view_state_timer: &mut ViewStateTimer,
-    fixed_time_sec: f32,
-) {
-    view_state_timer.update(fixed_time_sec);
-    if view_state_timer.0 >= ViewStateTimer::MAX_TIME {
-        *view_state = ViewState::Aiming
-    }
-}
-
-/// `ViewState::ZoomOut`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
-fn update_timer_when_zoom_out_state(
-    view_state: &mut ViewState,
-    view_state_timer: &mut ViewStateTimer,
-    fixed_time_sec: f32,
-) {
-    view_state_timer.update(fixed_time_sec);
-    if view_state_timer.0 >= ViewStateTimer::MAX_TIME {
-        *view_state = ViewState::Idle
-    }
-}
-
-/// `ViewState::Aiming`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
-fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: f32) {
-    /* empty */
 }

@@ -1,6 +1,8 @@
 use glam::Vec4Swizzles;
 use hecs::{Entity, World};
-use mod_network::components::{ViewState, ViewStateTimer};
+use mod_network::components::{CharacterKind, ViewState, ViewStateTimer};
+
+use crate::component::normalize_view_state_timer;
 
 use super::{update_entity_hierarchy, ToParentTrans};
 
@@ -42,7 +44,12 @@ impl ThirdPersonCamera {
     /// # Note
     /// 이 함수를 호출하기 전에 `ViewState`가 먼저 갱신되어야 합니다.
     ///
-    pub fn update_offset(&mut self, view_state: ViewState, view_state_timer: ViewStateTimer) {
+    pub fn update_offset(
+        &mut self,
+        character_kind: CharacterKind,
+        view_state: ViewState,
+        view_state_timer: ViewStateTimer,
+    ) {
         const FUNC_TABLE: [fn(glam::Vec4, glam::Vec4, f32) -> glam::Vec4; 4] = [
             update_offset_when_idle_state,
             update_offset_when_zoom_in_state,
@@ -51,7 +58,7 @@ impl ThirdPersonCamera {
         ];
 
         let i = view_state as usize;
-        let s = view_state_timer.normalize();
+        let s = normalize_view_state_timer(character_kind, view_state, view_state_timer);
         self.position_offset = FUNC_TABLE[i](self.default_offset, self.zoom_offset, s);
     }
 

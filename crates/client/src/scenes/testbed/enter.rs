@@ -15,13 +15,11 @@ use mod_network::{
 use mod_render::{
     GraphicsPipelinePool, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
-use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::{ModelHierarchyPool, MotionPool},
     channel::TaskResultChannel,
-    component::{aris_original, spawn_player_character},
+    component::{load_character_model, spawn_player_character},
     config::UserConfig,
     render::{
         create_character_render_pipeline, create_student_halo_render_pipeline,
@@ -346,8 +344,11 @@ impl GameScene for LoadStageResourceScene {
             let queue = app.render_queue().clone();
             let channel = self.task_result_channel.clone();
             let asset_manager = app.asset_manager().clone();
-            load_character_model(pool, device, queue, channel, asset_manager, character_kind);
-            self.num_tasks += 3;
+            pool.spawn(move || {
+                let result = load_character_model(&asset_manager, character_kind, &device, &queue);
+                channel.send(result.map(|_| ()));
+            });
+            self.num_tasks += 1;
         }
 
         // 캐릭터 렌더링 파이프라인을 생성합니다.
@@ -512,67 +513,6 @@ impl fmt::Debug for LoadStageResourceScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(LoadStageScene))
     }
-}
-
-/// 주어진 스레드 풀에서 캐릭터 모델 리소스를 로드합니다.
-/// 작업 결과를 주어진 작업 결과 채널로 전송합니다.
-fn load_character_model(
-    pool: &ThreadPool,
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
-    channel: TaskResultChannel<()>,
-    asset_manager: AssetManager,
-    character_kind: CharacterKind,
-) {
-    // 캐릭터 종류에 따른 모델 정보를 가져옵니다.
-    let (workspace, model_name, model_halo_name) = match character_kind {
-        CharacterKind::ArisOriginal => (
-            aris_original::WORKSPACE,
-            aris_original::MODEL_NAME,
-            aris_original::MODEL_HALO_NAME,
-        ),
-        CharacterKind::MomoiOriginal => todo!(),
-    };
-
-    // 캐릭터 애니메이션 데이터를 로드합니다.
-    let channel_cloned = channel.clone();
-    let asset_manager_cloned = asset_manager.clone();
-    pool.spawn(move || {
-        let result = MotionPool::get_or_init(model_name, workspace, &asset_manager_cloned);
-        channel_cloned.send(result.map(|_| ()));
-    });
-
-    // 캐릭터 모델 데이터를 로드합니다.
-    let device_cloned = device.clone();
-    let queue_cloned = queue.clone();
-    let channel_cloned = channel.clone();
-    let asset_manager_cloned = asset_manager.clone();
-    pool.spawn(move || {
-        let result = ModelHierarchyPool::get_or_init(
-            model_name,
-            workspace,
-            &asset_manager_cloned,
-            &device_cloned,
-            &queue_cloned,
-        );
-        channel_cloned.send(result.map(|_| ()));
-    });
-
-    // 캐릭터 헤일로 모델 데이터를 로드합니다.
-    let device_cloned = device.clone();
-    let queue_cloned = queue.clone();
-    let channel_cloned = channel.clone();
-    let asset_manager_cloned = asset_manager.clone();
-    pool.spawn(move || {
-        let result = ModelHierarchyPool::get_or_init(
-            model_halo_name,
-            workspace,
-            &asset_manager_cloned,
-            &device_cloned,
-            &queue_cloned,
-        );
-        channel_cloned.send(result.map(|_| ()));
-    });
 }
 
 /// 게임 월드를 생성하는 게임 장면입니다.

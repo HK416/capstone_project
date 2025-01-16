@@ -1,3 +1,34 @@
+//
+// # 애니메이션 테이블
+// 애니메이션은 `ActionState`와 `MovementState`로 결정된다.
+//
+// +----------------------+-----------------------+-------------------------+--------------------------+
+// |                      | MovementState::Idle   | MovementState::Moving   | MovementState::MoveToEnd |
+// +----------------------+-----------------------+-------------------------+--------------------------+
+// | ActionState::Idle    | Idle                  | Moving                  | MoveToEnd                |
+// +----------------------+-----------------------+-------------------------+--------------------------+
+// | ActionState::Aiming  | Aim                   | Aim_Move                | Aim                      |
+// +----------------------+-----------------------+-------------------------+--------------------------+
+// | ActionState::AimAt   | Idle_To_Aim           | Move_To_Aim_Move        | Idle_To_Aim              |
+// +----------------------+-----------------------+-------------------------+--------------------------+
+// | ActionState::AimOff  | Aim_To_Idle           | Aim_Move_To_Move        | Aim_To_Idle              |
+// +----------------------+-----------------------+-------------------------+--------------------------+
+// | ActionState::Attack  | Attack_Ing            | Attack_Move             | Attack_Ing               |
+// +----------------------+-----------------------+-------------------------+--------------------------+
+//
+// # 애니메이션 목록
+// - Idle
+// - Moving
+// - MoveToEnd
+// - Aim
+// - AimMove
+// - IdleToAim
+// - MoveToAimMove
+// - AimToIdle
+// - AimMoveToMove
+// - Attacking
+// - AttackMove
+//
 use ahash::{HashMap, HashSet};
 use hecs::Entity;
 
