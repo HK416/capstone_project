@@ -58,7 +58,7 @@ const ATTACK_ING_ANIMATION: &'static str = concat!(MODEL_NAME, ATTACK_ING_ANIMAT
 /// 캐릭터의 AttackEnd 애니메이션 이름입니다.
 const ATTACK_END_ANIMATION: &'static str = concat!(MODEL_NAME, ATTACK_END_ANIMATION_SUFFIX);
 
-/// ArisOriginal 모델을 구성하는 엔터티를 생성합니다.
+/// 캐릭터 모델을 구성하는 엔터티를 생성합니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
 /// - 부모 엔터티(`Parent`)
@@ -78,7 +78,7 @@ const ATTACK_END_ANIMATION: &'static str = concat!(MODEL_NAME, ATTACK_END_ANIMAT
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-pub fn spawn_aris_original_model(
+pub fn spawn_character_model(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -92,7 +92,7 @@ pub fn spawn_aris_original_model(
     let mut entities = HashMap::default();
     let mut animation_mixing_bones = HashSet::default();
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
-    let entity = spawn_aris_original_model_recursive(
+    let entity = spawn_character_model_recursive(
         world,
         device,
         queue,
@@ -119,7 +119,7 @@ pub fn spawn_aris_original_model(
     Ok((entity, skinning_animation, batch_commands))
 }
 
-/// ArisOriginal 모델을 구성하는 엔터티를 생성하는 재귀함수입니다.
+/// 캐릭터 모델을 구성하는 엔터티를 생성하는 재귀함수입니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
 /// - 부모 엔터티(`Parent`)
@@ -139,7 +139,7 @@ pub fn spawn_aris_original_model(
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn spawn_aris_original_model_recursive(
+fn spawn_character_model_recursive(
     world: &World,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -177,7 +177,7 @@ fn spawn_aris_original_model_recursive(
         let contains_mixing_bones = contains_mixing_bones || contains_set(&node_name);
 
         // 자식 엔터티를 생성합니다.
-        let entity = spawn_aris_original_model_recursive(
+        let entity = spawn_character_model_recursive(
             world,
             device,
             queue,
@@ -202,7 +202,7 @@ fn spawn_aris_original_model_recursive(
         let siblings = &siblings[1..];
 
         // 형제 엔터티를 생성합니다.
-        let entity = spawn_aris_original_model_recursive(
+        let entity = spawn_character_model_recursive(
             world,
             device,
             queue,
@@ -292,7 +292,7 @@ fn spawn_aris_original_model_recursive(
     entity
 }
 
-/// ArisOriginalHalo 모델을 구성하는 엔터티를 생성하는 재귀함수입니다.
+/// 캐릭터 모델의 헤일로를 구성하는 엔터티를 생성하는 재귀함수입니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
 /// - 부모 엔터티(`Parent`)
@@ -311,7 +311,7 @@ fn spawn_aris_original_model_recursive(
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-pub fn spawn_aris_original_model_halo(
+pub fn spawn_character_model_halo(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -322,7 +322,7 @@ pub fn spawn_aris_original_model_halo(
         ModelHierarchyPool::get_or_init(MODEL_HALO_NAME, WORKSPACE, asset_manager, device, queue)?;
 
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
-    let entity = spawn_aris_original_model_halo_recursive(
+    let entity = spawn_character_model_halo_recursive(
         world,
         device,
         queue,
@@ -335,7 +335,7 @@ pub fn spawn_aris_original_model_halo(
     Ok((entity, batch_commands))
 }
 
-/// ArisOriginalHalo 모델을 구성하는 엔터티를 생성하는 재귀함수입니다.
+/// 캐릭터 모델의 헤일로를 구성하는 엔터티를 생성하는 재귀함수입니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
 /// - 부모 엔터티(`Parent`)
@@ -354,7 +354,7 @@ pub fn spawn_aris_original_model_halo(
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn spawn_aris_original_model_halo_recursive(
+fn spawn_character_model_halo_recursive(
     world: &World,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -380,7 +380,7 @@ fn spawn_aris_original_model_halo_recursive(
         let siblings = &current.children[1..];
 
         // 자식 엔터티를 생성합니다.
-        let entity = spawn_aris_original_model_halo_recursive(
+        let entity = spawn_character_model_halo_recursive(
             world,
             device,
             queue,
@@ -401,7 +401,7 @@ fn spawn_aris_original_model_halo_recursive(
         let siblings = &siblings[1..];
 
         // 형제 엔터티를 생성합니다.
-        let entity = spawn_aris_original_model_halo_recursive(
+        let entity = spawn_character_model_halo_recursive(
             world,
             device,
             queue,
@@ -437,8 +437,8 @@ fn spawn_aris_original_model_halo_recursive(
     entity
 }
 
-/// `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
-pub fn update_aris_original_action_state(
+/// 캐릭터 모델의 `ActionState`를 갱신합니다.
+pub fn update_character_action_state(
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     controller_input_flags: ControllerInputFlags,
@@ -456,7 +456,7 @@ pub fn update_aris_original_action_state(
     FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
 }
 
-/// `ActionState::Idle`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+/// `ActionState::Idle`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
 pub fn update_action_state_when_idle(
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
@@ -485,7 +485,7 @@ pub fn update_action_state_when_idle(
     }
 }
 
-/// `ActionState::Aiming`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+/// `ActionState::Aiming`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
 pub fn update_action_state_when_aiming(
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
@@ -510,7 +510,7 @@ pub fn update_action_state_when_aiming(
     }
 }
 
-/// `ActionState::AimAt`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+/// `ActionState::AimAt`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
 pub fn update_action_state_when_aim_at(
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
@@ -527,7 +527,7 @@ pub fn update_action_state_when_aim_at(
     }
 }
 
-/// `ActionState::AimOff`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+/// `ActionState::AimOff`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
 pub fn update_action_state_when_aim_off(
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
@@ -544,7 +544,7 @@ pub fn update_action_state_when_aim_off(
     }
 }
 
-/// `ActionState::Attack`일 때, `ArisOriginal` 모델의 `ActionState`를 갱신합니다.
+/// `ActionState::Attack`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
 pub fn update_action_state_when_attack(
     _action_state: &mut ActionState,
     _action_state_timer: &mut ActionStateTimer,
@@ -553,12 +553,12 @@ pub fn update_action_state_when_attack(
     /* empty */
 }
 
-/// `ArisOriginal` 모델의 `ActionState`와 `ActionStateTimer`를 갱신합니다.
+/// 캐릭터 모델의 `ActionState`와 `ActionStateTimer`를 갱신합니다.
 ///
 /// # Note
 /// - 이 함수를 호출하기 전에 사용자 입력에 따른 ActionState를 먼저 갱신해야합니다.
 ///
-pub fn update_aris_original_action_state_timer(
+pub fn update_character_action_state_timer(
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     elapsed_time_sec: f32,
@@ -605,7 +605,7 @@ fn update_action_state_timer_when_aim_at(
     // 타이머를 갱신합니다.
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
-    // `Aris_Original_Normal_Attack_Start` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
+    // `*_Normal_Attack_Start` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
     let diff_t = action_state_timer.0 - ATTACK_START_LEN;
     if diff_t >= 0.0 {
         *action_state = ActionState::Aiming;
@@ -622,7 +622,7 @@ fn update_action_state_timer_when_aim_off(
     // 타이머를 갱신합니다.
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
-    // `Aris_Original_Normal_Attack_End` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
+    // `*_Normal_Attack_End` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
     let diff_t = action_state_timer.0 - ATTACK_END_LEN;
     if diff_t >= 0.0 {
         *action_state = ActionState::Idle;
@@ -639,7 +639,7 @@ fn update_action_state_timer_when_attack(
     // 타이머를 갱신합니다.
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
-    // `Aris_Original_Normal_Attack_Ing` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
+    // `*_Normal_Attack_Ing` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
     let diff_t = action_state_timer.0 - ATTACK_ING_LEN;
     if diff_t >= 0.0 {
         *action_state = ActionState::Idle;
@@ -647,13 +647,13 @@ fn update_action_state_timer_when_attack(
     }
 }
 
-/// `ArisOriginal` 모델의 `MovementState`와 `MovementStateTimer`를 갱신합니다.
+/// 캐릭터 모델의 `MovementState`와 `MovementStateTimer`를 갱신합니다.
 ///
 /// # Note
 /// - 이 함수를 호출하기 전에 ActionState를 먼저 갱신해야합니다.
 /// - 이 함수를 호출하기 전에 ControllerState에 따른 MovementState 갱신이 필요합니다.
 ///
-pub fn update_aris_original_movement_state_timer(
+pub fn update_character_movement_state_timer(
     action_state: ActionState,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
@@ -698,7 +698,7 @@ pub fn update_aris_original_movement_state_timer(
     FUNC_TABLE[i][j](movement_state, movement_state_timer, elapsed_time_sec);
 }
 
-/// `Aris_Original_Normal_Idle` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
+/// `*_Normal_Idle` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_idle(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
@@ -708,7 +708,7 @@ fn update_movement_state_timer_when_idle(
     movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_LEN;
 }
 
-/// `Aris_Original_Move_Ing` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
+/// `*_Move_Ing` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_moving(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
@@ -718,7 +718,7 @@ fn update_movement_state_timer_when_moving(
     movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % MOVE_ING_LEN;
 }
 
-/// `Aris_Original_Move_End_Normal` 애니메이션 데이터로 `MovementState`와 `MovementStateTimer`를 갱신합니다.
+/// `*_Move_End_Normal` 애니메이션 데이터로 `MovementState`와 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_move_to_end(
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
@@ -727,7 +727,7 @@ fn update_movement_state_timer_when_move_to_end(
     // 타이머를 갱신합니다.
     movement_state_timer.0 = movement_state_timer.0 + elapsed_time_sec;
 
-    // `Aris_Original_Move_End_Normal` 애니메이션 길이보다 클 경우 `MovemenetState`를 갱신합니다.
+    // `*_Move_End_Normal` 애니메이션 길이보다 클 경우 `MovemenetState`를 갱신합니다.
     let diff_t = movement_state_timer.0 - MOVE_TO_END_LEN;
     if diff_t >= 0.0 {
         *movement_state = MovementState::Idle;
@@ -735,7 +735,7 @@ fn update_movement_state_timer_when_move_to_end(
     }
 }
 
-/// `Aris_Original_Cafe_Walk` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
+/// `*_Cafe_Walk` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
 fn update_movement_state_timer_when_walking(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
@@ -745,8 +745,8 @@ fn update_movement_state_timer_when_walking(
     movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % CAFE_WALK_LEN;
 }
 
-/// `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
-pub fn update_aris_original_view_state(
+/// 캐릭터 모델의 `ViewState`를 갱신합니다.
+pub fn update_character_view_state(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     controller_input_flags: ControllerInputFlags,
@@ -763,7 +763,7 @@ pub fn update_aris_original_view_state(
     FUNC_TABLE[i](view_state, view_state_timer, controller_input_flags);
 }
 
-/// `ViewState::Idle`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+/// `ViewState::Idle`일 때, 캐릭터 모델의 `ViewState`를 갱신합니다.
 fn update_view_state_when_idle(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
@@ -775,7 +775,7 @@ fn update_view_state_when_idle(
     }
 }
 
-/// `ViewState::ZoomIn`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+/// `ViewState::ZoomIn`일 때, 캐릭터 모델의 `ViewState`를 갱신합니다.
 fn update_view_state_when_zoom_in(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
@@ -787,7 +787,7 @@ fn update_view_state_when_zoom_in(
     }
 }
 
-/// `ViewState::ZoomOut`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+/// `ViewState::ZoomOut`일 때, 캐릭터 모델의 `ViewState`를 갱신합니다.
 fn update_view_state_when_zoom_out(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
@@ -799,7 +799,7 @@ fn update_view_state_when_zoom_out(
     }
 }
 
-/// `ViewState::Aiming`일 때, `ArisOriginal` 모델의 `ViewState`를 갱신합니다.
+/// `ViewState::Aiming`일 때, 캐릭터 모델의 `ViewState`를 갱신합니다.
 fn update_view_state_when_aiming(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
@@ -811,8 +811,8 @@ fn update_view_state_when_aiming(
     }
 }
 
-/// `ArisOriginal` 캐릭터 모델의 `ViewStateTimer`를 갱신하는 함수입니다.
-pub fn update_aris_original_view_state_timer(
+/// 캐릭터 모델의 `ViewStateTimer`를 갱신하는 함수입니다.
+pub fn update_character_view_state_timer(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     elapsed_time_sec: f32,
@@ -864,7 +864,7 @@ fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: 
     /* empty */
 }
 
-/// `Aris_Original` 모델의 애니메이션을 재생합니다.
+/// 캐릭터 모델의 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -873,7 +873,7 @@ fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: 
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-pub fn animate_aris_original(
+pub fn animate_character(
     asset_manager: &AssetManager,
     action_state: ActionState,
     action_state_timer: ActionStateTimer,
@@ -894,37 +894,37 @@ pub fn animate_aris_original(
     const FUNC_TABLE: [[Func; 3]; 5] = [
         // `ActionState::Idle`
         [
-            animate_aris_original_when_idle,        // `MovementState::Idle`
-            animate_aris_original_when_moving,      // `MovementState::Moving`
-            animate_aris_original_when_move_to_end, // `MovementState::MoveToEnd`
+            animate_character_when_idle,        // `MovementState::Idle`
+            animate_character_when_moving,      // `MovementState::Moving`
+            animate_character_when_move_to_end, // `MovementState::MoveToEnd`
         ],
         // `ActionState::Aiming`
         [
-            animate_aris_original_when_aim,      // `MovementState::Idle`
-            animate_aris_original_when_aim_move, // `MovementState::Moving`
-            animate_aris_original_when_aim,      // `MovementState::MoveToEnd`
+            animate_character_when_aim,      // `MovementState::Idle`
+            animate_character_when_aim_move, // `MovementState::Moving`
+            animate_character_when_aim,      // `MovementState::MoveToEnd`
         ],
         // `ActionState::AimAt`
         [
-            animate_aris_original_when_idle_to_aim, // `MovementState::Idle`
-            animate_aris_original_when_move_to_aim_move, // `MovementState::Moving`
-            animate_aris_original_when_idle_to_aim, // `MovementState::MoveToEnd`
+            animate_character_when_idle_to_aim, // `MovementState::Idle`
+            animate_character_when_move_to_aim_move, // `MovementState::Moving`
+            animate_character_when_idle_to_aim, // `MovementState::MoveToEnd`
         ],
         // `ActionState::AimOff`
         [
-            animate_aris_original_when_aim_to_idle, // `MovementState::Idle`
-            animate_aris_original_when_aim_move_to_move, // `MovementState::Moving`
-            animate_aris_original_when_aim_to_idle, // `MovementState::MoveToEnd`
+            animate_character_when_aim_to_idle, // `MovementState::Idle`
+            animate_character_when_aim_move_to_move, // `MovementState::Moving`
+            animate_character_when_aim_to_idle, // `MovementState::MoveToEnd`
         ],
         // `ActionState::Attack`
         [
-            animate_aris_original_when_attacking,   // `MovementState::Idle`
-            animate_aris_original_when_attack_move, // `MovementState::Moving`
-            animate_aris_original_when_attacking,   // `MovementState::MoveToEnd`
+            animate_character_when_attacking,   // `MovementState::Idle`
+            animate_character_when_attack_move, // `MovementState::Moving`
+            animate_character_when_attacking,   // `MovementState::MoveToEnd`
         ],
     ];
 
-    // `ArisOriginal` 모델 애니메이션 집합을 가져옵니다.
+    // 캐릭터 모델 애니메이션 집합을 가져옵니다.
     let motions = MotionPool::get_or_init(MODEL_NAME, &WORKSPACE, asset_manager)
         .expect("no such character motion");
 
@@ -940,7 +940,7 @@ pub fn animate_aris_original(
     );
 }
 
-/// `Aris_Original_Normal_Idle` 애니메이션을 재생합니다.
+/// `*_Normal_Idle` 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -949,7 +949,7 @@ pub fn animate_aris_original(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_idle(
+fn animate_character_when_idle(
     motions: &Arc<HashMap<String, Motion>>,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
@@ -957,7 +957,7 @@ fn animate_aris_original_when_idle(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Idle` 애니메이션을 가져옵니다.
+    // `*_Normal_Idle` 애니메이션을 가져옵니다.
     let motion = motions.get(IDLE_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -994,7 +994,7 @@ fn animate_aris_original_when_idle(
     }
 }
 
-/// `Aris_Original_Move_Ing` 애니메이션을 재생합니다.
+/// `*_Move_Ing` 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1003,7 +1003,7 @@ fn animate_aris_original_when_idle(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_moving(
+fn animate_character_when_moving(
     motions: &Arc<HashMap<String, Motion>>,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
@@ -1011,7 +1011,7 @@ fn animate_aris_original_when_moving(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Move_Ing` 애니메이션을 가져옵니다.
+    // `*_Move_Ing` 애니메이션을 가져옵니다.
     let motion = motions.get(MOVING_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1048,7 +1048,7 @@ fn animate_aris_original_when_moving(
     }
 }
 
-/// `Aris_Original_Move_End_Normal` 애니메이션을 재생합니다.
+/// `*_Move_End_Normal` 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1057,7 +1057,7 @@ fn animate_aris_original_when_moving(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_move_to_end(
+fn animate_character_when_move_to_end(
     motions: &Arc<HashMap<String, Motion>>,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
@@ -1065,7 +1065,7 @@ fn animate_aris_original_when_move_to_end(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Move_End_Normal` 애니메이션을 가져옵니다.
+    // `*_Move_End_Normal` 애니메이션을 가져옵니다.
     let motion = motions.get(MOVE_TO_END_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1102,7 +1102,7 @@ fn animate_aris_original_when_move_to_end(
     }
 }
 
-/// `Aris_Original_Normal_Attack_Start` 애니메이션을 재생합니다.
+/// `*_Normal_Attack_Start` 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1111,7 +1111,7 @@ fn animate_aris_original_when_move_to_end(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_idle_to_aim(
+fn animate_character_when_idle_to_aim(
     motions: &Arc<HashMap<String, Motion>>,
     action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
@@ -1119,7 +1119,7 @@ fn animate_aris_original_when_idle_to_aim(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Attack_Start` 애니메이션을 가져옵니다.
+    // `*_Normal_Attack_Start` 애니메이션을 가져옵니다.
     let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1156,7 +1156,7 @@ fn animate_aris_original_when_idle_to_aim(
     }
 }
 
-/// `Aris_Original_Normal_Attack_End` 애니메이션을 재생합니다.
+/// `*_Normal_Attack_End` 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1165,7 +1165,7 @@ fn animate_aris_original_when_idle_to_aim(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_aim_to_idle(
+fn animate_character_when_aim_to_idle(
     motions: &Arc<HashMap<String, Motion>>,
     action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
@@ -1173,7 +1173,7 @@ fn animate_aris_original_when_aim_to_idle(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Attack_End` 애니메이션을 가져옵니다.
+    // `*_Normal_Attack_End` 애니메이션을 가져옵니다.
     let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1210,7 +1210,7 @@ fn animate_aris_original_when_aim_to_idle(
     }
 }
 
-/// `Aris_Original_Normal_Attack_Start`와 `Aris_Original_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
+/// `*_Normal_Attack_Start`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1219,7 +1219,7 @@ fn animate_aris_original_when_aim_to_idle(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_move_to_aim_move(
+fn animate_character_when_move_to_aim_move(
     motions: &Arc<HashMap<String, Motion>>,
     action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
@@ -1227,7 +1227,7 @@ fn animate_aris_original_when_move_to_aim_move(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Attack_Start` 애니메이션을 가져옵니다.
+    // `*_Normal_Attack_Start` 애니메이션을 가져옵니다.
     let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1263,7 +1263,7 @@ fn animate_aris_original_when_move_to_aim_move(
         }
     }
 
-    // `Aris_Original_Cafe_Walk` 애니메이션을 가져옵니다.
+    // `*_Cafe_Walk` 애니메이션을 가져옵니다.
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1300,7 +1300,7 @@ fn animate_aris_original_when_move_to_aim_move(
     }
 }
 
-/// `Aris_Original_Normal_Attack_End`와 `Aris_Original_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
+/// `*_Normal_Attack_End`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1309,7 +1309,7 @@ fn animate_aris_original_when_move_to_aim_move(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_aim_move_to_move(
+fn animate_character_when_aim_move_to_move(
     motions: &Arc<HashMap<String, Motion>>,
     action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
@@ -1317,7 +1317,7 @@ fn animate_aris_original_when_aim_move_to_move(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Attack_End` 애니메이션을 가져옵니다.
+    // `*_Normal_Attack_End` 애니메이션을 가져옵니다.
     let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1353,7 +1353,7 @@ fn animate_aris_original_when_aim_move_to_move(
         }
     }
 
-    // `Aris_Original_Cafe_Walk` 애니메이션을 가져옵니다.
+    // `*_Cafe_Walk` 애니메이션을 가져옵니다.
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1390,7 +1390,7 @@ fn animate_aris_original_when_aim_move_to_move(
     }
 }
 
-/// `Aris_Original_Normal_Attack_Ing` 애니메이션을 재생합니다.
+/// `*_Normal_Attack_Ing` 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1399,7 +1399,7 @@ fn animate_aris_original_when_aim_move_to_move(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_aim(
+fn animate_character_when_aim(
     motions: &Arc<HashMap<String, Motion>>,
     _action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
@@ -1447,7 +1447,7 @@ fn animate_aris_original_when_aim(
     }
 }
 
-/// `Aris_Original_Normal_Attack_Ing`와 `Aris_Original_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
+/// `*_Normal_Attack_Ing`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1456,7 +1456,7 @@ fn animate_aris_original_when_aim(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_aim_move(
+fn animate_character_when_aim_move(
     motions: &Arc<HashMap<String, Motion>>,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
@@ -1464,7 +1464,7 @@ fn animate_aris_original_when_aim_move(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
     let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1503,7 +1503,7 @@ fn animate_aris_original_when_aim_move(
         }
     }
 
-    // `Aris_Original_Cafe_Walk` 애니메이션을 가져옵니다.
+    // `*_Cafe_Walk` 애니메이션을 가져옵니다.
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1540,7 +1540,7 @@ fn animate_aris_original_when_aim_move(
     }
 }
 
-/// `Aris_Original_Normal_Attack_Ing` 애니메이션을 재생합니다.
+/// `*_Normal_Attack_Ing` 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1549,7 +1549,7 @@ fn animate_aris_original_when_aim_move(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_attacking(
+fn animate_character_when_attacking(
     motions: &Arc<HashMap<String, Motion>>,
     action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
@@ -1557,7 +1557,7 @@ fn animate_aris_original_when_attacking(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
     let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1594,7 +1594,7 @@ fn animate_aris_original_when_attacking(
     }
 }
 
-/// `Aris_Original_Normal_Attack_Ing`와 `Aris_Original_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
+/// `*_Normal_Attack_Ing`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -1603,7 +1603,7 @@ fn animate_aris_original_when_attacking(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_aris_original_when_attack_move(
+fn animate_character_when_attack_move(
     motions: &Arc<HashMap<String, Motion>>,
     action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
@@ -1611,7 +1611,7 @@ fn animate_aris_original_when_attack_move(
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
-    // `Aris_Original_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
     let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
@@ -1647,7 +1647,7 @@ fn animate_aris_original_when_attack_move(
         }
     }
 
-    // `Aris_Original_Cafe_Walk` 애니메이션을 가져옵니다.
+    // `*_Cafe_Walk` 애니메이션을 가져옵니다.
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.

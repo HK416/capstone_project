@@ -141,7 +141,7 @@ pub fn spawn_player_character(
     let parent = entity;
     let (model_root_entity, skinning_animation, mut batch_commands) = match character_kind {
         CharacterKind::ArisOriginal => {
-            aris_original::spawn_aris_original_model(asset_manager, device, queue, world, parent)
+            aris_original::spawn_character_model(asset_manager, device, queue, world, parent)
         }
         CharacterKind::MomoiOriginal => todo!(),
     }?;
@@ -153,7 +153,7 @@ pub fn spawn_player_character(
     // 캐릭터 종류에 따른 캐릭터 헤일로 모델을 구성하는 엔터티를 생성합니다.
     let parent = entity;
     let (halo_root_entity, mut halo_batch_commands) = match character_kind {
-        CharacterKind::ArisOriginal => aris_original::spawn_aris_original_model_halo(
+        CharacterKind::ArisOriginal => aris_original::spawn_character_model_halo(
             asset_manager,
             device,
             queue,
@@ -479,7 +479,7 @@ pub fn update_action_state_by_controller_input_flags(
     controller_input_flags: ControllerInputFlags,
 ) {
     type Func = fn(&mut ActionState, &mut ActionStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_action_state];
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_action_state];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
@@ -493,7 +493,7 @@ pub fn update_action_state_timer(
     elapsed_time_sec: f32,
 ) {
     type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_action_state_timer];
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_action_state_timer];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
@@ -508,7 +508,7 @@ pub fn update_movement_state_timer(
     elapsed_time_sec: f32,
 ) {
     type Func = fn(ActionState, &mut MovementState, &mut MovementStateTimer, f32);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_movement_state_timer];
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_movement_state_timer];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](
@@ -527,7 +527,7 @@ pub fn update_view_state_by_controller_input_flags(
     controller_input_flags: ControllerInputFlags,
 ) {
     type Func = fn(&mut ViewState, &mut ViewStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_view_state];
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_view_state];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](view_state, view_state_timer, controller_input_flags);
@@ -541,7 +541,7 @@ pub fn update_view_state_timer(
     elapsed_time_sec: f32,
 ) {
     type Func = fn(&mut ViewState, &mut ViewStateTimer, f32);
-    const FUNC_TABLE: [Func; 1] = [aris_original::update_aris_original_view_state_timer];
+    const FUNC_TABLE: [Func; 1] = [aris_original::update_character_view_state_timer];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](view_state, view_state_timer, elapsed_time_sec);
@@ -586,7 +586,7 @@ pub fn animate_character(
         &ViewBorrow<&BoneCollection>,
         &mut ViewBorrow<&mut ToParentTrans>,
     );
-    const FUNC_TABLE: [Func; 1] = [aris_original::animate_aris_original];
+    const FUNC_TABLE: [Func; 1] = [aris_original::animate_character];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](
