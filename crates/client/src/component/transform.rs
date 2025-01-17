@@ -30,6 +30,12 @@ impl ToParentTrans {
         self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
     }
 
+    /// 로컬 변환 행렬의 위치를 설정합니다.
+    pub fn set_translation(&mut self, translation: glam::Vec3) {
+        let (scale, rotation, _) = self.0.to_scale_rotation_translation();
+        self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
+    }
+
     /// 로컬 변환 행렬의 위치를 주어진 거리만큼 이동시킵니다.
     pub fn translate_world(&mut self, distance: glam::Vec4) {
         debug_assert_eq!(distance.w, 0.0);

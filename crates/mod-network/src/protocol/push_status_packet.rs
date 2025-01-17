@@ -13,7 +13,7 @@ use mod_math::LatLon;
 #[derive(Debug, PartialEq)]
 pub struct PushStatusPacket {
     pub player: Player,
-    pub move_direction: [f32; 3], // XY평면상의 플레이어 이동 방향
+    pub move_direction: [f32; 3], // XZ평면상의 플레이어 이동 방향
     // pub look_direction: LatLon, // 카메라 방향
     // pub move_direction: u8, // 8방향 입력 정보
     // pub jump: bool, // 점프키 입력 여부

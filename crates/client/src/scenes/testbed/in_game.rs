@@ -9,7 +9,8 @@ use mod_network::{
         ActionState, ActionStateTimer, CharacterKind, ClientId, MovementState, MovementStateTimer,
         ObjectId, ViewState, ViewStateTimer,
     },
-    PacketType, Player, PullStagePacket, PushStatusPacket, RawPacket,
+    Player, BulletBlob,
+    PacketType, PullStagePacket, PushStatusPacket, RawPacket,
 };
 use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use winit::{
@@ -651,6 +652,20 @@ impl TestbedInGameScene {
             // 현재 플레이어의 경우 데이터 갱신을 하지 않습니다.
             if player_data.id == id {
                 objects.remove(&player_data.id);
+
+                // 오브젝트의 엔터티를 가져옵니다.
+                let entity = self
+                    .entities
+                    .get(&player_data.id)
+                    .cloned()
+                    .expect("no such entity");
+
+                // 위치만 갱신합니다.
+                let local_transform = local_transform_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                local_transform.set_translation(glam::Vec3::from_array(player_data.translation));
+
                 continue;
             }
 

@@ -4,7 +4,12 @@ use tokio::{
 };
 use super::world::WorldInterface;
 use mod_network::*;
-use mod_network::components::{ClientId, ObjectId, StageKind};
+use mod_network::components::{
+    ClientId, 
+    // ObjectId, 
+    StageKind,
+    MovementState,
+};
 
 
 pub struct Session {
@@ -17,7 +22,7 @@ pub struct Session {
 
     running: bool,
 
-    shot_count: u32,
+    // shot_count: u32,
 }
 
 impl Session {
@@ -28,7 +33,7 @@ impl Session {
             packet_parser: PacketParser::new(),
             world,
             running: true,
-            shot_count: 0,
+            // shot_count: 0,
         }
     }
 
@@ -89,8 +94,19 @@ impl Session {
                 
                 PacketType::PushStatus => {
                     let push_packet = PushStatusPacket::from_raw(packet);
-                    self.world.update_player(push_packet.player);
+                    let player = push_packet.player;
+                    
+                    self.world.update_player(player);
 
+                    if player.movement_state == MovementState::Moving {
+                        let dir = gmm::Vector::from_slice(&push_packet.move_direction)
+                            .vec3_normalize();
+                        // 속력값(캐릭터 능력치) 곱하기
+                        let dir = dir * 3.0;
+                        let dir = dir.store_float3();
+                        self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
+                    }
+                    
                     let players = self.world.get_players();
                     let bullets = self.world.get_bullets();
                     let raw_packet = PullStagePacket::new(players, bullets).as_raw();
