@@ -80,7 +80,7 @@ impl Session {
                     println!("Client {:?} entered stage", self.id);
 
                     let players = self.world.get_players();
-                    let raw_packet = InitStagePacket::new(players, StageKind::School).as_raw();
+                    let raw_packet = InitStagePacket::new(players, StageKind::Downtown).as_raw();
                     match self.stream_write(raw_packet).await {
                         Ok(_) => {
 

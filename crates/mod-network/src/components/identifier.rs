@@ -371,7 +371,7 @@ impl Default for MovementStateTimer {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StageKind {
-    School = 0,
+    Downtown = 0,
 }
 
 impl BigEndian for StageKind {
@@ -387,7 +387,7 @@ impl BigEndian for StageKind {
 
 impl Default for StageKind {
     fn default() -> Self {
-        StageKind::School
+        StageKind::Downtown
     }
 }
 
@@ -395,9 +395,18 @@ impl TryFromBigEndian for StageKind {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         let index = u8::from_big_endian_bytes(bytes);
         match index {
-            0 => Some(StageKind::School),
+            0 => Some(StageKind::Downtown),
             _ => None,
         }
+    }
+}
+
+impl ToString for StageKind {
+    fn to_string(&self) -> String {
+        match self {
+            StageKind::Downtown => "Downtown",
+        }
+        .to_string()
     }
 }
 

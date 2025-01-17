@@ -120,9 +120,9 @@ impl BigEndian for f64 {
 impl BigEndian for [f32; 3] {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         [
-            f32::from_big_endian_bytes(&bytes[0..4]), 
-            f32::from_big_endian_bytes(&bytes[4..8]), 
-            f32::from_big_endian_bytes(&bytes[8..12]), 
+            f32::from_big_endian_bytes(&bytes[0..4]),
+            f32::from_big_endian_bytes(&bytes[4..8]),
+            f32::from_big_endian_bytes(&bytes[8..12]),
         ]
     }
 
@@ -138,10 +138,10 @@ impl BigEndian for [f32; 3] {
 impl BigEndian for [f32; 4] {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         [
-            f32::from_big_endian_bytes(&bytes[0..4]), 
-            f32::from_big_endian_bytes(&bytes[4..8]), 
-            f32::from_big_endian_bytes(&bytes[8..12]), 
-            f32::from_big_endian_bytes(&bytes[12..16]), 
+            f32::from_big_endian_bytes(&bytes[0..4]),
+            f32::from_big_endian_bytes(&bytes[4..8]),
+            f32::from_big_endian_bytes(&bytes[8..12]),
+            f32::from_big_endian_bytes(&bytes[12..16]),
         ]
     }
 

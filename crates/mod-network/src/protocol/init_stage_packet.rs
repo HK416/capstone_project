@@ -66,7 +66,7 @@ mod tests {
             Player::default(),
             Player::default(),
         ];
-        let stage_kind = StageKind::School;
+        let stage_kind = StageKind::Downtown;
         let packet = InitStagePacket::new(players.clone(), stage_kind);
         let raw = packet.as_raw();
         let packet2 = InitStagePacket::from_raw(raw);
