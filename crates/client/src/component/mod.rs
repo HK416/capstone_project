@@ -2,13 +2,14 @@ mod camera;
 mod character;
 mod control;
 mod physics;
+mod stage;
 mod transform;
 
 use std::ops::{Deref, DerefMut};
 
 use hecs::{Entity, QueryOneError, ViewBorrow, World};
 
-pub use self::{camera::*, character::*, control::*, physics::*, transform::*};
+pub use self::{camera::*, character::*, control::*, physics::*, stage::*, transform::*};
 
 /// ## Parent Entity
 #[repr(transparent)]
@@ -80,6 +81,7 @@ impl Default for Timer {
 /// # Panics
 /// - 주어진 엔터티는 모두 유효한 엔터티여야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 ///
+#[allow(dead_code)]
 pub fn add_child(world: &mut World, target_entity: Entity, new_entity: Entity) {
     let query = world.query_one_mut::<&Child>(target_entity);
     match query.cloned() {
@@ -104,6 +106,7 @@ pub fn add_child(world: &mut World, target_entity: Entity, new_entity: Entity) {
 /// # Panics
 /// - 주어진 엔터티는 모두 유효한 엔터티여야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 ///
+#[allow(dead_code)]
 pub fn add_sibling(
     world: &mut World,
     parent_entity: Entity,

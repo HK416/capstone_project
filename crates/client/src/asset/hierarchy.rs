@@ -61,11 +61,13 @@ impl ModelHierarchyPool {
 
     /// 풀 객체에 해당 모델 계층 데이터를 제거합니다.  
     /// 풀 객체에 해당 모델 계층 데이터가 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
+    #[allow(dead_code)]
     pub fn remove(name: &str) -> Option<Arc<Root>> {
         get_pool().remove(name)
     }
 
     /// 풀 객체에 있는 모든 모델 계층 데이터를 제거합니다.
+    #[allow(dead_code)]
     pub fn clear() {
         get_pool().clear()
     }
@@ -156,7 +158,9 @@ pub struct SkinningBlob {
 pub struct Root {
     pub node: Node,
     pub num_nodes: usize,
+    #[allow(dead_code)]
     pub minimum: [f32; 3],
+    #[allow(dead_code)]
     pub maximum: [f32; 3],
 }
 

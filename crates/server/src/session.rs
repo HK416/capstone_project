@@ -102,7 +102,7 @@ impl Session {
                         let dir = gmm::Vector::from_slice(&push_packet.move_direction)
                             .vec3_normalize();
                         // 속력값(캐릭터 능력치) 곱하기
-                        let dir = dir * 3.0;
+                        let dir = dir * 12.3;
                         let dir = dir.store_float3();
                         self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
                     }

@@ -36,12 +36,6 @@ impl ToParentTrans {
         self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
     }
 
-    /// 로컬 변환 행렬의 위치를 주어진 거리만큼 이동시킵니다.
-    pub fn translate_world(&mut self, distance: glam::Vec4) {
-        debug_assert_eq!(distance.w, 0.0);
-        self.0.w_axis += distance;
-    }
-
     /// 월드 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
     pub fn get_look_vector(&self) -> glam::Vec4 {
         self.0.z_axis.normalize_or(glam::Vec4::Z)

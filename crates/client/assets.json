@@ -50,6 +50,19 @@
                 "NEXON_Lv2_Gothic.ttf"
             ],
             "directories" : {}
+        },
+        "stage" : {
+            "files" : [],
+            "directories" : {
+                "terrain" : {
+                    "files" : [
+                        "Crossroads.hierarchy",
+                        "Plane.hierarchy",
+                        "Road.hierarchy"
+                    ],
+                    "directories" : {}
+                }
+            }
         }
     }
 }

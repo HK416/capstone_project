@@ -15,15 +15,18 @@ use mod_network::{
 use mod_render::{
     GraphicsPipelinePool, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
+use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
+    asset::{ModelAssetError, ModelHierarchyPool},
     channel::TaskResultChannel,
-    component::{load_character_model, spawn_player_character},
+    component::{load_character_model, spawn_player_character, spawn_terrain},
     config::UserConfig,
     render::{
         create_character_halo_render_pipeline, create_character_render_pipeline,
-        CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
+        create_terrain_render_pipeline, CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
+        TERRAIN_PIPELINE_NAME,
     },
     SERVER_ADDR,
 };
@@ -335,21 +338,25 @@ impl GameScene for LoadStageResourceScene {
             .expect("packet data must exist");
 
         // 게임 월드에 존재하는 캐릭터 모델 데이터를 로드합니다.
-        let pool = app.io_threads();
-        let num_player = init_stage_packet.num_players as usize;
-        let players = &init_stage_packet.players;
-        for index in 0..num_player {
-            let character_kind = players[index].character_kind;
-            let device = app.render_device().clone();
-            let queue = app.render_queue().clone();
-            let channel = self.task_result_channel.clone();
-            let asset_manager = app.asset_manager().clone();
-            pool.spawn(move || {
-                let result = load_character_model(&asset_manager, character_kind, &device, &queue);
-                channel.send(result.map(|_| ()));
-            });
-            self.num_tasks += 1;
-        }
+        load_character_models(
+            app.io_threads(),
+            app.asset_manager().clone(),
+            app.render_device().clone(),
+            app.render_queue().clone(),
+            self.task_result_channel.clone(),
+            &mut self.num_tasks,
+        );
+
+        // 게임 월드 지형 모델 데이터를 로드합니다.
+        // FIXME: 추후 수정 필요
+        load_terrain_models(
+            app.io_threads(),
+            app.asset_manager().clone(),
+            app.render_device().clone(),
+            app.render_queue().clone(),
+            self.task_result_channel.clone(),
+            &mut self.num_tasks,
+        );
 
         // 캐릭터 렌더링 파이프라인을 생성합니다.
         GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_NAME, move || {
@@ -363,6 +370,11 @@ impl GameScene for LoadStageResourceScene {
                 DEPTH_FORMAT,
                 SWAPCHAIN_FORMAT,
             )
+        });
+
+        // 지형 렌더링 파이프라인을 생성합니다.
+        GraphicsPipelinePool::get_or_init(TERRAIN_PIPELINE_NAME, move || {
+            create_terrain_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
         });
 
         Ok(())
@@ -519,6 +531,117 @@ impl fmt::Debug for LoadStageResourceScene {
     }
 }
 
+/// 모든 캐릭터 모델을 로드합니다.
+fn load_character_models(
+    pool: &ThreadPool,
+    asset_manager: AssetManager,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    channel: TaskResultChannel<()>,
+    num_tasks: &mut usize,
+) {
+    // ArisOriginal 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            channel.send(load_character_model(
+                &asset_manager,
+                CharacterKind::ArisOriginal,
+                &device,
+                &queue,
+            ));
+        });
+        *num_tasks += 1;
+    }
+
+    // MomoiOriginal 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            channel.send(load_character_model(
+                &asset_manager,
+                CharacterKind::MomoiOriginal,
+                &device,
+                &queue,
+            ));
+        });
+        *num_tasks += 1;
+    }
+}
+
+/// 지형 모델 데이터를 로드합니다.
+fn load_terrain_models(
+    pool: &ThreadPool,
+    asset_manager: AssetManager,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    channel: TaskResultChannel<()>,
+    num_tasks: &mut usize,
+) {
+    // 교차로 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            let result = ModelHierarchyPool::get_or_init(
+                "Crossroads",
+                "stage/terrain",
+                &asset_manager,
+                &device,
+                &queue,
+            );
+            channel.send(result.map(|_| ()));
+        });
+        *num_tasks += 1;
+    }
+
+    // 도로 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            let result = ModelHierarchyPool::get_or_init(
+                "Road",
+                "stage/terrain",
+                &asset_manager,
+                &device,
+                &queue,
+            );
+            channel.send(result.map(|_| ()));
+        });
+        *num_tasks += 1;
+    }
+
+    // 평면 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            let result = ModelHierarchyPool::get_or_init(
+                "Plane",
+                "stage/terrain",
+                &asset_manager,
+                &device,
+                &queue,
+            );
+            channel.send(result.map(|_| ()));
+        });
+        *num_tasks += 1;
+    }
+}
+
 /// 게임 월드를 생성하는 게임 장면입니다.
 pub struct InitStageScene {
     /// 사용자 구성 설정 데이터
@@ -590,7 +713,7 @@ impl GameScene for InitStageScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        spawn_players(
+        create_game_world(
             app.asset_manager().clone(),
             app.render_device().clone(),
             app.render_queue().clone(),
@@ -751,50 +874,54 @@ impl fmt::Debug for InitStageScene {
     }
 }
 
-/// 게임 월드에 존재하는 플레이어를 생성하는 함수입니다.
-fn spawn_players(
+/// 스레드 풀간 데이터 전송을 위한 채널 데이터입니다.
+type LocalResult = (ObjectId, Entity, Vec<(Entity, EntityBuilder)>);
+
+/// 게임 월드를 생성합니다.
+fn create_game_world(
     asset_manager: AssetManager,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     init_stage_packet: InitStagePacket,
     task_result_channel: TaskResultChannel<(World, HashMap<ObjectId, Entity>)>,
 ) {
-    type LocalResult = (ObjectId, Entity, Vec<(Entity, EntityBuilder)>);
     rayon::spawn(move || {
-        let mut world = World::new();
+        let mut world = World::default();
         let mut entities = HashMap::default();
-        let local_result_channel: TaskResultChannel<LocalResult> = TaskResultChannel::default();
 
-        let init_stage_packet = &init_stage_packet;
-        let num_players = init_stage_packet.num_players as usize;
-        let mut num_tasks = num_players;
-
+        let mut num_tasks = init_stage_packet.num_players as usize;
+        let channel: TaskResultChannel<LocalResult> = TaskResultChannel::default();
         {
+            let asset_manager = asset_manager.clone();
+            let device = device.clone();
+            let queue = queue.clone();
             let world = &world;
-            let device = &device;
-            let queue = &queue;
-            let asset_manager = &asset_manager;
-            let local_result_channel = &local_result_channel;
-            rayon::scope(move |scope| {
-                for i in 0..num_players {
-                    let player_data = &init_stage_packet.players[i];
-                    scope.spawn(move |_| {
-                        let result = spawn_player_character(
-                            player_data,
-                            asset_manager,
-                            device,
-                            queue,
-                            world,
-                        )
-                        .map(|(entity, batch_commands)| (player_data.id, entity, batch_commands));
-                        local_result_channel.send(result);
-                    });
-                }
+            let channel = channel.clone();
+            rayon::scope(move |_| {
+                spawn_players(
+                    world,
+                    asset_manager,
+                    device,
+                    queue,
+                    init_stage_packet,
+                    channel,
+                );
             });
         }
 
+        match spawn_terrains(&world, &asset_manager, &device, &queue) {
+            Ok(batch_commands) => {
+                for (entity, mut builder) in batch_commands {
+                    world
+                        .insert(entity, builder.build())
+                        .expect("no such entity");
+                }
+            }
+            Err(e) => task_result_channel.send_err(Box::new(e)),
+        }
+
         while num_tasks > 0 {
-            if let Some(result) = local_result_channel.recv() {
+            if let Some(result) = channel.recv() {
                 match result {
                     Ok((id, entity, batch_commands)) => {
                         for (entity, mut builder) in batch_commands {
@@ -815,4 +942,233 @@ fn spawn_players(
 
         task_result_channel.send_ok((world, entities));
     });
+}
+
+/// 게임 월드에 존재하는 플레이어를 생성하는 함수입니다.
+fn spawn_players(
+    world: &World,
+    asset_manager: AssetManager,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    packet: InitStagePacket,
+    channel: TaskResultChannel<LocalResult>,
+) {
+    for player_data in packet.players.into_iter() {
+        let world = world;
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        let result = spawn_player_character(&player_data, &asset_manager, &device, &queue, world)
+            .map(|(entity, batch_commands)| (player_data.id, entity, batch_commands));
+        channel.send(result);
+    }
+}
+
+/// 게임 월드에 존재하는 지형을 생성하는 함수입니다.
+fn spawn_terrains<'a>(
+    world: &'a World,
+    asset_manager: &AssetManager,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> Result<Vec<(Entity, EntityBuilder)>, ModelAssetError> {
+    // FIXME: 에셋 피벗이 잘못 설정되어있음
+
+    let mut total_batch_commands = Vec::new();
+    let (_, mut batch_commands) = spawn_terrain(
+        "Crossroads",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::IDENTITY,
+        glam::vec3(15.0, 0.0, 0.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Crossroads",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::IDENTITY,
+        glam::vec3(75.0, 0.0, 0.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::IDENTITY,
+        glam::vec3(15.0, 0.0, 0.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::IDENTITY,
+        glam::vec3(75.0, 0.0, 30.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::IDENTITY,
+        glam::vec3(15.0, 0.0, -15.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::IDENTITY,
+        glam::vec3(75.0, 0.0, 45.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::from_rotation_y(90f32.to_radians()),
+        glam::vec3(30.0, 0.0, -15.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::from_rotation_y(90f32.to_radians()),
+        glam::vec3(45.0, 0.0, -15.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::from_rotation_y(90f32.to_radians()),
+        glam::vec3(60.0, 0.0, -15.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Plane",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::IDENTITY,
+    //     glam::vec3(0.0, 0.0, 15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    // total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Plane",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::IDENTITY,
+    //     glam::vec3(0.0, 0.0, -15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    // total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Plane",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::IDENTITY,
+    //     glam::vec3(15.0, 0.0, 15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    // total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Plane",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::IDENTITY,
+    //     glam::vec3(15.0, 0.0, -15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    // total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Plane",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::IDENTITY,
+    //     glam::vec3(-15.0, 0.0, 15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    // total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Plane",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::IDENTITY,
+    //     glam::vec3(-15.0, 0.0, -15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    Ok(total_batch_commands)
 }

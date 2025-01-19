@@ -51,11 +51,13 @@ impl MotionPool {
 
     /// 풀 객체에 존재하는 해당 애니메이션 데이터를 제거합니다.  
     /// 풀 객체에 해당 애니메이션 데이터가 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
+    #[allow(dead_code)]
     pub fn remove(name: &str) -> Option<Arc<HashMap<String, Motion>>> {
         get_pool().remove(name)
     }
 
     /// 풀 객체에 존재하는 모든 애니메이션 데이터를 제거합니다.
+    #[allow(dead_code)]
     pub fn clear() {
         get_pool().clear()
     }
@@ -143,6 +145,7 @@ pub struct KeyFrameMeshBlob {
 
 #[derive(Debug, Clone)]
 pub struct Motion {
+    #[allow(dead_code)]
     pub name: String,
     pub length: f32,
     pub frame_rate: f32,
@@ -191,6 +194,7 @@ impl Motion {
 /// ## Animation Key Frame Data
 #[derive(Debug, Clone)]
 pub struct KeyFrame {
+    #[allow(dead_code)]
     pub time_point: f32,
     /// NOTE: 스키닝된 메쉬의 최상위 뼈 노드가 아닌 모델의 최상위 뼈 노드 변환 행렬
     pub root_matrix: glam::Mat4,
