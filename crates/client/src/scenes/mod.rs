@@ -1,5 +1,5 @@
+mod intro;
 mod startup;
-pub use self::startup::*;
-
 mod testbed;
-pub use self::testbed::*;
+
+pub use {self::intro::*, self::startup::*, self::testbed::*};

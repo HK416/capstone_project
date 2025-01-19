@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_raw_packet() {
         let data = vec![1, 2, 3, 4, 5];
-        let packet = RawPacket::new(PacketType::RAW, &data);
+        let packet = RawPacket::new(PacketType::Raw, &data);
 
         let serialized = packet.as_bytes();
         assert_eq!(serialized, vec![0, 8, 0, 1, 2, 3, 4, 5]);   // big-endian

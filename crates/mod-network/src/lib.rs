@@ -1,3 +1,5 @@
+pub mod components;
+
 mod parser;
 mod protocol;
 mod game_objects;

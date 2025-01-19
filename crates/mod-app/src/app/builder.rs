@@ -1,43 +1,43 @@
 use std::path::PathBuf;
 
-use mod_parallelism::NUM_SYSTEM_CORE;
 use winit::window::Icon;
 
 use crate::{
-    etc::{AppFlags, WindowSize}, 
-    scene::GameScene
+    etc::{AppFlags, WindowSize},
+    scene::GameScene,
 };
 
 use super::application::Application;
-
-
 
 /// 애플리케이션을 생성하는 빌더입니다.
 #[derive(Debug)]
 pub struct AppBuilder {
     /// 애플리케이션에서 처음 진입하는 시작 게임 장면입니다.
-    pub(crate) start_scene: Box<dyn GameScene>, 
+    pub(crate) start_scene: Box<dyn GameScene>,
 
     /// 애플리케이션의 현재 실행 디렉토리 경로입니다.
-    pub(crate) current_dir: Option<PathBuf>, 
+    pub(crate) current_dir: Option<PathBuf>,
 
     /// 애플리케이션 창 제목 텍스트입니다.
-    pub(crate) title: Option<String>, 
+    pub(crate) title: Option<String>,
 
     /// 애플리케이션 창 아이콘입니다.
-    pub(crate) icon: Option<Icon>, 
+    pub(crate) icon: Option<Icon>,
 
     /// 애플리케이션 창 해상도입니다.
-    pub(crate) size: Option<WindowSize>, 
+    pub(crate) size: Option<WindowSize>,
 
     /// 애플리케이션 창의 전체화면 여부입니다.
-    pub(crate) fullscreen: bool, 
+    pub(crate) fullscreen: bool,
+
+    /// 애플리케이션 창의 표시 여부입니다.
+    pub(crate) visible: bool,
 
     /// 애플리케이션에서 사용 가능한 최대 스레드의 수입니다.
-    pub(crate) num_threads: usize, 
+    pub(crate) num_threads: usize,
 
     /// 애플리케이션 생성 플래그입니다.
-    pub(crate) flags: AppFlags, 
+    pub(crate) flags: AppFlags,
 }
 
 impl AppBuilder {
@@ -45,15 +45,16 @@ impl AppBuilder {
     #[inline]
     #[must_use]
     pub fn new(start_scene: Box<dyn GameScene>) -> Self {
-        Self { 
-            start_scene, 
-            current_dir: None, 
-            title: None, 
-            icon: None, 
-            size: None, 
-            fullscreen: true, 
-            num_threads: *NUM_SYSTEM_CORE, 
-            flags: AppFlags::empty(), 
+        Self {
+            start_scene,
+            current_dir: None,
+            title: None,
+            icon: None,
+            size: None,
+            fullscreen: true,
+            visible: true,
+            num_threads: num_cpus::get_physical(),
+            flags: AppFlags::empty(),
         }
     }
 
@@ -97,6 +98,14 @@ impl AppBuilder {
         self
     }
 
+    /// 애플리케이션 창의 표시 여부를 설정합니다.
+    #[inline]
+    #[must_use]
+    pub fn with_visible(mut self, visible: bool) -> Self {
+        self.visible = visible;
+        self
+    }
+
     /// 애플리케이션에서 사용 가능한 최대 스레드 수를 설정합니다.
     #[inline]
     #[must_use]
@@ -121,17 +130,11 @@ impl AppBuilder {
         use pollster::FutureExt;
         use winit::event_loop::{ControlFlow, EventLoop};
 
-        use crate::{
-            app::command::parse_command_line_args, 
-            exception::{alert_error, set_panic_hooker}
-        };
-
-        // 후커를 설정합니다.
-        set_panic_hooker(None);
+        use crate::{app::command::parse_command_line_args, error::alert_error};
 
         // 명령줄 인자를 구문 분석합니다.
         let builder = match parse_command_line_args(self) {
-            Ok(builder) => builder, 
+            Ok(builder) => builder,
             Err(e) => {
                 alert_error("Command parsing failed", e.to_string(), None);
                 std::process::exit(-1);
@@ -140,7 +143,7 @@ impl AppBuilder {
 
         // 이벤트 루프를 생성합니다.
         let event_loop = match EventLoop::with_user_event().build() {
-            Ok(event_loop) => event_loop, 
+            Ok(event_loop) => event_loop,
             Err(e) => {
                 alert_error("Event loop creation failed", e.to_string(), None);
                 std::process::exit(-1);
@@ -154,7 +157,7 @@ impl AppBuilder {
         // 애플리케이션을 생성합니다.
         let future = Application::new(event_loop_proxy, builder);
         let mut app = match future.block_on() {
-            Ok(app) => app, 
+            Ok(app) => app,
             Err(e) => {
                 alert_error("Application creation failed", e.to_string(), None);
                 std::process::exit(-1);

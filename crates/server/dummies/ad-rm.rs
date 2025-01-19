@@ -8,6 +8,7 @@ use std::env;
 use std::str::FromStr;
 
 use mod_network::*;
+use mod_math::LatLon;
 
 
 async fn run_client(addr: &str, idx: usize, wait: f32) {
@@ -15,8 +16,8 @@ async fn run_client(addr: &str, idx: usize, wait: f32) {
     let mut parser = PacketParser::new();
 
     let mut player = Player::default();
-    player.translation.x = (0.0 + idx as f32 % 10.0) / 10.0;
-    player.translation.z = (0.0 + idx as f32 / 10.0) / 10.0;
+    player.translation[0] = (0.0 + idx as f32 % 10.0) / 10.0;
+    player.translation[2] = (0.0 + idx as f32 / 10.0) / 10.0;
 
     let mut buffer = [0; 1024];
 
@@ -32,16 +33,16 @@ async fn run_client(addr: &str, idx: usize, wait: f32) {
         }
 
         if let Some(raw_packet) = parser.pop() {
-            if raw_packet.packet_type() == PacketType::INIT {
-                let packet = InitPacket::from_raw(raw_packet);
-                player.id = packet.client_id;
+            if raw_packet.packet_type() == PacketType::Connect {
+                let packet = ConnectPacket::from_raw(raw_packet);
+                player.id = packet.client_id.into();
 
                 break;
             }
         }
     }
 
-    let packet = PushPacket::new(player).as_raw();
+    let packet = PushStatusPacket::default().as_raw();
     stream.write_all(&packet.as_bytes()).await.unwrap();
 
     let start = std::time::Instant::now();
@@ -59,8 +60,8 @@ async fn run_client(addr: &str, idx: usize, wait: f32) {
 
         while let Some(raw_packet) = parser.pop() {
             match raw_packet.packet_type() {
-                PacketType::PULL => {
-                    let packet = PullPacket::from_raw(raw_packet);
+                PacketType::PullStage => {
+                    let packet = PullStagePacket::from_raw(raw_packet);
                     for p in packet.players {
                         if p.id == player.id {
                             player = p;
@@ -78,7 +79,7 @@ async fn run_client(addr: &str, idx: usize, wait: f32) {
             return;
         }
 
-        let packet = PushPacket::new(player).as_raw();
+        let packet = PushStatusPacket::default().as_raw();
         stream.write_all(&packet.as_bytes()).await.unwrap();
     }
 }

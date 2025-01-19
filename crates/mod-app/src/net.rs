@@ -1,0 +1,261 @@
+use std::{
+    collections::VecDeque,
+    io::{self, BufReader, BufWriter, ErrorKind, Read, Write},
+    net::{SocketAddr, TcpStream},
+    sync::{
+        atomic::{AtomicBool, Ordering as MemOrdering},
+        Arc,
+    },
+    time::Duration,
+};
+
+use ahash::RandomState;
+use dashmap::DashMap;
+use mod_network::{PacketParser, RawPacket};
+use parking_lot::{Condvar, Mutex};
+use winit::event_loop::EventLoopProxy;
+
+use crate::etc::AppEvent;
+
+/// Socket Address
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum IpAddress {
+    Tcp(SocketAddr),
+    Udp(SocketAddr),
+}
+
+impl IpAddress {
+    /// IP 주소를 가져옵니다.
+    pub fn ip_addr(&self) -> &SocketAddr {
+        match self {
+            IpAddress::Tcp(addr) => addr,
+            IpAddress::Udp(addr) => addr,
+        }
+    }
+}
+
+/// Network Socket
+#[derive(Debug)]
+enum Socket {
+    Tcp(TcpStream),
+}
+
+impl Socket {
+    /// 수신한 데이터를 읽습니다.
+    pub fn recv_stream(&self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Socket::Tcp(stream) => {
+                let mut reader = BufReader::new(stream);
+                reader.read(buf)
+            }
+        }
+    }
+
+    /// 데이터를 전송합니다.
+    pub fn send_stream(&self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Socket::Tcp(stream) => {
+                let mut writer = BufWriter::new(stream);
+                writer.write(buf)
+            }
+        }
+    }
+}
+
+/// ## Socket Status
+#[derive(Debug)]
+pub struct SocketStatus {
+    address: IpAddress,
+    socket: Socket,
+    cvar: Condvar,
+    queue: Mutex<VecDeque<RawPacket>>,
+    is_connected: AtomicBool,
+}
+
+impl SocketStatus {
+    /// 소켓이 연결되었는지 여부를 반환합니다.
+    pub fn is_connected(&self) -> bool {
+        self.is_connected.load(MemOrdering::Relaxed)
+    }
+
+    /// 전송할 패킷을 추가합니다.
+    pub fn push_packet(&self, packet: RawPacket) {
+        let mut queue = self.queue.lock();
+        queue.push_back(packet);
+        self.cvar.notify_all();
+    }
+}
+
+/// ## Network Manager (Inner)
+#[derive(Debug)]
+struct NetManagerInner {
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
+    sockets: DashMap<IpAddress, Arc<SocketStatus>, RandomState>,
+}
+
+/// ## Network Manager
+#[derive(Debug, Clone)]
+pub struct NetManager(Arc<NetManagerInner>);
+
+impl NetManager {
+    /// 새로운 네트워크 매니저를 생성합니다.
+    pub fn new(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>) -> Self {
+        Self(Arc::new(NetManagerInner {
+            event_loop_proxy,
+            sockets: DashMap::default(),
+        }))
+    }
+
+    /// 주어진 IP 주소로 소켓을 생성하고 연결합니다.
+    ///
+    /// ※ 현재는 TCP 소켓만 구현됐습니다.
+    ///
+    /// 소켓을 연결하는 도중 오류가 발생한 경우 [`std::io::Error`]를 반환합니다.
+    ///
+    pub fn connect(&self, address: &IpAddress) -> io::Result<Arc<SocketStatus>> {
+        // 소켓을 생성합니다.
+        let status = match address {
+            IpAddress::Tcp(addr) => {
+                // TCP 스트림을 생성하고 연결합니다.
+                let stream = TcpStream::connect_timeout(addr, Duration::from_secs(5))?;
+
+                Arc::new(SocketStatus {
+                    address: address.clone(),
+                    socket: Socket::Tcp(stream),
+                    cvar: Condvar::new(),
+                    queue: Mutex::new(VecDeque::new()),
+                    is_connected: AtomicBool::new(true),
+                })
+            }
+            IpAddress::Udp(_) => {
+                todo!()
+            }
+        };
+
+        let status_cloned = status.clone();
+        let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
+        std::thread::spawn(|| packet_receive_loop(event_loop_proxy_cloned, status_cloned));
+
+        let status_cloned = status.clone();
+        let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
+        std::thread::spawn(|| packet_send_loop(event_loop_proxy_cloned, status_cloned));
+
+        let status_cloned = status.clone();
+        self.0.sockets.insert(address.clone(), status);
+
+        Ok(status_cloned)
+    }
+
+    /// 주어진 IP 주소에 해당하는 소켓 상태를 가져옵니다.  
+    /// 해당 소켓 상태가 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn get(&self, address: &IpAddress) -> Option<Arc<SocketStatus>> {
+        self.0.sockets.get(address).map(|status| status.clone())
+    }
+
+    /// 주어진 IP 주소에 해당하는 소켓을 연결해제 합니다.  
+    /// 해당 소켓 상태가 존재하지 않는 경우 아무 동작도 하지 않습니다.
+    pub fn disconnect(&self, address: &IpAddress) {
+        if let Some((_, status)) = self.0.sockets.remove(address) {
+            status.is_connected.store(false, MemOrdering::Release);
+            status.cvar.notify_all();
+        }
+    }
+}
+
+/// 패킷을 보내는 루프 함수입니다.
+fn packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc<SocketStatus>) {
+    loop {
+        let mut queue = status.queue.lock();
+        if status.is_connected() {
+            status.cvar.wait(&mut queue);
+        }
+
+        if !status.is_connected() {
+            break;
+        }
+
+        if let Some(raw_packet) = queue.pop_front() {
+            let bytes = raw_packet.as_bytes();
+            let mut buffer = bytes.as_slice();
+            while !buffer.is_empty() && status.is_connected() {
+                let result = status.socket.send_stream(&buffer);
+                match result {
+                    Ok(0) => {
+                        // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
+                        unsafe {
+                            event_loop_proxy
+                                .send_event(AppEvent::ClosedSocket(status.address))
+                                .unwrap_unchecked()
+                        };
+                        status.is_connected.store(false, MemOrdering::Release);
+                        break;
+                    }
+                    Ok(n) => buffer = &buffer[n..],
+                    Err(ref e) if e.kind() == ErrorKind::Interrupted => {
+                        continue;
+                    }
+                    Err(e) => {
+                        // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
+                        unsafe {
+                            event_loop_proxy
+                                .send_event(AppEvent::IOError(e))
+                                .unwrap_unchecked()
+                        };
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 패킷을 받는 루프 함수입니다.
+fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc<SocketStatus>) {
+    // 받은 패킷을 구문 분석하는 구문 분석기입니다.
+    // 구문 분석한 패킷은 EventLoopProxy를 통해 애플리케이션 이벤트 루프로 전송됩니다.
+    //
+    let mut parser = PacketParser::new();
+    let mut buffer = [0; 1024];
+
+    while status.is_connected() {
+        // 버퍼를 초기화 합니다.
+        buffer[..].fill(0);
+
+        // 수신받은 데이터를 읽습니다.
+        let result = status.socket.recv_stream(&mut buffer);
+        match result {
+            Ok(0) => {
+                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
+                unsafe {
+                    event_loop_proxy
+                        .send_event(AppEvent::ClosedSocket(status.address))
+                        .unwrap_unchecked()
+                };
+                status.is_connected.store(false, MemOrdering::Release);
+                break;
+            }
+            Ok(n) => parser.push(&buffer[..n]),
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => {
+                continue;
+            }
+            Err(e) => {
+                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
+                unsafe {
+                    event_loop_proxy
+                        .send_event(AppEvent::IOError(e))
+                        .unwrap_unchecked()
+                };
+                break;
+            }
+        };
+
+        while let Some(raw_packet) = parser.pop() {
+            if event_loop_proxy
+                .send_event(AppEvent::PacketReceived(raw_packet))
+                .is_err()
+            {
+                break; // 애플리케이션 이벤트 루프가 종료되었을 경우(애플리케이션의 종료) 루프 함수를 빠져나옵니다.
+            }
+        }
+    }
+}

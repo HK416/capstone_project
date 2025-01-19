@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.3.2"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -9,57 +9,37 @@ publish.workspace = true
 build = "build.rs"
 
 
-
 [dependencies]
-# A crate for mucking around with piles of bytes.
-# License: Zlib OR Apache-2.0 OR MIT
-bytemuck = { version = "1.18", features = ["derive"] }
+ahash = { workspace = true }
+bitflags = { workspace = true }
+constcat = { workspace = true }
+dashmap = { workspace = true }
+egui = { workspace = true }
+glam = { workspace = true }
+hecs = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+static_assertions = { workspace = true }
+thiserror = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
 
 # DirectDraw Surface file format parser/composer
-# License: MIT 
+# License: MIT
 ddsfile = "0.5"
 
-# An easy-to-use immediate mode GUI that runs on both web and native
+# A JSON serialization file format
 # License: MIT OR Apache-2.0
-egui = "0.29"
+serde_json = "1.0"
 
-# Bindings for using egui natively using the wgpu library
-egui-wgpu = "0.29"
-
-# Math library for video games
-# License: MIT
-gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck"] }
-
-# A lightweight logging facade for Rust
-# License: MIT OR Apache-2.0
-log = "0.4"
-
-# Simple work-stealing parallelism for Rust
-# License: MIT OR Apache-2.0
-rayon = "1.10"
-
-# Rusty Object Notation
-# License: MIT OR Apache-2.0
-ron = "0.8"
-
-# Cross-platform window creation library.
-# License: Apache-2.0
-winit = "0.30"
-
-# Rusty WebGPU API wrapper
-# License: MIT or Apache-2.0
-wgpu = "22"
-
-
-
-# 자체 프레임워크 라이브러리
+# 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }
-mod-asset = { path = "../mod-asset" }
 mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
-mod-physics = { path = "../mod-physics" }
-mod-world = { path = "../mod-world" }
-
+mod-render = { path = "../mod-render" }
 
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
@@ -85,10 +65,7 @@ serde_json = "1.0"
 
 
 [features]
-default = ["enable-debug-tools", "enable-shader-validation"]
+default = ["enable-shader-validation"]
 
-# 디버깅 툴을 활성화 합니다.
-enable-debug-tools = []
-
-# 쉐이더 유효성 검증을 활성화 합니다.
-enable-shader-validation = ["mod-world/enable-shader-validation"]
+# 쉐이더 생성시 유효성 검사를 활성화합니다.
+enable-shader-validation = []

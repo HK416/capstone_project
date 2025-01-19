@@ -137,15 +137,15 @@ mod tests {
     fn test_parse() {
         let mut parser = PacketParser::new();
 
-        let packet = RawPacket::new(PacketType::RAW, b"update");
+        let packet = RawPacket::new(PacketType::Raw, b"update");
         parser.push(&packet.as_bytes());
         assert_eq!(parser.pop(), Some(packet));
 
-        let packet = RawPacket::new(PacketType::RAW, b"remove");
+        let packet = RawPacket::new(PacketType::Raw, b"remove");
         parser.push(&packet.as_bytes());
         assert_eq!(parser.pop(), Some(packet));
 
-        let packet = RawPacket::new(PacketType::RAW, b"init 3 2 5 6");
+        let packet = RawPacket::new(PacketType::Raw, b"init 3 2 5 6");
         parser.push(&packet.as_bytes());
         assert_eq!(parser.pop(), Some(packet));
     }
@@ -155,7 +155,7 @@ mod tests {
         let mut parser = PacketParser::new();
 
         {
-            let packet = RawPacket::new(PacketType::RAW, b"update");
+            let packet = RawPacket::new(PacketType::Raw, b"update");
             let bytes = packet.as_bytes();
             parser.push(&bytes[..3]);
             assert_eq!(parser.iter().last(), Some(&Incomplete(bytes[..3].to_vec())));
@@ -168,7 +168,7 @@ mod tests {
         }
 
         {
-            let packet = RawPacket::new(PacketType::RAW, b"remove");
+            let packet = RawPacket::new(PacketType::Raw, b"remove");
             let bytes = packet.as_bytes();
             parser.push(&bytes[..6]);
             assert_eq!(parser.iter().last(), Some(&Incomplete(bytes[..6].to_vec())));
@@ -181,10 +181,10 @@ mod tests {
         }
 
         {
-            let packet1 = RawPacket::new(PacketType::RAW, b"init 3 2 5 6");
-            let packet2 = RawPacket::new(PacketType::RAW, b"update");
-            let packet3 = RawPacket::new(PacketType::RAW, b"update");
-            let packet4 = RawPacket::new(PacketType::RAW, b"remove");
+            let packet1 = RawPacket::new(PacketType::Raw, b"init 3 2 5 6");
+            let packet2 = RawPacket::new(PacketType::Raw, b"update");
+            let packet3 = RawPacket::new(PacketType::Raw, b"update");
+            let packet4 = RawPacket::new(PacketType::Raw, b"remove");
             let bytes1 = packet1.as_bytes();
             let bytes2 = packet2.as_bytes();
             let bytes3 = packet3.as_bytes();

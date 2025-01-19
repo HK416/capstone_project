@@ -1,298 +1,294 @@
-use std::fmt;
-use std::ptr;
-use std::collections::VecDeque;
-use std::sync::atomic::AtomicPtr;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering as MemOrdering;
+use std::{
+    collections::VecDeque,
+    ptr::{null_mut, NonNull},
+    sync::atomic::{AtomicPtr, AtomicU64, Ordering as MemOrdering},
+    u64,
+};
 
 use thread_local::ThreadLocal;
 
+use crate::backoff::Backoff;
 
-
-/// ### Epoch List
-/// 각 스레드의 Epoch를 모아놓은 연결 리스트 자료구조입니다.
-/// 
-/// Lock-Free 연결 리스트로 구현되어 있으며, Epoch의 할당만 합니다.
-/// 
-/// 새로운 스레드가 추가될 경우 Epoch List에 등록되며, 작업이 끝날 때 해제됩니다.
-/// 
-struct EpochList<T> {
-    head: AtomicPtr<Epoch<T>>, 
+/// ## Node
+/// - T: 관리 대상 자료형
+/// - M: 회수된 메모리 저장 용량
+///
+/// `ThreadList`의 노드입니다.
+///
+#[derive(Debug)]
+struct Node<T, const M: usize> {
+    data: AtomicPtr<ThreadData<T, M>>,
+    next: AtomicPtr<Node<T, M>>,
 }
 
-impl<T> EpochList<T> {
-    /// 비어있는 Epoch List를 반환합니다.
-    #[inline]
-    #[must_use]
-    const fn new() -> Self {
-        Self { head: AtomicPtr::new(ptr::null_mut()) }
-    }
-
-    /// Epoch List에 스레드 로컬 데이터를 Lock-Free하게 추가합니다.
-    unsafe fn add(&self, ptr: *mut Local<T>) {
-        let new = Epoch::new(ptr);
-        loop {
-            let current = self.head.load(MemOrdering::Relaxed);
-            (*new).next.store(current, MemOrdering::Relaxed);
-            if current != self.head.load(MemOrdering::Relaxed) {
-                continue;
-            }
-            if self.head.compare_exchange(current, new, MemOrdering::SeqCst, MemOrdering::Relaxed).is_ok() {
-                break;
-            }
+impl<T, const M: usize> Node<T, M> {
+    pub fn new(data: NonNull<ThreadData<T, M>>) -> Self {
+        Self {
+            data: AtomicPtr::new(data.as_ptr()),
+            next: AtomicPtr::new(null_mut()),
         }
     }
 }
 
-impl<T> Drop for EpochList<T> {
+impl<T, const M: usize> Drop for Node<T, M> {
     fn drop(&mut self) {
-        // drop은 모든 작업이 끝난 후 싱글스레드에서 호출됩니다.
-        // Epoch를 정리합니다.
-        let mut ptr = self.head.load(MemOrdering::Relaxed);
-        while !ptr.is_null() {
-            let temp = ptr;
-            ptr = unsafe { (*ptr).next.load(MemOrdering::Relaxed) };
+        unsafe { drop(Box::from_raw(self.data.load(MemOrdering::Relaxed))) };
+    }
+}
+
+/// ## Thread List
+/// - T: 관리 대상 자료형
+/// - M: 회수된 메모리 저장 용량
+///
+/// 각 스레드의 `ThreadData`의 집합입니다.  
+/// Lock-Free 연결 리스트로 구현되어 있으며, `ThreadList`에서는 새로운 노드를 생성만 합니다.  
+/// 생성된 노드는 모든 작업이 끝난 후 `ThreadList`가 제거될 때 제거됩니다.
+///
+#[derive(Debug)]
+struct ThreadList<T, const M: usize> {
+    head: AtomicPtr<Node<T, M>>,
+}
+
+impl<T, const M: usize> ThreadList<T, M> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 새로운 `ThreadData`를 추가합니다.
+    pub fn append(&self, ptr: NonNull<ThreadData<T, M>>) {
+        let mut backoff = Backoff::new();
+        let new = Box::into_raw(Box::new(Node::new(ptr)));
+        loop {
+            let current = self.head.load(MemOrdering::Relaxed);
+            unsafe { (*new).next.store(current, MemOrdering::Relaxed) };
+
+            // `current`가 `head`인지 확인합니다. (`CAS` 명령어 사용을 최소화 하기 위함)
+            if current != self.head.load(MemOrdering::Relaxed) {
+                continue;
+            }
+
+            if self
+                .head
+                .compare_exchange(current, new, MemOrdering::SeqCst, MemOrdering::Relaxed)
+                .is_ok()
+            {
+                break;
+            }
+
+            backoff.wait();
+        }
+    }
+
+    /// `ThreadData`의 가장 작고, 큰 Epoch 값을 반환합니다.
+    pub fn get_min_max_epoch(&self) -> (u64, u64) {
+        let mut minimum = u64::MAX;
+        let mut maximum = u64::MIN;
+
+        let mut curr = self.head.load(MemOrdering::Relaxed);
+        while !curr.is_null() {
+            let local_data = unsafe { (*curr).data.load(MemOrdering::Relaxed) };
+            let epoch = unsafe { (*local_data).epoch_count.load(MemOrdering::Relaxed) };
+            minimum = minimum.min(epoch);
+            maximum = maximum.max(epoch);
+            curr = unsafe { (*curr).next.load(MemOrdering::Relaxed) };
+        }
+
+        (minimum, maximum)
+    }
+}
+
+impl<T, const M: usize> Default for ThreadList<T, M> {
+    fn default() -> Self {
+        Self {
+            head: AtomicPtr::new(null_mut()),
+        }
+    }
+}
+
+impl<T, const M: usize> Drop for ThreadList<T, M> {
+    fn drop(&mut self) {
+        let mut curr = self.head.load(MemOrdering::Relaxed);
+        while !curr.is_null() {
+            let temp = curr;
+            curr = unsafe { (*curr).next.load(MemOrdering::Relaxed) };
             unsafe { drop(Box::from_raw(temp)) };
         }
     }
 }
 
-
-
-
-
-/// ### Epoch
-/// 각 스레드의 Free List와 Epoch Counter를 저장한 노드입니다.
-struct Epoch<T> {
-    /// 스레드 로컬 저장소 데이터의 주소값 입니다.
-    local: AtomicPtr<Local<T>>, 
-
-    /// 다음 Epoch의 주소 값입니다.
-    next: AtomicPtr<Epoch<T>>, 
+/// ## Retire
+/// - T: 관리 대상 자료형
+///
+/// 회수된 메모리의 주소 값과 시대를 가집니다.
+///
+struct Retire<T> {
+    ptr: Box<T>,
+    epoch: u64,
 }
 
-impl<T> Epoch<T> {
-    /// 새로운 Epoch를 메모리에서 할당 받아 생성합니다.
-    /// 
-    /// # Warning 
-    /// 할당 받은 메모리는 자동으로 회수되지 않습니다.
-    /// 따라서 사용이 끝난 후 직접 메모리를 반환해야 합니다.
-    /// 
-    #[inline]
-    #[must_use]
-    pub fn new(p: *mut Local<T>) -> *mut Self {
-        Box::into_raw(Box::new(Self {
-            local: AtomicPtr::new(p), 
-            next: AtomicPtr::new(ptr::null_mut())
-        }))
+/// ## Thread Data
+/// - T: 관리 대상 자료형
+/// - M: 회수된 메모리 저장 용량
+///
+/// 각 스레드가 관리하는 스레드 로컬 데이터입니다.  
+/// 다른 스레드는 읽기만 가능합니다.
+///
+struct ThreadData<T, const M: usize> {
+    free_list: VecDeque<Retire<T>>,
+    epoch_count: AtomicU64,
+}
+
+impl<T, const M: usize> ThreadData<T, M> {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
-impl<T> Drop for Epoch<T> {
-    fn drop(&mut self) {
-        // drop은 모든 작업이 끝난 후 싱글스레드에서 호출됩니다.
-        // Local을 정리합니다.
-        let ptr = self.local.load(MemOrdering::Relaxed);
-        unsafe { drop(Box::from_raw(ptr)) }
-    }
-}
-
-
-
-
-
-/// ### Local
-/// 스레드 로컬 저장소에서 사용하는 데이터입니다.
-struct Local<T> {
-    /// 해제할 메모리 블록의 정보가 담긴 Queue 자료구조입니다.
-    /// 
-    /// 오직 하나의 스레드만 접근할 수 있으며, 각 스레드에서
-    /// 할당된 메모리 블록을 재사용할 때 사용됩니다.
-    /// 
-    /// 작업이 끝날 때 대기열에 담긴 메모리 블록이 해제됩니다.
-    /// 
-    freelist: VecDeque<(u64, Box<T>)>, 
-
-    /// 각 스레드의 현재 시대(Epoch) 정보입니다.
-    counter: AtomicU64, 
-}
-
-impl<T> Local<T> {
-    /// 새로운 스레드 로컬 저장소 데이터를 메모리에서 할당 받아 생성합니다.
-    /// 
-    /// # Warning 
-    /// 할당 받은 메모리는 자동으로 회수되지 않습니다.
-    /// 따라서 사용이 끝난 후 직접 메모리를 반환해야 합니다.
-    /// 
-    #[inline]
-    #[must_use]
-    pub fn new() -> *mut Self {
-        Box::into_raw(Box::new(Self { 
-            freelist: VecDeque::with_capacity(64), 
-            counter: AtomicU64::new(0) 
-        }))
-    }
-}
-
-
-
-
-
-/// ### Epoch Based Reclamation
-/// 시대(Epoch)를 이용한 간단한 쓰레기 수집기입니다.
-/// 
-/// 쓰레기 수집을 통해 멀티 스레드에서 dangling 포인터 참조 또는 ABA 문제를 해결할 수 있습니다.
-/// 
-pub struct EBR<T> {
-    counter: AtomicU64, 
-    epoch_list: EpochList<T>, 
-    tls: ThreadLocal<AtomicPtr<Local<T>>>, 
-}
-
-impl<T> EBR<T> {
-    /// 새로운 Epoch Based Reclamation를 사용하는 쓰레기 수집기를 생성합니다.
-    #[inline]
-    #[must_use]
-    pub const fn new() -> Self {
-        Self { 
-            counter: AtomicU64::new(1), 
-            epoch_list: EpochList::new(), 
-            tls: ThreadLocal::new(), 
+impl<T, const M: usize> Default for ThreadData<T, M> {
+    fn default() -> Self {
+        Self {
+            free_list: VecDeque::with_capacity(M),
+            epoch_count: AtomicU64::new(0),
         }
     }
+}
 
-    /// 스레드 로컬 데이터를 가져옵니다.
-    #[must_use]
-    fn get_local(&self) -> &mut Local<T> {
-        let ptr = self.tls.get_or(|| unsafe {
-            // 새로운 스레드 로컬 데이터를 할당 받습니다.
-            let ptr = Local::new();
+/// ## Collector
+/// - T: 관리 대상 자료형
+/// - M: 회수된 메모리 저장 용량
+///
+/// Epoch Based Reclamation 기법을 사용한 쓰레기 수집기입니다.  
+/// 멀티 스레드에서 Dangling 포인터 참조와 ABA 문제를 해결하기 위해 사용합니다.
+///
+#[derive(Debug)]
+pub struct Collector<T, const M: usize = 32> {
+    epoch_counter: AtomicU64,
+    thread_list: ThreadList<T, M>,
+    thread_local: ThreadLocal<AtomicPtr<ThreadData<T, M>>>,
+}
 
-            // Epoch List에 스레드 로컬 데이터를 Lock-Free하게 추가합니다.
-            self.epoch_list.add(ptr);
-
-            AtomicPtr::new(ptr)
-        }).load(MemOrdering::Relaxed);
-        unsafe { &mut *ptr }
+impl<T, const M: usize> Collector<T, M> {
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// 각 스레드의 시대(Epoch)중 가장 큰 값을 가져옵니다.
-    #[must_use]
-    fn get_max_epoch(&self) -> u64 {
-        let mut max_epoch = u64::MIN;
-        unsafe {
-            let mut p = self.epoch_list.head.load(MemOrdering::Relaxed);
-            while !p.is_null() {
-                let local_ptr = (*p).local.load(MemOrdering::Relaxed);
-                let cnt = (*local_ptr).counter.load(MemOrdering::Relaxed);
-                max_epoch = max_epoch.max(cnt);
-                p = (*p).next.load(MemOrdering::Relaxed);
+    /// `ScopeGuard`를 생성합니다.
+    pub fn scope(&self) -> ScopeGuard<'_, T, M> {
+        ScopeGuard::new(self)
+    }
+
+    /// 현재 스레드의 로컬 데이터를 가져옵니다.
+    fn get_local_data(&self) -> NonNull<ThreadData<T, M>> {
+        let ptr = self
+            .thread_local
+            .get_or(|| {
+                let ptr = Box::into_raw(Box::new(ThreadData::new()));
+                self.thread_list
+                    .append(unsafe { NonNull::new_unchecked(ptr) });
+                AtomicPtr::new(ptr)
+            })
+            .load(MemOrdering::Relaxed);
+        unsafe { NonNull::new_unchecked(ptr) }
+    }
+}
+
+impl<T, const M: usize> Default for Collector<T, M> {
+    fn default() -> Self {
+        Self {
+            epoch_counter: AtomicU64::new(1),
+            thread_list: ThreadList::new(),
+            thread_local: ThreadLocal::new(),
+        }
+    }
+}
+
+/// ## Scope Guard
+/// - T: 관리 대상 자료형
+/// - M: 회수된 메모리 저장 용량
+///
+/// 범위를 벗어나면 자동으로 현재 스레드의 Epoch를 초기화하는 가드입니다.
+///
+#[derive(Debug)]
+pub struct ScopeGuard<'a, T, const M: usize> {
+    collector: &'a Collector<T, M>,
+}
+
+impl<'a, T, const M: usize> ScopeGuard<'a, T, M> {
+    fn new(collector: &'a Collector<T, M>) -> Self {
+        let epoch = collector.epoch_counter.fetch_add(1, MemOrdering::AcqRel);
+        let local_data = unsafe { collector.get_local_data().as_ref() };
+        local_data.epoch_count.store(epoch, MemOrdering::Relaxed);
+        Self { collector }
+    }
+
+    /// `Collector`로 부터 메모리를 할당받습니다.
+    /// 회수된 메모리가 재사용 될 수 있습니다.
+    pub fn alloc<F>(&self, func: F) -> Box<T>
+    where
+        F: FnOnce() -> T,
+    {
+        let local_data = unsafe { self.collector.get_local_data().as_mut() };
+        if local_data.free_list.is_empty() {
+            return Box::new(func());
+        }
+
+        let (min_epoch, _) = self.collector.thread_list.get_min_max_epoch();
+        let front = unsafe { local_data.free_list.front().unwrap_unchecked() };
+        if min_epoch <= front.epoch {
+            return Box::new(func());
+        }
+
+        let mut front = unsafe { local_data.free_list.pop_front().unwrap_unchecked() };
+        *front.ptr = func();
+        front.ptr
+    }
+
+    /// `Collector`로 메모리를 회수합니다.
+    /// 회수된 메모리는 재사용 될 수 있습니다.
+    pub fn dealloc(&self, ptr: Box<T>) {
+        let (min_epoch, max_epoch) = self.collector.thread_list.get_min_max_epoch();
+        let local_data = unsafe { self.collector.get_local_data().as_mut() };
+
+        // 오래된 메모리를 제거합니다.
+        loop {
+            if local_data.free_list.len() < M {
+                break;
+            }; // 저장 공간이 남아있는 경우 루프를 빠져나옴.
+            if local_data.free_list.is_empty() {
+                break;
+            }; // 회수된 메모리가 없는 경우 루프를 빠져나옴.
+
+            // 회수된 메모리에 다른 스레드가 접근할 가능성이 있는 경우 루프를 빠져나옴.
+            if local_data
+                .free_list
+                .front()
+                .is_some_and(|front| min_epoch <= front.epoch)
+            {
+                break;
             }
-        };
-        return max_epoch;
-    }
 
-    /// 각 스레드의 시대(Epoch)중 0이 아닌 가장 작은 값을 가져옵니다.
-    #[must_use]
-    fn get_min_epoch(&self) -> u64 {
-        let mut min_epoch = u64::MAX;
-        unsafe {
-            let mut p = self.epoch_list.head.load(MemOrdering::Relaxed);
-            while !p.is_null() {
-                let local_ptr = (*p).local.load(MemOrdering::Relaxed);
-                let cnt = (*local_ptr).counter.load(MemOrdering::Relaxed);
-                if cnt != 0 {
-                    min_epoch = min_epoch.min(cnt);
-                }
-                p = (*p).next.load(MemOrdering::Relaxed);
-            }
-        };
-        return min_epoch;
-    }
-
-    pub fn pin(&self) -> EBRGuard<T> {
-        let local = self.get_local();
-        let my_epoch = self.counter.fetch_add(1, MemOrdering::AcqRel);
-        local.counter.store(my_epoch, MemOrdering::Relaxed);
-        EBRGuard::new(self)
-    }
-}
-
-impl<T> fmt::Debug for EBR<T> {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Epoch Based Reclamation")
-            .field("Current Epoch", &self.counter.load(MemOrdering::Relaxed))
-            .finish()
-    }
-}
-
-
-
-
-
-/// ### Epoch Based Reclamation Guard
-/// 범위를 벗어날 때 자동으로 현재 스레드의 Epoch를 초기화하는 가드입니다.
-pub struct EBRGuard<'a, T> {
-    inner: &'a EBR<T>, 
-}
-
-impl<'a, T> EBRGuard<'a, T> {
-    /// 새로운 EBR 가드를 생성합니다.
-    #[inline]
-    #[must_use]
-    fn new(inner: &'a EBR<T>) -> Self {
-        Self { inner }
-    }
-
-    /// 주어진 메모리 블록을 회수합니다.
-    #[inline]
-    pub fn dealloc(&self, blob: Box<T>) {
-        let local = self.inner.get_local();
-        let max_epoch = self.inner.get_max_epoch();
-        local.freelist.push_back((max_epoch, blob));
-    }
-}
-
-impl<'a, T: Default> EBRGuard<'a, T> {
-    /// 메모리 블록을 할당 받습니다.
-    #[must_use]
-    pub fn alloc(&self) -> Box<T> {
-        let local = self.inner.get_local();
-        if local.freelist.is_empty() {
-            return Box::new(T::default());
+            local_data.free_list.pop_front();
         }
 
-        let curr_epoch = self.inner.get_min_epoch();
-        let (remove_point, _) = unsafe { (*local).freelist.front().unwrap_unchecked() };
-        if curr_epoch.le(remove_point) {
-            return Box::new(T::default());
-        }
-
-        let (_, node) = unsafe { local.freelist.pop_front().unwrap_unchecked() };
-        return node;
+        // 회수된 메모리를 추가합니다.
+        local_data.free_list.push_back(Retire {
+            ptr,
+            epoch: max_epoch,
+        });
     }
 }
 
-impl<'a, T> Clone for EBRGuard<'a, T> {
-    #[inline]
+impl<'a, T, const M: usize> Clone for ScopeGuard<'a, T, M> {
     fn clone(&self) -> Self {
-        EBRGuard::new(&self.inner)
+        ScopeGuard {
+            collector: &self.collector,
+        }
     }
 }
 
-impl<'a, T> Drop for EBRGuard<'a, T> {
+impl<'a, T, const M: usize> Drop for ScopeGuard<'a, T, M> {
     fn drop(&mut self) {
-        let local = self.inner.get_local();
-        local.counter.store(0, MemOrdering::Relaxed);
-    }
-}
-
-impl<'a, T> fmt::Debug for EBRGuard<'a, T> {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(stringify!(EBRGuard<'a, T>))
-            .field(&self.inner)
-            .finish()
+        let local_data = unsafe { self.collector.get_local_data().as_ref() };
+        local_data.epoch_count.store(0, MemOrdering::Relaxed);
     }
 }

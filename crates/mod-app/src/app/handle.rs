@@ -4,12 +4,10 @@ use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
-    asset::AssetBundle, 
-    etc::{AppEvent, AppFlags, GameTimer, Locale, WindowSize}, 
-    net::NetManager
+    asset::AssetManager,
+    etc::{AppEvent, AppFlags, GameTimer, WindowSize},
+    net::NetManager,
 };
-
-
 
 /// 외부에서 애플리케이션에 접근할 수 있는 `trait`입니다.
 pub trait AppHandle {
@@ -23,22 +21,22 @@ pub trait AppHandle {
     fn current_dir(&self) -> &Path;
 
     /// 애플리케이션 에셋 관리자를 가져옵니다.
-    fn bundle(&self) -> &AssetBundle;
+    fn asset_manager(&self) -> &AssetManager;
 
     /// 애플리케이션 네트워크 매니저를 가져옵니다.
-    fn network(&self) -> &NetManager;
+    fn net_manager(&self) -> &NetManager;
 
     /// 애플리케이션 생성 플래그를 가져옵니다.
     fn flags(&self) -> AppFlags;
-
-    /// 애플리케이션 표시 언어를 가져옵니다.
-    fn locale(&self) -> Option<Locale>;
 
     /// 애플리케이션 창 타이틀 텍스트를 가져옵니다.
     fn window_title(&self) -> &str;
 
     /// 애플리케이션 창의 크기를 가져옵니다.
-    fn window_size(&self) -> &WindowSize;
+    fn window_size(&self) -> WindowSize;
+
+    /// 애플리케이션 창의 전체화면 여부를 가져옵니다.
+    fn is_fullscreen(&self) -> bool;
 
     /// 애플리케이션 게임 타이머를 가져옵니다.
     fn timer(&self) -> &GameTimer;

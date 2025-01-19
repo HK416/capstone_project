@@ -17,6 +17,7 @@ gmm = { git = "https://github.com/HK416/gmm.git" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }
 mod-physics = { path = "../mod-physics" }
+mod-math = { path = "../mod-math" }
 
 
 [[example]]

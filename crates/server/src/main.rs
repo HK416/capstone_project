@@ -1,7 +1,4 @@
-use tokio::{
-    net::{TcpListener, TcpStream},
-    io::{AsyncReadExt, AsyncWriteExt},
-};
+use tokio::net::{TcpListener, TcpStream};
 use std::sync::Mutex;
 use std::env;
 use std::str::FromStr;
@@ -11,7 +8,10 @@ use server::{
     session::Session,
 };
 
-use mod_network::Addr;
+use mod_network::{
+    Addr,
+    components::ClientId,
+};
 
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
@@ -53,11 +53,11 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
                 match slots.iter().position(|x| x.is_none()) {
                     Some(id) => {
                         slots[id] = Some(());
-                        println!("Accepted connection from: {}", id);
+                        println!("Accepted connection from: {}", id + 1);
                         tokio::spawn(handle_connection(id as u32, stream, world));
                     },
                     None => {
-                        tokio::spawn(server_full(stream));
+                        // 입장 거부
                     },
                 }
             },
@@ -71,7 +71,7 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
 
 /// 별개의 스레드에서 동작하며, 시작시와 종료시 Mutex lock을 걸어서 클라이언트 개수 파악
 async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
-    let mut session = Session::new(id, stream, WorldInterface::new(world));
+    let mut session = Session::new(ClientId::new(id as u64 + 1), stream, WorldInterface::new(world));
 
     {
         let slots = CLIENT_SLOTS.lock().unwrap();
@@ -83,19 +83,10 @@ async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
     {
         let mut slots = CLIENT_SLOTS.lock().unwrap();
         slots[id as usize] = None;
-        println!("Connection {} closed", id);
+        println!("Connection {} closed", id + 1);
 
         println!("num clients: {}", slots.iter().filter(|x| x.is_some()).count());
     }
-}
-
-/// 서버가 가득 차서 연결 거부
-async fn server_full(mut stream: TcpStream) {
-    let packet = mod_network::MessagePacket::new(0, "Server is full").as_raw();
-    stream.write(&packet.as_bytes()).await.unwrap();
-
-    let mut buf = [0; 1024];
-    stream.read(&mut buf).await.unwrap();       // 클라이언트가 확인할때까지 대기(메세지 종류는 상관없음)
 }
 
 
@@ -140,8 +131,9 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use mod_network::*;
+    use mod_network::components::{ClientId, CharacterKind};
 
     #[tokio::test]
     async fn test_connection() {
@@ -156,10 +148,18 @@ mod tests {
             parser.push(&buf[..n]);
 
             let packet = parser.pop().unwrap();
-            assert_eq!(packet.packet_type(), PacketType::INIT);
-    
-            let packet = InitPacket::from_raw(packet);
-            assert_eq!(packet.client_id, 0);
+            assert_eq!(packet.packet_type(), PacketType::Connect);
+        }
+
+        let packet = EnterStagePacket::new(ClientId::new(1), CharacterKind::ArisOriginal).as_raw();
+        client_stream.write(&packet.as_bytes()).await.unwrap();
+
+        let mut buf = [0; 1024];
+        if let Ok(n) = client_stream.read(&mut buf).await {
+            parser.push(&buf[..n]);
+
+            let packet = parser.pop().unwrap();
+            assert_eq!(packet.packet_type(), PacketType::InitStage);
         }
     }
 }

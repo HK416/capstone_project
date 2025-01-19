@@ -1,0 +1,29 @@
+[package]
+name = "mod-render"
+version = "0.1.2"
+edition.workspace = true
+rust-version.workspace = true
+description.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+
+[dependencies]
+ahash = { workspace = true }
+bitflags = { workspace = true }
+bytemuck = { workspace = true }
+egui = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
+static_assertions = { workspace = true }
+thiserror = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+
+
+
+[features]
+default = ["enable-debug-layer"]
+
+# 쉐이더 디버깅 레이어를 활성화합니다.
+enable-debug-layer = []

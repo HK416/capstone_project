@@ -1,6 +1,6 @@
 [package]
 name = "mod-parallelism"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -10,25 +10,14 @@ publish.workspace = true
 
 
 [dependencies]
-# Get the number of CPUs on a machine.
-# License: MIT OR Apache-2.0
-num_cpus = "1.16"
-
-# A macro for declaring lazily evaluated statics in Rust.
-# License: MIT OR Apache-2.0
-lazy_static = "1.5"
+ahash = { workspace = true }
+num_cpus = { workspace = true }
+parking_lot = { workspace = true }
+rand = { workspace = true }
 
 # Per-object thread-local storage
 # License: MIT OR Apache-2.0
 thread_local = "1.1"
-
-# More compact and efficient implementations of the standard synchronization primitives.
-# License: MIT OR Apache-2.0
-parking_lot = { version = "0.12", features = ["hardware-lock-elision"] }
-
-# Random number generators and other randomness functionality.
-# License: MIT OR Apache-2.0
-rand = "0.8"
 
 
 
