@@ -2,7 +2,7 @@ pub mod animation;
 mod aris_original;
 mod momoi_original;
 
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
@@ -14,7 +14,6 @@ use mod_network::{
     },
     Player,
 };
-use mod_parallelism::collections::Queue;
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
 };
@@ -22,7 +21,10 @@ use mod_render::{
 use crate::{
     asset::{ModelAssetError, ModelHierarchyPool, MotionPool},
     component::{Acceleration, Child, Force, Sibling, ToParentTrans, Velocity, WorldTransform},
-    render::{create_character_render_pipeline, CHARACTER_PIPELINE_NAME},
+    render::{
+        create_character_halo_render_pipeline, create_character_render_pipeline,
+        CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
+    },
 };
 
 pub use self::animation::*;
@@ -215,7 +217,7 @@ pub fn draw_character<'a>(
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
     // 엔터티의 쉐이더 리소스를 분류합니다.
-    let map = categorize_character_resource(world, &entities);
+    let (character, character_halo) = categorize_character_resource(world, &entities);
 
     // 캐릭터 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
     let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_NAME, || {
@@ -226,7 +228,7 @@ pub fn draw_character<'a>(
     // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
     rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
 
-    for (mesh, queue) in map.iter() {
+    for (mesh, mut queue) in character.into_iter() {
         // 메쉬의 정점 속성을 바인드합니다.
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
@@ -235,7 +237,38 @@ pub fn draw_character<'a>(
         rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
         rpass.set_vertex_buffer(5, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
 
-        while let Some((mesh_resource, materials)) = queue.pop() {
+        while let Some((mesh_resource, materials)) = queue.pop_front() {
+            // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
+            rpass.set_bind_group(1, &mesh_resource.bind_group, &[]);
+
+            for (index, submesh) in mesh.submeshes().iter().enumerate() {
+                // 메쉬의 인덱스 버퍼를 바인드합니다.
+                rpass.set_index_buffer(submesh.slice(..), submesh.format());
+
+                // 재질의 쉐이더 리소스를 바인드합니다.
+                rpass.set_bind_group(2, &materials[index].bind_group, &[]);
+
+                // 인덱스 버퍼를 사용하여 그립니다.
+                rpass.draw_indexed(0..submesh.count(), 0, 0..1);
+            }
+        }
+    }
+
+    // 캐릭터 헤일로 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
+    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_NAME, || {
+        create_character_halo_render_pipeline(device, depth_stencil_format, render_target_format)
+    });
+    rpass.set_pipeline(&pipeline);
+
+    // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
+    rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
+
+    for (mesh, mut queue) in character_halo.into_iter() {
+        // 메쉬의 정점 속성을 바인드합니다.
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+
+        while let Some((mesh_resource, materials)) = queue.pop_front() {
             // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
             rpass.set_bind_group(1, &mesh_resource.bind_group, &[]);
 
@@ -253,10 +286,13 @@ pub fn draw_character<'a>(
     }
 }
 
-/// 캐릭터 메쉬 - 쉐이더 리소스 맵 자료형
-type MeshResourcesMap = HashMap<Arc<Mesh>, Queue<(Arc<MeshResource>, Vec<Arc<MaterialResource>>)>>;
+/// 캐릭터 메쉬 집합
+type CharacterSet = HashMap<Arc<Mesh>, VecDeque<(Arc<MeshResource>, Vec<Arc<MaterialResource>>)>>;
+/// 캐릭터 헤일로 메쉬 집합
+type CharacterHaloSet =
+    HashMap<Arc<Mesh>, VecDeque<(Arc<MeshResource>, Vec<Arc<MaterialResource>>)>>;
 
-/// 캐릭터 모델을 그릴 때 사용되는 쉐이더 리소스 자료형
+/// 모델을 그릴 때 사용되는 쉐이더 리소스 자료형
 type DrawQuery<'a> = (
     &'a Arc<Mesh>,
     &'a Arc<MeshResource>,
@@ -272,21 +308,34 @@ type DrawQuery<'a> = (
 /// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn categorize_character_resource(world: &World, entities: &[Entity]) -> MeshResourcesMap {
+fn categorize_character_resource(
+    world: &World,
+    entities: &[Entity],
+) -> (CharacterSet, CharacterHaloSet) {
+    // 컴포넌트 뷰를 준비합니다.
     let child_view = &world.view::<&Child>();
     let sibling_view = &world.view::<&Sibling>();
-    let resource_view = &world.view::<With<DrawQuery, &CharacterKind>>();
-    let mut mesh_resource_map: MeshResourcesMap = HashMap::default();
+    let character_view = &world.view::<With<DrawQuery, &CharacterKind>>();
+    let character_halo_view = &world.view::<With<DrawQuery, &CharacterHaloKind>>();
+
+    // 결과를 저장할 집합 컨테이너를 준비합니다.
+    let mut character_set = HashMap::default();
+    let mut character_halo_set = HashMap::default();
+
+    // 엔터티 계층 구조를 순회합니다.
     for &entity in entities {
         categorize_character_resource_recursion(
             child_view,
             sibling_view,
-            resource_view,
-            &mut mesh_resource_map,
+            character_view,
+            character_halo_view,
+            &mut character_set,
+            &mut character_halo_set,
             entity,
         );
     }
-    mesh_resource_map
+
+    (character_set, character_halo_set)
 }
 
 /// 주어진 엔터티의 쉐이더 리소스를 분류합니다.
@@ -301,8 +350,10 @@ fn categorize_character_resource(world: &World, entities: &[Entity]) -> MeshReso
 fn categorize_character_resource_recursion(
     child_view: &ViewBorrow<'_, &Child>,
     sibling_view: &ViewBorrow<'_, &Sibling>,
-    resource_view: &ViewBorrow<'_, With<DrawQuery, &CharacterKind>>,
-    mesh_resource_map: &mut MeshResourcesMap,
+    character_view: &ViewBorrow<'_, With<DrawQuery, &CharacterKind>>,
+    character_halo_view: &ViewBorrow<'_, With<DrawQuery, &CharacterHaloKind>>,
+    character_set: &mut CharacterSet,
+    character_halo_set: &mut CharacterHaloSet,
     entity: Entity,
 ) {
     // 형제 엔터티가 존재하는 경우 형제 엔터티의 계층 구조를 탐색합니다.
@@ -310,8 +361,10 @@ fn categorize_character_resource_recursion(
         categorize_character_resource_recursion(
             child_view,
             sibling_view,
-            resource_view,
-            mesh_resource_map,
+            character_view,
+            character_halo_view,
+            character_set,
+            character_halo_set,
             *sibling_entity,
         );
     }
@@ -321,20 +374,30 @@ fn categorize_character_resource_recursion(
         categorize_character_resource_recursion(
             child_view,
             sibling_view,
-            resource_view,
-            mesh_resource_map,
+            character_view,
+            character_halo_view,
+            character_set,
+            character_halo_set,
             *child_entity,
         );
     }
 
-    // 엔터티의 쉐이더 리소스 데이터를 가져옵니다.
-    let results = resource_view.get(entity);
+    // 엔터티의 캐릭터 쉐이더 리소스 데이터를 가져옵니다.
+    let results = character_view.get(entity);
     if let Some((mesh, mesh_resource, materials)) = results {
-        // 쉐이더 리소스 데이터를 분류합니다.
-        let queue = mesh_resource_map
+        let queue = character_set
             .entry(mesh.clone())
-            .or_insert(Queue::new());
-        queue.push((mesh_resource.clone(), materials.clone()));
+            .or_insert(VecDeque::default());
+        queue.push_back((mesh_resource.clone(), materials.clone()));
+    }
+
+    // 엔터티의 캐릭터 헤일로 쉐이더 리소스 데이터를 가져옵니다.
+    let results = character_halo_view.get(entity);
+    if let Some((mesh, mesh_resource, materials)) = results {
+        let queue = character_halo_set
+            .entry(mesh.clone())
+            .or_insert(VecDeque::default());
+        queue.push_back((mesh_resource.clone(), materials.clone()));
     }
 }
 

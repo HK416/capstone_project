@@ -9,8 +9,7 @@ use mod_network::{
         ActionState, ActionStateTimer, CharacterKind, ClientId, MovementState, MovementStateTimer,
         ObjectId, ViewState, ViewStateTimer,
     },
-    Player, BulletBlob,
-    PacketType, PullStagePacket, PushStatusPacket, RawPacket,
+    PacketType, Player, PullStagePacket, PushStatusPacket, RawPacket,
 };
 use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use winit::{

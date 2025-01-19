@@ -157,7 +157,7 @@ pub fn create_character_render_pipeline(
 }
 
 /// 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
-pub fn create_student_halo_render_pipeline(
+pub fn create_character_halo_render_pipeline(
     device: &wgpu::Device,
     depth_stencil_format: wgpu::TextureFormat,
     render_target_format: wgpu::TextureFormat,

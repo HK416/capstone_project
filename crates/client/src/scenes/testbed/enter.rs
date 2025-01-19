@@ -22,7 +22,7 @@ use crate::{
     component::{load_character_model, spawn_player_character},
     config::UserConfig,
     render::{
-        create_character_render_pipeline, create_student_halo_render_pipeline,
+        create_character_halo_render_pipeline, create_character_render_pipeline,
         CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
     },
     SERVER_ADDR,
@@ -358,7 +358,11 @@ impl GameScene for LoadStageResourceScene {
 
         // 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
         GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_NAME, move || {
-            create_student_halo_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            create_character_halo_render_pipeline(
+                app.render_device(),
+                DEPTH_FORMAT,
+                SWAPCHAIN_FORMAT,
+            )
         });
 
         Ok(())
