@@ -622,6 +622,7 @@ impl TestbedInGameScene {
             hp: 100,
             translation,
             rotation,
+            velocity: [0.0; 3],
             character_kind,
             action_state,
             view_state,

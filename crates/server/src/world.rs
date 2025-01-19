@@ -121,8 +121,19 @@ impl World {
 
         // 플레이어 이동 처리
         while let Some((id, x, y, z)) = self.player_move_queue.pop() {
-            self.move_player(id, x * elapsed, y * elapsed, z * elapsed);
+            let p = self.players.get_mut(&id);
+            if let Some(p) = p {
+                p.velocity[0] = x;
+                p.velocity[1] = y;
+                p.velocity[2] = z;
+            }
         }
+
+        self.players.values_mut().for_each(|player| {
+            player.translation[0] += player.velocity[0] * elapsed;
+            player.translation[1] += player.velocity[1] * elapsed;
+            player.translation[2] += player.velocity[2] * elapsed;
+        });
 
         for bullet in self.alive_bullets.iter_mut() {
             let move_distance = bullet.blob.speed * elapsed;

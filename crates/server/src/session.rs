@@ -98,13 +98,21 @@ impl Session {
                     
                     self.world.update_player(player);
 
-                    if player.movement_state == MovementState::Moving {
-                        let dir = gmm::Vector::from_slice(&push_packet.move_direction)
-                            .vec3_normalize();
-                        // 속력값(캐릭터 능력치) 곱하기
-                        let dir = dir * 12.3;
-                        let dir = dir.store_float3();
-                        self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
+                    match player.movement_state {
+                        MovementState::Moving => {
+                            let dir = gmm::Vector::from_slice(&push_packet.move_direction)
+                                .vec3_normalize();
+                            // 속력값(캐릭터 능력치) 곱하기
+                            let dir = dir * 5.5;
+                            let dir = dir.store_float3();
+                            self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
+                        },
+                        
+                        MovementState::MoveToEnd => {
+                            self.world.push_move_data(self.id.into(), 0.0, 0.0, 0.0);
+                        },
+
+                        _ => {},
                     }
                     
                     let players = self.world.get_players();

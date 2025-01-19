@@ -16,6 +16,7 @@ pub struct Player {
     pub hp: u32,
     pub translation: [f32; 3], 
     pub rotation: [f32; 4], 
+    pub velocity: [f32; 3],
     pub character_kind: CharacterKind,      // --+ 4byte로 묶이도록 배치(각각이 1byte여야함)
     pub action_state: ActionState,          //   |
     pub movement_state: MovementState,      //   |
@@ -36,6 +37,7 @@ impl BigEndian for Player {
         bytes.extend_from_slice(&self.hp.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state.to_big_endian_bytes());
@@ -54,13 +56,14 @@ impl TryFromBigEndian for Player {
             hp: u32::from_big_endian_bytes(&bytes[4..8]),
             translation: <[f32; 3]>::from_big_endian_bytes(&bytes[8..20]),
             rotation: <[f32; 4]>::from_big_endian_bytes(&bytes[20..36]),
-            character_kind: CharacterKind::try_from_big_endian_bytes(&bytes[36..37])?,
-            action_state: ActionState::try_from_big_endian_bytes(&bytes[37..38])?,
-            movement_state: MovementState::try_from_big_endian_bytes(&bytes[38..39])?, 
-            view_state: ViewState::try_from_big_endian_bytes(&bytes[39..40])?,
-            action_state_timer: ActionStateTimer::from_big_endian_bytes(&bytes[40..44]),
-            movement_state_timer: MovementStateTimer::from_big_endian_bytes(&bytes[44..48]),
-            view_state_timer: ViewStateTimer::from_big_endian_bytes(&bytes[48..52]),
+            velocity: <[f32; 3]>::from_big_endian_bytes(&bytes[36..48]),
+            character_kind: CharacterKind::try_from_big_endian_bytes(&bytes[48..49])?,
+            action_state: ActionState::try_from_big_endian_bytes(&bytes[49..50])?,
+            movement_state: MovementState::try_from_big_endian_bytes(&bytes[50..51])?,
+            view_state: ViewState::try_from_big_endian_bytes(&bytes[51..52])?,
+            action_state_timer: ActionStateTimer::from_big_endian_bytes(&bytes[52..56]),
+            movement_state_timer: MovementStateTimer::from_big_endian_bytes(&bytes[56..60]),
+            view_state_timer: ViewStateTimer::from_big_endian_bytes(&bytes[60..64]),
         })
     }
 }
@@ -73,6 +76,7 @@ impl Default for Player {
             hp: 100,
             translation: [0.0, 0.0, 0.0], 
             rotation: [0.0, 0.0, 0.0, 1.0], 
+            velocity: [0.0, 0.0, 0.0],
             character_kind: CharacterKind::ArisOriginal,
             action_state: ActionState::Idle,
             movement_state: MovementState::Idle,
