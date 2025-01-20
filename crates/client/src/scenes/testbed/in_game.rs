@@ -20,7 +20,14 @@ use winit::{
 
 use crate::{
     component::{
-        animate_character, cleanup, draw_character, spawn_player_character, update_action_state_by_controller_input_flags, update_action_state_timer, update_character_direction, update_entity_hierarchy, update_movement_state_by_controller_state, update_movement_state_timer, update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection, ControllerInputFlags, ControllerInputTimer, ControllerState, MoveDirection, Parent, Projection, SkinningAnimation, TerrainTag, ThirdPersonCamera, ToParentTrans, WorldTransform
+        animate_character, cleanup, draw_character, spawn_player_character,
+        update_action_state_by_controller_input_flags, update_action_state_timer,
+        update_character_direction, update_entity_hierarchy,
+        update_movement_state_by_controller_state, update_movement_state_timer,
+        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
+        update_view_state_timer, BoneCollection, ControllerInputFlags, ControllerInputTimer,
+        ControllerState, MoveDirection, Parent, Projection, SkinningAnimation, TerrainTag,
+        ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     render::{draw_terrain, prepare_camera_resource, prepare_mesh_resource},
@@ -569,15 +576,11 @@ impl TestbedInGameScene {
     }
 
     /// 지형 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
-    /// 
+    ///
     /// # Note
     /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
-    /// 
-    fn prepare_stage_resource(
-        &mut self,
-        device: &wgpu::Device, 
-        queue: &wgpu::Queue
-    ) {
+    ///
+    fn prepare_stage_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let query = self.world.query_mut::<Without<&TerrainTag, &Parent>>();
         let entities: Vec<_> = query.into_iter().map(|(entity, _)| entity).collect();
         prepare_mesh_resource(&self.world, &entities, device, queue);
@@ -1004,7 +1007,6 @@ impl GameScene for TestbedInGameScene {
         // 지형 메쉬의 쉐이더 리소스를 갱신합니다.
         self.prepare_stage_resource(app.render_device(), app.render_queue());
 
-
         // 사용자 인터페이스를 갱신합니다.
         self.prepare_ui(window, egui_renderer, app)?;
 
@@ -1075,9 +1077,10 @@ impl GameScene for TestbedInGameScene {
             draw_terrain(
                 &self.world,
                 &camera_resource,
-                &device, SWAPCHAIN_FORMAT,
+                &device,
+                SWAPCHAIN_FORMAT,
                 DEPTH_FORMAT,
-                &mut rpass
+                &mut rpass,
             );
 
             egui_renderer.render(

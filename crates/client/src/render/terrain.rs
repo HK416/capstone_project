@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use hecs::{With, World};
-use mod_render::{AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource};
+use mod_render::{
+    AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
+};
 
 use crate::component::TerrainTag;
 
@@ -132,7 +134,11 @@ pub fn draw_terrain<'a>(
     depth_stencil_format: wgpu::TextureFormat,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
-    type Query<'a> = (&'a Arc<Mesh>, &'a Arc<MeshResource>, &'a Vec<Arc<MaterialResource>>);
+    type Query<'a> = (
+        &'a Arc<Mesh>,
+        &'a Arc<MeshResource>,
+        &'a Vec<Arc<MaterialResource>>,
+    );
     let mut query = world.query::<With<Query, &TerrainTag>>();
     for (_, (mesh, mesh_resource, materials)) in query.iter() {
         // 지형 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
@@ -140,10 +146,10 @@ pub fn draw_terrain<'a>(
             create_terrain_render_pipeline(device, depth_stencil_format, render_target_format)
         });
         rpass.set_pipeline(&pipeline);
-    
+
         // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
         rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
-    
+
         // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
         rpass.set_bind_group(1, &mesh_resource.bind_group, &[]);
 

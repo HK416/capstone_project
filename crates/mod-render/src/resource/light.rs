@@ -56,7 +56,12 @@ impl GlobalLightUniform {
 
     /// 전역 조명 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
-    pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: GlobalLightDataLayout) {
+    pub fn update(
+        &self,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        data: GlobalLightDataLayout,
+    ) {
         let capturable = self.0.clone();
         self.0
             .slice(..)
