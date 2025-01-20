@@ -52,7 +52,9 @@
             "directories" : {}
         },
         "stage" : {
-            "files" : [],
+            "files" : [
+                "Sky.dds"
+            ],
             "directories" : {
                 "terrain" : {
                     "files" : [

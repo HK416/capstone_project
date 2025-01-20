@@ -35,7 +35,7 @@ var s_skybox: sampler;
 fn vs_main(input: InputAttributes) -> VertexOutput {
     var out: VertexOutput;
 
-    let position = u_camera.proj_view * vec4<f32>(input.position, 1.0);
+    let position = u_camera.proj_view * vec4<f32>(input.position, 0.0);
     out.clip_position = position.xyww;
     out.texcoord = input.position;
 

@@ -11,7 +11,10 @@ use mod_network::{
     },
     PacketType, Player, PullStagePacket, PushStatusPacket, RawPacket,
 };
-use mod_render::{CameraResource, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use mod_render::{
+    CameraResource, ScreenDescriptor, SkyboxDataLayout, SkyboxResource, UiRenderer, DEPTH_FORMAT,
+    SWAPCHAIN_FORMAT,
+};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -30,16 +33,11 @@ use crate::{
         ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
-    render::{draw_terrain, prepare_camera_resource, prepare_mesh_resource},
+    render::{
+        clear_render_target_with_skybox, draw_terrain, prepare_camera_resource,
+        prepare_mesh_resource,
+    },
     SERVER_ADDR,
-};
-
-/// 배경 화면의 색상입니다.
-const BACKGROUND_COLOR: wgpu::Color = wgpu::Color {
-    r: 0.0,
-    g: 116.0 / 255.0,
-    b: 183.0 / 255.0,
-    a: 1.0,
 };
 
 /// 기본 게임 구조를 테스트하는 공간입니다.
@@ -65,6 +63,9 @@ pub struct TestbedInGameScene {
     /// 사용자 입력 상태 플래그 변수
     controller_input_flags: ControllerInputFlags,
 
+    /// Skybox 쉐이더 리소스
+    skybox_resource: Arc<SkyboxResource>,
+
     // ----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
@@ -81,6 +82,7 @@ impl TestbedInGameScene {
         client_id: ClientId,
         world: World,
         entities: HashMap<ObjectId, Entity>,
+        skybox_resource: Arc<SkyboxResource>,
     ) -> Self {
         assert_ne!(client_id, ClientId::NULL, "invalid client id");
         Self {
@@ -93,6 +95,7 @@ impl TestbedInGameScene {
             controller_state: ControllerState::default(),
             controller_state_timer: ControllerInputTimer::default(),
             controller_input_flags: ControllerInputFlags::default(),
+            skybox_resource,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -246,11 +249,8 @@ impl TestbedInGameScene {
     /// 이 함수를 호출하기 전에 카메라의 회전과 위치 오프셋을 갱신해야합니다.
     ///
     fn update_main_camera_hierarchy(&mut self) {
-        // 플레이어 캐릭터 엔터티를 가져옵니다.
-        let id: ObjectId = self.client_id.into();
-        let entity = self.entities.get(&id).cloned().expect("no such entity");
-
         // 플레이어 캐릭터의 위치를 가져옵니다.
+        let entity = self.get_player_entity();
         let world_transform = self
             .world
             .query_one_mut::<&WorldTransform>(entity)
@@ -269,6 +269,31 @@ impl TestbedInGameScene {
     fn prepare_main_camera_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let camera_entities = [self.main_camera];
         prepare_camera_resource(&self.world, &camera_entities, device, queue);
+    }
+
+    /// Skybox 쉐이더 리소스를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 메인 카메라의 월드 변환 행렬이 갱신되어야합니다.
+    ///
+    fn prepare_skybox_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        // 메인 카메라 엔터티의 월드 변환 행렬과 투영 변환 행렬을 가져옵니다.
+        let (world_transform, projection) = self
+            .world
+            .query_one_mut::<(&WorldTransform, &Projection)>(self.main_camera)
+            .expect("invalid entity or invalid entity component");
+        let proj_view = (projection.0 * world_transform.to_view_trans()).to_cols_array();
+
+        // Skybox 쉐이더 리소스를 갱신합니다.
+        self.skybox_resource.skybox_uniform.update(
+            device,
+            queue,
+            SkyboxDataLayout {
+                proj_view,
+                color: [1.0; 3],
+                ..Default::default()
+            },
+        );
     }
 
     /// 플레이어 움직임 방향을 갱신합니다.
@@ -777,7 +802,9 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
+
         Ok(())
     }
 
@@ -1007,6 +1034,9 @@ impl GameScene for TestbedInGameScene {
         // 지형 메쉬의 쉐이더 리소스를 갱신합니다.
         self.prepare_stage_resource(app.render_device(), app.render_queue());
 
+        // Skybox 쉐이더 리소스를 갱신합니다.
+        self.prepare_skybox_resource(app.render_device(), app.render_queue());
+
         // 사용자 인터페이스를 갱신합니다.
         self.prepare_ui(window, egui_renderer, app)?;
 
@@ -1046,7 +1076,7 @@ impl GameScene for TestbedInGameScene {
                 label: Some("RenderPass(TestbedInGameScene)"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(BACKGROUND_COLOR),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                     view: render_target_view,
@@ -1077,6 +1107,14 @@ impl GameScene for TestbedInGameScene {
             draw_terrain(
                 &self.world,
                 &camera_resource,
+                &device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+
+            clear_render_target_with_skybox(
+                &self.skybox_resource,
                 &device,
                 SWAPCHAIN_FORMAT,
                 DEPTH_FORMAT,

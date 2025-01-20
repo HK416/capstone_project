@@ -5,6 +5,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use wgpu::util::DeviceExt;
 
 /// ## Skybox Data Layout
 #[repr(C, align(16))]
@@ -129,9 +130,33 @@ static_assertions::const_assert_eq!(
     core::mem::size_of::<SkyboxDataLayout>()
 );
 
+/// 큐브의 정점 위치 데이터
+const CUBE_VERTICES: [f32; 108] = [
+    -1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0,
+    -1.0, -1.0, -1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0,
+    -1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0,
+    1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0,
+    -1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0,
+    -1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, -1.0, -1.0,
+    -1.0, 1.0, 1.0, -1.0, 1.0,
+];
+
+/// Skybox의 정점 버퍼를 가져옵니다.
+fn get_vertex_buffer(device: &wgpu::Device) -> &'static wgpu::Buffer {
+    static BUFFER: OnceLock<wgpu::Buffer> = OnceLock::new();
+    BUFFER.get_or_init(|| {
+        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex(Skybox)"),
+            contents: bytemuck::cast_slice(&CUBE_VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        })
+    })
+}
+
 /// ## Skybox Shader Resource
 #[derive(Debug)]
 pub struct SkyboxResource {
+    pub vertex_buffer: &'static wgpu::Buffer,
     pub skybox_uniform: SkyboxUniform,
     pub bind_group: wgpu::BindGroup,
 }
@@ -191,7 +216,7 @@ impl SkyboxResource {
     ) -> Self {
         let tag = &format!("Uniform(Skybox({}))", label.unwrap_or("Unknown"));
         let skybox_uniform = SkyboxUniform::uninit(Some(&tag), device);
-
+        let vertex_buffer = get_vertex_buffer(device);
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
             layout: &Self::bind_group_layout(device),
@@ -212,6 +237,7 @@ impl SkyboxResource {
         });
 
         Self {
+            vertex_buffer,
             skybox_uniform,
             bind_group,
         }
