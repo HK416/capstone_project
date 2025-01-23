@@ -101,11 +101,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
 
-    // out.color = u_material.albedo * textureSample(t_albedo, s_albedo, input.texcoord);
-    let r = fract(input.position_w.x) * 0.5 + 0.5;
-    let g = fract(input.position_w.z) * 0.5 + 0.5;
-    let b = fract(input.position_w.y) * 0.5 + 0.5;
-    out.color = vec4(r, g, b, 1.0);
-
+    out.color = u_material.albedo * textureSample(t_albedo, s_albedo, input.texcoord);
+    
     return out;
 }

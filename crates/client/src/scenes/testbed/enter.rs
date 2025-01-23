@@ -1026,7 +1026,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(15.0, 0.0, 0.0),
+        glam::vec3(30.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
@@ -1039,7 +1039,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(75.0, 0.0, 0.0),
+        glam::vec3(-30.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
@@ -1052,7 +1052,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(15.0, 0.0, 0.0),
+        glam::vec3(-30.0, 0.0, 15.0),
         &asset_manager,
         &device,
         &queue,
@@ -1065,7 +1065,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(75.0, 0.0, 30.0),
+        glam::vec3(-30.0, 0.0, -15.0),
         &asset_manager,
         &device,
         &queue,
@@ -1078,7 +1078,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(15.0, 0.0, -15.0),
+        glam::vec3(30.0, 0.0, 15.0),
         &asset_manager,
         &device,
         &queue,
@@ -1091,19 +1091,6 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(75.0, 0.0, 45.0),
-        &asset_manager,
-        &device,
-        &queue,
-        world,
-    )?;
-    total_batch_commands.append(&mut batch_commands);
-
-    let (_, mut batch_commands) = spawn_terrain(
-        "Road",
-        "stage/terrain",
-        glam::Vec3::ONE,
-        glam::Quat::from_rotation_y(90f32.to_radians()),
         glam::vec3(30.0, 0.0, -15.0),
         &asset_manager,
         &device,
@@ -1117,7 +1104,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
-        glam::vec3(45.0, 0.0, -15.0),
+        glam::vec3(0.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
@@ -1130,13 +1117,39 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
-        glam::vec3(60.0, 0.0, -15.0),
+        glam::vec3(15.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
         world,
     )?;
     total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::from_rotation_y(90f32.to_radians()),
+        glam::vec3(-15.0, 0.0, 0.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Road",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::from_rotation_y(90f32.to_radians()),
+    //     glam::vec3(60.0, 0.0, -15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    // total_batch_commands.append(&mut batch_commands);
 
     // let (_, mut batch_commands) = spawn_terrain(
     //     "Plane",
