@@ -6,9 +6,10 @@ use super::world::WorldInterface;
 use mod_network::*;
 use mod_network::components::{
     ClientId, 
-    // ObjectId, 
+    ObjectId, 
     StageKind,
     MovementState,
+    ActionState,
 };
 
 
@@ -22,7 +23,8 @@ pub struct Session {
 
     running: bool,
 
-    // shot_count: u32,
+    shot_count: u32,
+    recent_shot_time: tokio::time::Instant,
 }
 
 impl Session {
@@ -33,7 +35,8 @@ impl Session {
             packet_parser: PacketParser::new(),
             world,
             running: true,
-            // shot_count: 0,
+            shot_count: 0,
+            recent_shot_time: tokio::time::Instant::now(),
         }
     }
 
@@ -75,74 +78,95 @@ impl Session {
             match packet.packet_type() {
                 PacketType::EnterStage => {
                     let enter_packet = EnterStagePacket::from_raw(packet);
-                    self.world.add_player(self.id.into(), enter_packet.character_kind);
-
-                    println!("Client {:?} entered stage", self.id);
-
-                    let players = self.world.get_players();
-                    let raw_packet = InitStagePacket::new(players, StageKind::Downtown).as_raw();
-                    match self.stream_write(raw_packet).await {
-                        Ok(_) => {
-
-                        }, 
-                        Err(_) => {
-                            self.running = false;
-                            return;
-                        }
-                    }
+                    self.process_enter_stage(enter_packet).await;
                 },
                 
                 PacketType::PushStatus => {
                     let push_packet = PushStatusPacket::from_raw(packet);
-                    let player = push_packet.player;
-                    
-                    self.world.update_player(player);
-
-                    match player.movement_state {
-                        MovementState::Moving => {
-                            let dir = gmm::Vector::from_slice(&push_packet.move_direction)
-                                .vec3_normalize();
-                            // 속력값(캐릭터 능력치) 곱하기
-                            let dir = dir * 5.5;
-                            let dir = dir.store_float3();
-                            self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
-                        },
-                        
-                        MovementState::MoveToEnd => {
-                            self.world.push_move_data(self.id.into(), 0.0, 0.0, 0.0);
-                        },
-
-                        _ => {},
-                    }
-                    
-                    let players = self.world.get_players();
-                    let bullets = self.world.get_bullets();
-                    let raw_packet = PullStagePacket::new(players, bullets).as_raw();
-                    match self.stream_write(raw_packet).await {
-                        Ok(_) => {
-
-                        }, 
-                        Err(_) => {
-                            self.running = false;
-                            return;
-                        }
-                    }
+                    self.process_push_status(push_packet).await;
                 }, 
 
-                // PacketType::FIRED => {
-                //     let fired_packet = ShotPacket::from_raw(packet);
-                    
-                //     self.shot_count += 1;
-                //     self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
-
-                //     let mut bullet = fired_packet.bullet;
-                //     let bid: u32 = self.id.into();
-                //     bullet.id = ObjectId::new(bid * 1000 + self.shot_count);     // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
-
-                //     self.world.add_bullet(bullet);
-                // }
-
                 _ => {},
+            }
+        }
+    }
+
+    async fn process_enter_stage(&mut self, packet: EnterStagePacket) {
+        self.world.add_player(self.id.into(), packet.character_kind);
+
+        println!("Client {:?} entered stage", self.id);
+
+        let players = self.world.get_players();
+        let raw_packet = InitStagePacket::new(players, StageKind::Downtown).as_raw();
+        match self.stream_write(raw_packet).await {
+            Ok(_) => {
+
+            }, 
+            Err(_) => {
+                self.running = false;
+                return;
+            }
+        }
+    }
+
+    async fn process_push_status(&mut self, packet: PushStatusPacket) {
+        let player = packet.player;
+                    
+        self.world.update_player(player);
+
+        match player.movement_state {
+            MovementState::Moving => {
+                let dir = gmm::Vector::from_slice(&packet.move_direction)
+                    .vec3_normalize();
+                // 속력값(캐릭터 능력치) 곱하기
+                let dir = dir * 5.5;
+                let dir = dir.store_float3();
+                self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
+            },
+            
+            MovementState::MoveToEnd => {
+                self.world.push_move_data(self.id.into(), 0.0, 0.0, 0.0);
+            },
+
+            _ => {},
+        }
+
+        match player.action_state {
+            ActionState::Attack => {
+                const SHOT_INTERVAL: f32 = 1.0;     // 캐릭터 애니메이션에 맞춰야함
+                const SHOT_DELAY: f32 = 0.0;        // 캐릭터 애니메이션에 맞춰야함
+                if self.recent_shot_time.elapsed().as_secs_f32() >= SHOT_INTERVAL {
+                    if player.action_state_timer.0 >= SHOT_DELAY {
+                        self.recent_shot_time = tokio::time::Instant::now();
+                        
+                        println!("shot!");
+                        self.shot_count += 1;
+                        self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
+                        
+                        let mut bullet = BulletBlob::new(0, self.id.into(), player.translation, packet.move_direction, 100.0, 100.0);
+                        let bid: u32 = self.id.into();
+                        bullet.id = ObjectId::new(bid * 1000 + self.shot_count);     // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
+
+                        self.world.add_bullet(bullet);
+                    }
+                }
+            }, 
+
+            _ => {},
+        }
+
+        
+        
+        let players = self.world.get_players();
+        let bullets = self.world.get_bullets();
+        let raw_packet = PullStagePacket::new(players, bullets).as_raw();
+        match self.stream_write(raw_packet).await {
+            Ok(_) => {
+
+            }, 
+            Err(_) => {
+                self.running = false;
+                return;
             }
         }
     }

@@ -157,7 +157,7 @@ impl World {
                 let player_position = gmm::Vector::from(player_position);
 
                 // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
-                const BULLET_RADIUS: f32 = 0.5;
+                const BULLET_RADIUS: f32 = 0.15;
                 const PLAYER_RADIUS: f32 = 1.0;
                 const PLAYER_HEIGHT: f32 = 2.5;
 

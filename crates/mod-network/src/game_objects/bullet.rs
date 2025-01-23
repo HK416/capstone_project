@@ -52,7 +52,7 @@ impl BulletBlob {
             direction: direction.into(), 
             speed, 
             range, 
-            id: ObjectId::new(0),      // 클라이언트에서 서버로 보낼때는 일단 아무 값이나 넣어서 보냄
+            id: ObjectId::new(1),      // 클라이언트에서 서버로 보낼때는 일단 아무 값이나 넣어서 보냄
             // TODO: 충돌체 추가
         }
     }
