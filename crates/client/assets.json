@@ -52,12 +52,16 @@
             "directories" : {}
         },
         "stage" : {
-            "files" : [],
+            "files" : [
+                "Sky.dds"
+            ],
             "directories" : {
                 "terrain" : {
                     "files" : [
+                        "Crossroads.dds",
                         "Crossroads.hierarchy",
                         "Plane.hierarchy",
+                        "Road.dds",
                         "Road.hierarchy"
                     ],
                     "directories" : {}

@@ -1,6 +1,7 @@
-use std::{error::Error, fmt, sync::Arc};
+use std::{error::Error, fmt, io::Cursor, sync::Arc};
 
 use ahash::HashMap;
+use ddsfile::Dds;
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::{
     app::AppHandle,
@@ -13,9 +14,11 @@ use mod_network::{
     EnterStagePacket, InitStagePacket, PacketType, RawPacket,
 };
 use mod_render::{
-    GraphicsPipelinePool, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
+    GraphicsPipelinePool, SamplerPool, ScreenDescriptor, SkyboxResource, TexturePool,
+    TextureViewPool, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use rayon::ThreadPool;
+use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
@@ -25,7 +28,8 @@ use crate::{
     config::UserConfig,
     render::{
         create_character_halo_render_pipeline, create_character_render_pipeline,
-        create_terrain_render_pipeline, CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
+        create_skybox_render_pipeline, create_terrain_render_pipeline, skybox,
+        CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME, SKYBOX_PIPELINE_NAME,
         TERRAIN_PIPELINE_NAME,
     },
     SERVER_ADDR,
@@ -347,6 +351,14 @@ impl GameScene for LoadStageResourceScene {
             &mut self.num_tasks,
         );
 
+        // Skybox 텍스처 데이터를 로드합니다.
+        load_skybox_texture(
+            app.io_threads(),
+            app.asset_manager().clone(),
+            self.task_result_channel.clone(),
+            &mut self.num_tasks,
+        );
+
         // 게임 월드 지형 모델 데이터를 로드합니다.
         // FIXME: 추후 수정 필요
         load_terrain_models(
@@ -375,6 +387,11 @@ impl GameScene for LoadStageResourceScene {
         // 지형 렌더링 파이프라인을 생성합니다.
         GraphicsPipelinePool::get_or_init(TERRAIN_PIPELINE_NAME, move || {
             create_terrain_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+        });
+
+        // Skybox 렌더링 파이프라인을 생성합니다.
+        GraphicsPipelinePool::get_or_init(SKYBOX_PIPELINE_NAME, move || {
+            create_skybox_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
         });
 
         Ok(())
@@ -575,6 +592,20 @@ fn load_character_models(
     }
 }
 
+/// Skybox 텍스처를 로드합니다.
+fn load_skybox_texture(
+    pool: &ThreadPool,
+    asset_manager: AssetManager,
+    channel: TaskResultChannel<()>,
+    num_tasks: &mut usize,
+) {
+    pool.spawn(move || {
+        let path = format!("{}/{}.dds", skybox::WORKSPACE, skybox::TEXTURE_NAME);
+        channel.send(asset_manager.load(&path).map(|_| ()));
+    });
+    *num_tasks += 1;
+}
+
 /// 지형 모델 데이터를 로드합니다.
 fn load_terrain_models(
     pool: &ThreadPool,
@@ -738,11 +769,26 @@ impl GameScene for InitStageScene {
         // 작업 처리 결과를 대기합니다.
         if let Some(result) = self.task_result_channel.recv() {
             let (world, entities) = result?;
+
+            // Skybox 쉐이더 리소스를 생성합니다.
+            let skybox_resource = create_skybox_resource(
+                app.asset_manager(),
+                app.render_device(),
+                app.render_queue(),
+            )
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
             let user_config = self
                 .user_config
                 .take()
                 .expect("user configuration must exist");
-            let next_scene = TestbedInGameScene::new(user_config, self.client_id, world, entities);
+            let next_scene = TestbedInGameScene::new(
+                user_config,
+                self.client_id,
+                world,
+                entities,
+                skybox_resource,
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let proxy = app.event_loop_proxy();
@@ -980,7 +1026,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(15.0, 0.0, 0.0),
+        glam::vec3(30.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
@@ -993,7 +1039,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(75.0, 0.0, 0.0),
+        glam::vec3(-30.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
@@ -1006,7 +1052,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(15.0, 0.0, 0.0),
+        glam::vec3(-30.0, 0.0, 15.0),
         &asset_manager,
         &device,
         &queue,
@@ -1019,7 +1065,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(75.0, 0.0, 30.0),
+        glam::vec3(-30.0, 0.0, -15.0),
         &asset_manager,
         &device,
         &queue,
@@ -1032,7 +1078,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(15.0, 0.0, -15.0),
+        glam::vec3(30.0, 0.0, 15.0),
         &asset_manager,
         &device,
         &queue,
@@ -1045,19 +1091,6 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
-        glam::vec3(75.0, 0.0, 45.0),
-        &asset_manager,
-        &device,
-        &queue,
-        world,
-    )?;
-    total_batch_commands.append(&mut batch_commands);
-
-    let (_, mut batch_commands) = spawn_terrain(
-        "Road",
-        "stage/terrain",
-        glam::Vec3::ONE,
-        glam::Quat::from_rotation_y(90f32.to_radians()),
         glam::vec3(30.0, 0.0, -15.0),
         &asset_manager,
         &device,
@@ -1071,7 +1104,7 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
-        glam::vec3(45.0, 0.0, -15.0),
+        glam::vec3(0.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
@@ -1084,13 +1117,39 @@ fn spawn_terrains<'a>(
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
-        glam::vec3(60.0, 0.0, -15.0),
+        glam::vec3(15.0, 0.0, 0.0),
         &asset_manager,
         &device,
         &queue,
         world,
     )?;
     total_batch_commands.append(&mut batch_commands);
+
+    let (_, mut batch_commands) = spawn_terrain(
+        "Road",
+        "stage/terrain",
+        glam::Vec3::ONE,
+        glam::Quat::from_rotation_y(90f32.to_radians()),
+        glam::vec3(-15.0, 0.0, 0.0),
+        &asset_manager,
+        &device,
+        &queue,
+        world,
+    )?;
+    total_batch_commands.append(&mut batch_commands);
+
+    // let (_, mut batch_commands) = spawn_terrain(
+    //     "Road",
+    //     "stage/terrain",
+    //     glam::Vec3::ONE,
+    //     glam::Quat::from_rotation_y(90f32.to_radians()),
+    //     glam::vec3(60.0, 0.0, -15.0),
+    //     &asset_manager,
+    //     &device,
+    //     &queue,
+    //     world,
+    // )?;
+    // total_batch_commands.append(&mut batch_commands);
 
     // let (_, mut batch_commands) = spawn_terrain(
     //     "Plane",
@@ -1171,4 +1230,60 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     Ok(total_batch_commands)
+}
+
+/// Skybox 쉐이더 리소스를 로드합니다.
+fn create_skybox_resource(
+    asset_manager: &AssetManager,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> Result<Arc<SkyboxResource>, ModelAssetError> {
+    let texture = TexturePool::get_or_init(
+        skybox::TEXTURE_NAME,
+        move || -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+            let path = format!("{}/{}.dds", skybox::WORKSPACE, skybox::TEXTURE_NAME);
+            let cached_asset = asset_manager
+                .get_or_init(&path)
+                .map_err(|e| ModelAssetError::from(e))?;
+
+            let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
+                .map_err(|e| ModelAssetError::from(e))?;
+
+            let texture = device.create_texture_with_data(
+                &queue,
+                &wgpu::TextureDescriptor {
+                    label: Some(&"Texture(Skybox)"),
+                    size: wgpu::Extent3d {
+                        width: dds.get_width(),
+                        height: dds.get_height(),
+                        depth_or_array_layers: 6,
+                    },
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Bc7RgbaUnorm,
+                    mip_level_count: dds.get_num_mipmap_levels(),
+                    sample_count: 1,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::LayerMajor,
+                &dds.data,
+            );
+
+            asset_manager.remove(path);
+            Ok(Arc::new(texture))
+        },
+    )?;
+
+    let t_skybox = TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::Cube),
+        ..Default::default()
+    });
+    let s_skybox = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+    Ok(Arc::new(SkyboxResource::uninit(
+        Some("Skybox"),
+        device,
+        &t_skybox,
+        &s_skybox,
+    )))
 }
