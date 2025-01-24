@@ -1,6 +1,6 @@
 //게임 내 공식
 
-mod movement_formulas {
+pub mod movement_formulas {
     // 이동 속력 계산 함수
     pub fn cal_speed(t_duration: f64, s_move_speed: f64) -> (f64, f64, f64) {
         let t = 2.0 * f64::min(0.5, t_duration);
@@ -45,7 +45,7 @@ mod movement_formulas {
 
     // 치명타 확률 계산 함수
     pub fn cal_crt_rate(random_value: f64, critical: f64, c: f64) -> f64 {
-        (random_value * (critical / (critical + c))).ceil()
+        (random_value - (critical / (critical + c))).ceil()
     }
 
     // 최종 데미지 계산 함수
