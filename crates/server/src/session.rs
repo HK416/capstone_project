@@ -143,7 +143,7 @@ impl Session {
                         self.shot_count += 1;
                         self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
                         
-                        let mut bullet = BulletBlob::new(0, self.id.into(), player.translation, packet.move_direction, 100.0, 100.0);
+                        let mut bullet = BulletBlob::new(0, self.id.into(), player.translation, packet.move_direction, 100.0, 700.0);
                         let bid: u32 = self.id.into();
                         bullet.id = ObjectId::new(bid * 1000 + self.shot_count);     // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
 

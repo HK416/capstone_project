@@ -10,6 +10,8 @@ use mod_network::{
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
 
+use super::formula::movement_formulas as formulas;
+
 
 
 pub type WorldPointer = usize;
@@ -189,20 +191,61 @@ impl World {
             }
 
             match nearest_player_id {
+                // 충돌했다면
                 Some(id) => {
-                    // 총알 제거 -> pop했으므로 제거됨
-                    // TODO: 플레이어에게 피해를 줌
-                    // 해당 Session은 클라이언트에게 피해를 받았다는 패킷을 보내야함
-                    println!("Player {:?} hit by bullet", id);
-                    let hp = &mut self.players.get_mut(&id).unwrap().hp;
-                    if *hp <= 40 {
-                        *hp = 0;
-                    }
-                    else {
-                        *hp -= 40;
-                    }
-                    println!("Player {:?} hp: {}", id, *hp);
+                    // 피격 처리(회피하더라도 일단 총알은 제거)
                     bullet.alive = false;
+                    
+                    println!("Player {:?} hit by bullet", id);
+                    let player = self.players.get_mut(&id).unwrap();
+                    // TODO: 아래 코드처럼 동작해야함
+                    // let character_info = get_character_info(player.character_kind).unwrap();
+                    // let atk = character_info.attack_power;
+                    // let def = character_info.defense_power;
+
+                    // 플레이어 체력은 2000, 
+                    // 공격력 200, 방어력 20, 
+                    // 명중 수치: 200, 회피 수치: 200, 
+                    // 치명 수치: 200, 치명 데미지: 200%, 
+                    // 사거리 700
+                    // 으로 가정
+                    // > 각 식에서의 상수값은 제안서에 있는 값으로 설정
+
+                    // 1. 회피 계산
+                    // 2. 기본 데미지 계산
+                    // 3. 치명타 계산 
+                    // 4. 최종 데미지 계산
+
+                    // 회피 계산
+                    let accuracy = 200.0;   // 공격자 명중 수치
+                    let evasion = 200.0;    // 피격자 회피 수치
+                    let hit_rate = formulas::cal_hit_rate(accuracy, evasion, 100.0);
+                    // if rand::random::<f64>() > hit_rate {
+                    //     println!("  - miss");
+                    //     continue;
+                    // }
+                    
+                    // 데미지 계산
+                    let atk = 200.0;        // 공격력
+                    let def = 20.0;         // 방어력
+                    let dmg = formulas::default_damage(atk, def, 100.0);
+
+                    // 치명타 계산
+                    let crit = 200.0;   // 치명 수치
+                    let crit_rate = formulas::cal_crt_rate(rand::random::<f64>(), crit, 250.0);
+                    if crit_rate == 1.0 {
+                        println!("  - critical!");
+                    }
+
+                    // 최종 데미지 계산
+                    let final_dmg = formulas::final_damage(dmg, hit_rate, crit_rate, 200.0);
+
+                    let hp = &mut player.hp;
+                    hp.0 -= final_dmg as f32;
+                    if hp.0 <= 0.0 {
+                        hp.0 = 0.0;
+                    }
+                    println!("  - hp: {:?}(-{})", hp.0, final_dmg);
                 },
 
                 // 충돌하지 않았다면

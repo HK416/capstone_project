@@ -7,7 +7,7 @@ use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameS
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, CharacterKind, ClientId, MovementState, MovementStateTimer,
-        ObjectId, ViewState, ViewStateTimer,
+        ObjectId, ViewState, ViewStateTimer, HealthPoint,
     },
     PacketType, Player, PullStagePacket, PushStatusPacket, RawPacket,
 };
@@ -647,7 +647,7 @@ impl TestbedInGameScene {
         // 플레이어 데이터를 작성합니다.
         let player = Player {
             id,
-            hp: 100,
+            hp: HealthPoint(100.0),
             translation,
             rotation,
             velocity: [0.0; 3],

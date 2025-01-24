@@ -7,13 +7,14 @@ use super::super::components::{
     MovementState,
     ViewState,
     ActionStateTimer,
+    HealthPoint,
 };
 
 #[repr(C)]      // 서버에서 사용하기 때문에 packed로 설정하면 속도 저하가 발생할 수 있음
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Player {
     pub id: ObjectId,
-    pub hp: u32,
+    pub hp: HealthPoint,
     pub translation: [f32; 3], 
     pub rotation: [f32; 4], 
     pub velocity: [f32; 3],
@@ -53,7 +54,7 @@ impl TryFromBigEndian for Player {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         Some(Player {
             id: ObjectId::try_from_big_endian_bytes(&bytes[0..4])?,
-            hp: u32::from_big_endian_bytes(&bytes[4..8]),
+            hp: HealthPoint::from_big_endian_bytes(&bytes[4..8]),
             translation: <[f32; 3]>::from_big_endian_bytes(&bytes[8..20]),
             rotation: <[f32; 4]>::from_big_endian_bytes(&bytes[20..36]),
             velocity: <[f32; 3]>::from_big_endian_bytes(&bytes[36..48]),
@@ -73,7 +74,7 @@ impl Default for Player {
     fn default() -> Self {
         Self { 
             id: ObjectId::new(1), 
-            hp: 100,
+            hp: HealthPoint(2000.0),
             translation: [0.0, 0.0, 0.0], 
             rotation: [0.0, 0.0, 0.0, 1.0], 
             velocity: [0.0, 0.0, 0.0],
