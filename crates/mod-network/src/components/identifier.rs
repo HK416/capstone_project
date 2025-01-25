@@ -42,7 +42,14 @@ impl TryFromBigEndian for ActionState {
             2 => Some(ActionState::AimAt),
             3 => Some(ActionState::AimOff),
             4 => Some(ActionState::Attack),
-            _ => None,
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(ActionState),
+                    index
+                );
+                None
+            }
         }
     }
 }
@@ -109,7 +116,14 @@ impl TryFromBigEndian for CharacterKind {
         match index {
             0 => Some(CharacterKind::ArisOriginal),
             1 => Some(CharacterKind::MomoiOriginal),
-            _ => None,
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(CharacterKind),
+                    index
+                );
+                None
+            }
         }
     }
 }
@@ -168,6 +182,11 @@ impl TryFromBigEndian for ClientId {
         if num != 0 && num != u64::MAX {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
+            log::error!(
+                "invalid value for `{}`, (VALUE:{})",
+                stringify!(ClientId),
+                num
+            );
             None
         }
     }
@@ -235,6 +254,7 @@ impl TryFromBigEndian for Epoch {
         if num != u64::MAX {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
+            log::error!("invalid value for `{}`, (VALUE:{})", stringify!(Epoch), num);
             None
         }
     }
@@ -284,6 +304,11 @@ impl TryFromBigEndian for ObjectId {
         if num != 0 && num != u32::MAX {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
+            log::error!(
+                "invalid value for `{}`, (VALUE:{})",
+                stringify!(ObjectId),
+                num
+            );
             None
         }
     }
@@ -331,7 +356,14 @@ impl TryFromBigEndian for MovementState {
             0 => Some(MovementState::Idle),
             1 => Some(MovementState::Moving),
             2 => Some(MovementState::MoveToEnd),
-            _ => None,
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(MovementState),
+                    index
+                );
+                None
+            }
         }
     }
 }
@@ -396,7 +428,14 @@ impl TryFromBigEndian for StageKind {
         let index = u8::from_big_endian_bytes(bytes);
         match index {
             0 => Some(StageKind::Downtown),
-            _ => None,
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(StageKind),
+                    index
+                );
+                None
+            }
         }
     }
 }
@@ -449,7 +488,14 @@ impl TryFromBigEndian for ViewState {
             1 => Some(ViewState::ZoomIn),
             2 => Some(ViewState::ZoomOut),
             3 => Some(ViewState::Aiming),
-            _ => None,
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(ViewState),
+                    index
+                );
+                None
+            }
         }
     }
 }
