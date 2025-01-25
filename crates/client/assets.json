@@ -58,11 +58,12 @@
             "directories" : {
                 "terrain" : {
                     "files" : [
-                        "Crossroads.dds",
-                        "Crossroads.hierarchy",
-                        "Plane.hierarchy",
-                        "Road.dds",
-                        "Road.hierarchy"
+                        "CrossroadPlane.dds",
+                        "CrossroadPlane.hierarchy",
+                        "CrossroadPlaneNormal.dds",
+                        "RoadPlane.dds",
+                        "RoadPlane.hierarchy",
+                        "RoadPlaneNormal.dds"
                     ],
                     "directories" : {}
                 }

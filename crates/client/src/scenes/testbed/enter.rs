@@ -623,7 +623,7 @@ fn load_terrain_models(
         let channel = channel.clone();
         pool.spawn(move || {
             let result = ModelHierarchyPool::get_or_init(
-                "Crossroads",
+                "CrossroadPlane",
                 "stage/terrain",
                 &asset_manager,
                 &device,
@@ -642,7 +642,7 @@ fn load_terrain_models(
         let channel = channel.clone();
         pool.spawn(move || {
             let result = ModelHierarchyPool::get_or_init(
-                "Road",
+                "RoadPlane",
                 "stage/terrain",
                 &asset_manager,
                 &device,
@@ -654,23 +654,23 @@ fn load_terrain_models(
     }
 
     // 평면 모델을 로드합니다.
-    {
-        let asset_manager = asset_manager.clone();
-        let device = device.clone();
-        let queue = queue.clone();
-        let channel = channel.clone();
-        pool.spawn(move || {
-            let result = ModelHierarchyPool::get_or_init(
-                "Plane",
-                "stage/terrain",
-                &asset_manager,
-                &device,
-                &queue,
-            );
-            channel.send(result.map(|_| ()));
-        });
-        *num_tasks += 1;
-    }
+    // {
+    //     let asset_manager = asset_manager.clone();
+    //     let device = device.clone();
+    //     let queue = queue.clone();
+    //     let channel = channel.clone();
+    //     pool.spawn(move || {
+    //         let result = ModelHierarchyPool::get_or_init(
+    //             "Plane",
+    //             "stage/terrain",
+    //             &asset_manager,
+    //             &device,
+    //             &queue,
+    //         );
+    //         channel.send(result.map(|_| ()));
+    //     });
+    //     *num_tasks += 1;
+    // }
 }
 
 /// 게임 월드를 생성하는 게임 장면입니다.
@@ -1022,7 +1022,7 @@ fn spawn_terrains<'a>(
 
     let mut total_batch_commands = Vec::new();
     let (_, mut batch_commands) = spawn_terrain(
-        "Crossroads",
+        "CrossroadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
@@ -1035,7 +1035,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Crossroads",
+        "CrossroadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
@@ -1048,7 +1048,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Road",
+        "RoadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
@@ -1061,7 +1061,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Road",
+        "RoadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
@@ -1074,7 +1074,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Road",
+        "RoadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
@@ -1087,7 +1087,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Road",
+        "RoadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
@@ -1100,7 +1100,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Road",
+        "RoadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
@@ -1113,7 +1113,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Road",
+        "RoadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
@@ -1126,7 +1126,7 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "Road",
+        "RoadPlane",
         "stage/terrain",
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
