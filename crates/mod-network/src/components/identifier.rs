@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 use super::{BigEndian, TryFromBigEndian};
 
 /// 클라이언트를 식별하기 위한 식별자입니다.
@@ -51,6 +53,12 @@ impl TryFromBigEndian for ClientId {
             );
             None
         }
+    }
+}
+
+impl ToString for ClientId {
+    fn to_string(&self) -> String {
+        Uuid::from_u128(self.0).hyphenated().to_string()
     }
 }
 

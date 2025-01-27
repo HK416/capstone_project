@@ -6,10 +6,10 @@ use hecs::{Entity, EntityBuilder, With, Without, World};
 use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, CharacterKind, ClientId, MovementState, MovementStateTimer,
-        ObjectId, ViewState, ViewStateTimer, HealthPoint,
+        ActionState, ActionStateTimer, CharacterKind, ClientId, Epoch, LatLon, MovementState,
+        MovementStateTimer, ObjectId, Player, ViewState, ViewStateTimer,
     },
-    PacketType, Player, PullStagePacket, PushStatusPacket, RawPacket,
+    protocol::{Packet, PullStagePacket, PushStatusPacket, RawPacket},
 };
 use mod_render::{
     CameraResource, ScreenDescriptor, SkyboxDataLayout, SkyboxResource, UiRenderer, DEPTH_FORMAT,
@@ -46,6 +46,10 @@ pub struct TestbedInGameScene {
     user_config: Option<Box<UserConfig>>,
     /// 클라이언트 식별자
     client_id: ClientId,
+    /// 플레이어의 오브젝트 식별자
+    object_id: ObjectId,
+    /// 이전 서버의 Epoch
+    epoch: Epoch,
 
     /// 게임 월드
     world: World,
@@ -80,6 +84,8 @@ impl TestbedInGameScene {
     pub fn new(
         user_config: Box<UserConfig>,
         client_id: ClientId,
+        object_id: ObjectId,
+        epoch: Epoch,
         world: World,
         entities: HashMap<ObjectId, Entity>,
         skybox_resource: Arc<SkyboxResource>,
@@ -88,6 +94,8 @@ impl TestbedInGameScene {
         Self {
             user_config: Some(user_config),
             client_id,
+            object_id,
+            epoch,
             world,
             entities,
             main_camera: Entity::DANGLING,
@@ -323,11 +331,8 @@ impl TestbedInGameScene {
 
     /// 플레이어의 움직임 상태를 갱신합니다.
     fn update_player_movement_state(&mut self) {
-        // 플레이어 캐릭터 엔터티를 가져옵니다.
-        let id: ObjectId = self.client_id.into();
-        let entity = self.entities.get(&id).cloned().expect("no such entity");
-
         // 플레이어 캐릭터 엔터티에서 `MovementState`, `MovementStateTimer`를 가져옵니다.
+        let entity = self.get_player_entity();
         let (movement_state, movement_state_timer) = self
             .world
             .query_one_mut::<(&mut MovementState, &mut MovementStateTimer)>(entity)
@@ -347,8 +352,10 @@ impl TestbedInGameScene {
     /// 엔터티 목록에서 오브젝트 식별자에 해당하는 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
     ///
     fn get_player_entity(&self) -> Entity {
-        let id: ObjectId = self.client_id.into();
-        self.entities.get(&id).cloned().expect("no such entity")
+        self.entities
+            .get(&self.object_id)
+            .cloned()
+            .expect("no such entity")
     }
 
     /// 플레이어 카메라 상태를 갱신합니다.
@@ -613,14 +620,8 @@ impl TestbedInGameScene {
 
     /// 게임 서버에 플레이어 데이터를 전송합니다.
     fn push_player_data(&mut self, net_manager: &NetManager) {
-        // 플레이어 캐릭터 엔터티를 가져옵니다.
-        let id: ObjectId = self.client_id.into();
-        let entity = self.entities.get(&id).cloned().expect("no such entity");
-
-        // 플레이어 엔터티로부터 필요한 컴포넌트 데이터를 가져옵니다.
         type Components<'a> = (
             &'a WorldTransform,
-            &'a CharacterKind,
             &'a ActionState,
             &'a ActionStateTimer,
             &'a MovementState,
@@ -628,9 +629,11 @@ impl TestbedInGameScene {
             &'a ViewState,
             &'a ViewStateTimer,
         );
+
+        // 플레이어 엔터티로부터 필요한 컴포넌트 데이터를 가져옵니다.
+        let entity = self.get_player_entity();
         let (
             world_transform,
-            &character_kind,
             &action_state,
             &action_state_timer,
             &movement_state,
@@ -641,30 +644,32 @@ impl TestbedInGameScene {
             .world
             .query_one_mut::<Components>(entity)
             .expect("invalid entity or invalid entity component");
-        let translation = world_transform.get_translation().xyz().to_array();
         let rotation = world_transform.get_rotation().to_array();
+        let direction = self.move_direction.0.xyz().to_array();
 
-        // 플레이어 데이터를 작성합니다.
-        let player = Player {
-            id,
-            hp: HealthPoint(100.0),
-            translation,
-            rotation,
-            velocity: [0.0; 3],
-            character_kind,
-            action_state,
-            view_state,
-            movement_state,
-            action_state_timer,
-            view_state_timer,
-            movement_state_timer,
+        // 메인 카메라 엔터티로부터 카메라 방향 데이터를 가져옵니다.
+        let third_person_camera = self
+            .world
+            .query_one_mut::<&ThirdPersonCamera>(self.main_camera)
+            .expect("invalid entity or invalid entity component");
+        let view_rotation: LatLon = LatLon {
+            lat: third_person_camera.pitch_angle,
+            lon: third_person_camera.yaw_angle,
         };
-        let move_direction = self.move_direction.0.xyz().to_array();
 
         // 패킷을 생성하고, 전송합니다.
         let pakcet = PushStatusPacket {
-            player,
-            move_direction,
+            epoch: self.epoch,
+            client_id: self.client_id,
+            rotation,
+            direction,
+            action_state,
+            action_state_timer,
+            movement_state,
+            movement_state_timer,
+            view_state,
+            view_state_timer,
+            view_rotation,
         };
         let socket = net_manager.get(&SERVER_ADDR).expect("no such socket");
         socket.push_packet(pakcet.as_raw());
@@ -686,22 +691,20 @@ impl TestbedInGameScene {
         let mut view_state_view = self.world.view::<(&mut ViewState, &mut ViewStateTimer)>();
         let mut local_transform_view = self.world.view::<&mut ToParentTrans>();
 
-        // 현재 플레이어의 오브젝트 식별자를 가져옵니다.
-        let id: ObjectId = self.client_id.into();
         // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
         let mut objects: HashSet<ObjectId> = self.entities.keys().cloned().collect();
         // 새로운 플레이어 데이터를 수집합니다.
         let mut new_players: Vec<Player> = Vec::with_capacity(10);
 
-        while let Some(player_data) = packet.players.pop() {
+        while let Some(player) = packet.players.pop() {
             // 현재 플레이어의 경우 데이터 갱신을 하지 않습니다.
-            if player_data.id == id {
-                objects.remove(&player_data.id);
+            if player.object_id == self.object_id {
+                objects.remove(&self.object_id);
 
                 // 오브젝트의 엔터티를 가져옵니다.
                 let entity = self
                     .entities
-                    .get(&player_data.id)
+                    .get(&self.object_id)
                     .cloned()
                     .expect("no such entity");
 
@@ -709,17 +712,17 @@ impl TestbedInGameScene {
                 let local_transform = local_transform_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                local_transform.set_translation(glam::Vec3::from_array(player_data.translation));
+                local_transform.set_translation(glam::Vec3::from_array(player.translation));
 
                 continue;
             }
 
             // 이미 존재했던 오브젝트인 경우 오브젝트의 데이터를 갱신합니다.
-            if objects.remove(&player_data.id) {
+            if objects.remove(&player.object_id) {
                 // 오브젝트의 엔터티를 가져옵니다.
                 let entity = self
                     .entities
-                    .get(&player_data.id)
+                    .get(&player.object_id)
                     .cloned()
                     .expect("no such entity");
 
@@ -727,34 +730,34 @@ impl TestbedInGameScene {
                 let (action_state, action_state_timer) = action_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *action_state = player_data.action_state;
-                *action_state_timer = player_data.action_state_timer;
+                *action_state = player.action_state;
+                *action_state_timer = player.action_state_timer;
 
                 // 움직임 상태, 움직임 상태 지속 시간을 갱신합니다.
                 let (movement_state, movement_state_timer) = movement_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *movement_state = player_data.movement_state;
-                *movement_state_timer = player_data.movement_state_timer;
+                *movement_state = player.movement_state;
+                *movement_state_timer = player.movement_state_timer;
 
                 // 카메라 상태, 카메라 상태 지속 시간을 갱신합니다.
                 let (view_state, view_state_timer) = view_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *view_state = player_data.view_state;
-                *view_state_timer = player_data.view_state_timer;
+                *view_state = player.view_state;
+                *view_state_timer = player.view_state_timer;
 
                 // 위치와 방향을 갱신합니다.
                 let local_transform = local_transform_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
                 local_transform.set_rotation_translation(
-                    glam::Quat::from_array(player_data.rotation),
-                    glam::Vec3::from_array(player_data.translation),
+                    glam::Quat::from_array(player.rotation),
+                    glam::Vec3::from_array(player.translation),
                 );
             } else {
                 // 존재하지 않은 오브젝트의 경우 새로운 데이터에 추가합니다.
-                new_players.push(player_data);
+                new_players.push(player);
             }
         }
 
@@ -764,10 +767,10 @@ impl TestbedInGameScene {
         drop(local_transform_view);
 
         // 새로운 플레이어를 추가합니다.
-        while let Some(player_data) = new_players.pop() {
+        while let Some(player) = new_players.pop() {
             // 새로운 플레이어 계층 구조를 생성합니다.
             let (root_entity, batch_commands) = spawn_player_character(
-                &player_data,
+                &player,
                 app.asset_manager(),
                 app.render_device(),
                 app.render_queue(),
@@ -783,7 +786,7 @@ impl TestbedInGameScene {
             }
 
             // 엔터티 목록에 새로운 엔터티를 추가합니다.
-            self.entities.insert(player_data.id, root_entity);
+            self.entities.insert(player.object_id, root_entity);
         }
 
         // 제거된 엔터티를 엔터티 목록에서 제거합니다.
@@ -920,13 +923,14 @@ impl GameScene for TestbedInGameScene {
         packet: RawPacket,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let kind = packet.packet_type();
-        match kind {
-            PacketType::PullStage => {
-                let packet = PullStagePacket::from_raw(packet);
-                self.pull_game_world(packet, app)?;
-            }
-            _ => panic!("invalid packet"),
+        let packet = PullStagePacket::try_from_raw(packet).expect("invalid packet");
+        // 패킷이 유효한지 확인합니다.
+        // 서버에서 보낸 Epoch가 클라이언트의 Epoch보다 작은 경우 
+        // 수신된 패킷은 유효하지 않습니다.
+        //
+        if self.epoch <= packet.epoch {
+            self.epoch = packet.epoch;
+            self.pull_game_world(packet, app)?;
         }
 
         Ok(())

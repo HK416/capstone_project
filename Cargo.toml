@@ -22,12 +22,11 @@ ahash = "0.8"
 
 # A macro to generate structures which behave like bitflags.
 # License: MIT OR Apache-2.0
-bitflags = "2.6"
+bitflags = "2.8"
 
 # A crate for mucking around with piles of bytes.
 # License: Zlib OR Apache-2.0 OR MIT
 bytemuck = { version = "1.20", features = ["derive"] }
-
 
 # concat! with support for const variables and expressions
 # License: MIT OR Apache-2.0
@@ -88,6 +87,10 @@ static_assertions = "1.1"
 # derive(Error)
 # License: MIT OR Apache-2.0
 thiserror = "2.0"
+
+# A library to generate and parse UUIDs.
+# License: MIT OR Apache-2.0
+uuid = { version = "1.12", features = ["atomic", "fast-rng", "v4"] }
 
 # Rusty WebGPU API wrapper
 # License: MIT OR Apache-2.0

@@ -10,8 +10,8 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{CharacterKind, ClientId, ObjectId},
-    EnterStagePacket, InitStagePacket, PacketType, RawPacket,
+    components::{CharacterKind, ClientId, Epoch, ObjectId},
+    protocol::{EnterStagePacket, InitStagePacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{
     GraphicsPipelinePool, SamplerPool, ScreenDescriptor, SkyboxResource, TexturePool,
@@ -679,6 +679,10 @@ pub struct InitStageScene {
     user_config: Option<Box<UserConfig>>,
     /// 클라이언트 식별자
     client_id: ClientId,
+    /// 플레이어 캐릭터 오브젝트 식별자
+    object_id: ObjectId,
+    /// 서버의 Epoch
+    epoch: Epoch,
     /// 게임 월드 초기화 패킷 데이터
     init_stage_packet: Option<InitStagePacket>,
 
@@ -705,6 +709,8 @@ impl InitStageScene {
         Self {
             user_config: Some(user_config),
             client_id,
+            object_id: init_stage_packet.object_id,
+            epoch: init_stage_packet.epoch,
             init_stage_packet: Some(init_stage_packet),
             task_result_channel: TaskResultChannel::default(),
             egui_clip_primitives: Vec::new(),
@@ -785,6 +791,8 @@ impl GameScene for InitStageScene {
             let next_scene = TestbedInGameScene::new(
                 user_config,
                 self.client_id,
+                self.object_id,
+                self.epoch,
                 world,
                 entities,
                 skybox_resource,
@@ -999,14 +1007,14 @@ fn spawn_players(
     packet: InitStagePacket,
     channel: TaskResultChannel<LocalResult>,
 ) {
-    for player_data in packet.players.into_iter() {
+    for player in packet.players.into_iter() {
         let world = world;
         let asset_manager = asset_manager.clone();
         let device = device.clone();
         let queue = queue.clone();
         let channel = channel.clone();
-        let result = spawn_player_character(&player_data, &asset_manager, &device, &queue, world)
-            .map(|(entity, batch_commands)| (player_data.id, entity, batch_commands));
+        let result = spawn_player_character(&player, &asset_manager, &device, &queue, world)
+            .map(|(entity, batch_commands)| (player.object_id, entity, batch_commands));
         channel.send(result);
     }
 }
@@ -1274,10 +1282,13 @@ fn create_skybox_resource(
         },
     )?;
 
-    let t_skybox = TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor {
-        dimension: Some(wgpu::TextureViewDimension::Cube),
-        ..Default::default()
-    });
+    let t_skybox = TextureViewPool::get_or_init(
+        &texture,
+        &wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::Cube),
+            ..Default::default()
+        },
+    );
     let s_skybox = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
 
     Ok(Arc::new(SkyboxResource::uninit(

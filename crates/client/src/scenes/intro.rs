@@ -6,7 +6,10 @@ use mod_app::{
     net::NetManager,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{components::ClientId, ConnectPacket, PacketType, RawPacket};
+use mod_network::{
+    components::ClientId,
+    protocol::{ConnectPacket, Packet, RawPacket},
+};
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
@@ -104,8 +107,7 @@ impl GameScene for IntroScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // `Connect` 패킷을 수신하고 클라이언트 식별자를 저장합니다.
-        assert_eq!(packet.packet_type(), PacketType::Connect, "invalid packet");
-        let connect_packet = ConnectPacket::from_raw(packet);
+        let connect_packet = ConnectPacket::try_from_raw(packet).unwrap();
         self.client_id = connect_packet.client_id;
 
         Ok(())
