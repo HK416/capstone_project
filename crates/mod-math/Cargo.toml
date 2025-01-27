@@ -8,4 +8,4 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-gmm = { git = "https://github.com/HK416/gmm.git" }
+glam = { workspace = true }
