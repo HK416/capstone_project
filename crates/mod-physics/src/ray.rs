@@ -1,21 +1,21 @@
 pub struct Ray {
-    pub origin: gmm::Float3,
-    direction: gmm::Float3,
+    pub origin: glam::Vec3,
+    direction: glam::Vec3,
 }
 
 impl Ray {
-    pub fn build(origin: gmm::Float3, direction: gmm::Vector) -> Result<Self, &'static str> {
-        match direction.try_vec3_normalize() {
+    pub fn build(origin: glam::Vec3A, direction: glam::Vec3A) -> Result<Self, &'static str> {
+        match direction.try_normalize() {
             Some(direction) => Ok(Self { 
-                origin, 
+                origin: origin.into(), 
                 direction: direction.into()
             }),
             None => Err("Direction cannot be zero vector")
         }
     }
 
-    pub fn set_direction(&mut self, direction: gmm::Vector) -> Result<(), &'static str> {
-        match direction.try_vec3_normalize() {
+    pub fn set_direction(&mut self, direction: glam::Vec3A) -> Result<(), &'static str> {
+        match direction.try_normalize() {
             Some(direction) => {
                 self.direction = direction.into();
                 Ok(())
@@ -24,7 +24,7 @@ impl Ray {
         }
     }
 
-    pub fn direction(&self) -> gmm::Float3 {
+    pub fn direction(&self) -> glam::Vec3 {
         self.direction
     }
 

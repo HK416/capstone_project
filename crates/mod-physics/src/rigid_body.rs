@@ -4,13 +4,13 @@
 #[derive(Debug, Clone, Copy)]
 pub struct RigidBody {
     /// 힘의 총합입니다.
-    pub force_accum: gmm::Vector, 
+    pub force_accum: glam::Vec3, 
 
     /// 물체의 가속도입니다.
-    pub acceleration: gmm::Vector, 
+    pub acceleration: glam::Vec3, 
     
     /// 물체의 속도입니다.
-    pub velocity: gmm::Vector, 
+    pub velocity: glam::Vec3, 
 
     /// 물체 무게의 역수입니다. 
     /// 
@@ -40,9 +40,9 @@ impl RigidBody {
         };
         
         Self { 
-            force_accum: gmm::Vector::ZERO, 
-            acceleration: gmm::Vector::ZERO, 
-            velocity: gmm::Vector::ZERO, 
+            force_accum: glam::Vec3::ZERO, 
+            acceleration: glam::Vec3::ZERO, 
+            velocity: glam::Vec3::ZERO, 
             inverse_mass, 
             damping: 0.0 
         }
@@ -51,15 +51,15 @@ impl RigidBody {
     /// 힘의 총량을 초기화합니다.
     #[inline]
     pub fn reset_force(&mut self) {
-        self.force_accum = gmm::Vector::ZERO
+        self.force_accum = glam::Vec3::ZERO
     }
 
     /// 적분을 통해 이동 거리를 계산합니다.
     #[must_use]
-    pub fn integral(&mut self, elapsed_time_sec: f32) -> gmm::Vector {
+    pub fn integral(&mut self, elapsed_time_sec: f32) -> glam::Vec3 {
         // 물체의 무계가 무한대일 경우 함수를 실행하지 않습니다.
         if self.inverse_mass == 0.0 {
-            return gmm::Vector::ZERO;
+            return glam::Vec3::ZERO;
         }
         
         // 이동 거리를 구합니다.
@@ -74,8 +74,8 @@ impl RigidBody {
 
         // 저항을 적용합니다.
         self.velocity *= self.damping.powf(elapsed_time_sec);
-        if self.velocity.vec3_len() <= f32::EPSILON {
-            self.velocity = gmm::Vector::ZERO;
+        if self.velocity.length() <= f32::EPSILON {
+            self.velocity = glam::Vec3::ZERO;
         }
 
         distance

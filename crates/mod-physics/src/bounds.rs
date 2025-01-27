@@ -1,18 +1,15 @@
-use serde::{Serialize, Deserialize};
-use gmm::Float3;
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct BoundingBox {
-    pub center: Float3,
-    pub extents: Float3,
+    pub center: glam::Vec3,
+    pub extents: glam::Vec3,
     pub rotation: Option<[[f32; 3]; 3]>, // OBB를 위함
 }
 
 impl Default for BoundingBox {
     fn default() -> Self {
         Self {
-            center: Float3::ZERO,
-            extents: Float3::ZERO,
+            center: glam::Vec3::ZERO,
+            extents: glam::Vec3::ZERO,
             rotation: None, // default None B/C AABB가 default 인 상태
         }
     }
@@ -29,7 +26,7 @@ impl BoundingBox {
     }
 
     // OBB를 축에 투영하고 투영 간격(최소, 최대)을 반환하는 메서드
-    fn project_onto_axis(&self, axis: &Float3) -> (f32, f32) {
+    fn project_onto_axis(&self, axis: &glam::Vec3) -> (f32, f32) {
         let vertices = self.get_vertices();
         
         //각 정점을 축에 투영하는 dot product 계산
@@ -44,7 +41,7 @@ impl BoundingBox {
     }
 
     // 두 OBB가 주어진 축에서 겹치는지 확인
-    fn overlaps_on_axis(&self, other: &BoundingBox, axis: &Float3) -> bool {
+    fn overlaps_on_axis(&self, other: &BoundingBox, axis: &glam::Vec3) -> bool {
         let (min_a, max_a) = self.project_onto_axis(axis);
         let (min_b, max_b) = other.project_onto_axis(axis);
 
@@ -59,8 +56,8 @@ impl BoundingBox {
             let other_axes = other.get_axes(other_rot);
 
             // cross products > vector
-            let cross_products: Vec<Float3> = self_axes.iter().flat_map(|&a1| {
-                other_axes.iter().map(move |&a2| cross_product(a1, a2)) // Cross products
+            let cross_products: Vec<glam::Vec3> = self_axes.iter().flat_map(|&a1| {
+                other_axes.iter().map(move |&a2| a1.cross(a2)) // Cross products
             }).collect();
 
             // 모든 축 확인
@@ -82,61 +79,51 @@ impl BoundingBox {
     }
 
     // OBB의 지역 축 가져오기 (회전 행렬의 열)
-    fn get_axes(&self, rotation: [[f32; 3]; 3]) -> [Float3; 3] {
+    fn get_axes(&self, rotation: [[f32; 3]; 3]) -> [glam::Vec3; 3] {
         [
-            Float3::new(rotation[0][0], rotation[1][0], rotation[2][0]), // X
-            Float3::new(rotation[0][1], rotation[1][1], rotation[2][1]), // Y
-            Float3::new(rotation[0][2], rotation[1][2], rotation[2][2]), // Z
+            glam::Vec3::new(rotation[0][0], rotation[1][0], rotation[2][0]), // X
+            glam::Vec3::new(rotation[0][1], rotation[1][1], rotation[2][1]), // Y
+            glam::Vec3::new(rotation[0][2], rotation[1][2], rotation[2][2]), // Z
         ]
     }
 
     // 월드 공간에서 OBB의 정점 가져오기
-    fn get_vertices(&self) -> [Float3; 8] {
-        let extents = Float3::new(self.extents.x, self.extents.y, self.extents.z);
+    fn get_vertices(&self) -> [glam::Vec3; 8] {
+        let extents = glam::Vec3::new(self.extents.x, self.extents.y, self.extents.z);
 
         if let Some(rotation) = self.rotation {
             // OBB 정점
             [
-                self.center + self.rotation_mul(Float3::new(1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z), rotation),
-                self.center + self.rotation_mul(Float3::new(-1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z), rotation),
-                self.center + self.rotation_mul(Float3::new(1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z), rotation),
-                self.center + self.rotation_mul(Float3::new(-1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z), rotation),
-                self.center + self.rotation_mul(Float3::new(1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z), rotation),
-                self.center + self.rotation_mul(Float3::new(-1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z), rotation),
-                self.center + self.rotation_mul(Float3::new(1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z), rotation),
-                self.center + self.rotation_mul(Float3::new(-1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(-1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(-1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(-1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z), rotation),
+                self.center + self.rotation_mul(glam::Vec3::new(-1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z), rotation),
             ]
         } else {
             // AABB 정점 (회전 없음)
             [
-                self.center + Float3::new(1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z),
-                self.center + Float3::new(-1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z),
-                self.center + Float3::new(1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z),
-                self.center + Float3::new(-1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z),
-                self.center + Float3::new(1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z),
-                self.center + Float3::new(-1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z),
-                self.center + Float3::new(1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z),
-                self.center + Float3::new(-1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z),
+                self.center + glam::Vec3::new(1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z),
+                self.center + glam::Vec3::new(-1.0 * extents.x, 1.0 * extents.y, 1.0 * extents.z),
+                self.center + glam::Vec3::new(1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z),
+                self.center + glam::Vec3::new(-1.0 * extents.x, -1.0 * extents.y, 1.0 * extents.z),
+                self.center + glam::Vec3::new(1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z),
+                self.center + glam::Vec3::new(-1.0 * extents.x, 1.0 * extents.y, -1.0 * extents.z),
+                self.center + glam::Vec3::new(1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z),
+                self.center + glam::Vec3::new(-1.0 * extents.x, -1.0 * extents.y, -1.0 * extents.z),
             ]
         }
     }
 
     // 매트릭스-벡터 곱셈
-    fn rotation_mul(&self, vec: Float3, rotation: [[f32; 3]; 3]) -> Float3 {
-        Float3::new(
+    fn rotation_mul(&self, vec: glam::Vec3, rotation: [[f32; 3]; 3]) -> glam::Vec3 {
+        glam::Vec3::new(
             rotation[0][0] * vec.x + rotation[0][1] * vec.y + rotation[0][2] * vec.z,
             rotation[1][0] * vec.x + rotation[1][1] * vec.y + rotation[1][2] * vec.z,
             rotation[2][0] * vec.x + rotation[2][1] * vec.y + rotation[2][2] * vec.z,
         )
     }
 }
-
-// OBB 충돌 감지를 위한 교차 곱 함수
-pub fn cross_product(v1: Float3, v2: Float3) -> Float3 {
-    Float3::new(
-        v1.y * v2.z - v1.z * v2.y,
-        v1.z * v2.x - v1.x * v2.z,
-        v1.x * v2.y - v1.y * v2.x,
-    )
-}
-
