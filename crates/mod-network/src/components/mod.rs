@@ -1,11 +1,21 @@
+mod attributes;
+mod bullet;
 mod identifier;
-mod health;
+mod player;
+mod state;
 
-pub use self::identifier::*;
-pub use self::health::*;
+pub use self::{attributes::*, bullet::*, identifier::*, player::*, state::*};
 
 /// 자료형을 Big-endian 바이트 배열로 변환하거나, Big-endian 바이트 배열로부터 자료형을 생성하는 함수 인터페이스를 제공합니다.
 pub trait BigEndian {
+    /// Big-endian 바이트 배열의 크기를 반환합니다.
+    fn byte_size() -> usize
+    where
+        Self: Sized,
+    {
+        core::mem::size_of::<Self>()
+    }
+
     /// Big-endian 바이트 배열로부터 자료형을 생성합니다.
     ///
     /// # Panics
@@ -110,6 +120,26 @@ impl BigEndian for u64 {
 }
 
 impl BigEndian for f64 {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::from_be_bytes(bytes.try_into().unwrap())
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.to_be_bytes().to_vec()
+    }
+}
+
+impl BigEndian for i128 {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::from_be_bytes(bytes.try_into().unwrap())
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.to_be_bytes().to_vec()
+    }
+}
+
+impl BigEndian for u128 {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self::from_be_bytes(bytes.try_into().unwrap())
     }

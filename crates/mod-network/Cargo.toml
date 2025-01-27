@@ -1,6 +1,6 @@
 [package]
 name = "mod-network"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -8,12 +8,14 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+glam = { workspace = true }
 log = { workspace = true }
-
-# Math library for video games
-# License: MIT
-gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck", "serde"] }
 
 local-ip-address = "0.6.2"
 
-mod-math = { path = "../mod-math" }
+
+[features]
+default = ["check-validation"]
+
+# 유효성 검사를 활성화합니다.
+check-validation = []
