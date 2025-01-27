@@ -64,7 +64,7 @@ impl AssetManager {
     }
 
     /// 에셋 파일을 캐싱합니다.
-    /// 
+    ///
     /// 이 함수는 항상 파일에서 데이터를 읽어 캐싱합니다.  
     /// 이미 캐싱되어 있는 경우 새로 읽은 데이터로 교체됩니다.
     ///
@@ -97,9 +97,9 @@ impl AssetManager {
 
     /// 에셋 데이터를 저장합니다.
     /// 에셋 파일이 존재하지 않는 경우 `std::io::Error`를 반환합니다.
-    pub fn store<P>(&self, path: P, data: &[u8]) -> Result<Arc<CachedAsset>, io::Error> 
-    where 
-        P: Into<PathBuf>, 
+    pub fn store<P>(&self, path: P, data: &[u8]) -> Result<Arc<CachedAsset>, io::Error>
+    where
+        P: Into<PathBuf>,
     {
         // 에셋 파일의 경로를 생성합니다.
         let relative_path: PathBuf = path.into();

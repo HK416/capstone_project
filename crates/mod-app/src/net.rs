@@ -11,7 +11,7 @@ use std::{
 
 use ahash::RandomState;
 use dashmap::DashMap;
-use mod_network::{PacketParser, RawPacket};
+use mod_network::protocol::{PacketParser, RawPacket};
 use parking_lot::{Condvar, Mutex};
 use winit::event_loop::EventLoopProxy;
 

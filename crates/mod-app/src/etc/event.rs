@@ -1,6 +1,6 @@
 use std::io;
 
-use mod_network::RawPacket;
+use mod_network::protocol::RawPacket;
 
 use crate::{net::IpAddress, scene::GameSceneFlow};
 

@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Debug};
 
-use mod_network::RawPacket;
+use mod_network::protocol::RawPacket;
 use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
@@ -196,9 +196,9 @@ pub trait GameScene: Debug + Send {
     /// 게임 장면을 갱신 전에 호출되는 콜백 함수입니다.
     #[allow(unused_variables)]
     fn on_pre_update(
-        &mut self, 
-        window: &Window, 
-        app: &dyn AppHandle
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }
@@ -232,9 +232,9 @@ pub trait GameScene: Debug + Send {
     /// 게임 장면을 갱신 후에 호출되는 콜백 함수입니다.
     #[allow(unused_variables)]
     fn on_post_update(
-        &mut self, 
-        window: &Window, 
-        app: &dyn AppHandle, 
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }

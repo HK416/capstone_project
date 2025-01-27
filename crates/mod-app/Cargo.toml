@@ -1,6 +1,6 @@
 [package]
 name = "mod-app"
-version = "0.6.1"
+version = "0.6.2"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -39,7 +39,7 @@ mod-render = { path = "../mod-render" }
 [target.'cfg(target_os = "windows")'.dependencies]
 # Rust for Windows
 # License: MIT OR Apache-2.0
-windows = { version = "0.58", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 
 
