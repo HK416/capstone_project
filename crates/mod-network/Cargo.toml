@@ -15,3 +15,4 @@ gmm = { git = "https://github.com/HK416/gmm.git", features = ["bytemuck", "serde
 local-ip-address = "0.6.2"
 
 mod-math = { path = "../mod-math" }
+serde = { workspace = true }

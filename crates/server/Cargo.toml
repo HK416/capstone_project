@@ -11,6 +11,9 @@ publish.workspace = true
 tokio = { version = "1.39.3", features = ["full"] }
 futures = "0.3.30"
 rand = "0.8.5"
+serde = { workspace = true }
+
+serde_json = "1.0"
 
 gmm = { git = "https://github.com/HK416/gmm.git" }
 

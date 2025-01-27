@@ -13,7 +13,11 @@ use mod_network::{
     Addr,
     components::ClientId,
 };
+//tst
+mod attribute; // server/src/attribute.rs 모듈 포함
 
+use attribute::load_character_attribute;
+//tst
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
@@ -24,6 +28,21 @@ pub async fn run_server(addr: &str) {
             return;
         }
     };
+
+    //tst
+    let aris_path= "assets/characters/aris_original/attribute.json";
+    let momoi_path= "assets/characters/momoi_original/attribute.json";
+
+    match load_character_attribute(aris_path){
+        Ok(attributes) => println!("ArisOriginal Loaded: {:?}", attributes),
+        Err(err)=> eprintln!("ArisOriginal Loading FAILED: {}",err),
+    }
+
+    match load_character_attribute(momoi_path){
+        Ok(attributes) => println!("MomoiOriginal Loaded: {:?}", attributes),
+        Err(err)=> eprintln!("MomoiOriginal Loading FAILED: {}",err),
+    }
+    //tst
 
     println!("Server listening on: {}", listener.local_addr().unwrap());
 

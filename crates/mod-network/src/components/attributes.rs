@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, Default)]
 pub struct Float3 {
     pub x: f32,

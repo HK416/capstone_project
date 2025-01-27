@@ -1,5 +1,5 @@
 mod identifier;
-
+pub mod attributes;
 pub use self::identifier::*;
 
 /// 자료형을 Big-endian 바이트 배열로 변환하거나, Big-endian 바이트 배열로부터 자료형을 생성하는 함수 인터페이스를 제공합니다.
