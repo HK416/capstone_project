@@ -5,6 +5,7 @@ use mod_network::components::{
     ClientId,
     ObjectId, 
     CharacterKind,
+    BulletKind,
     StageKind,
     ActionState,
     MovementState,
@@ -112,17 +113,20 @@ impl World {
         &mut self, 
         object_id: ObjectId,
         shooter_id: ClientId,
-        direction: [f32; 3],
+        direction: glam::Vec3A,
     ) {
         if let Some(player) = self.players.get_mut(&shooter_id.into()) {
+            const BULLET_SPEED: f32 = 50.0;
+            let velocity = direction.normalize() * BULLET_SPEED;
+            let velocity = velocity.to_array();
             self.new_bullets.push(
                 Bullet {
                     object_id,
                     shooter_id,
-                    character_kind: player.character_kind,
+                    bullet_kind: BulletKind::default(),
                     translation: player.translation,
                     rotation: player.rotation,
-                    velocity: direction,
+                    velocity,
                     remaining_distance: 700.0,
                 }
             );
@@ -411,7 +415,7 @@ impl WorldInterface {
         &mut self, 
         object_id: ObjectId,
         shooter_id: ClientId,
-        direction: [f32; 3],
+        direction: glam::Vec3A,
     ) {
         self.as_mut().add_bullet(object_id, shooter_id, direction);
     }

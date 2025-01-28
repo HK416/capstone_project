@@ -161,11 +161,15 @@ impl Session {
                         self.recent_shot_time = tokio::time::Instant::now();
                         
                         println!("shot!");
+
+                        let dx = packet.view_rotation.lon.sin();
+                        let dy = -packet.view_rotation.lat.sin();
+                        let dz = packet.view_rotation.lon.cos();
                         
                         self.world.add_bullet(
                             ObjectId::new(uuid::Uuid::new_v4().as_u128()),
                             self.id,
-                            packet.direction,
+                            glam::Vec3A::from_array([dx, dy, dz]),
                         );
                     }
                 }
