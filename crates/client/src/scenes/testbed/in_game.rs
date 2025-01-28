@@ -6,8 +6,8 @@ use hecs::{Entity, EntityBuilder, With, Without, World};
 use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, CharacterKind, ClientId, Epoch, LatLon, MovementState,
-        MovementStateTimer, ObjectId, Player, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, ClientId, Epoch, LatLon,
+        MovementState, MovementStateTimer, ObjectId, Player, ViewState, ViewStateTimer,
     },
     protocol::{Packet, PullStagePacket, PushStatusPacket, RawPacket},
 };
@@ -15,6 +15,7 @@ use mod_render::{
     CameraResource, ScreenDescriptor, SkyboxDataLayout, SkyboxResource, UiRenderer, DEPTH_FORMAT,
     SWAPCHAIN_FORMAT,
 };
+use wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -23,7 +24,7 @@ use winit::{
 
 use crate::{
     component::{
-        animate_character, cleanup, draw_character, spawn_player_character,
+        animate_character, cleanup, draw_character, spawn_player_character, spwan_bullet,
         update_action_state_by_controller_input_flags, update_action_state_timer,
         update_character_direction, update_entity_hierarchy,
         update_movement_state_by_controller_state, update_movement_state_timer,
@@ -34,7 +35,7 @@ use crate::{
     },
     config::UserConfig,
     render::{
-        clear_render_target_with_skybox, draw_terrain, prepare_camera_resource,
+        clear_render_target_with_skybox, draw_bullet, draw_terrain, prepare_camera_resource,
         prepare_mesh_resource,
     },
     SERVER_ADDR,
@@ -509,6 +510,12 @@ impl TestbedInGameScene {
         query.iter().map(|(entity, _)| entity).collect()
     }
 
+    /// 총알 엔터티를 반환합니다.
+    fn get_bullet_entities(&self) -> Vec<Entity> {
+        let mut query = self.world.query::<Without<&BulletKind, &Parent>>();
+        query.iter().map(|(entity, _)| entity).collect()
+    }
+
     /// 캐릭터 애니메이션을 재생합니다.
     ///
     /// # Note
@@ -584,12 +591,44 @@ impl TestbedInGameScene {
         }
     }
 
+    /// 총알 엔터티의 계층 구조를 갱신합니다.
+    ///
+    /// # Note
+    /// 엔터티에 요구되는 컴포넌트 목록
+    /// - 로컬 변환 행렬(`ToParentTrans`)
+    /// - 월드 변환 행렬(`WorldTransform`)
+    ///
+    /// # Panics
+    /// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    /// - 주어진 엔터티는 요구되는 컴포넌트를 갖고 있어야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    ///
+    fn update_bullet_hierarchy(&mut self, entities: &[Entity]) {
+        // 총알 엔터티의 계층 구조를 갱신합니다.
+        for &entity in entities {
+            update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
+        }
+    }
+
     /// 캐릭터 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
     ///
     /// # Note
     /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
     ///
     fn prepare_character_mesh_resource(
+        &mut self,
+        entities: &[Entity],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
+        prepare_mesh_resource(&self.world, entities, device, queue);
+    }
+
+    /// 총알의 쉐이더 리소스를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 총알의 월드 변환 행렬이 갱신되어야 합니다.
+    ///
+    fn prepare_bullet_mesh_resource(
         &mut self,
         entities: &[Entity],
         device: &wgpu::Device,
@@ -678,9 +717,47 @@ impl TestbedInGameScene {
     /// 서버 데이터를 게임 월드에 반영합니다.
     fn pull_game_world(
         &mut self,
-        mut packet: PullStagePacket,
+        packet: PullStagePacket,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
+        let mut objects: HashSet<ObjectId> = self.entities.keys().cloned().collect();
+
+        // 게임 월드에 존재하는 플레이어를 갱신합니다.
+        let new = self.update_player_from_packet(&packet.players, &mut objects);
+        // 새로운 플레이어를 게임 월드에 추가합니다.
+        self.add_player_from_packet(
+            new,
+            app.asset_manager(),
+            app.render_device(),
+            app.render_queue(),
+        )?;
+
+        // 게임 월드에 존재하는 총알을 갱신합니다.
+        let new = self.update_bullet_from_packet(&packet.bullets, &mut objects);
+        // 새로운 총알을 게임 월드에 추가합니다.
+        self.add_bullet_from_packet(
+            new,
+            app.asset_manager(),
+            app.render_device(),
+            app.render_queue(),
+        )?;
+
+        // 제거된 오브젝트를 게임월드에서 제거합니다.
+        self.remove_entity_from_packet(objects.into_iter());
+
+        Ok(())
+    }
+
+    /// 서버에서 보낸 플레이어 데이터로 갱신합니다.
+    ///
+    /// 새로운 플레이어 데이터를 반환합니다.
+    ///
+    fn update_player_from_packet<'a>(
+        &mut self,
+        players: &'a [Player],
+        objects: &mut HashSet<ObjectId>,
+    ) -> Vec<&'a Player> {
         // 컴포넌트 뷰를 준비합니다.
         let mut action_state_view = self
             .world
@@ -691,24 +768,16 @@ impl TestbedInGameScene {
         let mut view_state_view = self.world.view::<(&mut ViewState, &mut ViewStateTimer)>();
         let mut local_transform_view = self.world.view::<&mut ToParentTrans>();
 
-        // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
-        let mut objects: HashSet<ObjectId> = self.entities.keys().cloned().collect();
         // 새로운 플레이어 데이터를 수집합니다.
-        let mut new_players: Vec<Player> = Vec::with_capacity(10);
+        let mut new = Vec::with_capacity(10);
 
-        while let Some(player) = packet.players.pop() {
-            // 현재 플레이어의 경우 데이터 갱신을 하지 않습니다.
+        for player in players {
+            // 현재 플레이어의 경우
             if player.object_id == self.object_id {
                 objects.remove(&self.object_id);
 
-                // 오브젝트의 엔터티를 가져옵니다.
-                let entity = self
-                    .entities
-                    .get(&self.object_id)
-                    .cloned()
-                    .expect("no such entity");
-
-                // 위치만 갱신합니다.
+                // 플레이어 엔터티의 위치를 갱신합니다.
+                let entity = self.get_player_entity();
                 let local_transform = local_transform_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
@@ -757,26 +826,69 @@ impl TestbedInGameScene {
                 );
             } else {
                 // 존재하지 않은 오브젝트의 경우 새로운 데이터에 추가합니다.
-                new_players.push(player);
+                new.push(player);
             }
         }
 
-        drop(action_state_view);
-        drop(movement_state_view);
-        drop(view_state_view);
-        drop(local_transform_view);
+        new
+    }
 
+    /// 서버에서 보낸 총알 데이터로 갱신합니다.
+    ///
+    /// 새로운 총알 데이터를 반환합니다.
+    ///
+    fn update_bullet_from_packet<'a>(
+        &mut self,
+        bullet: &'a [Bullet],
+        objects: &mut HashSet<ObjectId>,
+    ) -> Vec<&'a Bullet> {
+        // 컴포넌트 뷰를 준비합니다.
+        let mut local_transform_view = self.world.view::<&mut ToParentTrans>();
+
+        // 새로운 총알 데이터를 수집합니다.
+        let mut new = Vec::with_capacity(128);
+
+        for bullet in bullet {
+            // 이미 존재했던 오브젝트인 경우 오브젝트의 데이터를 갱신합니다.
+            if objects.remove(&bullet.object_id) {
+                // 오브젝트의 엔터티를 가져옵니다.
+                let entity = self
+                    .entities
+                    .get(&bullet.object_id)
+                    .cloned()
+                    .expect("no such entity");
+
+                // 위치와 방향을 갱신합니다.
+                let local_transform = local_transform_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                local_transform.set_rotation_translation(
+                    glam::Quat::from_array(bullet.rotation),
+                    glam::Vec3::from_array(bullet.translation),
+                );
+            } else {
+                // 존재하지 않은 오브젝트의 경우 새로운 데이터에 추가합니다.
+                new.push(bullet);
+            }
+        }
+
+        new
+    }
+
+    /// 서버에서 보낸 플레이어 데이터 중 새로운 플레이어를 게임 월드에 추가합니다.
+    fn add_player_from_packet<'a>(
+        &mut self,
+        new: Vec<&'a Player>,
+        asset_manager: &AssetManager,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), Box<dyn Error + Send>> {
         // 새로운 플레이어를 추가합니다.
-        while let Some(player) = new_players.pop() {
+        for player in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
-            let (root_entity, batch_commands) = spawn_player_character(
-                &player,
-                app.asset_manager(),
-                app.render_device(),
-                app.render_queue(),
-                &self.world,
-            )
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+            let (root_entity, batch_commands) =
+                spawn_player_character(&player, asset_manager, device, queue, &self.world)
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
             // 명령어를 실행합니다.
             for (entity, mut builder) in batch_commands {
@@ -789,13 +901,45 @@ impl TestbedInGameScene {
             self.entities.insert(player.object_id, root_entity);
         }
 
-        // 제거된 엔터티를 엔터티 목록에서 제거합니다.
-        for id in objects.into_iter() {
-            let entity = self.entities.remove(&id).expect("no such entity");
-            cleanup(&mut self.world, entity);
+        Ok(())
+    }
+
+    /// 서버에서 보낸 총알 데이터 중 새로운 총알을 게임 월드에 추가합니다.
+    fn add_bullet_from_packet<'a>(
+        &mut self,
+        new: Vec<&'a Bullet>,
+        asset_manager: &AssetManager,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 새로운 플레이어를 추가합니다.
+        for bullet in new {
+            // 새로운 플레이어 계층 구조를 생성합니다.
+            let (root_entity, batch_commands) =
+                spwan_bullet(bullet, asset_manager, device, queue, &self.world)
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+            // 명령어를 실행합니다.
+            for (entity, mut builder) in batch_commands {
+                self.world
+                    .insert(entity, builder.build())
+                    .expect("no such entity");
+            }
+
+            // 엔터티 목록에 새로운 엔터티를 추가합니다.
+            self.entities.insert(bullet.object_id, root_entity);
         }
 
         Ok(())
+    }
+
+    /// 제거된 엔터티를 게임 월드에서 제거합니다.
+    fn remove_entity_from_packet(&mut self, objects: impl Iterator<Item = ObjectId>) {
+        // 제거된 엔터티를 엔터티 목록에서 제거합니다.
+        for id in objects {
+            let entity = self.entities.remove(&id).expect("no such entity");
+            cleanup(&mut self.world, entity);
+        }
     }
 }
 
@@ -925,7 +1069,7 @@ impl GameScene for TestbedInGameScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let packet = PullStagePacket::try_from_raw(packet).expect("invalid packet");
         // 패킷이 유효한지 확인합니다.
-        // 서버에서 보낸 Epoch가 클라이언트의 Epoch보다 작은 경우 
+        // 서버에서 보낸 Epoch가 클라이언트의 Epoch보다 작은 경우
         // 수신된 패킷은 유효하지 않습니다.
         //
         if self.epoch <= packet.epoch {
@@ -1026,6 +1170,17 @@ impl GameScene for TestbedInGameScene {
             app.render_queue(),
         );
 
+        // 총알 엔터티들을 가져옵니다.
+        let bullet_entities = self.get_bullet_entities();
+        // 총알 엔터티의 계층 구조를 갱신합니다.
+        self.update_bullet_hierarchy(&bullet_entities);
+        // 총알 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
+        self.prepare_bullet_mesh_resource(
+            &bullet_entities,
+            app.render_device(),
+            app.render_queue(),
+        );
+
         // 메인 카메라의 위치 오프셋을 갱신합니다.
         self.update_main_camera_offset();
         // 메인 카메라의 계층 구조를 갱신합니다.
@@ -1103,6 +1258,15 @@ impl GameScene for TestbedInGameScene {
                 &character_entities,
                 camera_resource,
                 device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+
+            draw_bullet(
+                &self.world,
+                &camera_resource,
+                &device,
                 SWAPCHAIN_FORMAT,
                 DEPTH_FORMAT,
                 &mut rpass,

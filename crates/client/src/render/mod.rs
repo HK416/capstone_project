@@ -1,3 +1,4 @@
+pub mod bullet;
 pub mod camera;
 pub mod character;
 pub mod skybox;
@@ -10,7 +11,7 @@ use mod_render::{MeshResource, TransformDataLayout, MAX_BONES};
 
 use crate::component::{BoneCollection, Child, Sibling, WorldTransform};
 
-pub use self::{camera::*, character::*, skybox::*, terrain::*};
+pub use self::{bullet::*, camera::*, character::*, skybox::*, terrain::*};
 
 /// 주어진 엔터티의 메쉬 리소스를 준비합니다.
 ///

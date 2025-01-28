@@ -1,3 +1,4 @@
+mod bullet;
 mod camera;
 mod character;
 mod control;
@@ -9,7 +10,9 @@ use std::ops::{Deref, DerefMut};
 
 use hecs::{Entity, QueryOneError, ViewBorrow, World};
 
-pub use self::{camera::*, character::*, control::*, physics::*, stage::*, transform::*};
+pub use self::{
+    bullet::*, camera::*, character::*, control::*, physics::*, stage::*, transform::*,
+};
 
 /// ## Parent Entity
 #[repr(transparent)]

@@ -44,6 +44,13 @@
                 }
             }
         }, 
+        "common" : {
+            "files" : [
+                "Bullet_01_Shell.hierarchy",
+                "Bullet_01_Warhead.hierarchy"
+            ],
+            "directories" : {}
+        },
         "font" : {
             "files" : [
                 "NEXON_Lv2_Gothic_Bold.ttf",
