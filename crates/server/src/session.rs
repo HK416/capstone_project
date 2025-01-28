@@ -3,13 +3,25 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
 };
 use super::world::WorldInterface;
-use mod_network::*;
-use mod_network::components::{
-    ClientId, 
-    ObjectId, 
-    StageKind,
-    MovementState,
-    ActionState,
+use mod_network::{
+    components::{
+        ClientId, 
+        ObjectId, 
+        MovementState,
+        ActionState,
+        Epoch,
+    },
+    protocol::{
+        PacketParser, 
+        PacketType, 
+        Packet,
+        RawPacket, 
+        ConnectPacket, 
+        EnterStagePacket, 
+        PushStatusPacket, 
+        InitStagePacket, 
+        PullStagePacket,
+    },
 };
 
 
@@ -23,7 +35,6 @@ pub struct Session {
 
     running: bool,
 
-    shot_count: u32,
     recent_shot_time: tokio::time::Instant,
 }
 
@@ -35,7 +46,6 @@ impl Session {
             packet_parser: PacketParser::new(),
             world,
             running: true,
-            shot_count: 0,
             recent_shot_time: tokio::time::Instant::now(),
         }
     }
@@ -97,7 +107,12 @@ impl Session {
         println!("Client {:?} entered stage", self.id);
 
         let players = self.world.get_players();
-        let raw_packet = InitStagePacket::new(players, StageKind::Downtown).as_raw();
+        let raw_packet = InitStagePacket::new(
+            self.world.get_stage_kind(),
+            Epoch::new(0), 
+            self.id.into(), 
+            players
+        ).as_raw();
         match self.stream_write(raw_packet).await {
             Ok(_) => {
 
@@ -109,18 +124,24 @@ impl Session {
         }
     }
 
-    async fn process_push_status(&mut self, packet: PushStatusPacket) {
-        let player = packet.player;
-                    
-        self.world.update_player(player);
+    async fn process_push_status(&mut self, packet: PushStatusPacket) {     
+        self.world.update_player(
+            self.id.into(), 
+            packet.rotation, 
+            packet.action_state, 
+            packet.movement_state, 
+            packet.view_state, 
+            packet.action_state_timer, 
+            packet.movement_state_timer, 
+            packet.view_state_timer,
+        );
 
-        match player.movement_state {
+        match packet.movement_state {
             MovementState::Moving => {
-                let dir = gmm::Vector::from_slice(&packet.move_direction)
-                    .vec3_normalize();
+                let dir = glam::Vec3A::from_slice(&packet.direction)
+                    .normalize();
                 // 속력값(캐릭터 능력치) 곱하기
-                let dir = dir * 5.5;
-                let dir = dir.store_float3();
+                let dir = glam::Vec3::from(dir * 5.5);
                 self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
             },
             
@@ -131,23 +152,21 @@ impl Session {
             _ => {},
         }
 
-        match player.action_state {
+        match packet.action_state {
             ActionState::Attack => {
                 const SHOT_INTERVAL: f32 = 1.0;     // 캐릭터 애니메이션에 맞춰야함
                 const SHOT_DELAY: f32 = 0.0;        // 캐릭터 애니메이션에 맞춰야함
                 if self.recent_shot_time.elapsed().as_secs_f32() >= SHOT_INTERVAL {
-                    if player.action_state_timer.0 >= SHOT_DELAY {
+                    if packet.action_state_timer.0 >= SHOT_DELAY {
                         self.recent_shot_time = tokio::time::Instant::now();
                         
                         println!("shot!");
-                        self.shot_count += 1;
-                        self.shot_count %= 1000;        // 총알 번호는 0 ~ 999
                         
-                        let mut bullet = BulletBlob::new(0, self.id.into(), player.translation, packet.move_direction, 100.0, 700.0);
-                        let bid: u32 = self.id.into();
-                        bullet.id = ObjectId::new(bid * 1000 + self.shot_count);     // 총알 ID는 클라이언트 ID * 1000 + 총알 번호
-
-                        self.world.add_bullet(bullet);
+                        self.world.add_bullet(
+                            ObjectId::new(uuid::Uuid::new_v4().as_u128()),
+                            self.id,
+                            packet.direction,
+                        );
                     }
                 }
             }, 
@@ -159,7 +178,7 @@ impl Session {
         
         let players = self.world.get_players();
         let bullets = self.world.get_bullets();
-        let raw_packet = PullStagePacket::new(players, bullets).as_raw();
+        let raw_packet = PullStagePacket::new(Epoch::new(0), players, bullets).as_raw();
         match self.stream_write(raw_packet).await {
             Ok(_) => {
 

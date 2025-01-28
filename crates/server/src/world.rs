@@ -1,11 +1,17 @@
 use std::collections::{HashMap, VecDeque};
-use mod_network::{
+use mod_network::components::{
     Player,
-    BulletBlob,
-    components::{
-        ObjectId, 
-        CharacterKind
-    },
+    Bullet,
+    ClientId,
+    ObjectId, 
+    CharacterKind,
+    StageKind,
+    ActionState,
+    MovementState,
+    ViewState,
+    ActionStateTimer,
+    MovementStateTimer,
+    ViewStateTimer,
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
@@ -17,61 +23,72 @@ use super::formula::movement_formulas as formulas;
 pub type WorldPointer = usize;
 
 
-struct Bullet {
-    blob: BulletBlob,       // 총알의 기본 정보
-    alive: bool,            // 충돌하거나 사거리를 넘어가면 false로 변경
-    moved_distance: f32,    // 총알의 이동거리
-}
-
-impl Bullet {
-    fn new(blob: BulletBlob) -> Self {
-        Self {
-            blob,
-            alive: true,
-            moved_distance: 0.0,
-        }
-    }
-}
-
-
 pub struct World {
+    stage_kind: StageKind,
+
     players: HashMap<ObjectId, Player>,
     player_move_queue: Queue<(ObjectId, f32, f32, f32)>,    // Session에서 플레이어 이동을 추가할 때 사용
     
-    alive_bullets: VecDeque<Bullet>,    // get_objects에서 Queue::pop을 하지 않기 위해 사용, 중간값 삭제가 빈번할것으로 예상되어 VecDeque로 사용
-    bullet_blobs: Queue<BulletBlob>,        // Session에서 총알을 추가할 때 사용
+    alive_bullets: VecDeque<Bullet>,
+    new_bullets: Queue<Bullet>,    // Session에서 총알을 추가할 때 사용
+    
+    // static_objects: Vec<GameObject>,  // 월드의 움직이지 않는 오브젝트(맵, 건물 등)
+    // dynamic_objects: HashMap<GameObject>,     // 월드의 움직이는 오브젝트(화물 등)
 }
 
 impl World {
-    pub fn new() -> Self {
+    pub fn new(stage_kind: StageKind) -> Self {
         Self {
+            stage_kind,
+
             players: HashMap::new(),
             player_move_queue: Queue::new(),
 
             alive_bullets: VecDeque::new(),
-            bullet_blobs: Queue::new(),
+            new_bullets: Queue::new(),
         }
     }
 
 
-    pub fn add_player(&mut self, id: ObjectId, character_kind: CharacterKind) {
-        self.players.insert(id, Player { id, character_kind, ..Default::default() });
+    pub fn get_stage_kind(&self) -> StageKind {
+        self.stage_kind
+    }
+
+    pub fn add_player(&mut self, object_id: ObjectId, character_kind: CharacterKind) {
+        self.players.insert(
+            object_id, 
+            Player { 
+                object_id, 
+                character_kind, 
+                ..Default::default() 
+            }
+        );
     }
     
-    pub fn remove_player(&mut self, id: ObjectId) {
-        self.players.remove(&id);
+    pub fn remove_player(&mut self, object_id: ObjectId) {
+        self.players.remove(&object_id);
     }
 
     /// 클라이언트에서 보내온 플레이어 정보로 업데이트
-    pub fn update_player(&mut self, player: Player) {
-        if let Some(old_player) = self.players.get_mut(&player.id) {
-            old_player.rotation = player.rotation;
-            old_player.action_state = player.action_state;
-            old_player.movement_state = player.movement_state;
-            old_player.view_state = player.view_state;
-            old_player.action_state_timer = player.action_state_timer;
-            old_player.movement_state_timer = player.movement_state_timer;
-            old_player.view_state_timer = player.view_state_timer;
+    pub fn update_player(
+        &mut self, 
+        player_id: ObjectId,
+        rotation: [f32; 4], 
+        action_state: ActionState, 
+        movement_state: MovementState, 
+        view_state: ViewState, 
+        action_state_timer: ActionStateTimer, 
+        movement_state_timer: MovementStateTimer, 
+        view_state_timer: ViewStateTimer,
+    ) {
+        if let Some(player) = self.players.get_mut(&player_id) {
+            player.rotation = rotation;
+            player.action_state = action_state;
+            player.movement_state = movement_state;
+            player.view_state = view_state;
+            player.action_state_timer = action_state_timer;
+            player.movement_state_timer = movement_state_timer;
+            player.view_state_timer = view_state_timer;
         }
     }
 
@@ -91,13 +108,30 @@ impl World {
     }
 
 
-    pub fn add_bullet(&mut self, bullet: BulletBlob) {
-        self.bullet_blobs.push(bullet);
+    pub fn add_bullet(
+        &mut self, 
+        object_id: ObjectId,
+        shooter_id: ClientId,
+        direction: [f32; 3],
+    ) {
+        if let Some(player) = self.players.get_mut(&shooter_id.into()) {
+            self.new_bullets.push(
+                Bullet {
+                    object_id,
+                    shooter_id,
+                    character_kind: player.character_kind,
+                    translation: player.translation,
+                    rotation: player.rotation,
+                    velocity: direction,
+                    remaining_distance: 700.0,
+                }
+            );
+        }
     }
 
-    pub fn get_bullets(&self) -> Vec<BulletBlob> {
+    pub fn get_bullets(&self) -> Vec<Bullet> {
         self.alive_bullets.iter()
-            .map(|bullet| bullet.blob.clone())
+            .map(|bullet| bullet.clone())
             .collect()
     }
 
@@ -117,8 +151,8 @@ impl World {
         let elapsed = elapsed.as_secs_f32();
     
         // 받은 총알을 alive_bullets로 이동
-        while let Some(bullet) = self.bullet_blobs.pop() {
-            self.alive_bullets.push_back(Bullet::new(bullet));
+        while let Some(bullet) = self.new_bullets.pop() {
+            self.alive_bullets.push_back(bullet);
         }
 
         // 플레이어 이동 처리
@@ -137,33 +171,38 @@ impl World {
             player.translation[2] += player.velocity[2] * elapsed;
         });
 
-        for bullet in self.alive_bullets.iter_mut() {
-            let move_distance = bullet.blob.speed * elapsed;
+        // TODO: 플레이어 - 지형 충돌처리
+        // ...
 
-            // bullet.direction이 영벡터가 아니라고 가정
-            let ray = Ray::build(bullet.blob.translation, gmm::Vector::from(bullet.blob.direction)).unwrap();
-            let bullet_position = gmm::Vector::from(bullet.blob.translation);
+        for bullet in self.alive_bullets.iter_mut() {
+            let translation = glam::Vec3A::from(bullet.translation);
+            let velocity = glam::Vec3A::from(bullet.velocity);
+            let move_distance = velocity.length() * elapsed;
+
+            // bullet.velocity가 영벡터가 아니라고 가정
+            let ray = Ray::build(translation, velocity).unwrap();
+            let bullet_position = translation;
 
             // 거리 한계를 넘어가면 충돌체크 하지 않음(+1.0은 여유 거리)
-            let dist_limit_sq = (move_distance + 1.0).powi(2);
+            let dist_limit_sq = velocity.length_squared() * 1.0;
 
             let mut nearest_distance = f32::MAX;
             let mut nearest_player_id = None;
             
             for player in self.players.values() {
-                if player.id == bullet.blob.shooter {
+                if player.object_id == bullet.shooter_id {
                     continue;
                 }
                 
-                let player_position = gmm::Float3::from_array(player.translation);
-                let player_position = gmm::Vector::from(player_position);
+                let player_position = glam::Vec3A::from(player.translation);
 
                 // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
                 const BULLET_RADIUS: f32 = 0.15;
                 const PLAYER_RADIUS: f32 = 1.0;
                 const PLAYER_HEIGHT: f32 = 2.5;
 
-                if (bullet_position - player_position).vec3_len_sq() > dist_limit_sq {
+                let dist_sq = (bullet_position - player_position).length_squared();
+                if dist_sq > dist_limit_sq || dist_sq > bullet.remaining_distance.powi(2) {
                     continue;
                 }
                 
@@ -176,16 +215,16 @@ impl World {
 
                 // mod-network의 Player에 make_collider()를 추가해서 클라이언트에서도 표시할 수 있도록 해도 좋아보임.
                 let player_capsule = YCapsule {
-                    center: gmm::Float3::from_array(center),
+                    center: glam::Vec3::from_array(center),
                     radius: PLAYER_RADIUS + BULLET_RADIUS,
                     height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
                 };
 
                 if let Some(dist) = ray.intersect(&player_capsule) {
-                    println!("Bullet find player (player id: {:?})", player.id);
+                    println!("Bullet find player (player id: {:?})", player.object_id);
                     if dist < nearest_distance {
                         nearest_distance = dist;
-                        nearest_player_id = Some(player.id);
+                        nearest_player_id = Some(player.object_id);
                     }
                 }
             }
@@ -194,7 +233,7 @@ impl World {
                 // 충돌했다면
                 Some(id) => {
                     // 피격 처리(회피하더라도 일단 총알은 제거)
-                    bullet.alive = false;
+                    bullet.remaining_distance = 0.0;
                     
                     println!("Player {:?} hit by bullet", id);
                     let player = self.players.get_mut(&id).unwrap();
@@ -240,7 +279,7 @@ impl World {
                     // 최종 데미지 계산
                     let final_dmg = formulas::final_damage(dmg, hit_rate, crit_rate, 200.0);
 
-                    let hp = &mut player.hp;
+                    let hp = &mut player.health_point;
                     hp.0 -= final_dmg as f32;
                     if hp.0 <= 0.0 {
                         hp.0 = 0.0;
@@ -251,25 +290,25 @@ impl World {
                 // 충돌하지 않았다면
                 None => {
                     // 누적 이동거리 증가
-                    bullet.moved_distance += move_distance;
+                    bullet.remaining_distance -= move_distance;
                     
                     // println!("range: {}, moved: {}", bullet.blob.range, bullet.moved_distance);
                     
                     // 총알 사거리를 넘어가면 총알 제거
-                    if bullet.moved_distance >= bullet.blob.range {
+                    if bullet.remaining_distance <= 0.0 {
                         println!("Bullet range over");
-                        bullet.alive = false;
                     }
                     else {
                         // 총알 위치 이동
-                        bullet.blob.translation += bullet.blob.direction * move_distance;
+                        let t = translation + velocity * elapsed;
+                        bullet.translation = t.to_array();
                     }
                 }
             }
         }
 
         // 살아남은 총알만 남김
-        self.alive_bullets.retain(|bullet| bullet.alive);
+        self.alive_bullets.retain(|bullet| bullet.remaining_distance > 0.0);
     }
 
     /// 업데이트 루프 실행  
@@ -317,6 +356,10 @@ impl WorldInterface {
         }
     }
 
+    pub fn get_stage_kind(&self) -> StageKind {
+        self.as_mut().get_stage_kind()
+    }
+
     /// id가 겹치지 않음을 사용하는쪽에서 보장해야 함.
     /// 보장하더라도 해싱된 결과가 같으면 충돌이 발생할 수 있음.
     /// 1. mpsc를 사용해서 한 스레드에서만 add/remove를 수행하도록 한다.    >>>>>>> 자주 호출되지 않는 add/remove를 위해 task를 하나 할당해줘야함.
@@ -329,10 +372,29 @@ impl WorldInterface {
     pub fn remove_player(&self, id: ObjectId) {
         self.as_mut().remove_player(id);
     }
-
+    
     /// 클라이언트에서 보내온 플레이어 정보로 업데이트
-    pub fn update_player(&self, player: Player) {
-        self.as_mut().update_player(player);
+    pub fn update_player(
+        &mut self, 
+        player_id: ObjectId,
+        rotation: [f32; 4], 
+        action_state: ActionState, 
+        movement_state: MovementState, 
+        view_state: ViewState, 
+        action_state_timer: ActionStateTimer, 
+        movement_state_timer: MovementStateTimer, 
+        view_state_timer: ViewStateTimer,
+    ) {
+        self.as_mut().update_player(
+            player_id,
+            rotation,
+            action_state,
+            movement_state,
+            view_state,
+            action_state_timer,
+            movement_state_timer,
+            view_state_timer,
+        );
     }
 
     /// 플레이어를 시간 경과에 관계 없이 x, y, z만큼 이동시킨다.
@@ -345,11 +407,16 @@ impl WorldInterface {
     }
 
 
-    pub fn add_bullet(&self, bullet: BulletBlob) {
-        self.as_mut().add_bullet(bullet);
+    pub fn add_bullet(
+        &mut self, 
+        object_id: ObjectId,
+        shooter_id: ClientId,
+        direction: [f32; 3],
+    ) {
+        self.as_mut().add_bullet(object_id, shooter_id, direction);
     }
 
-    pub fn get_bullets(&self) -> Vec<BulletBlob> {
+    pub fn get_bullets(&self) -> Vec<Bullet> {
         self.as_mut().get_bullets()
     }
 

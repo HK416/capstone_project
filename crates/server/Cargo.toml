@@ -8,11 +8,12 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-tokio = { version = "1.39.3", features = ["full"] }
-futures = "0.3.30"
-rand = "0.8.5"
+glam = { workspace = true }
+rand = { workspace = true }
+uuid = { workspace = true }
 
-gmm = { git = "https://github.com/HK416/gmm.git" }
+futures = "0.3.30"
+tokio = { version = "1.39.3", features = ["full"] }
 
 mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }

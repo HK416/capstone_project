@@ -62,6 +62,18 @@ impl ToString for ClientId {
     }
 }
 
+impl PartialEq<ObjectId> for ClientId {
+    fn eq(&self, other: &ObjectId) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Into<ObjectId> for ClientId {
+    fn into(self) -> ObjectId {
+        unsafe { ObjectId::new_unchecked(self.0) }
+    }
+}
+
 /// 게임 월드의 시대를 나타냅니다.
 ///
 /// 클라이언트에서 항상 마지막으로 전송된 네트워크 패킷을 처리하기 위해 사용됩니다.
@@ -163,6 +175,18 @@ impl TryFromBigEndian for ObjectId {
             );
             None
         }
+    }
+}
+
+impl PartialEq<ClientId> for ObjectId {
+    fn eq(&self, other: &ClientId) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Into<ClientId> for ObjectId {
+    fn into(self) -> ClientId {
+        unsafe { ClientId::new_unchecked(self.0) }
     }
 }
 

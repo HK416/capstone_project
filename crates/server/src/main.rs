@@ -9,8 +9,11 @@ use server::{
 };
 
 use mod_network::{
-    Addr,
-    components::ClientId,
+    addr::Addr,
+    components::{
+        ClientId,
+        StageKind,
+    },
 };
 
 
@@ -26,8 +29,7 @@ pub async fn run_server(addr: &str) {
 
     println!("Server listening on: {}", listener.local_addr().unwrap());
 
-
-    let mut world = World::new();
+    let mut world = World::new(StageKind::default());
 
     // 새로운 쓰레드에서 클라이언트 연결 관리
     tokio::spawn(wait_for_players(listener, (&world).into()));
@@ -71,7 +73,7 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
 
 /// 별개의 스레드에서 동작하며, 시작시와 종료시 Mutex lock을 걸어서 클라이언트 개수 파악
 async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
-    let mut session = Session::new(ClientId::new(id as u64 + 1), stream, WorldInterface::new(world));
+    let mut session = Session::new(ClientId::new(id as u128 + 1), stream, WorldInterface::new(world));
 
     {
         let slots = CLIENT_SLOTS.lock().unwrap();
@@ -132,8 +134,15 @@ async fn main() {
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use mod_network::*;
-    use mod_network::components::{ClientId, CharacterKind};
+    use mod_network::{
+        protocol::{
+            Packet,
+            PacketParser,
+            PacketType,
+            EnterStagePacket,
+        },
+        components::{ClientId, CharacterKind},
+    };
 
     #[tokio::test]
     async fn test_connection() {
