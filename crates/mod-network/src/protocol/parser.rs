@@ -27,10 +27,9 @@ impl PacketParser {
         }
 
         let mut data = Vec::from(data);
-
-        if let Some(Parsed::Incomplete(prev)) = self.queue.back() {
-            data.splice(0..0, prev.iter().cloned());
-            self.queue.pop_back().unwrap();
+        while let Some(Parsed::Incomplete(mut prev)) = self.queue.pop_back() {
+            prev.append(&mut data);
+            data = prev;
         }
 
         let mut len = data.len();
@@ -63,15 +62,10 @@ impl PacketParser {
     /// 한개 남았을 때 Incomplete이면 아직 완성 안된것이므로 pop하지 않음.  
     /// 두개 이상 남았을때 제일 앞 패킷이 Incomplete이면 모종의 이유로 완성 안된것이므로 값을 버리기 위해 pop.  
     pub fn pop(&mut self) -> Option<RawPacket> {
-        if self.queue.len() == 1 {
-            if let Some(Parsed::Incomplete(_)) = self.queue.front() {
-                return None;
-            }
-        }
-
-        match self.queue.pop_front() {
-            Some(Parsed::Complete(some)) => Some(some),
-            _ => None,
+        if let Some(Parsed::Complete(packet)) = self.queue.pop_front() {
+            Some(packet)
+        } else {
+            None
         }
     }
 

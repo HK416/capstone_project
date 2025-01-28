@@ -1,3 +1,4 @@
+use glam::Vec4Swizzles;
 use tokio::{
     net::TcpStream,
     io::{AsyncReadExt, AsyncWriteExt},
@@ -162,14 +163,26 @@ impl Session {
                         
                         println!("shot!");
 
-                        let dx = packet.view_rotation.lon.sin();
-                        let dy = -packet.view_rotation.lat.sin();
-                        let dz = packet.view_rotation.lon.cos();
+                        let mut transform = glam::Mat4::from_translation(glam::vec3(0.0, 0.0, -1.0));
+                        let rotation = glam::Mat4::from_rotation_y(packet.view_rotation.lon);
+                        transform = rotation * transform;
+
+                        let z_axis = transform.z_axis.xyz().normalize_or(glam::Vec3::Z);
+                        let x_axis = glam::Vec3::Y.cross(z_axis);
+                        let rotation = glam::Mat4::from_axis_angle(x_axis, packet.view_rotation.lat);
+                        transform = rotation * transform;
+
+                        let direction = transform.z_axis.xyz();
+
+                        // let dx = packet.view_rotation.lon.sin();
+                        // let dy = -packet.view_rotation.lat.sin();
+                        // let dz = packet.view_rotation.lon.cos();
                         
                         self.world.add_bullet(
                             ObjectId::new(uuid::Uuid::new_v4().as_u128()),
                             self.id,
-                            glam::Vec3A::from_array([dx, dy, dz]),
+                            // glam::Vec3A::from_array([dx, dy, dz]),
+                            glam::Vec3A::from(direction),
                         );
                     }
                 }

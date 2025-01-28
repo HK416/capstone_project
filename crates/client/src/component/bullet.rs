@@ -49,10 +49,15 @@ pub fn spwan_bullet(
 
     // 컴포넌트 데이터를 준비합니다.
     let bullet_kind = bullet.bullet_kind;
-    let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
+    let local_transform = ToParentTrans(glam::Mat4::from_scale_rotation_translation(
+        glam::Vec3::splat(100.0),
         glam::Quat::from_array(bullet.rotation),
         glam::Vec3::from_array(bullet.translation),
     ));
+    // let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
+    //     glam::Quat::from_array(bullet.rotation),
+    //     glam::Vec3::from_array(bullet.translation),
+    // ));
     let world_transform = WorldTransform::default();
 
     // 컴포넌트를 추가합니다.

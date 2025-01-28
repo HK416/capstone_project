@@ -234,7 +234,10 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
                 status.is_connected.store(false, MemOrdering::Release);
                 break;
             }
-            Ok(n) => parser.push(&buffer[..n]),
+            Ok(n) => {
+                log::debug!("received packet data (SIZE:{})", n);
+                parser.push(&buffer[..n])
+            },
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 continue;
             }

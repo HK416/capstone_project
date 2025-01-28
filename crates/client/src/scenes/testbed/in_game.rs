@@ -15,7 +15,6 @@ use mod_render::{
     CameraResource, ScreenDescriptor, SkyboxDataLayout, SkyboxResource, UiRenderer, DEPTH_FORMAT,
     SWAPCHAIN_FORMAT,
 };
-use wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -507,13 +506,17 @@ impl TestbedInGameScene {
             &'a ViewStateTimer,
         );
         let mut query = self.world.query::<With<(), R>>();
-        query.iter().map(|(entity, _)| entity).collect()
+        let entities: Vec<_> = query.iter().map(|(entity, _)| entity).collect();
+        log::debug!("num players: {}", entities.len());
+        entities
     }
 
     /// 총알 엔터티를 반환합니다.
     fn get_bullet_entities(&self) -> Vec<Entity> {
         let mut query = self.world.query::<Without<&BulletKind, &Parent>>();
-        query.iter().map(|(entity, _)| entity).collect()
+        let entities: Vec<_> = query.iter().map(|(entity, _)| entity).collect();
+        log::debug!("num bullets: {}", entities.len());
+        entities
     }
 
     /// 캐릭터 애니메이션을 재생합니다.
