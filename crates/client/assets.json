@@ -47,7 +47,8 @@
         "common" : {
             "files" : [
                 "Bullet_01_Shell.hierarchy",
-                "Bullet_01_Warhead.hierarchy"
+                "Bullet_01_Warhead.hierarchy",
+                "Bullet_02_Aris_Original.hierarchy"
             ],
             "directories" : {}
         },

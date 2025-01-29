@@ -1,10 +1,11 @@
-use super::{BigEndian, ClientId, ObjectId, TryFromBigEndian};
+use super::{BigEndian, CharacterKind, ClientId, ObjectId, TryFromBigEndian};
 
 /// 총알 모델 종류입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BulletKind {
     Common = 0,
+    ArisOriginal = 1,
 }
 
 impl BigEndian for BulletKind {
@@ -24,11 +25,21 @@ impl Default for BulletKind {
     }
 }
 
+impl From<CharacterKind> for BulletKind {
+    fn from(value: CharacterKind) -> Self {
+        match value {
+            CharacterKind::ArisOriginal => BulletKind::ArisOriginal,
+            CharacterKind::MomoiOriginal => BulletKind::Common,
+        }
+    }
+}
+
 impl TryFromBigEndian for BulletKind {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         let index = u8::from_big_endian_bytes(bytes);
         match index {
             0 => Some(BulletKind::Common),
+            1 => Some(BulletKind::ArisOriginal),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",

@@ -5,7 +5,6 @@ use mod_network::components::{
     ClientId,
     ObjectId, 
     CharacterKind,
-    BulletKind,
     StageKind,
     ActionState,
     MovementState,
@@ -125,7 +124,7 @@ impl World {
                 Bullet {
                     object_id,
                     shooter_id,
-                    bullet_kind: BulletKind::default(),
+                    bullet_kind: player.character_kind.into(),
                     translation: player.translation,
                     rotation,
                     velocity,
