@@ -114,18 +114,20 @@ impl World {
         object_id: ObjectId,
         shooter_id: ClientId,
         direction: glam::Vec3A,
+        rotation: glam::Quat,
     ) {
         if let Some(player) = self.players.get_mut(&shooter_id.into()) {
             const BULLET_SPEED: f32 = 50.0;
             let velocity = direction.normalize() * BULLET_SPEED;
             let velocity = velocity.to_array();
+            let rotation = rotation.to_array();
             self.new_bullets.push(
                 Bullet {
                     object_id,
                     shooter_id,
                     bullet_kind: BulletKind::default(),
                     translation: player.translation,
-                    rotation: player.rotation,
+                    rotation,
                     velocity,
                     remaining_distance: 700.0,
                 }
@@ -416,8 +418,9 @@ impl WorldInterface {
         object_id: ObjectId,
         shooter_id: ClientId,
         direction: glam::Vec3A,
+        rotation: glam::Quat,
     ) {
-        self.as_mut().add_bullet(object_id, shooter_id, direction);
+        self.as_mut().add_bullet(object_id, shooter_id, direction, rotation);
     }
 
     pub fn get_bullets(&self) -> Vec<Bullet> {

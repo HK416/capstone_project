@@ -173,16 +173,13 @@ impl Session {
                         transform = rotation * transform;
 
                         let direction = transform.z_axis.xyz();
-
-                        // let dx = packet.view_rotation.lon.sin();
-                        // let dy = -packet.view_rotation.lat.sin();
-                        // let dz = packet.view_rotation.lon.cos();
+                        let rotation = glam::Quat::from_mat4(&transform);
                         
                         self.world.add_bullet(
                             ObjectId::new(uuid::Uuid::new_v4().as_u128()),
                             self.id,
-                            // glam::Vec3A::from_array([dx, dy, dz]),
                             glam::Vec3A::from(direction),
+                            rotation,
                         );
                     }
                 }
