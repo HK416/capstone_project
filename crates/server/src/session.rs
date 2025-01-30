@@ -155,8 +155,8 @@ impl Session {
 
         match packet.action_state {
             ActionState::Attack => {
-                const SHOT_INTERVAL: f32 = 1.0;     // 캐릭터 애니메이션에 맞춰야함
-                const SHOT_DELAY: f32 = 0.0;        // 캐릭터 애니메이션에 맞춰야함
+                const SHOT_INTERVAL: f32 = 2.0;     // 캐릭터 애니메이션에 맞춰야함
+                const SHOT_DELAY: f32 = 1.0;        // 캐릭터 애니메이션에 맞춰야함
                 if self.recent_shot_time.elapsed().as_secs_f32() >= SHOT_INTERVAL {
                     if packet.action_state_timer.0 >= SHOT_DELAY {
                         self.recent_shot_time = tokio::time::Instant::now();
@@ -171,15 +171,11 @@ impl Session {
                         let x_axis = glam::Vec3::Y.cross(z_axis);
                         let rotation = glam::Mat4::from_axis_angle(x_axis, packet.view_rotation.lat);
                         transform = rotation * transform;
-
-                        let direction = transform.z_axis.xyz();
-                        let rotation = glam::Quat::from_mat4(&transform);
                         
                         self.world.add_bullet(
                             ObjectId::new(uuid::Uuid::new_v4().as_u128()),
                             self.id,
-                            glam::Vec3A::from(direction),
-                            rotation,
+                            transform,
                         );
                     }
                 }

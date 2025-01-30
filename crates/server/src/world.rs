@@ -1,3 +1,4 @@
+use glam::Vec4Swizzles;
 use std::collections::{HashMap, VecDeque};
 use mod_network::components::{
     Player,
@@ -112,14 +113,16 @@ impl World {
         &mut self, 
         object_id: ObjectId,
         shooter_id: ClientId,
-        direction: glam::Vec3A,
-        rotation: glam::Quat,
+        transform: glam::Mat4,
     ) {
         if let Some(player) = self.players.get_mut(&shooter_id.into()) {
             const BULLET_SPEED: f32 = 50.0;
+
+            let direction = transform.z_axis.xyz();
+            let rotation = glam::Quat::from_mat4(&transform);
+            let rotation = rotation.to_array();
             let velocity = direction.normalize() * BULLET_SPEED;
             let velocity = velocity.to_array();
-            let rotation = rotation.to_array();
             self.new_bullets.push(
                 Bullet {
                     object_id,
@@ -416,10 +419,9 @@ impl WorldInterface {
         &mut self, 
         object_id: ObjectId,
         shooter_id: ClientId,
-        direction: glam::Vec3A,
-        rotation: glam::Quat,
+        transform: glam::Mat4,
     ) {
-        self.as_mut().add_bullet(object_id, shooter_id, direction, rotation);
+        self.as_mut().add_bullet(object_id, shooter_id, transform);
     }
 
     pub fn get_bullets(&self) -> Vec<Bullet> {
