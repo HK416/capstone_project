@@ -195,7 +195,7 @@ pub fn create_character_halo_render_pipeline(
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         primitive: wgpu::PrimitiveState {
-            cull_mode: Some(wgpu::Face::Back),
+            cull_mode: None,
             front_face: wgpu::FrontFace::Cw,
             topology: wgpu::PrimitiveTopology::TriangleList,
             polygon_mode: wgpu::PolygonMode::Fill,
