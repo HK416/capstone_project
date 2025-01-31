@@ -3,7 +3,10 @@ use tokio::{
     net::TcpStream,
     io::{AsyncReadExt, AsyncWriteExt},
 };
-use super::world::WorldInterface;
+use super::{
+    world::WorldInterface,
+    attribute::get_character_info,
+};
 use mod_network::{
     components::{
         ClientId, 
@@ -11,6 +14,7 @@ use mod_network::{
         MovementState,
         ActionState,
         Epoch,
+        CharacterKind,
     },
     protocol::{
         PacketParser, 
@@ -36,6 +40,7 @@ pub struct Session {
 
     running: bool,
 
+    character_kind: CharacterKind,
     recent_shot_time: tokio::time::Instant,
 }
 
@@ -47,6 +52,7 @@ impl Session {
             packet_parser: PacketParser::new(),
             world,
             running: true,
+            character_kind: CharacterKind::default(),
             recent_shot_time: tokio::time::Instant::now(),
         }
     }
@@ -103,6 +109,7 @@ impl Session {
     }
 
     async fn process_enter_stage(&mut self, packet: EnterStagePacket) {
+        self.character_kind = packet.character_kind;
         self.world.add_player(self.id.into(), packet.character_kind);
 
         println!("Client {:?} entered stage", self.id);
@@ -125,7 +132,9 @@ impl Session {
         }
     }
 
-    async fn process_push_status(&mut self, packet: PushStatusPacket) {     
+    async fn process_push_status(&mut self, packet: PushStatusPacket) {  
+        let char_info = get_character_info(self.character_kind);
+
         self.world.update_player(
             self.id.into(), 
             packet.rotation, 
@@ -142,7 +151,7 @@ impl Session {
                 let dir = glam::Vec3A::from_slice(&packet.direction)
                     .normalize();
                 // 속력값(캐릭터 능력치) 곱하기
-                let dir = glam::Vec3::from(dir * 5.5);
+                let dir = glam::Vec3::from(dir * char_info.speed);
                 self.world.push_move_data(self.id.into(), dir.x, 0.0, dir.z);
             },
             
@@ -156,9 +165,8 @@ impl Session {
         match packet.action_state {
             ActionState::Attack => {
                 const SHOT_INTERVAL: f32 = 2.0;     // 캐릭터 애니메이션에 맞춰야함
-                const SHOT_DELAY: f32 = 1.0;        // 캐릭터 애니메이션에 맞춰야함
                 if self.recent_shot_time.elapsed().as_secs_f32() >= SHOT_INTERVAL {
-                    if packet.action_state_timer.0 >= SHOT_DELAY {
+                    if packet.action_state_timer.0 >= char_info.fire_delay_time {
                         self.recent_shot_time = tokio::time::Instant::now();
                         
                         println!("shot!");
@@ -183,8 +191,6 @@ impl Session {
 
             _ => {},
         }
-
-        
         
         let players = self.world.get_players();
         let bullets = self.world.get_bullets();

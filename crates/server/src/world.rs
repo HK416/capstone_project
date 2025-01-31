@@ -6,7 +6,10 @@ use mod_network::components::{
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
 
-use super::formula::movement_formulas as formulas;
+use super::{
+    formula::movement_formulas as formulas,
+    attribute::get_character_info,
+};
 
 
 
@@ -45,12 +48,13 @@ impl World {
     }
 
     pub fn add_player(&mut self, object_id: ObjectId, character_kind: CharacterKind) {
+        let char_info = get_character_info(character_kind);
         self.players.insert(
             object_id, 
             Player { 
                 object_id, 
                 character_kind, 
-                health_point: HealthPoint(2000.0),
+                health_point: HealthPoint(char_info.health_point),
                 ..Default::default() 
             }
         );
@@ -106,6 +110,7 @@ impl World {
         transform: glam::Mat4,
     ) {
         if let Some(player) = self.players.get_mut(&shooter_id.into()) {
+            let char_info = get_character_info(player.character_kind);
             const BULLET_SPEED: f32 = 50.0;
 
             let direction = transform.z_axis.xyz();
@@ -121,7 +126,7 @@ impl World {
                     translation: player.translation,
                     rotation,
                     velocity,
-                    remaining_distance: 700.0,
+                    remaining_distance: char_info.attack_range,
                 }
             );
         }
@@ -192,13 +197,13 @@ impl World {
                 if player.object_id == bullet.shooter_id {
                     continue;
                 }
-                
-                let player_position = glam::Vec3A::from(player.translation);
 
                 // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
                 const BULLET_RADIUS: f32 = 0.15;
                 const PLAYER_RADIUS: f32 = 1.0;
                 const PLAYER_HEIGHT: f32 = 2.5;
+                
+                let player_position = glam::Vec3A::from(player.translation);
 
                 let dist_sq = (bullet_position - player_position).length_squared();
                 if dist_sq > dist_limit_sq || dist_sq > bullet.remaining_distance.powi(2) {
@@ -236,18 +241,9 @@ impl World {
                     
                     println!("Player {:?} hit by bullet", id);
                     let player = self.players.get_mut(&id).unwrap();
-                    // TODO: 아래 코드처럼 동작해야함
-                    // let character_info = get_character_info(player.character_kind).unwrap();
-                    // let atk = character_info.attack_power;
-                    // let def = character_info.defense_power;
+                    let char_info = get_character_info(player.character_kind);
 
-                    // 플레이어 체력은 2000, 
-                    // 공격력 200, 방어력 20, 
-                    // 명중 수치: 200, 회피 수치: 200, 
-                    // 치명 수치: 200, 치명 데미지: 200%, 
-                    // 사거리 700
-                    // 으로 가정
-                    // > 각 식에서의 상수값은 제안서에 있는 값으로 설정
+                    // 각 식에서의 상수값은 제안서에 있는 값으로 설정
 
                     // 1. 회피 계산
                     // 2. 기본 데미지 계산
@@ -255,8 +251,8 @@ impl World {
                     // 4. 최종 데미지 계산
 
                     // 회피 계산
-                    let accuracy = 200.0;   // 공격자 명중 수치
-                    let evasion = 200.0;    // 피격자 회피 수치
+                    let accuracy = char_info.accuracy_stat;
+                    let evasion = char_info.evasion_stat;
                     let hit_rate = formulas::cal_hit_rate(accuracy, evasion, 100.0);
                     // if rand::random::<f64>() > hit_rate {
                     //     println!("  - miss");
@@ -264,22 +260,22 @@ impl World {
                     // }
                     
                     // 데미지 계산
-                    let atk = 200.0;        // 공격력
-                    let def = 20.0;         // 방어력
+                    let atk = char_info.attack_power;
+                    let def = char_info.defense_power;
                     let dmg = formulas::default_damage(atk, def, 100.0);
 
                     // 치명타 계산
-                    let crit = 200.0;   // 치명 수치
-                    let crit_rate = formulas::cal_crt_rate(rand::random::<f64>(), crit, 250.0);
+                    let crit = char_info.critical_rate;
+                    let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
                     if crit_rate == 1.0 {
                         println!("  - critical!");
                     }
 
                     // 최종 데미지 계산
-                    let final_dmg = formulas::final_damage(dmg, hit_rate, crit_rate, 200.0);
+                    let final_dmg = formulas::final_damage(dmg, hit_rate, crit_rate, char_info.critical_damage);
 
                     let hp = &mut player.health_point;
-                    hp.0 -= final_dmg as f32;
+                    hp.0 -= final_dmg;
                     if hp.0 <= 0.0 {
                         hp.0 = 0.0;
                     }
