@@ -62,10 +62,14 @@ impl PacketParser {
     /// 한개 남았을 때 Incomplete이면 아직 완성 안된것이므로 pop하지 않음.  
     /// 두개 이상 남았을때 제일 앞 패킷이 Incomplete이면 모종의 이유로 완성 안된것이므로 값을 버리기 위해 pop.  
     pub fn pop(&mut self) -> Option<RawPacket> {
-        if let Some(Parsed::Complete(packet)) = self.queue.pop_front() {
-            Some(packet)
-        } else {
-            None
+        if self.queue.len() == 1 {
+            if let Some(Parsed::Incomplete(_)) = self.queue.front() {
+                return None;
+            }
+        }
+        match self.queue.pop_front() {
+            Some(Parsed::Complete(some)) => Some(some),
+            _ => None,
         }
     }
 
