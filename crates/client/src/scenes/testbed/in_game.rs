@@ -12,8 +12,8 @@ use mod_network::{
     protocol::{Packet, PullStagePacket, PushStatusPacket, RawPacket},
 };
 use mod_render::{
-    CameraResource, ScreenDescriptor, SkyboxDataLayout, SkyboxResource, UiRenderer, DEPTH_FORMAT,
-    SWAPCHAIN_FORMAT,
+    CameraResource, SamplerPool, ScreenDescriptor, SkyboxDataLayout, SkyboxResource,
+    TextureViewPool, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use winit::{
     event::{Modifiers, MouseButton},
@@ -35,8 +35,8 @@ use crate::{
     config::UserConfig,
     render::{
         clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_terrain,
-        prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx, FxDamageDataLayout,
-        FxDamageResource,
+        get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx,
+        FxDamageDataLayout, FxDamageResource,
     },
     SERVER_ADDR,
 };
@@ -296,8 +296,9 @@ impl TestbedInGameScene {
                 FxDamageDataLayout {
                     trans: world_transform.0.to_cols_array(),
                     position_v: [-0.1, 0.1, -0.5],
-                    width: 0.224,
-                    height: 0.112,
+                    number: 3,
+                    width: 0.1,
+                    height: 0.2,
                     ..Default::default()
                 },
             );
@@ -981,14 +982,27 @@ impl GameScene for TestbedInGameScene {
         self.create_main_camera(window, app.render_device());
 
         // TEST
+        let texture = get_damage_font(app.asset_manager(), app.render_device(), app.render_queue())
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        let t_font =
+            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+        let s_font =
+            SamplerPool::get_or_init(app.render_device(), &wgpu::SamplerDescriptor::default());
+
         let entity = self.get_player_entity();
         let skinning_animation = self
             .world
             .query_one_mut::<&SkinningAnimation>(entity)
             .expect("invalid entity or invalid entity component");
         let parent = skinning_animation.head;
-        let (entity, mut builder) =
-            spawn_damage_fx(app.render_device(), app.render_queue(), &self.world, parent);
+        let (entity, mut builder) = spawn_damage_fx(
+            app.render_device(),
+            app.render_queue(),
+            &t_font,
+            &s_font,
+            &self.world,
+            parent,
+        );
         self.world
             .insert(entity, builder.build())
             .expect("no such entity");
@@ -1327,15 +1341,6 @@ impl GameScene for TestbedInGameScene {
                 &mut rpass,
             );
 
-            draw_damage_particle(
-                &self.world,
-                &camera_resource,
-                &device,
-                SWAPCHAIN_FORMAT,
-                DEPTH_FORMAT,
-                &mut rpass,
-            );
-
             clear_render_target_with_skybox(
                 &self.skybox_resource,
                 &device,
@@ -1344,6 +1349,23 @@ impl GameScene for TestbedInGameScene {
                 &mut rpass,
             );
 
+            draw_damage_particle(
+                &self.world,
+                &camera_resource,
+                &device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+            
+            draw_damage_particle(
+                &self.world,
+                &camera_resource,
+                &device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
             egui_renderer.render(
                 &mut rpass,
                 &self.egui_clip_primitives,

@@ -54,6 +54,7 @@
         },
         "font" : {
             "files" : [
+                "D_Font_Normal.dds",
                 "NEXON_Lv2_Gothic_Bold.ttf",
                 "NEXON_Lv2_Gothic.ttf"
             ],

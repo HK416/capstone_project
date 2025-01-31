@@ -381,6 +381,14 @@ impl GameScene for LoadStageResourceScene {
             &mut self.num_tasks,
         );
 
+        // 데미지 폰트 텍스처를 로드합니다.
+        load_damage_font(
+            app.io_threads(),
+            app.asset_manager().clone(),
+            self.task_result_channel.clone(),
+            &mut self.num_tasks,
+        );
+
         // 캐릭터 렌더링 파이프라인을 생성합니다.
         GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_NAME, move || {
             create_character_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
@@ -735,6 +743,24 @@ fn load_terrain_models(
     //     });
     //     *num_tasks += 1;
     // }
+}
+
+fn load_damage_font(
+    pool: &ThreadPool,
+    asset_manager: AssetManager,
+    channel: TaskResultChannel<()>,
+    num_tasks: &mut usize,
+) {
+    // 데미지 폰트 텍스처를 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            let path = "font/D_Font_Normal.dds";
+            channel.send(asset_manager.load(&path).map(|_| ()));
+        });
+        *num_tasks += 1;
+    }
 }
 
 /// 게임 월드를 생성하는 게임 장면입니다.

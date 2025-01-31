@@ -19,6 +19,7 @@ pub use self::{bullet::*, camera::*, character::*, fx::*, skybox::*, terrain::*}
 /// 주어진 이름의 사각형 메쉬를 풀 객체에서 가져옵니다.   
 /// 해당 이름에 해당하는 모델 메쉬가 풀 객체에 없는 경우 새로 생성합니다.
 ///
+#[allow(dead_code)]
 pub fn get_or_init_quad_mesh(
     name: &str,
     device: &wgpu::Device,

@@ -6,7 +6,7 @@ struct InputAttributes {
 /// 프래그먼트 쉐이더 입력 데이터로 사용됩니다.
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>, 
-    @location(0) texcoord: vec2<f32>, 
+    @location(0) texcoord: vec2<f32>,
 };
 
 /// 프래그먼트 쉐이더 출력 데이터입니다.
@@ -24,7 +24,8 @@ struct CameraDataLayout {
 /// 데미지 파티클 데이터 레이아웃입니다.
 struct FxDamageDataLayout {
     trans: mat4x4<f32>,
-    position_v: vec4<f32>,
+    position_v: vec3<f32>,
+    number: u32,
     width: f32,
     height: f32,
 };
@@ -35,9 +36,16 @@ var<uniform> u_camera: CameraDataLayout;
 @group(1) @binding(0)
 var<uniform> u_particle: FxDamageDataLayout;
 
+@group(1) @binding(1)
+var t_font: texture_2d<f32>;
+
+@group(1) @binding(2)
+var s_font: sampler;
+
 /// 버텍스 쉐이더
 @vertex
 fn vs_main(input: InputAttributes) -> VertexOutput {
+    let number = f32(u_particle.number % 10);
     var offset: vec3<f32>;
     var texcoord: vec2<f32>;
     switch (input.vertex_index) {
@@ -47,7 +55,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
                 -0.5 * u_particle.height, 
                 0.0
             );
-            texcoord = vec2<f32>(0.0, 1.0);
+            texcoord = vec2<f32>(0.2 * (number % 5), 0.5 * floor(number / 5) + 0.5);
         }
         case 1u: {
             offset = vec3<f32>(
@@ -55,7 +63,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
                 0.5 * u_particle.height, 
                 0.0
             );
-            texcoord = vec2<f32>(0.0, 0.0);
+            texcoord = vec2<f32>(0.2 * (number % 5), 0.5 * floor(number / 5));
         }
         case 2u: {
             offset = vec3<f32>(
@@ -63,7 +71,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
                 -0.5 * u_particle.height, 
                 0.0
             );
-            texcoord = vec2<f32>(1.0, 1.0);
+            texcoord = vec2<f32>(0.2 * (number % 5) + 0.2, 0.5 * floor(number / 5) + 0.5);
         }
         case 3u: {
             offset = vec3<f32>(
@@ -71,7 +79,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
                 0.5 * u_particle.height, 
                 0.0
             );
-            texcoord = vec2<f32>(1.0, 0.0);
+            texcoord = vec2<f32>(0.2 * (number % 5) + 0.2, 0.5 * floor(number / 5));
         }
         default { }
     }
@@ -92,7 +100,6 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
     var out: VertexOutput;
     out.clip_position = u_camera.proj_view * vec4<f32>(position_w, 1.0);
     out.texcoord = texcoord;
-
     return out;
 }
 
@@ -101,7 +108,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
 
-    out.color = vec4<f32>(0.3, 0.3, 0.3, 1.0);
+    out.color = textureSample(t_font, s_font, input.texcoord);
     
     return out;
 }

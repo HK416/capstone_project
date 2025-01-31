@@ -1,14 +1,21 @@
 use std::{
+    io::Cursor,
     num::NonZeroU64,
     ops::RangeBounds,
     sync::{Arc, OnceLock},
 };
 
 use bytemuck::{Pod, Zeroable};
+use ddsfile::Dds;
 use hecs::{Entity, EntityBuilder, World};
-use mod_render::{CameraResource, GraphicsPipelinePool};
+use mod_app::asset::AssetManager;
+use mod_render::{CameraResource, GraphicsPipelinePool, TexturePool};
+use wgpu::util::DeviceExt;
 
-use crate::component::{Parent, ToParentTrans, WorldTransform};
+use crate::{
+    asset::ModelAssetError,
+    component::{Parent, ToParentTrans, WorldTransform},
+};
 
 use super::{LifeTime, ParticleKind};
 
@@ -23,7 +30,7 @@ pub struct FxDamageDataLayout {
     pub trans: [f32; 16],
     /// 카메라 좌표계에서 사각형의 상대 위치
     pub position_v: [f32; 3],
-    pub _padding0: [u8; 4],
+    pub number: u32,
     /// 사각형의 가로 길이
     pub width: f32,
     /// 사각형의 세로 길이
@@ -38,7 +45,7 @@ impl Default for FxDamageDataLayout {
                 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
             position_v: [0.0, 0.0, 0.0],
-            _padding0: [0; 4],
+            number: 0,
             width: 1.0,
             height: 1.0,
             _padding1: [0; 8],
@@ -61,6 +68,7 @@ impl FxDamageUniform {
         .union(wgpu::BufferUsages::COPY_DST);
 }
 
+#[allow(dead_code)]
 impl FxDamageUniform {
     /// 초기화 되지 않은 새로운 데미지 파티클 유니폼 버퍼를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
@@ -172,6 +180,24 @@ impl FxDamageResource {
                         },
                         count: None,
                     },
+                    // 1번 바인딩: 데미지 폰트 텍스처 뷰
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 2번 바인딩: 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             })
         })
@@ -180,16 +206,31 @@ impl FxDamageResource {
 
 impl FxDamageResource {
     /// 초기화 되지 않은 새로운 데미지 파티클 쉐이더 리소스를 생성합니다.
-    pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
+    pub fn uninit(
+        label: Option<&str>,
+        device: &wgpu::Device,
+        t_font: &wgpu::TextureView,
+        s_font: &wgpu::Sampler,
+    ) -> Self {
         let tag = format!("Uniform(Fx({}))", label.unwrap_or("Unknonw"));
         let uniform_buffer = FxDamageUniform::uninit(Some(&tag), device);
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
             layout: &Self::bind_group_layout(device),
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(t_font),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(s_font),
+                },
+            ],
         });
 
         Self {
@@ -262,7 +303,7 @@ pub fn create_fx_damage_render_pipeline(
             entry_point: Some("fs_main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
             targets: &[Some(wgpu::ColorTargetState {
-                blend: None,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 format: render_target_format,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
@@ -287,6 +328,8 @@ pub fn create_fx_damage_render_pipeline(
 pub fn spawn_damage_fx(
     device: &wgpu::Device,
     _queue: &wgpu::Queue,
+    t_font: &wgpu::TextureView,
+    s_font: &wgpu::Sampler,
     world: &World,
     parent: Entity,
 ) -> (Entity, EntityBuilder) {
@@ -300,7 +343,9 @@ pub fn spawn_damage_fx(
     let parent = Parent(parent);
     let local_transform = ToParentTrans::default();
     let world_transform = WorldTransform::default();
-    let resource = Arc::new(FxDamageResource::uninit(None, device));
+
+    // 쉐이더 리소스를 준비합니다.
+    let resource = Arc::new(FxDamageResource::uninit(None, device, t_font, s_font));
 
     // 컴포넌트를 추가합니다.
     builder.add(kind);
@@ -339,4 +384,47 @@ pub fn draw_damage_particle<'a>(
         // 파티클을 그립니다.
         rpass.draw(0..4, 0..1);
     }
+}
+
+/// 데미지 폰트 텍스처를 가져옵니다.
+pub fn get_damage_font(
+    asset_manager: &AssetManager,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+    TexturePool::get_or_init(
+        "Fx(D_Font_Normal)",
+        move || -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+            let path = "font/D_Font_Normal.dds";
+            let cached_asset = asset_manager
+                .get_or_init(&path)
+                .map_err(|e| ModelAssetError::from(e))?;
+
+            let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
+                .map_err(|e| ModelAssetError::from(e))?;
+
+            let texture = device.create_texture_with_data(
+                &queue,
+                &wgpu::TextureDescriptor {
+                    label: Some(&"Texture(D_Font_Normal)"),
+                    size: wgpu::Extent3d {
+                        width: dds.get_width(),
+                        height: dds.get_height(),
+                        depth_or_array_layers: 1,
+                    },
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Bc7RgbaUnorm,
+                    mip_level_count: dds.get_num_mipmap_levels(),
+                    sample_count: 1,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::LayerMajor,
+                &dds.data,
+            );
+
+            asset_manager.remove(path);
+            Ok(Arc::new(texture))
+        },
+    )
 }
