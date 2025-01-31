@@ -27,10 +27,11 @@ use crate::{
     component::{load_bullet_model, load_character_model, spawn_player_character, spawn_terrain},
     config::UserConfig,
     render::{
-        create_character_halo_render_pipeline, create_character_render_pipeline,
+        create_bullet_render_pipeline, create_character_halo_render_pipeline,
+        create_character_render_pipeline, create_fx_damage_render_pipeline,
         create_skybox_render_pipeline, create_terrain_render_pipeline, skybox,
-        CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME, SKYBOX_PIPELINE_NAME,
-        TERRAIN_PIPELINE_NAME,
+        BULLET_PIPELINE_NAME, CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
+        FX_DAMAGE_PIPELINE_NAME, SKYBOX_PIPELINE_NAME, TERRAIN_PIPELINE_NAME,
     },
     SERVER_ADDR,
 };
@@ -394,6 +395,11 @@ impl GameScene for LoadStageResourceScene {
             )
         });
 
+        // 총알 렌더링 파이프라인을 생성합니다.
+        GraphicsPipelinePool::get_or_init(BULLET_PIPELINE_NAME, move || {
+            create_bullet_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+        });
+
         // 지형 렌더링 파이프라인을 생성합니다.
         GraphicsPipelinePool::get_or_init(TERRAIN_PIPELINE_NAME, move || {
             create_terrain_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
@@ -402,6 +408,11 @@ impl GameScene for LoadStageResourceScene {
         // Skybox 렌더링 파이프라인을 생성합니다.
         GraphicsPipelinePool::get_or_init(SKYBOX_PIPELINE_NAME, move || {
             create_skybox_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+        });
+
+        // 데미지 파티클 렌더링 파이프라인을 생성합니다.
+        GraphicsPipelinePool::get_or_init(FX_DAMAGE_PIPELINE_NAME, move || {
+            create_fx_damage_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
         });
 
         Ok(())

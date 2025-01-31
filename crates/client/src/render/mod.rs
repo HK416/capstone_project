@@ -1,6 +1,7 @@
 pub mod bullet;
 pub mod camera;
 pub mod character;
+pub mod fx;
 pub mod skybox;
 pub mod terrain;
 
@@ -13,7 +14,7 @@ use mod_render::{
 
 use crate::component::{BoneCollection, Child, Sibling, WorldTransform};
 
-pub use self::{bullet::*, camera::*, character::*, skybox::*, terrain::*};
+pub use self::{bullet::*, camera::*, character::*, fx::*, skybox::*, terrain::*};
 
 /// 주어진 이름의 사각형 메쉬를 풀 객체에서 가져옵니다.   
 /// 해당 이름에 해당하는 모델 메쉬가 풀 객체에 없는 경우 새로 생성합니다.

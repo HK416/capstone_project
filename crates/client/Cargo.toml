@@ -12,6 +12,7 @@ build = "build.rs"
 [dependencies]
 ahash = { workspace = true }
 bitflags = { workspace = true }
+bytemuck = { workspace = true }
 constcat = { workspace = true }
 dashmap = { workspace = true }
 egui = { workspace = true }

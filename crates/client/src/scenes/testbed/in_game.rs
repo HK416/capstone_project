@@ -23,8 +23,8 @@ use winit::{
 
 use crate::{
     component::{
-        animate_character, cleanup, draw_character, spawn_player_character, spwan_bullet,
-        update_action_state_by_controller_input_flags, update_action_state_timer,
+        add_child, animate_character, cleanup, draw_character, spawn_player_character,
+        spwan_bullet, update_action_state_by_controller_input_flags, update_action_state_timer,
         update_character_direction, update_entity_hierarchy,
         update_movement_state_by_controller_state, update_movement_state_timer,
         update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
@@ -34,8 +34,9 @@ use crate::{
     },
     config::UserConfig,
     render::{
-        clear_render_target_with_skybox, draw_bullet, draw_terrain, prepare_camera_resource,
-        prepare_mesh_resource,
+        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_terrain,
+        prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx, FxDamageDataLayout,
+        FxDamageResource,
     },
     SERVER_ADDR,
 };
@@ -277,6 +278,30 @@ impl TestbedInGameScene {
     fn prepare_main_camera_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let camera_entities = [self.main_camera];
         prepare_camera_resource(&self.world, &camera_entities, device, queue);
+    }
+
+    /// 데미지 파티클 쉐이더 리소스를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 캐릭터의 월드 변환 행렬이 갱신되어야합니다.
+    ///
+    fn prepare_damage_particle_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let query = self
+            .world
+            .query_mut::<(&WorldTransform, &Arc<FxDamageResource>)>();
+        for (_, (world_transform, fx_resource)) in query {
+            fx_resource.uniform_buffer.update(
+                device,
+                queue,
+                FxDamageDataLayout {
+                    trans: world_transform.0.to_cols_array(),
+                    position_v: [-0.1, 0.1, -0.5],
+                    width: 0.224,
+                    height: 0.112,
+                    ..Default::default()
+                },
+            );
+        }
     }
 
     /// Skybox 쉐이더 리소스를 갱신합니다.
@@ -955,6 +980,21 @@ impl GameScene for TestbedInGameScene {
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
 
+        // TEST
+        let entity = self.get_player_entity();
+        let skinning_animation = self
+            .world
+            .query_one_mut::<&SkinningAnimation>(entity)
+            .expect("invalid entity or invalid entity component");
+        let parent = skinning_animation.head;
+        let (entity, mut builder) =
+            spawn_damage_fx(app.render_device(), app.render_queue(), &self.world, parent);
+        self.world
+            .insert(entity, builder.build())
+            .expect("no such entity");
+        add_child(&mut self.world, parent, entity);
+        app.render_queue().submit([]);
+
         Ok(())
     }
 
@@ -1184,6 +1224,9 @@ impl GameScene for TestbedInGameScene {
             app.render_queue(),
         );
 
+        // 데미지 파티클 쉐이더 리소스를 갱신합니다.
+        self.prepare_damage_particle_resource(app.render_device(), app.render_queue());
+
         // 메인 카메라의 위치 오프셋을 갱신합니다.
         self.update_main_camera_offset();
         // 메인 카메라의 계층 구조를 갱신합니다.
@@ -1276,6 +1319,15 @@ impl GameScene for TestbedInGameScene {
             );
 
             draw_terrain(
+                &self.world,
+                &camera_resource,
+                &device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+
+            draw_damage_particle(
                 &self.world,
                 &camera_resource,
                 &device,
