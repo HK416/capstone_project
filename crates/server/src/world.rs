@@ -185,14 +185,15 @@ impl World {
         for bullet in self.alive_bullets.iter_mut() {
             let translation = glam::Vec3A::from(bullet.translation);
             let velocity = glam::Vec3A::from(bullet.velocity);
-            let move_distance = velocity.length() * elapsed;
+            let direction = velocity * elapsed;
+            let move_distance = direction.length();
 
             // bullet.velocity가 영벡터가 아니라고 가정
-            let ray = Ray::build(translation, velocity).unwrap();
+            let ray = Ray::build(translation, direction).unwrap();
             let bullet_position = translation;
 
             // 거리 한계를 넘어가면 충돌체크 하지 않음(+1.0은 여유 거리)
-            let dist_limit_sq = velocity.length_squared() * 1.0;
+            let dist_limit_sq = direction.length_squared() * 1.0;
 
             let mut nearest_distance = f32::MAX;
             let mut nearest_player_id = None;
@@ -308,7 +309,7 @@ impl World {
                     }
                     else {
                         // 총알 위치 이동
-                        let t = translation + velocity * elapsed;
+                        let t = translation + direction;
                         bullet.translation = t.to_array();
                     }
                 }

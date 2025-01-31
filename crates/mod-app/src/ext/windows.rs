@@ -5,5 +5,6 @@ use windows::Win32::{Foundation::BOOL, UI::WindowsAndMessaging::ShowCursor};
 
 #[inline]
 pub fn show_cursor(show: bool) {
-    unsafe { ShowCursor(BOOL::from(show)) };
+    unsafe { ShowCursor(show) };
+    // unsafe { ShowCursor(BOOL::from(show).into()) };
 }
