@@ -10,8 +10,8 @@ use crate::{
     component::{Child, Parent, Sibling, ToParentTrans, WorldTransform},
 };
 
-const WORKSPACE: &'static str = "common";
-const MODEL_NAME: &'static str = "Bullet_02_Aris_Original";
+pub const WORKSPACE: &'static str = "common";
+pub const MODEL_NAME: &'static str = "Bullet_02_Aris_Original";
 
 /// 일반 총알 모델을 구성하는 엔터티를 생성합니다.
 ///

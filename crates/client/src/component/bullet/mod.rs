@@ -3,10 +3,10 @@ mod common;
 
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::asset::AssetManager;
-use mod_network::components::Bullet;
+use mod_network::components::{Bullet, BulletKind};
 
 use crate::{
-    asset::ModelAssetError,
+    asset::{ModelAssetError, ModelHierarchyPool},
     component::{Child, ToParentTrans, WorldTransform},
 };
 
@@ -17,6 +17,27 @@ const NUM_BULLETS: usize = 2;
 /// ## Bullet Tag
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BulletTag;
+
+/// 총알 모델을 풀 객체에 로드합니다.
+pub fn load_bullet_model(
+    asset_manager: &AssetManager,
+    bullet_kind: BulletKind,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> Result<(), ModelAssetError> {
+    const MODELS: [(&'static str, &'static str); NUM_BULLETS] = [
+        (common::WORKSPACE, common::MODEL_NAME),
+        (aris_original::WORKSPACE, aris_original::MODEL_NAME),
+    ];
+
+    let i = bullet_kind as usize;
+    let (workspace, model_name) = MODELS[i];
+
+    // 총알 모델을 로드합니다.
+    ModelHierarchyPool::get_or_init(model_name, workspace, asset_manager, device, queue)?;
+
+    Ok(())
+}
 
 /// 총알을 구성하는 엔터티를 생성합니다.
 ///

@@ -21,6 +21,8 @@ use crate::{
     },
 };
 
+use super::MODEL_BONE_HEAD;
+
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
 pub const NORMAL_IDLE_LEN: f32 = 2.0;
 /// 캐릭터 모델의 Moving 애니메이션 길이입니다.
@@ -110,6 +112,10 @@ pub fn spawn_character_model(
     let skinning_animation = SkinningAnimation {
         root: entities
             .get(MODEL_BONE_ROOT)
+            .cloned()
+            .expect("no such entity"),
+        head: entities
+            .get(MODEL_BONE_HEAD)
             .cloned()
             .expect("no such entity"),
         meshes,

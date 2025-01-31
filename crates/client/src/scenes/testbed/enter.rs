@@ -10,7 +10,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{CharacterKind, ClientId, Epoch, ObjectId},
+    components::{BulletKind, CharacterKind, ClientId, Epoch, ObjectId},
     protocol::{EnterStagePacket, InitStagePacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{
@@ -24,7 +24,7 @@ use winit::window::Window;
 use crate::{
     asset::{ModelAssetError, ModelHierarchyPool},
     channel::TaskResultChannel,
-    component::{load_character_model, spawn_player_character, spawn_terrain},
+    component::{load_bullet_model, load_character_model, spawn_player_character, spawn_terrain},
     config::UserConfig,
     render::{
         create_character_halo_render_pipeline, create_character_render_pipeline,
@@ -342,7 +342,17 @@ impl GameScene for LoadStageResourceScene {
             .expect("packet data must exist");
 
         // 게임 월드에 존재하는 캐릭터 모델 데이터를 로드합니다.
-        load_character_models(
+        load_all_character_models(
+            app.io_threads(),
+            app.asset_manager().clone(),
+            app.render_device().clone(),
+            app.render_queue().clone(),
+            self.task_result_channel.clone(),
+            &mut self.num_tasks,
+        );
+
+        // 게임 월드에 존재하는 캐릭터 모델의 총알 모델 데이터를 로드합니다.
+        load_all_bullet_models(
             app.io_threads(),
             app.asset_manager().clone(),
             app.render_device().clone(),
@@ -549,7 +559,7 @@ impl fmt::Debug for LoadStageResourceScene {
 }
 
 /// 모든 캐릭터 모델을 로드합니다.
-fn load_character_models(
+fn load_all_character_models(
     pool: &ThreadPool,
     asset_manager: AssetManager,
     device: Arc<wgpu::Device>,
@@ -584,6 +594,49 @@ fn load_character_models(
             channel.send(load_character_model(
                 &asset_manager,
                 CharacterKind::MomoiOriginal,
+                &device,
+                &queue,
+            ));
+        });
+        *num_tasks += 1;
+    }
+}
+
+/// 모든 총알 모델을 로드합니다.
+fn load_all_bullet_models(
+    pool: &ThreadPool,
+    asset_manager: AssetManager,
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    channel: TaskResultChannel<()>,
+    num_tasks: &mut usize,
+) {
+    // Common 총알 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            channel.send(load_bullet_model(
+                &asset_manager,
+                BulletKind::Common,
+                &device,
+                &queue,
+            ));
+        });
+        *num_tasks += 1;
+    }
+    // ArisOriginal 총알 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            channel.send(load_bullet_model(
+                &asset_manager,
+                BulletKind::ArisOriginal,
                 &device,
                 &queue,
             ));

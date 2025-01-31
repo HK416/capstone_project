@@ -34,6 +34,8 @@ use hecs::Entity;
 
 /// 모든 캐릭터 모델의 최상위 뼈 노드 이름입니다.
 pub const MODEL_BONE_ROOT: &'static str = "Bip001";
+/// 모든 캐릭터 모델의 머리 뼈 노드 이름입니다.
+pub const MODEL_BONE_HEAD: &'static str = "Bip001_Head";
 /// 모든 캐릭터 모델의 골반 뼈 노드 이름입니다.
 pub const MODEL_BONE_PELVIS: &'static str = "Bip001_Pelvis";
 /// 모든 캐릭터 모델의 왼쪽 허벅지 안쪽 뼈 노드 이름입니다.
@@ -66,8 +68,20 @@ pub const ATTACK_END_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_End";
 pub struct SkinningAnimation {
     /// NOTE: `BoneCollection`의 `root`와 다름!
     pub root: Entity,
+    pub head: Entity,
     pub meshes: HashMap<String, Entity>,
     pub animation_mixing_bones: HashSet<Entity>,
+}
+
+impl Default for SkinningAnimation {
+    fn default() -> Self {
+        Self {
+            root: Entity::DANGLING,
+            head: Entity::DANGLING,
+            meshes: HashMap::default(),
+            animation_mixing_bones: HashSet::default(),
+        }
+    }
 }
 
 /// ## Bone Collection
