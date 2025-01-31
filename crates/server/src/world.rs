@@ -1,18 +1,7 @@
 use glam::Vec4Swizzles;
 use std::collections::{HashMap, VecDeque};
 use mod_network::components::{
-    Player,
-    Bullet,
-    ClientId,
-    ObjectId, 
-    CharacterKind,
-    StageKind,
-    ActionState,
-    MovementState,
-    ViewState,
-    ActionStateTimer,
-    MovementStateTimer,
-    ViewStateTimer,
+    ActionState, ActionStateTimer, Bullet, CharacterKind, ClientId, HealthPoint, MovementState, MovementStateTimer, ObjectId, Player, StageKind, ViewState, ViewStateTimer
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
@@ -61,6 +50,7 @@ impl World {
             Player { 
                 object_id, 
                 character_kind, 
+                health_point: HealthPoint(2000.0),
                 ..Default::default() 
             }
         );

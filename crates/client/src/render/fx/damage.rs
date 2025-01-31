@@ -22,6 +22,14 @@ use super::{LifeTime, ParticleKind};
 /// 데미지 파티클의 렌더링 파이프라인 이름입니다.
 pub const FX_DAMAGE_PIPELINE_NAME: &'static str = "Fx(Damage)";
 
+#[derive(Debug, Clone, Copy)]
+pub struct Damage {
+    pub width: f32,
+    pub height: f32,
+    pub number: u32,
+    pub position_v: [f32; 3],
+}
+
 /// ## Damage Particle Data Layout
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -318,44 +326,65 @@ pub fn create_fx_damage_render_pipeline(
 /// 데미지를 표시하는 파티클 엔터티를 생성합니다.
 ///
 /// 생성되는 엔터티는 아래 컴포넌트를 갖습니다.
+/// - 부모 엔터티(`Parent`) 주의: 부모에서 자식 엔터티로 연결되지는 않음.
 /// - 라이프타임(`LifeTime`)
 /// - 파티클 종류(`ParticleKind`)
-/// - 부모 엔터티(`Parent`)
 /// - 로컬 변환 행렬(`ToParentTrans`)
 /// - 월드 변환 행렬(`WorldTransform`)
 /// - 데미지 파티클 쉐이더 리소스(`Arc<FxDamageResource>`)
 ///
 pub fn spawn_damage_fx(
     device: &wgpu::Device,
-    _queue: &wgpu::Queue,
+    queue: &wgpu::Queue,
     t_font: &wgpu::TextureView,
     s_font: &wgpu::Sampler,
     world: &World,
     parent: Entity,
-) -> (Entity, EntityBuilder) {
+    life_time: f32,
+    width: f32,
+    height: f32,
+    position_v: [f32; 3],
+    number: u32,
+) -> (Entity, EntityBuilder, Arc<FxDamageResource>) {
     // 엔터티를 하나 할당 받습니다.
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
 
     // 컴포넌트를 준비합니다.
     let kind = ParticleKind::Damage;
-    let life_time = LifeTime(1.5);
-    let parent = Parent(parent);
+    let life_time = LifeTime(life_time);
     let local_transform = ToParentTrans::default();
     let world_transform = WorldTransform::default();
 
     // 쉐이더 리소스를 준비합니다.
     let resource = Arc::new(FxDamageResource::uninit(None, device, t_font, s_font));
+    resource.uniform_buffer.update(
+        device,
+        queue,
+        FxDamageDataLayout {
+            number,
+            width,
+            height,
+            position_v,
+            ..Default::default()
+        },
+    );
 
     // 컴포넌트를 추가합니다.
     builder.add(kind);
     builder.add(life_time);
-    builder.add(parent);
+    builder.add(Parent(parent));
     builder.add(local_transform);
     builder.add(world_transform);
-    builder.add(resource);
+    builder.add(resource.clone());
+    builder.add(Damage {
+        width,
+        height,
+        number,
+        position_v,
+    });
 
-    (entity, builder)
+    (entity, builder, resource)
 }
 
 /// 데미지 파티클을 렌더링합니다.

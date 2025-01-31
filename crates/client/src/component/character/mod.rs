@@ -103,6 +103,7 @@ pub fn load_character_model(
 /// - 힘의 총량(`Force`)
 /// - 가속도(`Acceleration`)
 /// - 속도(`Velocity`)
+/// - 체력(`HealthPoint`)
 /// - 행동 상태(`ActionState`)
 /// - 행동 상태 지속 시간 타이머(`ActionStateTimer`)
 /// - 움직임 상태(`MovementState`)
@@ -154,6 +155,7 @@ pub fn spawn_player_character(
         glam::Vec3::from_array(player.translation),
     ));
     let world_transform = WorldTransform::default();
+    let health_point = player.health_point;
     let action_state = player.action_state;
     let action_state_timer = player.action_state_timer;
     let movement_state = player.movement_state;
@@ -170,6 +172,7 @@ pub fn spawn_player_character(
         Acceleration::default(),
         Velocity::default(),
     ));
+    builder.add(health_point);
     builder.add_bundle((action_state, action_state_timer));
     builder.add_bundle((movement_state, movement_state_timer));
     builder.add_bundle((view_state, view_state_timer));

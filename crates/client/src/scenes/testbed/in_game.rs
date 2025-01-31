@@ -6,8 +6,9 @@ use hecs::{Entity, EntityBuilder, With, Without, World};
 use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, ClientId, Epoch, LatLon,
-        MovementState, MovementStateTimer, ObjectId, Player, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, ClientId, Epoch,
+        HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, ViewState,
+        ViewStateTimer,
     },
     protocol::{Packet, PullStagePacket, PushStatusPacket, RawPacket},
 };
@@ -35,8 +36,8 @@ use crate::{
     config::UserConfig,
     render::{
         clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_terrain,
-        get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx,
-        FxDamageDataLayout, FxDamageResource,
+        get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx, Damage,
+        FxDamageDataLayout, FxDamageResource, LifeTime,
     },
     SERVER_ADDR,
 };
@@ -70,6 +71,9 @@ pub struct TestbedInGameScene {
 
     /// Skybox 쉐이더 리소스
     skybox_resource: Arc<SkyboxResource>,
+
+    /// 공격을 받아 체력이 깎인 플레이어를 저장
+    attack_logs: Vec<(Entity, u32)>,
 
     // ----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
@@ -105,6 +109,7 @@ impl TestbedInGameScene {
             controller_state_timer: ControllerInputTimer::default(),
             controller_input_flags: ControllerInputFlags::default(),
             skybox_resource,
+            attack_logs: Vec::default(),
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -278,31 +283,6 @@ impl TestbedInGameScene {
     fn prepare_main_camera_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let camera_entities = [self.main_camera];
         prepare_camera_resource(&self.world, &camera_entities, device, queue);
-    }
-
-    /// 데미지 파티클 쉐이더 리소스를 갱신합니다.
-    ///
-    /// # Note
-    /// 이 함수를 호출하기 전에 캐릭터의 월드 변환 행렬이 갱신되어야합니다.
-    ///
-    fn prepare_damage_particle_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let query = self
-            .world
-            .query_mut::<(&WorldTransform, &Arc<FxDamageResource>)>();
-        for (_, (world_transform, fx_resource)) in query {
-            fx_resource.uniform_buffer.update(
-                device,
-                queue,
-                FxDamageDataLayout {
-                    trans: world_transform.0.to_cols_array(),
-                    position_v: [-0.1, 0.1, -0.5],
-                    number: 3,
-                    width: 0.1,
-                    height: 0.2,
-                    ..Default::default()
-                },
-            );
-        }
     }
 
     /// Skybox 쉐이더 리소스를 갱신합니다.
@@ -543,6 +523,120 @@ impl TestbedInGameScene {
         let entities: Vec<_> = query.iter().map(|(entity, _)| entity).collect();
         log::debug!("num bullets: {}", entities.len());
         entities
+    }
+
+    /// 데미지 파티클을 생성합니다.
+    fn spawn_damage_particles(
+        &mut self,
+        asset_manager: &AssetManager,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        const WIDTH: f32 = 0.05;
+        const HEIGHT: f32 = 0.1;
+        const ORIGIN: glam::Vec3A = glam::vec3a(-0.1, 0.25, -0.75);
+
+        // 데미지 폰트 텍스처를 가져옵니다.
+        let texture = get_damage_font(asset_manager, device, queue)
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        let t_font =
+            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+        let s_font = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+        while let Some((entity, damage)) = self.attack_logs.pop() {
+            // 엔터티의 스키닝 애니메이션 컴포넌트를 가져옵니다.
+            let skinning_animation = self
+                .world
+                .query_one_mut::<&SkinningAnimation>(entity)
+                .expect("invalid entity or invalid entity component");
+            let parent = skinning_animation.head;
+
+            let s_damage = format!("{}", damage);
+            let length = s_damage.trim().len() as f32;
+            for (i, ch) in s_damage.trim().chars().enumerate() {
+                // 데미지 폰트를 생성합니다.
+                let num = ch.to_digit(10).expect("invalid damage type");
+                let mut position_v = ORIGIN;
+                position_v.x = position_v.x - WIDTH * length * 0.5 + WIDTH * i as f32 + 0.5 * WIDTH;
+                let (entity, mut builder, fx_resource) = spawn_damage_fx(
+                    device,
+                    queue,
+                    &t_font,
+                    &s_font,
+                    &self.world,
+                    parent,
+                    1.0,
+                    WIDTH,
+                    HEIGHT,
+                    position_v.to_array(),
+                    num,
+                );
+                self.world
+                    .insert(entity, builder.build())
+                    .expect("no such entity");
+            }
+        }
+
+        queue.submit([]);
+
+        Ok(())
+    }
+
+    /// 데미지 파티클을 갱신합니다.
+    fn update_damage_particles(&mut self, elapsed_time_sec: f32) {
+        const SPEED: f32 = 0.2;
+        let mut retires = Vec::new();
+        let query = self.world.query_mut::<(&mut Damage, &mut LifeTime)>();
+        for (entity, (damage, life_time)) in query {
+            // 위치를 갱신합니다.
+            damage.position_v[1] += SPEED * elapsed_time_sec;
+
+            // 라이프 타임을 갱신합니다.
+            life_time.0 -= elapsed_time_sec;
+
+            // 라이프 타임을 모두 소진한 경우 `retires`에 추가합니다.
+            if life_time.0 < 0.0 {
+                retires.push(entity);
+            }
+        }
+
+        // `retires`에 포함된 엔터티를 제거합니다.
+        for entity in retires {
+            cleanup(&mut self.world, entity);
+        }
+    }
+
+    /// 데미지 파티클 쉐이더 리소스를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수를 호출하기 전에 캐릭터의 월드 변환 행렬이 갱신되어야합니다.
+    ///
+    fn prepare_damage_particle_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let mut query = self
+            .world
+            .query::<(&Parent, &Arc<FxDamageResource>, &Damage, &LifeTime)>();
+        for (_, (parent, fx_resource, damage, life_time)) in query.iter() {
+            // 부모의 월드 변환 행렬을 가져옵니다.
+            let mut query = self
+                .world
+                .query_one::<&WorldTransform>(parent.0)
+                .expect("invalid entity");
+            let world_transform = query.get().expect("invalid entity component");
+
+            // 쉐이더 리소스를 갱신합니다.
+            fx_resource.uniform_buffer.update(
+                device,
+                queue,
+                FxDamageDataLayout {
+                    trans: world_transform.0.to_cols_array(),
+                    position_v: damage.position_v,
+                    number: damage.number,
+                    width: damage.width,
+                    height: damage.height,
+                    ..Default::default()
+                },
+            );
+        }
     }
 
     /// 캐릭터 애니메이션을 재생합니다.
@@ -788,6 +882,7 @@ impl TestbedInGameScene {
         objects: &mut HashSet<ObjectId>,
     ) -> Vec<&'a Player> {
         // 컴포넌트 뷰를 준비합니다.
+        let mut health_point_view = self.world.view::<&mut HealthPoint>();
         let mut action_state_view = self
             .world
             .view::<(&mut ActionState, &mut ActionStateTimer)>();
@@ -804,9 +899,21 @@ impl TestbedInGameScene {
             // 현재 플레이어의 경우
             if player.object_id == self.object_id {
                 objects.remove(&self.object_id);
+                let entity = self.get_player_entity();
+
+                // 플레이어 체력이 변동되었는지 확인합니다.
+                let hp = health_point_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+
+                let diff_t = (hp.0 - player.health_point.0).abs();
+                if diff_t > 0.0 {
+                    // 변동되었을 경우 로그에 추가합니다.
+                    self.attack_logs.push((entity, diff_t as u32));
+                }
+                *hp = player.health_point;
 
                 // 플레이어 엔터티의 위치를 갱신합니다.
-                let entity = self.get_player_entity();
                 let local_transform = local_transform_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
@@ -823,6 +930,18 @@ impl TestbedInGameScene {
                     .get(&player.object_id)
                     .cloned()
                     .expect("no such entity");
+
+                // 플레이어 체력이 변동되었는지 확인합니다.
+                let hp = health_point_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+
+                let diff_t = (hp.0 - player.health_point.0).abs();
+                if diff_t > 0.0 {
+                    // 변동되었을 경우 로그에 추가합니다.
+                    self.attack_logs.push((entity, diff_t as u32));
+                }
+                *hp = player.health_point;
 
                 // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
                 let (action_state, action_state_timer) = action_state_view
@@ -981,34 +1100,6 @@ impl GameScene for TestbedInGameScene {
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
 
-        // TEST
-        let texture = get_damage_font(app.asset_manager(), app.render_device(), app.render_queue())
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-        let t_font =
-            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-        let s_font =
-            SamplerPool::get_or_init(app.render_device(), &wgpu::SamplerDescriptor::default());
-
-        let entity = self.get_player_entity();
-        let skinning_animation = self
-            .world
-            .query_one_mut::<&SkinningAnimation>(entity)
-            .expect("invalid entity or invalid entity component");
-        let parent = skinning_animation.head;
-        let (entity, mut builder) = spawn_damage_fx(
-            app.render_device(),
-            app.render_queue(),
-            &t_font,
-            &s_font,
-            &self.world,
-            parent,
-        );
-        self.world
-            .insert(entity, builder.build())
-            .expect("no such entity");
-        add_child(&mut self.world, parent, entity);
-        app.render_queue().submit([]);
-
         Ok(())
     }
 
@@ -1152,6 +1243,9 @@ impl GameScene for TestbedInGameScene {
         // 플레이어 카메라 상태를 갱신합니다.
         self.update_player_view_state();
 
+        // 데미지 파티클을 생성합니다.
+        self.spawn_damage_particles(app.asset_manager(), app.render_device(), app.render_queue())?;
+
         Ok(())
     }
 
@@ -1168,6 +1262,9 @@ impl GameScene for TestbedInGameScene {
         self.update_player_movement_state_timer(elapsed_time_sec);
         // 플레이어 카메라 상태 지속 시간을 갱신합니다.
         self.update_player_view_state_timer(elapsed_time_sec);
+
+        // 데미지 파티클을 갱신합니다.
+        self.update_damage_particles(elapsed_time_sec);
 
         Ok(())
     }
@@ -1357,7 +1454,7 @@ impl GameScene for TestbedInGameScene {
                 DEPTH_FORMAT,
                 &mut rpass,
             );
-            
+
             draw_damage_particle(
                 &self.world,
                 &camera_resource,
