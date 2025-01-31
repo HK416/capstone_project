@@ -27,9 +27,9 @@ impl PacketParser {
         }
 
         let mut data = Vec::from(data);
-        while let Some(Parsed::Incomplete(mut prev)) = self.queue.pop_back() {
-            prev.append(&mut data);
-            data = prev;
+        if let Some(Parsed::Incomplete(prev)) = self.queue.back() {
+            data.splice(0..0, prev.iter().cloned());
+            self.queue.pop_back().unwrap();
         }
 
         let mut len = data.len();
@@ -68,7 +68,7 @@ impl PacketParser {
             }
         }
         match self.queue.pop_front() {
-            Some(Parsed::Complete(some)) => Some(some),
+            Some(Parsed::Complete(packet)) => Some(packet),
             _ => None,
         }
     }
