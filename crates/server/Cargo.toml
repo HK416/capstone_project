@@ -11,20 +11,13 @@ publish.workspace = true
 glam = { workspace = true }
 rand = { workspace = true }
 uuid = { workspace = true }
+serde = { workspace = true }
 
 futures = "0.3.30"
+serde_json = "1.0"
 tokio = { version = "1.39.3", features = ["full"] }
 
 mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }
 mod-physics = { path = "../mod-physics" }
 mod-math = { path = "../mod-math" }
-
-
-[[example]]
-name = "move"
-path = "./dummies/move.rs"
-
-[[example]]
-name = "ad-rm"
-path = "./dummies/ad-rm.rs"

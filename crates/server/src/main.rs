@@ -1,12 +1,7 @@
-use tokio::net::{TcpListener, TcpStream};
-use std::sync::Mutex;
 use std::env;
 use std::str::FromStr;
-
-use server::{
-    world::*,
-    session::Session,
-};
+use std::sync::Mutex;
+use tokio::net::{TcpListener, TcpStream};
 
 use mod_network::{
     addr::Addr,
@@ -14,6 +9,11 @@ use mod_network::{
         ClientId,
         StageKind,
     },
+};
+
+use server::{
+    world::*,
+    session::Session,
 };
 
 
