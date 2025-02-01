@@ -24,8 +24,8 @@ use winit::{
 
 use crate::{
     component::{
-        add_child, animate_character, cleanup, draw_character, spawn_player_character,
-        spwan_bullet, update_action_state_by_controller_input_flags, update_action_state_timer,
+        animate_character, cleanup, draw_character, spawn_player_character, spwan_bullet,
+        update_action_state_by_controller_input_flags, update_action_state_timer,
         update_character_direction, update_entity_hierarchy,
         update_movement_state_by_controller_state, update_movement_state_timer,
         update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
@@ -558,7 +558,7 @@ impl TestbedInGameScene {
                 let num = ch.to_digit(10).expect("invalid damage type");
                 let mut position_v = ORIGIN;
                 position_v.x = position_v.x - WIDTH * length * 0.5 + WIDTH * i as f32 + 0.5 * WIDTH;
-                let (entity, mut builder, fx_resource) = spawn_damage_fx(
+                let (entity, mut builder) = spawn_damage_fx(
                     device,
                     queue,
                     &t_font,
@@ -614,8 +614,8 @@ impl TestbedInGameScene {
     fn prepare_damage_particle_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let mut query = self
             .world
-            .query::<(&Parent, &Arc<FxDamageResource>, &Damage, &LifeTime)>();
-        for (_, (parent, fx_resource, damage, life_time)) in query.iter() {
+            .query::<(&Parent, &Arc<FxDamageResource>, &Damage)>();
+        for (_, (parent, fx_resource, damage)) in query.iter() {
             // 부모의 월드 변환 행렬을 가져옵니다.
             let mut query = self
                 .world

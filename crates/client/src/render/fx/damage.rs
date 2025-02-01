@@ -258,7 +258,7 @@ fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     if cfg!(feature = "enable-shader-validation") {
         device.create_shader_module(desc)
     } else {
-        unsafe { device.create_shader_module_unchecked(desc) }
+        unsafe { device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::unchecked()) }
     }
 }
 
@@ -345,7 +345,7 @@ pub fn spawn_damage_fx(
     height: f32,
     position_v: [f32; 3],
     number: u32,
-) -> (Entity, EntityBuilder, Arc<FxDamageResource>) {
+) -> (Entity, EntityBuilder) {
     // 엔터티를 하나 할당 받습니다.
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
@@ -384,7 +384,7 @@ pub fn spawn_damage_fx(
         position_v,
     });
 
-    (entity, builder, resource)
+    (entity, builder)
 }
 
 /// 데미지 파티클을 렌더링합니다.

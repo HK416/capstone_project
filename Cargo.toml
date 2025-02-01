@@ -98,7 +98,7 @@ uuid = { version = "1.12", features = ["atomic", "fast-rng", "v4"] }
 
 # Rusty WebGPU API wrapper
 # License: MIT OR Apache-2.0
-wgpu = "23"
+wgpu = "24"
 
 # Cross-platform window creation library.
 # License: Apache-2.0

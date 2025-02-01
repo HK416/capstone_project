@@ -19,7 +19,7 @@ fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     if cfg!(feature = "enable-shader-validation") {
         device.create_shader_module(desc)
     } else {
-        unsafe { device.create_shader_module_unchecked(desc) }
+        unsafe { device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::unchecked()) }
     }
 }
 

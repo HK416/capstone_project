@@ -46,7 +46,7 @@ fn create_instance() -> Arc<wgpu::Instance> {
         desc.backends = wgpu::Backends::METAL;
     }
 
-    Arc::new(wgpu::Instance::new(desc))
+    Arc::new(wgpu::Instance::new(&desc))
 }
 
 /// 적절한 `wgpu` 장치 어뎁터를 생성합니다.  
