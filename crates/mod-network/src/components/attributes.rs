@@ -10,6 +10,12 @@ pub struct Float3 {
     pub z: f32,
 }
 
+impl Into<[f32; 3]> for Float3 {
+    fn into(self) -> [f32; 3] {
+        [self.x, self.y, self.z]
+    }
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default)]
 pub struct CharacterAttributes {
     pub speed: f32,

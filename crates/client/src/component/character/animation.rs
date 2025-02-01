@@ -69,6 +69,7 @@ pub struct SkinningAnimation {
     /// NOTE: `BoneCollection`의 `root`와 다름!
     pub root: Entity,
     pub head: Entity,
+    pub muzzle: Entity,
     pub meshes: HashMap<String, Entity>,
     pub animation_mixing_bones: HashSet<Entity>,
 }
@@ -78,6 +79,7 @@ impl Default for SkinningAnimation {
         Self {
             root: Entity::DANGLING,
             head: Entity::DANGLING,
+            muzzle: Entity::DANGLING,
             meshes: HashMap::default(),
             animation_mixing_bones: HashSet::default(),
         }

@@ -1,7 +1,6 @@
-use glam::Vec4Swizzles;
 use std::collections::{HashMap, VecDeque};
 use mod_network::components::{
-    ActionState, ActionStateTimer, Bullet, CharacterKind, ClientId, HealthPoint, MovementState, MovementStateTimer, ObjectId, Player, StageKind, ViewState, ViewStateTimer
+    ActionState, ActionStateTimer, Bullet, CharacterAttributes, CharacterKind, ClientId, HealthPoint, MovementState, MovementStateTimer, ObjectId, Player, StageKind, ViewState, ViewStateTimer
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
@@ -107,25 +106,31 @@ impl World {
         &mut self, 
         object_id: ObjectId,
         shooter_id: ClientId,
-        transform: glam::Mat4,
+        rotation: glam::Quat,
+        velocity: glam::Vec3,
+        attributes: &CharacterAttributes,
     ) {
         if let Some(player) = self.players.get_mut(&shooter_id.into()) {
             let char_info = get_character_attributes(player.character_kind);
-            const BULLET_SPEED: f32 = 50.0;
 
-            let direction = transform.z_axis.xyz();
-            let rotation = glam::Quat::from_mat4(&transform);
-            let rotation = rotation.to_array();
-            let velocity = direction.normalize() * BULLET_SPEED;
-            let velocity = velocity.to_array();
+            // 총구의 위치를 계산합니다.
+            let offset = glam::Vec3::from_array(attributes.muzzle_position.into());
+            let mut offset = glam::Mat4::from_translation(offset);
+            let rotate = glam::Mat4::from_quat(rotation);
+            offset = rotate * offset;
+            let offset = glam::Vec3A::from_vec4(offset.w_axis);
+
+            let mut translation = glam::Vec3A::from_array(player.translation);
+            translation += offset;
+
             self.new_bullets.push(
                 Bullet {
                     object_id,
                     shooter_id,
                     bullet_kind: player.character_kind.into(),
-                    translation: player.translation,
-                    rotation,
-                    velocity,
+                    translation: translation.to_array(),
+                    rotation: rotation.to_array(),
+                    velocity: velocity.to_array(),
                     remaining_distance: char_info.attack_range,
                 }
             );
@@ -406,9 +411,11 @@ impl WorldInterface {
         &mut self, 
         object_id: ObjectId,
         shooter_id: ClientId,
-        transform: glam::Mat4,
+        rotation: glam::Quat,
+        velocity: glam::Vec3,
+        attributes: &CharacterAttributes
     ) {
-        self.as_mut().add_bullet(object_id, shooter_id, transform);
+        self.as_mut().add_bullet(object_id, shooter_id, rotation, velocity, attributes);
     }
 
     pub fn get_bullets(&self) -> Vec<Bullet> {

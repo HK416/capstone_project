@@ -118,6 +118,7 @@ pub fn spawn_character_model(
             .get(MODEL_BONE_HEAD)
             .cloned()
             .expect("no such entity"),
+        muzzle: entities.get("fire_01").cloned().expect("no such entity"),
         meshes,
         animation_mixing_bones,
     };

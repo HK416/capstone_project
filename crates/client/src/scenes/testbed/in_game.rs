@@ -1324,6 +1324,21 @@ impl GameScene for TestbedInGameScene {
             app.render_queue(),
         );
 
+        #[cfg(debug_assertions)]
+        {
+            let entity = self.get_player_entity();
+            let skinning_animation = self
+                .world
+                .query_one_mut::<&SkinningAnimation>(entity)
+                .expect("invalid entity or invalid entity component");
+            let muzzle = skinning_animation.muzzle;
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(muzzle)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("muzzle: {:?}", transform.get_translation());
+        }
+
         // 총알 엔터티들을 가져옵니다.
         let bullet_entities = self.get_bullet_entities();
         // 총알 엔터티의 계층 구조를 갱신합니다.

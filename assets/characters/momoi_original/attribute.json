@@ -1,9 +1,9 @@
 {
     "speed": 5.3,
     "muzzle_position": {
-      "x": 0.0,
-      "y": 0.0,
-      "z": 0.0
+      "x": 0.10609177,
+      "y": 0.5632114,
+      "z": 0.46779513
     },
     "fire_delay_time": 0.0,
     "health_point": 2426.0,

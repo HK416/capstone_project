@@ -161,7 +161,7 @@ impl Session {
 
             _ => {},
         }
-
+        const BULLET_SPEED: f32 = 50.0;
         match packet.action_state {
             ActionState::Attack => {
                 const SHOT_INTERVAL: f32 = 2.0;     // 캐릭터 애니메이션에 맞춰야함
@@ -171,19 +171,26 @@ impl Session {
                         
                         println!("shot!");
 
+                        // 플레이어가 바라보는 방향을 계산합니다.
                         let mut transform = glam::Mat4::from_translation(glam::vec3(0.0, 0.0, -1.0));
-                        let rotation = glam::Mat4::from_rotation_y(packet.view_rotation.lon);
-                        transform = rotation * transform;
+                        let rotate = glam::Mat4::from_rotation_y(packet.view_rotation.lon);
+                        transform = rotate * transform;
 
                         let z_axis = transform.z_axis.xyz().normalize_or(glam::Vec3::Z);
                         let x_axis = glam::Vec3::Y.cross(z_axis);
-                        let rotation = glam::Mat4::from_axis_angle(x_axis, packet.view_rotation.lat);
-                        transform = rotation * transform;
+                        let rotate = glam::Mat4::from_axis_angle(x_axis, packet.view_rotation.lat);
+                        transform = rotate * transform;
+
+                        let direction = transform.z_axis.xyz().normalize_or(glam::Vec3::Z);
+                        let velocity = direction * BULLET_SPEED;
+                        let rotation = glam::Quat::from_mat4(&transform);
                         
                         self.world.add_bullet(
                             ObjectId::new(uuid::Uuid::new_v4().as_u128()),
                             self.id,
-                            transform,
+                            rotation, 
+                            velocity,
+                            &char_info
                         );
                     }
                 }
