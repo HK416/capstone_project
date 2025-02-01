@@ -1,35 +1,27 @@
-use std::collections::HashMap;
 use std::fs;
-use lazy_static::lazy_static;
-use serde_json::Error;
-use serde::de::Error as SerdeError;
-use mod_network::components::{
-    CharacterKind,
-    CharacterAttributes,
-};
 
+use ahash::HashMap;
+use lazy_static::lazy_static;
+use mod_network::components::{CharacterAttributes, CharacterKind};
+use serde::de::Error as SerdeError;
+use serde_json::Error;
 
 lazy_static! {
     static ref CHARACTER_INFO: HashMap<CharacterKind, CharacterAttributes> = {
-        let mut map = HashMap::new();
-        
+        let mut map = HashMap::default();
+
         map.insert(
-            CharacterKind::ArisOriginal, 
-            load_character_attribute(
-                "assets/characters/aris_original/attribute.json"
-            ).unwrap()
+            CharacterKind::ArisOriginal,
+            load_character_attribute("assets/characters/aris_original/attribute.json").unwrap(),
         );
         map.insert(
-            CharacterKind::MomoiOriginal, 
-            load_character_attribute(
-                "assets/characters/momoi_original/attribute.json"
-            ).unwrap()
+            CharacterKind::MomoiOriginal,
+            load_character_attribute("assets/characters/momoi_original/attribute.json").unwrap(),
         );
 
         map
     };
 }
-
 
 /// assets폴더가 실행파일과 같은 위치에 있다고 가정
 pub fn get_character_info(kind: CharacterKind) -> CharacterAttributes {
@@ -47,17 +39,21 @@ fn load_character_attribute(path: &str) -> Result<CharacterAttributes, Error> {
     Ok(attributes)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_load_character_attribute() {
-        // 테스트가 실행되는 디렉토리는 crates/server이므로 ../../가 필요
-        let aris_path = "../../assets/characters/aris_original/attribute.json";
-        let momoi_path = "../../assets/characters/momoi_original/attribute.json";
-    
+        let aris_path = concat!(
+            env!("CARGO_WORKSPACE_DIR"),
+            "assets/characters/aris_original/attribute.json"
+        );
+        let momoi_path = concat!(
+            env!("CARGO_WORKSPACE_DIR"),
+            "assets/characters/momoi_original/attribute.json"
+        );
+
         assert!(load_character_attribute(aris_path).is_ok());
         assert!(load_character_attribute(momoi_path).is_ok());
     }
