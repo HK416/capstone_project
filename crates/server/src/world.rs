@@ -8,7 +8,7 @@ use mod_physics::{Ray, YCapsule};
 
 use super::{
     formula::movement_formulas as formulas,
-    attribute::get_character_info,
+    data::get_character_attributes,
 };
 
 
@@ -48,7 +48,7 @@ impl World {
     }
 
     pub fn add_player(&mut self, object_id: ObjectId, character_kind: CharacterKind) {
-        let char_info = get_character_info(character_kind);
+        let char_info = get_character_attributes(character_kind);
         self.players.insert(
             object_id, 
             Player { 
@@ -110,7 +110,7 @@ impl World {
         transform: glam::Mat4,
     ) {
         if let Some(player) = self.players.get_mut(&shooter_id.into()) {
-            let char_info = get_character_info(player.character_kind);
+            let char_info = get_character_attributes(player.character_kind);
             const BULLET_SPEED: f32 = 50.0;
 
             let direction = transform.z_axis.xyz();
@@ -241,7 +241,7 @@ impl World {
                     
                     println!("Player {:?} hit by bullet", id);
                     let player = self.players.get_mut(&id).unwrap();
-                    let char_info = get_character_info(player.character_kind);
+                    let char_info = get_character_attributes(player.character_kind);
 
                     // 각 식에서의 상수값은 제안서에 있는 값으로 설정
 

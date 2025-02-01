@@ -12,6 +12,7 @@ const ASSET_LIST: &'static str = include_str!("assets.json");
 
 const TARGET_PATH: &'static str = "target";
 const ASSET_PATH: &'static str = "assets";
+const OUTPUT_PATH: &'static str = "server_data";
 
 /// 에셋 디렉토리 계층 구조를 나타내는 구조체입니다.
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -48,9 +49,10 @@ fn main() {
 
     // 빌드 대상과 프로파일을 가져옵니다.
     let target = env::var("TARGET").ok();
-    let profile = env::var("PROFILE").ok();
+    let profile = env::var("PROFILE").ok(); // debug/release
 
     // 빌드 경로를 생성합니다. (빌드 대상 경로가 포함되지 않은)
+    // 예: $CARGO_MANIFEST_DIR/target/release/
     let mut build_path = workspace_dir.to_path_buf();
     build_path.push(TARGET_PATH);
     if let Some(profile) = &profile {
@@ -61,7 +63,7 @@ fn main() {
     if build_path.is_dir() {
         // 대상 경로를 생성합니다.
         let mut dst_path = build_path.clone();
-        dst_path.push(ASSET_PATH);
+        dst_path.push(OUTPUT_PATH);
 
         // 기존 에셋 디렉토리가 있는 경우 삭제 후 다시 생성합니다.
         if let Err(e) = fs_extra::dir::create(&dst_path, true) {
@@ -76,6 +78,7 @@ fn main() {
     }
 
     // 빌드 경로를 생성합니다. (빌드 대상 경로가 포함된)
+    // 예: $CARGO_MANIFEST_DIR/target/x86_64-pc-windows-msvc/release/
     let mut build_path = workspace_dir.to_path_buf();
     build_path.push(TARGET_PATH);
     if let Some(target) = &target {
@@ -89,7 +92,7 @@ fn main() {
     if build_path.is_dir() {
         // 대상 경로를 생성합니다.
         let mut dst_path = build_path.clone();
-        dst_path.push(ASSET_PATH);
+        dst_path.push(OUTPUT_PATH);
 
         // 기존 에셋 디렉토리가 있는 경우 삭제 후 다시 생성합니다.
         if let Err(e) = fs_extra::dir::create(&dst_path, true) {

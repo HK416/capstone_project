@@ -1,0 +1,22 @@
+{
+    "files" : [],
+    "directories" : {
+        "characters" : {
+            "files" : [],
+            "directories" : {
+                "aris_original" : {
+                    "files" : [
+                        "attribute.json"
+                    ], 
+                    "directories" : {}
+                },
+                "momoi_original" : {
+                    "files" : [
+                        "attribute.json"
+                    ],
+                    "directories" : {}
+                }
+            }
+        }
+    }
+}

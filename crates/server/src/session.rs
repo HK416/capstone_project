@@ -5,7 +5,7 @@ use tokio::{
 };
 use super::{
     world::WorldInterface,
-    attribute::get_character_info,
+    data::get_character_attributes,
 };
 use mod_network::{
     components::{
@@ -133,7 +133,7 @@ impl Session {
     }
 
     async fn process_push_status(&mut self, packet: PushStatusPacket) {  
-        let char_info = get_character_info(self.character_kind);
+        let char_info = get_character_attributes(self.character_kind);
 
         self.world.update_player(
             self.id.into(), 

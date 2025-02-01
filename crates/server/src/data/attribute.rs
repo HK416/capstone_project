@@ -6,25 +6,32 @@ use mod_network::components::{CharacterAttributes, CharacterKind};
 use serde::de::Error as SerdeError;
 use serde_json::Error;
 
+use crate::data::get_current_path;
+
 lazy_static! {
     static ref CHARACTER_INFO: HashMap<CharacterKind, CharacterAttributes> = {
-        let mut map = HashMap::default();
-
-        map.insert(
-            CharacterKind::ArisOriginal,
-            load_character_attribute("assets/characters/aris_original/attribute.json").unwrap(),
-        );
-        map.insert(
-            CharacterKind::MomoiOriginal,
-            load_character_attribute("assets/characters/momoi_original/attribute.json").unwrap(),
-        );
-
-        map
+        // # Errors
+        // 프로그램을 실행하고 있는 도중 프로그램 디렉토리를 삭제할 경우 정의되지 않은 동작을 수행합니다.
+        let path = get_current_path().to_str().unwrap();
+        HashMap::from_iter([
+            (
+                CharacterKind::ArisOriginal,
+                load_character_attribute(
+                    &format!("{}/server_data/characters/aris_original/attribute.json", path)
+                ).unwrap()
+            ),
+            (
+                CharacterKind::MomoiOriginal,
+                load_character_attribute(
+                    &format!("{}/server_data/characters/momoi_original/attribute.json", path)
+                ).unwrap()
+            )
+        ])
     };
 }
 
-/// assets폴더가 실행파일과 같은 위치에 있다고 가정
-pub fn get_character_info(kind: CharacterKind) -> CharacterAttributes {
+/// server_data 디렉토리가 실행파일과 같은 위치에 있다고 가정
+pub fn get_character_attributes(kind: CharacterKind) -> CharacterAttributes {
     CHARACTER_INFO.get(&kind).unwrap().clone()
 }
 
