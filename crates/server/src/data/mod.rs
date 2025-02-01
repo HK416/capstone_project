@@ -19,8 +19,7 @@ pub fn get_current_path() -> &'static Path {
         let current_path = current_exe
             .parent()
             .expect("the path to the executable file could not be found!")
-            .canonicalize()
-            .expect("failed to normalize path");
+            .to_path_buf();
         current_path
     })
 }
