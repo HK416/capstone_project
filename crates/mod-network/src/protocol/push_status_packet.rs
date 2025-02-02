@@ -1,87 +1,208 @@
-use crate::components::TryFromBigEndian;
+use crate::components::{
+    ActionState, ActionStateTimer, BigEndian, ClientId, Epoch, LatLon, MovementState,
+    MovementStateTimer, TryFromBigEndian, ViewState, ViewStateTimer,
+};
 
-use super::*;
-use super::super::game_objects::Player;
-use super::super::components::BigEndian;
-use mod_math::LatLon;
+use super::{Packet, PacketType, RawPacket};
 
-
-
-/// 클라이언트에서 서버로 보내는 
+/// 클라이언트에서 서버로 보내는
 /// 플레이어 정보를 갱신하기 위한 패킷
-#[repr(C)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PushStatusPacket {
-    pub player: Player,
-    pub move_direction: [f32; 3], // XZ평면상의 플레이어 이동 방향
-    // pub look_direction: LatLon, // 카메라 방향
-    // pub move_direction: u8, // 8방향 입력 정보
-    // pub jump: bool, // 점프키 입력 여부
-}
-
-impl PushStatusPacket {
-    /// 패킷의 바이트 단위 크기입니다. 
-    pub const SIZE: usize = size_of::<Player>() + 12;
+    /// 클라이언트가 이전에 받은 서버의 시대
+    pub epoch: Epoch,
+    /// 클라이언트 식별자
+    pub client_id: ClientId,
+    /// 플레이어 캐릭터가 바라보는 방향 (이동 방향과 다를 수 있음)
+    pub rotation: [f32; 4],
+    /// XZ평면상의 플레이어 이동 방향
+    pub direction: [f32; 3],
+    /// 플레이어 행동 상태 (서버에서 상태 변화만 살펴봄)
+    pub action_state: ActionState,
+    /// 플레이어 행동 상태 타이머 (서버에서 행동 상태를 검증하는데 사용)
+    pub action_state_timer: ActionStateTimer,
+    /// 플레이어 움직임 상태 (서버에서 상태 변화만 살펴봄)
+    pub movement_state: MovementState,
+    /// 플레이어 움직임 상태 타이머 (서버에서 움직임 상태를 검증하는데 사용)
+    pub movement_state_timer: MovementStateTimer,
+    /// 카메라 상태 (서버에서 클라이언트 값을 사용)
+    pub view_state: ViewState,
+    /// 카메라 상태 타이머 (서버에서 클라이언트 값을 사용)
+    pub view_state_timer: ViewStateTimer,
+    /// 카메라 방향 (서버에서 클라이언트 값을 사용)
+    pub view_rotation: LatLon,
 }
 
 impl Default for PushStatusPacket {
+    // client_id의 기본 값은 NULL이어야 합니다.
     fn default() -> Self {
-        Self { 
-            player: Player::default(), 
-            move_direction: [0.0, 0.0, 1.0] 
+        Self {
+            epoch: Epoch::new(0),
+            client_id: ClientId::NULL,
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            direction: [0.0, 0.0, 1.0],
+            action_state: ActionState::default(),
+            action_state_timer: ActionStateTimer::default(),
+            movement_state: MovementState::default(),
+            movement_state_timer: MovementStateTimer::default(),
+            view_state: ViewState::default(),
+            view_state_timer: ViewStateTimer::default(),
+            view_rotation: LatLon::default(),
         }
     }
 }
 
-impl BigEndian for PushStatusPacket {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("invalid data")
+impl Packet for PushStatusPacket {
+    fn packet_type() -> PacketType {
+        PacketType::PushStatus
     }
 
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(Self::SIZE);
-        bytes.extend_from_slice(&self.player.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.move_direction.to_big_endian_bytes());
-        bytes
+    fn as_raw(&self) -> RawPacket {
+        let data_size = Epoch::byte_size()
+            + ClientId::byte_size()
+            + <[f32; 4]>::byte_size()
+            + <[f32; 3]>::byte_size()
+            + ActionState::byte_size()
+            + ActionStateTimer::byte_size()
+            + MovementState::byte_size()
+            + MovementStateTimer::byte_size()
+            + ViewState::byte_size()
+            + ViewStateTimer::byte_size()
+            + LatLon::byte_size();
+        let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&self.epoch.to_big_endian_bytes());
+        data.extend_from_slice(&self.client_id.to_big_endian_bytes());
+        data.extend_from_slice(&self.rotation.to_big_endian_bytes());
+        data.extend_from_slice(&self.direction.to_big_endian_bytes());
+        data.extend_from_slice(&self.action_state.to_big_endian_bytes());
+        data.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
+        data.extend_from_slice(&self.movement_state.to_big_endian_bytes());
+        data.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
+        data.extend_from_slice(&self.view_state.to_big_endian_bytes());
+        data.extend_from_slice(&self.view_state_timer.to_big_endian_bytes());
+        data.extend_from_slice(&self.view_rotation.to_big_endian_bytes());
+
+        // 바이트 배열 유효성 검증
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                data.len(),
+                data_size,
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(PushStatusPacket)
+            );
+        }
+
+        RawPacket::new(Self::packet_type(), &data)
+    }
+
+    fn try_from_raw(raw: RawPacket) -> Option<Self> {
+        // 패킷 종류가 일치하는지 확인합니다.
+        if raw.packet_type() != Self::packet_type() {
+            log::warn!(
+                "invalid packet type. (RAW:{:?}, PACKET:{:?})",
+                raw.packet_type(),
+                Self::packet_type()
+            );
+            return None;
+        }
+
+        // 서버의 시대를 가져옵니다.
+        let bytes = raw.data();
+        let mut offset = 0;
+        let mut size = Epoch::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let epoch = Epoch::try_from_big_endian_bytes(data)?;
+
+        // 클라이언트 식별자를 가져옵니다.
+        offset = offset + size;
+        size = ClientId::byte_size();
+        data = &bytes[offset..offset + size];
+        let client_id = ClientId::try_from_big_endian_bytes(data)?;
+
+        // 플레이어 캐릭터 방향을 가져옵니다.
+        offset = offset + size;
+        size = <[f32; 4]>::byte_size();
+        data = &bytes[offset..offset + size];
+        let rotation = <[f32; 4]>::from_big_endian_bytes(data);
+
+        // 플레이어 이동 방향을 가져옵니다.
+        offset = offset + size;
+        size = <[f32; 3]>::byte_size();
+        data = &bytes[offset..offset + size];
+        let direction = <[f32; 3]>::from_big_endian_bytes(data);
+
+        // 행동 상태를 가져옵니다.
+        offset = offset + size;
+        size = ActionState::byte_size();
+        data = &bytes[offset..offset + size];
+        let action_state = ActionState::try_from_big_endian_bytes(data)?;
+
+        // 행동 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = ActionStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let action_state_timer = ActionStateTimer::from_big_endian_bytes(data);
+
+        // 움직임 상태를 가져옵니다.
+        offset = offset + size;
+        size = MovementState::byte_size();
+        data = &bytes[offset..offset + size];
+        let movement_state = MovementState::try_from_big_endian_bytes(data)?;
+
+        // 움직임 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = MovementStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
+
+        // 카메라 상태를 가져옵니다.
+        offset = offset + size;
+        size = ViewState::byte_size();
+        data = &bytes[offset..offset + size];
+        let view_state = ViewState::try_from_big_endian_bytes(data)?;
+
+        // 카메라 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = ViewStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let view_state_timer = ViewStateTimer::from_big_endian_bytes(data);
+
+        // 카메라 방향을 가져옵니다.
+        offset = offset + size;
+        size = LatLon::byte_size();
+        data = &bytes[offset..offset + size];
+        let view_rotation = LatLon::from_big_endian_bytes(data);
+
+        Some(Self {
+            epoch,
+            client_id,
+            rotation,
+            direction,
+            action_state,
+            action_state_timer,
+            movement_state,
+            movement_state_timer,
+            view_state,
+            view_state_timer,
+            view_rotation,
+        })
     }
 }
-
-impl TryFromBigEndian for PushStatusPacket {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let mut start = 0;
-        let mut end = start + size_of::<Player>();
-        let player = Player::try_from_big_endian_bytes(&bytes[start..end])?;
-
-        start = end;
-        end = start + 12;
-        let move_direction = <[f32; 3]>::from_big_endian_bytes(&bytes[start..end]);
-        Some(Self { player, move_direction })
-    }
-}
-
-impl PushStatusPacket {
-    /// RawPacket내의 데이터는 유효하다고 가정한다.
-    pub fn from_raw(raw: RawPacket) -> Self {
-        Self::from_big_endian_bytes(&raw.data())
-    }
-
-    pub fn as_raw(&self) -> RawPacket {
-        RawPacket::new(PacketType::PushStatus, &self.to_big_endian_bytes())
-    }
-}
-
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_push_status_packet() {
-        let packet = PushStatusPacket::default();
-        let raw = packet.as_raw();
-        let packet2 = PushStatusPacket::from_raw(raw);
+    fn validation_test_packet() {
+        let origin = PushStatusPacket {
+            client_id: ClientId::new(134),
+            ..Default::default()
+        };
+        let raw_packet = origin.as_raw();
+        let other = PushStatusPacket::try_from_raw(raw_packet).unwrap();
 
-        assert_eq!(packet, packet2);
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
     }
 }

@@ -1,153 +1,31 @@
+use uuid::Uuid;
+
 use super::{BigEndian, TryFromBigEndian};
-
-/// 플레이어 행동 상태 목록입니다.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ActionState {
-    /// 아무 것도 하지 않는 상태
-    Idle = 0,
-    /// 조준하고 있는 동작 상태
-    Aiming = 1,
-    /// 조준을 시작하는 동작 상태
-    AimAt = 2,
-    /// 조준을 해제하는 동작 상태
-    AimOff = 3,
-    /// 공격 동작 상태
-    Attack = 4,
-}
-
-impl BigEndian for ActionState {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let index = *self as u8;
-        index.to_big_endian_bytes()
-    }
-}
-
-impl Default for ActionState {
-    fn default() -> Self {
-        ActionState::Idle
-    }
-}
-
-impl TryFromBigEndian for ActionState {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(ActionState::Idle),
-            1 => Some(ActionState::Aiming),
-            2 => Some(ActionState::AimAt),
-            3 => Some(ActionState::AimOff),
-            4 => Some(ActionState::Attack),
-            _ => None,
-        }
-    }
-}
-
-/// 플레이어 캐릭터의 행동이 지속된 시간을 측정하는 타이머입니다.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct ActionStateTimer(pub f32);
-
-impl ActionStateTimer {
-    /// 타이머가 가질 수 있는 최소 시간입니다.
-    pub const MIN_TIME: f32 = 0.0;
-
-    /// 타이머를 초기화합니다.
-    pub fn reset(&mut self) {
-        self.0 = Self::MIN_TIME
-    }
-}
-
-impl BigEndian for ActionStateTimer {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(f32::from_big_endian_bytes(bytes))
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        self.0.to_big_endian_bytes()
-    }
-}
-
-impl Default for ActionStateTimer {
-    fn default() -> Self {
-        Self(Self::MIN_TIME)
-    }
-}
-
-/// 캐릭터 모델 종류입니다.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CharacterKind {
-    ArisOriginal = 0,
-    MomoiOriginal = 1,
-}
-
-impl BigEndian for CharacterKind {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let index = *self as u8;
-        index.to_big_endian_bytes()
-    }
-}
-
-impl Default for CharacterKind {
-    fn default() -> Self {
-        CharacterKind::ArisOriginal
-    }
-}
-
-impl TryFromBigEndian for CharacterKind {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(CharacterKind::ArisOriginal),
-            1 => Some(CharacterKind::MomoiOriginal),
-            _ => None,
-        }
-    }
-}
-
-impl ToString for CharacterKind {
-    fn to_string(&self) -> String {
-        match self {
-            CharacterKind::ArisOriginal => "Aris Original",
-            CharacterKind::MomoiOriginal => "Momoi Original",
-        }
-        .to_string()
-    }
-}
 
 /// 클라이언트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ClientId(u64);
+pub struct ClientId(u128);
 
 impl ClientId {
     /// 비어있는 클라이언트 식별자입니다.
     pub const NULL: Self = Self(0);
 
     /// 클라이언트 식별자의 최대 값 입니다.
-    pub const MAX: Self = Self(u64::MAX);
+    pub const MAX: Self = Self(u128::MAX);
 
     /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
     ///
     /// # Panics
     /// 주어진 정수가 `0` 또는 `u64::MAX`인 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(num: u64) -> Self {
-        assert!(num != 0 && num != u64::MAX, "out of bounds");
+    pub fn new(num: u128) -> Self {
+        assert!(num != 0 && num != u128::MAX, "out of bounds");
         unsafe { Self::new_unchecked(num) }
     }
 
     /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
-    pub const unsafe fn new_unchecked(num: u64) -> Self {
+    pub const unsafe fn new_unchecked(num: u128) -> Self {
         Self(num)
     }
 }
@@ -164,30 +42,35 @@ impl BigEndian for ClientId {
 
 impl TryFromBigEndian for ClientId {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let num = u64::from_big_endian_bytes(bytes);
-        if num != 0 && num != u64::MAX {
+        let num = u128::from_big_endian_bytes(bytes);
+        if num != 0 && num != u128::MAX {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
+            log::error!(
+                "invalid value for `{}`, (VALUE:{})",
+                stringify!(ClientId),
+                num
+            );
             None
         }
     }
 }
 
-impl Into<u64> for ClientId {
-    fn into(self) -> u64 {
-        self.0
+impl ToString for ClientId {
+    fn to_string(&self) -> String {
+        Uuid::from_u128(self.0).hyphenated().to_string()
     }
 }
 
-impl Into<u32> for ClientId {
-    fn into(self) -> u32 {
-        self.0 as u32
+impl PartialEq<ObjectId> for ClientId {
+    fn eq(&self, other: &ObjectId) -> bool {
+        self.0 == other.0
     }
 }
 
 impl Into<ObjectId> for ClientId {
     fn into(self) -> ObjectId {
-        ObjectId(self.0 as u32)
+        unsafe { ObjectId::new_unchecked(self.0) }
     }
 }
 
@@ -235,6 +118,7 @@ impl TryFromBigEndian for Epoch {
         if num != u64::MAX {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
+            log::error!("invalid value for `{}`, (VALUE:{})", stringify!(Epoch), num);
             None
         }
     }
@@ -243,34 +127,34 @@ impl TryFromBigEndian for Epoch {
 /// 게임 월드 내 오브젝트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ObjectId(u32);
+pub struct ObjectId(u128);
 
 impl ObjectId {
     /// 비어있는 오브젝트 식별자입니다.
     pub const NULL: Self = Self(0);
 
     /// 오브젝트 식별자의 최대 값 입니다.
-    pub const MAX: Self = Self(u32::MAX);
+    pub const MAX: Self = Self(u128::MAX);
 
     /// 주어진 정수로 새로운 오브젝트 식별자를 생성합니다.
     ///
     /// # Panics
     /// 주어진 정수가 `0` 또는 `u32::MAX`인 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(num: u32) -> Self {
-        assert!(num != 0 && num != u32::MAX, "out of bounds");
+    pub fn new(num: u128) -> Self {
+        assert!(num != 0 && num != u128::MAX, "out of bounds");
         unsafe { Self::new_unchecked(num) }
     }
 
     /// 주어진 정수로 새로운 오브젝트 식별자를 생성합니다.
-    pub const unsafe fn new_unchecked(num: u32) -> Self {
+    pub const unsafe fn new_unchecked(num: u128) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for ObjectId {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(u32::from_big_endian_bytes(bytes))
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
@@ -280,207 +164,87 @@ impl BigEndian for ObjectId {
 
 impl TryFromBigEndian for ObjectId {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let num = u32::from_big_endian_bytes(bytes);
-        if num != 0 && num != u32::MAX {
+        let num = u128::from_big_endian_bytes(bytes);
+        if num != 0 && num != u128::MAX {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
+            log::error!(
+                "invalid value for `{}`, (VALUE:{})",
+                stringify!(ObjectId),
+                num
+            );
             None
         }
     }
 }
 
-impl Into<u32> for ObjectId {
-    fn into(self) -> u32 {
-        self.0
+impl PartialEq<ClientId> for ObjectId {
+    fn eq(&self, other: &ClientId) -> bool {
+        self.0 == other.0
     }
 }
 
-/// 캐릭터의 움직임 상태 목록입니다.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum MovementState {
-    /// 아무 움직임도 없는 상태
-    Idle = 0,
-    /// 움직이는 중인 상태
-    Moving = 1,
-    /// 움직였다 멈춘 상태
-    MoveToEnd = 2,
-}
-
-impl BigEndian for MovementState {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let index = *self as u8;
-        index.to_big_endian_bytes()
+impl Into<ClientId> for ObjectId {
+    fn into(self) -> ClientId {
+        unsafe { ClientId::new_unchecked(self.0) }
     }
 }
 
-impl Default for MovementState {
-    fn default() -> Self {
-        MovementState::Idle
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl TryFromBigEndian for MovementState {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(MovementState::Idle),
-            1 => Some(MovementState::Moving),
-            2 => Some(MovementState::MoveToEnd),
-            _ => None,
-        }
-    }
-}
-
-/// 플레이어 움직임 상태의 지속 시간을 나타냅니다.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct MovementStateTimer(pub f32);
-
-impl MovementStateTimer {
-    /// 타이머가 가질 수 있는 최소 시간입니다.
-    pub const MIN_TIME: f32 = 0.0;
-
-    /// 타이머를 초기화합니다.
-    pub fn reset(&mut self) {
-        self.0 = Self::MIN_TIME
-    }
-}
-
-impl BigEndian for MovementStateTimer {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(f32::from_big_endian_bytes(bytes))
+    #[test]
+    #[should_panic]
+    fn creation_test_client_id() {
+        ClientId::new(0);
     }
 
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        self.0.to_big_endian_bytes()
-    }
-}
+    #[test]
+    fn validation_test_client_id() {
+        let origin = ClientId::new(1023443213523352);
+        let bytes = origin.to_big_endian_bytes();
+        let other = ClientId::from_big_endian_bytes(&bytes);
 
-impl Default for MovementStateTimer {
-    fn default() -> Self {
-        Self(Self::MIN_TIME)
-    }
-}
-
-/// 스테이지 종류 목록입니다.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum StageKind {
-    Downtown = 0,
-}
-
-impl BigEndian for StageKind {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+        // 바이트 배열 크기가 같은지 확인
+        assert_eq!(ClientId::byte_size(), bytes.len());
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
     }
 
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let index = *self as u8;
-        index.to_big_endian_bytes()
-    }
-}
-
-impl Default for StageKind {
-    fn default() -> Self {
-        StageKind::Downtown
-    }
-}
-
-impl TryFromBigEndian for StageKind {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(StageKind::Downtown),
-            _ => None,
-        }
-    }
-}
-
-impl ToString for StageKind {
-    fn to_string(&self) -> String {
-        match self {
-            StageKind::Downtown => "Downtown",
-        }
-        .to_string()
-    }
-}
-
-/// 플레이어 카메라의 상태 목록입니다.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ViewState {
-    /// 아무 것도 하지 않는 상태
-    Idle = 0,
-    /// 조준을 준비하는 상태
-    ZoomIn = 1,
-    /// 조준을 해제하는 상태
-    ZoomOut = 2,
-    /// 조준하는 상태
-    Aiming = 3,
-}
-
-impl BigEndian for ViewState {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    #[test]
+    #[should_panic]
+    fn creation_test_epoch() {
+        Epoch::new(u64::MAX);
     }
 
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let index = *self as u8;
-        index.to_big_endian_bytes()
-    }
-}
+    #[test]
+    fn validation_test_epoch() {
+        let origin = Epoch::new(1023443213523352);
+        let bytes = origin.to_big_endian_bytes();
+        let other = Epoch::from_big_endian_bytes(&bytes);
 
-impl Default for ViewState {
-    fn default() -> Self {
-        ViewState::Idle
-    }
-}
-
-impl TryFromBigEndian for ViewState {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(ViewState::Idle),
-            1 => Some(ViewState::ZoomIn),
-            2 => Some(ViewState::ZoomOut),
-            3 => Some(ViewState::Aiming),
-            _ => None,
-        }
-    }
-}
-
-/// 플레이어 뷰 상태의 지속 시간을 나타냅니다.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct ViewStateTimer(pub f32);
-
-impl ViewStateTimer {
-    /// 타이머가 가질 수 있는 최소 시간입니다.
-    pub const MIN_TIME: f32 = 0.0;
-
-    /// 타이머를 초기화합니다.
-    pub fn reset(&mut self) {
-        self.0 = Self::MIN_TIME
-    }
-}
-
-impl BigEndian for ViewStateTimer {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(f32::from_big_endian_bytes(bytes))
+        // 바이트 배열 크기가 같은지 확인
+        assert_eq!(Epoch::byte_size(), bytes.len());
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
     }
 
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        self.0.to_big_endian_bytes()
+    #[test]
+    #[should_panic]
+    fn creation_test_object_id() {
+        ObjectId::new(0);
     }
-}
 
-impl Default for ViewStateTimer {
-    fn default() -> Self {
-        Self(Self::MIN_TIME)
+    #[test]
+    fn validation_test_object_id() {
+        let origin = ObjectId::new(1023443213523352);
+        let bytes = origin.to_big_endian_bytes();
+        let other = ObjectId::from_big_endian_bytes(&bytes);
+
+        // 바이트 배열 크기가 같은지 확인
+        assert_eq!(ObjectId::byte_size(), bytes.len());
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
     }
 }

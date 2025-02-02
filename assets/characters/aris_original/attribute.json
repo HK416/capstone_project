@@ -1,0 +1,18 @@
+{
+    "speed": 5.0,
+    "muzzle_position": {
+      "x": 0.13610761,
+      "y": 0.34636837,
+      "z": 0.68664575
+    },
+    "fire_delay_time": 0.0,
+    "health_point": 2142.0,
+    "attack_power": 514.0,
+    "defense_power": 68.0,
+    "accuracy_stat": 690.0,
+    "evasion_stat": 170.0,
+    "critical_rate": 230.0,
+    "critical_damage": 200.0,
+    "attack_range": 850.0
+}
+  

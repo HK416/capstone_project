@@ -93,7 +93,7 @@ impl TestbedTitleScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let egui_ctx = app.egui_ctx();
 
-        let client_id: u32 = self.client_id.into();
+        let client_id = self.client_id.to_string();
         let scale_factor = window.scale_factor() as f32;
         let (width, _): (f32, f32) = window.inner_size().into();
 
@@ -115,7 +115,7 @@ impl TestbedTitleScene {
         let join_button_text = egui::RichText::new("게임 월드 입장")
             .color(egui::Color32::WHITE)
             .size(18.0);
-        let client_id_text = egui::RichText::new(format!("클라이언트 ID: {}", client_id))
+        let client_id_text = egui::RichText::new(format!("클라이언트 ID: {:?}", client_id))
             .color(egui::Color32::WHITE)
             .size(12.0);
 

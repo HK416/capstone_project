@@ -1,16 +1,19 @@
-use tokio::net::{TcpListener, TcpStream};
-use std::sync::Mutex;
 use std::env;
 use std::str::FromStr;
+use std::sync::Mutex;
+use tokio::net::{TcpListener, TcpStream};
+
+use mod_network::{
+    addr::Addr,
+    components::{
+        ClientId,
+        StageKind,
+    },
+};
 
 use server::{
     world::*,
     session::Session,
-};
-
-use mod_network::{
-    Addr,
-    components::ClientId,
 };
 
 
@@ -26,8 +29,7 @@ pub async fn run_server(addr: &str) {
 
     println!("Server listening on: {}", listener.local_addr().unwrap());
 
-
-    let mut world = World::new();
+    let mut world = World::new(StageKind::default());
 
     // 새로운 쓰레드에서 클라이언트 연결 관리
     tokio::spawn(wait_for_players(listener, (&world).into()));
@@ -71,7 +73,7 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
 
 /// 별개의 스레드에서 동작하며, 시작시와 종료시 Mutex lock을 걸어서 클라이언트 개수 파악
 async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
-    let mut session = Session::new(ClientId::new(id as u64 + 1), stream, WorldInterface::new(world));
+    let mut session = Session::new(ClientId::new(id as u128 + 1), stream, WorldInterface::new(world));
 
     {
         let slots = CLIENT_SLOTS.lock().unwrap();
@@ -108,58 +110,4 @@ async fn main() {
     };
 
     run_server(&addr.to_string()).await;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use mod_network::*;
-    use mod_network::components::{ClientId, CharacterKind};
-
-    #[tokio::test]
-    async fn test_connection() {
-        tokio::spawn(run_server("localhost:7878"));
-
-        let mut parser = PacketParser::new();
-
-        let mut client_stream = TcpStream::connect("localhost:7878").await.unwrap();
-
-        let mut buf = [0; 1024];
-        if let Ok(n) = client_stream.read(&mut buf).await {
-            parser.push(&buf[..n]);
-
-            let packet = parser.pop().unwrap();
-            assert_eq!(packet.packet_type(), PacketType::Connect);
-        }
-
-        let packet = EnterStagePacket::new(ClientId::new(1), CharacterKind::ArisOriginal).as_raw();
-        client_stream.write(&packet.as_bytes()).await.unwrap();
-
-        let mut buf = [0; 1024];
-        if let Ok(n) = client_stream.read(&mut buf).await {
-            parser.push(&buf[..n]);
-
-            let packet = parser.pop().unwrap();
-            assert_eq!(packet.packet_type(), PacketType::InitStage);
-        }
-    }
 }

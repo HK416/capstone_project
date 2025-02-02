@@ -1,18 +1,12 @@
 use std::collections::VecDeque;
-use std::mem::size_of;
 
-use super::protocol::*;
-
+use super::{PacketSize, RawPacket};
 
 #[derive(Debug, PartialEq)]
 pub enum Parsed {
     Complete(RawPacket),
     Incomplete(Vec<u8>),
 }
-
-
-use Parsed::*;
-
 
 /// 뭉쳐온 패킷 분리 및 잘린 패킷 이어붙이기를 수행하는 큐 형태의 Parser
 /// Parsing이 완료되면 RawPacket형태로 저장되어 pop될 수 있다.
@@ -33,8 +27,7 @@ impl PacketParser {
         }
 
         let mut data = Vec::from(data);
-
-        if let Some(Incomplete(prev)) = self.queue.back() {
+        if let Some(Parsed::Incomplete(prev)) = self.queue.back() {
             data.splice(0..0, prev.iter().cloned());
             self.queue.pop_back().unwrap();
         }
@@ -42,24 +35,24 @@ impl PacketParser {
         let mut len = data.len();
         while len > 0 {
             if len < size_of::<PacketSize>() {
-                self.queue.push_back(Incomplete(data));
+                self.queue.push_back(Parsed::Incomplete(data));
                 break;
             }
 
-            let size = PacketSize::from_be_bytes([data[0], data[1]]) as usize;      // size가 변하면 이 코드 수정
-            
+            let size = PacketSize::from_be_bytes([data[0], data[1]]) as usize; // size가 변하면 이 코드 수정
+
             if len < size {
-                self.queue.push_back(Incomplete(data));
+                self.queue.push_back(Parsed::Incomplete(data));
                 break;
             }
 
             let packet = data.drain(0..size).collect::<Vec<u8>>();
-            
+
             len = data.len();
 
-            let packet = match RawPacket::from_bytes(&packet) {
-                Ok(packet) => Complete(packet),
-                Err(_) => continue,     // 알 수 없는 패킷은 버림
+            let packet = match RawPacket::try_from_bytes(&packet) {
+                Ok(packet) => Parsed::Complete(packet),
+                Err(_) => continue, // 알 수 없는 패킷은 버림
             };
 
             self.queue.push_back(packet);
@@ -70,13 +63,12 @@ impl PacketParser {
     /// 두개 이상 남았을때 제일 앞 패킷이 Incomplete이면 모종의 이유로 완성 안된것이므로 값을 버리기 위해 pop.  
     pub fn pop(&mut self) -> Option<RawPacket> {
         if self.queue.len() == 1 {
-            if let Some(Incomplete(_)) = self.queue.front() {
+            if let Some(Parsed::Incomplete(_)) = self.queue.front() {
                 return None;
             }
         }
-
         match self.queue.pop_front() {
-            Some(Complete(some)) => Some(some),
+            Some(Parsed::Complete(packet)) => Some(packet),
             _ => None,
         }
     }
@@ -106,31 +98,10 @@ impl PacketParser {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #[cfg(test)]
 mod tests {
+    use crate::protocol::PacketType;
+
     use super::*;
 
     #[test]
@@ -158,11 +129,14 @@ mod tests {
             let packet = RawPacket::new(PacketType::Raw, b"update");
             let bytes = packet.as_bytes();
             parser.push(&bytes[..3]);
-            assert_eq!(parser.iter().last(), Some(&Incomplete(bytes[..3].to_vec())));
+            assert_eq!(
+                parser.iter().last(),
+                Some(&Parsed::Incomplete(bytes[..3].to_vec()))
+            );
             assert_eq!(parser.pop(), None);
 
             parser.push(&bytes[3..]);
-            assert_eq!(parser.iter().last(), Some(&Complete(packet)));
+            assert_eq!(parser.iter().last(), Some(&Parsed::Complete(packet)));
             // assert_eq!(parser.pop(), Some(packet));
             parser.pop();
         }
@@ -171,11 +145,14 @@ mod tests {
             let packet = RawPacket::new(PacketType::Raw, b"remove");
             let bytes = packet.as_bytes();
             parser.push(&bytes[..6]);
-            assert_eq!(parser.iter().last(), Some(&Incomplete(bytes[..6].to_vec())));
+            assert_eq!(
+                parser.iter().last(),
+                Some(&Parsed::Incomplete(bytes[..6].to_vec()))
+            );
             assert_eq!(parser.pop(), None);
 
             parser.push(&bytes[6..]);
-            assert_eq!(parser.iter().last(), Some(&Complete(packet)));
+            assert_eq!(parser.iter().last(), Some(&Parsed::Complete(packet)));
             // assert_eq!(parser.pop(), Some(packet));
             parser.pop();
         }
@@ -190,7 +167,8 @@ mod tests {
             let bytes3 = packet3.as_bytes();
             let bytes4 = packet4.as_bytes();
 
-            let chained = bytes1.iter()
+            let chained = bytes1
+                .iter()
                 .chain(bytes2.iter())
                 .chain(bytes3.iter())
                 .chain(bytes4.iter())
@@ -199,13 +177,16 @@ mod tests {
             let cut = bytes1.len() + bytes2.len() + bytes3.len() + bytes4.len() / 2;
 
             parser.push(&chained[..cut]);
-            assert_eq!(parser.iter().last(), Some(&Incomplete(bytes4[..bytes4.len() / 2].to_vec())));
+            assert_eq!(
+                parser.iter().last(),
+                Some(&Parsed::Incomplete(bytes4[..bytes4.len() / 2].to_vec()))
+            );
 
             let mut quess = vec![
-                Complete(packet1),
-                Complete(packet2),
-                Complete(packet3),
-                Incomplete(bytes4[..bytes4.len() / 2].to_vec()),
+                Parsed::Complete(packet1),
+                Parsed::Complete(packet2),
+                Parsed::Complete(packet3),
+                Parsed::Incomplete(bytes4[..bytes4.len() / 2].to_vec()),
             ];
 
             for it in parser.iter().zip(quess.iter()) {
@@ -213,7 +194,7 @@ mod tests {
             }
 
             parser.push(&chained[cut..]);
-            quess[3] = Complete(packet4);
+            quess[3] = Parsed::Complete(packet4);
 
             for it in parser.iter().zip(quess.iter()) {
                 assert_eq!(it.0, it.1);

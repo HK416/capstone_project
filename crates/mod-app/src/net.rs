@@ -11,7 +11,7 @@ use std::{
 
 use ahash::RandomState;
 use dashmap::DashMap;
-use mod_network::{PacketParser, RawPacket};
+use mod_network::protocol::{PacketParser, RawPacket};
 use parking_lot::{Condvar, Mutex};
 use winit::event_loop::EventLoopProxy;
 
@@ -215,7 +215,7 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
     // 구문 분석한 패킷은 EventLoopProxy를 통해 애플리케이션 이벤트 루프로 전송됩니다.
     //
     let mut parser = PacketParser::new();
-    let mut buffer = [0; 1024];
+    let mut buffer = [0; 40960]; // 40KB
 
     while status.is_connected() {
         // 버퍼를 초기화 합니다.
@@ -234,7 +234,10 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
                 status.is_connected.store(false, MemOrdering::Release);
                 break;
             }
-            Ok(n) => parser.push(&buffer[..n]),
+            Ok(n) => {
+                log::debug!("received packet data (SIZE:{})", n);
+                parser.push(&buffer[..n])
+            },
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 continue;
             }

@@ -39,14 +39,14 @@ fn create_instance() -> Arc<wgpu::Instance> {
     #[cfg(target_os = "windows")]
     {
         desc.backends = wgpu::Backends::DX12;
-        desc.dx12_shader_compiler = wgpu::util::dx12_shader_compiler_from_env().unwrap_or_default();
+        desc.backend_options = wgpu::BackendOptions::from_env_or_default()
     }
     #[cfg(target_os = "macos")]
     {
         desc.backends = wgpu::Backends::METAL;
     }
 
-    Arc::new(wgpu::Instance::new(desc))
+    Arc::new(wgpu::Instance::new(&desc))
 }
 
 /// 적절한 `wgpu` 장치 어뎁터를 생성합니다.  

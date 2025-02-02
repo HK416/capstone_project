@@ -7,12 +7,9 @@ use std::{collections::VecDeque, sync::Arc};
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
-use mod_network::{
-    components::{
-        ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer, ViewState,
-        ViewStateTimer,
-    },
-    Player,
+use mod_network::components::{
+    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer, Player,
+    ViewState, ViewStateTimer,
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -106,6 +103,7 @@ pub fn load_character_model(
 /// - 힘의 총량(`Force`)
 /// - 가속도(`Acceleration`)
 /// - 속도(`Velocity`)
+/// - 체력(`HealthPoint`)
 /// - 행동 상태(`ActionState`)
 /// - 행동 상태 지속 시간 타이머(`ActionStateTimer`)
 /// - 움직임 상태(`MovementState`)
@@ -114,7 +112,7 @@ pub fn load_character_model(
 /// - 시야 상태 지속 시간 타이머(`ViewStateTimer`)
 ///
 pub fn spawn_player_character(
-    player_data: &Player,
+    player: &Player,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -151,18 +149,19 @@ pub fn spawn_player_character(
     let mut builder = EntityBuilder::new();
 
     // 컴포넌트 데이터를 준비합니다.
-    let character_kind = player_data.character_kind;
+    let character_kind = player.character_kind;
     let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
-        glam::Quat::from_array(player_data.rotation),
-        glam::Vec3::from_array(player_data.translation),
+        glam::Quat::from_array(player.rotation),
+        glam::Vec3::from_array(player.translation),
     ));
     let world_transform = WorldTransform::default();
-    let action_state = player_data.action_state;
-    let action_state_timer = player_data.action_state_timer;
-    let movement_state = player_data.movement_state;
-    let movement_state_timer = player_data.movement_state_timer;
-    let view_state = player_data.view_state;
-    let view_state_timer = player_data.view_state_timer;
+    let health_point = player.health_point;
+    let action_state = player.action_state;
+    let action_state_timer = player.action_state_timer;
+    let movement_state = player.movement_state;
+    let movement_state_timer = player.movement_state_timer;
+    let view_state = player.view_state;
+    let view_state_timer = player.view_state_timer;
 
     // 컴포넌트를 추가합니다.
     builder.add(character_kind);
@@ -173,6 +172,7 @@ pub fn spawn_player_character(
         Acceleration::default(),
         Velocity::default(),
     ));
+    builder.add(health_point);
     builder.add_bundle((action_state, action_state_timer));
     builder.add_bundle((movement_state, movement_state_timer));
     builder.add_bundle((view_state, view_state_timer));

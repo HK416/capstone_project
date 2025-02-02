@@ -22,16 +22,15 @@ ahash = "0.8"
 
 # A macro to generate structures which behave like bitflags.
 # License: MIT OR Apache-2.0
-bitflags = "2.6"
+bitflags = "2.8"
 
 # A crate for mucking around with piles of bytes.
 # License: Zlib OR Apache-2.0 OR MIT
 bytemuck = { version = "1.20", features = ["derive"] }
 
-
 # concat! with support for const variables and expressions
 # License: MIT OR Apache-2.0
-constcat = "0.5"
+constcat = "0.6"
 
 # Blazing fast concurrent HashMap for Rust.
 # License: MIT
@@ -71,7 +70,7 @@ parking_lot = { version = "0.12", features = ["hardware-lock-elision"] }
 
 # Random number generators and other randomness functionality.
 # License: MIT OR Apache-2.0
-rand = "0.8"
+rand = "0.9"
 
 # Simple work-stealing parallelism for Rust
 # License: MIT OR Apache-2.0
@@ -81,6 +80,10 @@ rayon = "1.10"
 # License: MIT or Apache-2.0
 serde = { version = "1.0", features = ["derive"] }
 
+# A JSON serialization file format
+# License: MIT OR Apache-2.0
+serde_json = "1.0"
+
 # Compile-time assertions to ensure that invariants are met.
 # License: MIT OR Apache-2.0
 static_assertions = "1.1"
@@ -89,9 +92,13 @@ static_assertions = "1.1"
 # License: MIT OR Apache-2.0
 thiserror = "2.0"
 
+# A library to generate and parse UUIDs.
+# License: MIT OR Apache-2.0
+uuid = { version = "1.12", features = ["atomic", "fast-rng", "v4"] }
+
 # Rusty WebGPU API wrapper
 # License: MIT OR Apache-2.0
-wgpu = "23"
+wgpu = "24"
 
 # Cross-platform window creation library.
 # License: Apache-2.0

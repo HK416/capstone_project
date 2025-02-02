@@ -1,16 +1,62 @@
+pub mod bullet;
 pub mod camera;
 pub mod character;
+pub mod fx;
 pub mod skybox;
 pub mod terrain;
 
 use std::sync::Arc;
 
 use hecs::{Entity, ViewBorrow, World};
-use mod_render::{MeshResource, TransformDataLayout, MAX_BONES};
+use mod_render::{
+    Attributes, Mesh, MeshPool, MeshResource, TransformDataLayout, Vertices, MAX_BONES,
+};
 
 use crate::component::{BoneCollection, Child, Sibling, WorldTransform};
 
-pub use self::{camera::*, character::*, skybox::*, terrain::*};
+pub use self::{bullet::*, camera::*, character::*, fx::*, skybox::*, terrain::*};
+
+/// 주어진 이름의 사각형 메쉬를 풀 객체에서 가져옵니다.   
+/// 해당 이름에 해당하는 모델 메쉬가 풀 객체에 없는 경우 새로 생성합니다.
+///
+#[allow(dead_code)]
+pub fn get_or_init_quad_mesh(
+    name: &str,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    width: f32,
+    height: f32,
+) -> Arc<Mesh> {
+    let name = name;
+    MeshPool::get_or_init(name, move || {
+        // 사각형 메쉬 데이터를 생성합니다.
+        let hw = 0.5 * width;
+        let hh = 0.5 * height;
+        let vertices_data = Vertices(vec![
+            [-hw, -hh, 0.0],
+            [-hw, hh, 0.0],
+            [hw, -hh, 0.0],
+            [hw, hh, 0.0],
+        ]);
+        let normal_data = Attributes::Normal(vec![
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, -1.0],
+        ]);
+        let texcoord_data =
+            Attributes::Texcoord0(vec![[0.0, 1.0], [0.0, 0.0], [1.0, 1.0], [1.0, 0.0]]);
+
+        // 모델 메쉬를 생성합니다.
+        let mut mesh = Mesh::new(name, device, queue, vertices_data);
+        // 노멀 데이터를 추가합니다.
+        mesh.add_attribute(device, queue, normal_data);
+        // 텍스처 좌표 데이터를 추가합니다.
+        mesh.add_attribute(device, queue, texcoord_data);
+
+        Arc::new(mesh)
+    })
+}
 
 /// 주어진 엔터티의 메쉬 리소스를 준비합니다.
 ///

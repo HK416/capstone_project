@@ -9,8 +9,8 @@ use mod_math::{Segment, Line};
 /// 이때 일부 함수가 제대로 동작하지 않을 수 있다.  
 #[derive(Debug)]
 pub struct Capsule {
-    pub center: gmm::Float3,    // 캡슐의 가장 아래 부분
-    direction: gmm::Float3,     // 캡슐의 윗부분이 향하는 방향(default: Y축)
+    pub center: glam::Vec3,    // 캡슐의 가장 아래 부분
+    direction: glam::Vec3,     // 캡슐의 윗부분이 향하는 방향(default: Y축)
     pub height: f32,            // 캡슐의 전체 높이(direction방향으로 뻗은 길이) 
     pub radius: f32,
 }
@@ -18,10 +18,13 @@ pub struct Capsule {
 impl Capsule {
     /// direction을 단위벡터로 만들어 Capsule을 생성한다.  
     /// 영벡터가 주어지면 Error를 반환한다.  
-    pub fn build(center: gmm::Float3, direction: gmm::Float3, height: f32, radius: f32) -> Result<Self, &'static str> {
-        match gmm::Vector::from(direction).try_vec3_normalize() {
+    pub fn build(center: glam::Vec3A, direction: glam::Vec3A, height: f32, radius: f32) -> Result<Self, &'static str> {
+        match direction.try_normalize() {
             Some(direction) => Ok(Self { 
-                center, direction: direction.into(), height, radius 
+                center: center.into(), 
+                direction: direction.into(), 
+                height, 
+                radius 
             }),
             None => Err("Direction cannot be zero vector")
         }
@@ -29,8 +32,8 @@ impl Capsule {
     
     /// direction을 단위벡터로 만들어 Capsule의 방향을 설정한다.  
     /// 영벡터가 주어지면 Error를 반환한다.  
-    pub fn set_direction(&mut self, direction: gmm::Float3) -> Result<(), &'static str> {
-        match gmm::Vector::from(direction).try_vec3_normalize() {
+    pub fn set_direction(&mut self, direction: glam::Vec3A) -> Result<(), &'static str> {
+        match direction.try_normalize() {
             Some(direction) => {
                 self.direction = direction.into();
                 Ok(())
@@ -39,24 +42,24 @@ impl Capsule {
         }
     }
 
-    pub fn direction(&self) -> gmm::Float3 {
+    pub fn direction(&self) -> glam::Vec3 {
         self.direction
     }
 
     /// 캡슐이 UFO형태인 경우에도 제대로 동작한다.
-    pub fn check_point_collision(&self, point: &gmm::Float3) -> bool {
-        let p = gmm::Vector::from(*point - self.center);    // center에 대한 point의 상대좌표
-        let d = gmm::Vector::from(self.direction);
+    pub fn check_point_collision(&self, point: &glam::Vec3A) -> bool {
+        let center = glam::Vec3A::from(self.center);
+        let p = point - center;    // center에 대한 point의 상대좌표
+        let d = glam::Vec3A::from(self.direction);
 
-        let dot: gmm::Float3 = d.vec3_dot(p).into();
         // 캡슐에 대한 point의 상대지역좌표 y
-        let y = dot.y;
+        let y = d.dot(p);
         if y < 0.0 {
             return false;
         }
 
         // 캡슐에 대한 point의 상대지역좌표 x(원통의 회전은 신경쓰지 않아도 되므로 z무시)
-        let x_sq = p.vec3_len_sq() - y * y;
+        let x_sq = p.length_squared() - y * y;
         let radius_sq = self.radius.powi(2);
         if x_sq > radius_sq {
             return false;
@@ -81,14 +84,14 @@ impl Capsule {
             radius: self.radius + sphere.radius,
         };
 
-        capsule.check_point_collision(&sphere.center)
+        capsule.check_point_collision(&sphere.center.into())
     }
 
     /// 캡슐이 UFO형태인 경우에는 제대로 동작하지 않는다.  
     /// 
     /// 직선과 선분 사이의 최소 거리를 구하는 것과 같다.  
     pub fn check_line_collision(&self, line: &Line) -> bool {
-        let center = gmm::Vector::from(self.center);
+        let center = glam::Vec3A::from(self.center);
         let radius_sq = self.radius.powi(2);
 
         if self.direction == line.direction() {
@@ -96,7 +99,7 @@ impl Capsule {
         }
         
         let nearest = self.get_seg().nearest_to_line(line);
-        let nearest = gmm::Vector::from(nearest);
+        let nearest = glam::Vec3A::from(nearest);
         let distance_sq = line.distance_to_point_sq(&nearest);
 
         distance_sq <= radius_sq
@@ -110,8 +113,8 @@ impl Capsule {
     /// 따라서 두 선분의 최소 거리가 self.radius + sphere.radius보다 작거나 같으면 충돌한다.
     pub fn check_capsule_collision(&self, other: &Capsule) -> bool {
         // 두 캡슐위의 점 사이 거리가 두 캡슐의 높이 합보다 크면 충돌하지 않음
-        let c_to_c = gmm::Vector::from(other.center - self.center);
-        if c_to_c.vec3_len_sq() > (self.height + other.height).powi(2) {
+        let c_to_c = glam::Vec3A::from(other.center - self.center);
+        if c_to_c.length_squared() > (self.height + other.height).powi(2) {
             return false;
         }
 
@@ -156,16 +159,16 @@ impl RayIntersect for Capsule {
         }
 
         // 기둥부분 충돌체크
-        let ray_origin = gmm::Vector::from(ray.origin);
-        let ray_direction = gmm::Vector::from(ray.direction());
+        let ray_origin = glam::Vec3A::from(ray.origin);
+        let ray_direction = glam::Vec3A::from(ray.direction());
         
-        let cylinder_direction = gmm::Vector::from(self.direction);
+        let cylinder_direction = glam::Vec3A::from(self.direction);
 
         // 기둥의 아래부분 중심
-        let center = gmm::Vector::from(seg.start);
+        let center = glam::Vec3A::from(seg.start);
 
-        let ray_line = Line::build(ray.origin, ray_direction).unwrap();
-        let capsule_line = Line::build(self.center, cylinder_direction).unwrap();
+        let ray_line = Line::build(ray_origin, ray_direction).unwrap();
+        let capsule_line = Line::build(center, cylinder_direction).unwrap();
 
         let (nearest_dist_sq, h) = ray_line.distance_sq_and_foot_from_other(&capsule_line);
         // 캡슐의 중심선과 ray직선 사이의 최소거리가 radius보다 크면 충돌하지 않음
@@ -174,15 +177,13 @@ impl RayIntersect for Capsule {
         }
 
         let h_to_origin = ray_origin - h;
-        let h_to_origin_dot: gmm::Float3 = h_to_origin.vec3_dot(ray_direction).into();
-        let h_to_origin_len = h_to_origin_dot.x;
+        let h_to_origin_len = h_to_origin.dot(ray_direction);
         // h to origin * direction이 양수이면 충돌하지 않음(ray의 시작점이 기둥 바깥이고 바깥 방향으로 향할때)
         if h_to_origin_len > 0.0 {
             return None;
         }
 
-        let dot = ray_direction.vec3_dot(cylinder_direction);
-        let cos = Into::<gmm::Float3>::into(dot).x;
+        let cos = ray_direction.dot(cylinder_direction);
         let cos_sq = cos.powi(2);
         let sin_sq = 1.0 - cos_sq;
 
@@ -191,11 +192,10 @@ impl RayIntersect for Capsule {
 
         let h_to_intersect = h_to_intersect_sq.sqrt();
         
-        let intersect = h - ray_direction * gmm::Vector::from([h_to_intersect, h_to_intersect, h_to_intersect, 0.0]);
+        let intersect = h - ray_direction * h_to_intersect;
 
         let center_to_intersect = intersect - center;
-        let center_to_intersect_dot: gmm::Float3 = center_to_intersect.vec3_dot(cylinder_direction).into();
-        let center_to_intersect_proj = center_to_intersect_dot.x;
+        let center_to_intersect_proj = center_to_intersect.dot(cylinder_direction);
 
         // 교점이 기둥의 아래쪽에 존재하면 아래 구와 충돌체크
         if center_to_intersect_proj < 0.0 {
@@ -229,14 +229,14 @@ impl RayIntersect for Capsule {
 /// 이때 일부 함수가 제대로 동작하지 않을 수 있다.  
 #[derive(Debug)]
 pub struct YCapsule {
-    pub center: gmm::Float3,    // 캡슐의 가장 아래 부분
+    pub center: glam::Vec3,    // 캡슐의 가장 아래 부분
     pub height: f32,            // 캡슐의 전체 높이
     pub radius: f32,
 }
 
 impl YCapsule {
     /// 캡슐이 UFO형태인 경우에도 제대로 동작한다.  
-    pub fn check_point_collision(&self, point: &gmm::Float3) -> bool {
+    pub fn check_point_collision(&self, point: &glam::Vec3) -> bool {
         match self.get_y_range_at(point.x, point.z) {
             Some((bot_y, top_y)) => bot_y <= point.y && point.y <= top_y,
             None =>                 false,
@@ -263,7 +263,7 @@ impl YCapsule {
     /// 
     /// 직선과 선분 사이의 최소 거리를 구하는 것과 같다.
     pub fn check_line_collision(&self, line: &Line) -> bool {   
-        let center = gmm::Vector::from(self.center);
+        let center = glam::Vec3A::from(self.center);
         let radius_sq = self.radius.powi(2);
 
         let line_y = line.direction().y;
@@ -272,7 +272,6 @@ impl YCapsule {
         }
         
         let nearest = self.get_seg().nearest_to_line(line);
-        let nearest = gmm::Vector::from(nearest);
         let distance_sq = line.distance_to_point_sq(&nearest);
 
         distance_sq <= radius_sq
@@ -347,7 +346,7 @@ impl RayIntersect for YCapsule {
     fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
         let capsule = Capsule {
             center: self.center,
-            direction: gmm::Float3::Y,
+            direction: glam::Vec3::Y,
             height: self.height,
             radius: self.radius,
         };
