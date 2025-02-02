@@ -192,9 +192,6 @@ impl World {
             let ray = Ray::build(translation, direction).unwrap();
             let bullet_position = translation;
 
-            // 거리 한계를 넘어가면 충돌체크 하지 않음(+1.0은 여유 거리)
-            let dist_limit_sq = direction.length_squared() * 1.0;
-
             let mut nearest_distance = f32::MAX;
             let mut nearest_player_id = None;
             
@@ -209,11 +206,6 @@ impl World {
                 const PLAYER_HEIGHT: f32 = 2.5;
                 
                 let player_position = glam::Vec3A::from(player.translation);
-
-                let dist_sq = (bullet_position - player_position).length_squared();
-                if dist_sq > dist_limit_sq || dist_sq > bullet.remaining_distance.powi(2) {
-                    continue;
-                }
                 
                 // 충돌 처리: 플레이어 - 총알
                 // 플레이어의 충돌체: YCapsule(총알의 크기 만큼 확대)           나중에 세분화
@@ -231,9 +223,11 @@ impl World {
 
                 if let Some(dist) = ray.intersect(&player_capsule) {
                     println!("Bullet find player (player id: {:?})", player.object_id);
-                    if dist < nearest_distance {
-                        nearest_distance = dist;
-                        nearest_player_id = Some(player.object_id);
+                    if dist <= move_distance {
+                        if dist < nearest_distance {
+                            nearest_distance = dist;
+                            nearest_player_id = Some(player.object_id);
+                        }
                     }
                 }
             }
