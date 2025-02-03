@@ -508,6 +508,7 @@ pub async fn update_game_world(world: Arc<World>) {
         world.broadcast(snapshot);
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        tokio::task::yield_now().await;
+        // tokio::task::yield_now().await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
     }
 }
