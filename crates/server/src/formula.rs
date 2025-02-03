@@ -49,12 +49,7 @@ pub mod movement_formulas {
     }
 
     // 최종 데미지 계산 함수
-    pub fn final_damage(
-        default_damage: f32,
-        hit_rate: f32,
-        crt_rate: f32,
-        crt_damage: f32,
-    ) -> f32 {
+    pub fn final_damage(default_damage: f32, hit_rate: f32, crt_rate: f32, crt_damage: f32) -> f32 {
         default_damage * hit_rate * (1.0 + crt_rate * ((crt_damage / 100.0) - 1.0))
     }
 

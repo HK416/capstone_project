@@ -1,21 +1,26 @@
-use std::env;
-use std::str::FromStr;
-use std::sync::Mutex;
-use tokio::net::{TcpListener, TcpStream};
-
-use mod_network::{
-    addr::Addr,
-    components::{
-        ClientId,
-        StageKind,
+use std::{
+    env,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicU64, Ordering as MemOrdering},
+        OnceLock,
     },
 };
 
+use mod_network::{addr::Addr, components::ClientId};
+use mod_parallelism::collections::Queue;
 use server::{
-    world::*,
-    session::Session,
+    session::handle_connection,
+    world::{update_game_world, World},
 };
+use tokio::net::TcpListener;
 
+static NUM_CLIENTS: AtomicU64 = AtomicU64::new(0);
+static RETIRES: OnceLock<Queue<u64>> = OnceLock::new();
+
+fn get_retires() -> &'static Queue<u64> {
+    RETIRES.get_or_init(|| Queue::default())
+}
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
@@ -29,40 +34,28 @@ pub async fn run_server(addr: &str) {
 
     println!("Server listening on: {}", listener.local_addr().unwrap());
 
-    let mut world = World::new(StageKind::default());
-
     // 새로운 쓰레드에서 클라이언트 연결 관리
-    tokio::spawn(wait_for_players(listener, (&world).into()));
+    tokio::spawn(wait_for_players(listener));
 
     // 메인 쓰레드에서 월드 업데이트
-    world.update_loop().await;
+    let world = World::get_instance();
+    update_game_world(world).await;
 }
 
-
-const MAX_CLIENTS: usize =  10;
-/// World를 직접 읽으면 최신 데이터가 아닐 가능성이 있다.  
-/// World에 Mutex, RwLock등을 걸면 클라이언트가 읽는데 병목이 생길 수 있다.  
-/// 따라서 클라이언트 개수만 세기 위해 따로 분리.  
-static CLIENT_SLOTS: Mutex<[Option<()>; MAX_CLIENTS]> = Mutex::new([None; MAX_CLIENTS]);
-
-
-async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
+async fn wait_for_players(listener: TcpListener) {
     loop {
         match listener.accept().await {
             Ok((stream, _addr)) => {
-                let mut slots = CLIENT_SLOTS.lock().unwrap();
-
-                match slots.iter().position(|x| x.is_none()) {
-                    Some(id) => {
-                        slots[id] = Some(());
-                        println!("Accepted connection from: {}", id + 1);
-                        tokio::spawn(handle_connection(id as u32, stream, world));
-                    },
-                    None => {
-                        // 입장 거부
-                    },
-                }
-            },
+                let value = get_retires()
+                    .pop()
+                    .unwrap_or_else(|| NUM_CLIENTS.fetch_add(1, MemOrdering::AcqRel) + 1);
+                let client_id = ClientId::new(value as u128);
+                println!("Accepted connection from: {}", client_id.to_string());
+                tokio::spawn(async move {
+                    handle_connection(client_id, stream).await;
+                    get_retires().push(value);
+                });
+            }
             Err(e) => {
                 eprintln!("Failed to accept connection; err = {:?}", e);
             }
@@ -70,31 +63,10 @@ async fn wait_for_players(listener: TcpListener, world: WorldPointer) {
     }
 }
 
-
-/// 별개의 스레드에서 동작하며, 시작시와 종료시 Mutex lock을 걸어서 클라이언트 개수 파악
-async fn handle_connection(id: u32, stream: TcpStream, world: WorldPointer) {
-    let mut session = Session::new(ClientId::new(id as u128 + 1), stream, WorldInterface::new(world));
-
-    {
-        let slots = CLIENT_SLOTS.lock().unwrap();
-        println!("num clients: {}", slots.iter().filter(|x| x.is_some()).count());
-    }   // lock 해제
-    
-    session.handle_connection().await;
-
-    {
-        let mut slots = CLIENT_SLOTS.lock().unwrap();
-        slots[id as usize] = None;
-        println!("Connection {} closed", id + 1);
-
-        println!("num clients: {}", slots.iter().filter(|x| x.is_some()).count());
-    }
-}
-
-
-
 #[tokio::main]
 async fn main() {
+    env_logger::init();
+
     let mut args = env::args();
     args.next();
 
@@ -106,7 +78,7 @@ async fn main() {
                 return;
             }
         },
-        None => Addr::default()
+        None => Addr::default(),
     };
 
     run_server(&addr.to_string()).await;
