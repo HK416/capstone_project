@@ -184,7 +184,7 @@ async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
             Ok(n) => {
                 log::trace!("{} data received (SIZE:{}, BYTES:{:?})", &session, n, &buf);
                 packet_parser.push(&buf[..n]);
-            },
+            }
             Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
                 log::trace!("{} connection closed.", &session);
                 session.close();

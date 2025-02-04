@@ -1,5 +1,6 @@
 mod data;
 mod event;
+mod player;
 
 use std::sync::{
     atomic::{AtomicU64, Ordering as MemOrdering},
@@ -22,7 +23,7 @@ use uuid::Uuid;
 
 use crate::{data::get_character_attributes, session::Session};
 
-pub use self::{data::*, event::*};
+pub use self::{data::*, event::*, player::*};
 
 use super::formula::movement_formulas as formulas;
 
@@ -174,7 +175,7 @@ impl World {
                 view_state: ViewState::default(),
                 view_state_timer: ViewStateTimer::default(),
                 view_rotation: LatLon::default(),
-                shot_cool_time: 0.0,
+                shot_count: 0,
             },
         );
     }
@@ -200,6 +201,7 @@ impl World {
         view_rotation: LatLon,
     ) {
         if let Some(mut player) = self.players.get_mut(&client_id) {
+            let attributes = get_character_attributes(player.character_kind);
             player.epoch = epoch;
             player.rotation = rotation;
             player.direction = direction;
@@ -212,12 +214,16 @@ impl World {
             player.view_rotation = view_rotation;
 
             // 플레이어 총알 발사 확인
-            // FIXME: 캐릭터 능력치마다 다르게 해야함.
             match player.action_state {
                 ActionState::Attack => {
-                    if action_state_timer.0 >= 0.7 && player.shot_cool_time <= 0.0 {
-                        player.shot_cool_time = 1.4;
-                        self.events.push(WorldEvents::AddBullet(*player.key()));
+                    if player.shot_count < attributes.normal_attack_count {
+                        let index = player.shot_count as usize;
+                        let timing = attributes.normal_attack_timing[index];
+                        if timing <= action_state_timer.0
+                        {
+                            player.shot_count += 1;
+                            self.events.push(WorldEvents::AddBullet(*player.key()));
+                        }
                     }
                 }
                 _ => {}
@@ -262,7 +268,7 @@ impl World {
                     translation,
                     rotation,
                     velocity,
-                    remaining_distance: attributes.attack_range,
+                    remaining_distance: attributes.attack_range as f32,
                 },
             );
         }
@@ -314,18 +320,8 @@ impl World {
 
     /// 주어진 시간 간격으로 게임 월드를 갱신합니다.
     fn update(&self, elapsed_time_sec: f32) {
-        for mut player in self.players.iter_mut() {
-            let attributes = get_character_attributes(player.character_kind);
-
-            // 플레이어 이동
-            let velocity = match player.movement_state {
-                MovementState::Moving => player.direction * attributes.speed,
-                _ => glam::Vec3A::ZERO,
-            };
-            player.translation += velocity * elapsed_time_sec;
-
-            player.shot_cool_time -= elapsed_time_sec;
-        }
+        self.update_player_state_timer(elapsed_time_sec);
+        self.update_player_position(elapsed_time_sec);
 
         // 총알 이동
         for mut bullet in self.bullets.iter_mut() {
@@ -392,8 +388,8 @@ impl World {
                     // 4. 최종 데미지 계산
 
                     // 회피 계산
-                    let accuracy = char_info.accuracy_stat;
-                    let evasion = char_info.evasion_stat;
+                    let accuracy = char_info.accuracy_stat as f32;
+                    let evasion = char_info.evasion_stat as f32;
                     let hit_rate = formulas::cal_hit_rate(accuracy, evasion, 100.0);
                     // if rand::random::<f64>() > hit_rate {
                     //     println!("  - miss");
@@ -401,25 +397,23 @@ impl World {
                     // }
 
                     // 데미지 계산
-                    let atk = char_info.attack_power;
-                    let def = char_info.defense_power;
+                    let atk = char_info.attack_power as f32;
+                    let def = char_info.defense_power as f32;
                     let dmg = formulas::default_damage(atk, def, 100.0);
 
                     // 치명타 계산
-                    let crit = char_info.critical_rate;
+                    let crit = char_info.critical_rate as f32;
                     let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
                     if crit_rate == 1.0 {
                         println!("  - critical!");
                     }
 
                     // 최종 데미지 계산
+                    let crit_dam = char_info.critical_damage as f32;
                     let final_dmg =
-                        formulas::final_damage(dmg, hit_rate, crit_rate, char_info.critical_damage);
+                        formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u32;
 
-                    player.health_point.0 -= final_dmg;
-                    if player.health_point.0 <= 0.0 {
-                        player.health_point.0 = 0.0;
-                    }
+                    player.health_point.0 = (player.health_point.0 - final_dmg).max(0);
                     println!("  - hp: {:?}(-{})", player.health_point.0, final_dmg);
                 }
 
@@ -446,6 +440,28 @@ impl World {
             if bullet.remaining_distance <= 0.0 {
                 self.events.push(WorldEvents::RemoveBullet(*bullet.key()));
             }
+        }
+    }
+
+    /// 플레이어 상태 타이머를 갱신합니다.
+    fn update_player_state_timer(&self, elapsed_time_sec: f32) {
+        for mut player in self.players.iter_mut() {
+            let attributes = get_character_attributes(player.character_kind);
+            update_character_action_state_timer(&attributes, &mut player, elapsed_time_sec);
+        }
+    }
+
+    /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
+    fn update_player_position(&self, elapsed_time_sec: f32) {
+        for mut player in self.players.iter_mut() {
+            let attributes = get_character_attributes(player.character_kind);
+
+            // 플레이어 이동
+            let velocity = match player.movement_state {
+                MovementState::Moving => player.direction * attributes.speed,
+                _ => glam::Vec3A::ZERO,
+            };
+            player.translation += velocity * elapsed_time_sec;
         }
     }
 }

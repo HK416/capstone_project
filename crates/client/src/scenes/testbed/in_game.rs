@@ -906,10 +906,9 @@ impl TestbedInGameScene {
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
 
-                let diff_t = (hp.0 - player.health_point.0).abs();
-                if diff_t > 0.0 {
+                if *hp != player.health_point {
                     // 변동되었을 경우 로그에 추가합니다.
-                    self.attack_logs.push((entity, diff_t as u32));
+                    self.attack_logs.push((entity, hp.0 - player.health_point.0));
                 }
                 *hp = player.health_point;
 
@@ -936,10 +935,9 @@ impl TestbedInGameScene {
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
 
-                let diff_t = (hp.0 - player.health_point.0).abs();
-                if diff_t > 0.0 {
+                if *hp != player.health_point {
                     // 변동되었을 경우 로그에 추가합니다.
-                    self.attack_logs.push((entity, diff_t as u32));
+                    self.attack_logs.push((entity, hp.0 - player.health_point.0));
                 }
                 *hp = player.health_point;
 

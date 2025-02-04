@@ -5,14 +5,21 @@
       "y": 0.34636837,
       "z": 0.68664575
     },
-    "fire_delay_time": 0.0,
-    "health_point": 2142.0,
-    "attack_power": 514.0,
-    "defense_power": 68.0,
-    "accuracy_stat": 690.0,
-    "evasion_stat": 170.0,
-    "critical_rate": 230.0,
-    "critical_damage": 200.0,
-    "attack_range": 850.0
+    "move_ing_duration": 0.667,
+    "move_end_normal_duration": 2.0,
+    "normal_idle_duration": 2.8,
+    "normal_attack_start_duration": 0.667,
+    "normal_attack_end_duration": 0.667,
+    "normal_attack_ing_duration": 2.667,
+    "normal_attack_timing": [1.0],
+    "normal_attack_count": 1,
+    "health_point": 2142,
+    "attack_power": 514,
+    "defense_power": 68,
+    "accuracy_stat": 690,
+    "evasion_stat": 170,
+    "critical_rate": 230,
+    "critical_damage": 200,
+    "attack_range": 850
 }
   
