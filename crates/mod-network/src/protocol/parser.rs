@@ -10,6 +10,7 @@ pub enum Parsed {
 
 /// 뭉쳐온 패킷 분리 및 잘린 패킷 이어붙이기를 수행하는 큐 형태의 Parser
 /// Parsing이 완료되면 RawPacket형태로 저장되어 pop될 수 있다.
+#[derive(Debug)]
 pub struct PacketParser {
     queue: VecDeque<Parsed>,
 }
