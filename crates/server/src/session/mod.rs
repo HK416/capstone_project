@@ -13,9 +13,12 @@ mod in_game;
 mod init;
 mod lobby;
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering as MemOrdering},
-    Arc,
+use std::{
+    io::ErrorKind,
+    sync::{
+        atomic::{AtomicBool, Ordering as MemOrdering},
+        Arc,
+    },
 };
 
 use mod_network::{
@@ -50,11 +53,15 @@ impl Default for SessionState {
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
+    /// 세션의 클라이언트 식별자
     client_id: ClientId,
 
+    /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
+    /// TCP 패킷 데이터 수신 대기열
     tcp_receiver: Queue<RawPacket>,
 
+    /// 세션의 실행 상태
     running: AtomicBool,
 }
 
@@ -85,6 +92,9 @@ impl Session {
     }
 
     /// TCP 통신으로 패킷을 전송합니다.
+    ///
+    /// 이 함수는 패킷을 즉시 전송하지 않습니다.
+    ///
     pub fn tcp_write(&self, packet: RawPacket) {
         self.tcp_sender.push(packet);
     }
@@ -142,34 +152,48 @@ pub async fn handle_connection(client_id: ClientId, tcp_stream: TcpStream) {
         };
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        tokio::task::yield_now().await;
+        tokio::time::sleep(tokio::time::Duration::from_micros(100)).await;
     }
+    log::info!("{} connection closed.", &session);
 
+    // 세션이 게임 월드에 참가한 상태인 경우
+    // 게임 월드에서 세션의 데이터를 제거합니다.
     if let SessionState::InGame(world) = state {
         world.exit(&session);
     }
 
-    log::info!("{} left.", &session);
+    println!("{} left.", &session);
 }
 
 /// TCP 소켓의 데이터를 읽는 루프 함수입니다.
 async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
-    let mut buf = vec![0; 1024]; // 1KB
+    let mut buf = vec![0; 10240]; // 10KB
     let mut packet_parser = PacketParser::new();
     'tcp: while session.is_running() {
+        // 버퍼 초기화
         buf.fill(0);
 
         // 소켓으로부터 데이터 읽기
         let result = tcp_reader.read(&mut buf).await;
         match result {
             Ok(0) => {
-                log::info!("{} connection closed.", &session);
+                log::trace!("{} connection closed.", &session);
                 session.close();
                 break 'tcp;
             }
             Ok(n) => {
-                log::debug!("{} data received (SIZE:{}, BYTES:{:?})", &session, n, &buf);
+                log::trace!("{} data received (SIZE:{}, BYTES:{:?})", &session, n, &buf);
                 packet_parser.push(&buf[..n]);
+            },
+            Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
+                log::trace!("{} connection closed.", &session);
+                session.close();
+                break 'tcp;
+            }
+            Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
+                log::trace!("{} connection closed.", &session);
+                session.close();
+                break 'tcp;
             }
             Err(e) => {
                 log::error!("{} {}", &session, e);
@@ -180,12 +204,12 @@ async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
 
         // 패킷 구문 분석 및 대기열에 추가.
         while let Some(packet) = packet_parser.pop() {
-            log::debug!("{} packet received (PACKET:{:?})", &session, &packet);
+            log::trace!("{} packet received (PACKET:{:?})", &session, &packet);
             session.tcp_receiver.push(packet);
         }
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        tokio::task::yield_now().await;
+        tokio::time::sleep(tokio::time::Duration::from_micros(10)).await;
     }
 }
 
@@ -200,14 +224,29 @@ async fn tcp_write_loop(mut tcp_writer: OwnedWriteHalf, session: Arc<Session>) {
             // 소켓에 데이터를 작성한다.
             let bytes = packet.as_bytes();
             let result = tcp_writer.write_all(&bytes).await;
-            if let Err(e) = result {
-                log::error!("{} {}", &session, e);
-                session.close();
-                break 'tcp;
-            }
+            match result {
+                Ok(_) => {
+                    log::trace!("{} packet sent (PACKET:{:?})", &session, &packet);
+                }
+                Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
+                    log::trace!("{} connection closed.", &session);
+                    session.close();
+                    break 'tcp;
+                }
+                Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
+                    log::trace!("{} connection closed.", &session);
+                    session.close();
+                    break 'tcp;
+                }
+                Err(e) => {
+                    log::error!("{} {}", &session, e);
+                    session.close();
+                    break 'tcp;
+                }
+            };
         } else {
             // 다른 태스크들이 실행될 기회를 주기 위해 양보
-            tokio::task::yield_now().await;
+            tokio::time::sleep(tokio::time::Duration::from_micros(10)).await;
         }
     }
 }

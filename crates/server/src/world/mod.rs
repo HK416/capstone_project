@@ -18,7 +18,6 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
-use parking_lot::RwLock;
 use uuid::Uuid;
 
 use crate::{data::get_character_attributes, session::Session};
@@ -47,9 +46,6 @@ pub struct World {
     /// 게임 월드에 포함된 총알 데이터입니다.
     bullets: DashMap<ObjectId, ServerBullet, RandomState>,
 
-    /// 스테이지의 스냅샷 입니다.
-    snapshot: RwLock<StageSnapshot>,
-
     /// 게임 월드에 발생한 이벤트 대기열입니다.
     events: Queue<WorldEvents>,
 }
@@ -64,11 +60,6 @@ impl World {
     /// 현재 게임 월드 시대를 가져옵니다.
     pub fn get_current_epoch(&self) -> Epoch {
         Epoch::new(self.epoch.load(MemOrdering::Relaxed))
-    }
-
-    /// 게임 월드의 스냅샷을 가져옵니다.
-    pub fn get_snapshot(&self) -> StageSnapshot {
-        self.snapshot.read().clone()
     }
 
     /// 게임 월드에 참가합니다.   
@@ -467,7 +458,6 @@ impl Default for World {
             sessions: DashMap::default(),
             players: DashMap::default(),
             bullets: DashMap::default(),
-            snapshot: RwLock::default(),
             events: Queue::default(),
         }
     }
@@ -508,7 +498,6 @@ pub async fn update_game_world(world: Arc<World>) {
         world.broadcast(snapshot);
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        // tokio::task::yield_now().await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
     }
 }

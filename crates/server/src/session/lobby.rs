@@ -53,6 +53,7 @@ fn handle_enter_stage_packet(
     }
 
     // 게임 월드에 플레이어를 추가합니다.
+    // TODO: 나중에 매칭 대기열에 추가하는 것으로 변경해야 함.
     let world = World::get_instance();
     world.join(session.clone(), packet.character_kind);
     *state = SessionState::InGame(world);

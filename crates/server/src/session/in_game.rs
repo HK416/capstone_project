@@ -54,6 +54,11 @@ fn handle_push_status_packet(
     }
 
     // 플레이어 상태를 갱신합니다.
+    // TODO: `ActionState`, `ActionStateTimer`, `MovementState`, `MovementStateTimer`는 저장하지 않아도 됨. (판단을 위한 데이터)
+    //
+    // 곧 바로 게임 월드에 상태를 저장하는 것이 아닌 
+    // 이 함수에서 계산을 수행 후 이벤트 전송으로 변경해야 함.
+    //
     world.send_event(WorldEvents::UpdatePlayerStatus(
         packet.epoch,
         session.client_id,
