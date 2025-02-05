@@ -26,6 +26,8 @@ pub struct CharacterAttributes {
     pub move_ing_duration: f32,
     /// `MovementState::MoveToEnd` 애니메이션 시간 (단위: 초)
     pub move_end_normal_duration: f32,
+    /// 걷기 애니메이션 시간 (단위: 초)
+    pub walk_duration: f32,
     /// `ActionState::Idle` 애니메이션 시간 (단위: 초)
     pub normal_idle_duration: f32,
     /// `ActionState::Aiming` 애니메이션 시간 (단위: 초)

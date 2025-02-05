@@ -195,9 +195,9 @@ impl World {
         action_state: ActionState,
         movement_state: MovementState,
         view_state: ViewState,
-        action_state_timer: ActionStateTimer,
-        movement_state_timer: MovementStateTimer,
-        view_state_timer: ViewStateTimer,
+        // action_state_timer: ActionStateTimer,
+        // movement_state_timer: MovementStateTimer,
+        // view_state_timer: ViewStateTimer,
         view_rotation: LatLon,
     ) {
         if let Some(mut player) = self.players.get_mut(&client_id) {
@@ -208,9 +208,9 @@ impl World {
             player.action_state = action_state;
             player.movement_state = movement_state;
             player.view_state = view_state;
-            player.action_state_timer = action_state_timer;
-            player.movement_state_timer = movement_state_timer;
-            player.view_state_timer = view_state_timer;
+            // player.action_state_timer = action_state_timer;
+            // player.movement_state_timer = movement_state_timer;
+            // player.view_state_timer = view_state_timer;
             player.view_rotation = view_rotation;
 
             // 플레이어 총알 발사 확인
@@ -219,8 +219,7 @@ impl World {
                     if player.shot_count < attributes.normal_attack_count {
                         let index = player.shot_count as usize;
                         let timing = attributes.normal_attack_timing[index];
-                        if timing <= action_state_timer.0
-                        {
+                        if timing <= player.action_state_timer.0 {
                             player.shot_count += 1;
                             self.events.push(WorldEvents::AddBullet(*player.key()));
                         }
@@ -292,11 +291,11 @@ impl World {
                     rotation,
                     direction,
                     action_state,
-                    action_state_timer,
+                    // action_state_timer,
                     movement_state,
-                    movement_state_timer,
+                    // movement_state_timer,
                     view_state,
-                    view_state_timer,
+                    // view_state_timer,
                     view_rotation,
                 ) => self.update_player_status(
                     epoch,
@@ -306,9 +305,9 @@ impl World {
                     action_state,
                     movement_state,
                     view_state,
-                    action_state_timer,
-                    movement_state_timer,
-                    view_state_timer,
+                    // action_state_timer,
+                    // movement_state_timer,
+                    // view_state_timer,
                     view_rotation,
                 ),
                 WorldEvents::AddBullet(client_id) => self.add_bullet(client_id),
@@ -360,8 +359,8 @@ impl World {
                 };
 
                 if let Some(dist) = ray.intersect(&player_capsule) {
-                    println!("Bullet find player (player id: {:?})", player.object_id);
                     if dist <= move_distance {
+                        println!("Bullet find player (player id: {:?})", player.object_id);
                         if dist < nearest_distance {
                             nearest_distance = dist;
                             nearest_player_id = Some(*player.key());
@@ -448,6 +447,7 @@ impl World {
         for mut player in self.players.iter_mut() {
             let attributes = get_character_attributes(player.character_kind);
             update_character_action_state_timer(&attributes, &mut player, elapsed_time_sec);
+            update_character_movement_state_timer(&attributes, &mut player, elapsed_time_sec);
         }
     }
 
@@ -500,7 +500,7 @@ pub async fn update_game_world(world: Arc<World>) {
 
         // 게임 월드를 갱신합니다.
         world.handle_events();
-        while elapsed_time_sec >= INTERVAL {
+        while elapsed_time_sec > INTERVAL {
             world.update(INTERVAL);
             total_time_sec += INTERVAL;
             elapsed_time_sec -= INTERVAL;
