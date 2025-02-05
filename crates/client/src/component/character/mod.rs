@@ -8,8 +8,8 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer, Player,
-    ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer,
+    Player, ViewState, ViewStateTimer,
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -110,6 +110,7 @@ pub fn load_character_model(
 /// - 움직임 상태 지속 시간 타이머(`MovementStateTimer`)
 /// - 시야 상태(`ViewState`)
 /// - 시야 상태 지속 시간 타이머(`ViewStateTimer`)
+/// - 시야 방향(`Latlon`)
 ///
 pub fn spawn_player_character(
     player: &Player,
@@ -162,6 +163,7 @@ pub fn spawn_player_character(
     let movement_state_timer = player.movement_state_timer;
     let view_state = player.view_state;
     let view_state_timer = player.view_state_timer;
+    let view_rotation = player.view_rotation;
 
     // 컴포넌트를 추가합니다.
     builder.add(character_kind);
@@ -175,7 +177,7 @@ pub fn spawn_player_character(
     builder.add(health_point);
     builder.add_bundle((action_state, action_state_timer));
     builder.add_bundle((movement_state, movement_state_timer));
-    builder.add_bundle((view_state, view_state_timer));
+    builder.add_bundle((view_state, view_state_timer, view_rotation));
 
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
     let i = character_kind as usize;

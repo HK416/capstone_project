@@ -36,12 +36,16 @@ use hecs::Entity;
 pub const MODEL_BONE_ROOT: &'static str = "Bip001";
 /// 모든 캐릭터 모델의 머리 뼈 노드 이름입니다.
 pub const MODEL_BONE_HEAD: &'static str = "Bip001_Head";
-/// 모든 캐릭터 모델의 골반 뼈 노드 이름입니다.
-pub const MODEL_BONE_PELVIS: &'static str = "Bip001_Pelvis";
+/// 모든 캐릭터 모델의 아래 척추 뼈 노드 이름입니다.
+pub const MODEL_BONE_SPINE: &'static str = "Bip001_Spine";
+/// 모든 캐릭터 모델의 윗 척추 뼈 노드 이름입니다.
+pub const MODEL_BONE_SPINE_1: &'static str = "Bip001_Spine1";
 /// 모든 캐릭터 모델의 왼쪽 허벅지 안쪽 뼈 노드 이름입니다.
 pub const MODEL_BONE_L_THIGH: &'static str = "Bip001_L_Thigh";
 /// 모든 캐릭터 모델의 오른쪽 허벅지 안쪽 뼈 노드 이름입니다.
 pub const MODEL_BONE_R_THIGH: &'static str = "Bip001_R_Thigh";
+/// 모든 캐릭터 모델의 무기 뼈 노드 이름입니다.
+pub const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon";
 
 /// 모든 캐릭터 모델의 Idle 애니메이션 접미사입니다.
 pub const IDLE_ANIMATION_SUFFIX: &'static str = "_Normal_Idle";
@@ -70,6 +74,9 @@ pub struct SkinningAnimation {
     pub root: Entity,
     pub head: Entity,
     pub muzzle: Entity,
+    pub weapon: Entity,
+    pub lower_spine: Entity,
+    pub uppper_spine: Entity,
     pub meshes: HashMap<String, Entity>,
     pub animation_mixing_bones: HashSet<Entity>,
 }
@@ -80,6 +87,9 @@ impl Default for SkinningAnimation {
             root: Entity::DANGLING,
             head: Entity::DANGLING,
             muzzle: Entity::DANGLING,
+            weapon: Entity::DANGLING,
+            lower_spine: Entity::DANGLING,
+            uppper_spine: Entity::DANGLING,
             meshes: HashMap::default(),
             animation_mixing_bones: HashSet::default(),
         }

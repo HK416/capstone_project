@@ -24,9 +24,9 @@ use winit::{
 
 use crate::{
     component::{
-        animate_character, cleanup, draw_character, spawn_player_character, spwan_bullet,
-        update_action_state_by_controller_input_flags, update_action_state_timer,
-        update_character_direction, update_entity_hierarchy,
+        animate_character, cleanup, draw_character,
+        spawn_player_character, spwan_bullet, update_action_state_by_controller_input_flags,
+        update_action_state_timer, update_character_direction, update_entity_hierarchy,
         update_movement_state_by_controller_state, update_movement_state_timer,
         update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
         update_view_state_timer, BoneCollection, ControllerInputFlags, ControllerInputTimer,
@@ -224,7 +224,7 @@ impl TestbedInGameScene {
             }
         }
 
-        // 카메라 엔터티에서 삼인칭 카메라 컴포넌트를 가져옵니다.
+        // 카메라 엔터티에서 카메라 방향 컴포넌트를 가져옵니다.
         let third_person_camera = self
             .world
             .query_one_mut::<&mut ThirdPersonCamera>(self.main_camera)
@@ -232,6 +232,17 @@ impl TestbedInGameScene {
 
         // 카메라를 회전시킵니다.
         third_person_camera.rotate(dx, dy, offset);
+
+        // 플레이어 엔터티에 카메라 방향 컴포넌트에도 적용합니다.
+        let lat = third_person_camera.pitch_angle;
+        let lon = third_person_camera.yaw_angle;
+        let entity = self.get_player_entity();
+        let view_rotation = self
+            .world
+            .query_one_mut::<&mut LatLon>(entity)
+            .expect("invalid entity or invalid entity component");
+        view_rotation.lat = lat;
+        view_rotation.lon = lon;
     }
 
     /// 메인 카메라의 오프셋을 갱신합니다.
@@ -908,7 +919,8 @@ impl TestbedInGameScene {
 
                 if *hp != player.health_point {
                     // 변동되었을 경우 로그에 추가합니다.
-                    self.attack_logs.push((entity, hp.0 - player.health_point.0));
+                    self.attack_logs
+                        .push((entity, hp.0 - player.health_point.0));
                 }
                 *hp = player.health_point;
 
@@ -937,7 +949,8 @@ impl TestbedInGameScene {
 
                 if *hp != player.health_point {
                     // 변동되었을 경우 로그에 추가합니다.
-                    self.attack_logs.push((entity, hp.0 - player.health_point.0));
+                    self.attack_logs
+                        .push((entity, hp.0 - player.health_point.0));
                 }
                 *hp = player.health_point;
 

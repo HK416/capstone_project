@@ -16,12 +16,12 @@ use crate::{
         BoneCollection, CharacterHaloKind, Child, ControllerInputFlags, Parent, Sibling,
         SkinningAnimation, ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX,
         ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
-        IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_PELVIS, MODEL_BONE_ROOT,
-        MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
+        IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH,
+        MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
     },
 };
 
-use super::MODEL_BONE_HEAD;
+use super::{MODEL_BONE_HEAD, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON};
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
 pub const NORMAL_IDLE_LEN: f32 = 2.0;
@@ -119,6 +119,15 @@ pub fn spawn_character_model(
             .cloned()
             .expect("no such entity"),
         muzzle: entities.get("fire_01").cloned().expect("no such entity"),
+        weapon: entities.get(MODEL_BONE_WEAPON).cloned().expect("no such entity"),
+        lower_spine: entities
+            .get(MODEL_BONE_SPINE)
+            .cloned()
+            .expect("no such entity"),
+        uppper_spine: entities
+            .get(MODEL_BONE_SPINE_1)
+            .cloned()
+            .expect("no such entity"),
         meshes,
         animation_mixing_bones,
     };
@@ -280,10 +289,7 @@ fn spawn_character_model_recursive(
     {
         /// 노드가 애니메이션 믹싱에 사용되는 뼈 집합에 포함되는지 여부를 반환합니다.
         fn contains_set(name: &str) -> bool {
-            name == MODEL_BONE_PELVIS
-                || name == MODEL_BONE_L_THIGH
-                || name == MODEL_BONE_R_THIGH
-                || name.contains("skirt")
+            name == MODEL_BONE_L_THIGH || name == MODEL_BONE_R_THIGH || name.contains("skirt")
         }
 
         // 뼈 집합에 포함되는 경우 엔터티를 추가합니다.

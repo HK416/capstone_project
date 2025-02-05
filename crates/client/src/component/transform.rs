@@ -36,10 +36,21 @@ impl ToParentTrans {
         self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
     }
 
-    /// 월드 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
+    /// 로컬 변환 행렬의 위치를 반환합니다.
+    pub fn get_translation(&self) -> glam::Vec4 {
+        self.0.w_axis
+    }
+
+    /// 로컬 변환 행렬의 위쪽 방향 벡터를 반환합니다.
+    pub fn get_up_vector(&self) -> glam::Vec4 {
+        self.0.y_axis.normalize_or(glam::Vec4::Y)
+    }
+
+    /// 로컬 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
     pub fn get_look_vector(&self) -> glam::Vec4 {
         self.0.z_axis.normalize_or(glam::Vec4::Z)
     }
+    
 }
 
 impl Default for ToParentTrans {
