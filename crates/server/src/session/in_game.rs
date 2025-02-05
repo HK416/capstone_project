@@ -65,11 +65,8 @@ fn handle_push_status_packet(
         glam::Quat::from_array(packet.rotation),
         glam::Vec3A::from_array(packet.direction),
         packet.action_state,
-        // packet.action_state_timer,
         packet.movement_state,
-        // packet.movement_state_timer,
         packet.view_state,
-        // packet.view_state_timer,
         packet.view_rotation,
     ));
 }

@@ -195,9 +195,6 @@ impl World {
         action_state: ActionState,
         movement_state: MovementState,
         view_state: ViewState,
-        // action_state_timer: ActionStateTimer,
-        // movement_state_timer: MovementStateTimer,
-        // view_state_timer: ViewStateTimer,
         view_rotation: LatLon,
     ) {
         if let Some(mut player) = self.players.get_mut(&client_id) {
@@ -208,9 +205,6 @@ impl World {
             player.action_state = action_state;
             player.movement_state = movement_state;
             player.view_state = view_state;
-            // player.action_state_timer = action_state_timer;
-            // player.movement_state_timer = movement_state_timer;
-            // player.view_state_timer = view_state_timer;
             player.view_rotation = view_rotation;
 
             // 플레이어 총알 발사 확인
@@ -291,11 +285,8 @@ impl World {
                     rotation,
                     direction,
                     action_state,
-                    // action_state_timer,
                     movement_state,
-                    // movement_state_timer,
                     view_state,
-                    // view_state_timer,
                     view_rotation,
                 ) => self.update_player_status(
                     epoch,
@@ -305,9 +296,6 @@ impl World {
                     action_state,
                     movement_state,
                     view_state,
-                    // action_state_timer,
-                    // movement_state_timer,
-                    // view_state_timer,
                     view_rotation,
                 ),
                 WorldEvents::AddBullet(client_id) => self.add_bullet(client_id),
