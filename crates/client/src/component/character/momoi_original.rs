@@ -5,7 +5,8 @@ use constcat::concat;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer, ViewState, ViewStateTimer
+    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer,
+    ViewState, ViewStateTimer,
 };
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
@@ -20,7 +21,9 @@ use crate::{
     },
 };
 
-use super::{MODEL_BONE_HEAD, MODEL_BONE_R_UPPER_ARM, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON};
+use super::{
+    MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON,
+};
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
 pub const NORMAL_IDLE_LEN: f32 = 2.0;
@@ -40,6 +43,12 @@ pub const ATTACK_END_LEN: f32 = 0.533;
 pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.04739998, 0.5918686, -0.8046392);
 pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.021028811, 0.8708266, -0.49113995);
 pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(-0.1615649, 0.90771204, -0.3872403);
+pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
+    glam::Vec4::new(-0.2552432, 0.96499133, 0.06034819, 0.0),
+    glam::Vec4::new(-0.35031125, -0.034122545, -0.93601125, 0.0),
+    glam::Vec4::new(-0.9011841, -0.26005128, 0.34675694, 0.0),
+    glam::Vec4::new(-0.036278114, 0.009549916, 0.09118295, 1.0),
+);
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
 pub const WORKSPACE: &'static str = "characters/momoi_original/";
@@ -122,7 +131,10 @@ pub fn spawn_character_model(
             .cloned()
             .expect("no such entity"),
         muzzle: entities.get("fire_01").cloned().expect("no such entity"),
-        weapon: entities.get(MODEL_BONE_WEAPON).cloned().expect("no such entity"),
+        weapon: entities
+            .get(MODEL_BONE_WEAPON)
+            .cloned()
+            .expect("no such entity"),
         lower_spine: entities
             .get(MODEL_BONE_SPINE)
             .cloned()
@@ -131,8 +143,8 @@ pub fn spawn_character_model(
             .get(MODEL_BONE_SPINE_1)
             .cloned()
             .expect("no such entity"),
-        r_upper_arm: entities
-            .get(MODEL_BONE_R_UPPER_ARM)
+        right_hand: entities
+            .get(MODEL_BONE_R_HAND)
             .cloned()
             .expect("no such entity"),
         meshes,
@@ -1737,7 +1749,7 @@ fn animate_character_when_attack_move(
             }
         }
     }
-    
+
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
     look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
@@ -1746,7 +1758,7 @@ fn animate_character_when_attack_move(
 fn look_to_camera_direction(
     skinning_animation: &SkinningAnimation,
     view_rotation: LatLon,
-    transform_view: &mut ViewBorrow<&mut ToParentTrans>
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
     let angle = view_rotation.lat / 3.0;
@@ -1769,4 +1781,81 @@ fn look_to_camera_direction(
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_HEAD_LOCAL, angle);
+}
+
+/// 무기의 위치를 설정합니다.
+///
+/// # Note
+/// 이 함수는 캐릭터의 월드 변환 행렬이 계산된 후 호출해야 합니다.
+///
+pub fn set_weapon_position(
+    skinning_animation: &SkinningAnimation,
+    child_view: &ViewBorrow<&Child>,
+    sibling_view: &ViewBorrow<&Sibling>,
+    transform_view: &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
+) {
+    let bone_entity = skinning_animation.right_hand;
+    let (_, transform) = transform_view
+        .get_mut(bone_entity)
+        .expect("invalid entity or invalid entity component");
+    let transform = transform.0.clone();
+
+    let weapon_matrix = transform * WEAPON_OFFSET;
+    let bone_entity = skinning_animation.weapon;
+    let (_, transform) = transform_view
+        .get_mut(bone_entity)
+        .expect("invalid entity or invalid entity component");
+    transform.0 = weapon_matrix;
+
+    if let Some(child_entity) = child_view.get(bone_entity).cloned() {
+        set_weapon_position_recursion(
+            *child_entity,
+            child_view,
+            sibling_view,
+            transform_view,
+            weapon_matrix,
+        );
+    }
+}
+
+/// 무기의 위치를 설정합니다.
+///
+/// # Note
+/// 이 함수는 캐릭터의 월드 변환 행렬이 계산된 후 호출해야 합니다.
+///
+fn set_weapon_position_recursion(
+    entity: Entity,
+    child_view: &ViewBorrow<&Child>,
+    sibling_view: &ViewBorrow<&Sibling>,
+    transform_view: &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
+    parent_transform: glam::Mat4,
+) {
+    // 형제 엔터티가 존재하는 경우 형제 엔터티의 계층 구조를 갱신합니다.
+    if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
+        set_weapon_position_recursion(
+            *sibling_entity,
+            child_view,
+            sibling_view,
+            transform_view,
+            parent_transform,
+        );
+    }
+
+    // 현재 엔터티의 월드 변환 행렬을 갱신합니다.
+    let (local_transform, world_transform) = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    world_transform.0 = parent_transform * local_transform.0;
+
+    // 자식 엔터티가 존재하는 경우 자식 엔터티의 계층 구조를 갱신합니다.
+    let parent_transform = world_transform.0;
+    if let Some(child_entity) = child_view.get(entity).cloned() {
+        set_weapon_position_recursion(
+            *child_entity,
+            child_view,
+            sibling_view,
+            transform_view,
+            parent_transform,
+        );
+    }
 }

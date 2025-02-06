@@ -24,13 +24,13 @@ use winit::{
 
 use crate::{
     component::{
-        animate_character, cleanup, draw_character,
-        spawn_player_character, spwan_bullet, update_action_state_by_controller_input_flags,
-        update_action_state_timer, update_character_direction, update_entity_hierarchy,
+        animate_character, cleanup, draw_character, set_weapon_position, spawn_player_character,
+        spwan_bullet, update_action_state_by_controller_input_flags, update_action_state_timer,
+        update_character_direction, update_entity_hierarchy,
         update_movement_state_by_controller_state, update_movement_state_timer,
         update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
-        update_view_state_timer, BoneCollection, ControllerInputFlags, ControllerInputTimer,
-        ControllerState, MoveDirection, Parent, Projection, SkinningAnimation, TerrainTag,
+        update_view_state_timer, BoneCollection, Child, ControllerInputFlags, ControllerInputTimer,
+        ControllerState, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, TerrainTag,
         ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
@@ -214,6 +214,7 @@ impl TestbedInGameScene {
     fn rotate_main_camera(&mut self, mut dx: f32, mut dy: f32) {
         // 사용자 설정한 마우스 좌/우, 상/하 반전을 적용합니다.
         let offset = 1.0;
+
         if let Some(config) = &self.user_config {
             if config.mouse.left_right_reversal {
                 dx *= -1.0;
@@ -726,6 +727,27 @@ impl TestbedInGameScene {
         for &entity in entities {
             update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
         }
+
+        let query_view = self
+            .world
+            .view::<(&CharacterKind, &ActionState, &SkinningAnimation)>();
+        let child_view = self.world.view::<&Child>();
+        let sibling_view = self.world.view::<&Sibling>();
+        let mut transform_view = self.world.view::<(&ToParentTrans, &mut WorldTransform)>();
+        for &entity in entities {
+            let (&character_kind, &action_state, skinning_animation) = query_view
+                .get(entity)
+                .expect("invalid entity or invalid entity component");
+
+            set_weapon_position(
+                character_kind,
+                action_state,
+                &skinning_animation,
+                &child_view,
+                &sibling_view,
+                &mut transform_view,
+            );
+        }
     }
 
     /// 총알 엔터티의 계층 구조를 갱신합니다.
@@ -903,7 +925,9 @@ impl TestbedInGameScene {
         let mut movement_state_view = self
             .world
             .view::<(&mut MovementState, &mut MovementStateTimer)>();
-        let mut view_state_view = self.world.view::<(&mut ViewState, &mut ViewStateTimer, &mut LatLon)>();
+        let mut view_state_view = self
+            .world
+            .view::<(&mut ViewState, &mut ViewStateTimer, &mut LatLon)>();
         let mut local_transform_view = self.world.view::<&mut ToParentTrans>();
 
         // 새로운 플레이어 데이터를 수집합니다.
@@ -1351,6 +1375,7 @@ impl GameScene for TestbedInGameScene {
             let spine_1 = skinning_animation.uppper_spine;
             let muzzle = skinning_animation.muzzle;
             let weapon = skinning_animation.weapon;
+            let right_hand = skinning_animation.right_hand;
 
             let transform = self
                 .world
@@ -1364,14 +1389,20 @@ impl GameScene for TestbedInGameScene {
                 .query_one_mut::<&WorldTransform>(spine)
                 .expect("invalid entity or invalid entity component");
             let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
-            log::debug!("Spine의 로컬 좌표계상의 월드 좌표계 X축: {:?}", local_x_axis);
+            log::debug!(
+                "Spine의 로컬 좌표계상의 월드 좌표계 X축: {:?}",
+                local_x_axis
+            );
 
             let transform = self
                 .world
                 .query_one_mut::<&WorldTransform>(spine_1)
                 .expect("invalid entity or invalid entity component");
             let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
-            log::debug!("Spine_1의 로컬 좌표계상의 월드 좌표계 X축: {:?}", local_x_axis);
+            log::debug!(
+                "Spine_1의 로컬 좌표계상의 월드 좌표계 X축: {:?}",
+                local_x_axis
+            );
 
             let transform = self
                 .world
@@ -1381,12 +1412,16 @@ impl GameScene for TestbedInGameScene {
 
             let transform = self
                 .world
+                .query_one_mut::<&WorldTransform>(right_hand)
+                .expect("invalid entity or invalid entity component");
+            let inverse_right_hand = transform.0.inverse();
+
+            let transform = self
+                .world
                 .query_one_mut::<&WorldTransform>(weapon)
                 .expect("invalid entity or invalid entity component");
-            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
-            log::debug!("총의 로컬 좌표계상의 월드 좌표계 X축: {:?}", local_x_axis);
-            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
-            log::debug!("총의 로컬 좌표계상의 월드 좌표계 z축: {:?}", local_z_axis);
+            let weapon_offset = inverse_right_hand * transform.0;
+            println!("오프셋 행렬:{}", weapon_offset);
         }
 
         // 총알 엔터티들을 가져옵니다.

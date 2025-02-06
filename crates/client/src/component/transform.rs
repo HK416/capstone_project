@@ -40,7 +40,6 @@ impl ToParentTrans {
     pub fn get_look_vector(&self) -> glam::Vec4 {
         self.0.z_axis.normalize_or(glam::Vec4::Z)
     }
-    
 }
 
 impl Default for ToParentTrans {

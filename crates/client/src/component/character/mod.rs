@@ -8,7 +8,8 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer, Player, ViewState, ViewStateTimer
+    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer,
+    Player, ViewState, ViewStateTimer,
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -725,4 +726,36 @@ pub fn animate_character(
         collection_view,
         transform_view,
     );
+}
+
+/// 무기의 위치를 설정합니다.
+///
+/// # NOTE
+/// 이 함수는 캐릭터의 월드 변환 행렬이 계산된 후 호출해야 합니다.
+///
+pub fn set_weapon_position(
+    character_kind: CharacterKind,
+    action_state: ActionState,
+    skinning_animation: &SkinningAnimation,
+    child_view: &ViewBorrow<&Child>,
+    sibling_view: &ViewBorrow<&Sibling>,
+    transform_view: &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
+) {
+    if action_state == ActionState::Idle {
+        return;
+    }
+
+    type Func = fn(
+        &SkinningAnimation,
+        &ViewBorrow<&Child>,
+        &ViewBorrow<&Sibling>,
+        &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
+    );
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::set_weapon_position,
+        momoi_original::set_weapon_position,
+    ];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](skinning_animation, child_view, sibling_view, transform_view);
 }
