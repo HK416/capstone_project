@@ -5,8 +5,7 @@ use constcat::concat;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer, ViewState,
-    ViewStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer, ViewState, ViewStateTimer
 };
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
@@ -21,7 +20,7 @@ use crate::{
     },
 };
 
-use super::{MODEL_BONE_HEAD, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON};
+use super::{MODEL_BONE_HEAD, MODEL_BONE_R_UPPER_ARM, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON};
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
 pub const NORMAL_IDLE_LEN: f32 = 2.8;
@@ -37,6 +36,10 @@ pub const ATTACK_START_LEN: f32 = 0.667;
 pub const ATTACK_ING_LEN: f32 = 2.667;
 /// 캐릭터 모델의 Attack_End 애니메이션 길이입니다.
 pub const ATTACK_END_LEN: f32 = 0.667;
+
+pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.0603913, 0.6079511, -0.7916745);
+pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.336492, 0.92268085, -0.18823697);
+pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(0.104742765, 0.9142178, -0.3914523);
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
 pub const WORKSPACE: &'static str = "characters/aris_original/";
@@ -126,6 +129,10 @@ pub fn spawn_character_model(
             .expect("no such entity"),
         uppper_spine: entities
             .get(MODEL_BONE_SPINE_1)
+            .cloned()
+            .expect("no such entity"),
+        r_upper_arm: entities
+            .get(MODEL_BONE_R_UPPER_ARM)
             .cloned()
             .expect("no such entity"),
         meshes,
@@ -888,6 +895,7 @@ fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: 
 ///
 pub fn animate_character(
     asset_manager: &AssetManager,
+    view_rotation: LatLon,
     action_state: ActionState,
     action_state_timer: ActionStateTimer,
     movement_state: MovementState,
@@ -898,6 +906,7 @@ pub fn animate_character(
 ) {
     type Func = fn(
         &Arc<HashMap<String, Motion>>,
+        LatLon,
         ActionStateTimer,
         MovementStateTimer,
         &SkinningAnimation,
@@ -945,6 +954,7 @@ pub fn animate_character(
     let j = movement_state as usize;
     FUNC_TABLE[i][j](
         &motions,
+        view_rotation,
         action_state_timer,
         movement_state_timer,
         skinning_animation,
@@ -964,6 +974,7 @@ pub fn animate_character(
 ///
 fn animate_character_when_idle(
     motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1018,6 +1029,7 @@ fn animate_character_when_idle(
 ///
 fn animate_character_when_moving(
     motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1072,6 +1084,7 @@ fn animate_character_when_moving(
 ///
 fn animate_character_when_move_to_end(
     motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1126,6 +1139,7 @@ fn animate_character_when_move_to_end(
 ///
 fn animate_character_when_idle_to_aim(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1167,6 +1181,9 @@ fn animate_character_when_idle_to_aim(
             local_transform.0 = bone_transform;
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_End` 애니메이션을 재생합니다.
@@ -1180,6 +1197,7 @@ fn animate_character_when_idle_to_aim(
 ///
 fn animate_character_when_aim_to_idle(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1221,6 +1239,9 @@ fn animate_character_when_aim_to_idle(
             local_transform.0 = bone_transform;
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Start`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1234,6 +1255,7 @@ fn animate_character_when_aim_to_idle(
 ///
 fn animate_character_when_move_to_aim_move(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1311,6 +1333,9 @@ fn animate_character_when_move_to_aim_move(
             }
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_End`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1324,6 +1349,7 @@ fn animate_character_when_move_to_aim_move(
 ///
 fn animate_character_when_aim_move_to_move(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1401,6 +1427,9 @@ fn animate_character_when_aim_move_to_move(
             }
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing` 애니메이션을 재생합니다.
@@ -1414,6 +1443,7 @@ fn animate_character_when_aim_move_to_move(
 ///
 fn animate_character_when_aim(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     _action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1458,6 +1488,9 @@ fn animate_character_when_aim(
             local_transform.0 = bone_transform;
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1471,6 +1504,7 @@ fn animate_character_when_aim(
 ///
 fn animate_character_when_aim_move(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1551,6 +1585,9 @@ fn animate_character_when_aim_move(
             }
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing` 애니메이션을 재생합니다.
@@ -1564,6 +1601,7 @@ fn animate_character_when_aim_move(
 ///
 fn animate_character_when_attacking(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1605,6 +1643,9 @@ fn animate_character_when_attacking(
             local_transform.0 = bone_transform;
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1618,6 +1659,7 @@ fn animate_character_when_attacking(
 ///
 fn animate_character_when_attack_move(
     motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
     action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -1695,4 +1737,36 @@ fn animate_character_when_attack_move(
             }
         }
     }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+}
+
+/// 캐릭터가 카메라가 바라보는 방향을 바라보도록 로컬 변환 행렬을 수정합니다.
+fn look_to_camera_direction(
+    skinning_animation: &SkinningAnimation,
+    view_rotation: LatLon,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>
+) {
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let angle = view_rotation.lat / 3.0;
+    let bone_entity = skinning_animation.lower_spine;
+    let local_transform = transform_view
+        .get_mut(bone_entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_LOCAL, angle);
+
+    let angle = view_rotation.lat / 3.0;
+    let bone_entity = skinning_animation.uppper_spine;
+    let local_transform = transform_view
+        .get_mut(bone_entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_1_LOCAL, angle);
+
+    let angle = view_rotation.lat / 3.0;
+    let bone_entity = skinning_animation.head;
+    let local_transform = transform_view
+        .get_mut(bone_entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_HEAD_LOCAL, angle);
 }

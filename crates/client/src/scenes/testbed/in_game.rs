@@ -669,6 +669,7 @@ impl TestbedInGameScene {
         type Components<'a> = (
             &'a CharacterKind,
             &'a SkinningAnimation,
+            &'a LatLon,
             &'a ActionState,
             &'a ActionStateTimer,
             &'a MovementState,
@@ -685,6 +686,7 @@ impl TestbedInGameScene {
             let (
                 &character_kind,
                 skinning_animation,
+                &view_rotation,
                 &action_state,
                 &action_state_timer,
                 &movement_state,
@@ -696,6 +698,7 @@ impl TestbedInGameScene {
             animate_character(
                 asset_manager,
                 character_kind,
+                view_rotation,
                 action_state,
                 action_state_timer,
                 movement_state,
@@ -900,7 +903,7 @@ impl TestbedInGameScene {
         let mut movement_state_view = self
             .world
             .view::<(&mut MovementState, &mut MovementStateTimer)>();
-        let mut view_state_view = self.world.view::<(&mut ViewState, &mut ViewStateTimer)>();
+        let mut view_state_view = self.world.view::<(&mut ViewState, &mut ViewStateTimer, &mut LatLon)>();
         let mut local_transform_view = self.world.view::<&mut ToParentTrans>();
 
         // 새로운 플레이어 데이터를 수집합니다.
@@ -969,11 +972,12 @@ impl TestbedInGameScene {
                 *movement_state_timer = player.movement_state_timer;
 
                 // 카메라 상태, 카메라 상태 지속 시간을 갱신합니다.
-                let (view_state, view_state_timer) = view_state_view
+                let (view_state, view_state_timer, view_rotation) = view_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
                 *view_state = player.view_state;
                 *view_state_timer = player.view_state_timer;
+                *view_rotation = player.view_rotation;
 
                 // 위치와 방향을 갱신합니다.
                 let local_transform = local_transform_view
@@ -1342,12 +1346,47 @@ impl GameScene for TestbedInGameScene {
                 .world
                 .query_one_mut::<&SkinningAnimation>(entity)
                 .expect("invalid entity or invalid entity component");
+            let head = skinning_animation.head;
+            let spine = skinning_animation.lower_spine;
+            let spine_1 = skinning_animation.uppper_spine;
             let muzzle = skinning_animation.muzzle;
+            let weapon = skinning_animation.weapon;
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(head)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            log::debug!("머리의 로컬 좌표계상의 월드 좌표계 X축: {:?}", local_x_axis);
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(spine)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            log::debug!("Spine의 로컬 좌표계상의 월드 좌표계 X축: {:?}", local_x_axis);
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(spine_1)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            log::debug!("Spine_1의 로컬 좌표계상의 월드 좌표계 X축: {:?}", local_x_axis);
+
             let transform = self
                 .world
                 .query_one_mut::<&WorldTransform>(muzzle)
                 .expect("invalid entity or invalid entity component");
-            log::debug!("muzzle: {:?}", transform.get_translation());
+            log::debug!("총구의 위치: {:?}", transform.get_translation());
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(weapon)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            log::debug!("총의 로컬 좌표계상의 월드 좌표계 X축: {:?}", local_x_axis);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!("총의 로컬 좌표계상의 월드 좌표계 z축: {:?}", local_z_axis);
         }
 
         // 총알 엔터티들을 가져옵니다.

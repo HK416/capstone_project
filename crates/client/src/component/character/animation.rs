@@ -44,6 +44,8 @@ pub const MODEL_BONE_SPINE_1: &'static str = "Bip001_Spine1";
 pub const MODEL_BONE_L_THIGH: &'static str = "Bip001_L_Thigh";
 /// 모든 캐릭터 모델의 오른쪽 허벅지 안쪽 뼈 노드 이름입니다.
 pub const MODEL_BONE_R_THIGH: &'static str = "Bip001_R_Thigh";
+/// 모든 캐릭터의 오른쪽 어깨 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_UPPER_ARM: &'static str = "Bip001_R_UpperArm";
 /// 모든 캐릭터 모델의 무기 뼈 노드 이름입니다.
 pub const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon";
 
@@ -77,6 +79,7 @@ pub struct SkinningAnimation {
     pub weapon: Entity,
     pub lower_spine: Entity,
     pub uppper_spine: Entity,
+    pub r_upper_arm: Entity,
     pub meshes: HashMap<String, Entity>,
     pub animation_mixing_bones: HashSet<Entity>,
 }
@@ -90,6 +93,7 @@ impl Default for SkinningAnimation {
             weapon: Entity::DANGLING,
             lower_spine: Entity::DANGLING,
             uppper_spine: Entity::DANGLING,
+            r_upper_arm: Entity::DANGLING,
             meshes: HashMap::default(),
             animation_mixing_bones: HashSet::default(),
         }

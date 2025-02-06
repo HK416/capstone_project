@@ -8,8 +8,7 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer,
-    Player, ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer, Player, ViewState, ViewStateTimer
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -689,6 +688,7 @@ pub fn normalize_view_state_timer(
 pub fn animate_character(
     asset_manager: &AssetManager,
     character_kind: CharacterKind,
+    view_rotation: LatLon,
     action_state: ActionState,
     action_state_timer: ActionStateTimer,
     movement_state: MovementState,
@@ -699,6 +699,7 @@ pub fn animate_character(
 ) {
     type Func = fn(
         &AssetManager,
+        LatLon,
         ActionState,
         ActionStateTimer,
         MovementState,
@@ -715,6 +716,7 @@ pub fn animate_character(
     let i = character_kind as usize;
     FUNC_TABLE[i](
         asset_manager,
+        view_rotation,
         action_state,
         action_state_timer,
         movement_state,
