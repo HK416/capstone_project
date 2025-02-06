@@ -177,9 +177,9 @@ impl RayIntersect for Capsule {
         }
 
         let h_to_origin = ray_origin - h;
-        let h_to_origin_len = h_to_origin.dot(ray_direction);
+        let h_to_origin_len = -h_to_origin.dot(ray_direction);
         // h to origin * direction이 양수이면 충돌하지 않음(ray의 시작점이 기둥 바깥이고 바깥 방향으로 향할때)
-        if h_to_origin_len > 0.0 {
+        if h_to_origin_len < 0.0 {
             return None;
         }
 
