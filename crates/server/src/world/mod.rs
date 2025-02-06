@@ -169,6 +169,7 @@ impl World {
                 velocity: glam::Vec3A::ZERO,
                 direction: glam::Vec3A::Z,
                 action_state: ActionState::default(),
+                prev_action_state: ActionState::default(),
                 action_state_timer: ActionStateTimer::default(),
                 movement_state: MovementState::default(),
                 movement_state_timer: MovementStateTimer::default(),
@@ -210,6 +211,11 @@ impl World {
             // 플레이어 총알 발사 확인
             match player.action_state {
                 ActionState::Attack => {
+                    if player.prev_action_state != ActionState::Attack {
+                        player.shot_count = 0;
+                        player.action_state_timer.0 = 0.0;
+                    }
+
                     if player.shot_count < attributes.normal_attack_count {
                         let index = player.shot_count as usize;
                         let timing = attributes.normal_attack_timing[index];
@@ -221,6 +227,8 @@ impl World {
                 }
                 _ => {}
             }
+
+            player.prev_action_state = player.action_state;
         }
     }
 

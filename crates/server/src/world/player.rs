@@ -24,6 +24,8 @@ pub struct ServerPlayer {
     pub direction: glam::Vec3A,
     /// 플레이어 캐릭터 행동 상태
     pub action_state: ActionState,
+    /// 플레이어 캐릭터 이전 행동 상태
+    pub prev_action_state: ActionState,
     /// 플레이어 캐릭터 행동 상태 타이머
     pub action_state_timer: ActionStateTimer,
     /// 플레이어 캐릭터 움직임 상태
