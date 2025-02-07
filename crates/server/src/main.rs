@@ -29,7 +29,7 @@ fn get_retire_ids() -> &'static Queue<u64> {
 }
 
 /// 현재 서버에 접속중인 세션 집합을 가져옵니다.
-fn get_seesions() -> &'static SkipMap<SocketAddr, Arc<Session>> {
+fn get_sessions() -> &'static SkipMap<SocketAddr, Arc<Session>> {
     SESSIONS.get_or_init(|| SkipMap::default())
 }
 
@@ -92,7 +92,7 @@ async fn udp_packet_receive_loop(socket: Arc<UdpSocket>) {
                 //      (UDP로 보낸 패킷 데이터는 중요하지 않고, 1024byte 보다 작은 데이터이기 때문)
                 match RawPacket::try_from_bytes(received_data) {
                     Ok(packet) => {
-                        let sessions = get_seesions();
+                        let sessions = get_sessions();
                         // 3. SESSIONS에 클라이언트 주소에 해당하는 세션이 존재할 경우
                         //    - 해당 세션으로 RawPacket을 전송한다.
                         if let Some(session) = sessions.get(&addr) {
@@ -150,14 +150,14 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
                 tokio::spawn(async move {
                     // 클라이언트 세션을 생성하고 등록합니다.
                     let session = Arc::new(Session::new(addr, client_id, udp_sender));
-                    get_seesions().insert(addr, session.clone());
+                    get_sessions().insert(addr, session.clone());
 
                     println!("Accepted connection from: {}", client_id.to_string());
                     handle_connection(stream, session).await;
                     println!("{} left.", client_id.to_string());
 
                     // 등록된 클라이언트 세션을 제거하고, 클라이언트 식별자를 반납합니다.
-                    get_seesions().remove(&addr);
+                    get_sessions().remove(&addr);
                     get_retire_ids().push(value);
                 });
             }
