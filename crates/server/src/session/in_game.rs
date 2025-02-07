@@ -15,7 +15,7 @@ pub fn handle_packets(session: &Arc<Session>, world: Arc<World>) -> SessionState
 
 /// 수신된 패킷을 처리합니다.
 fn on_received_packets(session: &Arc<Session>, state: &mut SessionState, world: &World) {
-    while let Some(packet) = session.tcp_receiver.pop() {
+    while let Some(packet) = session.received_packets.pop() {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::PushStatus => match PushStatusPacket::try_from_raw(packet) {

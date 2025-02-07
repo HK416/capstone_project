@@ -135,12 +135,11 @@ fn update_action_state_timer_when_attack(
     }
 }
 
-
 /// 캐릭터 모델의 `MovementState`와 `MovementStateTimer`를 갱신합니다.
 ///
 /// # Note
 /// - 이 함수를 호출하기 전에 ActionState를 먼저 갱신해야합니다.
-/// 
+///
 pub fn update_character_movement_state_timer(
     attributes: &CharacterAttributes,
     player: &mut ServerPlayer,
@@ -192,7 +191,7 @@ fn update_movement_state_timer_when_idle(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    player.movement_state_timer.0 = 
+    player.movement_state_timer.0 =
         (player.movement_state_timer.0 + elapsed_time_sec) % attributes.normal_idle_duration;
 }
 
@@ -203,7 +202,7 @@ fn update_movement_state_timer_when_moving(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    player.movement_state_timer.0 = 
+    player.movement_state_timer.0 =
         (player.movement_state_timer.0 + elapsed_time_sec) % attributes.move_ing_duration;
 }
 
@@ -231,6 +230,6 @@ fn update_movement_state_timer_when_walking(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    player.movement_state_timer.0 = 
+    player.movement_state_timer.0 =
         (player.movement_state_timer.0 + elapsed_time_sec) % attributes.walk_duration;
 }

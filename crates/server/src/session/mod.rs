@@ -15,6 +15,7 @@ mod lobby;
 
 use std::{
     io::ErrorKind,
+    net::SocketAddr,
     sync::{
         atomic::{AtomicBool, Ordering as MemOrdering},
         Arc,
@@ -53,13 +54,17 @@ impl Default for SessionState {
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
+    /// 클라이언트 소켓 주소
+    addr: SocketAddr,
     /// 세션의 클라이언트 식별자
     client_id: ClientId,
 
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
-    /// TCP 패킷 데이터 수신 대기열
-    tcp_receiver: Queue<RawPacket>,
+    /// UDP 패킷 데이터 전송 대기열
+    udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
+    /// 수신된 패킷 데이터 대기열
+    received_packets: Queue<RawPacket>,
 
     /// 세션의 실행 상태
     running: AtomicBool,
@@ -67,11 +72,17 @@ pub struct Session {
 
 impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
-    pub fn new(client_id: ClientId) -> Self {
+    pub fn new(
+        addr: SocketAddr,
+        client_id: ClientId,
+        udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
+    ) -> Self {
         Self {
+            addr,
             client_id,
             tcp_sender: Queue::new(),
-            tcp_receiver: Queue::new(),
+            udp_sender,
+            received_packets: Queue::new(),
             running: AtomicBool::new(true),
         }
     }
@@ -97,6 +108,29 @@ impl Session {
     ///
     pub fn tcp_write(&self, packet: RawPacket) {
         self.tcp_sender.push(packet);
+    }
+
+    /// UDP 통신으로 패킷을 전송합니다.
+    ///
+    /// # Panics
+    /// 주어진 `RawPacket`의 크기는 1KB 미만이어야합니다.
+    /// 그렇지 않는 경우 [`panic!`]을 호출합니다.
+    ///
+    pub fn udp_write(&self, packet: RawPacket) {
+        assert!(
+            packet.as_bytes().len() < 1024,
+            "the size of the UDP packet to be transmitted from {} is greather than or equal to 1KB.", 
+            &self
+        );
+        self.udp_sender.push((self.addr, packet));
+    }
+
+    /// 수신된 패킷 데이터를 세션에 추가합니다.
+    ///
+    /// 추가된 패킷 데이터는 바로 처리되지 않습니다.
+    ///
+    pub fn push_received_packet(&self, packet: RawPacket) {
+        self.received_packets.push(packet);
     }
 }
 
@@ -133,12 +167,9 @@ impl std::hash::Hash for Session {
 }
 
 /// 클라이언트 연결을 제어합니다.
-pub async fn handle_connection(client_id: ClientId, tcp_stream: TcpStream) {
-    // 클라이언트 세션을 생성합니다.
-    let session = Arc::new(Session::new(client_id));
-
+pub async fn handle_connection(stream: TcpStream, session: Arc<Session>) {
     // 비동기 네트워크 처리 루프를 실행한다.
-    let (tcp_reader, tcp_writer) = tcp_stream.into_split();
+    let (tcp_reader, tcp_writer) = stream.into_split();
     tokio::spawn(tcp_read_loop(tcp_reader, session.clone()));
     tokio::spawn(tcp_write_loop(tcp_writer, session.clone()));
 
@@ -161,8 +192,6 @@ pub async fn handle_connection(client_id: ClientId, tcp_stream: TcpStream) {
     if let SessionState::InGame(world) = state {
         world.exit(&session);
     }
-
-    println!("{} left.", &session);
 }
 
 /// TCP 소켓의 데이터를 읽는 루프 함수입니다.
@@ -205,7 +234,7 @@ async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
         // 패킷 구문 분석 및 대기열에 추가.
         while let Some(packet) = packet_parser.pop() {
             log::trace!("{} packet received (PACKET:{:?})", &session, &packet);
-            session.tcp_receiver.push(packet);
+            session.received_packets.push(packet);
         }
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
