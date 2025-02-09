@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{BigEndian, TryFromBigEndian};
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, Default)]
 pub struct Float3 {
     pub x: f32,
@@ -33,7 +32,7 @@ pub struct CharacterAttributes {
     /// `ActionState::Aiming` 애니메이션 시간 (단위: 초)
     pub normal_attack_start_duration: f32,
     /// `ActionState::AimOff` 애니메이션 시간 (단위: 초)
-    pub normal_attack_end_duration: f32, 
+    pub normal_attack_end_duration: f32,
     /// `ActionState::Attack` 애니메이션 시간 (단위: 초)
     pub normal_attack_ing_duration: f32,
     /// 일반 공격 총알 발사 시간 (단위: 초)
@@ -49,7 +48,6 @@ pub struct CharacterAttributes {
     pub critical_damage: u32,
     pub attack_range: u32,
 }
-
 
 /// 캐릭터 모델 종류입니다.
 #[repr(u8)]

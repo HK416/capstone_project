@@ -4,6 +4,7 @@ mod init_stage_packet;
 mod parser;
 mod pull_stage_packet;
 mod push_status_packet;
+mod udp_damage_log_packet;
 
 use std::io::{Error, ErrorKind};
 
@@ -11,7 +12,7 @@ use crate::components::{BigEndian, TryFromBigEndian};
 
 pub use self::{
     connect_packet::*, enter_stage_packet::*, init_stage_packet::*, parser::*,
-    pull_stage_packet::*, push_status_packet::*,
+    pull_stage_packet::*, push_status_packet::*, udp_damage_log_packet::*,
 };
 
 /// 패킷의 종류
@@ -24,6 +25,7 @@ pub enum PacketType {
     InitStage = 3,
     PullStage = 4,
     PushStatus = 5,
+    UdpDamageLog = 128,
 }
 
 impl BigEndian for PacketType {
@@ -53,6 +55,7 @@ impl TryFromBigEndian for PacketType {
             3 => Some(PacketType::InitStage),
             4 => Some(PacketType::PullStage),
             5 => Some(PacketType::PushStatus),
+            128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",

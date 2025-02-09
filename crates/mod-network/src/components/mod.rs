@@ -2,10 +2,10 @@ mod attributes;
 mod bullet;
 mod identifier;
 mod player;
+mod stage;
 mod state;
 
-pub use self::{attributes::*, bullet::*, identifier::*, player::*, state::*};
-
+pub use self::{attributes::*, bullet::*, identifier::*, player::*, stage::*, state::*};
 
 /// 자료형을 Big-endian 바이트 배열로 변환하거나, Big-endian 바이트 배열로부터 자료형을 생성하는 함수 인터페이스를 제공합니다.
 pub trait BigEndian {
