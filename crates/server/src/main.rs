@@ -45,26 +45,25 @@ pub async fn run_server(addr: &str) {
     };
     println!("Server listening on: {}", listener.local_addr().unwrap());
 
-    // TODO: UDP 소켓을 바인드합니다.
+    // UDP 소켓을 바인드합니다.
+    // NOTE: TCP 소켓과 다르게 connect가 필요 없다.
     let udp_socket = match UdpSocket::bind(addr).await {
-        Ok(socket) => Arc::new(socket),  
+        Ok(socket) => Arc::new(socket),
         Err(e) => {
             eprintln!("Failed to bind UDP socket: {}", e);
             return;
         }
     };
-    // NOTE: TCP 소켓과 다르게 connect가 필요 없다.
     let udp_sender = Arc::new(Queue::new());
 
-    // TODO: 새로운 스레드에서 UDP 패킷 수신 루프를 실행합니다.
+    // 새로운 스레드에서 UDP 패킷 수신 루프를 실행합니다.
     let udp_recv_socket = udp_socket.clone();
     tokio::spawn(udp_packet_receive_loop(udp_recv_socket));
 
-    // TODO: 새로운 스레드에서 UDP 패킷 전송 루프를 실행합니다.
+    // 새로운 스레드에서 UDP 패킷 전송 루프를 실행합니다.
     let udp_send_socket = udp_socket.clone();
     let udp_sender_clone = udp_sender.clone();
     tokio::spawn(udp_packet_send_loop(udp_send_socket, udp_sender_clone));
-
 
     // 새로운 쓰레드에서 클라이언트 연결 관리
     tokio::spawn(wait_for_players(listener, udp_sender));
@@ -81,13 +80,12 @@ async fn udp_packet_receive_loop(socket: Arc<UdpSocket>) {
     loop {
         buf.fill(0);
 
-        // TODO
-        // 1. tokio::UdpSocket의 recv_from함수로 패킷 데이터와 클라이언트 주소 값을 가져온다.
+        // tokio::UdpSocket의 recv_from함수로 패킷 데이터와 클라이언트 주소 값을 가져온다.
         match socket.recv_from(&mut buf).await {
             Ok((size, addr)) => {
                 let received_data = &buf[..size];
 
-                // 2. 바이트 배열을 RawPacket으로 변환한다.
+                // 바이트 배열을 RawPacket으로 변환한다.
                 //    - RawPacket으로 변환에 실패한 경우 생략
                 //      (UDP로 보낸 패킷 데이터는 중요하지 않고, 1024byte 보다 작은 데이터이기 때문)
                 match RawPacket::try_from_bytes(received_data) {
@@ -96,7 +94,7 @@ async fn udp_packet_receive_loop(socket: Arc<UdpSocket>) {
                         // 3. SESSIONS에 클라이언트 주소에 해당하는 세션이 존재할 경우
                         //    - 해당 세션으로 RawPacket을 전송한다.
                         if let Some(session) = sessions.get(&addr) {
-                            session.push_received_packet(packet); 
+                            session.push_received_packet(packet);
                         }
                     }
                     Err(e) => {
@@ -120,12 +118,11 @@ async fn udp_packet_send_loop(
     udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
 ) {
     loop {
-        // TODO
-        // 1. `udp_sender`에서 값을 하나 가져온다.
+        // `udp_sender`에서 값을 하나 가져온다.
         if let Some((addr, packet)) = udp_sender.pop() {
-            let packet_data = packet.as_bytes(); 
+            let packet_data = packet.as_bytes();
 
-            // 2. tokio::UdpSocket의 send_to함수로 패킷 데이터를 클라이언트로 보낸다.
+            // tokio::UdpSocket의 send_to함수로 패킷 데이터를 클라이언트로 보낸다.
             if let Err(e) = socket.send_to(&packet_data, addr).await {
                 eprintln!("Failed to send UDP packet to {}: {}", addr, e);
             }
@@ -167,8 +164,6 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
         }
     }
 }
-
-
 
 #[tokio::main]
 async fn main() {

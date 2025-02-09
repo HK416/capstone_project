@@ -1195,7 +1195,8 @@ fn animate_character_when_idle_to_aim(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = action_state_timer.0 / ATTACK_START_LEN;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_End` 애니메이션을 재생합니다.
@@ -1253,7 +1254,8 @@ fn animate_character_when_aim_to_idle(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = 1.0 - action_state_timer.0 / ATTACK_END_LEN;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Start`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1347,7 +1349,8 @@ fn animate_character_when_move_to_aim_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = action_state_timer.0 / ATTACK_START_LEN;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_End`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1441,7 +1444,8 @@ fn animate_character_when_aim_move_to_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = 1.0 - action_state_timer.0 / ATTACK_END_LEN;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing` 애니메이션을 재생합니다.
@@ -1502,7 +1506,8 @@ fn animate_character_when_aim(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1599,7 +1604,8 @@ fn animate_character_when_aim_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing` 애니메이션을 재생합니다.
@@ -1657,7 +1663,8 @@ fn animate_character_when_attacking(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `*_Normal_Attack_Ing`와 `*_Cafe_Walk`가 믹싱된 애니메이션을 재생합니다.
@@ -1751,31 +1758,33 @@ fn animate_character_when_attack_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    look_to_camera_direction(skinning_animation, view_rotation, transform_view);
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// 캐릭터가 카메라가 바라보는 방향을 바라보도록 로컬 변환 행렬을 수정합니다.
 fn look_to_camera_direction(
+    offset: f32,
     skinning_animation: &SkinningAnimation,
     view_rotation: LatLon,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let angle = view_rotation.lat / 3.0;
+    let angle = view_rotation.lat / 3.0 * offset;
     let bone_entity = skinning_animation.lower_spine;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_LOCAL, angle);
 
-    let angle = view_rotation.lat / 3.0;
+    let angle = view_rotation.lat / 3.0 * offset;
     let bone_entity = skinning_animation.uppper_spine;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_1_LOCAL, angle);
 
-    let angle = view_rotation.lat / 3.0;
+    let angle = view_rotation.lat / 3.0 * offset;
     let bone_entity = skinning_animation.head;
     let local_transform = transform_view
         .get_mut(bone_entity)
