@@ -14,7 +14,7 @@ use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
 
-use crate::{channel::TaskResultChannel, config::UserConfig, SERVER_ADDR};
+use crate::{channel::TaskResultChannel, config::UserConfig, SERVER_TCP_ADDR, UDP_SOCKET_ADDR};
 
 use super::TestbedTitleScene;
 
@@ -67,8 +67,7 @@ impl GameScene for IntroScene {
         let pool = app.io_threads();
         let channel = self.task_result_channel.clone();
         let net_manager = app.net_manager().clone();
-        connect_game_server(pool, channel, net_manager);
-        self.num_task += 1;
+        connect_game_server(pool, channel, net_manager, &mut self.num_task);
 
         Ok(())
     }
@@ -163,9 +162,25 @@ impl fmt::Debug for IntroScene {
 
 /// 주어진 스레드 풀에서 게임 서버에 연결합니다.
 /// 네트워크 연결 결과를 주어진 작업 결과 채널로 전송합니다.
-fn connect_game_server(pool: &ThreadPool, channel: TaskResultChannel<()>, net_manager: NetManager) {
+fn connect_game_server(
+    pool: &ThreadPool,
+    channel: TaskResultChannel<()>,
+    net_manager: NetManager,
+    num_tasks: &mut usize,
+) {
+    let channel_cloned = channel.clone();
+    let net_manager_cloned = net_manager.clone();
     pool.spawn(move || {
-        let result = net_manager.connect(&SERVER_ADDR);
-        channel.send(result.map(|_| ()));
+        let result = net_manager_cloned.connect(&SERVER_TCP_ADDR);
+        channel_cloned.send(result.map(|_| ()));
     });
+    *num_tasks += 1;
+
+    let channel_cloned = channel.clone();
+    let net_manager_cloned = net_manager.clone();
+    pool.spawn(move || {
+        let result = net_manager_cloned.connect(&UDP_SOCKET_ADDR);
+        channel_cloned.send(result.map(|_| ()));
+    });
+    *num_tasks += 1;
 }

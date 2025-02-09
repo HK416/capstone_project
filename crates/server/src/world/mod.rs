@@ -12,10 +12,11 @@ use dashmap::DashMap;
 use glam::Vec4Swizzles;
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, CharacterKind, ClientId, Epoch, HealthPoint, LatLon,
-        MovementState, MovementStateTimer, ObjectId, Player, StageKind, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, Bullet, CharacterKind, ClientId, DamageLog, Epoch,
+        HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, StageKind,
+        ViewState, ViewStateTimer,
     },
-    protocol::{InitStagePacket, Packet, PullStagePacket},
+    protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
@@ -46,6 +47,9 @@ pub struct World {
     players: DashMap<ClientId, ServerPlayer, RandomState>,
     /// 게임 월드에 포함된 총알 데이터입니다.
     bullets: DashMap<ObjectId, ServerBullet, RandomState>,
+
+    /// 플레이어 데미지 로그입니다.
+    damage_logs: Queue<DamageLog>,
 
     /// 게임 월드에 발생한 이벤트 대기열입니다.
     events: Queue<WorldEvents>,
@@ -130,6 +134,30 @@ impl World {
 
     /// 생성된 스냅샷 데이터를 각 클라이언트에 전송합니다.
     fn broadcast(&self, snapshot: StageSnapshot) {
+        while !self.damage_logs.is_empty() {
+            let mut count = UdpDamageLogPacket::capacity();
+            let mut logs = Vec::with_capacity(count);
+            while count > 0 {
+                match self.damage_logs.pop() {
+                    Some(log) => logs.push(log),
+                    None => break,
+                };
+                count -= 1;
+            }
+
+            let packet = UdpDamageLogPacket::new(snapshot.epoch, logs);
+            for session in self.sessions.iter() {
+                match self.players.get_mut(&session.key().client_id()) {
+                    Some(item) => {
+                        if item.epoch != Epoch::new(0) {
+                            session.key().tcp_write(packet.as_raw());
+                        }
+                    }
+                    None => continue,
+                }
+            }
+        }
+
         let mut init_stage_packet = InitStagePacket::new(
             self.stage_kind,
             snapshot.epoch,
@@ -409,6 +437,10 @@ impl World {
                         formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u32;
 
                     player.health_point.0 = (player.health_point.0 - final_dmg).max(0);
+                    self.damage_logs.push(DamageLog {
+                        object_id: player.object_id,
+                        damage: HealthPoint(final_dmg),
+                    });
                     println!("  - hp: {:?}(-{})", player.health_point.0, final_dmg);
                 }
 
@@ -470,6 +502,7 @@ impl Default for World {
             sessions: DashMap::default(),
             players: DashMap::default(),
             bullets: DashMap::default(),
+            damage_logs: Queue::default(),
             events: Queue::default(),
         }
     }

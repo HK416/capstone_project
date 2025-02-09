@@ -6,11 +6,13 @@ use hecs::{Entity, EntityBuilder, With, Without, World};
 use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, ClientId, Epoch,
-        HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, ViewState,
+        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, ClientId, DamageLog,
+        Epoch, HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, ViewState,
         ViewStateTimer,
     },
-    protocol::{Packet, PullStagePacket, PushStatusPacket, RawPacket},
+    protocol::{
+        Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
+    },
 };
 use mod_render::{
     CameraResource, SamplerPool, ScreenDescriptor, SkyboxDataLayout, SkyboxResource,
@@ -39,7 +41,7 @@ use crate::{
         get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx, Damage,
         FxDamageDataLayout, FxDamageResource, LifeTime,
     },
-    SERVER_ADDR,
+    SERVER_TCP_ADDR,
 };
 
 /// 기본 게임 구조를 테스트하는 공간입니다.
@@ -73,7 +75,7 @@ pub struct TestbedInGameScene {
     skybox_resource: Arc<SkyboxResource>,
 
     /// 공격을 받아 체력이 깎인 플레이어를 저장
-    attack_logs: Vec<(Entity, u32)>,
+    damage_logs: Vec<DamageLog>,
 
     // ----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
@@ -109,7 +111,7 @@ impl TestbedInGameScene {
             controller_state_timer: ControllerInputTimer::default(),
             controller_input_flags: ControllerInputFlags::default(),
             skybox_resource,
-            attack_logs: Vec::default(),
+            damage_logs: Vec::default(),
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -555,7 +557,13 @@ impl TestbedInGameScene {
             TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
         let s_font = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
 
-        while let Some((entity, damage)) = self.attack_logs.pop() {
+        while let Some(log) = self.damage_logs.pop() {
+            // 엔터티를 가져옵니다.
+            let entity = match self.entities.get(&log.object_id) {
+                Some(&entity) => entity,
+                None => continue,
+            };
+
             // 엔터티의 스키닝 애니메이션 컴포넌트를 가져옵니다.
             let skinning_animation = self
                 .world
@@ -563,7 +571,7 @@ impl TestbedInGameScene {
                 .expect("invalid entity or invalid entity component");
             let parent = skinning_animation.head;
 
-            let s_damage = format!("{}", damage);
+            let s_damage = format!("{}", log.damage.0);
             let length = s_damage.trim().len() as f32;
             for (i, ch) in s_damage.trim().chars().enumerate() {
                 // 데미지 폰트를 생성합니다.
@@ -869,7 +877,7 @@ impl TestbedInGameScene {
             view_state_timer,
             view_rotation,
         };
-        let socket = net_manager.get(&SERVER_ADDR).expect("no such socket");
+        let socket = net_manager.get(&SERVER_TCP_ADDR).expect("no such socket");
         socket.push_packet(pakcet.as_raw());
     }
 
@@ -939,16 +947,10 @@ impl TestbedInGameScene {
                 objects.remove(&self.object_id);
                 let entity = self.get_player_entity();
 
-                // 플레이어 체력이 변동되었는지 확인합니다.
+                // 플레이어 체력을 갱신합니다.
                 let hp = health_point_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-
-                if *hp != player.health_point {
-                    // 변동되었을 경우 로그에 추가합니다.
-                    self.attack_logs
-                        .push((entity, hp.0 - player.health_point.0));
-                }
                 *hp = player.health_point;
 
                 // 플레이어 엔터티의 위치를 갱신합니다.
@@ -969,16 +971,10 @@ impl TestbedInGameScene {
                     .cloned()
                     .expect("no such entity");
 
-                // 플레이어 체력이 변동되었는지 확인합니다.
+                // 플레이어 체력을 갱신합니다.
                 let hp = health_point_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-
-                if *hp != player.health_point {
-                    // 변동되었을 경우 로그에 추가합니다.
-                    self.attack_logs
-                        .push((entity, hp.0 - player.health_point.0));
-                }
                 *hp = player.health_point;
 
                 // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
@@ -1254,15 +1250,24 @@ impl GameScene for TestbedInGameScene {
         packet: RawPacket,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let packet = PullStagePacket::try_from_raw(packet).expect("invalid packet");
-        // 패킷이 유효한지 확인합니다.
-        // 서버에서 보낸 Epoch가 클라이언트의 Epoch보다 작은 경우
-        // 수신된 패킷은 유효하지 않습니다.
-        //
-        if self.epoch <= packet.epoch {
-            self.epoch = packet.epoch;
-            self.pull_game_world(packet, app)?;
-        }
+        match packet.packet_type() {
+            PacketType::PullStage => {
+                let packet = PullStagePacket::from_raw(packet);
+                if self.epoch <= packet.epoch {
+                    self.epoch = packet.epoch;
+                    self.pull_game_world(packet, app)?;
+                }
+            }
+            PacketType::UdpDamageLog => {
+                let packet = UdpDamageLogPacket::from_raw(packet);
+                if self.epoch <= packet.epoch {
+                    self.epoch = packet.epoch;
+                    // 데미지 로그에 추가합니다.
+                    self.damage_logs.extend(packet.logs);
+                }
+            }
+            _ => panic!("invalid packet"),
+        };
 
         Ok(())
     }

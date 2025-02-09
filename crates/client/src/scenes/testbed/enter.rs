@@ -33,7 +33,7 @@ use crate::{
         BULLET_PIPELINE_NAME, CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
         FX_DAMAGE_PIPELINE_NAME, SKYBOX_PIPELINE_NAME, TERRAIN_PIPELINE_NAME,
     },
-    SERVER_ADDR,
+    SERVER_TCP_ADDR,
 };
 
 use super::TestbedInGameScene;
@@ -107,7 +107,7 @@ impl GameScene for EnterStageScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 게임 월드 접속 패킷 전송
         let net_manager = app.net_manager();
-        let socket = net_manager.get(&SERVER_ADDR).expect("no such socket");
+        let socket = net_manager.get(&SERVER_TCP_ADDR).expect("no such socket");
         let packet = EnterStagePacket::new(self.client_id, self.character_kind);
         let packet = packet.as_raw();
         socket.push_packet(packet);

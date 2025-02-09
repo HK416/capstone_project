@@ -12,7 +12,13 @@ use constcat::concat;
 use mod_app::net::IpAddress;
 
 pub const SERVER_IP: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
-pub const SERVER_ADDR: IpAddress = IpAddress::Tcp(SocketAddr::new(SERVER_IP, 7878));
+pub const SERVER_TCP_ADDR: IpAddress = IpAddress::Tcp(SocketAddr::new(SERVER_IP, 7878));
+
+pub const CLIENT_IP: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
+pub const UDP_SOCKET_ADDR: IpAddress = IpAddress::Udp {
+    port: 19261,
+    remote: SocketAddr::new(SERVER_IP, 7878),
+};
 
 pub const USER_CONFIG: &'static str = "user_config";
 
