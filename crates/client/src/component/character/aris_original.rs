@@ -51,7 +51,7 @@ pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
 );
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
-pub const WORKSPACE: &'static str = "characters/aris_original/";
+pub const WORKSPACE: &'static str = "characters/aris_original";
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Aris_Original";
 /// 캐릭터 헤일로 모델의 이름입니다.

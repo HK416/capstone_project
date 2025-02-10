@@ -1342,7 +1342,7 @@ fn create_skybox_resource(
             let path = format!("{}/{}.dds", skybox::WORKSPACE, skybox::TEXTURE_NAME);
             let cached_asset = asset_manager
                 .get_or_init(&path)
-                .map_err(|e| ModelAssetError::from(e))?;
+                .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
 
             let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
                 .map_err(|e| ModelAssetError::from(e))?;
