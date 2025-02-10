@@ -24,6 +24,7 @@ impl Ray {
         }
     }
 
+    /// 정규화된 방향 벡터를 반환한다.
     pub fn direction(&self) -> glam::Vec3 {
         self.direction
     }

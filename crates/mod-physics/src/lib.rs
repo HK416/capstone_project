@@ -1,13 +1,13 @@
 pub mod rigid_body;
-mod bounds;
 
-pub use self::bounds::*;
+mod bounds;
+pub use bounds::*;
 
 mod sphere;
-pub use self::sphere::*;
+pub use sphere::*;
 
 mod capsule;
-pub use self::capsule::*;
+pub use capsule::*;
 
 mod ray;
-pub use self::ray::*;
+pub use ray::*;
