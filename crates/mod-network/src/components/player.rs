@@ -221,7 +221,7 @@ mod tests {
         let origin = Player {
             object_id: ObjectId::new(3141592),
             character_kind: CharacterKind::MomoiOriginal,
-            health_point: HealthPoint(2700.0),
+            health_point: HealthPoint(2700),
             translation: [-1.0101, 2.3456, 1000.011],
             rotation: [0.1234, 1.99992, 0.08843, 1.0],
             velocity: [0.0, -0.1334, 0.5887],

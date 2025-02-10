@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     io::{self, BufReader, BufWriter, ErrorKind, Read, Write},
-    net::{SocketAddr, TcpStream},
+    net::{SocketAddr, TcpStream, UdpSocket},
     sync::{
         atomic::{AtomicBool, Ordering as MemOrdering},
         Arc,
@@ -21,15 +21,18 @@ use crate::etc::AppEvent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IpAddress {
     Tcp(SocketAddr),
-    Udp(SocketAddr),
+    Udp {
+        port: u16,
+        remote: SocketAddr,
+    },
 }
 
 impl IpAddress {
     /// IP 주소를 가져옵니다.
-    pub fn ip_addr(&self) -> &SocketAddr {
+    pub fn target_addr(&self) -> &SocketAddr {
         match self {
             IpAddress::Tcp(addr) => addr,
-            IpAddress::Udp(addr) => addr,
+            IpAddress::Udp { remote, .. } => remote,
         }
     }
 }
@@ -37,27 +40,35 @@ impl IpAddress {
 /// Network Socket
 #[derive(Debug)]
 enum Socket {
-    Tcp(TcpStream),
+    Tcp(TcpStream, SocketAddr),
+    Udp(UdpSocket, SocketAddr)
 }
 
 impl Socket {
     /// 수신한 데이터를 읽습니다.
-    pub fn recv_stream(&self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn recv_stream(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
         match self {
-            Socket::Tcp(stream) => {
+            Socket::Tcp(stream, addr) => {
                 let mut reader = BufReader::new(stream);
-                reader.read(buf)
-            }
+                reader.read(buf).map(|n| (n, *addr))
+            },
+            Socket::Udp(socket, _) => {
+                socket.recv_from(buf)
+            }, 
+            
         }
     }
 
     /// 데이터를 전송합니다.
     pub fn send_stream(&self, buf: &[u8]) -> io::Result<usize> {
         match self {
-            Socket::Tcp(stream) => {
+            Socket::Tcp(stream, _) => {
                 let mut writer = BufWriter::new(stream);
                 writer.write(buf)
-            }
+            },
+            Socket::Udp(socket, addr) => {
+                socket.send_to(buf, addr)
+            },
         }
     }
 }
@@ -121,14 +132,36 @@ impl NetManager {
 
                 Arc::new(SocketStatus {
                     address: address.clone(),
-                    socket: Socket::Tcp(stream),
+                    socket: Socket::Tcp(stream, *addr),
                     cvar: Condvar::new(),
                     queue: Mutex::new(VecDeque::new()),
                     is_connected: AtomicBool::new(true),
                 })
             }
-            IpAddress::Udp(_) => {
-                todo!()
+            IpAddress::Udp { port, remote } => {
+                // UDP 소켓을 생성하고 연결합니다.
+                #[cfg(feature = "dev")] {
+                    let socket = util::get_udp_socket(*port)?;
+
+                    Arc::new(SocketStatus {
+                        address: address.clone(),
+                        socket: Socket::Udp(socket, *remote),
+                        cvar: Condvar::new(),
+                        queue: Mutex::new(VecDeque::new()),
+                        is_connected: AtomicBool::new(true)
+                    })
+                }
+                #[cfg(not(feature = "dev"))] {
+                    let socket = UdpSocket::bind(addr)?;
+
+                    Arc::new(SocketStatus {
+                        address: address.clone(),
+                        socket: Socket::Udp(socket, *addr),
+                        cvar: Condvar::new(),
+                        queue: Mutex::new(VecDeque::new()),
+                        is_connected: AtomicBool::new(true)
+                    })
+                }
             }
         };
 
@@ -224,7 +257,7 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
         // 수신받은 데이터를 읽습니다.
         let result = status.socket.recv_stream(&mut buffer);
         match result {
-            Ok(0) => {
+            Ok((0, _)) => {
                 // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
                 unsafe {
                     event_loop_proxy
@@ -234,9 +267,11 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
                 status.is_connected.store(false, MemOrdering::Release);
                 break;
             }
-            Ok(n) => {
+            Ok((n, addr)) => {
                 log::debug!("received packet data (SIZE:{})", n);
-                parser.push(&buffer[..n])
+                if addr == *status.address.target_addr() {
+                    parser.push(&buffer[..n])
+                }
             },
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 continue;
@@ -261,4 +296,28 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
             }
         }
     }
+}
+
+#[cfg(feature = "dev")]
+mod util {
+    use std::{io, net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket}};
+
+    use socket2::{Domain, SockAddr, Socket, Type};
+
+    /// 테스트를 위해 같은 포트를 재사용할 수 있는 옵션을 추가한 소켓을 생성합니다.
+    ///
+    pub fn get_udp_socket(port: u16) -> io::Result<UdpSocket> {
+        let socket = Socket::new(Domain::IPV6, Type::DGRAM, None)?;
+        socket.set_reuse_address(true)?;
+
+        // 포트 번호 재사용 옵션
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        socket.set_reuse_port(true)?;
+
+        // 소켓 주소 재사용 옵션
+        let local_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port);
+        socket.bind(&SockAddr::from(local_addr))?;
+        
+        Ok(socket.into())
+    } 
 }

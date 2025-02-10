@@ -6,37 +6,59 @@
             "directories" : {
                 "aris_original" : {
                     "files" : [
+                        "Aris_Original_Body_(Instance).material",
                         "Aris_Original_Body_Mask.dds", 
                         "Aris_Original_Body.dds", 
+                        "Aris_Original_Body.mesh",
+                        "Aris_Original_Eyebrow_(Instance).material",
+                        "Aris_Original_EyeMouth_(Instance).material",
                         "Aris_Original_EyeMouth.dds",
+                        "Aris_Original_Face_(Instance).material",
                         "Aris_Original_Face_Mask.dds", 
                         "Aris_Original_Face.dds", 
+                        "Aris_Original_Hair_(Instance).material",
                         "Aris_Original_Hair_Mask.dds", 
                         "Aris_Original_Hair_Spec.dds", 
                         "Aris_Original_Hair.dds", 
+                        "Aris_Original_Halo_(Instance).material",
                         "Aris_Original_Halo.dds", 
                         "Aris_Original_Halo.hierarchy",
+                        "Aris_Original_Halo.mesh",
+                        "Aris_Original_Weapon_(Instance).material",
+                        "Aris_Original_Weapon_Glow_(Instance).material",
                         "Aris_Original_Weapon_Mask.dds", 
                         "Aris_Original_Weapon.dds", 
+                        "Aris_Original_Weapon.mesh", 
                         "Aris_Original.hierarchy",
-                        "Aris_Original.motion"
+                        "Aris_Original.motion",
+                        "FX_Aris_Original_Weapon.mesh"
                     ], 
                     "directories" : {}
                 },
                 "momoi_original" : {
                     "files" : [
+                        "Momoi_Original_Body_(Instance).material",
                         "Momoi_Original_Body_Mask.dds",
                         "Momoi_Original_Body.dds",
+                        "Momoi_Original_Body.mesh",
+                        "Momoi_Original_EyeBrow_(Instance).material",
+                        "Momoi_Original_EyeMouth_(Instance).material",
                         "Momoi_Original_EyeMouth.dds",
+                        "Momoi_Original_Face_(Instance).material",
                         "Momoi_Original_Face_Mask.dds",
                         "Momoi_Original_Face.dds",
+                        "Momoi_Original_Hair_(Instance).material",
                         "Momoi_Original_Hair_Mask_Spec.dds",
                         "Momoi_Original_Hair_Mask.dds",
                         "Momoi_Original_Hair.dds",
+                        "Momoi_Original_Halo_(Instance).material",
                         "Momoi_Original_Halo.dds",
                         "Momoi_Original_Halo.hierarchy",
+                        "Momoi_Original_Halo.mesh",
+                        "Momoi_Original_Weapon_(Instance).material",
                         "Momoi_Original_Weapon_Mask.dds",
                         "Momoi_Original_Weapon.dds",
+                        "Momoi_Original_Weapon.mesh",
                         "Momoi_Original.hierarchy",
                         "Momoi_Original.motion"
                     ],
@@ -47,8 +69,13 @@
         "common" : {
             "files" : [
                 "Bullet_01_Shell.hierarchy",
+                "Bullet_01_Shell.mesh",
                 "Bullet_01_Warhead.hierarchy",
-                "Bullet_02_Aris_Original.hierarchy"
+                "Bullet_01_Warhead.mesh",
+                "Bullet_02_Aris_Original.hierarchy",
+                "Bullet_02_Aris_Original.mesh",
+                "M_Bullet_01_(Instance).material",
+                "M_Bullet_02_(Instance).material"
             ],
             "directories" : {}
         },
@@ -69,9 +96,13 @@
                     "files" : [
                         "CrossroadPlane.dds",
                         "CrossroadPlane.hierarchy",
+                        "CrossroadPlane.mesh",
                         "CrossroadPlaneNormal.dds",
+                        "M_CrossroadPlane_(Instance).material",
+                        "M_RoadPlane_(Instance).material",
                         "RoadPlane.dds",
                         "RoadPlane.hierarchy",
+                        "RoadPlane.mesh",
                         "RoadPlaneNormal.dds"
                     ],
                     "directories" : {}

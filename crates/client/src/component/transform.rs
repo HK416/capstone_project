@@ -36,7 +36,7 @@ impl ToParentTrans {
         self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
     }
 
-    /// 월드 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
+    /// 로컬 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
     pub fn get_look_vector(&self) -> glam::Vec4 {
         self.0.z_axis.normalize_or(glam::Vec4::Z)
     }
@@ -81,6 +81,14 @@ impl WorldTransform {
             self.get_look_vector().xyz(),
             self.get_up_vector().xyz(),
         )
+    }
+
+    /// 월드 좌표계의 벡터를 모델 좌표계로 변환합니다.
+    pub fn world_to_model_vector3a(&self, v: glam::Vec3A) -> glam::Vec3A {
+        let (scale, rotation, _) = self.0.to_scale_rotation_translation();
+        let rotation_transposed = glam::Mat4::from_quat(rotation).transpose();
+        let inverse_scale = glam::Mat4::from_scale(1.0 / scale);
+        (rotation_transposed * inverse_scale).transform_vector3a(v)
     }
 }
 

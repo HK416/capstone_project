@@ -78,8 +78,6 @@ impl ModelHierarchyPool {
 pub struct HierarchyBlob {
     pub root: NodeBlob,
     pub num_nodes: u32,
-    pub minimum: Float3,
-    pub maximum: Float3,
 }
 
 /// ## Node Data
@@ -87,8 +85,8 @@ pub struct HierarchyBlob {
 pub struct NodeBlob {
     pub name: String,
     pub transform: Matrix,
-    pub mesh: Option<MeshBlob>,
-    pub materials: Vec<MaterialBlob>,
+    pub mesh: Option<String>,
+    pub materials: Vec<String>,
     pub children: Vec<NodeBlob>,
 }
 
@@ -158,10 +156,6 @@ pub struct SkinningBlob {
 pub struct Root {
     pub node: Node,
     pub num_nodes: usize,
-    #[allow(dead_code)]
-    pub minimum: [f32; 3],
-    #[allow(dead_code)]
-    pub maximum: [f32; 3],
 }
 
 /// ## Model Node
@@ -196,20 +190,18 @@ fn load_model_root(
     let path = format!("{}/{}.hierarchy", workspace, name);
     let cached_asset = asset_manager
         .get_or_init(&path)
-        .map_err(|e| ModelAssetError::from(e))?;
+        .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
     let reader = Cursor::new(cached_asset.as_bytes());
     let blob: HierarchyBlob =
-        serde_json::de::from_reader(reader).map_err(|e| ModelAssetError::from(e))?;
+        serde_json::de::from_reader(reader).map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+    asset_manager.remove(path);
 
     let node = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
     let root = Arc::new(Root {
         node,
         num_nodes: blob.num_nodes as usize,
-        minimum: blob.minimum.into(),
-        maximum: blob.maximum.into(),
     });
 
-    asset_manager.remove(path);
     Ok(root)
 }
 
@@ -224,29 +216,45 @@ fn load_model_node_recursive(
     let name = blob.name.clone();
     let transform = blob.transform.clone();
     let (skinning, mesh) = match blob.mesh.take() {
-        Some(mut blob) => match blob.skinning.take() {
-            Some(SkinningBlob {
-                quality,
-                root_bone,
-                bones,
-                bindposes,
-            }) => (
-                Some(Skinning {
-                    quality: quality.min(4),
-                    num_bones: bones.len().min(MAX_BONES) as u32,
+        Some(filename) => {
+            let path = format!("{}/{}.mesh", workspace, &filename);
+            let cached = asset_manager.get_or_init(&path)
+                .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
+            let mut blob: MeshBlob = serde_json::de::from_slice(cached.as_bytes())
+                .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+            asset_manager.remove(path);
+
+            match blob.skinning.take() {
+                Some(SkinningBlob {
+                    quality,
                     root_bone,
                     bones,
-                    bindposes: bindposes.into_iter().map(|m| m.into()).collect(),
-                }),
-                Some(create_mesh(device, queue, blob)),
-            ),
-            None => (None, Some(create_mesh(device, queue, blob))),
-        },
+                    bindposes,
+                }) => (
+                    Some(Skinning {
+                        quality: quality.min(4),
+                        num_bones: bones.len().min(MAX_BONES) as u32,
+                        root_bone,
+                        bones,
+                        bindposes: bindposes.into_iter().map(|m| m.into()).collect(),
+                    }),
+                    Some(create_mesh(device, queue, blob)),
+                ),
+                None => (None, Some(create_mesh(device, queue, blob))),
+            }
+        }
         None => (None, None),
     };
 
     let mut materials = Vec::with_capacity(blob.materials.len());
-    for blob in blob.materials {
+    for filename in blob.materials {
+        let path = format!("{}/{}.material", &workspace, &filename);
+        let cached = asset_manager.get_or_init(&path)
+            .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
+        let blob: MaterialBlob = serde_json::de::from_slice(cached.as_bytes())
+            .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+        asset_manager.remove(path);
+
         materials.push(create_material(
             workspace,
             asset_manager,
@@ -465,7 +473,7 @@ fn load_dds_texture(
             let path = format!("{}/{}.dds", workspace, &blob.name);
             let cached_asset = asset_manager
                 .get_or_init(&path)
-                .map_err(|e| ModelAssetError::from(e))?;
+                .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
 
             let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
                 .map_err(|e| ModelAssetError::from(e))?;

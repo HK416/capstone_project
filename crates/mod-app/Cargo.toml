@@ -29,6 +29,10 @@ winit = { workspace = true }
 # License: MIT
 rfd = "0.15"
 
+# Utilities for handling networking sockets with a maximal amount of configuration possible intended.
+# License: MIT OR Apache-2.0
+socket2 = { version = "0.5", features = ["all"], optional = true}
+
 # 자체 프레임워크 라이브러리
 mod-network = { path = "../mod-network" }
 mod-render = { path = "../mod-render" }
@@ -52,7 +56,10 @@ pollster = "0.4"
 
 
 [features]
-default = ["command-line-args"]
+default = ["dev"]
+
+# 개발자 옵션
+dev = ["socket2", "command-line-args"]
 
 # 명령줄 인수를 허용합니다.
 command-line-args = []

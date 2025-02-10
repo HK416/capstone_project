@@ -86,7 +86,7 @@ impl Default for ThirdPersonCamera {
     fn default() -> Self {
         Self {
             default_offset: glam::Vec4::new(0.25, 0.85, 1.5, 0.0),
-            zoom_offset: glam::Vec4::new(0.2, 0.6, 0.7, 0.0),
+            zoom_offset: glam::Vec4::new(0.125, 0.7, 0.5, 0.0),
             position_offset: glam::Vec4::new(0.25, 0.85, 1.5, 0.0),
             yaw_angle: 0.0f32.to_radians(),
             pitch_angle: 10f32.to_radians(),

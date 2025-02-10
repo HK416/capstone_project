@@ -182,10 +182,10 @@ pub enum ModelAssetError {
     TextureError(#[from] ddsfile::Error),
 
     /// 에셋 파일을 구문 분석하는데 실패한 경우 발생하는 오류입니다.
-    #[error("failed to parse asset for the following reason:{0}")]
-    ParsingFailed(#[from] serde_json::Error),
+    #[error("failed to parse asset for the following reason:{1} (PATH:{0})")]
+    ParsingFailed(String, serde_json::Error),
 
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
-    #[error("failed to read asset for the following reason:{0}")]
-    IOError(#[from] io::Error),
+    #[error("failed to read asset for the following reason:{1} (PATH:{0})")]
+    IOError(String, io::Error),
 }

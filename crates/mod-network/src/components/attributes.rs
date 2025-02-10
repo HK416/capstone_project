@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{BigEndian, TryFromBigEndian};
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, Default)]
 pub struct Float3 {
     pub x: f32,
@@ -16,21 +15,39 @@ impl Into<[f32; 3]> for Float3 {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct CharacterAttributes {
+    /// 캐릭터 이동 속도
     pub speed: f32,
+    /// `ActionState::Aim`일 때 총구의 상대 위치
     pub muzzle_position: Float3,
-    pub fire_delay_time: f32,
-    pub health_point: f32,
-    pub attack_power: f32,
-    pub defense_power: f32,
-    pub accuracy_stat: f32,
-    pub evasion_stat: f32,
-    pub critical_rate: f32,
-    pub critical_damage: f32,
-    pub attack_range: f32,
+    /// `MovementState::Moving` 애니메이션 시간 (단위: 초)
+    pub move_ing_duration: f32,
+    /// `MovementState::MoveToEnd` 애니메이션 시간 (단위: 초)
+    pub move_end_normal_duration: f32,
+    /// 걷기 애니메이션 시간 (단위: 초)
+    pub walk_duration: f32,
+    /// `ActionState::Idle` 애니메이션 시간 (단위: 초)
+    pub normal_idle_duration: f32,
+    /// `ActionState::Aiming` 애니메이션 시간 (단위: 초)
+    pub normal_attack_start_duration: f32,
+    /// `ActionState::AimOff` 애니메이션 시간 (단위: 초)
+    pub normal_attack_end_duration: f32,
+    /// `ActionState::Attack` 애니메이션 시간 (단위: 초)
+    pub normal_attack_ing_duration: f32,
+    /// 일반 공격 총알 발사 시간 (단위: 초)
+    pub normal_attack_timing: Vec<f32>,
+    /// 일반 공격 총알 발사 수
+    pub normal_attack_count: u32,
+    pub health_point: u32,
+    pub attack_power: u32,
+    pub defense_power: u32,
+    pub accuracy_stat: u32,
+    pub evasion_stat: u32,
+    pub critical_rate: u32,
+    pub critical_damage: u32,
+    pub attack_range: u32,
 }
-
 
 /// 캐릭터 모델 종류입니다.
 #[repr(u8)]
@@ -136,17 +153,17 @@ impl ToString for StageKind {
 }
 
 /// 플레이어의 체력입니다.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct HealthPoint(pub f32);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HealthPoint(pub u32);
 
 impl HealthPoint {
     /// 체력이 가질 수 있는 최소 값입니다.
-    pub const MIN_VALUE: f32 = 0.0;
+    pub const MIN_VALUE: u32 = 0;
 }
 
 impl BigEndian for HealthPoint {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(f32::from_big_endian_bytes(bytes))
+        Self(u32::from_big_endian_bytes(bytes))
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
@@ -156,7 +173,7 @@ impl BigEndian for HealthPoint {
 
 impl TryFromBigEndian for HealthPoint {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let value = f32::from_big_endian_bytes(bytes);
+        let value = u32::from_big_endian_bytes(bytes);
         if value >= Self::MIN_VALUE {
             Some(Self(value))
         } else {
@@ -246,7 +263,7 @@ mod tests {
 
     #[test]
     fn validation_test_health_point() {
-        let origin = HealthPoint(2700.0);
+        let origin = HealthPoint(2700);
         let bytes = origin.to_big_endian_bytes();
         let other = HealthPoint::from_big_endian_bytes(&bytes);
 

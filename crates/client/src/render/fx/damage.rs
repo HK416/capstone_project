@@ -427,7 +427,7 @@ pub fn get_damage_font(
             let path = "font/D_Font_Normal.dds";
             let cached_asset = asset_manager
                 .get_or_init(&path)
-                .map_err(|e| ModelAssetError::from(e))?;
+                .map_err(|e| ModelAssetError::IOError(path.to_string(), e))?;
 
             let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
                 .map_err(|e| ModelAssetError::from(e))?;

@@ -1,16 +1,6 @@
 //게임 내 공식
 
 pub mod movement_formulas {
-    // 이동 속력 계산 함수
-    pub fn cal_speed(t_duration: f32, s_move_speed: f32) -> (f32, f32, f32) {
-        let t = 2.0 * f32::min(0.5, t_duration);
-
-        let s_acceleration = s_move_speed * (3.0 * t.powi(2) - 2.0 * t.powi(3));
-        let s_deceleration = s_move_speed * (1.0 - 3.0 * t.powi(2) + 2.0 * t.powi(3));
-
-        (t, s_acceleration, s_deceleration)
-    }
-
     // 이동 거리 계산 함수
     pub fn cal_distance(
         t_elapsed: f32,
@@ -49,12 +39,7 @@ pub mod movement_formulas {
     }
 
     // 최종 데미지 계산 함수
-    pub fn final_damage(
-        default_damage: f32,
-        hit_rate: f32,
-        crt_rate: f32,
-        crt_damage: f32,
-    ) -> f32 {
+    pub fn final_damage(default_damage: f32, hit_rate: f32, crt_rate: f32, crt_damage: f32) -> f32 {
         default_damage * hit_rate * (1.0 + crt_rate * ((crt_damage / 100.0) - 1.0))
     }
 

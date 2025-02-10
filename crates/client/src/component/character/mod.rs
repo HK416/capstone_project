@@ -8,8 +8,8 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, MovementState, MovementStateTimer, Player,
-    ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer,
+    Player, ViewState, ViewStateTimer,
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -110,6 +110,7 @@ pub fn load_character_model(
 /// - 움직임 상태 지속 시간 타이머(`MovementStateTimer`)
 /// - 시야 상태(`ViewState`)
 /// - 시야 상태 지속 시간 타이머(`ViewStateTimer`)
+/// - 시야 방향(`Latlon`)
 ///
 pub fn spawn_player_character(
     player: &Player,
@@ -162,6 +163,7 @@ pub fn spawn_player_character(
     let movement_state_timer = player.movement_state_timer;
     let view_state = player.view_state;
     let view_state_timer = player.view_state_timer;
+    let view_rotation = player.view_rotation;
 
     // 컴포넌트를 추가합니다.
     builder.add(character_kind);
@@ -175,7 +177,7 @@ pub fn spawn_player_character(
     builder.add(health_point);
     builder.add_bundle((action_state, action_state_timer));
     builder.add_bundle((movement_state, movement_state_timer));
-    builder.add_bundle((view_state, view_state_timer));
+    builder.add_bundle((view_state, view_state_timer, view_rotation));
 
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
     let i = character_kind as usize;
@@ -687,6 +689,7 @@ pub fn normalize_view_state_timer(
 pub fn animate_character(
     asset_manager: &AssetManager,
     character_kind: CharacterKind,
+    view_rotation: LatLon,
     action_state: ActionState,
     action_state_timer: ActionStateTimer,
     movement_state: MovementState,
@@ -697,6 +700,7 @@ pub fn animate_character(
 ) {
     type Func = fn(
         &AssetManager,
+        LatLon,
         ActionState,
         ActionStateTimer,
         MovementState,
@@ -713,6 +717,7 @@ pub fn animate_character(
     let i = character_kind as usize;
     FUNC_TABLE[i](
         asset_manager,
+        view_rotation,
         action_state,
         action_state_timer,
         movement_state,
@@ -721,4 +726,36 @@ pub fn animate_character(
         collection_view,
         transform_view,
     );
+}
+
+/// 무기의 위치를 설정합니다.
+///
+/// # NOTE
+/// 이 함수는 캐릭터의 월드 변환 행렬이 계산된 후 호출해야 합니다.
+///
+pub fn set_weapon_position(
+    character_kind: CharacterKind,
+    action_state: ActionState,
+    skinning_animation: &SkinningAnimation,
+    child_view: &ViewBorrow<&Child>,
+    sibling_view: &ViewBorrow<&Sibling>,
+    transform_view: &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
+) {
+    if action_state == ActionState::Idle {
+        return;
+    }
+
+    type Func = fn(
+        &SkinningAnimation,
+        &ViewBorrow<&Child>,
+        &ViewBorrow<&Sibling>,
+        &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
+    );
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::set_weapon_position,
+        momoi_original::set_weapon_position,
+    ];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](skinning_animation, child_view, sibling_view, transform_view);
 }

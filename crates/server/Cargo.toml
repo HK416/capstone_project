@@ -10,20 +10,30 @@ build = "build.rs"
 
 [dependencies]
 ahash = { workspace = true }
+dashmap = { workspace = true }
 glam = { workspace = true }
 lazy_static = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
 rand = { workspace = true }
-uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+static_assertions = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
 
-futures = "0.3.30"
-tokio = { version = "1.39.3", features = ["full"] }
+futures = "0.3"
+tokio = { version = "1.43", features = ["full"] }
 
 mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }
 mod-physics = { path = "../mod-physics" }
 mod-math = { path = "../mod-math" }
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+# A logging implementation for `log` which is configured via an environment variable.
+# License: MIT OR Apache-2.0
+env_logger = "0.11"
 
 [build-dependencies]
 serde = { workspace = true }
