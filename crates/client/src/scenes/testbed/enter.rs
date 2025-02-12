@@ -687,6 +687,11 @@ fn load_terrain_models(
     channel: TaskResultChannel<()>,
     num_tasks: &mut usize,
 ) {
+    const WORKSPACE: &'static str = "stage/terrain";
+    const CITY_PLANE_01: &'static str = "City_Plane_01";
+    const CITY_PLANE_02: &'static str = "City_Plane_02";
+    const CITY_PLANE_03: &'static str = "City_Plane_03";
+
     // 교차로 모델을 로드합니다.
     {
         let asset_manager = asset_manager.clone();
@@ -695,8 +700,8 @@ fn load_terrain_models(
         let channel = channel.clone();
         pool.spawn(move || {
             let result = ModelHierarchyPool::get_or_init(
-                "CrossroadPlane",
-                "stage/terrain",
+                CITY_PLANE_01,
+                WORKSPACE,
                 &asset_manager,
                 &device,
                 &queue,
@@ -714,8 +719,8 @@ fn load_terrain_models(
         let channel = channel.clone();
         pool.spawn(move || {
             let result = ModelHierarchyPool::get_or_init(
-                "RoadPlane",
-                "stage/terrain",
+                CITY_PLANE_02,
+                WORKSPACE,
                 &asset_manager,
                 &device,
                 &queue,
@@ -726,23 +731,23 @@ fn load_terrain_models(
     }
 
     // 평면 모델을 로드합니다.
-    // {
-    //     let asset_manager = asset_manager.clone();
-    //     let device = device.clone();
-    //     let queue = queue.clone();
-    //     let channel = channel.clone();
-    //     pool.spawn(move || {
-    //         let result = ModelHierarchyPool::get_or_init(
-    //             "Plane",
-    //             "stage/terrain",
-    //             &asset_manager,
-    //             &device,
-    //             &queue,
-    //         );
-    //         channel.send(result.map(|_| ()));
-    //     });
-    //     *num_tasks += 1;
-    // }
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            let result = ModelHierarchyPool::get_or_init(
+                CITY_PLANE_03,
+                WORKSPACE,
+                &asset_manager,
+                &device,
+                &queue,
+            );
+            channel.send(result.map(|_| ()));
+        });
+        *num_tasks += 1;
+    }
 }
 
 fn load_damage_font(
@@ -1118,10 +1123,15 @@ fn spawn_terrains<'a>(
 ) -> Result<Vec<(Entity, EntityBuilder)>, ModelAssetError> {
     // FIXME: 에셋 피벗이 잘못 설정되어있음
 
+    const WORKSPACE: &'static str = "stage/terrain";
+    const CITY_PLANE_01: &'static str = "City_Plane_01";
+    const CITY_PLANE_02: &'static str = "City_Plane_02";
+    // const CITY_PLANE_03: &'static str = "City_Plane_03";
+
     let mut total_batch_commands = Vec::new();
     let (_, mut batch_commands) = spawn_terrain(
-        "CrossroadPlane",
-        "stage/terrain",
+        CITY_PLANE_01,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
         glam::vec3(30.0, 0.0, 0.0),
@@ -1133,8 +1143,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "CrossroadPlane",
-        "stage/terrain",
+        CITY_PLANE_01,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
         glam::vec3(-30.0, 0.0, 0.0),
@@ -1146,8 +1156,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "RoadPlane",
-        "stage/terrain",
+        CITY_PLANE_02,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
         glam::vec3(-30.0, 0.0, 15.0),
@@ -1159,8 +1169,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "RoadPlane",
-        "stage/terrain",
+        CITY_PLANE_02,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
         glam::vec3(-30.0, 0.0, -15.0),
@@ -1172,8 +1182,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "RoadPlane",
-        "stage/terrain",
+        CITY_PLANE_02,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
         glam::vec3(30.0, 0.0, 15.0),
@@ -1185,8 +1195,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "RoadPlane",
-        "stage/terrain",
+        CITY_PLANE_02,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::IDENTITY,
         glam::vec3(30.0, 0.0, -15.0),
@@ -1198,8 +1208,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "RoadPlane",
-        "stage/terrain",
+        CITY_PLANE_02,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
         glam::vec3(0.0, 0.0, 0.0),
@@ -1211,8 +1221,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "RoadPlane",
-        "stage/terrain",
+        CITY_PLANE_02,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
         glam::vec3(15.0, 0.0, 0.0),
@@ -1224,8 +1234,8 @@ fn spawn_terrains<'a>(
     total_batch_commands.append(&mut batch_commands);
 
     let (_, mut batch_commands) = spawn_terrain(
-        "RoadPlane",
-        "stage/terrain",
+        CITY_PLANE_02,
+        WORKSPACE,
         glam::Vec3::ONE,
         glam::Quat::from_rotation_y(90f32.to_radians()),
         glam::vec3(-15.0, 0.0, 0.0),
