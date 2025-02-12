@@ -687,7 +687,7 @@ fn load_terrain_models(
     channel: TaskResultChannel<()>,
     num_tasks: &mut usize,
 ) {
-    const WORKSPACE: &'static str = "stage/terrain";
+    const WORKSPACE: &'static str = "stage/city";
     const CITY_PLANE_01: &'static str = "City_Plane_01";
     const CITY_PLANE_02: &'static str = "City_Plane_02";
     const CITY_PLANE_03: &'static str = "City_Plane_03";
@@ -1123,7 +1123,7 @@ fn spawn_terrains<'a>(
 ) -> Result<Vec<(Entity, EntityBuilder)>, ModelAssetError> {
     // FIXME: 에셋 피벗이 잘못 설정되어있음
 
-    const WORKSPACE: &'static str = "stage/terrain";
+    const WORKSPACE: &'static str = "stage/city";
     const CITY_PLANE_01: &'static str = "City_Plane_01";
     const CITY_PLANE_02: &'static str = "City_Plane_02";
     // const CITY_PLANE_03: &'static str = "City_Plane_03";

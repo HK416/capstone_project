@@ -1,0 +1,155 @@
+{
+    "plane" : ["City_Plane_01", "City_Plane_02", "City_Plane_03"],
+    "area": [
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": -30, "y": 0, "z": 30 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": -15, "y": 0.25, "z": 30 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 0, "y": 0.25, "z": 30 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 15, "y": 0.25, "z": 30 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": 30, "y": 0, "z": 30 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": -30, "y": 0, "z": 15 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": -15, "y": 0.25, "z": 15 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 0, "y": 0.25, "z": 15 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 15, "y": 0.25, "z": 15 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": 30, "y": 0, "z": 15 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_01",
+            "height" : "City_Plane_01_Height",
+            "translation" : { "x": -30, "y": 0, "z": 0 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": -15, "y": 0, "z": 0 },
+            "rotation" : { "x": 0, "y": 0.7071068, "z": 0, "w": 0.7071068 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": 0, "y": 0, "z": 0 },
+            "rotation" : { "x": 0, "y": 0.7071068, "z": 0, "w": 0.7071068 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": 15, "y": 0, "z": 0 },
+            "rotation" : { "x": 0, "y": 0.7071068, "z": 0, "w": 0.7071068 }
+        },
+        {
+            "plane" : "City_Plane_01",
+            "height" : "City_Plane_01_Height",
+            "translation" : { "x": 30, "y": 0, "z": 0 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": -30, "y": 0, "z": -15 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": -15, "y": 0.25, "z": -15 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 0, "y": 0.25, "z": -15 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 15, "y": 0.25, "z": -15 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": 30, "y": 0, "z": -15 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": -30, "y": 0, "z": -30 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": -15, "y": 0.25, "z": -30 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 0, "y": 0.25, "z": -30 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_03",
+            "height" : "City_Plane_03_Height",
+            "translation" : { "x": 15, "y": 0.25, "z": -30 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
+        },
+        {
+            "plane" : "City_Plane_02",
+            "height" : "City_Plane_02_Height",
+            "translation" : { "x": 30, "y": 0, "z": -30 },
+            "rotation": { "x": 0, "y": 0, "z": 0, "w": 1 }
+        }
+    ]
+}

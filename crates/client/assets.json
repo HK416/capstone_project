@@ -92,7 +92,7 @@
                 "Sky.dds"
             ],
             "directories" : {
-                "terrain" : {
+                "city" : {
                     "files" : [
                         "City_Crossroad_01.dds",
                         "City_Crossroad_01.material",
