@@ -1,4 +1,4 @@
-use super::{Ray, RayIntersect};
+use mod_math::Segment;
 
 
 #[derive(Debug, Clone, Copy)]
@@ -44,16 +44,16 @@ impl BoundingBox {
         self.rotation = Some(rotation);
     }
 
-    pub fn get_rotation(&self) -> Option<glam::Mat3> {
+    pub fn rotation(&self) -> Option<glam::Mat3> {
         self.rotation
     }
 
-    pub fn check_boundingbox_collision(&self, other: &BoundingBox) -> bool {
-        if self.rotation.is_some() || other.rotation.is_some() {
-            self.obb_collision(other)
-        } else {
-            self.aabb_collision(other)
-        }
+    pub fn extents(&self) -> glam::Vec3 {
+        self.extents
+    }
+
+    pub fn center(&self) -> glam::Vec3 {
+        self.center
     }
 
     // AABB collision detection
@@ -144,58 +144,20 @@ impl BoundingBox {
             vertices.map(|v| center + v)
         }
     }
-}
 
-
-impl RayIntersect for BoundingBox {
-    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
-        // 1. Ray를 BoundingBox의 로컬 공간으로 변환
-        let (local_ray_origin, local_ray_direction) = match self.rotation {
-            Some(rotation) => {
-                let inv_rotation = rotation.transpose();    // 회전행렬의 전치행렬은 역행렬과 같다.
-                let local_origin = inv_rotation * (ray.origin - self.center);
-                let local_dir = inv_rotation * ray.direction();
-                (local_origin, local_dir)
-            }
-            None => (ray.origin - self.center, ray.direction()),
-        };
-        
-        // 2. Ray와 BoundingBox 충돌 검사
-        let mut tmin = f32::NEG_INFINITY;
-        let mut tmax = f32::INFINITY;
+    pub fn nearest_point_to_segment(&self, segment: &Segment) -> glam::Vec3 {
+        let mut nearest = glam::Vec3::new(0.0, 0.0, 0.0);
 
         for i in 0..3 {
-            // Ray가 Box의 면에 평행한 경우
-            if local_ray_direction[i] == 0.0 {
-                // Ray의 시작점이 Box 밖에 있는 경우
-                if local_ray_origin[i] < -self.extents[i] || self.extents[i] < local_ray_origin[i] {
-                    return None;
-                } 
-                // Ray의 시작점이 Box 안에 있는 경우
-                continue;
-            } else {
-                let t1 = (-self.extents[i] - local_ray_origin[i]) / local_ray_direction[i];
-                let t2 = (self.extents[i] - local_ray_origin[i]) / local_ray_direction[i];
-
-                let (t1, t2) = if t1 > t2 { (t2, t1) } else { (t1, t2) };
-
-                tmin = tmin.max(t1);
-                tmax = tmax.min(t2);
-
-                if tmin > tmax || tmax < 0.0 {
-                    return None;
-                }
-            }
+            let p1 = segment.start[i].clamp(-self.extents[i], self.extents[i]);
+            let p2 = segment.end[i].clamp(-self.extents[i], self.extents[i]);
+            if (p1 - segment.start[i]).abs() < (p2 - segment.end[i]).abs() { 
+                nearest[i] = p1;
+            } else { 
+                nearest[i] = p2;
+            };
         }
-        
-        // 3. Ray의 충돌 거리 반환
-        // Ray 시작점이 Box 안에 있는 경우 거리는 0
-        if tmin < 0.0 && 0.0 <= tmax {
-            Some(0.0)
-        } else if tmin >= 0.0 {
-            Some(tmin)
-        } else {
-            None
-        }
+    
+        nearest
     }
 }
