@@ -12,8 +12,7 @@ use crate::{SamplerPool, TexturePool, TextureViewPool};
 
 /// 재질의 종류 목록입니다.
 #[repr(u8)]
-#[derive(Serialize, Deserialize)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MaterialKind {
     Opaque = 0,
     Transparent = 1,
@@ -183,7 +182,11 @@ impl Albedo {
                 view
             }
             Albedo::Color(color) => {
-                let color: Vec<u8> = color.iter().cloned().map(|i| (i * 255.0).ceil() as u8).collect();
+                let color: Vec<u8> = color
+                    .iter()
+                    .cloned()
+                    .map(|i| (i * 255.0).ceil() as u8)
+                    .collect();
                 let texture = device.create_texture_with_data(
                     queue,
                     &wgpu::TextureDescriptor {

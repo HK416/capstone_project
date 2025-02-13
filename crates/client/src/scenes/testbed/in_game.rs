@@ -38,8 +38,8 @@ use crate::{
     config::UserConfig,
     render::{
         clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_terrain,
-        get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx, Damage,
-        FxDamageDataLayout, FxDamageResource, LifeTime,
+        get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx,
+        CompositeResource, Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
     },
     SERVER_TCP_ADDR,
 };
@@ -77,6 +77,9 @@ pub struct TestbedInGameScene {
     /// 공격을 받아 체력이 깎인 플레이어를 저장
     damage_logs: Vec<DamageLog>,
 
+    // -----  Composite Pass -----
+    composite_resource: Option<CompositeResource>,
+
     // ----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
@@ -112,6 +115,7 @@ impl TestbedInGameScene {
             controller_input_flags: ControllerInputFlags::default(),
             skybox_resource,
             damage_logs: Vec::default(),
+            composite_resource: None,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -1132,6 +1136,9 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        // Composite Pass 쉐이더 리소스를 생성합니다.
+        self.composite_resource = Some(CompositeResource::uninit(window, app.render_device()));
+
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
 
@@ -1488,13 +1495,19 @@ impl GameScene for TestbedInGameScene {
             .expect("invalid entity");
         let camera_resource = query.get().expect("invalid entity component");
 
+        // Composite Pass 쉐이더 리소스를 가져옵니다.
+        let composite_resource = self
+            .composite_resource
+            .as_ref()
+            .expect("the shader resource must exist.");
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             ..Default::default()
         });
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("RenderPass(TestbedInGameScene)"),
+                label: Some("RenderPass(OpaquePass)"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,
@@ -1550,24 +1563,85 @@ impl GameScene for TestbedInGameScene {
                 DEPTH_FORMAT,
                 &mut rpass,
             );
+        }
+
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(TransparentPass)"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                a: 0.0,
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: &composite_resource.accum_render_target,
+                        resolve_target: None,
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                a: 1.0,
+                                r: 1.0,
+                                g: 1.0,
+                                b: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: &composite_resource.reveal_render_target,
+                        resolve_target: None,
+                    }),
+                ],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
 
             draw_damage_particle(
                 &self.world,
-                &camera_resource,
                 &device,
-                SWAPCHAIN_FORMAT,
+                &camera_resource,
                 DEPTH_FORMAT,
                 &mut rpass,
             );
+        }
 
-            draw_damage_particle(
-                &self.world,
-                &camera_resource,
-                &device,
-                SWAPCHAIN_FORMAT,
-                DEPTH_FORMAT,
-                &mut rpass,
-            );
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(CompositePass)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    view: render_target_view,
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            composite_resource.process(device, SWAPCHAIN_FORMAT, DEPTH_FORMAT, &mut rpass);
+
             egui_renderer.render(
                 &mut rpass,
                 &self.egui_clip_primitives,

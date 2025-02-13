@@ -420,7 +420,7 @@ impl GameScene for LoadStageResourceScene {
 
         // 데미지 파티클 렌더링 파이프라인을 생성합니다.
         GraphicsPipelinePool::get_or_init(FX_DAMAGE_PIPELINE_NAME, move || {
-            create_fx_damage_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            create_fx_damage_render_pipeline(app.render_device(), DEPTH_FORMAT)
         });
 
         Ok(())

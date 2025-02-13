@@ -7,7 +7,8 @@ use ahash::HashMap;
 use ddsfile::Dds;
 use mod_app::asset::AssetManager;
 use mod_render::{
-    Attributes, Indices, MaterialDescriptor, MaterialKind, MaterialPool, MaterialResource, Mesh, MeshPool, SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES
+    Attributes, Indices, MaterialDescriptor, MaterialKind, MaterialPool, MaterialResource, Mesh,
+    MeshPool, SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES,
 };
 use parking_lot::{FairMutex, FairMutexGuard};
 use serde::{Deserialize, Serialize};
@@ -192,8 +193,8 @@ fn load_model_root(
         .get_or_init(&path)
         .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: HierarchyBlob =
-        serde_json::de::from_reader(reader).map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+    let blob: HierarchyBlob = serde_json::de::from_reader(reader)
+        .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
     asset_manager.remove(path);
 
     let node = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
@@ -218,7 +219,8 @@ fn load_model_node_recursive(
     let (skinning, mesh) = match blob.mesh.take() {
         Some(filename) => {
             let path = format!("{}/{}.mesh", workspace, &filename);
-            let cached = asset_manager.get_or_init(&path)
+            let cached = asset_manager
+                .get_or_init(&path)
                 .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
             let mut blob: MeshBlob = serde_json::de::from_slice(cached.as_bytes())
                 .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
@@ -249,7 +251,8 @@ fn load_model_node_recursive(
     let mut materials = Vec::with_capacity(blob.materials.len());
     for filename in blob.materials {
         let path = format!("{}/{}.material", &workspace, &filename);
-        let cached = asset_manager.get_or_init(&path)
+        let cached = asset_manager
+            .get_or_init(&path)
             .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
         let blob: MaterialBlob = serde_json::de::from_slice(cached.as_bytes())
             .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;

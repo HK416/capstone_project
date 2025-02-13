@@ -35,7 +35,7 @@ fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     })
 }
 
-/// 지형 모델 렌더링 파이프라인을 생성합니다.
+/// 총알 모델 렌더링 파이프라인을 생성합니다.
 pub fn create_bullet_render_pipeline(
     device: &wgpu::Device,
     depth_stencil_format: wgpu::TextureFormat,

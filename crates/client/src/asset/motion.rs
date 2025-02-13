@@ -74,8 +74,8 @@ fn load_model_animation(
         .get_or_init(&path)
         .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: Vec<MotionBlob> =
-        serde_json::de::from_reader(reader).map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+    let blob: Vec<MotionBlob> = serde_json::de::from_reader(reader)
+        .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
     let blob = blob
         .into_iter()
         .map(|blob| (blob.name.clone(), blob.into()))

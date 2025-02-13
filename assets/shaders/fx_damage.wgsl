@@ -11,7 +11,10 @@ struct VertexOutput {
 
 /// 프래그먼트 쉐이더 출력 데이터입니다.
 struct RenderTarget {
-    @location(0) color: vec4<f32>, 
+    // 누적 값을 저장하는 렌더 타겟 텍스처
+    @location(0) accum: vec4<f32>,
+    // 노출 값을 저장하는 렌더 타겟 텍스처
+    @location(1) reveal: f32,
 };
 
 /// 카메라 데이터 레이아웃입니다.
@@ -106,9 +109,14 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 /// 프래그먼트 쉐이더
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
-    var out: RenderTarget;
+    // Weighted Blended Order-Independent Transparency
+    let depth = input.clip_position.z;
+    let color = textureSample(t_font, s_font, input.texcoord);
+    let weight = max(min(1.0, max(max(color.r, color.g), color.b) * color.a), color.a) 
+        * clamp(0.03 / (1e-5 + pow(depth / 200.0, 4.0)), 1e-2, 3e3);
 
-    out.color = textureSample(t_font, s_font, input.texcoord);
-    
+    var out: RenderTarget;
+    out.accum = vec4<f32>(color.rgb * color.a, color.a) * weight;
+    out.reveal = color.a;
     return out;
 }
