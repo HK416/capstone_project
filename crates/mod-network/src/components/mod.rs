@@ -4,7 +4,7 @@ mod identifier;
 mod player;
 mod stage;
 mod state;
-mod map;
+pub mod map;
 
 pub use self::{attributes::*, bullet::*, identifier::*, player::*, stage::*, state::*};
 
