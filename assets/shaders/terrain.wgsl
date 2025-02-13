@@ -34,9 +34,6 @@ struct MaterialDataLayout {
     bump_scale: f32, 
     parallax: f32,
     strength: f32,
-    albedo: vec4<f32>, 
-    specular: vec4<f32>, 
-    emissive: vec4<f32>, 
 };
 
 @group(0) @binding(0)
@@ -88,11 +85,9 @@ var s_albedo: sampler;
 @vertex
 fn vs_main(input: InputAttributes) -> VertexOutput {
     var out: VertexOutput;
-
     out.position_w = (u_trans * vec4<f32>(input.position, 1.0)).xyz;
     out.clip_position = u_camera.proj_view * vec4<f32>(out.position_w, 1.0);
     out.texcoord = input.texcoord;
-
     return out;
 }
 
@@ -100,8 +95,6 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
-
-    out.color = u_material.albedo * textureSample(t_albedo, s_albedo, input.texcoord);
-    
+    out.color = textureSample(t_albedo, s_albedo, input.texcoord);
     return out;
 }

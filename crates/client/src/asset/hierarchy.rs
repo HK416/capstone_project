@@ -7,8 +7,7 @@ use ahash::HashMap;
 use ddsfile::Dds;
 use mod_app::asset::AssetManager;
 use mod_render::{
-    Attributes, Indices, MaterialDescriptor, MaterialPool, MaterialResource, Mesh, MeshPool,
-    SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES,
+    Attributes, Indices, MaterialDescriptor, MaterialKind, MaterialPool, MaterialResource, Mesh, MeshPool, SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES
 };
 use parking_lot::{FairMutex, FairMutexGuard};
 use serde::{Deserialize, Serialize};
@@ -114,6 +113,7 @@ pub struct MeshBlob {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MaterialBlob {
     pub name: String,
+    pub kind: MaterialKind,
     pub glossiness: Option<f32>,
     pub smoothness: Option<f32>,
     pub metallic: Option<f32>,
@@ -127,7 +127,7 @@ pub struct MaterialBlob {
     pub specular_map: Option<TextureBlob>,
     pub emissive_map: Option<TextureBlob>,
     pub normal_map: Option<TextureBlob>,
-    pub parallax_map: Option<TextureBlob>,
+    pub height_map: Option<TextureBlob>,
     pub occlusion_map: Option<TextureBlob>,
 }
 
@@ -400,58 +400,54 @@ fn create_material(
     blob: MaterialBlob,
 ) -> Result<Arc<MaterialResource>, ModelAssetError> {
     MaterialPool::get_or_init(&blob.name.clone(), move || {
-        let mut desc = MaterialDescriptor::new(&blob.name, device, queue);
-
+        let mut desc = MaterialDescriptor::new(&blob.name, blob.kind);
         desc.layout.glossiness = blob.glossiness.unwrap_or(0.5);
         desc.layout.smoothness = blob.smoothness.unwrap_or(0.5);
         desc.layout.metallic = blob.metallic.unwrap_or(0.2);
         desc.layout.bump_scale = blob.bump_scale.unwrap_or(0.0);
         desc.layout.parallax = blob.parallax.unwrap_or(0.0);
         desc.layout.strength = blob.strength.unwrap_or(0.0);
-        desc.layout.albedo = blob.albedo.map(|v| v.into()).unwrap_or([0.0; 4]);
-        desc.layout.specular = blob.specular.map(|v| v.into()).unwrap_or([0.0; 4]);
-        desc.layout.emissive = blob.emissive.map(|v| v.into()).unwrap_or([0.0; 4]);
 
         if let Some(texture_blob) = blob.albedo_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.albedo_map = texture_view;
-            desc.albedo_sampler = sampler;
+            desc.with_albedo_texture(view, sampler);
+        } else if let Some(color) = blob.albedo {
+            desc.with_albedo_color(color.into());
         }
 
         if let Some(texture_blob) = blob.specular_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.specular_map = texture_view;
-            desc.specular_sampler = sampler;
+            desc.with_specular_texture(view, sampler);
+        } else if let Some(color) = blob.specular {
+            desc.with_specular_color(color.into());
         }
 
         if let Some(texture_blob) = blob.emissive_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.emissive_map = texture_view;
-            desc.emissive_sampler = sampler;
+            desc.with_emissive_texture(view, sampler);
+        } else if let Some(color) = blob.emissive {
+            desc.with_emissive_color(color.into());
         }
 
         if let Some(texture_blob) = blob.normal_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.normal_map = texture_view;
-            desc.normal_sampler = sampler;
+            desc.with_normal_texture(view, sampler);
         }
 
-        if let Some(texture_blob) = blob.parallax_map {
-            let (texture_view, sampler) =
+        if let Some(texture_blob) = blob.height_map {
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.parallax_map = texture_view;
-            desc.parallax_sampler = sampler;
+            desc.with_height_texture(view, sampler);
         }
 
         if let Some(texture_blob) = blob.occlusion_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.occlusion_map = texture_view;
-            desc.occlusion_sampler = sampler;
+            desc.with_occlusion_texture(view, sampler);
         }
 
         let resource = MaterialResource::new(device, queue, &desc);

@@ -73,9 +73,6 @@ struct MaterialDataLayout {
     bump_scale: f32, 
     parallax: f32,
     strength: f32,
-    albedo: vec4<f32>, 
-    specular: vec4<f32>, 
-    emissive: vec4<f32>, 
 };
 
 
@@ -172,8 +169,6 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
-
-    out.color = u_material.albedo * textureSample(t_albedo, s_albedo, input.texcoord);
-    
+    out.color = textureSample(t_albedo, s_albedo, input.texcoord);
     return out;
 }
