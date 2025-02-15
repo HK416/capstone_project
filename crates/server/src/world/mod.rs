@@ -490,23 +490,25 @@ impl World {
             let attributes = get_character_attributes(player.character_kind);
 
             // 플레이어 이동 벡터 계산
-            let velocity = match player.movement_state {
+            player.velocity = match player.movement_state {
                 MovementState::Moving => player.direction * attributes.speed,
                 _ => glam::Vec3A::ZERO,
             };
+            player.velocity.y += -9.8;
 
             // 이동 시도 (이동 전 위치 저장)
-            let new_x = player.translation.x + velocity.x * elapsed_time_sec;
-            let new_z = player.translation.z + velocity.z * elapsed_time_sec;
+            let new_p = player.translation + player.velocity * elapsed_time_sec;
 
             // 이동 가능 여부 체크 (`GameMap` 참조)  // 수정됨
-            if self.game_map.is_position_valid(new_x, new_z) {
-                player.translation.x = new_x;
-                player.translation.z = new_z;
+            if self.game_map.is_position_valid(new_p.x, new_p.z) {
+                player.translation = new_p;
 
                 // Y 좌표 자동 조정 (`GameMap` 참조)  // 수정됨
-                if let Some(new_y) = self.game_map.adjust_y_position(new_x, new_z) {
-                    player.translation.y = new_y;
+                if let Some(new_y) = self.game_map.adjust_y_position(new_p.x, new_p.z) {
+                    if new_y >= new_p.y {
+                        player.translation.y = new_y;
+                        player.direction.y = 0.0;
+                    }
                 }
             } else {
                 println!("경고: 플레이어가 이동 가능한 지역을 벗어나 이동이 제한됩니다.");
@@ -522,7 +524,7 @@ impl Default for World {
         Self {
             epoch: AtomicU64::new(0),
             stage_kind: StageKind::default(),
-            game_map: GameMap::new().expect("맵 로드 실패"), 
+            game_map: GameMap::get("city").expect("맵 로드 실패"), 
             sessions: DashMap::default(),
             players: DashMap::default(),
             bullets: DashMap::default(),
