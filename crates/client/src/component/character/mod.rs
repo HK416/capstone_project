@@ -16,7 +16,7 @@ use mod_render::{
 };
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool, MotionPool},
+    asset::{AssetError, ModelHierarchyPool, MotionPool},
     component::{Acceleration, Child, Force, Sibling, ToParentTrans, Velocity, WorldTransform},
     render::{
         create_character_halo_render_pipeline, create_character_render_pipeline,
@@ -63,7 +63,7 @@ pub fn load_character_model(
     character_kind: CharacterKind,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<(), ModelAssetError> {
+) -> Result<(), AssetError> {
     const MODELS: [(&'static str, &'static str, &'static str); NUM_CHARACTERS] = [
         (
             aris_original::WORKSPACE,
@@ -118,7 +118,7 @@ pub fn spawn_player_character(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     world: &World,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     type CharacterFunc =
         fn(
             &AssetManager,
@@ -127,15 +127,14 @@ pub fn spawn_player_character(
             &World,
             Entity,
         )
-            -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), ModelAssetError>;
+            -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError>;
     type CharacterHaloFunc = fn(
         &AssetManager,
         &wgpu::Device,
         &wgpu::Queue,
         &World,
         Entity,
-    )
-        -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError>;
+    ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError>;
     const CHARACTER_FN: [CharacterFunc; NUM_CHARACTERS] = [
         aris_original::spawn_character_model,
         momoi_original::spawn_character_model,

@@ -13,7 +13,7 @@ use mod_render::{CameraResource, GraphicsPipelinePool, TexturePool};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    asset::ModelAssetError,
+    asset::AssetError,
     component::{Parent, ToParentTrans, WorldTransform},
     render::CompositeResource,
 };
@@ -448,17 +448,18 @@ pub fn get_damage_font(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+) -> Result<Arc<wgpu::Texture>, AssetError> {
     TexturePool::get_or_init(
         "Fx(D_Font_Normal)",
-        move || -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+        move || -> Result<Arc<wgpu::Texture>, AssetError> {
             let path = "font/D_Font_Normal.dds";
-            let cached_asset = asset_manager
-                .get_or_init(&path)
-                .map_err(|e| ModelAssetError::IOError(path.to_string(), e))?;
+            let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
+                log::error!("{} (PATH:{})", &e, &path);
+                AssetError::from(e)
+            })?;
 
-            let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
-                .map_err(|e| ModelAssetError::from(e))?;
+            let dds =
+                Dds::read(Cursor::new(cached_asset.as_bytes())).map_err(|e| AssetError::from(e))?;
 
             let texture = device.create_texture_with_data(
                 &queue,

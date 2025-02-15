@@ -6,7 +6,7 @@ use mod_app::asset::AssetManager;
 use mod_network::components::{Bullet, BulletKind};
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool},
+    asset::{AssetError, ModelHierarchyPool},
     component::{Child, ToParentTrans, WorldTransform},
 };
 
@@ -24,7 +24,7 @@ pub fn load_bullet_model(
     bullet_kind: BulletKind,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<(), ModelAssetError> {
+) -> Result<(), AssetError> {
     const MODELS: [(&'static str, &'static str); NUM_BULLETS] = [
         (common::WORKSPACE, common::MODEL_NAME),
         (aris_original::WORKSPACE, aris_original::MODEL_NAME),
@@ -54,14 +54,14 @@ pub fn spwan_bullet(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     world: &World,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     type SpawnFn = fn(
         &AssetManager,
         &wgpu::Device,
         &wgpu::Queue,
         &World,
         Entity,
-    ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError>;
+    ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError>;
     const FUNC_TABLE: [SpawnFn; NUM_BULLETS] =
         [spawn_common_bullet_model, spawn_aris_original_bullet_model];
 

@@ -108,7 +108,8 @@
                         "City_Road_Normal.dds",
                         "City_Sidewalk_01.dds",
                         "City_Sidewalk_01.material",
-                        "City_Sidewalk_Normal.dds"
+                        "City_Sidewalk_Normal.dds",
+                        "map.json"
                     ],
                     "directories" : {}
                 }

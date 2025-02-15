@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt as _;
 
 use super::{
-    AddressMode, FilterMode, Float2, Float3, Float4, Matrix, ModelAssetError, Uint4, ViewDimension,
+    AddressMode, AssetError, FilterMode, Float2, Float3, Float4, Matrix, Uint4, ViewDimension,
 };
 
 type PoolType = HashMap<String, Arc<Root>>;
@@ -47,7 +47,7 @@ impl ModelHierarchyPool {
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<Arc<Root>, ModelAssetError> {
+    ) -> Result<Arc<Root>, AssetError> {
         let mut pool = get_pool();
         match pool.get(name).cloned() {
             Some(root) => Ok(root),
@@ -187,14 +187,17 @@ fn load_model_root(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<Arc<Root>, ModelAssetError> {
+) -> Result<Arc<Root>, AssetError> {
     let path = format!("{}/{}.hierarchy", workspace, name);
-    let cached_asset = asset_manager
-        .get_or_init(&path)
-        .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
+    let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
+        log::error!("{} (PATH:{})", &e, &path);
+        AssetError::from(e)
+    })?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: HierarchyBlob = serde_json::de::from_reader(reader)
-        .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+    let blob: HierarchyBlob = serde_json::de::from_reader(reader).map_err(|e| {
+        log::error!("{} (PATH:{})", &e, &path);
+        AssetError::from(e)
+    })?;
     asset_manager.remove(path);
 
     let node = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
@@ -213,17 +216,21 @@ fn load_model_node_recursive(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     mut blob: NodeBlob,
-) -> Result<Node, ModelAssetError> {
+) -> Result<Node, AssetError> {
     let name = blob.name.clone();
     let transform = blob.transform.clone();
     let (skinning, mesh) = match blob.mesh.take() {
         Some(filename) => {
             let path = format!("{}/{}.mesh", workspace, &filename);
-            let cached = asset_manager
-                .get_or_init(&path)
-                .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
-            let mut blob: MeshBlob = serde_json::de::from_slice(cached.as_bytes())
-                .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+            let cached = asset_manager.get_or_init(&path).map_err(|e| {
+                log::error!("{} (PATH:{})", &e, &path);
+                AssetError::from(e)
+            })?;
+            let mut blob: MeshBlob =
+                serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
+                    log::error!("{} (PATH:{})", &e, &path);
+                    AssetError::from(e)
+                })?;
             asset_manager.remove(path);
 
             match blob.skinning.take() {
@@ -251,11 +258,14 @@ fn load_model_node_recursive(
     let mut materials = Vec::with_capacity(blob.materials.len());
     for filename in blob.materials {
         let path = format!("{}/{}.material", &workspace, &filename);
-        let cached = asset_manager
-            .get_or_init(&path)
-            .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
-        let blob: MaterialBlob = serde_json::de::from_slice(cached.as_bytes())
-            .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+        let cached = asset_manager.get_or_init(&path).map_err(|e| {
+            log::error!("{} (PATH:{})", &e, &path);
+            AssetError::from(e)
+        })?;
+        let blob: MaterialBlob = serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
+            log::error!("{} (PATH:{})", &e, &path);
+            AssetError::from(e)
+        })?;
         asset_manager.remove(path);
 
         materials.push(create_material(
@@ -401,7 +411,7 @@ fn create_material(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     blob: MaterialBlob,
-) -> Result<Arc<MaterialResource>, ModelAssetError> {
+) -> Result<Arc<MaterialResource>, AssetError> {
     MaterialPool::get_or_init(&blob.name.clone(), move || {
         let mut desc = MaterialDescriptor::new(&blob.name, blob.kind);
         desc.layout.glossiness = blob.glossiness.unwrap_or(0.5);
@@ -465,17 +475,18 @@ fn load_dds_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     blob: TextureBlob,
-) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), ModelAssetError> {
+) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError> {
     let texture = TexturePool::get_or_init(
         &blob.name.clone(),
-        move || -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+        move || -> Result<Arc<wgpu::Texture>, AssetError> {
             let path = format!("{}/{}.dds", workspace, &blob.name);
-            let cached_asset = asset_manager
-                .get_or_init(&path)
-                .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
+            let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
+                log::error!("{} (PATH:{})", &e, &path);
+                AssetError::from(e)
+            })?;
 
-            let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
-                .map_err(|e| ModelAssetError::from(e))?;
+            let dds =
+                Dds::read(Cursor::new(cached_asset.as_bytes())).map_err(|e| AssetError::from(e))?;
 
             let texture = device.create_texture_with_data(
                 queue,

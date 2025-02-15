@@ -8,7 +8,7 @@ use mod_app::asset::AssetManager;
 use parking_lot::{FairMutex, FairMutexGuard};
 use serde::{Deserialize, Serialize};
 
-use super::{Matrix, ModelAssetError};
+use super::{AssetError, Matrix};
 
 type PoolType = HashMap<String, Arc<HashMap<String, Motion>>>;
 
@@ -37,7 +37,7 @@ impl MotionPool {
         name: &str,
         workspace: &str,
         asset_manager: &AssetManager,
-    ) -> Result<Arc<HashMap<String, Motion>>, ModelAssetError> {
+    ) -> Result<Arc<HashMap<String, Motion>>, AssetError> {
         let mut pool = get_pool();
         match pool.get(name).cloned() {
             Some(motion) => Ok(motion),
@@ -68,14 +68,17 @@ fn load_model_animation(
     name: &str,
     workspace: &str,
     asset_manager: &AssetManager,
-) -> Result<Arc<HashMap<String, Motion>>, ModelAssetError> {
+) -> Result<Arc<HashMap<String, Motion>>, AssetError> {
     let path = format!("{}/{}.motion", workspace, name);
-    let cached_asset = asset_manager
-        .get_or_init(&path)
-        .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
+    let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
+        log::error!("{} (PATH:{})", &e, &path);
+        AssetError::from(e)
+    })?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: Vec<MotionBlob> = serde_json::de::from_reader(reader)
-        .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+    let blob: Vec<MotionBlob> = serde_json::de::from_reader(reader).map_err(|e| {
+        log::error!("{} (PATH:{})", &e, &path);
+        AssetError::from(e)
+    })?;
     let blob = blob
         .into_iter()
         .map(|blob| (blob.name.clone(), blob.into()))

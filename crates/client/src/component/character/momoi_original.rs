@@ -11,7 +11,7 @@ use mod_network::components::{
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool, Motion, MotionPool, Node},
+    asset::{AssetError, ModelHierarchyPool, Motion, MotionPool, Node},
     component::{
         BoneCollection, CharacterHaloKind, Child, ControllerInputFlags, Parent, Sibling,
         SkinningAnimation, ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX,
@@ -98,7 +98,7 @@ pub fn spawn_character_model(
     queue: &wgpu::Queue,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root =
         ModelHierarchyPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager, device, queue)?;
 
@@ -349,7 +349,7 @@ pub fn spawn_character_model_halo(
     queue: &wgpu::Queue,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root =
         ModelHierarchyPool::get_or_init(MODEL_HALO_NAME, WORKSPACE, asset_manager, device, queue)?;
 

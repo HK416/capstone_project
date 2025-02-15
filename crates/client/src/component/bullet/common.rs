@@ -6,7 +6,7 @@ use mod_network::components::BulletKind;
 use mod_render::{MaterialResource, MeshResource};
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool, Node},
+    asset::{AssetError, ModelHierarchyPool, Node},
     component::{Child, Parent, Sibling, ToParentTrans, WorldTransform},
 };
 
@@ -36,7 +36,7 @@ pub fn spawn_common_bullet_model(
     queue: &wgpu::Queue,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root =
         ModelHierarchyPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager, device, queue)?;
 

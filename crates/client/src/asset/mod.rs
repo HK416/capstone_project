@@ -1,11 +1,12 @@
 mod hierarchy;
 mod motion;
+mod stage;
 
 use std::io;
 
 use serde::{Deserialize, Serialize};
 
-pub use self::{hierarchy::*, motion::*};
+pub use self::{hierarchy::*, motion::*, stage::*};
 
 /// ## Two-Dimensional Vector Data
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -17,6 +18,12 @@ pub struct Float2 {
 impl Into<[f32; 2]> for Float2 {
     fn into(self) -> [f32; 2] {
         [self.x, self.y]
+    }
+}
+
+impl Into<glam::Vec2> for Float2 {
+    fn into(self) -> glam::Vec2 {
+        glam::vec2(self.x, self.y)
     }
 }
 
@@ -34,6 +41,12 @@ impl Into<[f32; 3]> for Float3 {
     }
 }
 
+impl Into<glam::Vec3> for Float3 {
+    fn into(self) -> glam::Vec3 {
+        glam::vec3(self.x, self.y, self.z)
+    }
+}
+
 /// ## Four-Dimensional Vector Data
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct Float4 {
@@ -46,6 +59,18 @@ pub struct Float4 {
 impl Into<[f32; 4]> for Float4 {
     fn into(self) -> [f32; 4] {
         [self.x, self.y, self.z, self.w]
+    }
+}
+
+impl Into<glam::Vec4> for Float4 {
+    fn into(self) -> glam::Vec4 {
+        glam::vec4(self.x, self.y, self.z, self.w)
+    }
+}
+
+impl Into<glam::Quat> for Float4 {
+    fn into(self) -> glam::Quat {
+        glam::quat(self.x, self.y, self.z, self.w)
     }
 }
 
@@ -174,18 +199,18 @@ impl Into<wgpu::FilterMode> for FilterMode {
     }
 }
 
-/// ## Model Load Error List
+/// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]
-pub enum ModelAssetError {
+pub enum AssetError {
     /// dds 포맷의 텍스처를 읽는데 실패한 경우 발생하는 오류입니다.
     #[error("failed to read texture for the following reason:{0}")]
     TextureError(#[from] ddsfile::Error),
 
     /// 에셋 파일을 구문 분석하는데 실패한 경우 발생하는 오류입니다.
-    #[error("failed to parse asset for the following reason:{1} (PATH:{0})")]
-    ParsingFailed(String, serde_json::Error),
+    #[error("failed to parse asset for the following reason:{0})")]
+    ParsingFailed(#[from] serde_json::Error),
 
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
-    #[error("failed to read asset for the following reason:{1} (PATH:{0})")]
-    IOError(String, io::Error),
+    #[error("failed to read asset for the following reason:{0})")]
+    IOError(#[from] io::Error),
 }

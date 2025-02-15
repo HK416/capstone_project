@@ -3,7 +3,7 @@ mod terrain;
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::asset::AssetManager;
 
-use crate::asset::ModelAssetError;
+use crate::asset::AssetError;
 
 use super::{Child, ToParentTrans, WorldTransform};
 
@@ -31,7 +31,7 @@ pub fn spawn_terrain(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     world: &World,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     // 엔터티를 하나 할당받습니다.
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();

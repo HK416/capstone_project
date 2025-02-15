@@ -5,7 +5,7 @@ use mod_app::asset::AssetManager;
 use mod_render::{MaterialResource, MeshResource};
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool, Node},
+    asset::{AssetError, ModelHierarchyPool, Node},
     component::{Child, Parent, Sibling, ToParentTrans, WorldTransform},
 };
 
@@ -37,7 +37,7 @@ pub fn spawn_terrain_model(
     queue: &wgpu::Queue,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root = ModelHierarchyPool::get_or_init(name, workspace, asset_manager, device, queue)?;
 
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
