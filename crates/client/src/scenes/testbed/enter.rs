@@ -24,14 +24,17 @@ use winit::window::Window;
 use crate::{
     asset::{load_stage_from_asset, AssetError, GameWorldMapData, ModelHierarchyPool},
     channel::TaskResultChannel,
-    component::{load_bullet_model, load_character_model, spawn_player_character, spawn_terrain},
+    component::{
+        load_bullet_model, load_character_model, spawn_player_character, spawn_stage_area,
+        spawn_stage_prop,
+    },
     config::UserConfig,
     render::{
         create_bullet_render_pipeline, create_character_halo_render_pipeline,
         create_character_render_pipeline, create_fx_damage_render_pipeline,
-        create_skybox_render_pipeline, create_terrain_render_pipeline, skybox,
+        create_skybox_render_pipeline, create_stage_area_render_pipeline, skybox,
         BULLET_PIPELINE_NAME, CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
-        FX_DAMAGE_PIPELINE_NAME, SKYBOX_PIPELINE_NAME, TERRAIN_PIPELINE_NAME,
+        FX_DAMAGE_PIPELINE_NAME, SKYBOX_PIPELINE_NAME, STAGE_AREA_PIPELINE_NAME,
     },
     SERVER_TCP_ADDR,
 };
@@ -409,8 +412,8 @@ impl GameScene for LoadStageResourceScene {
         });
 
         // 지형 렌더링 파이프라인을 생성합니다.
-        GraphicsPipelinePool::get_or_init(TERRAIN_PIPELINE_NAME, move || {
-            create_terrain_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+        GraphicsPipelinePool::get_or_init(STAGE_AREA_PIPELINE_NAME, move || {
+            create_stage_area_render_pipeline(app.render_device(), DEPTH_FORMAT, SWAPCHAIN_FORMAT)
         });
 
         // Skybox 렌더링 파이프라인을 생성합니다.
@@ -702,7 +705,7 @@ fn load_stage_data(
         };
 
         // 스테이지에 포함된 모델 데이터를 로드합니다.
-        for name in data.plane.iter() {
+        for name in data.models.iter() {
             let result =
                 ModelHierarchyPool::get_or_init(name, WORKSPACE, &asset_manager, &device, &queue);
             if let Err(e) = result {
@@ -1094,14 +1097,31 @@ fn spawn_stage<'a>(
     let cached_asset = asset_manager.get_or_init(path)?;
     let data: GameWorldMapData = serde_json::from_slice(cached_asset.as_bytes())?;
 
+    // 스테이지 지역 모델 엔터티를 생성합니다.
     let mut batch_commands = Vec::new();
     for area in data.area.iter() {
-        let (_, mut commands) = spawn_terrain(
-            &area.plane,
+        let (_, mut commands) = spawn_stage_area(
+            &area.model,
             WORKSPACE,
             glam::Vec3::ONE,
             area.rotation.into(),
             area.translation.into(),
+            asset_manager,
+            device,
+            queue,
+            world,
+        )?;
+        batch_commands.append(&mut commands);
+    }
+
+    // 스테이지 소품 모델 엔터티를 생성합니다.
+    for prop in data.props.iter() {
+        let (_, mut commands) = spawn_stage_prop(
+            &prop.model,
+            WORKSPACE,
+            prop.scale.into(),
+            prop.rotation.into(),
+            prop.translation.into(),
             asset_manager,
             device,
             queue,

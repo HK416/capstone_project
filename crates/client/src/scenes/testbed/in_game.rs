@@ -32,14 +32,14 @@ use crate::{
         update_movement_state_by_controller_state, update_movement_state_timer,
         update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
         update_view_state_timer, BoneCollection, Child, ControllerInputFlags, ControllerInputTimer,
-        ControllerState, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, TerrainTag,
-        ThirdPersonCamera, ToParentTrans, WorldTransform,
+        ControllerState, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, StageArea,
+        StageProp, ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     render::{
-        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_terrain,
-        get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx,
-        CompositeResource, Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
+        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
+        draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
+        spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
     },
     SERVER_TCP_ADDR,
 };
@@ -808,23 +808,37 @@ impl TestbedInGameScene {
         prepare_mesh_resource(&self.world, entities, device, queue);
     }
 
-    /// 지형 엔터티의 계층 구조를 갱신합니다.
+    /// 스테이지 엔터티의 계층 구조를 갱신합니다.
     fn update_stage_hierarchy(&mut self) {
-        let query = self.world.query_mut::<Without<&TerrainTag, &Parent>>();
-        let entities: Vec<_> = query.into_iter().map(|(entity, _)| entity).collect();
+        // 스테이지 지역 엔터티와 소품 엔터티를 수집합니다.
+        let mut entities = Vec::new();
+        let query = self.world.query_mut::<Without<&StageArea, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        let query = self.world.query_mut::<Without<&StageProp, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        // 엔터티의 계층 구조를 갱신합니다.
         for entity in entities {
             update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
         }
     }
 
-    /// 지형 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
+    /// 스테이지 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
     ///
     /// # Note
     /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
     ///
     fn prepare_stage_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let query = self.world.query_mut::<Without<&TerrainTag, &Parent>>();
-        let entities: Vec<_> = query.into_iter().map(|(entity, _)| entity).collect();
+        // 스테이지 지역 엔터티와 소품 엔터티를 수집합니다.
+        let mut entities = Vec::new();
+        let query = self.world.query_mut::<Without<&StageArea, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        let query = self.world.query_mut::<Without<&StageProp, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        // 엔터티의 메쉬 리소스를 갱신합니다.
         prepare_mesh_resource(&self.world, &entities, device, queue);
     }
 
@@ -1547,7 +1561,16 @@ impl GameScene for TestbedInGameScene {
                 &mut rpass,
             );
 
-            draw_terrain(
+            draw_stage_area(
+                &self.world,
+                &camera_resource,
+                &device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+
+            draw_stage_props(
                 &self.world,
                 &camera_resource,
                 &device,

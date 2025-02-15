@@ -5,15 +5,15 @@ use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
 };
 
-use crate::component::TerrainTag;
+use crate::component::StageArea;
 
-pub const TERRAIN_PIPELINE_NAME: &'static str = "Terrain";
+pub const STAGE_AREA_PIPELINE_NAME: &'static str = "StageArea";
 
 /// 쉐이더 모듈을 생성합니다.
 fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     let desc = wgpu::include_wgsl!(concat!(
         env!("CARGO_WORKSPACE_DIR"),
-        "/assets/shaders/terrain.wgsl"
+        "/assets/shaders/area.wgsl"
     ));
 
     if cfg!(feature = "enable-shader-validation") {
@@ -26,7 +26,7 @@ fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
 /// 파이프라인 레이아웃을 생성합니다.
 fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("PipelineLayout(Terrain)"),
+        label: Some(&format!("PipelineLayout({})", &STAGE_AREA_PIPELINE_NAME)),
         bind_group_layouts: &[
             CameraResource::bind_group_layout(device),
             MeshResource::bind_group_layout(device),
@@ -36,8 +36,8 @@ fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     })
 }
 
-/// 지형 모델 렌더링 파이프라인을 생성합니다.
-pub fn create_terrain_render_pipeline(
+/// 스테이지 지역 모델 렌더링 파이프라인을 생성합니다.
+pub fn create_stage_area_render_pipeline(
     device: &wgpu::Device,
     depth_stencil_format: wgpu::TextureFormat,
     render_target_format: wgpu::TextureFormat,
@@ -45,7 +45,7 @@ pub fn create_terrain_render_pipeline(
     let module = create_shader_module(device);
     let layout = create_pipeline_layout(device);
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("RenderPipeline(Terrain)"),
+        label: Some(&format!("RenderPipeline({})", &STAGE_AREA_PIPELINE_NAME)),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &module,
@@ -126,7 +126,8 @@ pub fn create_terrain_render_pipeline(
     Arc::new(pipeline)
 }
 
-pub fn draw_terrain<'a>(
+/// 스테이지 지역 모델을 그립니다.
+pub fn draw_stage_area<'a>(
     world: &'a World,
     camera_resource: &'a CameraResource,
     device: &wgpu::Device,
@@ -139,11 +140,11 @@ pub fn draw_terrain<'a>(
         &'a Arc<MeshResource>,
         &'a Vec<Arc<MaterialResource>>,
     );
-    let mut query = world.query::<With<Query, &TerrainTag>>();
+    let mut query = world.query::<With<Query, &StageArea>>();
     for (_, (mesh, mesh_resource, materials)) in query.iter() {
-        // 지형 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-        let pipeline = GraphicsPipelinePool::get_or_init(TERRAIN_PIPELINE_NAME, || {
-            create_terrain_render_pipeline(device, depth_stencil_format, render_target_format)
+        // 스테이지 지역 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
+        let pipeline = GraphicsPipelinePool::get_or_init(STAGE_AREA_PIPELINE_NAME, || {
+            create_stage_area_render_pipeline(device, depth_stencil_format, render_target_format)
         });
         rpass.set_pipeline(&pipeline);
 
