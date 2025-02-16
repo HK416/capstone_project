@@ -165,23 +165,54 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
     }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     env_logger::init();
 
     let mut args = env::args();
     args.next();
 
-    let addr = match args.next() {
-        Some(args) => match Addr::from_str(&args) {
-            Ok(addr) => addr,
-            Err(e) => {
-                eprintln!("{}", e);
+    let mut addr = Addr::default();
+    let mut num_threads = num_cpus::get();
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--set-addr" => {
+                if let Some(addr_str) = args.next() {
+                    addr = match Addr::from_str(&addr_str) {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            eprintln!("명령줄 인자 형식이 잘못되었습니다.\n  `--set-addr` - 잘못된 주소 형식입니다.\n{}", e);
+                            return;
+                        }
+                    }
+                }
+            }
+            "--num-threads" => {
+                if let Some(threads_str) = args.next() {
+                    num_threads = match threads_str.parse::<usize>() {
+                        Ok(num_threads) => num_threads,
+                        Err(e) => {
+                            eprintln!("명령줄 인자 형식이 잘못되었습니다.\n  `--num_threads` - 스레드 수는 양의 정수여야 합니다.\n{}", e);
+                            return;
+                        }
+                    }
+                }
+            }
+            _ => {
+                eprintln!("Invalid option: {}", arg);
                 return;
             }
-        },
-        None => Addr::default(),
+        }
     };
+    
+    println!("num_threads: {}", num_threads);
 
-    run_server(&addr.to_string()).await;
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(num_threads)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(
+            run_server(&addr.to_string())
+        );
 }

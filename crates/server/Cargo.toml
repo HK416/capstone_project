@@ -14,6 +14,7 @@ dashmap = { workspace = true }
 glam = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
+num_cpus = { workspace = true }
 parking_lot = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
