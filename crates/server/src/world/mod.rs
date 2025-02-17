@@ -1,7 +1,9 @@
 mod data;
 mod event;
 mod player;
+use mod_network::components::map::GameMap;
 
+               
 use std::sync::{
     atomic::{AtomicU64, Ordering as MemOrdering},
     Arc, OnceLock,
@@ -40,6 +42,9 @@ pub struct World {
 
     /// 게임 지형의 종류입니다.
     stage_kind: StageKind,
+
+    /// 게임 맵 데이터 (`GameMap`)입니다.
+    game_map: GameMap, 
 
     /// 게임 월드에 참가한 세션 데이터입니다.
     sessions: DashMap<Arc<Session>, ObjectId, RandomState>,
@@ -484,14 +489,34 @@ impl World {
         for mut player in self.players.iter_mut() {
             let attributes = get_character_attributes(player.character_kind);
 
-            // 플레이어 이동
-            let velocity = match player.movement_state {
+            // 플레이어 이동 벡터 계산
+            player.velocity = match player.movement_state {
                 MovementState::Moving => player.direction * attributes.speed,
                 _ => glam::Vec3A::ZERO,
             };
-            player.translation += velocity * elapsed_time_sec;
+            player.velocity.y += -9.8;
+
+            // 이동 시도 (이동 전 위치 저장)
+            let new_p = player.translation + player.velocity * elapsed_time_sec;
+
+            // 이동 가능 여부 체크 (`GameMap` 참조)  // 수정됨
+            if self.game_map.is_position_valid(new_p.x, new_p.z) {
+                player.translation = new_p;
+
+                // Y 좌표 자동 조정 (`GameMap` 참조)  // 수정됨
+                if let Some(new_y) = self.game_map.adjust_y_position(new_p.x, new_p.z) {
+                    if new_y >= new_p.y {
+                        player.translation.y = new_y;
+                        player.direction.y = 0.0;
+                    }
+                }
+            } else {
+                println!("경고: 플레이어가 이동 가능한 지역을 벗어나 이동이 제한됩니다.");
+            }
         }
     }
+
+
 }
 
 impl Default for World {
@@ -499,6 +524,7 @@ impl Default for World {
         Self {
             epoch: AtomicU64::new(0),
             stage_kind: StageKind::default(),
+            game_map: GameMap::get("city").expect("맵 로드 실패"), 
             sessions: DashMap::default(),
             players: DashMap::default(),
             bullets: DashMap::default(),
