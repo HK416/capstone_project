@@ -1,4 +1,7 @@
 {
+    "area_size" : { "x": 15, "y": 15 },
+    "num_area_width" : 9,
+    "num_area_depth" : 9,
     "models" : [
         "City_Plane_00", 
         "City_Plane_01", 

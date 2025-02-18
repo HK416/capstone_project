@@ -17,6 +17,21 @@
                     "directories" : {}
                 }
             }
+        },
+        "stage" : {
+            "files" : [],
+            "directories" : {
+                "city" : {
+                    "files" : [
+                        "City_Plane_00_Height.json",
+                        "City_Plane_01_Height.json",
+                        "City_Plane_02_Height.json",
+                        "City_Plane_04_Height.json",
+                        "map.json"
+                    ],
+                    "directories" : { }
+                }
+            }
         }
     }
 }

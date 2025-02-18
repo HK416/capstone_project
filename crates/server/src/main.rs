@@ -203,8 +203,8 @@ fn main() {
                 return;
             }
         }
-    };
-    
+    }
+
     println!("num_threads: {}", num_threads);
 
     tokio::runtime::Builder::new_multi_thread()
@@ -212,7 +212,5 @@ fn main() {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(
-            run_server(&addr.to_string())
-        );
+        .block_on(run_server(&addr.to_string()));
 }

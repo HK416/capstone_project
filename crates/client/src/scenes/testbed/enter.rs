@@ -22,7 +22,7 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
-    asset::{load_stage_from_asset, AssetError, GameWorldMapData, ModelHierarchyPool},
+    asset::{load_stage_from_asset, AssetError, ModelHierarchyPool},
     channel::TaskResultChannel,
     component::{
         load_bullet_model, load_character_model, spawn_player_character, spawn_stage_area,
@@ -1093,9 +1093,7 @@ fn spawn_stage<'a>(
 ) -> Result<Vec<(Entity, EntityBuilder)>, AssetError> {
     const STAGE: &'static str = "map.json";
     const WORKSPACE: &'static str = "stage/city";
-    let path = format!("{}/{}", WORKSPACE, STAGE);
-    let cached_asset = asset_manager.get_or_init(path)?;
-    let data: GameWorldMapData = serde_json::from_slice(cached_asset.as_bytes())?;
+    let data = load_stage_from_asset(STAGE, WORKSPACE, asset_manager)?;
 
     // 스테이지 지역 모델 엔터티를 생성합니다.
     let mut batch_commands = Vec::new();

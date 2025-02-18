@@ -5,24 +5,9 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
 use crate::{SamplerPool, TexturePool, TextureViewPool};
-
-/// 재질의 종류 목록입니다.
-#[repr(u8)]
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum MaterialKind {
-    Opaque = 0,
-    Transparent = 1,
-}
-
-impl Default for MaterialKind {
-    fn default() -> Self {
-        Self::Opaque
-    }
-}
 
 /// ## Material Uniform Buffer Data Layout
 #[repr(C, align(16))]
@@ -485,7 +470,6 @@ impl Default for Occlusion {
 #[derive(Debug, Clone)]
 pub struct MaterialDescriptor {
     pub name: String,
-    pub kind: MaterialKind,
     pub layout: MaterialDataLayout,
     pub albedo: Albedo,
     pub specular: Specular,
@@ -496,10 +480,9 @@ pub struct MaterialDescriptor {
 }
 
 impl MaterialDescriptor {
-    pub fn new(name: &str, kind: MaterialKind) -> Self {
+    pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            kind,
             layout: MaterialDataLayout::default(),
             albedo: Albedo::default(),
             specular: Specular::default(),
@@ -593,7 +576,6 @@ impl MaterialDescriptor {
 #[derive(Debug)]
 pub struct MaterialResource {
     pub name: String,
-    pub kind: MaterialKind,
     pub material_uniform: MaterialUniform,
     pub bind_group: wgpu::BindGroup,
 }
@@ -809,7 +791,6 @@ impl MaterialResource {
 
         Self {
             name: desc.name.to_string(),
-            kind: desc.kind,
             material_uniform,
             bind_group,
         }

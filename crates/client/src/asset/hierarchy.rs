@@ -6,17 +6,17 @@ use std::{
 use ahash::HashMap;
 use ddsfile::Dds;
 use mod_app::asset::AssetManager;
+use mod_network::assets::{
+    HierarchyNode, MaterialData, MeshData, ModelHierarchyData, SkinningData, TextureData,
+};
 use mod_render::{
-    Attributes, Indices, MaterialDescriptor, MaterialKind, MaterialPool, MaterialResource, Mesh,
-    MeshPool, SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES,
+    Attributes, Indices, MaterialDescriptor, MaterialPool, MaterialResource, Mesh, MeshPool,
+    SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES,
 };
 use parking_lot::{FairMutex, FairMutexGuard};
-use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt as _;
 
-use super::{
-    AddressMode, AssetError, FilterMode, Float2, Float3, Float4, Matrix, Uint4, ViewDimension,
-};
+use super::AssetError;
 
 type PoolType = HashMap<String, Arc<Root>>;
 
@@ -73,85 +73,6 @@ impl ModelHierarchyPool {
     }
 }
 
-/// ## Model Hierarchy Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct HierarchyBlob {
-    pub root: NodeBlob,
-    pub num_nodes: u32,
-}
-
-/// ## Node Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct NodeBlob {
-    pub name: String,
-    pub transform: Matrix,
-    pub mesh: Option<String>,
-    pub materials: Vec<String>,
-    pub children: Vec<NodeBlob>,
-}
-
-/// ## Mesh Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MeshBlob {
-    pub name: String,
-    pub minimum: Float3,
-    pub maximum: Float3,
-    pub vertices: Vec<Float3>,
-    pub colors: Vec<Float4>,
-    pub normals: Vec<Float3>,
-    pub tangents: Vec<Float3>,
-    pub texcoords0: Vec<Float2>,
-    pub texcoords1: Vec<Float2>,
-    pub texcoords2: Vec<Float2>,
-    pub texcoords3: Vec<Float2>,
-    pub bone_indices: Vec<Uint4>,
-    pub bone_weights: Vec<Float4>,
-    pub submeshes: Vec<Vec<u32>>,
-    pub skinning: Option<SkinningBlob>,
-}
-
-/// ## Material Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MaterialBlob {
-    pub name: String,
-    pub kind: MaterialKind,
-    pub glossiness: Option<f32>,
-    pub smoothness: Option<f32>,
-    pub metallic: Option<f32>,
-    pub bump_scale: Option<f32>,
-    pub parallax: Option<f32>,
-    pub strength: Option<f32>,
-    pub albedo: Option<Float4>,
-    pub specular: Option<Float4>,
-    pub emissive: Option<Float4>,
-    pub albedo_map: Option<TextureBlob>,
-    pub specular_map: Option<TextureBlob>,
-    pub emissive_map: Option<TextureBlob>,
-    pub normal_map: Option<TextureBlob>,
-    pub height_map: Option<TextureBlob>,
-    pub occlusion_map: Option<TextureBlob>,
-}
-
-/// ## Texture View Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TextureBlob {
-    pub name: String, // Texture는 다른 파일에 저장됨.
-    pub dimension: ViewDimension,
-    pub address_u: AddressMode,
-    pub address_v: AddressMode,
-    pub address_w: AddressMode,
-    pub filter_mode: FilterMode,
-}
-
-/// ## Skinning Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SkinningBlob {
-    pub quality: u32,
-    pub root_bone: String,
-    pub bones: Vec<String>,
-    pub bindposes: Vec<Matrix>,
-}
-
 /// ## Model Root Node
 #[derive(Debug, Clone)]
 pub struct Root {
@@ -163,7 +84,7 @@ pub struct Root {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub name: String,
-    pub transform: Matrix,
+    pub transform: glam::Mat4,
     pub mesh: Option<Arc<Mesh>>,
     pub skinning: Option<Skinning>,
     pub materials: Vec<Arc<MaterialResource>>,
@@ -194,7 +115,7 @@ fn load_model_root(
         AssetError::from(e)
     })?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: HierarchyBlob = serde_json::de::from_reader(reader).map_err(|e| {
+    let blob: ModelHierarchyData = serde_json::de::from_reader(reader).map_err(|e| {
         log::error!("{} (PATH:{})", &e, &path);
         AssetError::from(e)
     })?;
@@ -215,10 +136,10 @@ fn load_model_node_recursive(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    mut blob: NodeBlob,
+    mut blob: HierarchyNode,
 ) -> Result<Node, AssetError> {
     let name = blob.name.clone();
-    let transform = blob.transform.clone();
+    let transform = blob.transform.into_mat4();
     let (skinning, mesh) = match blob.mesh.take() {
         Some(filename) => {
             let path = format!("{}/{}.mesh", workspace, &filename);
@@ -226,7 +147,7 @@ fn load_model_node_recursive(
                 log::error!("{} (PATH:{})", &e, &path);
                 AssetError::from(e)
             })?;
-            let mut blob: MeshBlob =
+            let mut blob: MeshData =
                 serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
                     log::error!("{} (PATH:{})", &e, &path);
                     AssetError::from(e)
@@ -234,7 +155,7 @@ fn load_model_node_recursive(
             asset_manager.remove(path);
 
             match blob.skinning.take() {
-                Some(SkinningBlob {
+                Some(SkinningData {
                     quality,
                     root_bone,
                     bones,
@@ -262,7 +183,7 @@ fn load_model_node_recursive(
             log::error!("{} (PATH:{})", &e, &path);
             AssetError::from(e)
         })?;
-        let blob: MaterialBlob = serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
+        let blob: MaterialData = serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
             log::error!("{} (PATH:{})", &e, &path);
             AssetError::from(e)
         })?;
@@ -299,7 +220,7 @@ fn load_model_node_recursive(
 }
 
 /// 메쉬를 생성합니다. 풀 객체에 메쉬가 없는 경우 풀 객체에 추가합니다.
-fn create_mesh(device: &wgpu::Device, queue: &wgpu::Queue, mut blob: MeshBlob) -> Arc<Mesh> {
+fn create_mesh(device: &wgpu::Device, queue: &wgpu::Queue, mut blob: MeshData) -> Arc<Mesh> {
     MeshPool::get_or_init(&blob.name.clone(), move || {
         let vertices: Vec<[f32; 3]> = blob.vertices.iter().cloned().map(|v| v.into()).collect();
         let vertices = Vertices(vertices);
@@ -410,10 +331,10 @@ fn create_material(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    blob: MaterialBlob,
+    blob: MaterialData,
 ) -> Result<Arc<MaterialResource>, AssetError> {
     MaterialPool::get_or_init(&blob.name.clone(), move || {
-        let mut desc = MaterialDescriptor::new(&blob.name, blob.kind);
+        let mut desc = MaterialDescriptor::new(&blob.name);
         desc.layout.glossiness = blob.glossiness.unwrap_or(0.5);
         desc.layout.smoothness = blob.smoothness.unwrap_or(0.5);
         desc.layout.metallic = blob.metallic.unwrap_or(0.2);
@@ -474,7 +395,7 @@ fn load_dds_texture(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    blob: TextureBlob,
+    blob: TextureData,
 ) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError> {
     let texture = TexturePool::get_or_init(
         &blob.name.clone(),

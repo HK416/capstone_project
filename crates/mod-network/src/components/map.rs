@@ -2,8 +2,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs};
 
-
-lazy_static! {    
+lazy_static! {
     static ref GAMEMAP: HashMap<String, GameMap> = {
         let mut result = HashMap::new();
 
@@ -15,7 +14,6 @@ lazy_static! {
 
         result
     };
-
     static ref HEIGHTMAP: HashMap<String, HeightMap> = {
         let mut result = HashMap::new();
 
@@ -43,7 +41,6 @@ lazy_static! {
         result
     };
 }
-
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Float3 {
@@ -182,12 +179,12 @@ impl GameMap {
 
     /// JSON 파일에서 `GameMap`을 생성하는 함수
     fn new(name: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        // Cargo 프로젝트 루트를 기준으로 상대 경로 설정 
+        // Cargo 프로젝트 루트를 기준으로 상대 경로 설정
         let base_path = std::env::current_dir()?;
         let base_path = base_path.join(format!("assets/stage/{}", name));
         let map_path = base_path.join("map.json");
 
-        println!("맵 파일 경로: {:?}", map_path); 
+        println!("맵 파일 경로: {:?}", map_path);
 
         let map_info = fs::read_to_string(map_path)?;
         let game_map: GameMap = serde_json::from_str(&map_info)?;

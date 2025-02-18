@@ -87,7 +87,7 @@ fn spawn_common_bullet_model_recursive(
 
     // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
     builder.add(Parent(parent));
-    builder.add(ToParentTrans(current.transform.into_mat4()));
+    builder.add(ToParentTrans(current.transform));
     builder.add(WorldTransform::default());
 
     // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.
