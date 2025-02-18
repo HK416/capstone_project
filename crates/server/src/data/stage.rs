@@ -120,7 +120,7 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
     let m = stage.num_depth;
     let i = ((x + 0.5 * stage.size.x) / stage.area_size.x).floor();
     let j = ((z + 0.5 * stage.size.y) / stage.area_size.y).floor();
-    if i < 0.0 || i > n as f32 || i < 0.0 || j > m as f32 {
+    if i < 0.0 || i >= n as f32 || j < 0.0 || j >= m as f32 {
         return None;
     }
 
@@ -133,7 +133,7 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
     let hh = 0.5 * stage.area_size.y;
     let translation = glam::Vec3A::new(x, 0.0, z);
     let translation = area.inv_transform.transform_point3a(translation);
-    if translation.x < -hw || translation.x > hw || translation.z < -hh || translation.z > hh {
+    if translation.x < -hw || translation.x >= hw || translation.z < -hh || translation.z >= hh {
         return None;
     }
 
@@ -146,4 +146,59 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
     let height = height.data[index] + area.translation.y;
 
     Some(height)
+}
+
+/// 주어진 좌표가 유효한지 확인합니다.
+pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
+    let stage = get_game_map().get(&kind).unwrap();
+    let n = stage.num_width;
+    let m = stage.num_depth;
+    let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
+    let z = (z + 0.5 * stage.size.y) / stage.area_size.y;
+    let i = x.floor();
+    let j = z.floor();
+    let mut idx = vec![(i, j)];
+    // 정수이면
+    if x == i {
+        // i+1도 검사
+        idx.push((i + 1.0, j));
+    }
+    if z == j {
+        // j+1도 검사
+        idx.push((i, j + 1.0));
+    }
+    if x == i && z == j {
+        // i+1, j+1도 검사
+        idx.push((i + 1.0, j + 1.0));
+    }
+
+    idx.iter()
+        .filter(|(i, j)| *i >= 0.0 && *i < n as f32 && *j >= 0.0 && *j < m as f32)
+        .any(|(i, j)| stage.area[*i as usize][*j as usize].is_some())
+}
+
+/// 두번째 좌표를 첫번째 좌표가 속한 영역 안으로 clamp합니다.  
+pub fn clamp_x(kind: StageKind, x1: f32, x2: f32) -> f32 {
+    let stage = get_game_map().get(&kind).unwrap();
+
+    let x_min = ((x1 + 0.5 * stage.area_size.x) / stage.area_size.x).floor() 
+        * stage.area_size.x - 0.5 * stage.area_size.x;
+    let x_max = x_min + stage.area_size.x;
+
+    let x = x2.clamp(x_min, x_max);
+
+    x
+}
+
+/// 두번째 좌표를 첫번째 좌표가 속한 영역 안으로 clamp합니다.  
+pub fn clamp_z(kind: StageKind, z1: f32, z2: f32) -> f32 {
+    let stage = get_game_map().get(&kind).unwrap();
+
+    let z_min = ((z1 + 0.5 * stage.area_size.y) / stage.area_size.y).floor() 
+        * stage.area_size.y - 0.5 * stage.area_size.y;
+    let z_max = z_min + stage.area_size.y;
+
+    let z = z2.clamp(z_min, z_max);
+
+    z
 }

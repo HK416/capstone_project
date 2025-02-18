@@ -23,7 +23,7 @@ use mod_physics::{Ray, YCapsule};
 use uuid::Uuid;
 
 use crate::{
-    data::{get_character_attributes, get_stage_height},
+    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position},
     session::Session,
 };
 
@@ -488,34 +488,39 @@ impl World {
             let attributes = get_character_attributes(player.character_kind);
 
             // 플레이어 이동 벡터 계산
-            player.velocity = match player.movement_state {
+            let velocity = match player.movement_state {
                 MovementState::Moving => player.direction * attributes.speed,
                 _ => glam::Vec3A::ZERO,
             };
-            player.velocity.y += -9.8;
+            player.velocity.x = velocity.x;
+            player.velocity.z = velocity.z;
+            // 중력 누적
+            player.velocity.y += - 9.8 * elapsed_time_sec;
 
             // 이동 시도 (이동 전 위치 저장)
             let mut new_p = player.translation + player.velocity * elapsed_time_sec;
 
-            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
-                new_p.y = height;
-                player.translation = new_p;
+            // 기존 영역과 현재 영역을 인자로 넘겨서 x, z중 어느 값이 넘어갔는지 확인
+            // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?  
+            // 유효한 영역이 아니라면 현재 영역의 가장 가장자리 부분으로 clamp하기
+            if !is_valid_position(self.stage_kind, new_p.x, player.translation.z) {
+                player.velocity.x = 0.0;
+                new_p.x = clamp_x(self.stage_kind, player.translation.x, new_p.x);
+            }
+            if !is_valid_position(self.stage_kind, player.translation.x, new_p.z) {
+                player.velocity.z = 0.0;
+                new_p.z = clamp_z(self.stage_kind, player.translation.z, new_p.z);
             }
 
-            // 이동 가능 여부 체크 (`GameMap` 참조)  // 수정됨
-            // if self.game_map.is_position_valid(new_p.x, new_p.z) {
-            //     player.translation = new_p;
+            new_p = player.translation + player.velocity * elapsed_time_sec;
 
-            //     // Y 좌표 자동 조정 (`GameMap` 참조)  // 수정됨
-            //     if let Some(new_y) = self.game_map.adjust_y_position(new_p.x, new_p.z) {
-            //         if new_y >= new_p.y {
-            //             player.translation.y = new_y;
-            //             player.direction.y = 0.0;
-            //         }
-            //     }
-            // } else {
-            //     println!("경고: 플레이어가 이동 가능한 지역을 벗어나 이동이 제한됩니다.");
-            // }
+            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
+                if height >= new_p.y {
+                    new_p.y = height;
+                    player.velocity.y = 0.0;
+                }
+                player.translation = new_p;
+            }
         }
     }
 }
