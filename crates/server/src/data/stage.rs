@@ -181,8 +181,8 @@ pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
 pub fn clamp_x(kind: StageKind, x1: f32, x2: f32) -> f32 {
     let stage = get_game_map().get(&kind).unwrap();
 
-    let x_min = ((x1 + 0.5 * stage.area_size.x) / stage.area_size.x).floor() 
-        * stage.area_size.x - 0.5 * stage.area_size.x;
+    let x_min = ((x1 + 0.5 * stage.area_size.x) / stage.area_size.x).floor() * stage.area_size.x
+        - 0.5 * stage.area_size.x;
     let x_max = x_min + stage.area_size.x;
 
     let x = x2.clamp(x_min, x_max);
@@ -194,8 +194,8 @@ pub fn clamp_x(kind: StageKind, x1: f32, x2: f32) -> f32 {
 pub fn clamp_z(kind: StageKind, z1: f32, z2: f32) -> f32 {
     let stage = get_game_map().get(&kind).unwrap();
 
-    let z_min = ((z1 + 0.5 * stage.area_size.y) / stage.area_size.y).floor() 
-        * stage.area_size.y - 0.5 * stage.area_size.y;
+    let z_min = ((z1 + 0.5 * stage.area_size.y) / stage.area_size.y).floor() * stage.area_size.y
+        - 0.5 * stage.area_size.y;
     let z_max = z_min + stage.area_size.y;
 
     let z = z2.clamp(z_min, z_max);

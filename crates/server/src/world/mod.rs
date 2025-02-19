@@ -20,11 +20,9 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
-use uuid::Uuid;
 
 use crate::{
-    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position},
-    session::Session,
+    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position}, identifier::IdentifierGenerator, session::Session
 };
 
 pub use self::{data::*, event::*, player::*};
@@ -40,6 +38,8 @@ use super::formula::movement_formulas as formulas;
 pub struct World {
     /// 현재 게임 월드의 시대 정보입니다.
     epoch: AtomicU64,
+    /// 오브젝트 식별자 생성기입니다.
+    object_id_gen: IdentifierGenerator,
 
     /// 게임 지형의 종류입니다.
     stage_kind: StageKind,
@@ -75,7 +75,7 @@ impl World {
     pub fn join(&self, session: Arc<Session>, character_kind: CharacterKind) {
         // 오브젝트 식별자를 하나 할당하고, 세션 목록에 추가합니다.
         let client_id = session.client_id();
-        let object_id = ObjectId::new(Uuid::new_v4().as_u128());
+        let object_id = ObjectId::new(self.object_id_gen.generate());
         self.sessions.insert(session, object_id);
 
         // 플레이어 생성 이벤트를 추가합니다.
@@ -290,7 +290,7 @@ impl World {
             let offset = glam::Vec3A::from_vec4(offset.w_axis);
             let translation = player.translation + offset;
 
-            let object_id = ObjectId::new(Uuid::new_v4().as_u128());
+            let object_id = ObjectId::new(self.object_id_gen.generate());
             self.bullets.insert(
                 object_id,
                 ServerBullet {
@@ -495,13 +495,13 @@ impl World {
             player.velocity.x = velocity.x;
             player.velocity.z = velocity.z;
             // 중력 누적
-            player.velocity.y += - 9.8 * elapsed_time_sec;
+            player.velocity.y += -9.8 * elapsed_time_sec;
 
             // 이동 시도 (이동 전 위치 저장)
             let mut new_p = player.translation + player.velocity * elapsed_time_sec;
 
             // 기존 영역과 현재 영역을 인자로 넘겨서 x, z중 어느 값이 넘어갔는지 확인
-            // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?  
+            // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?
             // 유효한 영역이 아니라면 현재 영역의 가장 가장자리 부분으로 clamp하기
             if !is_valid_position(self.stage_kind, new_p.x, player.translation.z) {
                 player.velocity.x = 0.0;
@@ -529,6 +529,7 @@ impl Default for World {
     fn default() -> Self {
         Self {
             epoch: AtomicU64::new(0),
+            object_id_gen: IdentifierGenerator::new(),
             stage_kind: StageKind::default(),
             sessions: DashMap::default(),
             players: DashMap::default(),
