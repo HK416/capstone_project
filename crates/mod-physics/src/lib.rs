@@ -23,11 +23,10 @@ pub trait Collision {
     /// | Sphere | O | O |
     /// | Capsule | X | X |
     /// | YCapsule | X | X |
-    /// | BoundingBox | - | X |
+    /// | BoundingBox | X | X |
     /// 
     /// - O: 정상동작  
     /// - X: 정상동작을 보장하지 않음
-    /// - -: 고려하지 않음
     fn check_collision(&self, other: &dyn Collision) -> bool;
 
     fn check_sphere_collision(&self, sphere: &Sphere) -> bool;
@@ -368,21 +367,54 @@ fn check_aabb_sphere_collision(aabb_extents: &glam::Vec3, center: &glam::Vec3, r
 /// 캡슐이 UFO형태인 경우는 고려하지 않는다.  
 /// 
 /// 원점에 위치하는 회전이 없는 BoundingBox와 Capsule의 충돌 체크  
-/// 
-/// TODO: 계산량이 많고 부정확한 부분이 있어 최적화 필요
 fn check_aabb_capsule_collision(aabb_extents: &glam::Vec3, capsule: &Capsule) -> bool {
-    let Segment { start, end } = capsule.get_seg();
+    let seg = capsule.get_seg();
+    let Segment { start, end } = seg;
 
-    // 구 부분 충돌체크
-    if check_aabb_sphere_collision(aabb_extents, &start, capsule.radius) || 
-        check_aabb_sphere_collision(aabb_extents, &end, capsule.radius) {
+    // 두 점 중 하나라도 AABB 안에 있으면 충돌
+    if -aabb_extents.x <= start.x && start.x <= aabb_extents.x && 
+        -aabb_extents.y <= start.y && start.y <= aabb_extents.y && 
+        -aabb_extents.z <= start.z && start.z <= aabb_extents.z || 
+        -aabb_extents.x <= end.x && end.x <= aabb_extents.x && 
+        -aabb_extents.y <= end.y && end.y <= aabb_extents.y && 
+        -aabb_extents.z <= end.z && end.z <= aabb_extents.z {
         return true;
     }
 
+    let clamped_start_x = start.x.max(-aabb_extents.x).min(aabb_extents.x);
+    let clamped_end_x = end.x.max(-aabb_extents.x).min(aabb_extents.x);
+    let clamped_start_y = start.y.max(-aabb_extents.y).min(aabb_extents.y);
+    let clamped_end_y = end.y.max(-aabb_extents.y).min(aabb_extents.y);
+    let clamped_start_z = start.z.max(-aabb_extents.z).min(aabb_extents.z);
+    let clamped_end_z = end.z.max(-aabb_extents.z).min(aabb_extents.z);
+
+    let clamped_start = [
+        glam::Vec3::new(-aabb_extents.x, clamped_start_y, clamped_start_z),
+        glam::Vec3::new(aabb_extents.x, clamped_start_y, clamped_start_z),
+        glam::Vec3::new(clamped_start_x, -aabb_extents.y, clamped_start_z),
+        glam::Vec3::new(clamped_start_x, aabb_extents.y, clamped_start_z),
+        glam::Vec3::new(clamped_start_x, clamped_start_y, -aabb_extents.z),
+        glam::Vec3::new(clamped_start_x, clamped_start_y, aabb_extents.z),
+    ];
+    let clamped_end = [
+        glam::Vec3::new(-aabb_extents.x, clamped_end_y, clamped_end_z),
+        glam::Vec3::new(aabb_extents.x, clamped_end_y, clamped_end_z),
+        glam::Vec3::new(clamped_end_x, -aabb_extents.y, clamped_end_z),
+        glam::Vec3::new(clamped_end_x, aabb_extents.y, clamped_end_z),
+        glam::Vec3::new(clamped_end_x, clamped_end_y, -aabb_extents.z),
+        glam::Vec3::new(clamped_end_x, clamped_end_y, aabb_extents.z),
+    ];
+    for i in 0..6 {
+        let clamped_seg = Segment {
+            start: clamped_start[i],
+            end: clamped_end[i],
+        };
+        if seg.distance_to_other(&clamped_seg) <= capsule.radius {
+            return true;
+        }
+    }
+
     false
-    
-    // TODO: 기둥 부분 충돌체크
-    // AABB의 모서리에 기둥이 닿는 경우
 }
 
 /// 캡슐이 UFO형태인 경우에는 제대로 동작하지 않는다.  

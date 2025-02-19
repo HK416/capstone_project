@@ -19,7 +19,7 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{Ray, YCapsule};
+use mod_physics::{BoundingBox, Collision, Ray, YCapsule};
 use uuid::Uuid;
 
 use crate::{data::get_character_attributes, session::Session};
@@ -346,6 +346,26 @@ impl World {
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
+        // NOTE: 이 값들은 플레이어 정보 파일에서 읽어오거나 글로벌상수로 정의해야한다.
+        const BULLET_RADIUS: f32 = 0.15;
+        const PLAYER_RADIUS: f32 = 1.0;
+        const PLAYER_HEIGHT: f32 = 2.5;
+
+        let boundingboxes = [BoundingBox::new(glam::Vec3::ZERO, glam::Vec3::new(1.0, 1.0, 1.0)); 1000];
+
+        for bb in boundingboxes {
+            for player in self.players.iter() {
+                let player_capsule = YCapsule {
+                    center: player.translation.into(),
+                    radius: PLAYER_RADIUS + BULLET_RADIUS,
+                    height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
+                };
+                if player_capsule.check_collision(&bb) {
+                    // println!("Player {:?} collision with box {:?}", player.object_id, bb);
+                }
+            }
+        }
+
         // 총알 이동
         for mut bullet in self.bullets.iter_mut() {
             let translation = bullet.translation;
@@ -362,11 +382,6 @@ impl World {
                 if *player.key() == bullet.shooter_id {
                     continue;
                 }
-
-                // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
-                const BULLET_RADIUS: f32 = 0.15;
-                const PLAYER_RADIUS: f32 = 1.0;
-                const PLAYER_HEIGHT: f32 = 2.5;
 
                 // 충돌 처리: 플레이어 - 총알
                 // 플레이어의 충돌체: YCapsule(총알의 크기 만큼 확대)           나중에 세분화
@@ -526,6 +541,8 @@ pub async fn update_game_world(world: Arc<World>) {
             .as_secs_f32();
         previous_time_point = current_time_point;
         total_time_sec += elapsed_time_sec;
+
+        println!("fps: {}", 1.0 / elapsed_time_sec);
 
         // 게임 월드를 갱신합니다.
         world.handle_events();

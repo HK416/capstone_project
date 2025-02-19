@@ -1,6 +1,3 @@
-use mod_math::Segment;
-
-
 #[derive(Debug, Clone, Copy)]
 pub struct BoundingBox {
     pub center: glam::Vec3,
@@ -143,21 +140,5 @@ impl BoundingBox {
         } else {
             vertices.map(|v| center + v)
         }
-    }
-
-    pub fn nearest_point_to_segment(&self, segment: &Segment) -> glam::Vec3 {
-        let mut nearest = glam::Vec3::new(0.0, 0.0, 0.0);
-
-        for i in 0..3 {
-            let p1 = segment.start[i].clamp(-self.extents[i], self.extents[i]);
-            let p2 = segment.end[i].clamp(-self.extents[i], self.extents[i]);
-            if (p1 - segment.start[i]).abs() < (p2 - segment.end[i]).abs() { 
-                nearest[i] = p1;
-            } else { 
-                nearest[i] = p2;
-            };
-        }
-    
-        nearest
     }
 }
