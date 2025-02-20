@@ -1,6 +1,7 @@
 //! 각 렌더 타겟 텍스처에 나뉜 데이터를 총합하는 쉐이더
 //!
-const EPSILON: f32 = 1.192092896e-07f;
+const EPSILON: f32 = 1e-5;
+
 
 /// 정점 입력 속성입니다.
 struct InputAttributes {
@@ -55,27 +56,13 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
     let coordinate = vec2<i32>(input.clip_position.xy);
+    let accumulation = textureLoad(accum, coordinate, 0);
     let revealage = textureLoad(reveal, coordinate, 0).r;
-    if (is_approximately_equal(revealage, 1.0)) {
-        discard;
-    }
 
-    var accumulation = textureLoad(accum, coordinate, 0);
-    let maximum = max(max(abs(accumulation.x), abs(accumulation.y)), abs(accumulation.z));
-    if (is_infinite(maximum)) {
-        accumulation = vec4<f32>(accumulation.a, accumulation.a, accumulation.a, accumulation.a);
-    }
-    let average_color = accumulation.rgb / max(accumulation.a, EPSILON);
+    let color = accumulation.rgb / max(accumulation.a, EPSILON);
+    let alpha = 1.0 - revealage;
 
     var out: RenderTarget;
-    out.color = vec4<f32>(average_color, 1.0 - revealage);
+    out.color = vec4<f32>(color, alpha);
     return out;
-}
-
-fn is_infinite(v: f32) -> bool {
-    return v != 0.0 && v * 2.0 == v;
-}
-
-fn is_approximately_equal(a: f32, b: f32) -> bool {
-    return abs(a - b) <= max(abs(a), abs(b)) * EPSILON;
 }

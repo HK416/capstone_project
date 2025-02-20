@@ -109,14 +109,17 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 /// 프래그먼트 쉐이더
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
-    // Weighted Blended Order-Independent Transparency
     let depth = input.clip_position.z;
-    let color = textureSample(t_font, s_font, input.texcoord);
-    let weight = max(min(1.0, max(max(color.r, color.g), color.b) * color.a), color.a) 
-        * clamp(0.03 / (1e-5 + pow(depth / 200.0, 4.0)), 1e-2, 3e3);
+    var color = textureSample(t_font, s_font, input.texcoord);
+    color.a = floor(color.a); // 다른 불투명 오브젝트와 가능한 겹치지 않도록 하기 위함
+    let weight = get_weight(depth, color.a);
 
     var out: RenderTarget;
     out.accum = vec4<f32>(color.rgb * color.a, color.a) * weight;
     out.reveal = color.a;
     return out;
+}
+
+fn get_weight(z: f32, a: f32) -> f32 {
+    return pow(a + 0.01, 4.0) + max(1e-2, min(3.0 * 1e3, 100.0 / (1e-5 + pow(abs(z) / 10.0, 3.0) + pow(abs(z) / 200.0, 6.0))));
 }
