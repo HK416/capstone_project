@@ -499,12 +499,12 @@ fn set_character_direction_to_camera_from_current(
     local_transform: &mut ToParentTrans,
 ) {
     const ZOOM_IN_LEN: [f32; NUM_CHARACTERS] = [
-        aris_original::ATTACK_START_LEN,
-        momoi_original::ATTACK_START_LEN,
+        aris_original::NORMAL_ATTACK_START_DURATION,
+        momoi_original::NORMAL_ATTACK_START_DURATION,
     ];
 
     // 삼인칭 카메라의 방향을 계산합니다.
-    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
     let look = mat.z_axis.normalize_or(glam::Vec4::Z);
 
     // 캐릭터의 방향을 가져옵니다.
@@ -528,8 +528,8 @@ fn set_character_direction_to_current_from_camera(
     local_transform: &mut ToParentTrans,
 ) {
     const ZOOM_OUT_LEN: [f32; NUM_CHARACTERS] = [
-        aris_original::ATTACK_END_LEN,
-        momoi_original::ATTACK_END_LEN,
+        aris_original::NORMAL_ATTACK_END_DURATION,
+        momoi_original::NORMAL_ATTACK_END_DURATION,
     ];
 
     // 캐릭터의 방향을 가져옵니다.
@@ -555,7 +555,7 @@ fn set_character_direction_to_camera(
     local_transform: &mut ToParentTrans,
 ) {
     // 삼인칭 카메라의 방향을 계산합니다.
-    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
     let look = mat.z_axis.normalize_or(glam::Vec4::Z);
 
     // 캐릭터의 방향을 가져옵니다.
@@ -659,32 +659,6 @@ pub fn update_view_state_timer(
     FUNC_TABLE[i](view_state, view_state_timer, elapsed_time_sec);
 }
 
-/// `ViewStateTimer`를 정규화한 값을 반환합니다.
-pub fn normalize_view_state_timer(
-    character_kind: CharacterKind,
-    view_state: ViewState,
-    view_state_timer: ViewStateTimer,
-) -> f32 {
-    const ZOOM_LEN: [[f32; 4]; NUM_CHARACTERS] = [
-        [
-            aris_original::NORMAL_IDLE_LEN,
-            aris_original::ATTACK_START_LEN,
-            aris_original::ATTACK_END_LEN,
-            aris_original::NORMAL_IDLE_LEN,
-        ],
-        [
-            momoi_original::NORMAL_IDLE_LEN,
-            momoi_original::ATTACK_START_LEN,
-            momoi_original::ATTACK_END_LEN,
-            momoi_original::NORMAL_IDLE_LEN,
-        ],
-    ];
-
-    let i = character_kind as usize;
-    let j = view_state as usize;
-    view_state_timer.0 / ZOOM_LEN[i][j]
-}
-
 pub fn animate_character(
     asset_manager: &AssetManager,
     character_kind: CharacterKind,
@@ -757,4 +731,65 @@ pub fn set_weapon_position(
 
     let i = character_kind as usize;
     FUNC_TABLE[i](skinning_animation, child_view, sibling_view, transform_view);
+}
+
+/// 캐릭터의 삼인칭 카메라를 생성합니다.
+pub fn create_third_person_camera_of_character(character_kind: CharacterKind) -> ThirdPersonCamera {
+    const CAMERA_FOV_Y: [f32; NUM_CHARACTERS] = [
+        aris_original::CAMERA_IDLE_FOV_Y,
+        momoi_original::CAMERA_IDLE_FOV_Y,
+    ];
+    const CAMERA_POSITION: [glam::Vec3A; NUM_CHARACTERS] = [
+        aris_original::CAMERA_IDLE_POSITION,
+        momoi_original::CAMERA_IDLE_POSITION,
+    ];
+
+    let i = character_kind as usize;
+    ThirdPersonCamera {
+        fov_y: CAMERA_FOV_Y[i],
+        rotation: LatLon {
+            lat: 10f32.to_radians(),
+            lon: 0.0,
+        },
+        position: CAMERA_POSITION[i],
+    }
+}
+
+/// 삼인칭 카메라를 갱신합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 `ViewState`가 먼저 갱신되어야합니다.
+///
+pub fn update_third_person_camera(
+    third_person_camera: &mut ThirdPersonCamera,
+    character_kind: CharacterKind,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
+    view_state: ViewState,
+    view_state_timer: ViewStateTimer,
+) {
+    type Func = fn(&mut ThirdPersonCamera, ActionState, ActionStateTimer, ViewStateTimer);
+    const FUNC_TABLE: [[Func; 4]; NUM_CHARACTERS] = [
+        [
+            aris_original::update_third_person_camera_when_idle,
+            aris_original::update_third_person_camera_when_zoom_in,
+            aris_original::update_third_person_camera_when_zoom_out,
+            aris_original::update_third_person_camera_when_aiming,
+        ],
+        [
+            momoi_original::update_third_person_camera_when_idle,
+            momoi_original::update_third_person_camera_when_zoom_in,
+            momoi_original::update_third_person_camera_when_zoom_out,
+            momoi_original::update_third_person_camera_when_aiming,
+        ],
+    ];
+
+    let i = character_kind as usize;
+    let j = view_state as usize;
+    FUNC_TABLE[i][j](
+        third_person_camera,
+        action_state,
+        action_state_timer,
+        view_state_timer,
+    );
 }

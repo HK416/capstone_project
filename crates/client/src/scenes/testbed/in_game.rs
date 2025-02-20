@@ -30,10 +30,11 @@ use crate::{
         spwan_bullet, update_action_state_by_controller_input_flags, update_action_state_timer,
         update_character_direction, update_entity_hierarchy,
         update_movement_state_by_controller_state, update_movement_state_timer,
-        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
-        update_view_state_timer, BoneCollection, Child, ControllerInputFlags, ControllerInputTimer,
-        ControllerState, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, StageArea,
-        StageProp, ThirdPersonCamera, ToParentTrans, WorldTransform,
+        update_third_person_camera, update_third_person_camera_hierarchy,
+        update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection,
+        Child, ControllerInputFlags, ControllerInputTimer, ControllerState, MoveDirection, Parent,
+        Projection, Sibling, SkinningAnimation, StageArea, StageProp, ThirdPersonCamera,
+        ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     render::{
@@ -194,6 +195,14 @@ impl TestbedInGameScene {
 
     /// 메인 카메라를 생성합니다.
     fn create_main_camera(&mut self, window: &Window, device: &wgpu::Device) {
+        // 플레이어 캐릭터 종류를 가져옵니다.
+        let entity = self.get_player_entity();
+        let character_kind = self
+            .world
+            .query_one_mut::<&CharacterKind>(entity)
+            .cloned()
+            .expect("invalid entity or invalid entity component");
+
         // 애플리케이션 창의 가로와 세로 크기를 가져옵니다.
         let (w, h): (f32, f32) = window.inner_size().into();
 
@@ -209,7 +218,7 @@ impl TestbedInGameScene {
         ));
 
         // 삼인칭 카메라 데이터와 카메라 쉐이더 리소스 컴포넌트를 추가합니다.
-        builder.add(ThirdPersonCamera::default());
+        builder.add(ThirdPersonCamera::new(character_kind));
         builder.add(Arc::new(CameraResource::uninit(Some("main"), device)));
 
         // 생성된 메인 카메라 엔터티를 저장합니다.
@@ -241,15 +250,13 @@ impl TestbedInGameScene {
         third_person_camera.rotate(dx, dy, offset);
 
         // 플레이어 엔터티에 카메라 방향 컴포넌트에도 적용합니다.
-        let lat = third_person_camera.pitch_angle;
-        let lon = third_person_camera.yaw_angle;
+        let rotation = third_person_camera.rotation;
         let entity = self.get_player_entity();
         let view_rotation = self
             .world
             .query_one_mut::<&mut LatLon>(entity)
             .expect("invalid entity or invalid entity component");
-        view_rotation.lat = lat;
-        view_rotation.lon = lon;
+        *view_rotation = rotation;
     }
 
     /// 메인 카메라의 오프셋을 갱신합니다.
@@ -260,10 +267,16 @@ impl TestbedInGameScene {
     fn update_main_camera_offset(&mut self) {
         // 플레이어 캐릭터의 종류, 카메라 상태, 카메라 상태 타이머를 가져옵니다.
         let entity = self.get_player_entity();
-        let (&character_kind, &view_state, &view_state_timer) = self
-            .world
-            .query_one_mut::<(&CharacterKind, &ViewState, &ViewStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
+        let (&character_kind, &action_state, &action_state_timer, &view_state, &view_state_timer) =
+            self.world
+                .query_one_mut::<(
+                    &CharacterKind,
+                    &ActionState,
+                    &ActionStateTimer,
+                    &ViewState,
+                    &ViewStateTimer,
+                )>(entity)
+                .expect("invalid entity or invalid entity component");
 
         // 메인 카메라의 삼인칭 카메라 요소를 가져옵니다.
         let third_person_camera = self
@@ -271,8 +284,15 @@ impl TestbedInGameScene {
             .query_one_mut::<&mut ThirdPersonCamera>(self.main_camera)
             .expect("invalid entity or invalid entity component");
 
-        // 삼인칭 카메라의 위치 오프셋을 갱신합니다.
-        third_person_camera.update_offset(character_kind, view_state, view_state_timer);
+        // 삼인칭 카메라를 갱신합니다.
+        update_third_person_camera(
+            third_person_camera,
+            character_kind,
+            action_state,
+            action_state_timer,
+            view_state,
+            view_state_timer,
+        );
     }
 
     /// 메인 카메라의 계층 구조를 갱신합니다.
@@ -300,6 +320,17 @@ impl TestbedInGameScene {
     ///
     fn prepare_main_camera_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let camera_entities = [self.main_camera];
+
+        // 투영 변환 행렬을 갱신합니다.
+        for entity in camera_entities {
+            let (third_person_camera, projection) = self
+                .world
+                .query_one_mut::<(&ThirdPersonCamera, &mut Projection)>(entity)
+                .expect("invalid entity or invalid entity component");
+            projection.0 =
+                glam::Mat4::perspective_lh(third_person_camera.fov_y, 16.0 / 9.0, 0.01, 500.0);
+        }
+
         prepare_camera_resource(&self.world, &camera_entities, device, queue);
     }
 
@@ -876,10 +907,7 @@ impl TestbedInGameScene {
             .world
             .query_one_mut::<&ThirdPersonCamera>(self.main_camera)
             .expect("invalid entity or invalid entity component");
-        let view_rotation: LatLon = LatLon {
-            lat: third_person_camera.pitch_angle,
-            lon: third_person_camera.yaw_angle,
-        };
+        let view_rotation = third_person_camera.rotation;
 
         // 패킷을 생성하고, 전송합니다.
         let pakcet = PushStatusPacket {

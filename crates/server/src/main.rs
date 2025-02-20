@@ -141,14 +141,14 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
                     get_sessions().insert(addr, session.clone());
                     NUM_CLIENTS.fetch_add(1, MemOrdering::AcqRel);
 
-                    println!("Accepted connection from: {} (PCU:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
+                    println!("Accepted connection from: {} (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
                     
                     handle_connection(stream, session).await;
                     
                     // 등록된 클라이언트 세션을 제거합니다.
                     get_sessions().remove(&addr);
                     NUM_CLIENTS.fetch_sub(1, MemOrdering::AcqRel);
-                    println!("{} left. (PCU:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
+                    println!("{} left. (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
                 });
             }
             Err(e) => {
