@@ -345,6 +345,10 @@ impl World {
 
     /// 주어진 시간 간격으로 게임 월드를 갱신합니다.
     fn update(&self, elapsed_time_sec: f32) {
+        // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
+        const PLAYER_RADIUS: f32 = 0.25;
+        const PLAYER_HEIGHT: f32 = 1.0;
+
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
@@ -365,23 +369,20 @@ impl World {
                     continue;
                 }
 
-                // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
-                const BULLET_RADIUS: f32 = 0.15;
-                const PLAYER_RADIUS: f32 = 1.0;
-                const PLAYER_HEIGHT: f32 = 2.5;
+                let attributes = get_character_attributes(player.character_kind);
 
                 // 충돌 처리: 플레이어 - 총알
                 // 플레이어의 충돌체: YCapsule(총알의 크기 만큼 확대)           나중에 세분화
                 // 총알은 점으로 raycasting
 
                 let mut center = player.translation;
-                center[1] -= BULLET_RADIUS;
+                center[1] -= attributes.bullet_radius;
 
                 // mod-network의 Player에 make_collider()를 추가해서 클라이언트에서도 표시할 수 있도록 해도 좋아보임.
                 let player_capsule = YCapsule {
                     center: glam::Vec3::from(center),
-                    radius: PLAYER_RADIUS + BULLET_RADIUS,
-                    height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
+                    radius: PLAYER_RADIUS + attributes.bullet_radius,
+                    height: PLAYER_HEIGHT + attributes.bullet_radius * 2.0,
                 };
 
                 if let Some(dist) = ray.intersect(&player_capsule) {

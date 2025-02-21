@@ -47,6 +47,7 @@ pub struct CharacterAttributes {
     pub critical_rate: u32,
     pub critical_damage: u32,
     pub attack_range: u32,
+    pub bullet_radius: f32,
 }
 
 /// 캐릭터 모델 종류입니다.

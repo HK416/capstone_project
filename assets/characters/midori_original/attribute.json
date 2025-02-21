@@ -21,5 +21,6 @@
     "evasion_stat": 197,
     "critical_rate": 202,
     "critical_damage": 200,
-    "attack_range": 750
+    "attack_range": 750,
+    "bullet_radius": 0.02
 }
