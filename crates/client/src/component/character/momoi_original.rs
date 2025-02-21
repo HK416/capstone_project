@@ -14,7 +14,7 @@ use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 use crate::{
     asset::{AssetError, ModelHierarchyPool, Motion, MotionPool, Node},
     component::{
-        BoneCollection, CharacterHaloKind, Child, ControllerInputFlags, Parent, Sibling,
+        BoneCollection, Child, ControllerInputFlags, Parent, Sibling,
         SkinningAnimation, ThirdPersonCamera, ToParentTrans, WorldTransform,
         ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX,
         CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT,
@@ -23,7 +23,7 @@ use crate::{
 };
 
 use super::{
-    MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON,
+    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON
 };
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
@@ -64,8 +64,6 @@ pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
 pub const WORKSPACE: &'static str = "characters/momoi_original";
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Momoi_Original";
-/// 캐릭터 헤일로 모델의 이름입니다.
-pub const MODEL_HALO_NAME: &'static str = "Momoi_Original_Halo";
 
 /// 캐릭터의 Idle 애니메이션 이름입니다.
 const IDLE_ANIMATION: &'static str = concat!(MODEL_NAME, IDLE_ANIMATION_SUFFIX);
@@ -302,8 +300,14 @@ fn spawn_character_model_recursive(
             builder.add(collection);
         }
 
-        // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-        builder.add_bundle((mesh, mesh_resource, CharacterKind::ArisOriginal));
+        if mesh.name().contains("Halo") {
+            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::MomoiOriginalHalo));
+
+        } else {
+            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, mesh_resource, CharacterKind::MomoiOriginal));
+        } 
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
         meshes.insert(mesh_name, entity);
@@ -326,151 +330,6 @@ fn spawn_character_model_recursive(
         if contains_mixing_bones || contains_set(&node_name) {
             animation_mixing_bones.insert(entity);
         }
-    }
-
-    // 엔터티 생성 명령어를 추가합니다.
-    batch_commands.push((entity, builder));
-
-    entity
-}
-
-/// 캐릭터 모델의 헤일로를 구성하는 엔터티를 생성하는 재귀함수입니다.
-///
-/// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
-/// - 부모 엔터티(`Parent`)
-/// - 로컬 변환 행렬(`ToParentTrans`)
-/// - 월드 변환 행렬(`WorldTransform`)
-///
-/// 일부 엔터티는 아래 컴포넌트를 선택적으로 가집니다.
-/// - 자식 엔터티(`Child`)
-/// - 형제 엔터티(`Sibling`)
-/// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
-/// - 캐릭터 헤일로 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
-///
-/// # Panics
-/// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
-/// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
-///
-pub fn spawn_character_model_halo(
-    asset_manager: &AssetManager,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    world: &World,
-    parent: Entity,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
-    let root =
-        ModelHierarchyPool::get_or_init(MODEL_HALO_NAME, WORKSPACE, asset_manager, device, queue)?;
-
-    let mut batch_commands = Vec::with_capacity(root.num_nodes);
-    let entity = spawn_character_model_halo_recursive(
-        world,
-        device,
-        queue,
-        &mut batch_commands,
-        parent,
-        &root.node,
-        &[],
-    );
-
-    Ok((entity, batch_commands))
-}
-
-/// 캐릭터 모델의 헤일로를 구성하는 엔터티를 생성하는 재귀함수입니다.
-///
-/// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
-/// - 부모 엔터티(`Parent`)
-/// - 로컬 변환 행렬(`ToParentTrans`)
-/// - 월드 변환 행렬(`WorldTransform`)
-///
-/// 일부 엔터티는 아래 컴포넌트를 선택적으로 가집니다.
-/// - 자식 엔터티(`Child`)
-/// - 형제 엔터티(`Sibling`)
-/// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
-/// - 캐릭터 헤일로 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
-///
-/// # Panics
-/// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
-/// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
-///
-fn spawn_character_model_halo_recursive(
-    world: &World,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
-    parent: Entity,
-    current: &Node,
-    siblings: &[Node],
-) -> Entity {
-    // 엔터티를 하나 할당받습니다.
-    let entity = world.reserve_entity();
-    let mut builder = EntityBuilder::new();
-
-    // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
-    builder.add(Parent(parent));
-    builder.add(ToParentTrans(current.transform));
-    builder.add(WorldTransform::default());
-
-    // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.
-    if let Some(child) = current.children.first() {
-        // 자식 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let parent = entity;
-        let current = child;
-        let siblings = &current.children[1..];
-
-        // 자식 엔터티를 생성합니다.
-        let entity = spawn_character_model_halo_recursive(
-            world,
-            device,
-            queue,
-            batch_commands,
-            parent,
-            current,
-            siblings,
-        );
-
-        // 자식 컴포넌트를 추가합니다.
-        builder.add(Child(entity));
-    }
-
-    // 형제 노드가 존재하는 경우 형제 엔터티를 추가합니다.
-    if let Some(sibling) = siblings.first() {
-        // 형제 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let current = sibling;
-        let siblings = &siblings[1..];
-
-        // 형제 엔터티를 생성합니다.
-        let entity = spawn_character_model_halo_recursive(
-            world,
-            device,
-            queue,
-            batch_commands,
-            parent,
-            current,
-            siblings,
-        );
-
-        // 형제 엔터티 컴포넌트를 추가합니다.
-        builder.add(Sibling(entity));
-    }
-
-    // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
-    if let Some(mesh) = current.mesh.clone() {
-        // 메쉬 쉐이더 리소스를 생성합니다.
-        let mesh_name = mesh.name().to_string();
-        let mesh_resource = Arc::new(MeshResource::uninit(Some(&mesh_name), device));
-
-        // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-        builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::ArisOriginalHalo));
-    }
-
-    // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.
-    if !current.materials.is_empty() {
-        let materials: Vec<Arc<MaterialResource>> = current.materials.iter().cloned().collect();
-        builder.add(materials);
     }
 
     // 엔터티 생성 명령어를 추가합니다.

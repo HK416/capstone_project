@@ -4,9 +4,6 @@ use mod_network::components::{CharacterKind, LatLon};
 
 use super::{create_third_person_camera_of_character, update_entity_hierarchy, ToParentTrans};
 
-/// 기본 카메라 Fov-y 라디안 각도입니다.
-const DEFAULT_CAMERA_FOV_Y: f32 = 1.309; // 75도
-
 /// ## Third Person Camera Data
 #[derive(Debug, Clone, Copy)]
 pub struct ThirdPersonCamera {

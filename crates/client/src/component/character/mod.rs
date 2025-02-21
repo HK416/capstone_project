@@ -64,30 +64,25 @@ pub fn load_character_model(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> Result<(), AssetError> {
-    const MODELS: [(&'static str, &'static str, &'static str); NUM_CHARACTERS] = [
+    const MODELS: [(&'static str, &'static str); NUM_CHARACTERS] = [
         (
             aris_original::WORKSPACE,
             aris_original::MODEL_NAME,
-            aris_original::MODEL_HALO_NAME,
         ),
         (
             momoi_original::WORKSPACE,
             momoi_original::MODEL_NAME,
-            momoi_original::MODEL_HALO_NAME,
         ),
     ];
 
     let i = character_kind as usize;
-    let (workspace, model_name, model_halo_name) = MODELS[i];
+    let (workspace, model_name) = MODELS[i];
 
     // 캐릭터 모델 애니메이션을 로드합니다.
     MotionPool::get_or_init(model_name, workspace, asset_manager)?;
 
     // 캐릭터 모델 계층 구조를 로드합니다.
     ModelHierarchyPool::get_or_init(model_name, workspace, asset_manager, device, queue)?;
-
-    // 캐릭터 헤일로 모델 계층 구조를 로드합니다.
-    ModelHierarchyPool::get_or_init(model_halo_name, workspace, asset_manager, device, queue)?;
 
     Ok(())
 }
@@ -128,20 +123,9 @@ pub fn spawn_player_character(
             Entity,
         )
             -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError>;
-    type CharacterHaloFunc = fn(
-        &AssetManager,
-        &wgpu::Device,
-        &wgpu::Queue,
-        &World,
-        Entity,
-    ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError>;
     const CHARACTER_FN: [CharacterFunc; NUM_CHARACTERS] = [
         aris_original::spawn_character_model,
         momoi_original::spawn_character_model,
-    ];
-    const CHARACTER_HALO_FN: [CharacterHaloFunc; NUM_CHARACTERS] = [
-        aris_original::spawn_character_model_halo,
-        momoi_original::spawn_character_model_halo,
     ];
 
     // 엔터티를 하나 할당받습니다.
@@ -188,20 +172,7 @@ pub fn spawn_player_character(
     builder.add(Child(model_root_entity));
     builder.add(skinning_animation);
 
-    // 캐릭터 종류에 따른 캐릭터 헤일로 모델을 구성하는 엔터티를 생성합니다.
-    let parent = entity;
-    let (halo_root_entity, mut halo_batch_commands) =
-        CHARACTER_HALO_FN[i](asset_manager, device, queue, world, parent)?;
-
-    // 캐릭터 헤일로 모델의 최상위 엔터티를 캐릭터 모델 엔터티의 형제 엔터티로 추가합니다.
-    let (last_entity, last_builder) = batch_commands
-        .last_mut()
-        .expect("entity builder must not be empty");
-    assert_eq!(*last_entity, model_root_entity);
-    last_builder.add(Sibling(halo_root_entity));
-
     // 엔터티 생성 명령어를 추가합니다.
-    batch_commands.append(&mut halo_batch_commands);
     batch_commands.push((entity, builder));
 
     Ok((entity, batch_commands))
