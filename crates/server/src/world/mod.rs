@@ -239,14 +239,13 @@ impl World {
             player.view_state = view_state;
             player.view_rotation = view_rotation;
 
+            if player.action_state != player.prev_action_state {
+                player.action_state_timer.0 = 0.0;
+            }
+
             // 플레이어 총알 발사 확인
             match player.action_state {
                 ActionState::Attack => {
-                    if player.prev_action_state != ActionState::Attack {
-                        player.shot_count = 0;
-                        player.action_state_timer.0 = 0.0;
-                    }
-
                     if player.shot_count < attributes.normal_attack_count {
                         let index = player.shot_count as usize;
                         let timing = attributes.normal_attack_timing[index];
