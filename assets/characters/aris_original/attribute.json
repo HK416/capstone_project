@@ -1,9 +1,9 @@
 {
     "speed": 5.0,
-    "muzzle_position": {
-      "x": 0.13610761,
-      "y": 0.34636837,
-      "z": 0.68664575
+    "muzzle_position": { 
+      "x": 0.1362105,
+      "y": 0.42733124,
+      "z": 0.68959117
     },
     "move_ing_duration": 0.667,
     "move_end_normal_duration": 2.0,

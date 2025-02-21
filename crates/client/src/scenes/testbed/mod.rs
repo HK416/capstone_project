@@ -194,6 +194,11 @@ impl TestbedTitleScene {
                                         CharacterKind::MomoiOriginal,
                                         CharacterKind::MomoiOriginal.to_string(),
                                     );
+                                    ui.selectable_value(
+                                        &mut self.character_kind,
+                                        CharacterKind::MidoriOriginal,
+                                        CharacterKind::MidoriOriginal.to_string(),
+                                    );
                                 });
                         });
 

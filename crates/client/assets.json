@@ -34,6 +34,34 @@
                     ], 
                     "directories" : {}
                 },
+                "midori_original" : {
+                    "files" : [
+                        "Midori_Original_Body_Mask.dds",
+                        "Midori_Original_Body.dds",
+                        "Midori_Original_Body.material",
+                        "Midori_Original_Body.mesh",
+                        "Midori_Original_EyeBrow.material",
+                        "Midori_Original_EyeMouth.dds",
+                        "Midori_Original_EyeMouth.material",
+                        "Midori_Original_Face_Mask.dds",
+                        "Midori_Original_Face.dds",
+                        "Midori_Original_Face.material",
+                        "Midori_Original_Hair_Mask_Spec.dds",
+                        "Midori_Original_Hair_Mask.dds",
+                        "Midori_Original_Hair.dds",
+                        "Midori_Original_Hair.material",
+                        "Midori_Original_Halo.dds",
+                        "Midori_Original_Halo.material",
+                        "Midori_Original_Halo.mesh",
+                        "Midori_Original_Weapon_Mask.dds",
+                        "Midori_Original_Weapon.dds",
+                        "Midori_Original_Weapon.material",
+                        "Midori_Original_Weapon.mesh",
+                        "Midori_Original.hierarchy",
+                        "Midori_Original.motion"
+                    ],
+                    "directories" : {}
+                },
                 "momoi_original" : {
                     "files" : [
                         "Momoi_Original_Body_Mask.dds",

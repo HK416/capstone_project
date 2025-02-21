@@ -50,9 +50,9 @@ pub const CAMERA_IDLE_FOV_Y: f32 = 1.309; // 75도
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
 pub const CAMERA_ZOOM_FOV_Y: f32 = 1.22173; // 70도
 
-pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.04739998, 0.5918686, -0.8046392);
-pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.021028811, 0.8708266, -0.49113995);
-pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(-0.1615649, 0.90771204, -0.3872403);
+pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.0489224, 0.6057397, -0.7941568);
+pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.01910567, 0.8792505, -0.4759759);
+pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(-0.16422231, 0.91393447, -0.37115225);
 pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
     glam::Vec4::new(-0.2552432, 0.96499133, 0.06034819, 0.0),
     glam::Vec4::new(-0.35031125, -0.034122545, -0.93601125, 0.0),

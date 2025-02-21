@@ -55,6 +55,7 @@ pub struct CharacterAttributes {
 pub enum CharacterKind {
     ArisOriginal = 0,
     MomoiOriginal = 1,
+    MidoriOriginal = 2,
 }
 
 impl BigEndian for CharacterKind {
@@ -80,6 +81,7 @@ impl TryFromBigEndian for CharacterKind {
         match index {
             0 => Some(CharacterKind::ArisOriginal),
             1 => Some(CharacterKind::MomoiOriginal),
+            2 => Some(CharacterKind::MidoriOriginal),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",
@@ -97,6 +99,7 @@ impl ToString for CharacterKind {
         match self {
             CharacterKind::ArisOriginal => "Aris Original",
             CharacterKind::MomoiOriginal => "Momoi Original",
+            CharacterKind::MidoriOriginal => "Midori Original",
         }
         .to_string()
     }

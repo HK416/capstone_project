@@ -10,6 +10,12 @@
                     ], 
                     "directories" : {}
                 },
+                "midori_original" : {
+                    "files" : [
+                        "attribute.json"
+                    ],
+                    "directories" : {}
+                },
                 "momoi_original" : {
                     "files" : [
                         "attribute.json"

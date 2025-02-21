@@ -27,19 +27,19 @@ use super::{
 };
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
-pub const NORMAL_IDLE_DURATION: f32 = 2.8;
+pub const NORMAL_IDLE_DURATION: f32 = 2.0;
 /// 캐릭터 모델의 Moving 애니메이션 길이입니다.
-pub const MOVE_ING_DURATION: f32 = 0.667;
+pub const MOVE_ING_DURATION: f32 = 0.6;
 /// 캐릭터 모델의 Move_To_End 애니메이션 길이입니다.
-pub const MOVE_END_NORMAL_DURATION: f32 = 2.0;
+pub const MOVE_END_NORMAL_DURATION: f32 = 1.333;
 /// 캐릭터 모델의 Cafe_Walk 애니메이션 길이입니다.
-pub const CAFE_WALK_DURATION: f32 = 1.267;
+pub const CAFE_WALK_DURATION: f32 = 1.333;
 /// 캐릭터 모델의 Attack_Start 애니메이션 길이입니다.
-pub const NORMAL_ATTACK_START_DURATION: f32 = 0.667;
+pub const NORMAL_ATTACK_START_DURATION: f32 = 0.433;
 /// 캐릭터 모델의 Attack_End 애니메이션 길이입니다.
-pub const NORMAL_ATTACK_END_DURATION: f32 = 0.667;
+pub const NORMAL_ATTACK_END_DURATION: f32 = 0.533;
 /// 캐릭터 모델의 Attack_Ing 애니메이션 길이입니다.
-pub const NORMAL_ATTACK_ING_DURATION: f32 = 2.667;
+pub const NORMAL_ATTACK_ING_DURATION: f32 = 1.5;
 
 /// 캐릭터 모델의 카메라 기본 위치입니다.
 pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
@@ -48,22 +48,22 @@ pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.125, 0.7, 0.5);
 /// 캐릭터 모델의 카메라 기본 Fov-y 라디안 각도입니다.
 pub const CAMERA_IDLE_FOV_Y: f32 = 1.309; // 75도
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
-pub const CAMERA_ZOOM_FOV_Y: f32 = 1.13446; // 70도
+pub const CAMERA_ZOOM_FOV_Y: f32 = 1.22173; // 70도
 
-pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.06608068, 0.6346726, -0.7699505);
-pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.34206244, 0.9269642, -0.15404683);
-pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(0.10889296, 0.92688817, -0.35919425);
+pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.049376957, 0.6063784, -0.7936417);
+pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.01885092, 0.87925875, -0.47597125);
+pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(-0.16504632, 0.9136307, -0.37153494);
 pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
-    glam::Vec4::new(0.8068547, 0.58844215, 0.052159876, 0.0),
-    glam::Vec4::new(-0.22505426, 0.38781863, -0.89383775, 0.0),
-    glam::Vec4::new(-0.5462008, 0.70945907, 0.44534516, 0.0),
-    glam::Vec4::new(-0.26169276, 0.075413704, 0.07279274, 1.0),
+    glam::Vec4::new(-0.25524324, 0.96499145, 0.060348187, 0.0),
+    glam::Vec4::new(-0.35031128, -0.034122534, -0.9360113, 0.0),
+    glam::Vec4::new(-0.9011841, -0.26005128, 0.34675696, 0.0),
+    glam::Vec4::new(-0.036278106, 0.009549901, 0.09118289, 1.0),
 );
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
-pub const WORKSPACE: &'static str = "characters/aris_original";
+pub const WORKSPACE: &'static str = "characters/midori_original";
 /// 캐릭터 모델의 이름입니다.
-pub const MODEL_NAME: &'static str = "Aris_Original";
+pub const MODEL_NAME: &'static str = "Midori_Original";
 
 /// 캐릭터의 Idle 애니메이션 이름입니다.
 const IDLE_ANIMATION: &'static str = concat!(MODEL_NAME, IDLE_ANIMATION_SUFFIX);
@@ -302,11 +302,11 @@ fn spawn_character_model_recursive(
 
         if mesh.name().contains("Halo") {
             // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::ArisOriginalHalo));
+            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::MomoiOriginalHalo));
 
         } else {
             // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterKind::ArisOriginal));
+            builder.add_bundle((mesh, mesh_resource, CharacterKind::MomoiOriginal));
         } 
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
@@ -765,12 +765,8 @@ fn update_timer_when_zoom_out_state(
 }
 
 /// `ViewState::Aiming`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
-fn update_timer_when_aiming_state(
-    _view_state: &mut ViewState,
-    view_state_timer: &mut ViewStateTimer,
-    elapsed_time_sec: f32,
-) {
-    view_state_timer.0 = (view_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
+fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: f32) {
+    /* empty */
 }
 
 /// 캐릭터 모델의 애니메이션을 재생합니다.
@@ -1923,22 +1919,22 @@ fn apply_camera_effect_when_attack(
 ) {
     // 총알 발사 타이밍
     const ATTACK_TP_0: f32 = 0.9;
-    const ATTACK_TP_1: f32 = 1.0;
-    const ATTACK_TP_2: f32 = 1.5;
+    const ATTACK_TP_1: f32 = 0.95;
+    const ATTACK_TP_2: f32 = 1.0;
 
-    // 줌인 오프셋
-    const ZOOM_OFFSET: f32 = 0.174533;
+    /// 줌인 오프셋
+    const ZOOM_OFFSET: f32 = 0.122173; // 7도
 
     if (ATTACK_TP_0..ATTACK_TP_1).contains(&action_state_timer.0) {
         let t = (action_state_timer.0 - ATTACK_TP_0) / (ATTACK_TP_1 - ATTACK_TP_0);
         let delta = effect_function(t);
         third_person_camera.position = default_position;
-        third_person_camera.fov_y = default_fov_y - ZOOM_OFFSET * delta;
-    } else if (ATTACK_TP_1..=ATTACK_TP_2).contains(&action_state_timer.0) {
+        third_person_camera.fov_y = default_fov_y + ZOOM_OFFSET * delta;
+    } else if (ATTACK_TP_1..ATTACK_TP_2).contains(&action_state_timer.0) {
         let t = (action_state_timer.0 - ATTACK_TP_1) / (ATTACK_TP_2 - ATTACK_TP_1);
         let delta = 1.0 - effect_function(t);
         third_person_camera.position = default_position;
-        third_person_camera.fov_y = default_fov_y - ZOOM_OFFSET * delta;
+        third_person_camera.fov_y = default_fov_y + ZOOM_OFFSET * delta;
     } else {
         third_person_camera.position = default_position;
         third_person_camera.fov_y = default_fov_y;

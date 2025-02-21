@@ -1,5 +1,6 @@
 pub mod animation;
 mod aris_original;
+mod midori_original;
 mod momoi_original;
 
 use std::{collections::VecDeque, sync::Arc};
@@ -28,7 +29,7 @@ pub use self::animation::*;
 
 use super::{ControllerInputFlags, MoveDirection, ThirdPersonCamera};
 
-const NUM_CHARACTERS: usize = 2;
+const NUM_CHARACTERS: usize = 3;
 
 /// 캐릭터 헤일로의 종류입니다.
 #[repr(u8)]
@@ -36,6 +37,7 @@ const NUM_CHARACTERS: usize = 2;
 pub enum CharacterHaloKind {
     ArisOriginalHalo = 0,
     MomoiOriginalHalo = 1,
+    MidoriOriginalHalo = 2,
 }
 
 impl From<CharacterKind> for CharacterHaloKind {
@@ -43,6 +45,7 @@ impl From<CharacterKind> for CharacterHaloKind {
         match value {
             CharacterKind::ArisOriginal => CharacterHaloKind::ArisOriginalHalo,
             CharacterKind::MomoiOriginal => CharacterHaloKind::MomoiOriginalHalo,
+            CharacterKind::MidoriOriginal => CharacterHaloKind::MidoriOriginalHalo,
         }
     }
 }
@@ -52,6 +55,7 @@ impl ToString for CharacterHaloKind {
         match self {
             CharacterHaloKind::ArisOriginalHalo => "Aris Original Halo",
             CharacterHaloKind::MomoiOriginalHalo => "Momoi Original Halo",
+            CharacterHaloKind::MidoriOriginalHalo => "Midori Original Halo",
         }
         .to_string()
     }
@@ -73,6 +77,10 @@ pub fn load_character_model(
             momoi_original::WORKSPACE,
             momoi_original::MODEL_NAME,
         ),
+        (
+            midori_original::WORKSPACE,
+            midori_original::MODEL_NAME,
+        )
     ];
 
     let i = character_kind as usize;
@@ -126,6 +134,7 @@ pub fn spawn_player_character(
     const CHARACTER_FN: [CharacterFunc; NUM_CHARACTERS] = [
         aris_original::spawn_character_model,
         momoi_original::spawn_character_model,
+        midori_original::spawn_character_model,
     ];
 
     // 엔터티를 하나 할당받습니다.
@@ -472,6 +481,7 @@ fn set_character_direction_to_camera_from_current(
     const ZOOM_IN_LEN: [f32; NUM_CHARACTERS] = [
         aris_original::NORMAL_ATTACK_START_DURATION,
         momoi_original::NORMAL_ATTACK_START_DURATION,
+        midori_original::NORMAL_ATTACK_START_DURATION,
     ];
 
     // 삼인칭 카메라의 방향을 계산합니다.
@@ -501,6 +511,7 @@ fn set_character_direction_to_current_from_camera(
     const ZOOM_OUT_LEN: [f32; NUM_CHARACTERS] = [
         aris_original::NORMAL_ATTACK_END_DURATION,
         momoi_original::NORMAL_ATTACK_END_DURATION,
+        midori_original::NORMAL_ATTACK_END_DURATION,
     ];
 
     // 캐릭터의 방향을 가져옵니다.
@@ -550,6 +561,7 @@ pub fn update_action_state_by_controller_input_flags(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_action_state,
         momoi_original::update_character_action_state,
+        midori_original::update_character_action_state,
     ];
 
     let i = character_kind as usize;
@@ -567,6 +579,7 @@ pub fn update_action_state_timer(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_action_state_timer,
         momoi_original::update_character_action_state_timer,
+        midori_original::update_character_action_state_timer,
     ];
 
     let i = character_kind as usize;
@@ -585,6 +598,7 @@ pub fn update_movement_state_timer(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_movement_state_timer,
         momoi_original::update_character_movement_state_timer,
+        midori_original::update_character_movement_state_timer,
     ];
 
     let i = character_kind as usize;
@@ -607,6 +621,7 @@ pub fn update_view_state_by_controller_input_flags(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_view_state,
         momoi_original::update_character_view_state,
+        midori_original::update_character_view_state,
     ];
 
     let i = character_kind as usize;
@@ -624,6 +639,7 @@ pub fn update_view_state_timer(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_view_state_timer,
         momoi_original::update_character_view_state_timer,
+        midori_original::update_character_view_state_timer,
     ];
 
     let i = character_kind as usize;
@@ -656,6 +672,7 @@ pub fn animate_character(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::animate_character,
         momoi_original::animate_character,
+        midori_original::animate_character,
     ];
 
     let i = character_kind as usize;
@@ -698,6 +715,7 @@ pub fn set_weapon_position(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::set_weapon_position,
         momoi_original::set_weapon_position,
+        midori_original::set_weapon_position,
     ];
 
     let i = character_kind as usize;
@@ -709,10 +727,12 @@ pub fn create_third_person_camera_of_character(character_kind: CharacterKind) ->
     const CAMERA_FOV_Y: [f32; NUM_CHARACTERS] = [
         aris_original::CAMERA_IDLE_FOV_Y,
         momoi_original::CAMERA_IDLE_FOV_Y,
+        midori_original::CAMERA_IDLE_FOV_Y,
     ];
     const CAMERA_POSITION: [glam::Vec3A; NUM_CHARACTERS] = [
         aris_original::CAMERA_IDLE_POSITION,
         momoi_original::CAMERA_IDLE_POSITION,
+        midori_original::CAMERA_IDLE_POSITION,
     ];
 
     let i = character_kind as usize;
@@ -752,6 +772,12 @@ pub fn update_third_person_camera(
             momoi_original::update_third_person_camera_when_zoom_in,
             momoi_original::update_third_person_camera_when_zoom_out,
             momoi_original::update_third_person_camera_when_aiming,
+        ],
+        [
+            midori_original::update_third_person_camera_when_idle,
+            midori_original::update_third_person_camera_when_zoom_in,
+            midori_original::update_third_person_camera_when_zoom_out,
+            midori_original::update_third_person_camera_when_aiming,
         ],
     ];
 
