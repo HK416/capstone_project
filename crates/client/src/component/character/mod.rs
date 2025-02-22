@@ -738,10 +738,7 @@ pub fn create_third_person_camera_of_character(character_kind: CharacterKind) ->
     let i = character_kind as usize;
     ThirdPersonCamera {
         fov_y: CAMERA_FOV_Y[i],
-        rotation: LatLon {
-            lat: 10f32.to_radians(),
-            lon: 0.0,
-        },
+        rotation: LatLon::default(),
         position: CAMERA_POSITION[i],
     }
 }

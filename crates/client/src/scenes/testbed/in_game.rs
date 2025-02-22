@@ -1463,6 +1463,7 @@ impl GameScene for TestbedInGameScene {
                 .query_one_mut::<&WorldTransform>(muzzle)
                 .expect("invalid entity or invalid entity component");
             log::debug!("총구의 위치: {:?}", transform.get_translation());
+            log::debug!("총구의 z축 방향: {:?}", transform.get_look_vector());
 
             let transform = self
                 .world

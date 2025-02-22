@@ -1642,22 +1642,24 @@ fn look_to_camera_direction(
     view_rotation: LatLon,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
+    let latitude = view_rotation.lat + 10f32.to_radians();
+
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let angle = view_rotation.lat / 3.0 * offset;
+    let angle = 3.0 * latitude / 7.0 * offset;
     let bone_entity = skinning_animation.lower_spine;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_LOCAL, angle);
 
-    let angle = view_rotation.lat / 3.0 * offset;
+    let angle = 3.0 * latitude / 7.0 * offset;
     let bone_entity = skinning_animation.uppper_spine;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_1_LOCAL, angle);
 
-    let angle = view_rotation.lat / 3.0 * offset;
+    let angle = latitude / 7.0 * offset;
     let bone_entity = skinning_animation.head;
     let local_transform = transform_view
         .get_mut(bone_entity)

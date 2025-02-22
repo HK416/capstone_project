@@ -1,9 +1,34 @@
 {
     "speed": 5.3,
-    "muzzle_position": {
+    "muzzle_position_min" : {
+        "x": 0.10545813,
+        "y": 0.7817381, 
+        "z": 0.3306825
+    },
+    "muzzle_direction_min" : {
+        "x": 0,
+        "y": 0.536457,
+        "z": 0.843923
+    },
+    "muzzle_position_mid": {
         "x": 0.10545814,
         "y": 0.6164782,
         "z": 0.44873872
+    },
+    "muzzle_direction_mid" : {
+        "x": 0, 
+        "y": 0.117167, 
+        "z": 0.993107
+    },
+    "muzzle_position_max": { 
+        "x": 0.10545813,
+        "y": 0.41950482,
+        "z": 0.48447603
+    },
+    "muzzle_direction_max" : {
+        "x": 0,
+        "y": -0.325200,
+        "z": 0.945218
     },
     "move_ing_duration": 0.6,
     "move_end_normal_duration": 1.333,

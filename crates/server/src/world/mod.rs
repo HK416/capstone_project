@@ -9,7 +9,6 @@ use std::sync::{
 
 use ahash::RandomState;
 use dashmap::DashMap;
-use glam::Vec4Swizzles;
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, CharacterKind, ClientId, DamageLog, Epoch,
@@ -267,24 +266,24 @@ impl World {
         if let Some(player) = self.players.get(&shooter_id.into()) {
             let attributes = get_character_attributes(player.character_kind);
 
-            // 플레이어가 바라보는 방향을 계산합니다.
-            let mut transform = glam::Mat4::from_translation(glam::Vec3::NEG_Z);
+            // 각도의 파라미터를 계산합니다.
+            let latitude = player.view_rotation.lat;
+            let t = ((latitude + LatLon::LATITUDE_HALF_RANGE) / LatLon::LATITUDE_RANGE).clamp(0.0, 1.0);
+
+            // 총구가 바라보는 방향을 계산합니다.
+            let mut direction = glam::Vec3A::from(attributes.get_muzzle_direction(t));
+            direction = direction.normalize_or(glam::Vec3A::Z);
+
+            // let mut transform = glam::Mat4::from_translation(glam::Vec3::NEG_Z);
             let rotate = glam::Mat4::from_rotation_y(player.view_rotation.lon);
-            transform = rotate * transform;
-
-            let z_axis = glam::Vec3A::from(transform.z_axis.xyz().normalize_or(glam::Vec3::Z));
-            let x_axis = glam::Vec3A::Y.cross(z_axis);
-            let rotate = glam::Mat4::from_axis_angle(x_axis.into(), player.view_rotation.lat);
-            transform = rotate * transform;
-
-            let direction = glam::Vec3A::from(transform.z_axis.xyz().normalize_or(glam::Vec3::Z));
+            direction = rotate.transform_vector3a(direction);
             let velocity = direction * 50.0;
-            let rotation = glam::Quat::from_mat4(&transform);
+            let rotation = glam::Quat::from_rotation_arc(glam::Vec3::Z, direction.into());
 
             // 총구의 위치를 계산합니다.
-            let offset = glam::Vec3::from_array(attributes.muzzle_position.into());
+            let offset = glam::Vec3::from(attributes.get_muzzle_position(t));
             let mut offset = glam::Mat4::from_translation(offset);
-            let rotate = glam::Mat4::from_quat(rotation);
+            let rotate = glam::Mat4::from_rotation_y(player.view_rotation.lon);
             offset = rotate * offset;
             let offset = glam::Vec3A::from_vec4(offset.w_axis);
             let translation = player.translation + offset;

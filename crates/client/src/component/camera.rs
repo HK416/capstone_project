@@ -23,7 +23,7 @@ impl ThirdPersonCamera {
 
     /// 삼인칭 카메라가 바라보는 방향 회전시킵니다.
     pub fn rotate(&mut self, dx: f32, dy: f32, offset: f32) {
-        use core::f32::consts::{FRAC_PI_3, TAU};
+        use core::f32::consts::TAU;
 
         // 삼인칭 카메라가 바라보는 방향을 갱신합니다.
         let angle = (dx * offset).to_radians();
@@ -31,7 +31,7 @@ impl ThirdPersonCamera {
 
         // 삼인칭 카메라의 바라보는 각도를 갱신합니다.
         let angle = (dy * offset).to_radians();
-        self.rotation.lat = (self.rotation.lat + angle).clamp(-FRAC_PI_3, FRAC_PI_3);
+        self.rotation.lat = (self.rotation.lat + angle).clamp(LatLon::MIN_LATITUDE, LatLon::MAX_LATITUDE);
     }
 
     /// 카메라의 바라보는 방향을 행렬로 반환합니다.
