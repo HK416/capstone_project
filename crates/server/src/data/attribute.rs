@@ -25,6 +25,18 @@ lazy_static! {
                 load_character_attribute(
                     &format!("{}/server_data/characters/momoi_original/attribute.json", path)
                 ).unwrap()
+            ),
+            (
+                CharacterKind::MidoriOriginal,
+                load_character_attribute(
+                    &format!("{}/server_data/characters/midori_original/attribute.json", path)
+                ).unwrap()
+            ),
+            (
+                CharacterKind::YuukaOriginal,
+                load_character_attribute(
+                    &format!("{}/server_data/characters/yuuka_original/attribute.json", path)
+                ).unwrap()
             )
         ])
     };

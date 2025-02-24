@@ -6,17 +6,17 @@ use std::{
 use ahash::HashMap;
 use ddsfile::Dds;
 use mod_app::asset::AssetManager;
+use mod_network::assets::{
+    HierarchyNode, MaterialData, MeshData, ModelHierarchyData, SkinningData, TextureData,
+};
 use mod_render::{
     Attributes, Indices, MaterialDescriptor, MaterialPool, MaterialResource, Mesh, MeshPool,
     SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES,
 };
 use parking_lot::{FairMutex, FairMutexGuard};
-use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt as _;
 
-use super::{
-    AddressMode, FilterMode, Float2, Float3, Float4, Matrix, ModelAssetError, Uint4, ViewDimension,
-};
+use super::AssetError;
 
 type PoolType = HashMap<String, Arc<Root>>;
 
@@ -47,7 +47,7 @@ impl ModelHierarchyPool {
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<Arc<Root>, ModelAssetError> {
+    ) -> Result<Arc<Root>, AssetError> {
         let mut pool = get_pool();
         match pool.get(name).cloned() {
             Some(root) => Ok(root),
@@ -73,84 +73,6 @@ impl ModelHierarchyPool {
     }
 }
 
-/// ## Model Hierarchy Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct HierarchyBlob {
-    pub root: NodeBlob,
-    pub num_nodes: u32,
-}
-
-/// ## Node Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct NodeBlob {
-    pub name: String,
-    pub transform: Matrix,
-    pub mesh: Option<String>,
-    pub materials: Vec<String>,
-    pub children: Vec<NodeBlob>,
-}
-
-/// ## Mesh Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MeshBlob {
-    pub name: String,
-    pub minimum: Float3,
-    pub maximum: Float3,
-    pub vertices: Vec<Float3>,
-    pub colors: Vec<Float4>,
-    pub normals: Vec<Float3>,
-    pub tangents: Vec<Float3>,
-    pub texcoords0: Vec<Float2>,
-    pub texcoords1: Vec<Float2>,
-    pub texcoords2: Vec<Float2>,
-    pub texcoords3: Vec<Float2>,
-    pub bone_indices: Vec<Uint4>,
-    pub bone_weights: Vec<Float4>,
-    pub submeshes: Vec<Vec<u32>>,
-    pub skinning: Option<SkinningBlob>,
-}
-
-/// ## Material Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MaterialBlob {
-    pub name: String,
-    pub glossiness: Option<f32>,
-    pub smoothness: Option<f32>,
-    pub metallic: Option<f32>,
-    pub bump_scale: Option<f32>,
-    pub parallax: Option<f32>,
-    pub strength: Option<f32>,
-    pub albedo: Option<Float4>,
-    pub specular: Option<Float4>,
-    pub emissive: Option<Float4>,
-    pub albedo_map: Option<TextureBlob>,
-    pub specular_map: Option<TextureBlob>,
-    pub emissive_map: Option<TextureBlob>,
-    pub normal_map: Option<TextureBlob>,
-    pub parallax_map: Option<TextureBlob>,
-    pub occlusion_map: Option<TextureBlob>,
-}
-
-/// ## Texture View Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct TextureBlob {
-    pub name: String, // Texture는 다른 파일에 저장됨.
-    pub dimension: ViewDimension,
-    pub address_u: AddressMode,
-    pub address_v: AddressMode,
-    pub address_w: AddressMode,
-    pub filter_mode: FilterMode,
-}
-
-/// ## Skinning Data
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SkinningBlob {
-    pub quality: u32,
-    pub root_bone: String,
-    pub bones: Vec<String>,
-    pub bindposes: Vec<Matrix>,
-}
-
 /// ## Model Root Node
 #[derive(Debug, Clone)]
 pub struct Root {
@@ -162,7 +84,7 @@ pub struct Root {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub name: String,
-    pub transform: Matrix,
+    pub transform: glam::Mat4,
     pub mesh: Option<Arc<Mesh>>,
     pub skinning: Option<Skinning>,
     pub materials: Vec<Arc<MaterialResource>>,
@@ -186,14 +108,17 @@ fn load_model_root(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<Arc<Root>, ModelAssetError> {
+) -> Result<Arc<Root>, AssetError> {
     let path = format!("{}/{}.hierarchy", workspace, name);
-    let cached_asset = asset_manager
-        .get_or_init(&path)
-        .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
+    let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
+        log::error!("{} (PATH:{})", &e, &path);
+        AssetError::from(e)
+    })?;
     let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: HierarchyBlob =
-        serde_json::de::from_reader(reader).map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+    let blob: ModelHierarchyData = serde_json::de::from_reader(reader).map_err(|e| {
+        log::error!("{} (PATH:{})", &e, &path);
+        AssetError::from(e)
+    })?;
     asset_manager.remove(path);
 
     let node = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
@@ -211,21 +136,26 @@ fn load_model_node_recursive(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    mut blob: NodeBlob,
-) -> Result<Node, ModelAssetError> {
+    mut blob: HierarchyNode,
+) -> Result<Node, AssetError> {
     let name = blob.name.clone();
-    let transform = blob.transform.clone();
+    let transform = blob.transform.into_mat4();
     let (skinning, mesh) = match blob.mesh.take() {
         Some(filename) => {
             let path = format!("{}/{}.mesh", workspace, &filename);
-            let cached = asset_manager.get_or_init(&path)
-                .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
-            let mut blob: MeshBlob = serde_json::de::from_slice(cached.as_bytes())
-                .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+            let cached = asset_manager.get_or_init(&path).map_err(|e| {
+                log::error!("{} (PATH:{})", &e, &path);
+                AssetError::from(e)
+            })?;
+            let mut blob: MeshData =
+                serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
+                    log::error!("{} (PATH:{})", &e, &path);
+                    AssetError::from(e)
+                })?;
             asset_manager.remove(path);
 
             match blob.skinning.take() {
-                Some(SkinningBlob {
+                Some(SkinningData {
                     quality,
                     root_bone,
                     bones,
@@ -249,10 +179,14 @@ fn load_model_node_recursive(
     let mut materials = Vec::with_capacity(blob.materials.len());
     for filename in blob.materials {
         let path = format!("{}/{}.material", &workspace, &filename);
-        let cached = asset_manager.get_or_init(&path)
-            .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
-        let blob: MaterialBlob = serde_json::de::from_slice(cached.as_bytes())
-            .map_err(|e| ModelAssetError::ParsingFailed(path.clone(), e))?;
+        let cached = asset_manager.get_or_init(&path).map_err(|e| {
+            log::error!("{} (PATH:{})", &e, &path);
+            AssetError::from(e)
+        })?;
+        let blob: MaterialData = serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
+            log::error!("{} (PATH:{})", &e, &path);
+            AssetError::from(e)
+        })?;
         asset_manager.remove(path);
 
         materials.push(create_material(
@@ -286,7 +220,7 @@ fn load_model_node_recursive(
 }
 
 /// 메쉬를 생성합니다. 풀 객체에 메쉬가 없는 경우 풀 객체에 추가합니다.
-fn create_mesh(device: &wgpu::Device, queue: &wgpu::Queue, mut blob: MeshBlob) -> Arc<Mesh> {
+fn create_mesh(device: &wgpu::Device, queue: &wgpu::Queue, mut blob: MeshData) -> Arc<Mesh> {
     MeshPool::get_or_init(&blob.name.clone(), move || {
         let vertices: Vec<[f32; 3]> = blob.vertices.iter().cloned().map(|v| v.into()).collect();
         let vertices = Vertices(vertices);
@@ -397,61 +331,57 @@ fn create_material(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    blob: MaterialBlob,
-) -> Result<Arc<MaterialResource>, ModelAssetError> {
+    blob: MaterialData,
+) -> Result<Arc<MaterialResource>, AssetError> {
     MaterialPool::get_or_init(&blob.name.clone(), move || {
-        let mut desc = MaterialDescriptor::new(&blob.name, device, queue);
-
+        let mut desc = MaterialDescriptor::new(&blob.name);
         desc.layout.glossiness = blob.glossiness.unwrap_or(0.5);
         desc.layout.smoothness = blob.smoothness.unwrap_or(0.5);
         desc.layout.metallic = blob.metallic.unwrap_or(0.2);
         desc.layout.bump_scale = blob.bump_scale.unwrap_or(0.0);
         desc.layout.parallax = blob.parallax.unwrap_or(0.0);
         desc.layout.strength = blob.strength.unwrap_or(0.0);
-        desc.layout.albedo = blob.albedo.map(|v| v.into()).unwrap_or([0.0; 4]);
-        desc.layout.specular = blob.specular.map(|v| v.into()).unwrap_or([0.0; 4]);
-        desc.layout.emissive = blob.emissive.map(|v| v.into()).unwrap_or([0.0; 4]);
 
         if let Some(texture_blob) = blob.albedo_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.albedo_map = texture_view;
-            desc.albedo_sampler = sampler;
+            desc.with_albedo_texture(view, sampler);
+        } else if let Some(color) = blob.albedo {
+            desc.with_albedo_color(color.into());
         }
 
         if let Some(texture_blob) = blob.specular_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.specular_map = texture_view;
-            desc.specular_sampler = sampler;
+            desc.with_specular_texture(view, sampler);
+        } else if let Some(color) = blob.specular {
+            desc.with_specular_color(color.into());
         }
 
         if let Some(texture_blob) = blob.emissive_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.emissive_map = texture_view;
-            desc.emissive_sampler = sampler;
+            desc.with_emissive_texture(view, sampler);
+        } else if let Some(color) = blob.emissive {
+            desc.with_emissive_color(color.into());
         }
 
         if let Some(texture_blob) = blob.normal_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.normal_map = texture_view;
-            desc.normal_sampler = sampler;
+            desc.with_normal_texture(view, sampler);
         }
 
-        if let Some(texture_blob) = blob.parallax_map {
-            let (texture_view, sampler) =
+        if let Some(texture_blob) = blob.height_map {
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.parallax_map = texture_view;
-            desc.parallax_sampler = sampler;
+            desc.with_height_texture(view, sampler);
         }
 
         if let Some(texture_blob) = blob.occlusion_map {
-            let (texture_view, sampler) =
+            let (view, sampler) =
                 load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
-            desc.occlusion_map = texture_view;
-            desc.occlusion_sampler = sampler;
+            desc.with_occlusion_texture(view, sampler);
         }
 
         let resource = MaterialResource::new(device, queue, &desc);
@@ -465,18 +395,19 @@ fn load_dds_texture(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    blob: TextureBlob,
-) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), ModelAssetError> {
+    blob: TextureData,
+) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError> {
     let texture = TexturePool::get_or_init(
         &blob.name.clone(),
-        move || -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+        move || -> Result<Arc<wgpu::Texture>, AssetError> {
             let path = format!("{}/{}.dds", workspace, &blob.name);
-            let cached_asset = asset_manager
-                .get_or_init(&path)
-                .map_err(|e| ModelAssetError::IOError(path.clone(), e))?;
+            let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
+                log::error!("{} (PATH:{})", &e, &path);
+                AssetError::from(e)
+            })?;
 
-            let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
-                .map_err(|e| ModelAssetError::from(e))?;
+            let dds =
+                Dds::read(Cursor::new(cached_asset.as_bytes())).map_err(|e| AssetError::from(e))?;
 
             let texture = device.create_texture_with_data(
                 queue,

@@ -1,6 +1,8 @@
 pub mod animation;
 mod aris_original;
+mod midori_original;
 mod momoi_original;
+mod yuuka_original;
 
 use std::{collections::VecDeque, sync::Arc};
 
@@ -16,7 +18,7 @@ use mod_render::{
 };
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool, MotionPool},
+    asset::{AssetError, ModelHierarchyPool, MotionPool},
     component::{Acceleration, Child, Force, Sibling, ToParentTrans, Velocity, WorldTransform},
     render::{
         create_character_halo_render_pipeline, create_character_render_pipeline,
@@ -28,7 +30,8 @@ pub use self::animation::*;
 
 use super::{ControllerInputFlags, MoveDirection, ThirdPersonCamera};
 
-const NUM_CHARACTERS: usize = 2;
+/// 캐릭터의 수
+const NUM_CHARACTERS: usize = 4;
 
 /// 캐릭터 헤일로의 종류입니다.
 #[repr(u8)]
@@ -36,6 +39,8 @@ const NUM_CHARACTERS: usize = 2;
 pub enum CharacterHaloKind {
     ArisOriginalHalo = 0,
     MomoiOriginalHalo = 1,
+    MidoriOriginalHalo = 2,
+    YuukaOriginalHalo = 3,
 }
 
 impl From<CharacterKind> for CharacterHaloKind {
@@ -43,6 +48,8 @@ impl From<CharacterKind> for CharacterHaloKind {
         match value {
             CharacterKind::ArisOriginal => CharacterHaloKind::ArisOriginalHalo,
             CharacterKind::MomoiOriginal => CharacterHaloKind::MomoiOriginalHalo,
+            CharacterKind::MidoriOriginal => CharacterHaloKind::MidoriOriginalHalo,
+            CharacterKind::YuukaOriginal => CharacterHaloKind::YuukaOriginalHalo,
         }
     }
 }
@@ -52,6 +59,8 @@ impl ToString for CharacterHaloKind {
         match self {
             CharacterHaloKind::ArisOriginalHalo => "Aris Original Halo",
             CharacterHaloKind::MomoiOriginalHalo => "Momoi Original Halo",
+            CharacterHaloKind::MidoriOriginalHalo => "Midori Original Halo",
+            CharacterHaloKind::YuukaOriginalHalo => "Yuuka Original Halo",
         }
         .to_string()
     }
@@ -63,31 +72,34 @@ pub fn load_character_model(
     character_kind: CharacterKind,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<(), ModelAssetError> {
-    const MODELS: [(&'static str, &'static str, &'static str); NUM_CHARACTERS] = [
+) -> Result<(), AssetError> {
+    const MODELS: [(&'static str, &'static str); NUM_CHARACTERS] = [
         (
             aris_original::WORKSPACE,
             aris_original::MODEL_NAME,
-            aris_original::MODEL_HALO_NAME,
         ),
         (
             momoi_original::WORKSPACE,
             momoi_original::MODEL_NAME,
-            momoi_original::MODEL_HALO_NAME,
         ),
+        (
+            midori_original::WORKSPACE,
+            midori_original::MODEL_NAME,
+        ),
+        (
+            yuuka_original::WORKSPACE,
+            yuuka_original::MODEL_NAME,
+        )
     ];
 
     let i = character_kind as usize;
-    let (workspace, model_name, model_halo_name) = MODELS[i];
+    let (workspace, model_name) = MODELS[i];
 
     // 캐릭터 모델 애니메이션을 로드합니다.
     MotionPool::get_or_init(model_name, workspace, asset_manager)?;
 
     // 캐릭터 모델 계층 구조를 로드합니다.
     ModelHierarchyPool::get_or_init(model_name, workspace, asset_manager, device, queue)?;
-
-    // 캐릭터 헤일로 모델 계층 구조를 로드합니다.
-    ModelHierarchyPool::get_or_init(model_halo_name, workspace, asset_manager, device, queue)?;
 
     Ok(())
 }
@@ -118,7 +130,7 @@ pub fn spawn_player_character(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     world: &World,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     type CharacterFunc =
         fn(
             &AssetManager,
@@ -127,22 +139,12 @@ pub fn spawn_player_character(
             &World,
             Entity,
         )
-            -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), ModelAssetError>;
-    type CharacterHaloFunc = fn(
-        &AssetManager,
-        &wgpu::Device,
-        &wgpu::Queue,
-        &World,
-        Entity,
-    )
-        -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError>;
+            -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError>;
     const CHARACTER_FN: [CharacterFunc; NUM_CHARACTERS] = [
         aris_original::spawn_character_model,
         momoi_original::spawn_character_model,
-    ];
-    const CHARACTER_HALO_FN: [CharacterHaloFunc; NUM_CHARACTERS] = [
-        aris_original::spawn_character_model_halo,
-        momoi_original::spawn_character_model_halo,
+        midori_original::spawn_character_model,
+        yuuka_original::spawn_character_model,
     ];
 
     // 엔터티를 하나 할당받습니다.
@@ -189,20 +191,7 @@ pub fn spawn_player_character(
     builder.add(Child(model_root_entity));
     builder.add(skinning_animation);
 
-    // 캐릭터 종류에 따른 캐릭터 헤일로 모델을 구성하는 엔터티를 생성합니다.
-    let parent = entity;
-    let (halo_root_entity, mut halo_batch_commands) =
-        CHARACTER_HALO_FN[i](asset_manager, device, queue, world, parent)?;
-
-    // 캐릭터 헤일로 모델의 최상위 엔터티를 캐릭터 모델 엔터티의 형제 엔터티로 추가합니다.
-    let (last_entity, last_builder) = batch_commands
-        .last_mut()
-        .expect("entity builder must not be empty");
-    assert_eq!(*last_entity, model_root_entity);
-    last_builder.add(Sibling(halo_root_entity));
-
     // 엔터티 생성 명령어를 추가합니다.
-    batch_commands.append(&mut halo_batch_commands);
     batch_commands.push((entity, builder));
 
     Ok((entity, batch_commands))
@@ -500,12 +489,14 @@ fn set_character_direction_to_camera_from_current(
     local_transform: &mut ToParentTrans,
 ) {
     const ZOOM_IN_LEN: [f32; NUM_CHARACTERS] = [
-        aris_original::ATTACK_START_LEN,
-        momoi_original::ATTACK_START_LEN,
+        aris_original::NORMAL_ATTACK_START_DURATION,
+        momoi_original::NORMAL_ATTACK_START_DURATION,
+        midori_original::NORMAL_ATTACK_START_DURATION,
+        yuuka_original::NORMAL_ATTACK_START_DURATION,
     ];
 
     // 삼인칭 카메라의 방향을 계산합니다.
-    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
     let look = mat.z_axis.normalize_or(glam::Vec4::Z);
 
     // 캐릭터의 방향을 가져옵니다.
@@ -529,8 +520,10 @@ fn set_character_direction_to_current_from_camera(
     local_transform: &mut ToParentTrans,
 ) {
     const ZOOM_OUT_LEN: [f32; NUM_CHARACTERS] = [
-        aris_original::ATTACK_END_LEN,
-        momoi_original::ATTACK_END_LEN,
+        aris_original::NORMAL_ATTACK_END_DURATION,
+        momoi_original::NORMAL_ATTACK_END_DURATION,
+        midori_original::NORMAL_ATTACK_END_DURATION,
+        yuuka_original::NORMAL_ATTACK_END_DURATION,
     ];
 
     // 캐릭터의 방향을 가져옵니다.
@@ -556,7 +549,7 @@ fn set_character_direction_to_camera(
     local_transform: &mut ToParentTrans,
 ) {
     // 삼인칭 카메라의 방향을 계산합니다.
-    let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+    let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
     let look = mat.z_axis.normalize_or(glam::Vec4::Z);
 
     // 캐릭터의 방향을 가져옵니다.
@@ -580,6 +573,8 @@ pub fn update_action_state_by_controller_input_flags(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_action_state,
         momoi_original::update_character_action_state,
+        midori_original::update_character_action_state,
+        yuuka_original::update_character_action_state,
     ];
 
     let i = character_kind as usize;
@@ -597,6 +592,8 @@ pub fn update_action_state_timer(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_action_state_timer,
         momoi_original::update_character_action_state_timer,
+        midori_original::update_character_action_state_timer,
+        yuuka_original::update_character_action_state_timer,
     ];
 
     let i = character_kind as usize;
@@ -615,6 +612,8 @@ pub fn update_movement_state_timer(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_movement_state_timer,
         momoi_original::update_character_movement_state_timer,
+        midori_original::update_character_movement_state_timer,
+        yuuka_original::update_character_movement_state_timer,
     ];
 
     let i = character_kind as usize;
@@ -637,6 +636,8 @@ pub fn update_view_state_by_controller_input_flags(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_view_state,
         momoi_original::update_character_view_state,
+        midori_original::update_character_view_state,
+        yuuka_original::update_character_view_state,
     ];
 
     let i = character_kind as usize;
@@ -654,36 +655,12 @@ pub fn update_view_state_timer(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_view_state_timer,
         momoi_original::update_character_view_state_timer,
+        midori_original::update_character_view_state_timer,
+        yuuka_original::update_character_view_state_timer,
     ];
 
     let i = character_kind as usize;
     FUNC_TABLE[i](view_state, view_state_timer, elapsed_time_sec);
-}
-
-/// `ViewStateTimer`를 정규화한 값을 반환합니다.
-pub fn normalize_view_state_timer(
-    character_kind: CharacterKind,
-    view_state: ViewState,
-    view_state_timer: ViewStateTimer,
-) -> f32 {
-    const ZOOM_LEN: [[f32; 4]; NUM_CHARACTERS] = [
-        [
-            aris_original::NORMAL_IDLE_LEN,
-            aris_original::ATTACK_START_LEN,
-            aris_original::ATTACK_END_LEN,
-            aris_original::NORMAL_IDLE_LEN,
-        ],
-        [
-            momoi_original::NORMAL_IDLE_LEN,
-            momoi_original::ATTACK_START_LEN,
-            momoi_original::ATTACK_END_LEN,
-            momoi_original::NORMAL_IDLE_LEN,
-        ],
-    ];
-
-    let i = character_kind as usize;
-    let j = view_state as usize;
-    view_state_timer.0 / ZOOM_LEN[i][j]
 }
 
 pub fn animate_character(
@@ -712,6 +689,8 @@ pub fn animate_character(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::animate_character,
         momoi_original::animate_character,
+        midori_original::animate_character,
+        yuuka_original::animate_character,
     ];
 
     let i = character_kind as usize;
@@ -741,11 +720,8 @@ pub fn set_weapon_position(
     sibling_view: &ViewBorrow<&Sibling>,
     transform_view: &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
 ) {
-    if action_state == ActionState::Idle {
-        return;
-    }
-
     type Func = fn(
+        ActionState,
         &SkinningAnimation,
         &ViewBorrow<&Child>,
         &ViewBorrow<&Sibling>,
@@ -754,8 +730,84 @@ pub fn set_weapon_position(
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::set_weapon_position,
         momoi_original::set_weapon_position,
+        midori_original::set_weapon_position,
+        yuuka_original::set_weapon_position,
     ];
 
     let i = character_kind as usize;
-    FUNC_TABLE[i](skinning_animation, child_view, sibling_view, transform_view);
+    FUNC_TABLE[i](action_state, skinning_animation, child_view, sibling_view, transform_view);
+}
+
+/// 캐릭터의 삼인칭 카메라를 생성합니다.
+pub fn create_third_person_camera_of_character(character_kind: CharacterKind) -> ThirdPersonCamera {
+    const CAMERA_FOV_Y: [f32; NUM_CHARACTERS] = [
+        aris_original::CAMERA_IDLE_FOV_Y,
+        momoi_original::CAMERA_IDLE_FOV_Y,
+        midori_original::CAMERA_IDLE_FOV_Y,
+        yuuka_original::CAMERA_IDLE_FOV_Y,
+    ];
+    const CAMERA_POSITION: [glam::Vec3A; NUM_CHARACTERS] = [
+        aris_original::CAMERA_IDLE_POSITION,
+        momoi_original::CAMERA_IDLE_POSITION,
+        midori_original::CAMERA_IDLE_POSITION,
+        yuuka_original::CAMERA_IDLE_POSITION,
+    ];
+
+    let i = character_kind as usize;
+    ThirdPersonCamera {
+        fov_y: CAMERA_FOV_Y[i],
+        rotation: LatLon::default(),
+        position: CAMERA_POSITION[i],
+    }
+}
+
+/// 삼인칭 카메라를 갱신합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 `ViewState`가 먼저 갱신되어야합니다.
+///
+pub fn update_third_person_camera(
+    third_person_camera: &mut ThirdPersonCamera,
+    character_kind: CharacterKind,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
+    view_state: ViewState,
+    view_state_timer: ViewStateTimer,
+) {
+    type Func = fn(&mut ThirdPersonCamera, ActionState, ActionStateTimer, ViewStateTimer);
+    const FUNC_TABLE: [[Func; 4]; NUM_CHARACTERS] = [
+        [
+            aris_original::update_third_person_camera_when_idle,
+            aris_original::update_third_person_camera_when_zoom_in,
+            aris_original::update_third_person_camera_when_zoom_out,
+            aris_original::update_third_person_camera_when_aiming,
+        ],
+        [
+            momoi_original::update_third_person_camera_when_idle,
+            momoi_original::update_third_person_camera_when_zoom_in,
+            momoi_original::update_third_person_camera_when_zoom_out,
+            momoi_original::update_third_person_camera_when_aiming,
+        ],
+        [
+            midori_original::update_third_person_camera_when_idle,
+            midori_original::update_third_person_camera_when_zoom_in,
+            midori_original::update_third_person_camera_when_zoom_out,
+            midori_original::update_third_person_camera_when_aiming,
+        ],
+        [
+            yuuka_original::update_third_person_camera_when_idle,
+            yuuka_original::update_third_person_camera_when_zoom_in,
+            yuuka_original::update_third_person_camera_when_zoom_out,
+            yuuka_original::update_third_person_camera_when_aiming,
+        ],
+    ];
+
+    let i = character_kind as usize;
+    let j = view_state as usize;
+    FUNC_TABLE[i][j](
+        third_person_camera,
+        action_state,
+        action_state_timer,
+        view_state_timer,
+    );
 }

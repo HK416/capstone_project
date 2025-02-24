@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use ahash::{HashMap, HashSet};
 use constcat::concat;
+use glam::FloatExt;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
@@ -11,51 +12,58 @@ use mod_network::components::{
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool, Motion, MotionPool, Node},
+    asset::{AssetError, ModelHierarchyPool, Motion, MotionPool, Node},
     component::{
-        BoneCollection, CharacterHaloKind, Child, ControllerInputFlags, Parent, Sibling,
-        SkinningAnimation, ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX,
-        ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
-        IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH,
-        MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
+        BoneCollection, Child, ControllerInputFlags, Parent, Sibling,
+        SkinningAnimation, ThirdPersonCamera, ToParentTrans, WorldTransform,
+        ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX,
+        CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT,
+        MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
     },
 };
 
 use super::{
-    MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON,
+    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON
 };
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
-pub const NORMAL_IDLE_LEN: f32 = 2.8;
+pub const NORMAL_IDLE_DURATION: f32 = 2.8;
 /// 캐릭터 모델의 Moving 애니메이션 길이입니다.
-pub const MOVE_ING_LEN: f32 = 0.667;
+pub const MOVE_ING_DURATION: f32 = 0.667;
 /// 캐릭터 모델의 Move_To_End 애니메이션 길이입니다.
-pub const MOVE_TO_END_LEN: f32 = 2.0;
+pub const MOVE_END_NORMAL_DURATION: f32 = 2.0;
 /// 캐릭터 모델의 Cafe_Walk 애니메이션 길이입니다.
-pub const CAFE_WALK_LEN: f32 = 1.267;
+pub const CAFE_WALK_DURATION: f32 = 1.267;
 /// 캐릭터 모델의 Attack_Start 애니메이션 길이입니다.
-pub const ATTACK_START_LEN: f32 = 0.667;
-/// 캐릭터 모델의 Attack_Ing 애니메이션 길이입니다.
-pub const ATTACK_ING_LEN: f32 = 2.667;
+pub const NORMAL_ATTACK_START_DURATION: f32 = 0.667;
 /// 캐릭터 모델의 Attack_End 애니메이션 길이입니다.
-pub const ATTACK_END_LEN: f32 = 0.667;
+pub const NORMAL_ATTACK_END_DURATION: f32 = 0.667;
+/// 캐릭터 모델의 Attack_Ing 애니메이션 길이입니다.
+pub const NORMAL_ATTACK_ING_DURATION: f32 = 2.667;
 
-pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.0603913, 0.6079511, -0.7916745);
-pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.336492, 0.92268085, -0.18823697);
-pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(0.104742765, 0.9142178, -0.3914523);
+/// 캐릭터 모델의 카메라 기본 위치입니다.
+pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
+/// 캐릭터 모델의 카메라 줌 위치입니다.
+pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.125, 0.7, 0.5);
+/// 캐릭터 모델의 카메라 기본 Fov-y 라디안 각도입니다.
+pub const CAMERA_IDLE_FOV_Y: f32 = 1.309; // 75도
+/// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
+pub const CAMERA_ZOOM_FOV_Y: f32 = 1.13446; // 70도
+
+pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.06608068, 0.6346726, -0.7699505);
+pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.34206244, 0.9269642, -0.15404683);
+pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(0.10889296, 0.92688817, -0.35919425);
 pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
-    glam::Vec4::new(0.8068548, 0.5884422, 0.0521599, 0.0),
-    glam::Vec4::new(-0.2250543, 0.3878187, -0.8938378, 0.0),
-    glam::Vec4::new(-0.5462009, 0.7094591, 0.4453452, 0.0),
-    glam::Vec4::new(-0.26169282, 0.075413704, 0.07279277, 1.0),
+    glam::Vec4::new(0.8068547, 0.58844215, 0.052159876, 0.0),
+    glam::Vec4::new(-0.22505426, 0.38781863, -0.89383775, 0.0),
+    glam::Vec4::new(-0.5462008, 0.70945907, 0.44534516, 0.0),
+    glam::Vec4::new(-0.26169276, 0.075413704, 0.07279274, 1.0),
 );
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
 pub const WORKSPACE: &'static str = "characters/aris_original";
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Aris_Original";
-/// 캐릭터 헤일로 모델의 이름입니다.
-pub const MODEL_HALO_NAME: &'static str = "Aris_Original_Halo";
 
 /// 캐릭터의 Idle 애니메이션 이름입니다.
 const IDLE_ANIMATION: &'static str = concat!(MODEL_NAME, IDLE_ANIMATION_SUFFIX);
@@ -98,7 +106,7 @@ pub fn spawn_character_model(
     queue: &wgpu::Queue,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root =
         ModelHierarchyPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager, device, queue)?;
 
@@ -197,7 +205,7 @@ fn spawn_character_model_recursive(
 
     // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
     builder.add(Parent(parent));
-    builder.add(ToParentTrans(current.transform.into_mat4()));
+    builder.add(ToParentTrans(current.transform));
     builder.add(WorldTransform::default());
 
     // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.
@@ -292,8 +300,14 @@ fn spawn_character_model_recursive(
             builder.add(collection);
         }
 
-        // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-        builder.add_bundle((mesh, mesh_resource, CharacterKind::ArisOriginal));
+        if mesh.name().contains("Halo") {
+            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::ArisOriginalHalo));
+
+        } else {
+            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, mesh_resource, CharacterKind::ArisOriginal));
+        } 
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
         meshes.insert(mesh_name, entity);
@@ -316,151 +330,6 @@ fn spawn_character_model_recursive(
         if contains_mixing_bones || contains_set(&node_name) {
             animation_mixing_bones.insert(entity);
         }
-    }
-
-    // 엔터티 생성 명령어를 추가합니다.
-    batch_commands.push((entity, builder));
-
-    entity
-}
-
-/// 캐릭터 모델의 헤일로를 구성하는 엔터티를 생성하는 재귀함수입니다.
-///
-/// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
-/// - 부모 엔터티(`Parent`)
-/// - 로컬 변환 행렬(`ToParentTrans`)
-/// - 월드 변환 행렬(`WorldTransform`)
-///
-/// 일부 엔터티는 아래 컴포넌트를 선택적으로 가집니다.
-/// - 자식 엔터티(`Child`)
-/// - 형제 엔터티(`Sibling`)
-/// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
-/// - 캐릭터 헤일로 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
-///
-/// # Panics
-/// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
-/// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
-///
-pub fn spawn_character_model_halo(
-    asset_manager: &AssetManager,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    world: &World,
-    parent: Entity,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
-    let root =
-        ModelHierarchyPool::get_or_init(MODEL_HALO_NAME, WORKSPACE, asset_manager, device, queue)?;
-
-    let mut batch_commands = Vec::with_capacity(root.num_nodes);
-    let entity = spawn_character_model_halo_recursive(
-        world,
-        device,
-        queue,
-        &mut batch_commands,
-        parent,
-        &root.node,
-        &[],
-    );
-
-    Ok((entity, batch_commands))
-}
-
-/// 캐릭터 모델의 헤일로를 구성하는 엔터티를 생성하는 재귀함수입니다.
-///
-/// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
-/// - 부모 엔터티(`Parent`)
-/// - 로컬 변환 행렬(`ToParentTrans`)
-/// - 월드 변환 행렬(`WorldTransform`)
-///
-/// 일부 엔터티는 아래 컴포넌트를 선택적으로 가집니다.
-/// - 자식 엔터티(`Child`)
-/// - 형제 엔터티(`Sibling`)
-/// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
-/// - 캐릭터 헤일로 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
-///
-/// # Panics
-/// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
-/// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
-///
-fn spawn_character_model_halo_recursive(
-    world: &World,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
-    parent: Entity,
-    current: &Node,
-    siblings: &[Node],
-) -> Entity {
-    // 엔터티를 하나 할당받습니다.
-    let entity = world.reserve_entity();
-    let mut builder = EntityBuilder::new();
-
-    // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
-    builder.add(Parent(parent));
-    builder.add(ToParentTrans(current.transform.into_mat4()));
-    builder.add(WorldTransform::default());
-
-    // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.
-    if let Some(child) = current.children.first() {
-        // 자식 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let parent = entity;
-        let current = child;
-        let siblings = &current.children[1..];
-
-        // 자식 엔터티를 생성합니다.
-        let entity = spawn_character_model_halo_recursive(
-            world,
-            device,
-            queue,
-            batch_commands,
-            parent,
-            current,
-            siblings,
-        );
-
-        // 자식 컴포넌트를 추가합니다.
-        builder.add(Child(entity));
-    }
-
-    // 형제 노드가 존재하는 경우 형제 엔터티를 추가합니다.
-    if let Some(sibling) = siblings.first() {
-        // 형제 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let current = sibling;
-        let siblings = &siblings[1..];
-
-        // 형제 엔터티를 생성합니다.
-        let entity = spawn_character_model_halo_recursive(
-            world,
-            device,
-            queue,
-            batch_commands,
-            parent,
-            current,
-            siblings,
-        );
-
-        // 형제 엔터티 컴포넌트를 추가합니다.
-        builder.add(Sibling(entity));
-    }
-
-    // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
-    if let Some(mesh) = current.mesh.clone() {
-        // 메쉬 쉐이더 리소스를 생성합니다.
-        let mesh_name = mesh.name().to_string();
-        let mesh_resource = Arc::new(MeshResource::uninit(Some(&mesh_name), device));
-
-        // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-        builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::ArisOriginalHalo));
-    }
-
-    // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.
-    if !current.materials.is_empty() {
-        let materials: Vec<Arc<MaterialResource>> = current.materials.iter().cloned().collect();
-        builder.add(materials);
     }
 
     // 엔터티 생성 명령어를 추가합니다.
@@ -555,7 +424,8 @@ pub fn update_action_state_when_aim_at(
     //
     if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
         *action_state = ActionState::AimOff;
-        action_state_timer.0 = (1.0 - action_state_timer.0 / ATTACK_START_LEN) * ATTACK_END_LEN;
+        action_state_timer.0 = (1.0 - action_state_timer.0 / NORMAL_ATTACK_START_DURATION)
+            * NORMAL_ATTACK_END_DURATION;
     }
 }
 
@@ -572,7 +442,8 @@ pub fn update_action_state_when_aim_off(
     //
     if controller_input_flags.contains(ControllerInputFlags::Aiming) {
         *action_state = ActionState::AimAt;
-        action_state_timer.0 = (1.0 - action_state_timer.0 / ATTACK_END_LEN) * ATTACK_START_LEN;
+        action_state_timer.0 = (1.0 - action_state_timer.0 / NORMAL_ATTACK_END_DURATION)
+            * NORMAL_ATTACK_START_DURATION;
     }
 }
 
@@ -615,7 +486,7 @@ fn update_action_state_timer_when_idle(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_LEN;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
 }
 
 /// `ActionState::Aiming`일 때 `ActionStateTimer`를 갱신합니다.
@@ -625,7 +496,7 @@ fn update_action_state_timer_when_aiming(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_LEN;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
 }
 
 /// `ActionState::AimAt`일 때 `ActionState`와 `ActionStateTimer`를 갱신합니다.
@@ -638,10 +509,10 @@ fn update_action_state_timer_when_aim_at(
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
     // `*_Normal_Attack_Start` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - ATTACK_START_LEN;
+    let diff_t = action_state_timer.0 - NORMAL_ATTACK_START_DURATION;
     if diff_t >= 0.0 {
         *action_state = ActionState::Aiming;
-        action_state_timer.0 = diff_t % NORMAL_IDLE_LEN;
+        action_state_timer.0 = diff_t % NORMAL_IDLE_DURATION;
     }
 }
 
@@ -655,10 +526,10 @@ fn update_action_state_timer_when_aim_off(
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
     // `*_Normal_Attack_End` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - ATTACK_END_LEN;
+    let diff_t = action_state_timer.0 - NORMAL_ATTACK_END_DURATION;
     if diff_t >= 0.0 {
         *action_state = ActionState::Idle;
-        action_state_timer.0 = diff_t % NORMAL_IDLE_LEN;
+        action_state_timer.0 = diff_t % NORMAL_IDLE_DURATION;
     }
 }
 
@@ -672,10 +543,10 @@ fn update_action_state_timer_when_attack(
     action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
 
     // `*_Normal_Attack_Ing` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - ATTACK_ING_LEN;
+    let diff_t = action_state_timer.0 - NORMAL_ATTACK_ING_DURATION;
     if diff_t >= 0.0 {
         *action_state = ActionState::Idle;
-        action_state_timer.0 = diff_t % NORMAL_IDLE_LEN;
+        action_state_timer.0 = diff_t % NORMAL_IDLE_DURATION;
     }
 }
 
@@ -737,7 +608,7 @@ fn update_movement_state_timer_when_idle(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_LEN;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
 }
 
 /// `*_Move_Ing` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
@@ -747,7 +618,7 @@ fn update_movement_state_timer_when_moving(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % MOVE_ING_LEN;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % MOVE_ING_DURATION;
 }
 
 /// `*_Move_End_Normal` 애니메이션 데이터로 `MovementState`와 `MovementStateTimer`를 갱신합니다.
@@ -760,7 +631,7 @@ fn update_movement_state_timer_when_move_to_end(
     movement_state_timer.0 = movement_state_timer.0 + elapsed_time_sec;
 
     // `*_Move_End_Normal` 애니메이션 길이보다 클 경우 `MovemenetState`를 갱신합니다.
-    let diff_t = movement_state_timer.0 - MOVE_TO_END_LEN;
+    let diff_t = movement_state_timer.0 - MOVE_END_NORMAL_DURATION;
     if diff_t >= 0.0 {
         *movement_state = MovementState::Idle;
         movement_state_timer.0 = diff_t;
@@ -774,7 +645,7 @@ fn update_movement_state_timer_when_walking(
     elapsed_time_sec: f32,
 ) {
     // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % CAFE_WALK_LEN;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % CAFE_WALK_DURATION;
 }
 
 /// 캐릭터 모델의 `ViewState`를 갱신합니다.
@@ -815,7 +686,8 @@ fn update_view_state_when_zoom_in(
 ) {
     if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
         *view_state = ViewState::ZoomOut;
-        view_state_timer.0 = (1.0 - view_state_timer.0 / ATTACK_START_LEN) * ATTACK_END_LEN;
+        view_state_timer.0 =
+            (1.0 - view_state_timer.0 / NORMAL_ATTACK_START_DURATION) * NORMAL_ATTACK_END_DURATION;
     }
 }
 
@@ -827,7 +699,8 @@ fn update_view_state_when_zoom_out(
 ) {
     if controller_input_flags.contains(ControllerInputFlags::Aiming) {
         *view_state = ViewState::ZoomIn;
-        view_state_timer.0 = (1.0 - view_state_timer.0 / ATTACK_END_LEN) * ATTACK_START_LEN;
+        view_state_timer.0 =
+            (1.0 - view_state_timer.0 / NORMAL_ATTACK_END_DURATION) * NORMAL_ATTACK_START_DURATION;
     }
 }
 
@@ -872,7 +745,7 @@ fn update_timer_when_zoom_in_state(
     elapsed_time_sec: f32,
 ) {
     view_state_timer.0 = view_state_timer.0 + elapsed_time_sec;
-    if view_state_timer.0 >= ATTACK_START_LEN {
+    if view_state_timer.0 >= NORMAL_ATTACK_START_DURATION {
         *view_state = ViewState::Aiming;
         view_state_timer.reset();
     }
@@ -885,15 +758,19 @@ fn update_timer_when_zoom_out_state(
     elapsed_time_sec: f32,
 ) {
     view_state_timer.0 = view_state_timer.0 + elapsed_time_sec;
-    if view_state_timer.0 >= ATTACK_END_LEN {
+    if view_state_timer.0 >= NORMAL_ATTACK_END_DURATION {
         *view_state = ViewState::Idle;
         view_state_timer.reset();
     }
 }
 
 /// `ViewState::Aiming`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
-fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: f32) {
-    /* empty */
+fn update_timer_when_aiming_state(
+    _view_state: &mut ViewState,
+    view_state_timer: &mut ViewStateTimer,
+    elapsed_time_sec: f32,
+) {
+    view_state_timer.0 = (view_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
 }
 
 /// 캐릭터 모델의 애니메이션을 재생합니다.
@@ -1195,7 +1072,7 @@ fn animate_character_when_idle_to_aim(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = action_state_timer.0 / ATTACK_START_LEN;
+    let offset = action_state_timer.0 / NORMAL_ATTACK_START_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1254,7 +1131,7 @@ fn animate_character_when_aim_to_idle(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = 1.0 - action_state_timer.0 / ATTACK_END_LEN;
+    let offset = 1.0 - action_state_timer.0 / NORMAL_ATTACK_END_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1349,7 +1226,7 @@ fn animate_character_when_move_to_aim_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = action_state_timer.0 / ATTACK_START_LEN;
+    let offset = action_state_timer.0 / NORMAL_ATTACK_START_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1444,7 +1321,7 @@ fn animate_character_when_aim_move_to_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = 1.0 - action_state_timer.0 / ATTACK_END_LEN;
+    let offset = 1.0 - action_state_timer.0 / NORMAL_ATTACK_END_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1769,40 +1646,46 @@ fn look_to_camera_direction(
     view_rotation: LatLon,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
+    let latitude = view_rotation.lat + 3f32.to_radians();
+
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let angle = view_rotation.lat / 3.0 * offset;
+    let angle = 3.0 * latitude / 7.0 * offset;
     let bone_entity = skinning_animation.lower_spine;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_LOCAL, angle);
 
-    let angle = view_rotation.lat / 3.0 * offset;
+    let angle = 3.0 * latitude / 7.0 * offset;
     let bone_entity = skinning_animation.uppper_spine;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_1_LOCAL, angle);
 
-    let angle = view_rotation.lat / 3.0 * offset;
+    let angle = latitude / 7.0 * offset;
     let bone_entity = skinning_animation.head;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_HEAD_LOCAL, angle);
 }
-
 /// 무기의 위치를 설정합니다.
 ///
 /// # Note
 /// 이 함수는 캐릭터의 월드 변환 행렬이 계산된 후 호출해야 합니다.
 ///
 pub fn set_weapon_position(
+    action_state: ActionState,
     skinning_animation: &SkinningAnimation,
     child_view: &ViewBorrow<&Child>,
     sibling_view: &ViewBorrow<&Sibling>,
     transform_view: &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
 ) {
+    if action_state == ActionState::Idle {
+        return;
+    }
+    
     let bone_entity = skinning_animation.right_hand;
     let (_, transform) = transform_view
         .get_mut(bone_entity)
@@ -1866,5 +1749,204 @@ fn set_weapon_position_recursion(
             transform_view,
             parent_transform,
         );
+    }
+}
+
+/// `ViewState::Idle`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
+pub fn update_third_person_camera_when_idle(
+    third_person_camera: &mut ThirdPersonCamera,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
+    view_state_timer: ViewStateTimer,
+) {
+    /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
+    fn non_camera_effect(
+        third_person_camera: &mut ThirdPersonCamera,
+        _: ActionStateTimer,
+        _: ViewStateTimer,
+        default_position: glam::Vec3A,
+        default_fov_y: f32,
+    ) {
+        third_person_camera.position = default_position;
+        third_person_camera.fov_y = default_fov_y;
+    }
+
+    type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
+    const FUNC_TABLE: [Func; 5] = [
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        apply_camera_effect_when_attack,
+    ];
+
+    let i = action_state as usize;
+    FUNC_TABLE[i](
+        third_person_camera,
+        action_state_timer,
+        view_state_timer,
+        CAMERA_IDLE_POSITION,
+        CAMERA_IDLE_FOV_Y,
+    );
+}
+
+/// `ViewState::ZoomIn`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
+pub fn update_third_person_camera_when_zoom_in(
+    third_person_camera: &mut ThirdPersonCamera,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
+    view_state_timer: ViewStateTimer,
+) {
+    // 현재 카메라 위치와 Fov-y를 계산합니다.
+    let s = view_state_timer.0 / NORMAL_ATTACK_START_DURATION;
+    let position = CAMERA_IDLE_POSITION.lerp(CAMERA_ZOOM_POSITION, s);
+    let fov_y = CAMERA_IDLE_FOV_Y.lerp(CAMERA_ZOOM_FOV_Y, s);
+
+    /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
+    fn non_camera_effect(
+        third_person_camera: &mut ThirdPersonCamera,
+        _: ActionStateTimer,
+        _: ViewStateTimer,
+        default_position: glam::Vec3A,
+        default_fov_y: f32,
+    ) {
+        third_person_camera.position = default_position;
+        third_person_camera.fov_y = default_fov_y;
+    }
+
+    type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
+    const FUNC_TABLE: [Func; 5] = [
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        apply_camera_effect_when_attack,
+    ];
+
+    let i = action_state as usize;
+    FUNC_TABLE[i](
+        third_person_camera,
+        action_state_timer,
+        view_state_timer,
+        position,
+        fov_y,
+    );
+}
+
+/// `ViewState::ZoomOut`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
+pub fn update_third_person_camera_when_zoom_out(
+    third_person_camera: &mut ThirdPersonCamera,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
+    view_state_timer: ViewStateTimer,
+) {
+    // 현재 카메라 위치와 Fov-y를 계산합니다.
+    let s = view_state_timer.0 / NORMAL_ATTACK_END_DURATION;
+    let position: glam::Vec3A = CAMERA_ZOOM_POSITION.lerp(CAMERA_IDLE_POSITION, s);
+    let fov_y = CAMERA_ZOOM_FOV_Y.lerp(CAMERA_IDLE_FOV_Y, s);
+
+    /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
+    fn non_camera_effect(
+        third_person_camera: &mut ThirdPersonCamera,
+        _: ActionStateTimer,
+        _: ViewStateTimer,
+        default_position: glam::Vec3A,
+        default_fov_y: f32,
+    ) {
+        third_person_camera.position = default_position;
+        third_person_camera.fov_y = default_fov_y;
+    }
+
+    type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
+    const FUNC_TABLE: [Func; 5] = [
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        apply_camera_effect_when_attack,
+    ];
+
+    let i = action_state as usize;
+    FUNC_TABLE[i](
+        third_person_camera,
+        action_state_timer,
+        view_state_timer,
+        position,
+        fov_y,
+    );
+}
+
+/// `ViewState::Aiming`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
+pub fn update_third_person_camera_when_aiming(
+    third_person_camera: &mut ThirdPersonCamera,
+    action_state: ActionState,
+    action_state_timer: ActionStateTimer,
+    view_state_timer: ViewStateTimer,
+) {
+    /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
+    fn non_camera_effect(
+        third_person_camera: &mut ThirdPersonCamera,
+        _: ActionStateTimer,
+        _: ViewStateTimer,
+        default_position: glam::Vec3A,
+        default_fov_y: f32,
+    ) {
+        third_person_camera.position = default_position;
+        third_person_camera.fov_y = default_fov_y;
+    }
+
+    type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
+    const FUNC_TABLE: [Func; 5] = [
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        apply_camera_effect_when_attack,
+    ];
+
+    let i = action_state as usize;
+    FUNC_TABLE[i](
+        third_person_camera,
+        action_state_timer,
+        view_state_timer,
+        CAMERA_ZOOM_POSITION,
+        CAMERA_ZOOM_FOV_Y,
+    );
+}
+
+/// 카메라 이펙트 함수
+fn effect_function(t: f32) -> f32 {
+    t * t / (t * t + (1.0 - t) * (1.0 - t))
+}
+
+/// `ViewState::Idle`에서 일반 공격을 사용할 경우 카메라 이펙트를 적용합니다.
+fn apply_camera_effect_when_attack(
+    third_person_camera: &mut ThirdPersonCamera,
+    action_state_timer: ActionStateTimer,
+    _view_state_timer: ViewStateTimer,
+    default_position: glam::Vec3A,
+    default_fov_y: f32,
+) {
+    // 총알 발사 타이밍
+    const ATTACK_TP_0: f32 = 0.9;
+    const ATTACK_TP_1: f32 = 1.0;
+    const ATTACK_TP_2: f32 = 1.5;
+
+    // 줌인 오프셋
+    const ZOOM_OFFSET: f32 = 0.174533;
+
+    if (ATTACK_TP_0..ATTACK_TP_1).contains(&action_state_timer.0) {
+        let t = (action_state_timer.0 - ATTACK_TP_0) / (ATTACK_TP_1 - ATTACK_TP_0);
+        let delta = effect_function(t);
+        third_person_camera.position = default_position;
+        third_person_camera.fov_y = default_fov_y - ZOOM_OFFSET * delta;
+    } else if (ATTACK_TP_1..=ATTACK_TP_2).contains(&action_state_timer.0) {
+        let t = (action_state_timer.0 - ATTACK_TP_1) / (ATTACK_TP_2 - ATTACK_TP_1);
+        let delta = 1.0 - effect_function(t);
+        third_person_camera.position = default_position;
+        third_person_camera.fov_y = default_fov_y - ZOOM_OFFSET * delta;
+    } else {
+        third_person_camera.position = default_position;
+        third_person_camera.fov_y = default_fov_y;
     }
 }

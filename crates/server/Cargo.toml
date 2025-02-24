@@ -14,13 +14,13 @@ dashmap = { workspace = true }
 glam = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
+num_cpus = { workspace = true }
 parking_lot = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 static_assertions = { workspace = true }
 thiserror = { workspace = true }
-uuid = { workspace = true }
 
 futures = "0.3"
 tokio = { version = "1.43", features = ["full"] }

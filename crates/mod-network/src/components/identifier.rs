@@ -1,38 +1,35 @@
-use uuid::Uuid;
+use std::fmt;
 
 use super::{BigEndian, TryFromBigEndian};
 
 /// 클라이언트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ClientId(u128);
+pub struct ClientId(u64);
 
 impl ClientId {
     /// 비어있는 클라이언트 식별자입니다.
     pub const NULL: Self = Self(0);
 
-    /// 클라이언트 식별자의 최대 값 입니다.
-    pub const MAX: Self = Self(u128::MAX);
-
     /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
     ///
     /// # Panics
-    /// 주어진 정수가 `0` 또는 `u64::MAX`인 경우 [`panic!`]을 호출합니다.
+    /// 주어진 정수가 `0`인 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(num: u128) -> Self {
-        assert!(num != 0 && num != u128::MAX, "out of bounds");
+    pub fn new(num: u64) -> Self {
+        assert_ne!(num, 0, "invalid client id");
         unsafe { Self::new_unchecked(num) }
     }
 
     /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
-    pub const unsafe fn new_unchecked(num: u128) -> Self {
+    pub const unsafe fn new_unchecked(num: u64) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for ClientId {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+        Self::try_from_big_endian_bytes(bytes).expect("invalid client id")
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
@@ -42,8 +39,8 @@ impl BigEndian for ClientId {
 
 impl TryFromBigEndian for ClientId {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let num = u128::from_big_endian_bytes(bytes);
-        if num != 0 && num != u128::MAX {
+        let num = u64::from_big_endian_bytes(bytes);
+        if num != 0 {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
             log::error!(
@@ -56,21 +53,9 @@ impl TryFromBigEndian for ClientId {
     }
 }
 
-impl ToString for ClientId {
-    fn to_string(&self) -> String {
-        Uuid::from_u128(self.0).hyphenated().to_string()
-    }
-}
-
-impl PartialEq<ObjectId> for ClientId {
-    fn eq(&self, other: &ObjectId) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Into<ObjectId> for ClientId {
-    fn into(self) -> ObjectId {
-        unsafe { ObjectId::new_unchecked(self.0) }
+impl fmt::Display for ClientId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:X}", &self.0)
     }
 }
 
@@ -127,34 +112,31 @@ impl TryFromBigEndian for Epoch {
 /// 게임 월드 내 오브젝트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ObjectId(u128);
+pub struct ObjectId(u64);
 
 impl ObjectId {
     /// 비어있는 오브젝트 식별자입니다.
     pub const NULL: Self = Self(0);
 
-    /// 오브젝트 식별자의 최대 값 입니다.
-    pub const MAX: Self = Self(u128::MAX);
-
     /// 주어진 정수로 새로운 오브젝트 식별자를 생성합니다.
     ///
     /// # Panics
-    /// 주어진 정수가 `0` 또는 `u32::MAX`인 경우 [`panic!`]을 호출합니다.
+    /// 주어진 정수가 `0`인 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(num: u128) -> Self {
-        assert!(num != 0 && num != u128::MAX, "out of bounds");
+    pub fn new(num: u64) -> Self {
+        assert_ne!(num, 0, "invalid object id");
         unsafe { Self::new_unchecked(num) }
     }
 
     /// 주어진 정수로 새로운 오브젝트 식별자를 생성합니다.
-    pub const unsafe fn new_unchecked(num: u128) -> Self {
+    pub const unsafe fn new_unchecked(num: u64) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for ObjectId {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+        Self::try_from_big_endian_bytes(bytes).expect("invalid object id")
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
@@ -164,8 +146,8 @@ impl BigEndian for ObjectId {
 
 impl TryFromBigEndian for ObjectId {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let num = u128::from_big_endian_bytes(bytes);
-        if num != 0 && num != u128::MAX {
+        let num = u64::from_big_endian_bytes(bytes);
+        if num != 0 {
             unsafe { Some(Self::new_unchecked(num)) }
         } else {
             log::error!(
@@ -178,15 +160,9 @@ impl TryFromBigEndian for ObjectId {
     }
 }
 
-impl PartialEq<ClientId> for ObjectId {
-    fn eq(&self, other: &ClientId) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Into<ClientId> for ObjectId {
-    fn into(self) -> ClientId {
-        unsafe { ClientId::new_unchecked(self.0) }
+impl fmt::Display for ObjectId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:X}", &self.0)
     }
 }
 

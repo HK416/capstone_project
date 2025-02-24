@@ -30,6 +30,8 @@ impl From<CharacterKind> for BulletKind {
         match value {
             CharacterKind::ArisOriginal => BulletKind::ArisOriginal,
             CharacterKind::MomoiOriginal => BulletKind::Common,
+            CharacterKind::MidoriOriginal => BulletKind::Common,
+            CharacterKind::YuukaOriginal => BulletKind::Common,
         }
     }
 }

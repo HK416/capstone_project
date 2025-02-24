@@ -1,125 +1,57 @@
 use glam::Vec4Swizzles;
 use hecs::{Entity, World};
-use mod_network::components::{CharacterKind, ViewState, ViewStateTimer};
+use mod_network::components::{CharacterKind, LatLon};
 
-use crate::component::normalize_view_state_timer;
-
-use super::{update_entity_hierarchy, ToParentTrans};
+use super::{create_third_person_camera_of_character, update_entity_hierarchy, ToParentTrans};
 
 /// ## Third Person Camera Data
 #[derive(Debug, Clone, Copy)]
 pub struct ThirdPersonCamera {
-    /// 삼인칭 카메라의 기본 위치 오프셋입니다.
-    pub default_offset: glam::Vec4,
-
-    /// 삼인칭 카메라의 줌 위치 오프셋입니다.
-    pub zoom_offset: glam::Vec4,
-
-    /// 삼인칭 카메라의 위치 오프셋입니다.
-    pub position_offset: glam::Vec4,
-
-    /// 카메라가 대상을 바라보는 방향입니다.
-    pub yaw_angle: f32,
-
-    /// 카메라가 대상을 바라보는 각도입니다.
-    pub pitch_angle: f32,
+    /// 삼인칭 카메라 Fov-y 입니다.
+    pub fov_y: f32,
+    /// 카메라의 회전 각도입니다.
+    pub rotation: LatLon,
+    /// 삼인칭 카메라 상대 위치입니다.
+    pub position: glam::Vec3A,
 }
 
 impl ThirdPersonCamera {
+    /// 캐릭터가 바라보는 방향으로 삼인칭 카메라를 생성합니다.
+    pub fn new(character_kind: CharacterKind) -> Self {
+        create_third_person_camera_of_character(character_kind)
+    }
+
     /// 삼인칭 카메라가 바라보는 방향 회전시킵니다.
     pub fn rotate(&mut self, dx: f32, dy: f32, offset: f32) {
-        use core::f32::consts::{FRAC_PI_3, TAU};
+        use core::f32::consts::TAU;
 
         // 삼인칭 카메라가 바라보는 방향을 갱신합니다.
         let angle = (dx * offset).to_radians();
-        self.yaw_angle = (self.yaw_angle + angle) % TAU;
+        self.rotation.lon = (self.rotation.lon + angle) % TAU;
 
         // 삼인칭 카메라의 바라보는 각도를 갱신합니다.
         let angle = (dy * offset).to_radians();
-        self.pitch_angle = (self.pitch_angle + angle).clamp(-FRAC_PI_3, FRAC_PI_3);
-    }
-
-    /// 현재 삼인칭 카메라의 위치 오프셋을 갱신합니다.
-    ///
-    /// # Note
-    /// 이 함수를 호출하기 전에 `ViewState`가 먼저 갱신되어야 합니다.
-    ///
-    pub fn update_offset(
-        &mut self,
-        character_kind: CharacterKind,
-        view_state: ViewState,
-        view_state_timer: ViewStateTimer,
-    ) {
-        const FUNC_TABLE: [fn(glam::Vec4, glam::Vec4, f32) -> glam::Vec4; 4] = [
-            update_offset_when_idle_state,
-            update_offset_when_zoom_in_state,
-            update_offset_when_zoom_out_state,
-            update_offset_when_aiming_state,
-        ];
-
-        let i = view_state as usize;
-        let s = normalize_view_state_timer(character_kind, view_state, view_state_timer);
-        self.position_offset = FUNC_TABLE[i](self.default_offset, self.zoom_offset, s);
+        self.rotation.lat = (self.rotation.lat + angle).clamp(LatLon::MIN_LATITUDE, LatLon::MAX_LATITUDE);
     }
 
     /// 카메라의 바라보는 방향을 행렬로 반환합니다.
     pub fn to_matrix(&self) -> glam::Mat4 {
-        let distance = self.position_offset.z;
+        let distance = self.position.z;
         let mut transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.0, -distance));
-        let rotation = glam::Mat4::from_rotation_y(self.yaw_angle);
+        let rotation = glam::Mat4::from_rotation_y(self.rotation.lon);
         transform = rotation * transform;
 
         let z_axis = transform.z_axis.xyz().normalize_or(glam::Vec3::Z);
         let x_axis = glam::Vec3::Y.cross(z_axis);
-        let rotation = glam::Mat4::from_axis_angle(x_axis, self.pitch_angle);
+        let rotation = glam::Mat4::from_axis_angle(x_axis, self.rotation.lat);
         transform = rotation * transform;
 
-        let offset = self.position_offset.xyw();
-        let offset_mat = glam::Mat4::from_translation(offset);
+        let offset = self.position.with_z(0.0);
+        let offset_mat = glam::Mat4::from_translation(offset.into());
         transform = transform * offset_mat;
 
         transform
     }
-}
-
-impl Default for ThirdPersonCamera {
-    fn default() -> Self {
-        Self {
-            default_offset: glam::Vec4::new(0.25, 0.85, 1.5, 0.0),
-            zoom_offset: glam::Vec4::new(0.125, 0.7, 0.5, 0.0),
-            position_offset: glam::Vec4::new(0.25, 0.85, 1.5, 0.0),
-            yaw_angle: 0.0f32.to_radians(),
-            pitch_angle: 10f32.to_radians(),
-        }
-    }
-}
-
-/// `ViewState::Idle`일 때 삼인칭 카메라의 위치 오프셋을 계산합니다.
-fn update_offset_when_idle_state(default_offset: glam::Vec4, _: glam::Vec4, _: f32) -> glam::Vec4 {
-    default_offset
-}
-
-/// `ViewState::ZoomIn`일 때 삼인칭 카메라의 위치 오프셋을 계산합니다.
-fn update_offset_when_zoom_in_state(
-    default_offset: glam::Vec4,
-    zoom_offset: glam::Vec4,
-    s: f32,
-) -> glam::Vec4 {
-    default_offset.lerp(zoom_offset, s)
-}
-
-/// `ViewState::ZoomOut`일 때 삼인칭 카메라의 위치 오프셋을 계산합니다.
-fn update_offset_when_zoom_out_state(
-    default_offset: glam::Vec4,
-    zoom_offset: glam::Vec4,
-    s: f32,
-) -> glam::Vec4 {
-    zoom_offset.lerp(default_offset, s)
-}
-
-/// `ViewState::Aiming`일 때 삼인칭 카메라의 위치 오프셋을 계산합니다.
-fn update_offset_when_aiming_state(_: glam::Vec4, zoom_offset: glam::Vec4, _: f32) -> glam::Vec4 {
-    zoom_offset
 }
 
 /// ## Projection Transform Matrix

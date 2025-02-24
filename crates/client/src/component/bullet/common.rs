@@ -6,7 +6,7 @@ use mod_network::components::BulletKind;
 use mod_render::{MaterialResource, MeshResource};
 
 use crate::{
-    asset::{ModelAssetError, ModelHierarchyPool, Node},
+    asset::{AssetError, ModelHierarchyPool, Node},
     component::{Child, Parent, Sibling, ToParentTrans, WorldTransform},
 };
 
@@ -36,7 +36,7 @@ pub fn spawn_common_bullet_model(
     queue: &wgpu::Queue,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), ModelAssetError> {
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root =
         ModelHierarchyPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager, device, queue)?;
 
@@ -87,7 +87,7 @@ fn spawn_common_bullet_model_recursive(
 
     // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
     builder.add(Parent(parent));
-    builder.add(ToParentTrans(current.transform.into_mat4()));
+    builder.add(ToParentTrans(current.transform));
     builder.add(WorldTransform::default());
 
     // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.

@@ -5,6 +5,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use wgpu::util::DeviceExt;
 
 use crate::{SamplerPool, TexturePool, TextureViewPool};
 
@@ -19,9 +20,6 @@ pub struct MaterialDataLayout {
     pub parallax: f32,
     pub strength: f32,
     pub _padding: [u8; 8],
-    pub albedo: [f32; 4],
-    pub specular: [f32; 4],
-    pub emissive: [f32; 4],
 }
 
 impl Default for MaterialDataLayout {
@@ -34,9 +32,6 @@ impl Default for MaterialDataLayout {
             parallax: 0.0,
             strength: 0.0,
             _padding: [0; 8],
-            albedo: [0.0; 4],
-            specular: [0.0; 4],
-            emissive: [0.0; 4],
         }
     }
 }
@@ -145,54 +140,435 @@ static_assertions::const_assert_eq!(
     core::mem::size_of::<MaterialDataLayout>()
 );
 
+/// 재질의 Albedo 색상 데이터입니다.
+#[derive(Debug, Clone)]
+pub enum Albedo {
+    None,
+    Color([f32; 4]),
+    Texture {
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    },
+}
+
+impl Albedo {
+    /// [wgpu::TextureView]를 반환합니다.
+    fn view(
+        &self,
+        name: &str,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Arc<wgpu::TextureView> {
+        match self {
+            Albedo::None => {
+                let texture = TexturePool::white(device, queue);
+                let view =
+                    TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                view
+            }
+            Albedo::Color(color) => {
+                let color: Vec<u8> = color
+                    .iter()
+                    .cloned()
+                    .map(|i| (i * 255.0).ceil() as u8)
+                    .collect();
+                let texture = device.create_texture_with_data(
+                    queue,
+                    &wgpu::TextureDescriptor {
+                        label: Some(&format!("Texture({})", name)),
+                        size: wgpu::Extent3d {
+                            width: 1,
+                            height: 1,
+                            depth_or_array_layers: 1,
+                        },
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    },
+                    wgpu::util::TextureDataOrder::LayerMajor,
+                    &bytemuck::cast_slice(&color),
+                );
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                Arc::new(view)
+            }
+            Albedo::Texture { view, .. } => view.clone(),
+        }
+    }
+
+    /// [wgpu::Sampler]를 반환합니다.
+    fn sampler(&self, device: &wgpu::Device) -> Arc<wgpu::Sampler> {
+        match self {
+            Albedo::Texture { sampler, .. } => sampler.clone(),
+            _ => SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default()),
+        }
+    }
+}
+
+impl Default for Albedo {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// 재질의 Specular 색상 데이터입니다.
+#[derive(Debug, Clone)]
+pub enum Specular {
+    None,
+    Color([f32; 4]),
+    Texture {
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    },
+}
+
+impl Specular {
+    /// [wgpu::TextureView]를 반환합니다.
+    fn view(
+        &self,
+        name: &str,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Arc<wgpu::TextureView> {
+        match self {
+            Specular::None => {
+                let texture = TexturePool::white(device, queue);
+                let view =
+                    TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                view
+            }
+            Specular::Color(color) => {
+                let texture = device.create_texture_with_data(
+                    queue,
+                    &wgpu::TextureDescriptor {
+                        label: Some(&format!("Texture({})", name)),
+                        size: wgpu::Extent3d {
+                            width: 1,
+                            height: 1,
+                            depth_or_array_layers: 1,
+                        },
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba32Float,
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    },
+                    wgpu::util::TextureDataOrder::LayerMajor,
+                    &bytemuck::cast_slice(color),
+                );
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                Arc::new(view)
+            }
+            Specular::Texture { view, .. } => view.clone(),
+        }
+    }
+
+    /// [wgpu::Sampler]를 반환합니다.
+    fn sampler(&self, device: &wgpu::Device) -> Arc<wgpu::Sampler> {
+        match self {
+            Specular::Texture { sampler, .. } => sampler.clone(),
+            _ => SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default()),
+        }
+    }
+}
+
+impl Default for Specular {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// 재질의 Emissive 색상 데이터입니다.
+#[derive(Debug, Clone)]
+pub enum Emissive {
+    None,
+    Color([f32; 4]),
+    Texture {
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    },
+}
+
+impl Emissive {
+    /// [wgpu::TextureView]를 반환합니다.
+    fn view(
+        &self,
+        name: &str,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Arc<wgpu::TextureView> {
+        match self {
+            Emissive::None => {
+                let texture = TexturePool::white(device, queue);
+                let view =
+                    TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                view
+            }
+            Emissive::Color(color) => {
+                let texture = device.create_texture_with_data(
+                    queue,
+                    &wgpu::TextureDescriptor {
+                        label: Some(&format!("Texture({})", name)),
+                        size: wgpu::Extent3d {
+                            width: 1,
+                            height: 1,
+                            depth_or_array_layers: 1,
+                        },
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba32Float,
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    },
+                    wgpu::util::TextureDataOrder::LayerMajor,
+                    &bytemuck::cast_slice(color),
+                );
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                Arc::new(view)
+            }
+            Emissive::Texture { view, .. } => view.clone(),
+        }
+    }
+
+    /// [wgpu::Sampler]를 반환합니다.
+    fn sampler(&self, device: &wgpu::Device) -> Arc<wgpu::Sampler> {
+        match self {
+            Emissive::Texture { sampler, .. } => sampler.clone(),
+            _ => SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default()),
+        }
+    }
+}
+
+impl Default for Emissive {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// 재질의 Normal 데이터입니다.
+#[derive(Debug, Clone)]
+pub enum Normal {
+    None,
+    Texture {
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    },
+}
+
+impl Normal {
+    /// [wgpu::TextureView]를 반환합니다.
+    fn view(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<wgpu::TextureView> {
+        match self {
+            Normal::None => {
+                let texture = TexturePool::normal(device, queue);
+                let view =
+                    TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                view
+            }
+            Normal::Texture { view, .. } => view.clone(),
+        }
+    }
+
+    /// [wgpu::Sampler]를 반환합니다.
+    fn sampler(&self, device: &wgpu::Device) -> Arc<wgpu::Sampler> {
+        match self {
+            Normal::Texture { sampler, .. } => sampler.clone(),
+            _ => SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default()),
+        }
+    }
+}
+
+impl Default for Normal {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// 재질의 Height 데이터입니다.
+#[derive(Debug, Clone)]
+pub enum Height {
+    None,
+    Texture {
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    },
+}
+
+impl Height {
+    /// [wgpu::TextureView]를 반환합니다.
+    fn view(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<wgpu::TextureView> {
+        match self {
+            Height::None => {
+                let texture = TexturePool::height(device, queue);
+                let view =
+                    TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                view
+            }
+            Height::Texture { view, .. } => view.clone(),
+        }
+    }
+
+    /// [wgpu::Sampler]를 반환합니다.
+    fn sampler(&self, device: &wgpu::Device) -> Arc<wgpu::Sampler> {
+        match self {
+            Height::Texture { sampler, .. } => sampler.clone(),
+            _ => SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default()),
+        }
+    }
+}
+
+impl Default for Height {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+/// 재질의 Occlusion 데이터입니다.
+#[derive(Debug, Clone)]
+pub enum Occlusion {
+    None,
+    Texture {
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    },
+}
+
+impl Occlusion {
+    /// [wgpu::TextureView]를 반환합니다.
+    fn view(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Arc<wgpu::TextureView> {
+        match self {
+            Occlusion::None => {
+                let texture = TexturePool::white(device, queue);
+                let view =
+                    TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                view
+            }
+            Occlusion::Texture { view, .. } => view.clone(),
+        }
+    }
+
+    /// [wgpu::Sampler]를 반환합니다.
+    fn sampler(&self, device: &wgpu::Device) -> Arc<wgpu::Sampler> {
+        match self {
+            Occlusion::Texture { sampler, .. } => sampler.clone(),
+            _ => SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default()),
+        }
+    }
+}
+
+impl Default for Occlusion {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// ## Material Shader Resource Descriptor
 #[derive(Debug, Clone)]
 pub struct MaterialDescriptor {
     pub name: String,
     pub layout: MaterialDataLayout,
-    pub albedo_map: Arc<wgpu::TextureView>,
-    pub albedo_sampler: Arc<wgpu::Sampler>,
-    pub specular_map: Arc<wgpu::TextureView>,
-    pub specular_sampler: Arc<wgpu::Sampler>,
-    pub emissive_map: Arc<wgpu::TextureView>,
-    pub emissive_sampler: Arc<wgpu::Sampler>,
-    pub normal_map: Arc<wgpu::TextureView>,
-    pub normal_sampler: Arc<wgpu::Sampler>,
-    pub parallax_map: Arc<wgpu::TextureView>,
-    pub parallax_sampler: Arc<wgpu::Sampler>,
-    pub occlusion_map: Arc<wgpu::TextureView>,
-    pub occlusion_sampler: Arc<wgpu::Sampler>,
+    pub albedo: Albedo,
+    pub specular: Specular,
+    pub emissive: Emissive,
+    pub normal: Normal,
+    pub height: Height,
+    pub occlusion: Occlusion,
 }
 
 impl MaterialDescriptor {
-    pub fn new(name: &str, device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
-        let black_texture = TexturePool::black(device, queue);
-        let black_texture_view =
-            TextureViewPool::get_or_init(&black_texture, &wgpu::TextureViewDescriptor::default());
-        let normal_texture = TexturePool::normal(device, queue);
-        let normal_texture_view =
-            TextureViewPool::get_or_init(&normal_texture, &wgpu::TextureViewDescriptor::default());
-        let height_texture = TexturePool::height(device, queue);
-        let height_texture_view =
-            TextureViewPool::get_or_init(&height_texture, &wgpu::TextureViewDescriptor::default());
-        let sampler = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
-
+    pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
             layout: MaterialDataLayout::default(),
-            albedo_map: black_texture_view.clone(),
-            albedo_sampler: sampler.clone(),
-            specular_map: black_texture_view.clone(),
-            specular_sampler: sampler.clone(),
-            emissive_map: black_texture_view.clone(),
-            emissive_sampler: sampler.clone(),
-            normal_map: normal_texture_view.clone(),
-            normal_sampler: sampler.clone(),
-            parallax_map: height_texture_view.clone(),
-            parallax_sampler: sampler.clone(),
-            occlusion_map: height_texture_view.clone(),
-            occlusion_sampler: sampler.clone(),
+            albedo: Albedo::default(),
+            specular: Specular::default(),
+            emissive: Emissive::default(),
+            normal: Normal::default(),
+            height: Height::default(),
+            occlusion: Occlusion::default(),
         }
+    }
+
+    /// Albedo 색상을 설정합니다.
+    pub fn with_albedo_color(&mut self, color: [f32; 4]) -> &mut Self {
+        self.albedo = Albedo::Color(color);
+        self
+    }
+
+    /// Albedo 텍스처를 설정합니다.
+    pub fn with_albedo_texture(
+        &mut self,
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    ) -> &mut Self {
+        self.albedo = Albedo::Texture { view, sampler };
+        self
+    }
+
+    /// Specular 색상을 설정합니다.
+    pub fn with_specular_color(&mut self, color: [f32; 4]) -> &mut Self {
+        self.specular = Specular::Color(color);
+        self
+    }
+
+    /// Specular 텍스처를 설정합니다.
+    pub fn with_specular_texture(
+        &mut self,
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    ) -> &mut Self {
+        self.specular = Specular::Texture { view, sampler };
+        self
+    }
+
+    /// Emissive 색상을 설정합니다.
+    pub fn with_emissive_color(&mut self, color: [f32; 4]) -> &mut Self {
+        self.emissive = Emissive::Color(color);
+        self
+    }
+
+    /// Emissive 텍스처를 설정합니다.
+    pub fn with_emissive_texture(
+        &mut self,
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    ) -> &mut Self {
+        self.emissive = Emissive::Texture { view, sampler };
+        self
+    }
+
+    /// Normal 텍스처를 설정합니다.
+    pub fn with_normal_texture(
+        &mut self,
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    ) -> &mut Self {
+        self.normal = Normal::Texture { view, sampler };
+        self
+    }
+
+    /// Height 텍스처를 설정합니다.
+    pub fn with_height_texture(
+        &mut self,
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    ) -> &mut Self {
+        self.height = Height::Texture { view, sampler };
+        self
+    }
+
+    /// Occlusion 텍스처를 설정합니다.
+    pub fn with_occlusion_texture(
+        &mut self,
+        view: Arc<wgpu::TextureView>,
+        sampler: Arc<wgpu::Sampler>,
+    ) -> &mut Self {
+        self.occlusion = Occlusion::Texture { view, sampler };
+        self
     }
 }
 
@@ -248,7 +624,7 @@ impl MaterialResource {
                         binding: 3,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false,
                         },
@@ -258,7 +634,7 @@ impl MaterialResource {
                     wgpu::BindGroupLayoutEntry {
                         binding: 4,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                         count: None,
                     },
                     // 5번 바인딩: Emissive 텍스처
@@ -266,7 +642,7 @@ impl MaterialResource {
                         binding: 5,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false,
                         },
@@ -276,7 +652,7 @@ impl MaterialResource {
                     wgpu::BindGroupLayoutEntry {
                         binding: 6,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                         count: None,
                     },
                     // 7번 바인딩: Normal 텍스처
@@ -356,51 +732,59 @@ impl MaterialResource {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&desc.albedo_map),
+                    resource: wgpu::BindingResource::TextureView(
+                        &desc.albedo.view(&desc.name, device, queue),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&desc.albedo_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.albedo.sampler(device)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: wgpu::BindingResource::TextureView(&desc.specular_map),
+                    resource: wgpu::BindingResource::TextureView(
+                        &desc.specular.view(&desc.name, device, queue),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: wgpu::BindingResource::Sampler(&desc.specular_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.specular.sampler(device)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&desc.emissive_map),
+                    resource: wgpu::BindingResource::TextureView(
+                        &desc.emissive.view(&desc.name, device, queue),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 6,
-                    resource: wgpu::BindingResource::Sampler(&desc.emissive_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.emissive.sampler(device)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 7,
-                    resource: wgpu::BindingResource::TextureView(&desc.normal_map),
+                    resource: wgpu::BindingResource::TextureView(&desc.normal.view(device, queue)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 8,
-                    resource: wgpu::BindingResource::Sampler(&desc.normal_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.normal.sampler(device)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 9,
-                    resource: wgpu::BindingResource::TextureView(&desc.parallax_map),
+                    resource: wgpu::BindingResource::TextureView(&desc.height.view(device, queue)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 10,
-                    resource: wgpu::BindingResource::Sampler(&desc.parallax_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.height.sampler(device)),
                 },
                 wgpu::BindGroupEntry {
                     binding: 11,
-                    resource: wgpu::BindingResource::TextureView(&desc.occlusion_map),
+                    resource: wgpu::BindingResource::TextureView(
+                        &desc.occlusion.view(device, queue),
+                    ),
                 },
                 wgpu::BindGroupEntry {
                     binding: 12,
-                    resource: wgpu::BindingResource::Sampler(&desc.occlusion_sampler),
+                    resource: wgpu::BindingResource::Sampler(&desc.occlusion.sampler(device)),
                 },
             ],
         });

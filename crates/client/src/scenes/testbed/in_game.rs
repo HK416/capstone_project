@@ -30,16 +30,17 @@ use crate::{
         spwan_bullet, update_action_state_by_controller_input_flags, update_action_state_timer,
         update_character_direction, update_entity_hierarchy,
         update_movement_state_by_controller_state, update_movement_state_timer,
-        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
-        update_view_state_timer, BoneCollection, Child, ControllerInputFlags, ControllerInputTimer,
-        ControllerState, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, TerrainTag,
-        ThirdPersonCamera, ToParentTrans, WorldTransform,
+        update_third_person_camera, update_third_person_camera_hierarchy,
+        update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection,
+        Child, ControllerInputFlags, ControllerInputTimer, ControllerState, MoveDirection, Parent,
+        Projection, Sibling, SkinningAnimation, StageArea, StageProp, ThirdPersonCamera,
+        ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     render::{
-        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_terrain,
-        get_damage_font, prepare_camera_resource, prepare_mesh_resource, spawn_damage_fx, Damage,
-        FxDamageDataLayout, FxDamageResource, LifeTime,
+        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
+        draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
+        spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
     },
     SERVER_TCP_ADDR,
 };
@@ -77,6 +78,9 @@ pub struct TestbedInGameScene {
     /// 공격을 받아 체력이 깎인 플레이어를 저장
     damage_logs: Vec<DamageLog>,
 
+    // -----  Composite Pass -----
+    composite_resource: Option<CompositeResource>,
+
     // ----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
@@ -112,6 +116,7 @@ impl TestbedInGameScene {
             controller_input_flags: ControllerInputFlags::default(),
             skybox_resource,
             damage_logs: Vec::default(),
+            composite_resource: None,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -190,6 +195,14 @@ impl TestbedInGameScene {
 
     /// 메인 카메라를 생성합니다.
     fn create_main_camera(&mut self, window: &Window, device: &wgpu::Device) {
+        // 플레이어 캐릭터 종류를 가져옵니다.
+        let entity = self.get_player_entity();
+        let character_kind = self
+            .world
+            .query_one_mut::<&CharacterKind>(entity)
+            .cloned()
+            .expect("invalid entity or invalid entity component");
+
         // 애플리케이션 창의 가로와 세로 크기를 가져옵니다.
         let (w, h): (f32, f32) = window.inner_size().into();
 
@@ -205,7 +218,7 @@ impl TestbedInGameScene {
         ));
 
         // 삼인칭 카메라 데이터와 카메라 쉐이더 리소스 컴포넌트를 추가합니다.
-        builder.add(ThirdPersonCamera::default());
+        builder.add(ThirdPersonCamera::new(character_kind));
         builder.add(Arc::new(CameraResource::uninit(Some("main"), device)));
 
         // 생성된 메인 카메라 엔터티를 저장합니다.
@@ -237,15 +250,13 @@ impl TestbedInGameScene {
         third_person_camera.rotate(dx, dy, offset);
 
         // 플레이어 엔터티에 카메라 방향 컴포넌트에도 적용합니다.
-        let lat = third_person_camera.pitch_angle;
-        let lon = third_person_camera.yaw_angle;
+        let rotation = third_person_camera.rotation;
         let entity = self.get_player_entity();
         let view_rotation = self
             .world
             .query_one_mut::<&mut LatLon>(entity)
             .expect("invalid entity or invalid entity component");
-        view_rotation.lat = lat;
-        view_rotation.lon = lon;
+        *view_rotation = rotation;
     }
 
     /// 메인 카메라의 오프셋을 갱신합니다.
@@ -256,10 +267,16 @@ impl TestbedInGameScene {
     fn update_main_camera_offset(&mut self) {
         // 플레이어 캐릭터의 종류, 카메라 상태, 카메라 상태 타이머를 가져옵니다.
         let entity = self.get_player_entity();
-        let (&character_kind, &view_state, &view_state_timer) = self
-            .world
-            .query_one_mut::<(&CharacterKind, &ViewState, &ViewStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
+        let (&character_kind, &action_state, &action_state_timer, &view_state, &view_state_timer) =
+            self.world
+                .query_one_mut::<(
+                    &CharacterKind,
+                    &ActionState,
+                    &ActionStateTimer,
+                    &ViewState,
+                    &ViewStateTimer,
+                )>(entity)
+                .expect("invalid entity or invalid entity component");
 
         // 메인 카메라의 삼인칭 카메라 요소를 가져옵니다.
         let third_person_camera = self
@@ -267,8 +284,15 @@ impl TestbedInGameScene {
             .query_one_mut::<&mut ThirdPersonCamera>(self.main_camera)
             .expect("invalid entity or invalid entity component");
 
-        // 삼인칭 카메라의 위치 오프셋을 갱신합니다.
-        third_person_camera.update_offset(character_kind, view_state, view_state_timer);
+        // 삼인칭 카메라를 갱신합니다.
+        update_third_person_camera(
+            third_person_camera,
+            character_kind,
+            action_state,
+            action_state_timer,
+            view_state,
+            view_state_timer,
+        );
     }
 
     /// 메인 카메라의 계층 구조를 갱신합니다.
@@ -296,6 +320,17 @@ impl TestbedInGameScene {
     ///
     fn prepare_main_camera_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let camera_entities = [self.main_camera];
+
+        // 투영 변환 행렬을 갱신합니다.
+        for entity in camera_entities {
+            let (third_person_camera, projection) = self
+                .world
+                .query_one_mut::<(&ThirdPersonCamera, &mut Projection)>(entity)
+                .expect("invalid entity or invalid entity component");
+            projection.0 =
+                glam::Mat4::perspective_lh(third_person_camera.fov_y, 16.0 / 9.0, 0.01, 500.0);
+        }
+
         prepare_camera_resource(&self.world, &camera_entities, device, queue);
     }
 
@@ -804,23 +839,37 @@ impl TestbedInGameScene {
         prepare_mesh_resource(&self.world, entities, device, queue);
     }
 
-    /// 지형 엔터티의 계층 구조를 갱신합니다.
+    /// 스테이지 엔터티의 계층 구조를 갱신합니다.
     fn update_stage_hierarchy(&mut self) {
-        let query = self.world.query_mut::<Without<&TerrainTag, &Parent>>();
-        let entities: Vec<_> = query.into_iter().map(|(entity, _)| entity).collect();
+        // 스테이지 지역 엔터티와 소품 엔터티를 수집합니다.
+        let mut entities = Vec::new();
+        let query = self.world.query_mut::<Without<&StageArea, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        let query = self.world.query_mut::<Without<&StageProp, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        // 엔터티의 계층 구조를 갱신합니다.
         for entity in entities {
             update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
         }
     }
 
-    /// 지형 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
+    /// 스테이지 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
     ///
     /// # Note
     /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
     ///
     fn prepare_stage_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let query = self.world.query_mut::<Without<&TerrainTag, &Parent>>();
-        let entities: Vec<_> = query.into_iter().map(|(entity, _)| entity).collect();
+        // 스테이지 지역 엔터티와 소품 엔터티를 수집합니다.
+        let mut entities = Vec::new();
+        let query = self.world.query_mut::<Without<&StageArea, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        let query = self.world.query_mut::<Without<&StageProp, &Parent>>();
+        entities.extend(query.into_iter().map(|(entity, _)| entity));
+
+        // 엔터티의 메쉬 리소스를 갱신합니다.
         prepare_mesh_resource(&self.world, &entities, device, queue);
     }
 
@@ -858,10 +907,7 @@ impl TestbedInGameScene {
             .world
             .query_one_mut::<&ThirdPersonCamera>(self.main_camera)
             .expect("invalid entity or invalid entity component");
-        let view_rotation: LatLon = LatLon {
-            lat: third_person_camera.pitch_angle,
-            lon: third_person_camera.yaw_angle,
-        };
+        let view_rotation = third_person_camera.rotation;
 
         // 패킷을 생성하고, 전송합니다.
         let pakcet = PushStatusPacket {
@@ -1132,6 +1178,9 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        // Composite Pass 쉐이더 리소스를 생성합니다.
+        self.composite_resource = Some(CompositeResource::uninit(window, app.render_device()));
+
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
 
@@ -1414,6 +1463,7 @@ impl GameScene for TestbedInGameScene {
                 .query_one_mut::<&WorldTransform>(muzzle)
                 .expect("invalid entity or invalid entity component");
             log::debug!("총구의 위치: {:?}", transform.get_translation());
+            log::debug!("총구의 z축 방향: {:?}", transform.get_look_vector());
 
             let transform = self
                 .world
@@ -1488,13 +1538,19 @@ impl GameScene for TestbedInGameScene {
             .expect("invalid entity");
         let camera_resource = query.get().expect("invalid entity component");
 
+        // Composite Pass 쉐이더 리소스를 가져옵니다.
+        let composite_resource = self
+            .composite_resource
+            .as_ref()
+            .expect("the shader resource must exist.");
+
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             ..Default::default()
         });
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("RenderPass(TestbedInGameScene)"),
+                label: Some("RenderPass(OpaquePass)"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,
@@ -1534,7 +1590,16 @@ impl GameScene for TestbedInGameScene {
                 &mut rpass,
             );
 
-            draw_terrain(
+            draw_stage_area(
+                &self.world,
+                &camera_resource,
+                &device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+
+            draw_stage_props(
                 &self.world,
                 &camera_resource,
                 &device,
@@ -1550,24 +1615,85 @@ impl GameScene for TestbedInGameScene {
                 DEPTH_FORMAT,
                 &mut rpass,
             );
+        }
+
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(TransparentPass)"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                a: 0.0,
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: &composite_resource.accum_render_target,
+                        resolve_target: None,
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                a: 1.0,
+                                r: 1.0,
+                                g: 1.0,
+                                b: 1.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: &composite_resource.reveal_render_target,
+                        resolve_target: None,
+                    }),
+                ],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
 
             draw_damage_particle(
                 &self.world,
-                &camera_resource,
                 &device,
-                SWAPCHAIN_FORMAT,
+                &camera_resource,
                 DEPTH_FORMAT,
                 &mut rpass,
             );
+        }
 
-            draw_damage_particle(
-                &self.world,
-                &camera_resource,
-                &device,
-                SWAPCHAIN_FORMAT,
-                DEPTH_FORMAT,
-                &mut rpass,
-            );
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(CompositePass)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    view: render_target_view,
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            composite_resource.process(device, SWAPCHAIN_FORMAT, DEPTH_FORMAT, &mut rpass);
+
             egui_renderer.render(
                 &mut rpass,
                 &self.egui_clip_primitives,

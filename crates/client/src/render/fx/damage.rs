@@ -13,8 +13,9 @@ use mod_render::{CameraResource, GraphicsPipelinePool, TexturePool};
 use wgpu::util::DeviceExt;
 
 use crate::{
-    asset::ModelAssetError,
+    asset::AssetError,
     component::{Parent, ToParentTrans, WorldTransform},
+    render::CompositeResource,
 };
 
 use super::{LifeTime, ParticleKind};
@@ -274,11 +275,10 @@ fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     })
 }
 
-/// 지형 모델 렌더링 파이프라인을 생성합니다.
+/// 데미지 파티클 렌더링 파이프라인을 생성합니다.
 pub fn create_fx_damage_render_pipeline(
     device: &wgpu::Device,
     depth_stencil_format: wgpu::TextureFormat,
-    render_target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
     let module = create_shader_module(device);
     let layout = create_pipeline_layout(device);
@@ -299,8 +299,8 @@ pub fn create_fx_damage_render_pipeline(
             ..Default::default()
         },
         depth_stencil: Some(wgpu::DepthStencilState {
-            depth_compare: wgpu::CompareFunction::Always,
-            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            depth_write_enabled: false,
             format: depth_stencil_format,
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
@@ -310,11 +310,40 @@ pub fn create_fx_damage_render_pipeline(
             module: &module,
             entry_point: Some("fs_main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                format: render_target_format,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets: &[
+                Some(wgpu::ColorTargetState {
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::One,
+                            dst_factor: wgpu::BlendFactor::One,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
+                    format: CompositeResource::ACCUM_FORMAT,
+                    write_mask: wgpu::ColorWrites::ALL,
+                }),
+                Some(wgpu::ColorTargetState {
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::Zero,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::Zero,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                    }),
+                    format: CompositeResource::REVEAL_FORMAT,
+                    write_mask: wgpu::ColorWrites::ALL,
+                }),
+            ],
         }),
         multiview: None,
         cache: None,
@@ -390,9 +419,8 @@ pub fn spawn_damage_fx(
 /// 데미지 파티클을 렌더링합니다.
 pub fn draw_damage_particle<'a>(
     world: &'a World,
-    camera_resource: &'a CameraResource,
     device: &wgpu::Device,
-    render_target_format: wgpu::TextureFormat,
+    camera_resource: &'a CameraResource,
     depth_stencil_format: wgpu::TextureFormat,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
@@ -400,7 +428,7 @@ pub fn draw_damage_particle<'a>(
     for (_, fx_resource) in query.iter() {
         // Skybox 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
         let pipeline = GraphicsPipelinePool::get_or_init(FX_DAMAGE_PIPELINE_NAME, || {
-            create_fx_damage_render_pipeline(device, depth_stencil_format, render_target_format)
+            create_fx_damage_render_pipeline(device, depth_stencil_format)
         });
         rpass.set_pipeline(&pipeline);
 
@@ -420,17 +448,18 @@ pub fn get_damage_font(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+) -> Result<Arc<wgpu::Texture>, AssetError> {
     TexturePool::get_or_init(
         "Fx(D_Font_Normal)",
-        move || -> Result<Arc<wgpu::Texture>, ModelAssetError> {
+        move || -> Result<Arc<wgpu::Texture>, AssetError> {
             let path = "font/D_Font_Normal.dds";
-            let cached_asset = asset_manager
-                .get_or_init(&path)
-                .map_err(|e| ModelAssetError::IOError(path.to_string(), e))?;
+            let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
+                log::error!("{} (PATH:{})", &e, &path);
+                AssetError::from(e)
+            })?;
 
-            let dds = Dds::read(Cursor::new(cached_asset.as_bytes()))
-                .map_err(|e| ModelAssetError::from(e))?;
+            let dds =
+                Dds::read(Cursor::new(cached_asset.as_bytes())).map_err(|e| AssetError::from(e))?;
 
             let texture = device.create_texture_with_data(
                 &queue,

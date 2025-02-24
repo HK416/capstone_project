@@ -1,26 +1,25 @@
 use serde::{Deserialize, Serialize};
 
+use crate::assets::Float3;
+
 use super::{BigEndian, TryFromBigEndian};
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize, Default)]
-pub struct Float3 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-}
-
-impl Into<[f32; 3]> for Float3 {
-    fn into(self) -> [f32; 3] {
-        [self.x, self.y, self.z]
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CharacterAttributes {
     /// 캐릭터 이동 속도
     pub speed: f32,
-    /// `ActionState::Aim`일 때 총구의 상대 위치
-    pub muzzle_position: Float3,
+    /// 위도가 최소(-60도)이고, `ActionState::Aim`일 때 총구의 상대 위치
+    pub muzzle_position_min: Float3,
+    /// 위도가 최소(-60도)이고, `ActionState::Aim`일 때 총구가 향하는 방향
+    pub muzzle_direction_min: Float3,
+    /// 위도가 0도이고, `ActionState::Aim`일 때 총구의 상대 위치
+    pub muzzle_position_mid: Float3,
+    /// 위도가 0도이고, `ActionState::Aim`일 때 총구가 향하는 방향
+    pub muzzle_direction_mid: Float3,
+    /// 위도가 최대(60도)이고, `ActionState::Aim`일 때 총구의 상대 위치
+    pub muzzle_position_max: Float3,
+    /// 위도가 최대(60도)이고, `ActionState::Aim`일 때 총구가 향하는 방향
+    pub muzzle_direction_max: Float3,
     /// `MovementState::Moving` 애니메이션 시간 (단위: 초)
     pub move_ing_duration: f32,
     /// `MovementState::MoveToEnd` 애니메이션 시간 (단위: 초)
@@ -47,6 +46,51 @@ pub struct CharacterAttributes {
     pub critical_rate: u32,
     pub critical_damage: u32,
     pub attack_range: u32,
+    pub bullet_radius: f32,
+}
+
+impl CharacterAttributes {
+    /// 라그랑주 보간법을 사용하여 총구의 위치를 계산합니다.
+    /// 
+    /// # Note
+    /// t의 값은 0부터 1사이의 값 입니다.
+    /// 
+    pub fn get_muzzle_position(&self, t: f32) -> (f32, f32, f32) {
+        let l1 = ((t - 0.5) * (t - 1.0)) / 0.5;
+        let l2 = (t * (t - 1.0)) / -0.25;
+        let l3 = (t * (t - 0.5)) / 0.5;
+
+        let (x1, y1, z1): (f32, f32, f32) = self.muzzle_position_min.into();
+        let (x2, y2, z2): (f32, f32, f32) = self.muzzle_position_mid.into();
+        let (x3, y3, z3): (f32, f32, f32) = self.muzzle_position_max.into();
+
+        let x = x1 * l1 + x2 * l2 + x3 * l3;
+        let y = y1 * l1 + y2 * l2 + y3 * l3;
+        let z = z1 * l1 + z2 * l2 + z3 * l3;
+
+        (x, y, z)
+    }
+
+    /// 라그랑주 보간법을 사용하여 총구의 방향을 계산합니다.
+    /// 
+    /// # Note
+    /// t의 값은 0부터 1사이의 값 입니다.
+    /// 
+    pub fn get_muzzle_direction(&self, t: f32) -> (f32, f32, f32) {
+        let l1 = ((t - 0.5) * (t - 1.0)) / 0.5;
+        let l2 = (t * (t - 1.0)) / -0.25;
+        let l3 = (t * (t - 0.5)) / 0.5;
+
+        let (x1, y1, z1): (f32, f32, f32) = self.muzzle_direction_min.into();
+        let (x2, y2, z2): (f32, f32, f32) = self.muzzle_direction_mid.into();
+        let (x3, y3, z3): (f32, f32, f32) = self.muzzle_direction_max.into();
+
+        let x = x1 * l1 + x2 * l2 + x3 * l3;
+        let y = y1 * l1 + y2 * l2 + y3 * l3;
+        let z = z1 * l1 + z2 * l2 + z3 * l3;
+
+        (x, y, z)
+    }
 }
 
 /// 캐릭터 모델 종류입니다.
@@ -55,6 +99,8 @@ pub struct CharacterAttributes {
 pub enum CharacterKind {
     ArisOriginal = 0,
     MomoiOriginal = 1,
+    MidoriOriginal = 2,
+    YuukaOriginal = 3,
 }
 
 impl BigEndian for CharacterKind {
@@ -80,6 +126,8 @@ impl TryFromBigEndian for CharacterKind {
         match index {
             0 => Some(CharacterKind::ArisOriginal),
             1 => Some(CharacterKind::MomoiOriginal),
+            2 => Some(CharacterKind::MidoriOriginal),
+            3 => Some(CharacterKind::YuukaOriginal),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",
@@ -97,6 +145,8 @@ impl ToString for CharacterKind {
         match self {
             CharacterKind::ArisOriginal => "Aris Original",
             CharacterKind::MomoiOriginal => "Momoi Original",
+            CharacterKind::MidoriOriginal => "Midori Original",
+            CharacterKind::YuukaOriginal => "Yuuka Original",
         }
         .to_string()
     }
@@ -199,6 +249,17 @@ impl Default for HealthPoint {
 pub struct LatLon {
     pub lat: f32,
     pub lon: f32,
+}
+
+impl LatLon {
+    /// 최소 위도 각도입니다. (단위 라디안)
+    pub const MIN_LATITUDE: f32 = -core::f32::consts::FRAC_PI_6;
+    /// 최대 위도 각도입니다. (단위: 라디안)
+    pub const MAX_LATITUDE: f32 = core::f32::consts::FRAC_PI_6;
+    /// 위도 각도 범위 입니다. (단위 라디안)
+    pub const LATITUDE_RANGE: f32 = Self::MAX_LATITUDE - Self::MIN_LATITUDE;
+    /// 위도 각도의 절반 범위입니다. (단위 라디안)
+    pub const LATITUDE_HALF_RANGE: f32 = 0.5 * Self::LATITUDE_RANGE;
 }
 
 impl BigEndian for LatLon {

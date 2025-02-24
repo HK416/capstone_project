@@ -531,7 +531,7 @@ impl MoveDirection {
         ];
 
         // 카메라가 바라보는 방향을 계산합니다.
-        let mat = glam::Mat4::from_rotation_y(third_person_camera.yaw_angle);
+        let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
         let view_right = mat.x_axis.normalize_or(glam::Vec4::X);
         let view_forward = mat.z_axis.normalize_or(glam::Vec4::Z);
 

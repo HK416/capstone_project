@@ -1,0 +1,52 @@
+{
+    "speed": 5.7,
+    "muzzle_position_min" : {
+      "x": 0.10579069,
+      "y": 0.77921677,
+      "z": 0.3338462
+    },
+    "muzzle_direction_min" : {
+      "x": 0,
+      "y": 0.44901369,
+      "z": 0.89352488
+    },
+    "muzzle_position_mid": {
+      "x": 0.11911252,
+      "y": 0.5965039,
+      "z": 0.5006398
+    },
+    "muzzle_direction_mid": {
+      "x": 0,
+      "y": 0.016847, 
+      "z": 0.999858
+    },
+    "muzzle_position_max": { 
+      "x": 0.119183, 
+      "y": 0.42532742, 
+      "z": 0.5112932
+    },
+    "muzzle_direction_max": { 
+      "x": 0,
+      "y": -0.418633, 
+      "z": 0.908156
+    },
+    "move_ing_duration": 0.6,
+    "move_end_normal_duration": 1.333,
+    "walk_duration": 1.267,
+    "normal_idle_duration": 2.0,
+    "normal_attack_start_duration": 0.533,
+    "normal_attack_end_duration": 0.533,
+    "normal_attack_ing_duration": 0.6,
+    "normal_attack_timing": [0.09, 0.18, 0.3],
+    "normal_attack_count": 3,
+    "health_point": 3147,
+    "attack_power": 119,
+    "defense_power": 29,
+    "accuracy_stat": 100,
+    "evasion_stat": 1440,
+    "critical_rate": 200,
+    "critical_damage": 200,
+    "attack_range": 350,
+    "bullet_radius": 0.02
+  }
+  

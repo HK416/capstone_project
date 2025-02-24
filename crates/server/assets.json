@@ -10,11 +10,38 @@
                     ], 
                     "directories" : {}
                 },
+                "midori_original" : {
+                    "files" : [
+                        "attribute.json"
+                    ],
+                    "directories" : {}
+                },
                 "momoi_original" : {
                     "files" : [
                         "attribute.json"
                     ],
                     "directories" : {}
+                },
+                "yuuka_original" : {
+                    "files" : [
+                        "attribute.json"
+                    ],
+                    "directories" : {}
+                }
+            }
+        },
+        "stage" : {
+            "files" : [],
+            "directories" : {
+                "city" : {
+                    "files" : [
+                        "City_Plane_00_Height.json",
+                        "City_Plane_01_Height.json",
+                        "City_Plane_02_Height.json",
+                        "City_Plane_04_Height.json",
+                        "map.json"
+                    ],
+                    "directories" : { }
                 }
             }
         }

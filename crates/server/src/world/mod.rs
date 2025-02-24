@@ -9,7 +9,6 @@ use std::sync::{
 
 use ahash::RandomState;
 use dashmap::DashMap;
-use glam::Vec4Swizzles;
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, CharacterKind, ClientId, DamageLog, Epoch,
@@ -20,9 +19,10 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
-use uuid::Uuid;
 
-use crate::{data::get_character_attributes, session::Session};
+use crate::{
+    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position}, identifier::IdentifierGenerator, session::Session
+};
 
 pub use self::{data::*, event::*, player::*};
 
@@ -37,6 +37,8 @@ use super::formula::movement_formulas as formulas;
 pub struct World {
     /// 현재 게임 월드의 시대 정보입니다.
     epoch: AtomicU64,
+    /// 오브젝트 식별자 생성기입니다.
+    object_id_gen: IdentifierGenerator,
 
     /// 게임 지형의 종류입니다.
     stage_kind: StageKind,
@@ -72,7 +74,7 @@ impl World {
     pub fn join(&self, session: Arc<Session>, character_kind: CharacterKind) {
         // 오브젝트 식별자를 하나 할당하고, 세션 목록에 추가합니다.
         let client_id = session.client_id();
-        let object_id = ObjectId::new(Uuid::new_v4().as_u128());
+        let object_id = ObjectId::new(self.object_id_gen.generate());
         self.sessions.insert(session, object_id);
 
         // 플레이어 생성 이벤트를 추가합니다.
@@ -236,14 +238,13 @@ impl World {
             player.view_state = view_state;
             player.view_rotation = view_rotation;
 
+            if player.action_state != player.prev_action_state {
+                player.action_state_timer.0 = 0.0;
+            }
+
             // 플레이어 총알 발사 확인
             match player.action_state {
                 ActionState::Attack => {
-                    if player.prev_action_state != ActionState::Attack {
-                        player.shot_count = 0;
-                        player.action_state_timer.0 = 0.0;
-                    }
-
                     if player.shot_count < attributes.normal_attack_count {
                         let index = player.shot_count as usize;
                         let timing = attributes.normal_attack_timing[index];
@@ -265,29 +266,29 @@ impl World {
         if let Some(player) = self.players.get(&shooter_id.into()) {
             let attributes = get_character_attributes(player.character_kind);
 
-            // 플레이어가 바라보는 방향을 계산합니다.
-            let mut transform = glam::Mat4::from_translation(glam::Vec3::NEG_Z);
+            // 각도의 파라미터를 계산합니다.
+            let latitude = player.view_rotation.lat;
+            let t = ((latitude + LatLon::LATITUDE_HALF_RANGE) / LatLon::LATITUDE_RANGE).clamp(0.0, 1.0);
+
+            // 총구가 바라보는 방향을 계산합니다.
+            let mut direction = glam::Vec3A::from(attributes.get_muzzle_direction(t));
+            direction = direction.normalize_or(glam::Vec3A::Z);
+
+            // let mut transform = glam::Mat4::from_translation(glam::Vec3::NEG_Z);
             let rotate = glam::Mat4::from_rotation_y(player.view_rotation.lon);
-            transform = rotate * transform;
-
-            let z_axis = glam::Vec3A::from(transform.z_axis.xyz().normalize_or(glam::Vec3::Z));
-            let x_axis = glam::Vec3A::Y.cross(z_axis);
-            let rotate = glam::Mat4::from_axis_angle(x_axis.into(), player.view_rotation.lat);
-            transform = rotate * transform;
-
-            let direction = glam::Vec3A::from(transform.z_axis.xyz().normalize_or(glam::Vec3::Z));
+            direction = rotate.transform_vector3a(direction);
             let velocity = direction * 50.0;
-            let rotation = glam::Quat::from_mat4(&transform);
+            let rotation = glam::Quat::from_rotation_arc(glam::Vec3::Z, direction.into());
 
             // 총구의 위치를 계산합니다.
-            let offset = glam::Vec3::from_array(attributes.muzzle_position.into());
+            let offset = glam::Vec3::from(attributes.get_muzzle_position(t));
             let mut offset = glam::Mat4::from_translation(offset);
-            let rotate = glam::Mat4::from_quat(rotation);
+            let rotate = glam::Mat4::from_rotation_y(player.view_rotation.lon);
             offset = rotate * offset;
             let offset = glam::Vec3A::from_vec4(offset.w_axis);
             let translation = player.translation + offset;
 
-            let object_id = ObjectId::new(Uuid::new_v4().as_u128());
+            let object_id = ObjectId::new(self.object_id_gen.generate());
             self.bullets.insert(
                 object_id,
                 ServerBullet {
@@ -343,6 +344,10 @@ impl World {
 
     /// 주어진 시간 간격으로 게임 월드를 갱신합니다.
     fn update(&self, elapsed_time_sec: f32) {
+        // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
+        const PLAYER_RADIUS: f32 = 0.25;
+        const PLAYER_HEIGHT: f32 = 1.0;
+
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
@@ -363,23 +368,20 @@ impl World {
                     continue;
                 }
 
-                // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
-                const BULLET_RADIUS: f32 = 0.15;
-                const PLAYER_RADIUS: f32 = 1.0;
-                const PLAYER_HEIGHT: f32 = 2.5;
+                let attributes = get_character_attributes(player.character_kind);
 
                 // 충돌 처리: 플레이어 - 총알
                 // 플레이어의 충돌체: YCapsule(총알의 크기 만큼 확대)           나중에 세분화
                 // 총알은 점으로 raycasting
 
                 let mut center = player.translation;
-                center[1] -= BULLET_RADIUS;
+                center[1] -= attributes.bullet_radius;
 
                 // mod-network의 Player에 make_collider()를 추가해서 클라이언트에서도 표시할 수 있도록 해도 좋아보임.
                 let player_capsule = YCapsule {
                     center: glam::Vec3::from(center),
-                    radius: PLAYER_RADIUS + BULLET_RADIUS,
-                    height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
+                    radius: PLAYER_RADIUS + attributes.bullet_radius,
+                    height: PLAYER_HEIGHT + attributes.bullet_radius * 2.0,
                 };
 
                 if let Some(dist) = ray.intersect(&player_capsule) {
@@ -484,12 +486,40 @@ impl World {
         for mut player in self.players.iter_mut() {
             let attributes = get_character_attributes(player.character_kind);
 
-            // 플레이어 이동
+            // 플레이어 이동 벡터 계산
             let velocity = match player.movement_state {
                 MovementState::Moving => player.direction * attributes.speed,
                 _ => glam::Vec3A::ZERO,
             };
-            player.translation += velocity * elapsed_time_sec;
+            player.velocity.x = velocity.x;
+            player.velocity.z = velocity.z;
+            // 중력 누적
+            player.velocity.y += -9.8 * elapsed_time_sec;
+
+            // 이동 시도 (이동 전 위치 저장)
+            let mut new_p = player.translation + player.velocity * elapsed_time_sec;
+
+            // 기존 영역과 현재 영역을 인자로 넘겨서 x, z중 어느 값이 넘어갔는지 확인
+            // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?
+            // 유효한 영역이 아니라면 현재 영역의 가장 가장자리 부분으로 clamp하기
+            if !is_valid_position(self.stage_kind, new_p.x, player.translation.z) {
+                player.velocity.x = 0.0;
+                new_p.x = clamp_x(self.stage_kind, player.translation.x, new_p.x);
+            }
+            if !is_valid_position(self.stage_kind, player.translation.x, new_p.z) {
+                player.velocity.z = 0.0;
+                new_p.z = clamp_z(self.stage_kind, player.translation.z, new_p.z);
+            }
+
+            new_p = player.translation + player.velocity * elapsed_time_sec;
+
+            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
+                if height >= new_p.y {
+                    new_p.y = height;
+                    player.velocity.y = 0.0;
+                }
+                player.translation = new_p;
+            }
         }
     }
 }
@@ -498,6 +528,7 @@ impl Default for World {
     fn default() -> Self {
         Self {
             epoch: AtomicU64::new(0),
+            object_id_gen: IdentifierGenerator::new(),
             stage_kind: StageKind::default(),
             sessions: DashMap::default(),
             players: DashMap::default(),

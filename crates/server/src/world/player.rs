@@ -129,8 +129,19 @@ fn update_action_state_timer_when_attack(
     // `*_Normal_Attack_Ing` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
     let diff_t = player.action_state_timer.0 - attributes.normal_attack_ing_duration;
     if diff_t >= 0.0 {
-        player.action_state = ActionState::Idle;
-        player.action_state_timer.0 = diff_t % attributes.normal_idle_duration;
+        match player.action_state {
+            ActionState::Idle | ActionState::AimOff => {
+                player.action_state = ActionState::Idle;
+                player.action_state_timer.0 = diff_t % attributes.normal_idle_duration;
+            }
+            ActionState::Aiming | ActionState::AimAt => {
+                player.action_state = ActionState::Aiming;
+                player.action_state_timer.0 = diff_t % attributes.normal_idle_duration;
+            }
+            ActionState::Attack => {
+                player.action_state_timer.0 = diff_t % attributes.normal_attack_ing_duration;
+            }
+        }
         player.shot_count = 0;
     }
 }

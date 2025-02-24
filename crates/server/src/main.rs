@@ -11,22 +11,14 @@ use std::{
 use mod_network::{addr::Addr, components::ClientId, protocol::RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use server::{
-    session::{handle_connection, Session},
-    world::{update_game_world, World},
+    identifier::IdentifierGenerator, session::{handle_connection, Session}, world::{update_game_world, World}
 };
 use tokio::net::{TcpListener, UdpSocket};
 
-/// 현재 클라이언트의 수 입니다.
+/// 현재 접속중인 클라이언트의 수 입니다.
 static NUM_CLIENTS: AtomicU64 = AtomicU64::new(0);
-/// 사용되지 않는 클라이언트 식별자 목록입니다.
-static RETIRE_IDS: OnceLock<Queue<u64>> = OnceLock::new();
 /// 현재 서버에 접속중인 세션 집합입니다.
 static SESSIONS: OnceLock<SkipMap<SocketAddr, Arc<Session>>> = OnceLock::new();
-
-/// 사용되지 않는 클라이언트 식별자 목록을 가져옵니다.
-fn get_retire_ids() -> &'static Queue<u64> {
-    RETIRE_IDS.get_or_init(|| Queue::default())
-}
 
 /// 현재 서버에 접속중인 세션 집합을 가져옵니다.
 fn get_sessions() -> &'static SkipMap<SocketAddr, Arc<Session>> {
@@ -34,7 +26,7 @@ fn get_sessions() -> &'static SkipMap<SocketAddr, Arc<Session>> {
 }
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
-pub async fn run_server(addr: &str) {
+pub async fn run_server(addr: &str, client_id_gen: IdentifierGenerator) {
     // TCP 소켓을 바인드합니다.
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -66,7 +58,7 @@ pub async fn run_server(addr: &str) {
     tokio::spawn(udp_packet_send_loop(udp_send_socket, udp_sender_clone));
 
     // 새로운 쓰레드에서 클라이언트 연결 관리
-    tokio::spawn(wait_for_players(listener, udp_sender));
+    tokio::spawn(wait_for_players(listener, udp_sender, client_id_gen));
 
     // 게임 월드 업데이트
     // TODO: 나중에 여러 개의 게임 월드를 실행해야함.
@@ -133,29 +125,30 @@ async fn udp_packet_send_loop(
     }
 }
 
-async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) {
+async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>, client_id_gen: IdentifierGenerator) {
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
                 // 클라이언트 식별자를 할당합니다.
-                let value = get_retire_ids()
-                    .pop()
-                    .unwrap_or_else(|| NUM_CLIENTS.fetch_add(1, MemOrdering::AcqRel) + 1);
-                let client_id = ClientId::new(value as u128);
+                let n = client_id_gen.generate();
+                let client_id = ClientId::new(n);
 
                 let udp_sender = udp_sender.clone();
                 tokio::spawn(async move {
+                    
                     // 클라이언트 세션을 생성하고 등록합니다.
                     let session = Arc::new(Session::new(addr, client_id, udp_sender));
                     get_sessions().insert(addr, session.clone());
+                    NUM_CLIENTS.fetch_add(1, MemOrdering::AcqRel);
 
-                    println!("Accepted connection from: {}", client_id.to_string());
+                    println!("Accepted connection from: {} (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
+                    
                     handle_connection(stream, session).await;
-                    println!("{} left.", client_id.to_string());
-
-                    // 등록된 클라이언트 세션을 제거하고, 클라이언트 식별자를 반납합니다.
+                    
+                    // 등록된 클라이언트 세션을 제거합니다.
                     get_sessions().remove(&addr);
-                    get_retire_ids().push(value);
+                    NUM_CLIENTS.fetch_sub(1, MemOrdering::AcqRel);
+                    println!("{} left. (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
                 });
             }
             Err(e) => {
@@ -165,23 +158,57 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
     }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // 서버를 실행하기 전에 필요한 모든 데이터를 여기서 초기화합니다.
+    //
     env_logger::init();
 
     let mut args = env::args();
     args.next();
 
-    let addr = match args.next() {
-        Some(args) => match Addr::from_str(&args) {
-            Ok(addr) => addr,
-            Err(e) => {
-                eprintln!("{}", e);
+    let mut addr = Addr::default();
+    let mut num_threads = num_cpus::get();
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--set-addr" => {
+                if let Some(addr_str) = args.next() {
+                    addr = match Addr::from_str(&addr_str) {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            eprintln!("명령줄 인자 형식이 잘못되었습니다.\n  `--set-addr` - 잘못된 주소 형식입니다.\n{}", e);
+                            return;
+                        }
+                    }
+                }
+            }
+            "--num-threads" => {
+                if let Some(threads_str) = args.next() {
+                    num_threads = match threads_str.parse::<usize>() {
+                        Ok(num_threads) => num_threads,
+                        Err(e) => {
+                            eprintln!("명령줄 인자 형식이 잘못되었습니다.\n  `--num_threads` - 스레드 수는 양의 정수여야 합니다.\n{}", e);
+                            return;
+                        }
+                    }
+                }
+            }
+            _ => {
+                eprintln!("Invalid option: {}", arg);
                 return;
             }
-        },
-        None => Addr::default(),
-    };
+        }
+    }
 
-    run_server(&addr.to_string()).await;
+    println!("num_threads: {}", num_threads);
+
+    // 클라이언트 식별자 생성기를 생성합니다.
+    let client_id_gen = IdentifierGenerator::new();
+
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(num_threads)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(run_server(&addr.to_string(), client_id_gen));
 }
