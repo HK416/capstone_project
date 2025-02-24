@@ -23,8 +23,11 @@ use crate::{
 };
 
 use super::{
-    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON
+    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1,
 };
+
+/// `Yuuka_Original` 캐릭터 모델의 무기 뼈 노드 이름입니다.
+const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon_R";
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
 pub const NORMAL_IDLE_DURATION: f32 = 2.0;
@@ -50,20 +53,20 @@ pub const CAMERA_IDLE_FOV_Y: f32 = 1.309; // 75도
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
 pub const CAMERA_ZOOM_FOV_Y: f32 = 1.22173; // 70도
 
-pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.0489224, 0.6057397, -0.7941568);
-pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.01910567, 0.8792505, -0.4759759);
-pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(-0.16422231, 0.91393447, -0.37115225);
+pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.050692074, 0.60760593, -0.792619);
+pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.018127501, 0.88046324, -0.47376776);
+pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(-0.16704176, 0.9152928, -0.3665189);
 pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
-    glam::Vec4::new(-0.2552432, 0.96499133, 0.06034819, 0.0),
-    glam::Vec4::new(-0.35031125, -0.034122545, -0.93601125, 0.0),
-    glam::Vec4::new(-0.9011841, -0.26005128, 0.34675694, 0.0),
-    glam::Vec4::new(-0.036278114, 0.009549916, 0.09118295, 1.0),
+    glam::Vec4::new(-0.25398198, 0.96574277, 0.05343934, 0.0),
+    glam::Vec4::new(-0.22625628, -0.00560271, -0.9740808, 0.0),
+    glam::Vec4::new(-0.9403992, -0.25946116, 0.21992218, 0.0),
+    glam::Vec4::new(-0.053849846, 0.01216054, 0.017126352, 1.0),
 );
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
-pub const WORKSPACE: &'static str = "characters/momoi_original";
+pub const WORKSPACE: &'static str = "characters/yuuka_original";
 /// 캐릭터 모델의 이름입니다.
-pub const MODEL_NAME: &'static str = "Momoi_Original";
+pub const MODEL_NAME: &'static str = "Yuuka_Original";
 
 /// 캐릭터의 Idle 애니메이션 이름입니다.
 const IDLE_ANIMATION: &'static str = concat!(MODEL_NAME, IDLE_ANIMATION_SUFFIX);
@@ -302,11 +305,11 @@ fn spawn_character_model_recursive(
 
         if mesh.name().contains("Halo") {
             // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::MomoiOriginalHalo));
+            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::YuukaOriginalHalo));
 
         } else {
             // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterKind::MomoiOriginal));
+            builder.add_bundle((mesh, mesh_resource, CharacterKind::YuukaOriginal));
         } 
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
@@ -1929,14 +1932,14 @@ fn apply_camera_effect_when_attack(
     const DURATION_1: f32 = 0.1;
 
     // 총알 발사 타이밍
-    const ATTACK_TP_0: f32 = 0.1117;
-    const ATTACK_TP_1: f32 = 0.1667;
-    const ATTACK_TP_2: f32 = 0.1833;
-    const ATTACK_TP_3: f32 = 0.2333;
-    const ATTACK_TP_4: f32 = 0.3333;
+    const ATTACK_TP_0: f32 = 0.09;
+    const ATTACK_TP_1: f32 = 0.14;
+    const ATTACK_TP_2: f32 = 0.18;
+    const ATTACK_TP_3: f32 = 0.19;
+    const ATTACK_TP_4: f32 = 0.28;
     const ATTACK_TP_5: f32 = 0.35;
-    const ATTACK_TP_6: f32 = 0.4;
-    const ATTACK_TP_7: f32 = 0.55;
+    const ATTACK_TP_6: f32 = 0.3;
+    const ATTACK_TP_7: f32 = 0.4;
 
     /// 줌인 오프셋
     const ZOOM_OFFSET: f32 = 0.0122173;

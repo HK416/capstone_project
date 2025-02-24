@@ -22,6 +22,7 @@ struct Hierarchy {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed={}", concat!(env!("CARGO_WORKSPACE_DIR"), "/assets"));
     println!("cargo:rerun-if-changed=./assets.json");
 
     // 에셋 리스트 json 파일을 구문 분석합니다.

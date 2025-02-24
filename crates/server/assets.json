@@ -21,6 +21,12 @@
                         "attribute.json"
                     ],
                     "directories" : {}
+                },
+                "yuuka_original" : {
+                    "files" : [
+                        "attribute.json"
+                    ],
+                    "directories" : {}
                 }
             }
         },

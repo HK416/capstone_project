@@ -31,6 +31,7 @@ impl From<CharacterKind> for BulletKind {
             CharacterKind::ArisOriginal => BulletKind::ArisOriginal,
             CharacterKind::MomoiOriginal => BulletKind::Common,
             CharacterKind::MidoriOriginal => BulletKind::Common,
+            CharacterKind::YuukaOriginal => BulletKind::Common,
         }
     }
 }

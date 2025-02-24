@@ -1673,11 +1673,16 @@ fn look_to_camera_direction(
 /// 이 함수는 캐릭터의 월드 변환 행렬이 계산된 후 호출해야 합니다.
 ///
 pub fn set_weapon_position(
+    action_state: ActionState,
     skinning_animation: &SkinningAnimation,
     child_view: &ViewBorrow<&Child>,
     sibling_view: &ViewBorrow<&Sibling>,
     transform_view: &mut ViewBorrow<(&ToParentTrans, &mut WorldTransform)>,
 ) {
+    if action_state == ActionState::Idle {
+        return;
+    }
+    
     let bone_entity = skinning_animation.right_hand;
     let (_, transform) = transform_view
         .get_mut(bone_entity)

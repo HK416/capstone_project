@@ -89,6 +89,38 @@
                         "Momoi_Original.motion"
                     ],
                     "directories" : {}
+                },
+                "yuuka_original" : {
+                    "files" : [
+                        "Yuuka_Original_Body_Mask.dds",
+                        "Yuuka_Original_Body.dds",
+                        "Yuuka_Original_Body.material",
+                        "Yuuka_Original_Body.mesh",
+                        "Yuuka_Original_Calculator_Mask.dds",
+                        "Yuuka_Original_Calculator.dds",
+                        "Yuuka_Original_Calculator.material",
+                        "Yuuka_Original_Calculator.mesh",
+                        "Yuuka_Original_EyeMouth.dds",
+                        "Yuuka_Original_EyeBrow.material",
+                        "Yuuka_Original_EyeMouth.material",
+                        "Yuuka_Original_Face_Mask.dds",
+                        "Yuuka_Original_Face.dds",
+                        "Yuuka_Original_Face.material",
+                        "Yuuka_Original_Hair_Mask.dds",
+                        "Yuuka_Original_Hair_Spec.dds",
+                        "Yuuka_Original_Hair.dds",
+                        "Yuuka_Original_Hair.material",
+                        "Yuuka_Original_Halo.dds",
+                        "Yuuka_Original_Halo.material",
+                        "Yuuka_Original_Halo.mesh",
+                        "Yuuka_Original_Weapon_Mask.dds",
+                        "Yuuka_Original_Weapon.dds",
+                        "Yuuka_Original_Weapon.material",
+                        "Yuuka_Original_Weapon.mesh",
+                        "Yuuka_Original.hierarchy",
+                        "Yuuka_Original.motion"
+                    ],
+                    "directories" : {}
                 }
             }
         }, 

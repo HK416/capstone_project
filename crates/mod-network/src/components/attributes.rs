@@ -100,6 +100,7 @@ pub enum CharacterKind {
     ArisOriginal = 0,
     MomoiOriginal = 1,
     MidoriOriginal = 2,
+    YuukaOriginal = 3,
 }
 
 impl BigEndian for CharacterKind {
@@ -126,6 +127,7 @@ impl TryFromBigEndian for CharacterKind {
             0 => Some(CharacterKind::ArisOriginal),
             1 => Some(CharacterKind::MomoiOriginal),
             2 => Some(CharacterKind::MidoriOriginal),
+            3 => Some(CharacterKind::YuukaOriginal),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",
@@ -144,6 +146,7 @@ impl ToString for CharacterKind {
             CharacterKind::ArisOriginal => "Aris Original",
             CharacterKind::MomoiOriginal => "Momoi Original",
             CharacterKind::MidoriOriginal => "Midori Original",
+            CharacterKind::YuukaOriginal => "Yuuka Original",
         }
         .to_string()
     }

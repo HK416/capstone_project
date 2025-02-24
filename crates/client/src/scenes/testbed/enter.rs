@@ -639,6 +639,23 @@ fn load_all_character_models(
         });
         *num_tasks += 1;
     }
+
+    // YuukaOriginal 모델을 로드합니다.
+    {
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        let channel = channel.clone();
+        pool.spawn(move || {
+            channel.send(load_character_model(
+                &asset_manager,
+                CharacterKind::YuukaOriginal,
+                &device,
+                &queue,
+            ));
+        });
+        *num_tasks += 1;
+    }
 }
 
 /// 모든 총알 모델을 로드합니다.
