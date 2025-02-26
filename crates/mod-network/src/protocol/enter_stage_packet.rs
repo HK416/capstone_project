@@ -69,7 +69,7 @@ impl Packet for EnterStagePacket {
         let mut offset = 0;
         let mut size = ClientId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let client_id = ClientId::try_from_big_endian_bytes(data)?;
+        let client_id = ClientId::from_big_endian_bytes(data);
 
         // 캐릭터 종류를 가져옵니다.
         offset = offset + size;

@@ -88,7 +88,7 @@ impl Packet for PullStagePacket {
         let mut offset = 0;
         let mut size = Epoch::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = Epoch::try_from_big_endian_bytes(data)?;
+        let epoch = Epoch::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
         offset = offset + size;

@@ -120,7 +120,7 @@ impl TryFromBigEndian for Player {
         let mut offset = 0;
         let mut size = ObjectId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let object_id = ObjectId::try_from_big_endian_bytes(data)?;
+        let object_id = ObjectId::from_big_endian_bytes(data);
 
         // 캐릭터 종류를 가져옵니다.
         offset = offset + size;

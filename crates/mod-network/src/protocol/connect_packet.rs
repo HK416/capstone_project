@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, ClientId, TryFromBigEndian};
+use crate::components::{BigEndian, ClientId};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -62,7 +62,7 @@ impl Packet for ConnectPacket {
         let bytes = raw.data();
         let offset = 0;
         let size = ClientId::byte_size();
-        let client_id = ClientId::try_from_big_endian_bytes(&bytes[offset..offset + size])?;
+        let client_id = ClientId::from_big_endian_bytes(&bytes[offset..offset + size]);
 
         Some(Self { client_id })
     }

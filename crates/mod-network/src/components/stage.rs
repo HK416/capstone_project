@@ -47,7 +47,7 @@ impl TryFromBigEndian for DamageLog {
         let mut offset = 0;
         let mut size = ObjectId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let object_id = ObjectId::try_from_big_endian_bytes(data)?;
+        let object_id = ObjectId::from_big_endian_bytes(data);
 
         // 데미지를 가져옵니다.
         offset = offset + size;

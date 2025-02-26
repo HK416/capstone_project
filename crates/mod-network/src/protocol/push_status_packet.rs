@@ -111,13 +111,13 @@ impl Packet for PushStatusPacket {
         let mut offset = 0;
         let mut size = Epoch::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = Epoch::try_from_big_endian_bytes(data)?;
+        let epoch = Epoch::from_big_endian_bytes(data);
 
         // 클라이언트 식별자를 가져옵니다.
         offset = offset + size;
         size = ClientId::byte_size();
         data = &bytes[offset..offset + size];
-        let client_id = ClientId::try_from_big_endian_bytes(data)?;
+        let client_id = ClientId::from_big_endian_bytes(data);
 
         // 플레이어 캐릭터 방향을 가져옵니다.
         offset = offset + size;

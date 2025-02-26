@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::{BigEndian, TryFromBigEndian};
+use super::BigEndian;
 
 /// 클라이언트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
@@ -12,44 +12,18 @@ impl ClientId {
     pub const NULL: Self = Self(0);
 
     /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 정수가 `0`인 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn new(num: u64) -> Self {
-        assert_ne!(num, 0, "invalid client id");
-        unsafe { Self::new_unchecked(num) }
-    }
-
-    /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
-    pub const unsafe fn new_unchecked(num: u64) -> Self {
+    pub const fn new(num: u64) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for ClientId {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("invalid client id")
+        Self(u64::from_big_endian_bytes(bytes))
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         self.0.to_big_endian_bytes()
-    }
-}
-
-impl TryFromBigEndian for ClientId {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let num = u64::from_big_endian_bytes(bytes);
-        if num != 0 {
-            unsafe { Some(Self::new_unchecked(num)) }
-        } else {
-            log::error!(
-                "invalid value for `{}`, (VALUE:{})",
-                stringify!(ClientId),
-                num
-            );
-            None
-        }
     }
 }
 
@@ -72,40 +46,18 @@ impl Epoch {
     pub const MAX: Self = Self(u64::MAX);
 
     /// 주어진 정수로 새로운 게임 월드 시대를 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 정수가 `u64::MAX`인 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn new(num: u64) -> Self {
-        assert!(num != u64::MAX, "out of bounds");
-        unsafe { Self::new_unchecked(num) }
-    }
-
-    /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
-    pub const unsafe fn new_unchecked(num: u64) -> Self {
+    pub const fn new(num: u64) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for Epoch {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+        Self(u64::from_big_endian_bytes(bytes))
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         self.0.to_big_endian_bytes()
-    }
-}
-
-impl TryFromBigEndian for Epoch {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let num = u64::from_big_endian_bytes(bytes);
-        if num != u64::MAX {
-            unsafe { Some(Self::new_unchecked(num)) }
-        } else {
-            log::error!("invalid value for `{}`, (VALUE:{})", stringify!(Epoch), num);
-            None
-        }
     }
 }
 
@@ -119,47 +71,20 @@ impl ObjectId {
     pub const NULL: Self = Self(0);
 
     /// 주어진 정수로 새로운 오브젝트 식별자를 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 정수가 `0`인 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn new(num: u64) -> Self {
-        assert_ne!(num, 0, "invalid object id");
-        unsafe { Self::new_unchecked(num) }
-    }
-
-    /// 주어진 정수로 새로운 오브젝트 식별자를 생성합니다.
-    pub const unsafe fn new_unchecked(num: u64) -> Self {
+    pub const fn new(num: u64) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for ObjectId {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("invalid object id")
+        Self(u64::from_big_endian_bytes(bytes))
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         self.0.to_big_endian_bytes()
     }
 }
-
-impl TryFromBigEndian for ObjectId {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let num = u64::from_big_endian_bytes(bytes);
-        if num != 0 {
-            unsafe { Some(Self::new_unchecked(num)) }
-        } else {
-            log::error!(
-                "invalid value for `{}`, (VALUE:{})",
-                stringify!(ObjectId),
-                num
-            );
-            None
-        }
-    }
-}
-
 impl fmt::Display for ObjectId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:X}", &self.0)

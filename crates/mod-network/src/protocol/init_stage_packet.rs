@@ -103,13 +103,13 @@ impl Packet for InitStagePacket {
         offset = offset + size;
         size = Epoch::byte_size();
         data = &bytes[offset..offset + size];
-        let epoch = Epoch::try_from_big_endian_bytes(data)?;
+        let epoch = Epoch::from_big_endian_bytes(data);
 
         // 오브젝트 식별자를 가져옵니다.
         offset = offset + size;
         size = ObjectId::byte_size();
         data = &bytes[offset..offset + size];
-        let object_id = ObjectId::try_from_big_endian_bytes(data)?;
+        let object_id = ObjectId::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
         offset = offset + size;
