@@ -1,5 +1,8 @@
 use super::{BigEndian, TryFromBigEndian};
 
+/// ActionState의 상태 수 입니다.
+pub const NUM_ACTION_STATES: usize = 5;
+
 /// 플레이어 행동 상태 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -85,6 +88,11 @@ impl Default for ActionStateTimer {
     }
 }
 
+/// MovementState의 상태 수 입니다.
+pub const NUM_MOVEMENT_STATES: usize = 7;
+/// 최대 점프 지속 시간입니다.
+pub const MAX_JUMP_DURATION: f32 = 0.25;
+
 /// 캐릭터의 움직임 상태 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -95,6 +103,14 @@ pub enum MovementState {
     Moving = 1,
     /// 움직였다 멈춘 상태
     MoveToEnd = 2,
+    /// 제자리에서 점프하는 상태
+    InPlaceJumping = 3,
+    /// 제자리에서 착지하는 상태
+    InPlaceLanding = 4,
+    /// 움직이면서 점프하는 상태
+    MovingJumping = 5,
+    /// 움직이면서 착지하는 상태
+    MovingLanding = 6,
 }
 
 impl BigEndian for MovementState {
@@ -121,6 +137,10 @@ impl TryFromBigEndian for MovementState {
             0 => Some(MovementState::Idle),
             1 => Some(MovementState::Moving),
             2 => Some(MovementState::MoveToEnd),
+            3 => Some(MovementState::InPlaceJumping),
+            4 => Some(MovementState::InPlaceLanding),
+            5 => Some(MovementState::MovingJumping),
+            6 => Some(MovementState::MovingLanding),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",
@@ -163,6 +183,9 @@ impl Default for MovementStateTimer {
         Self(Self::MIN_TIME)
     }
 }
+
+/// ViewState의 상태 수 입니다.
+pub const NUM_VIEW_STATES: usize = 4;
 
 /// 플레이어 카메라의 상태 목록입니다.
 #[repr(u8)]

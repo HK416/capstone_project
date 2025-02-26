@@ -93,6 +93,9 @@ impl CharacterAttributes {
     }
 }
 
+/// 캐릭터 모델 종류 수 입니다.
+pub const NUM_CHARACTERS: usize = 4;
+
 /// 캐릭터 모델 종류입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
