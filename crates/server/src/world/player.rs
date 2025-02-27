@@ -2,6 +2,8 @@ use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, Epoch, HealthPoint, LatLon,
     MovementState, MovementStateTimer, ObjectId, ViewState, ViewStateTimer,
 };
+use mod_physics::Capsule;
+
 
 /// 서버에서 관리하는 플레이어 데이터
 #[derive(Debug, Clone)]
@@ -40,6 +42,8 @@ pub struct ServerPlayer {
     pub view_rotation: LatLon,
     /// 총알 발사 횟수
     pub shot_count: u32,
+    /// 플레이어 충돌체
+    pub collider: Capsule,
 }
 
 /// 주어진 시간 만큼 플레이어 캐릭터의 `ActionState`와 `ActionStateTimer`를 갱신합니다.

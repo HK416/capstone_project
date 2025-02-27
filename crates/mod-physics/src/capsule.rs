@@ -7,7 +7,7 @@ use mod_math::{Segment, Line};
 /// height == 2 * radius이면 캡슐은 구와 같은 모양이 되는데, 구의 충돌체크로 최적화 하지는 않는다.  
 /// height <= 2 * radius이면 캡슐에 기둥이 없고 위아래가 둥근 UFO형태가 되는데, 
 /// 이때 일부 함수가 제대로 동작하지 않을 수 있다.  
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Capsule {
     pub center: glam::Vec3,    // 캡슐의 가장 아래 부분
     direction: glam::Vec3,     // 캡슐의 윗부분이 향하는 방향(default: Y축)

@@ -12,6 +12,9 @@ pub use capsule::*;
 mod ray;
 pub use ray::*;
 
+mod collision;
+pub use collision::*;
+
 
 pub trait Collision {
     /// ## 충돌체크시 고려사항

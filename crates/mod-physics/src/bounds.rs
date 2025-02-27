@@ -121,7 +121,7 @@ impl BoundingBox {
     }
 
     // 월드 공간에서 OBB의 정점 가져오기
-    fn get_vertices(&self) -> [glam::Vec3A; 8] {
+    pub fn get_vertices(&self) -> [glam::Vec3A; 8] {
         let center = glam::Vec3A::from(self.center);
         let extents = glam::Vec3A::from(self.extents);
         let vertices = [

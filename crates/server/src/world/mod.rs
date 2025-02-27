@@ -19,7 +19,7 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{BoundingBox, Collision, Ray, YCapsule};
+use mod_physics::{BoundingBox, Capsule, Collision, Ray, check_collision};
 use uuid::Uuid;
 
 use crate::{data::get_character_attributes, session::Session};
@@ -27,6 +27,13 @@ use crate::{data::get_character_attributes, session::Session};
 pub use self::{data::*, event::*, player::*};
 
 use super::formula::movement_formulas as formulas;
+
+
+// NOTE: 이 값들은 플레이어 정보 파일에서 읽어오거나 글로벌상수로 정의해야한다.
+const BULLET_RADIUS: f32 = 0.15;
+const PLAYER_RADIUS: f32 = 0.5;
+const PLAYER_HEIGHT: f32 = 1.2;
+
 
 /// 게임 개발을 위한 테스트 게임 월드 입니다.
 ///
@@ -205,6 +212,7 @@ impl World {
                 view_state_timer: ViewStateTimer::default(),
                 view_rotation: LatLon::default(),
                 shot_count: 0,
+                collider: Capsule::build(glam::Vec3::ZERO, glam::Vec3::Y, PLAYER_HEIGHT, PLAYER_RADIUS).unwrap(),
             },
         );
     }
@@ -346,24 +354,25 @@ impl World {
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
-        // NOTE: 이 값들은 플레이어 정보 파일에서 읽어오거나 글로벌상수로 정의해야한다.
-        const BULLET_RADIUS: f32 = 0.15;
-        const PLAYER_RADIUS: f32 = 1.0;
-        const PLAYER_HEIGHT: f32 = 2.5;
-
         let boundingboxes = [BoundingBox::new(glam::Vec3::ZERO, glam::Vec3::new(1.0, 1.0, 1.0)); 1000];
+        
+        let mut count = 0;
 
         for bb in boundingboxes {
             for player in self.players.iter() {
-                let player_capsule = YCapsule {
-                    center: player.translation.into(),
-                    radius: PLAYER_RADIUS + BULLET_RADIUS,
-                    height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
-                };
-                if player_capsule.check_collision(&bb) {
+                if check_collision(&player.collider, &bb) {
                     // println!("Player {:?} collision with box {:?}", player.object_id, bb);
+                    count += 1;
                 }
+                // if player.collider.check_collision(bb) {
+                //     // println!("Player {:?} collision with box {:?}", player.object_id, bb);
+                //     count += 1;
+                // }
             }
+        }
+
+        if count > 0 {
+            println!("count: {}", count);
         }
 
         // 총알 이동
@@ -390,14 +399,7 @@ impl World {
                 let mut center = player.translation;
                 center[1] -= BULLET_RADIUS;
 
-                // mod-network의 Player에 make_collider()를 추가해서 클라이언트에서도 표시할 수 있도록 해도 좋아보임.
-                let player_capsule = YCapsule {
-                    center: glam::Vec3::from(center),
-                    radius: PLAYER_RADIUS + BULLET_RADIUS,
-                    height: PLAYER_HEIGHT + BULLET_RADIUS * 2.0,
-                };
-
-                if let Some(dist) = ray.intersect(&player_capsule) {
+                if let Some(dist) = ray.intersect(&player.collider.inflated(BULLET_RADIUS)) {
                     if dist <= move_distance {
                         println!("Bullet find player (player id: {:?})", player.object_id);
                         if dist < nearest_distance {
@@ -505,6 +507,7 @@ impl World {
                 _ => glam::Vec3A::ZERO,
             };
             player.translation += velocity * elapsed_time_sec;
+            player.collider.center = player.translation.into();
         }
     }
 }
