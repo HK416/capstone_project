@@ -2,10 +2,10 @@ mod data;
 mod event;
 mod player;
 
-use std::sync::{
-    atomic::{AtomicU64, Ordering as MemOrdering},
+use std::{sync::{
+    atomic::{AtomicU32, AtomicU64, Ordering as MemOrdering},
     Arc, OnceLock,
-};
+}, time::{SystemTime, UNIX_EPOCH}};
 
 use ahash::RandomState;
 use dashmap::DashMap;
@@ -21,7 +21,7 @@ use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
 
 use crate::{
-    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position}, identifier::IdentifierGenerator, session::Session
+    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position}, session::Session
 };
 
 pub use self::{data::*, event::*, player::*};
@@ -37,8 +37,8 @@ use super::formula::movement_formulas as formulas;
 pub struct World {
     /// 현재 게임 월드의 시대 정보입니다.
     epoch: AtomicU64,
-    /// 오브젝트 식별자 생성기입니다.
-    object_id_gen: IdentifierGenerator,
+    /// 오브젝트 식별자를 생성하기 위한 카운터입니다.
+    counter: AtomicU32,
 
     /// 게임 지형의 종류입니다.
     stage_kind: StageKind,
@@ -58,6 +58,20 @@ pub struct World {
 }
 
 impl World {
+    /// 오브젝트 식별자를 생성합니다.
+    pub fn generate_object_id(&self) -> ObjectId {
+        let now = SystemTime::now();
+        let duration = now
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+
+        let part_0 = (self.epoch.load(MemOrdering::Relaxed) & 0xFFF) as u32;
+        let part_1 = self.counter.fetch_add(1, MemOrdering::AcqRel) & 0xFFF;
+        let part_2 = duration.subsec_nanos() & 0xFF;
+
+        ObjectId::new((part_0 << 24) | (part_1 << 12) | part_2)
+    }
+
     /// 게임 월드의 인스턴스를 가져옵니다.
     pub fn get_instance() -> Arc<Self> {
         static INSTANCE: OnceLock<Arc<World>> = OnceLock::new();
@@ -74,7 +88,7 @@ impl World {
     pub fn join(&self, session: Arc<Session>, character_kind: CharacterKind) {
         // 오브젝트 식별자를 하나 할당하고, 세션 목록에 추가합니다.
         let client_id = session.client_id();
-        let object_id = ObjectId::new(self.object_id_gen.generate());
+        let object_id = self.generate_object_id();
         self.sessions.insert(session, object_id);
 
         // 플레이어 생성 이벤트를 추가합니다.
@@ -288,7 +302,7 @@ impl World {
             let offset = glam::Vec3A::from_vec4(offset.w_axis);
             let translation = player.translation + offset;
 
-            let object_id = ObjectId::new(self.object_id_gen.generate());
+            let object_id = self.generate_object_id();
             self.bullets.insert(
                 object_id,
                 ServerBullet {
@@ -528,7 +542,7 @@ impl Default for World {
     fn default() -> Self {
         Self {
             epoch: AtomicU64::new(0),
-            object_id_gen: IdentifierGenerator::new(),
+            counter: AtomicU32::new(0),
             stage_kind: StageKind::default(),
             sessions: DashMap::default(),
             players: DashMap::default(),

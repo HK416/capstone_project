@@ -3,20 +3,22 @@ use std::{
     net::SocketAddr,
     str::FromStr,
     sync::{
-        atomic::{AtomicU64, Ordering as MemOrdering},
+        atomic::{AtomicU32, Ordering as MemOrdering},
         Arc, OnceLock,
-    },
+    }, time::{SystemTime, UNIX_EPOCH},
 };
 
 use mod_network::{addr::Addr, components::ClientId, protocol::RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use server::{
-    identifier::IdentifierGenerator, session::{handle_connection, Session}, world::{update_game_world, World}
+    data::get_current_path, session::{handle_connection, Session}, world::{update_game_world, World}
 };
 use tokio::net::{TcpListener, UdpSocket};
+use tracing::Level;
+use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
 /// 현재 접속중인 클라이언트의 수 입니다.
-static NUM_CLIENTS: AtomicU64 = AtomicU64::new(0);
+static NUM_CLIENTS: AtomicU32 = AtomicU32::new(0);
 /// 현재 서버에 접속중인 세션 집합입니다.
 static SESSIONS: OnceLock<SkipMap<SocketAddr, Arc<Session>>> = OnceLock::new();
 
@@ -26,7 +28,7 @@ fn get_sessions() -> &'static SkipMap<SocketAddr, Arc<Session>> {
 }
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
-pub async fn run_server(addr: &str, client_id_gen: IdentifierGenerator) {
+pub async fn run_server(addr: &str) {
     // TCP 소켓을 바인드합니다.
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -58,7 +60,7 @@ pub async fn run_server(addr: &str, client_id_gen: IdentifierGenerator) {
     tokio::spawn(udp_packet_send_loop(udp_send_socket, udp_sender_clone));
 
     // 새로운 쓰레드에서 클라이언트 연결 관리
-    tokio::spawn(wait_for_players(listener, udp_sender, client_id_gen));
+    tokio::spawn(wait_for_players(listener, udp_sender));
 
     // 게임 월드 업데이트
     // TODO: 나중에 여러 개의 게임 월드를 실행해야함.
@@ -125,13 +127,12 @@ async fn udp_packet_send_loop(
     }
 }
 
-async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>, client_id_gen: IdentifierGenerator) {
+async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) {
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
                 // 클라이언트 식별자를 할당합니다.
-                let n = client_id_gen.generate();
-                let client_id = ClientId::new(n);
+                let client_id = generate_client_id();
 
                 let udp_sender = udp_sender.clone();
                 tokio::spawn(async move {
@@ -161,7 +162,7 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
 fn main() {
     // 서버를 실행하기 전에 필요한 모든 데이터를 여기서 초기화합니다.
     //
-    env_logger::init();
+    let _guard = init_log_system();
 
     let mut args = env::args();
     args.next();
@@ -202,13 +203,50 @@ fn main() {
 
     println!("num_threads: {}", num_threads);
 
-    // 클라이언트 식별자 생성기를 생성합니다.
-    let client_id_gen = IdentifierGenerator::new();
-
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_threads)
         .enable_all()
         .build()
         .unwrap()
-        .block_on(run_server(&addr.to_string(), client_id_gen));
+        .block_on(run_server(&addr.to_string()));
+}
+
+/// 로그 시스템을 초기화 합니다.
+/// 
+/// # Note
+/// 반환되는 `WorkerGuard`를 유지해야 로그가 정상적으로 저장됩니다.
+/// 
+fn init_log_system() -> WorkerGuard {
+    // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
+    let mut dir = get_current_path().to_path_buf();
+    dir.push("logs");
+
+    // 매 시간 마다 새 파일을 생성하는 로그 시스템을 생성합니다.
+    let file_appender = rolling::hourly(dir, "service_log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .with_max_level(Level::INFO)
+        .init();
+
+    guard
+}
+
+/// 클라이언트 식별자를 생성합니다.
+fn generate_client_id() -> ClientId {
+    // 난수를 생성하기 위한 카운터입니다.
+    // 해당 함수를 호출할 때 마다 1씩 증가합니다.
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    let now = SystemTime::now();
+    let duration = now
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+
+    let part_0 = COUNTER.fetch_add(1, MemOrdering::AcqRel) & 0xFFFF;
+    let part_1 = duration.subsec_micros() & 0xFFFF;
+
+    ClientId::new((part_1 << 16) | part_0)
 }

@@ -5,21 +5,21 @@ use super::BigEndian;
 /// 클라이언트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ClientId(u64);
+pub struct ClientId(u32);
 
 impl ClientId {
     /// 비어있는 클라이언트 식별자입니다.
     pub const NULL: Self = Self(0);
 
     /// 주어진 정수로 새로운 클라이언트 식별자를 생성합니다.
-    pub const fn new(num: u64) -> Self {
+    pub const fn new(num: u32) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for ClientId {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(u64::from_big_endian_bytes(bytes))
+        Self(u32::from_big_endian_bytes(bytes))
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
@@ -29,7 +29,7 @@ impl BigEndian for ClientId {
 
 impl fmt::Display for ClientId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:X}", &self.0)
+        write!(f, "{:o}", &self.0)
     }
 }
 
@@ -64,21 +64,21 @@ impl BigEndian for Epoch {
 /// 게임 월드 내 오브젝트를 식별하기 위한 식별자입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ObjectId(u64);
+pub struct ObjectId(u32);
 
 impl ObjectId {
     /// 비어있는 오브젝트 식별자입니다.
     pub const NULL: Self = Self(0);
 
     /// 주어진 정수로 새로운 오브젝트 식별자를 생성합니다.
-    pub const fn new(num: u64) -> Self {
+    pub const fn new(num: u32) -> Self {
         Self(num)
     }
 }
 
 impl BigEndian for ObjectId {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(u64::from_big_endian_bytes(bytes))
+        Self(u32::from_big_endian_bytes(bytes))
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
@@ -87,7 +87,7 @@ impl BigEndian for ObjectId {
 }
 impl fmt::Display for ObjectId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:X}", &self.0)
+        write!(f, "{:o}", &self.0)
     }
 }
 
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn validation_test_client_id() {
-        let origin = ClientId::new(1023443213523352);
+        let origin = ClientId::new(102344321);
         let bytes = origin.to_big_endian_bytes();
         let other = ClientId::from_big_endian_bytes(&bytes);
 
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn validation_test_object_id() {
-        let origin = ObjectId::new(1023443213523352);
+        let origin = ObjectId::new(3523352);
         let bytes = origin.to_big_endian_bytes();
         let other = ObjectId::from_big_endian_bytes(&bytes);
 
