@@ -2,10 +2,13 @@ mod data;
 mod event;
 mod player;
 
-use std::{sync::{
-    atomic::{AtomicU32, AtomicU64, Ordering as MemOrdering},
-    Arc, OnceLock,
-}, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    sync::{
+        atomic::{AtomicU32, AtomicU64, Ordering as MemOrdering},
+        Arc, OnceLock,
+    },
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use ahash::RandomState;
 use dashmap::DashMap;
@@ -21,7 +24,8 @@ use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
 
 use crate::{
-    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position}, session::Session
+    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position},
+    session::Session,
 };
 
 pub use self::{data::*, event::*, player::*};
@@ -61,9 +65,7 @@ impl World {
     /// 오브젝트 식별자를 생성합니다.
     pub fn generate_object_id(&self) -> ObjectId {
         let now = SystemTime::now();
-        let duration = now
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
+        let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
 
         let part_0 = (self.epoch.load(MemOrdering::Relaxed) & 0xFFF) as u32;
         let part_1 = self.counter.fetch_add(1, MemOrdering::AcqRel) & 0xFFF;
@@ -282,7 +284,8 @@ impl World {
 
             // 각도의 파라미터를 계산합니다.
             let latitude = player.view_rotation.lat;
-            let t = ((latitude + LatLon::LATITUDE_HALF_RANGE) / LatLon::LATITUDE_RANGE).clamp(0.0, 1.0);
+            let t =
+                ((latitude + LatLon::LATITUDE_HALF_RANGE) / LatLon::LATITUDE_RANGE).clamp(0.0, 1.0);
 
             // 총구가 바라보는 방향을 계산합니다.
             let mut direction = glam::Vec3A::from(attributes.get_muzzle_direction(t));

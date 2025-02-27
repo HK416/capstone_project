@@ -5,13 +5,16 @@ use std::{
     sync::{
         atomic::{AtomicU32, Ordering as MemOrdering},
         Arc, OnceLock,
-    }, time::{SystemTime, UNIX_EPOCH},
+    },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use mod_network::{addr::Addr, components::ClientId, protocol::RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use server::{
-    data::get_current_path, session::{handle_connection, Session}, world::{update_game_world, World}
+    data::get_current_path,
+    session::{handle_connection, Session},
+    world::{update_game_world, World},
 };
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::Level;
@@ -136,20 +139,27 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
 
                 let udp_sender = udp_sender.clone();
                 tokio::spawn(async move {
-                    
                     // 클라이언트 세션을 생성하고 등록합니다.
                     let session = Arc::new(Session::new(addr, client_id, udp_sender));
                     get_sessions().insert(addr, session.clone());
                     NUM_CLIENTS.fetch_add(1, MemOrdering::AcqRel);
 
-                    println!("Accepted connection from: {} (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
-                    
+                    println!(
+                        "Accepted connection from: {} (Concurrent Users:{})",
+                        &client_id,
+                        &NUM_CLIENTS.load(MemOrdering::Relaxed)
+                    );
+
                     handle_connection(stream, session).await;
-                    
+
                     // 등록된 클라이언트 세션을 제거합니다.
                     get_sessions().remove(&addr);
                     NUM_CLIENTS.fetch_sub(1, MemOrdering::AcqRel);
-                    println!("{} left. (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
+                    println!(
+                        "{} left. (Concurrent Users:{})",
+                        &client_id,
+                        &NUM_CLIENTS.load(MemOrdering::Relaxed)
+                    );
                 });
             }
             Err(e) => {
@@ -212,10 +222,10 @@ fn main() {
 }
 
 /// 로그 시스템을 초기화 합니다.
-/// 
+///
 /// # Note
 /// 반환되는 `WorkerGuard`를 유지해야 로그가 정상적으로 저장됩니다.
-/// 
+///
 fn init_log_system() -> WorkerGuard {
     // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
     let mut dir = get_current_path().to_path_buf();
@@ -241,9 +251,7 @@ fn generate_client_id() -> ClientId {
     static COUNTER: AtomicU32 = AtomicU32::new(0);
 
     let now = SystemTime::now();
-    let duration = now
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
+    let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
 
     let part_0 = COUNTER.fetch_add(1, MemOrdering::AcqRel) & 0xFFFF;
     let part_1 = duration.subsec_micros() & 0xFFFF;

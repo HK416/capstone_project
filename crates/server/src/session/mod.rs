@@ -1,19 +1,7 @@
-// Session은 클라이언트의 상태에 따라 패킷을 다르게 처리해야한다.
-// 따라서 Session의 상태에 따라 패킷 처리 함수를 변경하게 한다.
-//
-// Session 상태
-// - Init: 클라이언트가 서버에 처음 연결된 상태
-// - Lobby: 클라이언트가 게임 로비화면에 있는 상태
-// - Matching: 클라이언트가 게임 월드에 참여를 대기하고 있는 상태
-// - Draft: 게임 월드에 참가하여 캐릭터를 선택하고 있는 상태
-// - InGame: 클라이언트가 게임을 진행중인 상태
-// ...
-//
-mod in_game;
-mod init;
-mod lobby;
+mod state;
 
 use std::{
+    cmp, fmt, hash,
     io::ErrorKind,
     net::SocketAddr,
     sync::{
@@ -27,6 +15,7 @@ use mod_network::{
     protocol::{PacketParser, RawPacket},
 };
 use mod_parallelism::collections::Queue;
+use state::SessionStateManager;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
@@ -34,22 +23,6 @@ use tokio::{
         TcpStream,
     },
 };
-
-use crate::world::World;
-
-/// 세션의 상태 목록
-#[derive(Debug)]
-pub enum SessionState {
-    Init,
-    Lobby,
-    InGame(Arc<World>),
-}
-
-impl Default for SessionState {
-    fn default() -> Self {
-        Self::Init
-    }
-}
 
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
@@ -134,64 +107,51 @@ impl Session {
     }
 }
 
-impl std::fmt::Display for Session {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Session({})", self.client_id.to_string())
+impl fmt::Display for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Session({})", &self.client_id)
     }
 }
 
-impl std::cmp::Eq for Session {}
+impl cmp::Eq for Session {}
 
-impl std::cmp::PartialEq for Session {
+impl cmp::PartialEq for Session {
     fn eq(&self, other: &Self) -> bool {
         self.client_id.eq(&other.client_id)
     }
 }
 
-impl std::cmp::Ord for Session {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+impl cmp::Ord for Session {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.client_id.cmp(&other.client_id)
     }
 }
 
-impl std::cmp::PartialOrd for Session {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl cmp::PartialOrd for Session {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         self.client_id.partial_cmp(&other.client_id)
     }
 }
 
-impl std::hash::Hash for Session {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl hash::Hash for Session {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.client_id.hash(state)
     }
 }
 
 /// 클라이언트 연결을 제어합니다.
 pub async fn handle_connection(stream: TcpStream, session: Arc<Session>) {
+    log::info!("{} start connection.", &session);
+
     // 비동기 네트워크 처리 루프를 실행한다.
     let (tcp_reader, tcp_writer) = stream.into_split();
     tokio::spawn(tcp_read_loop(tcp_reader, session.clone()));
     tokio::spawn(tcp_write_loop(tcp_writer, session.clone()));
 
-    // 패킷 처리 루프를 실행합니다.
-    let mut state = SessionState::default();
-    while session.is_running() {
-        state = match state {
-            SessionState::Init => init::handle_packets(&session),
-            SessionState::Lobby => lobby::handle_packets(&session),
-            SessionState::InGame(world) => in_game::handle_packets(&session, world),
-        };
+    // 네트워크 패킷 처리 루프를 실행합니다.
+    SessionStateManager::new(&session).run().await;
 
-        // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        tokio::time::sleep(tokio::time::Duration::from_micros(100)).await;
-    }
     log::info!("{} connection closed.", &session);
-
-    // 세션이 게임 월드에 참가한 상태인 경우
-    // 게임 월드에서 세션의 데이터를 제거합니다.
-    if let SessionState::InGame(world) = state {
-        world.exit(&session);
-    }
 }
 
 /// TCP 소켓의 데이터를 읽는 루프 함수입니다.
