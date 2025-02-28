@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn validation_test_packet() {
         let origin = InitStagePacket::new(
-            StageKind::Downtown,
+            StageKind::City,
             Epoch::new(0),
             ObjectId::new(123456),
             vec![

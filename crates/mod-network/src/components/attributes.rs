@@ -155,11 +155,14 @@ impl ToString for CharacterKind {
     }
 }
 
+/// 스테이지 종류의 수 입니다.
+pub const NUM_STAGES: usize = 1;
+
 /// 스테이지 종류 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StageKind {
-    Downtown = 0,
+    City = 0,
 }
 
 impl BigEndian for StageKind {
@@ -175,7 +178,7 @@ impl BigEndian for StageKind {
 
 impl Default for StageKind {
     fn default() -> Self {
-        StageKind::Downtown
+        StageKind::City
     }
 }
 
@@ -183,7 +186,7 @@ impl TryFromBigEndian for StageKind {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         let index = u8::from_big_endian_bytes(bytes);
         match index {
-            0 => Some(StageKind::Downtown),
+            0 => Some(StageKind::City),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",
@@ -199,7 +202,7 @@ impl TryFromBigEndian for StageKind {
 impl ToString for StageKind {
     fn to_string(&self) -> String {
         match self {
-            StageKind::Downtown => "Downtown",
+            StageKind::City => "Downtown",
         }
         .to_string()
     }

@@ -1,25 +1,33 @@
-use std::{fs::File, io::Read, sync::OnceLock};
+use std::{fs::File, io::Read};
 
 use ahash::HashMap;
+use lazy_static::lazy_static;
 use mod_network::{
     assets::{StageHeight, StageLayoutData},
-    components::StageKind,
+    components::{StageKind, NUM_STAGES},
 };
 
 use super::get_current_path;
 
-/// 전역 변수로 선언된 게임 스테이지 데이터입니다.
-static GAME_MAP: OnceLock<HashMap<StageKind, Stage>> = OnceLock::new();
+const ROOT_WORKSPACE: &'static str = "server_data/stage";
+const STAGE_WORKSPACES: [(StageKind, &'static str); NUM_STAGES] = [(StageKind::City, "city")];
 
-/// 시가지 스테이지의 맵 데이터 상대 경로입니다.
-const STAGE_CITY_WORKSPACE: &'static str = "/server_data/stage/city";
-/// 시가지 스테이지의 맵 데이터 파일 이름입니다.
-const STAGE_CITY_LAYOUT: &'static str = "map.json";
+lazy_static! {
+    static ref STAGE_ATTRIBUTES: HashMap<StageKind, StageAttributes> = {
+        let mut map = HashMap::default();
+        let current_path = get_current_path().to_string_lossy().into_owned();
+        for (kind, sub_workspace) in STAGE_WORKSPACES {
+            let workspace = format!("{}/{}/{}", current_path, ROOT_WORKSPACE, sub_workspace);
+            map.insert(kind, load_stage_layout(&workspace));
+        }
+        map
+    };
+}
 
 /// 게임 월드 스테이지 데이터입니다.
 /// - 게임 월드 스테이지의 중심은 월드 좌표계의 원점입니다.
 #[derive(Debug, Clone)]
-pub struct Stage {
+pub struct StageAttributes {
     /// 지역의 x축 방향 개수입니다.
     num_width: usize,
     /// 지역의 z축 방향 개수입니다.
@@ -40,21 +48,37 @@ pub struct Area {
     height: StageHeight,
 }
 
-/// 스테이지 정보를 읽고 서버에서 사용할 수 있도록 데이터를 가공합니다.
-fn load_stage_layout(workspace: &str, path: &str) -> Stage {
-    let path = format!("{}/{}", workspace, path);
+/// 스테이지 속성 데이터를 초기화합니다.
+pub fn init_stage_attributes() {
+    // `lazy_static` crate는 처음 전역 변수가 사용될 때 초기화를 시도합니다.
+    log::info!("initializes stage attribute data.");
+    STAGE_ATTRIBUTES.len();
+}
+
+/// 주어진 스테이지 종류에 대한 스테이지 속성 데이터를 가져옵니다.
+fn get_stage_attributes(kind: StageKind) -> &'static StageAttributes {
+    STAGE_ATTRIBUTES.get(&kind).unwrap()
+}
+
+/// 스테이지 속성 데이터 파일을 로드합니다.
+///
+/// # Panics
+/// 스테이지 속성 데이터 파일을 찾지 못하거나, 읽기에 실패한 경우 `panic!`을 호출합니다.
+///
+fn load_stage_layout(workspace: &str) -> StageAttributes {
+    let path = format!("{}/map.json", workspace);
     let mut file = File::open(&path)
-        .map_err(|e| log::error!("{} (PATH:{})", &e, path))
-        .expect("파일 열기에 실패했습니다!");
+        .map_err(|e| log::error!("failed to open file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("스테이지 속성 데이터 파일 열기에 실패했습니다!");
 
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)
-        .map_err(|e| log::error!("{} (PATH:{})", &e, path))
-        .expect("파일 읽기에 실패했습니다!");
+        .map_err(|e| log::error!("failed to read file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("스테이지 속성 데이터 파일 읽기에 실패했습니다!");
 
     let stage_layout: StageLayoutData = serde_json::from_slice(&buf)
-        .map_err(|e| log::error!("{} (PATH:{})", &e, path))
-        .expect("JSON 포맷 구문 분석에 실패했습니다!");
+        .map_err(|e| log::error!("failed to parse file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("스테이지 속성 데이터 파일 구문 분석에 실패했습니다!");
 
     let n = stage_layout.num_area_width as usize;
     let m = stage_layout.num_area_depth as usize;
@@ -73,15 +97,17 @@ fn load_stage_layout(workspace: &str, path: &str) -> Stage {
         // 지역의 높이 데이터를 가져옵니다.
         let path = format!("{}/{}.json", workspace, &data.height);
         let mut file = File::open(&path)
-            .map_err(|e| log::error!("{} (PATH:{})", &e, &path))
-            .expect("HeightMap 텍스처 열기에 실패했습니다!");
+            .map_err(|e| log::error!("failed to open file. (PATH:{}, REASON:{})", &path, &e))
+            .expect("Height 데이터 파일 열기에 실패했습니다!");
+
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)
-            .map_err(|e| log::error!("{} (PATH:{})", &e, &path))
-            .expect("HeightMap 텍스처 읽기에 실패했습니다!");
+            .map_err(|e| log::error!("failed to read file. (PATH:{}, REASON:{})", &path, &e))
+            .expect("Height 데이터 파일 읽기에 실패했습니다!");
+
         let height: StageHeight = serde_json::from_slice(&buf)
-            .map_err(|e| log::error!("{} (PATH:{})", &e, &path))
-            .expect("JSON 포맷 구문 분석에 실패했습니다!");
+            .map_err(|e| log::error!("failed to parse file. (PATH:{}, REASON:{})", &path, &e))
+            .expect("Height 데이터 파일 구문 분석에 실패했습니다!");
 
         area[i][j] = Some(Area {
             translation: data.translation.into(),
@@ -90,7 +116,7 @@ fn load_stage_layout(workspace: &str, path: &str) -> Stage {
         });
     }
 
-    Stage {
+    StageAttributes {
         num_width: n,
         num_depth: m,
         size: glam::vec2(w, d),
@@ -99,23 +125,10 @@ fn load_stage_layout(workspace: &str, path: &str) -> Stage {
     }
 }
 
-/// 게임 스테이지 데이터를 가져옵니다.
-fn get_game_map() -> &'static HashMap<StageKind, Stage> {
-    GAME_MAP.get_or_init(|| {
-        let current_dir = get_current_path().to_string_lossy().into_owned();
-        let mut map = HashMap::default();
-        map.insert(
-            StageKind::Downtown,
-            load_stage_layout(&(current_dir + STAGE_CITY_WORKSPACE), STAGE_CITY_LAYOUT),
-        );
-        map
-    })
-}
-
 /// 주어진 좌표의 게임 스테이지의 높이를 가져옵니다.   
 /// 주어진 좌표에 해당하는 게임 스테이지 높이가 없는 경우 `None`을 반환합니다.
 pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
-    let stage = get_game_map().get(&kind).unwrap();
+    let stage = get_stage_attributes(kind);
     let n = stage.num_width;
     let m = stage.num_depth;
     let i = ((x + 0.5 * stage.size.x) / stage.area_size.x).floor();
@@ -150,7 +163,7 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
 
 /// 주어진 좌표가 유효한지 확인합니다.
 pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
-    let stage = get_game_map().get(&kind).unwrap();
+    let stage = get_stage_attributes(kind);
     let n = stage.num_width;
     let m = stage.num_depth;
     let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
@@ -179,7 +192,7 @@ pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
 
 /// 두번째 좌표를 첫번째 좌표가 속한 영역 안으로 clamp합니다.  
 pub fn clamp_x(kind: StageKind, x1: f32, x2: f32) -> f32 {
-    let stage = get_game_map().get(&kind).unwrap();
+    let stage = get_stage_attributes(kind);
 
     let x_min = ((x1 + 0.5 * stage.area_size.x) / stage.area_size.x).floor() * stage.area_size.x
         - 0.5 * stage.area_size.x;
@@ -192,7 +205,7 @@ pub fn clamp_x(kind: StageKind, x1: f32, x2: f32) -> f32 {
 
 /// 두번째 좌표를 첫번째 좌표가 속한 영역 안으로 clamp합니다.  
 pub fn clamp_z(kind: StageKind, z1: f32, z2: f32) -> f32 {
-    let stage = get_game_map().get(&kind).unwrap();
+    let stage = get_stage_attributes(kind);
 
     let z_min = ((z1 + 0.5 * stage.area_size.y) / stage.area_size.y).floor() * stage.area_size.y
         - 0.5 * stage.area_size.y;

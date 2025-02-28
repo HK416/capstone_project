@@ -12,7 +12,7 @@ use std::{
 use mod_network::{addr::Addr, components::ClientId, protocol::RawPacket};
 use mod_parallelism::collections::{Queue, SkipMap};
 use server::{
-    data::get_current_path,
+    data::{get_current_path, init_character_attributes, init_stage_attributes},
     session::{handle_connection, Session},
     world::{update_game_world, World},
 };
@@ -173,6 +173,8 @@ fn main() {
     // 서버를 실행하기 전에 필요한 모든 데이터를 여기서 초기화합니다.
     //
     let _guard = init_log_system();
+    init_character_attributes();
+    init_stage_attributes();
 
     let mut args = env::args();
     args.next();
