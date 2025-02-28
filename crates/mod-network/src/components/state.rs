@@ -268,3 +268,79 @@ impl Default for ViewStateTimer {
         Self(Self::MIN_TIME)
     }
 }
+
+/// `ActionState`, `MovementState`, `ViewState`가 압축된 상태 데이터 입니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CompressedState(u16);
+
+impl CompressedState {
+    /// 압축된 상태를 생성합니다.
+    pub fn compress(
+        action_state: ActionState,
+        movement_state: MovementState,
+        view_state: ViewState,
+    ) -> Self {
+        let action_bit = (action_state as u16) & 0xF;
+        let movement_bit = (movement_state as u16) & 0x7;
+        let view_bit = (view_state as u16) & 0x3;
+        Self((view_bit << 7) | (movement_bit << 4) | action_bit)
+    }
+
+    /// 압축을 해제합니다.
+    pub fn try_decompress(self) -> Option<(ActionState, MovementState, ViewState)> {
+        let action_bit = (self.0 & 0xF) as u8;
+        let movement_bit = ((self.0 >> 4) & 0x7) as u8;
+        let view_bit = ((self.0 >> 7) & 0x3) as u8;
+
+        let action_state = ActionState::try_from_big_endian_bytes(&[action_bit])?;
+        let movement_state = MovementState::try_from_big_endian_bytes(&[movement_bit])?;
+        let view_state = ViewState::try_from_big_endian_bytes(&[view_bit])?;
+
+        Some((action_state, movement_state, view_state))
+    }
+}
+
+impl BigEndian for CompressedState {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self(u16::from_big_endian_bytes(bytes))
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.0.to_big_endian_bytes()
+    }
+}
+
+impl Default for CompressedState {
+    fn default() -> Self {
+        Self(0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compress_test() {
+        let action_state = ActionState::Aiming;
+        let movement_state = MovementState::Moving;
+        let view_state = ViewState::Idle;
+
+        let origin = CompressedState::compress(action_state, movement_state, view_state);
+        let bytes = origin.to_big_endian_bytes();
+        let other = CompressedState::from_big_endian_bytes(&bytes);
+
+        // 바이트 배열 크기가 같은지 확인
+        assert_eq!(CompressedState::byte_size(), bytes.len());
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+
+        // 원본과 일치하는지 확인
+        let (new_action_state, new_movement_state, new_view_state) =
+            other.try_decompress().unwrap();
+        assert_eq!(action_state, new_action_state);
+        assert_eq!(movement_state, new_movement_state);
+        assert_eq!(view_state, new_view_state);
+    }
+}

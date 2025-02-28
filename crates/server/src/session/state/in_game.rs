@@ -28,12 +28,12 @@ impl InGameState {
         session: &Arc<Session>,
     ) {
         // 수신한 패킷이 올바른지 검사합니다.
-        if packet.client_id != session.client_id {
+        if packet.token != session.token {
             log::warn!(
-                "{} invalid client id (SESSION:{}, PACKET:{})",
+                "{} invalid token (SESSION:{}, PACKET:{})",
                 &session,
-                &session.client_id.to_string(),
-                &packet.client_id.to_string(),
+                &session.token,
+                &packet.token,
             );
             session.close();
             return;
@@ -45,14 +45,17 @@ impl InGameState {
         // 곧 바로 게임 월드에 상태를 저장하는 것이 아닌
         // 이 함수에서 계산을 수행 후 이벤트 전송으로 변경해야 함.
         //
+        let (action_state, movement_state, view_state) =
+            packet.compressed_state.try_decompress().unwrap();
+
         self.world.send_event(WorldEvents::UpdatePlayerStatus(
             packet.epoch,
-            session.client_id,
+            session.user.id(),
             glam::Quat::from_array(packet.rotation),
             glam::Vec3A::from_array(packet.direction),
-            packet.action_state,
-            packet.movement_state,
-            packet.view_state,
+            action_state,
+            movement_state,
+            view_state,
             packet.view_rotation,
         ));
     }
@@ -77,5 +80,9 @@ impl SessionState for InGameState {
                 }
             }
         }
+    }
+
+    fn on_exit(&mut self, session: &Arc<Session>) {
+        self.world.exit(session);
     }
 }

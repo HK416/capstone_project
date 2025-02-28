@@ -11,12 +11,12 @@ use std::{
 };
 
 use ahash::RandomState;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, CharacterKind, ClientId, DamageLog, Epoch,
+        ActionState, ActionStateTimer, Bullet, CharacterKind, CompressedState, DamageLog, Epoch,
         HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, StageKind,
-        ViewState, ViewStateTimer,
+        UserId, ViewState, ViewStateTimer,
     },
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -48,9 +48,9 @@ pub struct World {
     stage_kind: StageKind,
 
     /// 게임 월드에 참가한 세션 데이터입니다.
-    sessions: DashMap<Arc<Session>, ObjectId, RandomState>,
+    sessions: DashSet<Arc<Session>, RandomState>,
     /// 게임 월드에 포함된 플레이어 캐릭터 데이터입니다.
-    players: DashMap<ClientId, ServerPlayer, RandomState>,
+    players: DashMap<UserId, ServerPlayer, RandomState>,
     /// 게임 월드에 포함된 총알 데이터입니다.
     bullets: DashMap<ObjectId, ServerBullet, RandomState>,
 
@@ -89,19 +89,18 @@ impl World {
     /// NOTE: 플레이어의 캐릭터가 바로 생성되지 않습니다.
     pub fn join(&self, session: Arc<Session>, character_kind: CharacterKind) {
         // 오브젝트 식별자를 하나 할당하고, 세션 목록에 추가합니다.
-        let client_id = session.client_id();
-        let object_id = self.generate_object_id();
-        self.sessions.insert(session, object_id);
+        let user_id = session.user().id();
+        self.sessions.insert(session);
 
         // 플레이어 생성 이벤트를 추가합니다.
         self.events
-            .push(WorldEvents::AddPlayer(client_id, object_id, character_kind));
+            .push(WorldEvents::AddPlayer(user_id, character_kind));
     }
 
     pub fn exit(&self, session: &Session) {
         self.sessions.remove(session);
         self.events
-            .push(WorldEvents::RemovePlayer(session.client_id()));
+            .push(WorldEvents::RemovePlayer(session.user().id()));
     }
 
     /// 게임 월드 이벤트를 추가합니다.
@@ -118,20 +117,26 @@ impl World {
             players: self
                 .players
                 .iter()
-                .map(|player| Player {
-                    object_id: player.object_id,
-                    character_kind: player.character_kind,
-                    health_point: player.health_point,
-                    translation: player.translation.to_array(),
-                    rotation: player.rotation.to_array(),
-                    velocity: player.velocity.to_array(),
-                    action_state: player.action_state,
-                    action_state_timer: player.action_state_timer,
-                    movement_state: player.movement_state,
-                    movement_state_timer: player.movement_state_timer,
-                    view_state: player.view_state,
-                    view_state_timer: player.view_state_timer,
-                    view_rotation: player.view_rotation,
+                .map(|player| {
+                    let compressed_state = CompressedState::compress(
+                        player.action_state,
+                        player.movement_state,
+                        player.view_state,
+                    );
+
+                    Player {
+                        user_id: player.user_id,
+                        character_kind: player.character_kind,
+                        health_point: player.health_point,
+                        translation: player.translation.to_array(),
+                        rotation: player.rotation.to_array(),
+                        velocity: player.velocity.to_array(),
+                        compressed_state,
+                        action_state_timer: player.action_state_timer,
+                        movement_state_timer: player.movement_state_timer,
+                        view_state_timer: player.view_state_timer,
+                        view_rotation: player.view_rotation,
+                    }
                 })
                 .collect(),
             bullets: self
@@ -165,7 +170,7 @@ impl World {
 
             let packet = UdpDamageLogPacket::new(snapshot.epoch, logs);
             for session in self.sessions.iter() {
-                match self.players.get_mut(&session.key().client_id()) {
+                match self.players.get_mut(&session.key().user().id()) {
                     Some(item) => {
                         if item.epoch != Epoch::new(0) {
                             session.key().tcp_write(packet.as_raw());
@@ -176,20 +181,15 @@ impl World {
             }
         }
 
-        let mut init_stage_packet = InitStagePacket::new(
-            self.stage_kind,
-            snapshot.epoch,
-            ObjectId::NULL,
-            snapshot.players.clone(),
-        );
+        let init_stage_packet =
+            InitStagePacket::new(snapshot.epoch, self.stage_kind, snapshot.players.clone());
         let pull_stage_packet =
             PullStagePacket::new(snapshot.epoch, snapshot.players, snapshot.bullets);
         for session in self.sessions.iter() {
-            match self.players.get_mut(&session.key().client_id()) {
+            match self.players.get_mut(&session.key().user().id()) {
                 Some(mut item) => {
                     if item.epoch == Epoch::new(0) {
                         item.epoch = snapshot.epoch;
-                        init_stage_packet.object_id = *session.value();
                         session.key().tcp_write(init_stage_packet.as_raw());
                     } else {
                         session.key().tcp_write(pull_stage_packet.as_raw());
@@ -201,13 +201,13 @@ impl World {
     }
 
     /// 플레이어 캐릭터를 추가합니다.
-    fn add_player(&self, client_id: ClientId, object_id: ObjectId, character_kind: CharacterKind) {
+    fn add_player(&self, user_id: UserId, character_kind: CharacterKind) {
         let attributes = get_character_attributes(character_kind);
         self.players.insert(
-            client_id,
+            user_id,
             ServerPlayer {
                 epoch: Epoch::new(0),
-                object_id,
+                user_id,
                 character_kind,
                 health_point: HealthPoint(attributes.health_point),
                 translation: glam::Vec3A::ZERO,
@@ -228,15 +228,15 @@ impl World {
     }
 
     /// 플레이어 캐릭터를 제거합니다.
-    fn remove_player(&self, client_id: ClientId) {
-        self.players.remove(&client_id);
+    fn remove_player(&self, user_id: UserId) {
+        self.players.remove(&user_id);
     }
 
     /// 클라이언트에서 보내온 플레이어 정보로 업데이트
     fn update_player_status(
         &self,
         epoch: Epoch,
-        client_id: ClientId,
+        user_id: UserId,
         rotation: glam::Quat,
         direction: glam::Vec3A,
         action_state: ActionState,
@@ -244,7 +244,7 @@ impl World {
         view_state: ViewState,
         view_rotation: LatLon,
     ) {
-        if let Some(mut player) = self.players.get_mut(&client_id) {
+        if let Some(mut player) = self.players.get_mut(&user_id) {
             let attributes = get_character_attributes(player.character_kind);
             player.epoch = epoch;
             player.rotation = rotation;
@@ -278,7 +278,7 @@ impl World {
     }
 
     /// 총알 오브젝트를 추가합니다.
-    fn add_bullet(&self, shooter_id: ClientId) {
+    fn add_bullet(&self, shooter_id: UserId) {
         if let Some(player) = self.players.get(&shooter_id.into()) {
             let attributes = get_character_attributes(player.character_kind);
 
@@ -330,8 +330,8 @@ impl World {
     fn handle_events(&self) {
         while let Some(event) = self.events.pop() {
             match event {
-                WorldEvents::AddPlayer(client_id, object_id, character_kind) => {
-                    self.add_player(client_id, object_id, character_kind)
+                WorldEvents::AddPlayer(user_id, character_kind) => {
+                    self.add_player(user_id, character_kind)
                 }
                 WorldEvents::UpdatePlayerStatus(
                     epoch,
@@ -403,7 +403,7 @@ impl World {
 
                 if let Some(dist) = ray.intersect(&player_capsule) {
                     if dist <= move_distance {
-                        println!("Bullet find player (player id: {:?})", player.object_id);
+                        println!("Bullet find player (player id: {:?})", player.user_id);
                         if dist < nearest_distance {
                             nearest_distance = dist;
                             nearest_player_id = Some(*player.key());
@@ -457,7 +457,7 @@ impl World {
 
                     player.health_point.0 = (player.health_point.0 - final_dmg).max(0);
                     self.damage_logs.push(DamageLog {
-                        object_id: player.object_id,
+                        user_id: player.user_id,
                         damage: HealthPoint(final_dmg),
                     });
                     println!("  - hp: {:?}(-{})", player.health_point.0, final_dmg);
@@ -547,7 +547,7 @@ impl Default for World {
             epoch: AtomicU64::new(0),
             counter: AtomicU32::new(0),
             stage_kind: StageKind::default(),
-            sessions: DashMap::default(),
+            sessions: DashSet::default(),
             players: DashMap::default(),
             bullets: DashMap::default(),
             damage_logs: Queue::default(),

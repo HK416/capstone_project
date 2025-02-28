@@ -1,6 +1,6 @@
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, Epoch, HealthPoint, LatLon,
-    MovementState, MovementStateTimer, ObjectId, ViewState, ViewStateTimer,
+    MovementState, MovementStateTimer, UserId, ViewState, ViewStateTimer,
 };
 
 /// 서버에서 관리하는 플레이어 데이터
@@ -8,8 +8,8 @@ use mod_network::components::{
 pub struct ServerPlayer {
     /// 플레이어의 시대
     pub epoch: Epoch,
-    /// 플레이어 오브젝트 식별자
-    pub object_id: ObjectId,
+    /// 플레이어 사용자 식별자
+    pub user_id: UserId,
     /// 플레이어 캐릭터 종류
     pub character_kind: CharacterKind,
     /// 플레이어 캐릭터 체력

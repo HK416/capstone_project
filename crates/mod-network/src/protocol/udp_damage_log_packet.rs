@@ -124,7 +124,7 @@ impl Packet for UdpDamageLogPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{HealthPoint, ObjectId};
+    use crate::components::{HealthPoint, UserId};
 
     use super::*;
 
@@ -134,11 +134,11 @@ mod tests {
             Epoch::new(0),
             vec![
                 DamageLog {
-                    object_id: ObjectId::new(123456),
+                    user_id: UserId::new(123456),
                     damage: HealthPoint(1010),
                 },
                 DamageLog {
-                    object_id: ObjectId::new(1),
+                    user_id: UserId::new(1),
                     damage: HealthPoint(52),
                 },
             ],

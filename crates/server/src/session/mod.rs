@@ -11,7 +11,7 @@ use std::{
 };
 
 use mod_network::{
-    components::ClientId,
+    components::{LoginToken, User},
     protocol::{PacketParser, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -29,8 +29,10 @@ use tokio::{
 pub struct Session {
     /// 클라이언트 소켓 주소
     addr: SocketAddr,
-    /// 세션의 클라이언트 식별자
-    client_id: ClientId,
+    /// 세션의 사용자 데이터
+    user: User,
+    /// 사용자 로그인 토큰
+    token: LoginToken,
 
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
@@ -47,12 +49,14 @@ impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
     pub fn new(
         addr: SocketAddr,
-        client_id: ClientId,
+        user: User,
+        token: LoginToken,
         udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
     ) -> Self {
         Self {
             addr,
-            client_id,
+            user,
+            token,
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
@@ -60,9 +64,9 @@ impl Session {
         }
     }
 
-    /// 클라이언트 식별자를 반환합니다.
-    pub fn client_id(&self) -> ClientId {
-        self.client_id
+    /// 세션의 사용자 정보를 반환합니다.
+    pub fn user(&self) -> &User {
+        &self.user
     }
 
     /// 클라이언트 세션이 동작중인지 여부를 반환합니다.
@@ -109,7 +113,7 @@ impl Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session({})", &self.client_id)
+        write!(f, "Session({})", &self.user.id())
     }
 }
 
@@ -117,25 +121,25 @@ impl cmp::Eq for Session {}
 
 impl cmp::PartialEq for Session {
     fn eq(&self, other: &Self) -> bool {
-        self.client_id.eq(&other.client_id)
+        self.user.eq(&other.user)
     }
 }
 
 impl cmp::Ord for Session {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.client_id.cmp(&other.client_id)
+        self.user.cmp(&other.user)
     }
 }
 
 impl cmp::PartialOrd for Session {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.client_id.partial_cmp(&other.client_id)
+        self.user.partial_cmp(&other.user)
     }
 }
 
 impl hash::Hash for Session {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.client_id.hash(state)
+        self.user.hash(state)
     }
 }
 

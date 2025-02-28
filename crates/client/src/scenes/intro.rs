@@ -7,7 +7,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::ClientId,
+    components::{LoginToken, User},
     protocol::{ConnectPacket, Packet, RawPacket},
 };
 use mod_render::UiRenderer;
@@ -26,14 +26,16 @@ use super::TestbedTitleScene;
 /// 3. 클라이언트 에셋 유효성을 검사합니다. (추후)
 ///
 /// # Note
-/// 현재는 서버에 연결하여 클라이언트 식별자를 가져옵니다.
+/// 현재는 서버에 연결하여 사용자 정보와 로그인 토큰을 가져옵니다.
 ///
 pub struct IntroScene {
     /// 사용자 구성 설정 데이터
     user_config: Option<Box<UserConfig>>,
 
-    /// 클라이언트 식별자
-    client_id: ClientId,
+    /// 사용자 정보
+    user: User,
+    /// 로그인 토큰
+    token: LoginToken,
 
     /// 작업 결과 채널
     task_result_channel: TaskResultChannel<()>,
@@ -47,7 +49,8 @@ impl IntroScene {
     pub fn new(user_config: Box<UserConfig>) -> Self {
         Self {
             user_config: Some(user_config),
-            client_id: ClientId::NULL,
+            user: User::default(),
+            token: LoginToken::default(),
             task_result_channel: TaskResultChannel::new(),
             num_task: 0,
         }
@@ -85,10 +88,11 @@ impl GameScene for IntroScene {
             result?;
         }
 
-        // 현재는 클라이언트 식별자를 할당 받은 경우 다음 게임 장면으로 전환합니다.
-        if self.num_task == 0 && self.client_id != ClientId::NULL {
+        // 현재는 로그인 토큰을 할당 받은 경우 다음 게임 장면으로 전환합니다.
+        if self.num_task == 0 && self.token != LoginToken::NULL {
             if let Some(user_config) = self.user_config.take() {
-                let next_scene = Box::new(TestbedTitleScene::new(user_config, self.client_id));
+                let next_scene =
+                    Box::new(TestbedTitleScene::new(user_config, self.user, self.token));
                 let scene_flow = GameSceneFlow::Change(next_scene);
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let proxy = app.event_loop_proxy();
@@ -107,7 +111,8 @@ impl GameScene for IntroScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // `Connect` 패킷을 수신하고 클라이언트 식별자를 저장합니다.
         let connect_packet = ConnectPacket::try_from_raw(packet).unwrap();
-        self.client_id = connect_packet.client_id;
+        self.user = connect_packet.user;
+        self.token = connect_packet.token;
 
         Ok(())
     }

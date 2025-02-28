@@ -136,7 +136,7 @@ impl Packet for PullStagePacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{ClientId, ObjectId};
+    use crate::components::{ObjectId, UserId};
 
     use super::*;
 
@@ -146,23 +146,23 @@ mod tests {
             Epoch::new(0),
             vec![
                 Player {
-                    object_id: ObjectId::new(123456),
+                    user_id: UserId::new(123456),
                     ..Default::default()
                 },
                 Player {
-                    object_id: ObjectId::new(1),
+                    user_id: UserId::new(1),
                     ..Default::default()
                 },
             ],
             vec![
                 Bullet {
                     object_id: ObjectId::new(123455),
-                    shooter_id: ClientId::new(1),
+                    shooter_id: UserId::new(1),
                     ..Default::default()
                 },
                 Bullet {
                     object_id: ObjectId::new(1),
-                    shooter_id: ClientId::new(1),
+                    shooter_id: UserId::new(1),
                     ..Default::default()
                 },
             ],

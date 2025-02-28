@@ -18,12 +18,12 @@ impl LobbyState {
         session: &Arc<Session>,
     ) {
         // 수신한 패킷이 올바른지 검사합니다.
-        if packet.client_id != session.client_id {
+        if packet.token != session.token {
             log::warn!(
-                "{} invalid client id (SESSION:{}, PACKET:{})",
+                "{} invalid token (SESSION:{}, PACKET:{})",
                 &session,
-                &session.client_id.to_string(),
-                &packet.client_id.to_string(),
+                &session.token.to_string(),
+                &packet.token.to_string(),
             );
             session.close();
             return;

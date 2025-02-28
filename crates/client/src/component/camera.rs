@@ -31,7 +31,8 @@ impl ThirdPersonCamera {
 
         // 삼인칭 카메라의 바라보는 각도를 갱신합니다.
         let angle = (dy * offset).to_radians();
-        self.rotation.lat = (self.rotation.lat + angle).clamp(LatLon::MIN_LATITUDE, LatLon::MAX_LATITUDE);
+        self.rotation.lat =
+            (self.rotation.lat + angle).clamp(LatLon::MIN_LATITUDE, LatLon::MAX_LATITUDE);
     }
 
     /// 카메라의 바라보는 방향을 행렬로 반환합니다.

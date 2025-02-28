@@ -51,10 +51,10 @@ pub struct CharacterAttributes {
 
 impl CharacterAttributes {
     /// 라그랑주 보간법을 사용하여 총구의 위치를 계산합니다.
-    /// 
+    ///
     /// # Note
     /// t의 값은 0부터 1사이의 값 입니다.
-    /// 
+    ///
     pub fn get_muzzle_position(&self, t: f32) -> (f32, f32, f32) {
         let l1 = ((t - 0.5) * (t - 1.0)) / 0.5;
         let l2 = (t * (t - 1.0)) / -0.25;
@@ -72,10 +72,10 @@ impl CharacterAttributes {
     }
 
     /// 라그랑주 보간법을 사용하여 총구의 방향을 계산합니다.
-    /// 
+    ///
     /// # Note
     /// t의 값은 0부터 1사이의 값 입니다.
-    /// 
+    ///
     pub fn get_muzzle_direction(&self, t: f32) -> (f32, f32, f32) {
         let l1 = ((t - 0.5) * (t - 1.0)) / 0.5;
         let l2 = (t * (t - 1.0)) / -0.25;

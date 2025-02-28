@@ -9,7 +9,7 @@ use mod_app::{
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{CharacterKind, ClientId};
+use mod_network::components::{CharacterKind, LoginToken, User};
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
@@ -24,8 +24,10 @@ pub use {self::enter::*, self::in_game::*};
 pub struct TestbedTitleScene {
     /// 사용자 구성 설정 데이터
     user_config: Option<Box<UserConfig>>,
-    /// 클라이언트 식별자
-    client_id: ClientId,
+    /// 사용자 정보
+    user: User,
+    /// 사용자 로그인 토큰
+    token: LoginToken,
 
     /// 선택된 전체 화면 여부
     fullscreen: bool,
@@ -40,11 +42,12 @@ pub struct TestbedTitleScene {
 
 impl TestbedTitleScene {
     /// 새로운 `TestbedTitleScene`을 생성합니다.
-    pub fn new(user_config: Box<UserConfig>, client_id: ClientId) -> Self {
-        assert_ne!(client_id, ClientId::NULL, "invalid client id");
+    pub fn new(user_config: Box<UserConfig>, user: User, token: LoginToken) -> Self {
+        assert_ne!(token, LoginToken::NULL, "invalid login token");
         Self {
             user_config: Some(user_config),
-            client_id,
+            user,
+            token,
             fullscreen: false,
             window_size: WindowSize::MAX,
             character_kind: CharacterKind::default(),
@@ -93,7 +96,7 @@ impl TestbedTitleScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let egui_ctx = app.egui_ctx();
 
-        let client_id = self.client_id.to_string();
+        let name = self.user.name().to_string();
         let scale_factor = window.scale_factor() as f32;
         let (width, _): (f32, f32) = window.inner_size().into();
 
@@ -115,7 +118,7 @@ impl TestbedTitleScene {
         let join_button_text = egui::RichText::new("게임 월드 입장")
             .color(egui::Color32::WHITE)
             .size(18.0);
-        let client_id_text = egui::RichText::new(format!("클라이언트 ID: {:?}", client_id))
+        let client_id_text = egui::RichText::new(format!("사용자: {}", name))
             .color(egui::Color32::WHITE)
             .size(12.0);
 
@@ -233,7 +236,7 @@ impl TestbedTitleScene {
         if change_scene && self.user_config.is_some() {
             if let Some(user_config) = self.user_config.take() {
                 let next_scene =
-                    EnterStageScene::new(user_config, self.client_id, self.character_kind);
+                    EnterStageScene::new(user_config, self.user, self.token, self.character_kind);
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 proxy.send_event(event).unwrap();

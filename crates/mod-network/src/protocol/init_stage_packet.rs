@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, Epoch, ObjectId, Player, StageKind, TryFromBigEndian};
+use crate::components::{BigEndian, Epoch, Player, StageKind, TryFromBigEndian};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -6,12 +6,10 @@ use super::{Packet, PacketType, RawPacket};
 /// 서버에서 클라이언트로 전송되는 패킷입니다.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InitStagePacket {
-    /// 게임 스테이지 종류
-    pub stage_kind: StageKind,
     /// 게임 월드의 초기 시대
     pub epoch: Epoch,
-    /// 클라이언트 캐릭터의 오브젝트 식별자입니다.
-    pub object_id: ObjectId,
+    /// 게임 스테이지 종류
+    pub stage_kind: StageKind,
     /// 클라이언트를 포함한 게임 월드에 존재하는 플레이어의 수
     pub num_players: u16,
     /// 클라이언트를 포함한 게임 월드 플레이어 데이터
@@ -19,16 +17,10 @@ pub struct InitStagePacket {
 }
 
 impl InitStagePacket {
-    pub fn new(
-        stage_kind: StageKind,
-        epoch: Epoch,
-        object_id: ObjectId,
-        players: Vec<Player>,
-    ) -> Self {
+    pub fn new(epoch: Epoch, stage_kind: StageKind, players: Vec<Player>) -> Self {
         Self {
-            stage_kind,
             epoch,
-            object_id,
+            stage_kind,
             num_players: players.len() as u16,
             players,
         }
@@ -39,9 +31,8 @@ impl Default for InitStagePacket {
     // object_id 기본 값은 NULL이어야 합니다.
     fn default() -> Self {
         Self {
-            stage_kind: StageKind::default(),
             epoch: Epoch::new(0),
-            object_id: ObjectId::NULL,
+            stage_kind: StageKind::default(),
             num_players: 0,
             players: Vec::default(),
         }
@@ -54,15 +45,13 @@ impl Packet for InitStagePacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = StageKind::byte_size()
-            + Epoch::byte_size()
-            + ObjectId::byte_size()
+        let data_size = Epoch::byte_size()
+            + StageKind::byte_size()
             + u16::byte_size()
             + Player::byte_size() * self.num_players as usize;
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.stage_kind.to_big_endian_bytes());
         data.extend_from_slice(&self.epoch.to_big_endian_bytes());
-        data.extend_from_slice(&self.object_id.to_big_endian_bytes());
+        data.extend_from_slice(&self.stage_kind.to_big_endian_bytes());
         data.extend_from_slice(&self.num_players.to_big_endian_bytes());
         for player in self.players.iter() {
             data.extend_from_slice(&player.to_big_endian_bytes());
@@ -92,24 +81,18 @@ impl Packet for InitStagePacket {
             return None;
         }
 
-        // 스테이지 종류를 가져옵니다.
+        // 서버의 초기 시대를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = StageKind::byte_size();
+        let mut size = Epoch::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let stage_kind = StageKind::try_from_big_endian_bytes(data)?;
-
-        // 서버의 초기 시대를 가져옵니다.
-        offset = offset + size;
-        size = Epoch::byte_size();
-        data = &bytes[offset..offset + size];
         let epoch = Epoch::from_big_endian_bytes(data);
 
-        // 오브젝트 식별자를 가져옵니다.
+        // 스테이지 종류를 가져옵니다.
         offset = offset + size;
-        size = ObjectId::byte_size();
+        size = StageKind::byte_size();
         data = &bytes[offset..offset + size];
-        let object_id = ObjectId::from_big_endian_bytes(data);
+        let stage_kind = StageKind::try_from_big_endian_bytes(data)?;
 
         // 플레이어 수를 가져옵니다.
         offset = offset + size;
@@ -131,7 +114,6 @@ impl Packet for InitStagePacket {
         Some(Self {
             stage_kind,
             epoch,
-            object_id,
             num_players,
             players,
         })
@@ -140,21 +122,22 @@ impl Packet for InitStagePacket {
 
 #[cfg(test)]
 mod tests {
+    use crate::components::UserId;
+
     use super::*;
 
     #[test]
     fn validation_test_packet() {
         let origin = InitStagePacket::new(
-            StageKind::City,
             Epoch::new(0),
-            ObjectId::new(123456),
+            StageKind::City,
             vec![
                 Player {
-                    object_id: ObjectId::new(123456),
+                    user_id: UserId::new(123456),
                     ..Default::default()
                 },
                 Player {
-                    object_id: ObjectId::new(1),
+                    user_id: UserId::new(1),
                     ..Default::default()
                 },
             ],

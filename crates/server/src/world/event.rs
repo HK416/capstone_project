@@ -1,14 +1,14 @@
 use mod_network::components::{
-    ActionState, CharacterKind, ClientId, Epoch, LatLon, MovementState, ObjectId, ViewState,
+    ActionState, CharacterKind, Epoch, LatLon, MovementState, ObjectId, UserId, ViewState,
 };
 
 /// 게임 월드에서 발생하는 이벤트 목록입니다.
 #[derive(Debug)]
 pub enum WorldEvents {
-    AddPlayer(ClientId, ObjectId, CharacterKind),
+    AddPlayer(UserId, CharacterKind),
     UpdatePlayerStatus(
         Epoch,
-        ClientId,
+        UserId,
         glam::Quat,
         glam::Vec3A,
         ActionState,
@@ -16,7 +16,7 @@ pub enum WorldEvents {
         ViewState,
         LatLon,
     ),
-    AddBullet(ClientId),
-    RemovePlayer(ClientId),
+    AddBullet(UserId),
+    RemovePlayer(UserId),
     RemoveBullet(ObjectId),
 }

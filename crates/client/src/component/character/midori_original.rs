@@ -14,16 +14,17 @@ use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 use crate::{
     asset::{AssetError, ModelHierarchyPool, Motion, MotionPool, Node},
     component::{
-        BoneCollection, Child, ControllerInputFlags, Parent, Sibling,
-        SkinningAnimation, ThirdPersonCamera, ToParentTrans, WorldTransform,
-        ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX,
-        CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT,
-        MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
+        BoneCollection, Child, ControllerInputFlags, Parent, Sibling, SkinningAnimation,
+        ThirdPersonCamera, ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX,
+        ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
+        IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH,
+        MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
     },
 };
 
 use super::{
-    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON
+    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1,
+    MODEL_BONE_WEAPON,
 };
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
@@ -303,11 +304,10 @@ fn spawn_character_model_recursive(
         if mesh.name().contains("Halo") {
             // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
             builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::MomoiOriginalHalo));
-
         } else {
             // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
             builder.add_bundle((mesh, mesh_resource, CharacterKind::MomoiOriginal));
-        } 
+        }
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
         meshes.insert(mesh_name, entity);
@@ -1682,7 +1682,7 @@ pub fn set_weapon_position(
     if action_state == ActionState::Idle {
         return;
     }
-    
+
     let bone_entity = skinning_animation.right_hand;
     let (_, transform) = transform_view
         .get_mut(bone_entity)

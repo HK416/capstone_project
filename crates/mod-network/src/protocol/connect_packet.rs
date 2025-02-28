@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, ClientId};
+use crate::components::{BigEndian, LoginToken, User};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -6,20 +6,21 @@ use super::{Packet, PacketType, RawPacket};
 /// 서버에서 클라이언트로 전송되는 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectPacket {
-    pub client_id: ClientId,
+    pub user: User,
+    pub token: LoginToken,
 }
 
 impl ConnectPacket {
-    pub fn new(client_id: ClientId) -> Self {
-        Self { client_id }
+    pub fn new(user: User, token: LoginToken) -> Self {
+        Self { user, token }
     }
 }
 
 impl Default for ConnectPacket {
     fn default() -> Self {
-        // client_id의 기본 값은 NULL이어야 합니다.
         Self {
-            client_id: ClientId::NULL,
+            user: User::default(),
+            token: LoginToken::default(),
         }
     }
 }
@@ -30,9 +31,10 @@ impl Packet for ConnectPacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = ClientId::byte_size();
+        let data_size = User::byte_size() + LoginToken::byte_size();
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.client_id.to_big_endian_bytes());
+        data.extend_from_slice(&self.user.to_big_endian_bytes());
+        data.extend_from_slice(&self.token.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -58,23 +60,33 @@ impl Packet for ConnectPacket {
             return None;
         }
 
-        // 클라이언트 식별자를 가져옵니다.
+        // 사용자 정보를 가져옵니다.
         let bytes = raw.data();
-        let offset = 0;
-        let size = ClientId::byte_size();
-        let client_id = ClientId::from_big_endian_bytes(&bytes[offset..offset + size]);
+        let mut offset = 0;
+        let mut size = User::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let user = User::from_big_endian_bytes(data);
 
-        Some(Self { client_id })
+        // 로그인 토큰을 가져옵니다.
+        offset = offset + size;
+        size = LoginToken::byte_size();
+        data = &bytes[offset..offset + size];
+        let token = LoginToken::from_big_endian_bytes(data);
+
+        Some(Self { user, token })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::components::{UserId, UserName};
+
     use super::*;
 
     #[test]
     fn validation_test_packet() {
-        let origin = ConnectPacket::new(ClientId::new(123456));
+        let user = User::new(UserId::new(3141592), UserName::new("Hello안녕!"));
+        let origin = ConnectPacket::new(user, LoginToken::new(123456123456123456));
         let raw_packet = origin.as_raw();
         let other = ConnectPacket::try_from_raw(raw_packet).unwrap();
 

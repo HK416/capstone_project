@@ -74,22 +74,10 @@ pub fn load_character_model(
     queue: &wgpu::Queue,
 ) -> Result<(), AssetError> {
     const MODELS: [(&'static str, &'static str); NUM_CHARACTERS] = [
-        (
-            aris_original::WORKSPACE,
-            aris_original::MODEL_NAME,
-        ),
-        (
-            momoi_original::WORKSPACE,
-            momoi_original::MODEL_NAME,
-        ),
-        (
-            midori_original::WORKSPACE,
-            midori_original::MODEL_NAME,
-        ),
-        (
-            yuuka_original::WORKSPACE,
-            yuuka_original::MODEL_NAME,
-        )
+        (aris_original::WORKSPACE, aris_original::MODEL_NAME),
+        (momoi_original::WORKSPACE, momoi_original::MODEL_NAME),
+        (midori_original::WORKSPACE, midori_original::MODEL_NAME),
+        (yuuka_original::WORKSPACE, yuuka_original::MODEL_NAME),
     ];
 
     let i = character_kind as usize;
@@ -159,11 +147,10 @@ pub fn spawn_player_character(
     ));
     let world_transform = WorldTransform::default();
     let health_point = player.health_point;
-    let action_state = player.action_state;
+    let (action_state, movement_state, view_state) =
+        player.compressed_state.try_decompress().unwrap();
     let action_state_timer = player.action_state_timer;
-    let movement_state = player.movement_state;
     let movement_state_timer = player.movement_state_timer;
-    let view_state = player.view_state;
     let view_state_timer = player.view_state_timer;
     let view_rotation = player.view_rotation;
 
@@ -735,7 +722,13 @@ pub fn set_weapon_position(
     ];
 
     let i = character_kind as usize;
-    FUNC_TABLE[i](action_state, skinning_animation, child_view, sibling_view, transform_view);
+    FUNC_TABLE[i](
+        action_state,
+        skinning_animation,
+        child_view,
+        sibling_view,
+        transform_view,
+    );
 }
 
 /// 캐릭터의 삼인칭 카메라를 생성합니다.

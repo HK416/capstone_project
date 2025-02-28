@@ -1,12 +1,12 @@
-use mod_network::components::{Bullet, BulletKind, ClientId, Epoch, ObjectId, Player, StageKind};
+use mod_network::components::{Bullet, BulletKind, Epoch, ObjectId, Player, StageKind, UserId};
 
 /// 서버에서 관리하는 총알 데이터
 #[derive(Debug, Clone)]
 pub struct ServerBullet {
     /// 총알의 오브젝트 식별자
     pub object_id: ObjectId,
-    /// 총알을 발사한 클라이언트 식별자
-    pub shooter_id: ClientId,
+    /// 총알을 발사한 사용자 식별자
+    pub shooter_id: UserId,
     /// 총알의 종류
     pub bullet_kind: BulletKind,
     /// 총알의 월드 공간 위치

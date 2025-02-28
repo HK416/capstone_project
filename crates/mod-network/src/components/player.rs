@@ -1,13 +1,13 @@
 use super::{
-    ActionState, ActionStateTimer, BigEndian, CharacterKind, HealthPoint, LatLon, MovementState,
-    MovementStateTimer, ObjectId, TryFromBigEndian, ViewState, ViewStateTimer,
+    ActionStateTimer, BigEndian, CharacterKind, CompressedState, HealthPoint, LatLon,
+    MovementStateTimer, TryFromBigEndian, UserId, ViewStateTimer,
 };
 
 /// 서버에서 클라이언트로 플레이어 캐릭터 데이터를 보내는데 사용되는 구조체
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Player {
-    /// 플레이어 캐릭터 오브젝트 식별자
-    pub object_id: ObjectId,
+    /// 사용자 식별자
+    pub user_id: UserId,
     /// 플레이어 캐릭터의 종류
     pub character_kind: CharacterKind,
     /// 플레이어 캐릭터 체력
@@ -18,16 +18,12 @@ pub struct Player {
     pub rotation: [f32; 4],
     /// 플레이어 캐릭터의 월드 공간 속도
     pub velocity: [f32; 3],
-    /// 플레이어 캐릭터의 행동 상태
-    pub action_state: ActionState,
+    /// 플레이어의 압축된 상태 데이터 입니다.
+    pub compressed_state: CompressedState,
     /// 플레이어 캐릭터의 행동 상태 타이머
     pub action_state_timer: ActionStateTimer,
-    /// 플레이어 캐릭터의 움직임 상태
-    pub movement_state: MovementState,
     /// 플레이어 캐릭터의 움직임 상태 타이머
     pub movement_state_timer: MovementStateTimer,
-    /// 플레이어 카메라 상태
-    pub view_state: ViewState,
     /// 플레이어 카메라 상태 타이머
     pub view_state_timer: ViewStateTimer,
     /// 플레이어 카메라가 캐릭터를 중심으로 바라보는 방향
@@ -36,17 +32,15 @@ pub struct Player {
 
 impl BigEndian for Player {
     fn byte_size() -> usize {
-        ObjectId::byte_size()
+        UserId::byte_size()
             + CharacterKind::byte_size()
             + HealthPoint::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 4]>::byte_size()
             + <[f32; 3]>::byte_size()
-            + ActionState::byte_size()
+            + CompressedState::byte_size()
             + ActionStateTimer::byte_size()
-            + MovementState::byte_size()
             + MovementStateTimer::byte_size()
-            + ViewState::byte_size()
             + ViewStateTimer::byte_size()
             + LatLon::byte_size()
     }
@@ -57,17 +51,15 @@ impl BigEndian for Player {
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(Self::byte_size());
-        bytes.extend_from_slice(&self.object_id.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.user_id.to_big_endian_bytes());
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
         bytes.extend_from_slice(&self.health_point.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.action_state.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.compressed_state.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.movement_state.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.view_state.to_big_endian_bytes());
         bytes.extend_from_slice(&self.view_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.view_rotation.to_big_endian_bytes());
 
@@ -89,17 +81,15 @@ impl Default for Player {
     fn default() -> Self {
         // object_id의 기본 값은 NULL이어야 합니다.
         Self {
-            object_id: ObjectId::NULL,
+            user_id: UserId::default(),
             character_kind: CharacterKind::default(),
             health_point: HealthPoint::default(),
             translation: [0.0, 0.0, 0.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
             velocity: [0.0, 0.0, 0.0],
-            action_state: ActionState::default(),
+            compressed_state: CompressedState::default(),
             action_state_timer: ActionStateTimer::default(),
-            movement_state: MovementState::default(),
             movement_state_timer: MovementStateTimer::default(),
-            view_state: ViewState::default(),
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
         }
@@ -116,11 +106,11 @@ impl TryFromBigEndian for Player {
             stringify!(Player)
         );
 
-        // 오브젝트 식별자를 가져옵니다.
+        // 사용자 식별자를 가져옵니다.
         let mut offset = 0;
-        let mut size = ObjectId::byte_size();
+        let mut size = UserId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let object_id = ObjectId::from_big_endian_bytes(data);
+        let user_id = UserId::from_big_endian_bytes(data);
 
         // 캐릭터 종류를 가져옵니다.
         offset = offset + size;
@@ -152,11 +142,11 @@ impl TryFromBigEndian for Player {
         data = &bytes[offset..offset + size];
         let velocity = <[f32; 3]>::from_big_endian_bytes(data);
 
-        // 행동 상태를 가져옵니다.
+        // 압축된 상태를 가져옵니다.
         offset = offset + size;
-        size = ActionState::byte_size();
+        size = CompressedState::byte_size();
         data = &bytes[offset..offset + size];
-        let action_state = ActionState::try_from_big_endian_bytes(data)?;
+        let compressed_state = CompressedState::from_big_endian_bytes(data);
 
         // 행동 상태 타이머를 가져옵니다.
         offset = offset + size;
@@ -164,23 +154,11 @@ impl TryFromBigEndian for Player {
         data = &bytes[offset..offset + size];
         let action_state_timer = ActionStateTimer::from_big_endian_bytes(data);
 
-        // 움직임 상태를 가져옵니다.
-        offset = offset + size;
-        size = MovementState::byte_size();
-        data = &bytes[offset..offset + size];
-        let movement_state = MovementState::try_from_big_endian_bytes(data)?;
-
         // 움직임 상태 타이머를 가져옵니다.
         offset = offset + size;
         size = MovementStateTimer::byte_size();
         data = &bytes[offset..offset + size];
         let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
-
-        // 카메라 상태를 가져옵니다.
-        offset = offset + size;
-        size = ViewState::byte_size();
-        data = &bytes[offset..offset + size];
-        let view_state = ViewState::try_from_big_endian_bytes(data)?;
 
         // 카메라 상태 타이머를 가져옵니다.
         offset = offset + size;
@@ -195,17 +173,15 @@ impl TryFromBigEndian for Player {
         let view_rotation = LatLon::from_big_endian_bytes(data);
 
         Some(Self {
-            object_id,
+            user_id,
             character_kind,
             health_point,
             translation,
             rotation,
             velocity,
-            action_state,
+            compressed_state,
             action_state_timer,
-            movement_state,
             movement_state_timer,
-            view_state,
             view_state_timer,
             view_rotation,
         })
@@ -219,7 +195,7 @@ mod tests {
     #[test]
     fn validation_test_player() {
         let origin = Player {
-            object_id: ObjectId::new(3141592),
+            user_id: UserId::new(3141592),
             character_kind: CharacterKind::MomoiOriginal,
             health_point: HealthPoint(2700),
             translation: [-1.0101, 2.3456, 1000.011],

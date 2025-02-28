@@ -10,7 +10,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{BulletKind, CharacterKind, ClientId, Epoch, ObjectId},
+    components::{BulletKind, CharacterKind, Epoch, LoginToken, User, UserId},
     protocol::{EnterStagePacket, InitStagePacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{
@@ -45,8 +45,10 @@ use super::TestbedInGameScene;
 pub struct EnterStageScene {
     /// 사용자 구성 설정 데이터
     user_config: Option<Box<UserConfig>>,
-    /// 클라이언트 식별자
-    client_id: ClientId,
+    /// 사용자 정보
+    user: User,
+    /// 사용자 로그인 토큰
+    token: LoginToken,
     /// 선택한 캐릭터 종류
     character_kind: CharacterKind,
 
@@ -63,13 +65,15 @@ impl EnterStageScene {
     ///
     pub fn new(
         user_config: Box<UserConfig>,
-        client_id: ClientId,
+        user: User,
+        token: LoginToken,
         character_kind: CharacterKind,
     ) -> Self {
-        assert_ne!(client_id, ClientId::NULL, "invalid client id");
+        assert_ne!(token, LoginToken::NULL, "invalid token");
         Self {
             user_config: Some(user_config),
-            client_id,
+            user,
+            token,
             character_kind,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
@@ -111,7 +115,7 @@ impl GameScene for EnterStageScene {
         // 게임 월드 접속 패킷 전송
         let net_manager = app.net_manager();
         let socket = net_manager.get(&SERVER_TCP_ADDR).expect("no such socket");
-        let packet = EnterStagePacket::new(self.client_id, self.character_kind);
+        let packet = EnterStagePacket::new(self.token, self.character_kind);
         let packet = packet.as_raw();
         socket.push_packet(packet);
 
@@ -128,8 +132,12 @@ impl GameScene for EnterStageScene {
                 let init_stage_packet = InitStagePacket::from_raw(packet);
                 let proxy = app.event_loop_proxy();
                 let user_config = self.user_config.take().expect("duplicate packet received");
-                let next_scene =
-                    LoadStageResourceScene::new(user_config, self.client_id, init_stage_packet);
+                let next_scene = LoadStageResourceScene::new(
+                    user_config,
+                    self.user,
+                    self.token,
+                    init_stage_packet,
+                );
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 proxy.send_event(event).unwrap();
@@ -269,8 +277,10 @@ impl fmt::Debug for EnterStageScene {
 pub struct LoadStageResourceScene {
     /// 사용자 구성 설정 데이터
     user_config: Option<Box<UserConfig>>,
-    /// 클라이언트 식별자
-    client_id: ClientId,
+    /// 사용자 정보
+    user: User,
+    /// 사용자 로그인 토큰
+    token: LoginToken,
     /// 게임 월드 초기화 패킷 데이터
     init_stage_packet: Option<InitStagePacket>,
 
@@ -292,13 +302,15 @@ impl LoadStageResourceScene {
     ///
     fn new(
         user_config: Box<UserConfig>,
-        client_id: ClientId,
+        user: User,
+        token: LoginToken,
         init_stage_packet: InitStagePacket,
     ) -> Self {
-        assert_ne!(client_id, ClientId::NULL, "invalid client id");
+        assert_ne!(token, LoginToken::NULL, "invalid token");
         Self {
             user_config: Some(user_config),
-            client_id,
+            user,
+            token,
             init_stage_packet: Some(init_stage_packet),
             num_tasks: 0,
             task_result_channel: TaskResultChannel::new(),
@@ -447,7 +459,7 @@ impl GameScene for LoadStageResourceScene {
             let mut pair = self.user_config.take().zip(self.init_stage_packet.take());
             if let Some((user_config, init_stage_packet)) = pair.take() {
                 let next_scene =
-                    InitStageScene::new(user_config, self.client_id, init_stage_packet);
+                    InitStageScene::new(user_config, self.user, self.token, init_stage_packet);
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let proxy = app.event_loop_proxy();
@@ -776,17 +788,17 @@ fn load_damage_font(
 pub struct InitStageScene {
     /// 사용자 구성 설정 데이터
     user_config: Option<Box<UserConfig>>,
-    /// 클라이언트 식별자
-    client_id: ClientId,
-    /// 플레이어 캐릭터 오브젝트 식별자
-    object_id: ObjectId,
+    /// 사용자 정보
+    user: User,
+    /// 사용자 로그인 토큰
+    token: LoginToken,
     /// 서버의 Epoch
     epoch: Epoch,
     /// 게임 월드 초기화 패킷 데이터
     init_stage_packet: Option<InitStagePacket>,
 
     /// 작업 결과 전송 채널
-    task_result_channel: TaskResultChannel<(World, HashMap<ObjectId, Entity>)>,
+    task_result_channel: TaskResultChannel<(World, HashMap<UserId, Entity>)>,
 
     //----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
@@ -801,14 +813,15 @@ impl InitStageScene {
     ///
     fn new(
         user_config: Box<UserConfig>,
-        client_id: ClientId,
+        user: User,
+        token: LoginToken,
         init_stage_packet: InitStagePacket,
     ) -> Self {
-        assert_ne!(client_id, ClientId::NULL, "invalid client id");
+        assert_ne!(token, LoginToken::NULL, "invalid token");
         Self {
             user_config: Some(user_config),
-            client_id,
-            object_id: init_stage_packet.object_id,
+            user,
+            token,
             epoch: init_stage_packet.epoch,
             init_stage_packet: Some(init_stage_packet),
             task_result_channel: TaskResultChannel::default(),
@@ -873,7 +886,7 @@ impl GameScene for InitStageScene {
 
         // 작업 처리 결과를 대기합니다.
         if let Some(result) = self.task_result_channel.recv() {
-            let (world, entities) = result?;
+            let (world, players) = result?;
 
             // Skybox 쉐이더 리소스를 생성합니다.
             let skybox_resource = create_skybox_resource(
@@ -889,11 +902,11 @@ impl GameScene for InitStageScene {
                 .expect("user configuration must exist");
             let next_scene = TestbedInGameScene::new(
                 user_config,
-                self.client_id,
-                self.object_id,
+                self.user,
+                self.token,
                 self.epoch,
                 world,
-                entities,
+                players,
                 skybox_resource,
             );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
@@ -1028,7 +1041,7 @@ impl fmt::Debug for InitStageScene {
 }
 
 /// 스레드 풀간 데이터 전송을 위한 채널 데이터입니다.
-type LocalResult = (ObjectId, Entity, Vec<(Entity, EntityBuilder)>);
+type LocalResult = (UserId, Entity, Vec<(Entity, EntityBuilder)>);
 
 /// 게임 월드를 생성합니다.
 fn create_game_world(
@@ -1036,7 +1049,7 @@ fn create_game_world(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     init_stage_packet: InitStagePacket,
-    task_result_channel: TaskResultChannel<(World, HashMap<ObjectId, Entity>)>,
+    task_result_channel: TaskResultChannel<(World, HashMap<UserId, Entity>)>,
 ) {
     rayon::spawn(move || {
         let mut world = World::default();
@@ -1113,7 +1126,7 @@ fn spawn_players(
         let queue = queue.clone();
         let channel = channel.clone();
         let result = spawn_player_character(&player, &asset_manager, &device, &queue, world)
-            .map(|(entity, batch_commands)| (player.object_id, entity, batch_commands));
+            .map(|(entity, batch_commands)| (player.user_id, entity, batch_commands));
         channel.send(result);
     }
 }
