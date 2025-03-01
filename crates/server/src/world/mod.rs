@@ -19,7 +19,7 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{BoundingBox, Capsule, Collision, Ray, check_collision};
+use mod_physics::{BoundingBox, Capsule, Ray, check_collision_details};
 use uuid::Uuid;
 
 use crate::{data::get_character_attributes, session::Session};
@@ -354,25 +354,16 @@ impl World {
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
-        let boundingboxes = [BoundingBox::new(glam::Vec3::ZERO, glam::Vec3::new(1.0, 1.0, 1.0)); 1000];
-        
-        let mut count = 0;
+        let boundingboxes = [BoundingBox::new(glam::Vec3::ZERO, glam::Vec3::new(1.0, 1.0, 1.0)); 1];
 
         for bb in boundingboxes {
-            for player in self.players.iter() {
-                if check_collision(&player.collider, &bb) {
+            for mut player in self.players.iter_mut() {
+                if let Some(collision_info) = check_collision_details(&player.collider, &bb) {
+                    player.translation += collision_info.normal * collision_info.penetration;
                     // println!("Player {:?} collision with box {:?}", player.object_id, bb);
-                    count += 1;
+                    // println!("{}", collision_info.penetration);
                 }
-                // if player.collider.check_collision(bb) {
-                //     // println!("Player {:?} collision with box {:?}", player.object_id, bb);
-                //     count += 1;
-                // }
             }
-        }
-
-        if count > 0 {
-            println!("count: {}", count);
         }
 
         // 총알 이동
