@@ -5,6 +5,8 @@ mod parser;
 mod pull_stage_packet;
 mod push_status_packet;
 mod udp_damage_log_packet;
+mod join_request_packet;
+mod join_failed_packet;
 
 use std::io::{Error, ErrorKind};
 
@@ -25,6 +27,8 @@ pub enum PacketType {
     InitStage = 3,
     PullStage = 4,
     PushStatus = 5,
+    JoinRequest = 6,  
+    JoinFailed = 7,   
     UdpDamageLog = 128,
 }
 
@@ -55,6 +59,8 @@ impl TryFromBigEndian for PacketType {
             3 => Some(PacketType::InitStage),
             4 => Some(PacketType::PullStage),
             5 => Some(PacketType::PushStatus),
+            6 => Some(PacketType::JoinRequest), 
+            7 => Some(PacketType::JoinFailed),  
             128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(

@@ -1,6 +1,6 @@
 use crate::components::{BigEndian, Epoch, ObjectId, Player, StageKind, TryFromBigEndian};
 
-use super::{Packet, PacketType, RawPacket};
+use crate::protocol::{Packet,PacketType, RawPacket};
 
 /// 클라이언트가 게임에 입장할 때
 /// 서버에서 클라이언트로 전송되는 패킷입니다.

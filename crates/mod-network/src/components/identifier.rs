@@ -224,3 +224,85 @@ mod tests {
         assert_eq!(origin, other);
     }
 }
+
+
+
+/// 게임 월드를 식별하기 위한 식별자입니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WorldId(u32);
+
+impl WorldId {
+    /// 지정되지 않은 게임 월드 식별자입니다.
+    pub const NULL: Self = Self(0);
+
+    /// 주어진 정수로 새로운 게임 월드 식별자를 생성합니다.
+    ///
+    /// # Panics
+    /// 주어진 정수가 `0`인 경우 [`panic!`]을 호출합니다.
+    ///
+    pub fn new(n: u32) -> Self {
+        assert_ne!(n, 0, "invalid world id");
+        unsafe { Self::new_unchecked(n) }
+    }
+
+    /// 주어진 정수로 새로운 게임 월드 식별자를 생성합니다.
+    pub const unsafe fn new_unchecked(n: u32) -> Self {
+        Self(n)
+    }
+}
+
+impl BigEndian for WorldId {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid world id")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.0.to_big_endian_bytes()
+    }
+}
+
+impl TryFromBigEndian for WorldId {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        let num = u32::from_big_endian_bytes(bytes);
+        if num != 0 {
+            unsafe { Some(Self::new_unchecked(num)) }
+        } else {
+            log::error!(
+                "invalid value for `{}`, (VALUE:{})",
+                stringify!(WorldId),
+                num
+            );
+            None
+        }
+    }
+}
+
+impl fmt::Display for WorldId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:X}", &self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn creation_test_world_id() {
+        WorldId::new(0);
+    }
+
+    #[test]
+    fn validation_test_world_id() {
+        let origin = WorldId::new(12345);
+        let bytes = origin.to_big_endian_bytes();
+        let other = WorldId::from_big_endian_bytes(&bytes);
+
+        // 바이트 배열 크기가 같은지 확인
+        assert_eq!(std::mem::size_of::<WorldId>(), bytes.len());
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
+}

@@ -4,6 +4,7 @@ mod identifier;
 mod player;
 mod stage;
 mod state;
+pub(crate) mod system;
 
 pub use self::{attributes::*, bullet::*, identifier::*, player::*, stage::*, state::*};
 
