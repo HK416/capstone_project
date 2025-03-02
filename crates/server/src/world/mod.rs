@@ -19,7 +19,7 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{BoundingBox, Capsule, Ray, check_collision_details};
+use mod_physics::{BoundingBox, Capsule, Collider, Ray, Sphere};
 use uuid::Uuid;
 
 use crate::{data::get_character_attributes, session::Session};
@@ -199,7 +199,7 @@ impl World {
                 object_id,
                 character_kind,
                 health_point: HealthPoint(attributes.health_point),
-                translation: glam::Vec3A::ZERO,
+                translation: glam::Vec3A::new(0.0, 0.0, 0.0),
                 rotation: glam::Quat::IDENTITY,
                 velocity: glam::Vec3A::ZERO,
                 direction: glam::Vec3A::Z,
@@ -354,15 +354,35 @@ impl World {
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
-        let boundingboxes = [BoundingBox::new(glam::Vec3::ZERO, glam::Vec3::new(1.0, 1.0, 1.0)); 1];
+        let colliders = [
+            Collider::Box(BoundingBox::new(glam::Vec3::ZERO, glam::Vec3::new(1.0, 1.0, 1.0))),
+            // Collider::Sphere(Sphere {
+            //     center: glam::Vec3::ZERO,
+            //     radius: 1.0,
+            // }),
+        ];
 
-        for bb in boundingboxes {
+        for collider in colliders.iter() {
             for mut player in self.players.iter_mut() {
-                if let Some(collision_info) = check_collision_details(&player.collider, &bb) {
-                    player.translation += collision_info.normal * collision_info.penetration;
+                let player_collider = Collider::Capsule(player.collider.clone());
+                let player_collider = Collider::Sphere(Sphere {
+                    center: player.translation.into(),
+                    radius: PLAYER_RADIUS,
+                });
+                let player_collider = Collider::Box(
+                    BoundingBox::new(
+                        player.translation.into(), 
+                        glam::Vec3::new(PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS)
+                    )
+                );
+                if let Some(collision_info) = player_collider.check_collision_details(collider) {
+                    player.translation += collision_info.normal * -collision_info.penetration;
                     // println!("Player {:?} collision with box {:?}", player.object_id, bb);
-                    // println!("{}", collision_info.penetration);
+                    // println!("collision penetration: {}", collision_info.penetration);
                 }
+                // if player_collider.check_collision(collider) {
+                //     println!("Player {:?} collision with collider {:?}", player.object_id, collider);
+                // }
             }
         }
 
@@ -493,11 +513,17 @@ impl World {
             let attributes = get_character_attributes(player.character_kind);
 
             // 플레이어 이동
-            let velocity = match player.movement_state {
+            let mut velocity = match player.movement_state {
                 MovementState::Moving => player.direction * attributes.speed,
                 _ => glam::Vec3A::ZERO,
             };
+            player.velocity.y += -9.8 * elapsed_time_sec;
+            velocity.y = player.velocity.y;
             player.translation += velocity * elapsed_time_sec;
+            if player.translation.y < 0.0 {
+                player.translation.y = 0.0;
+                player.velocity.y = 0.0;
+            }
             player.collider.center = player.translation.into();
         }
     }

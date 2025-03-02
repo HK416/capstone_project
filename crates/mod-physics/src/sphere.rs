@@ -1,6 +1,7 @@
 use mod_math::Line;
 
 
+#[derive(Debug, Clone)]
 pub struct Sphere {
     pub center: glam::Vec3,
     pub radius: f32,
