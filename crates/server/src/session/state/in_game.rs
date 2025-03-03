@@ -36,28 +36,15 @@ impl InGameState {
             return;
         }
 
-        // 플레이어 상태를 갱신합니다.
-        // TODO: `ActionState`, `ActionStateTimer`, `MovementState`, `MovementStateTimer`는 저장하지 않아도 됨. (판단을 위한 데이터)
-        //
-        // 곧 바로 게임 월드에 상태를 저장하는 것이 아닌
-        // 이 함수에서 계산을 수행 후 이벤트 전송으로 변경해야 함.
-        //
-        let (action_state, movement_state, view_state) =
-            packet.compressed_state.try_decompress().unwrap();
-
         self.world.get_mut_player(session.user.id(), |_, player| {
             if let Some(mut player) = player {
-                player.change_action_state(action_state);
-                player.change_movement_state(movement_state);
                 *player.rotation_mut() = glam::Quat::from_array(packet.rotation);
                 *player.direction_mut() = glam::Vec3A::from_array(packet.direction);
-                player.set_view(view_state, packet.view_state_timer, packet.view_rotation);
-                println!(
-                    "pa:{:?}, a:{:?}, pm:{:?}, m:{:?}",
-                    action_state,
-                    player.action_state(),
-                    movement_state,
-                    player.movement_state()
+                player.update_state(packet.input_flags);
+                player.set_view(
+                    packet.view_state,
+                    packet.view_state_timer,
+                    packet.view_rotation,
                 );
             }
         });

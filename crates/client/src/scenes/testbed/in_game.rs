@@ -781,27 +781,11 @@ impl TestbedInGameScene {
 
     /// 게임 서버에 플레이어 데이터를 전송합니다.
     fn push_player_data(&mut self, net_manager: &NetManager) {
-        type Components<'a> = (
-            &'a WorldTransform,
-            &'a ActionState,
-            &'a ActionStateTimer,
-            &'a MovementState,
-            &'a MovementStateTimer,
-            &'a ViewState,
-            &'a ViewStateTimer,
-        );
+        type Components<'a> = (&'a WorldTransform, &'a ViewState, &'a ViewStateTimer);
 
         // 플레이어 엔터티로부터 필요한 컴포넌트 데이터를 가져옵니다.
         let entity = self.get_player_entity();
-        let (
-            world_transform,
-            &action_state,
-            &action_state_timer,
-            &movement_state,
-            &movement_state_timer,
-            &view_state,
-            &view_state_timer,
-        ) = self
+        let (world_transform, &view_state, &view_state_timer) = self
             .world
             .query_one_mut::<Components>(entity)
             .expect("invalid entity or invalid entity component");
@@ -816,15 +800,13 @@ impl TestbedInGameScene {
         let view_rotation = third_person_camera.rotation;
 
         // 패킷을 생성하고, 전송합니다.
-        let compressed_state = CompressedState::compress(action_state, movement_state, view_state);
         let pakcet = PushStatusPacket {
             epoch: self.epoch,
             token: self.token,
             rotation,
             direction,
-            compressed_state,
-            action_state_timer,
-            movement_state_timer,
+            input_flags: self.controller_input_flags,
+            view_state,
             view_state_timer,
             view_rotation,
         };

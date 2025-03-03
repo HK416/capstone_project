@@ -1,7 +1,7 @@
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, CompressedState,
-    HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, UserId, ViewState,
-    ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
+    GameInputFlags, HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player,
+    UserId, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
 };
 
 use crate::data::get_character_attributes;
@@ -211,187 +211,279 @@ impl PlayerObject {
         }
     }
 
+    /// 플레이어 오브젝트의 상태를 갱신합니다.
+    pub fn update_state(&mut self, input_flags: GameInputFlags) {
+        self.update_action_state(input_flags);
+        self.update_movement_state(input_flags);
+    }
+
     /// 플레이어 오브젝트의 상태 타이머를 갱신합니다.
     pub fn update_state_timer(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
         self.update_action_state_timer(world, elapsed_time_sec);
         self.update_movement_state_timer(world, elapsed_time_sec);
     }
 
-    /// 플레이어 오브젝트의 `ActionState`를 가져옵니다.
-    pub fn action_state(&self) -> ActionState {
-        self.action_state
-    }
-
-    /// 클라이언트가 `ActionState` 변경을 시도합니다.   
-    /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
-    pub fn change_action_state(&mut self, new: ActionState) {
-        type Func = fn(&mut PlayerObject, ActionState);
+    /// 플레이어 오브젝트의 `ActionState`를 갱신합니다.
+    fn update_action_state(&mut self, input_flags: GameInputFlags) {
+        type Func = fn(&mut PlayerObject, GameInputFlags);
         const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
-            PlayerObject::change_action_state_when_idle,
-            PlayerObject::change_action_state_when_aiming,
-            PlayerObject::change_action_state_when_aim_at,
-            PlayerObject::change_action_state_when_aim_off,
-            PlayerObject::change_action_state_when_attack,
+            PlayerObject::update_action_state_when_idle,
+            PlayerObject::update_action_state_when_aiming,
+            PlayerObject::update_action_state_when_aim_at,
+            PlayerObject::update_action_state_when_aim_off,
+            PlayerObject::update_action_state_when_attack,
         ];
 
         let i = self.action_state as usize;
-        FUNC_TABLE[i](self, new);
+        FUNC_TABLE[i](self, input_flags);
     }
 
-    /// `ActionState::Idle`일 때 `ActionState` 변경을 시도합니다.  
-    /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
-    fn change_action_state_when_idle(&mut self, new: ActionState) {
-        // 변경 가능한 다음 상태
-        // - ActionState::AimAt
-        // - ActionState::Attack
+    /// `ActionState::Idle`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_idle(&mut self, input_flags: GameInputFlags) {
+        // 우선순위
+        // ExSkill << Skill << Attack << Reload << Aiming
         //
-
-        /// 타이머를 유지합니다.
-        fn maintain_timer(_this: &mut PlayerObject) {
-            /* empty */
+        if input_flags.contains(GameInputFlags::ExSkill) {
+            // TODO
+        } else if input_flags.contains(GameInputFlags::Skill) {
+            // TODO
+        } else if input_flags.contains(GameInputFlags::Attack) {
+            self.prev_action_state = ActionState::Idle;
+            self.action_state = ActionState::Attack;
+            self.action_state_timer.reset();
+        } else if input_flags.contains(GameInputFlags::Reload) {
+            // TODO
+        } else if input_flags.contains(GameInputFlags::Aiming) {
+            self.prev_action_state = ActionState::Idle;
+            self.action_state = ActionState::AimAt;
+            self.action_state_timer.reset();
         }
-
-        /// 타이머를 초기화합니다.
-        fn reset_timer(this: &mut PlayerObject) {
-            this.prev_action_state = this.action_state;
-            this.action_state_timer.reset();
-        }
-
-        type Func = fn(&mut PlayerObject);
-        const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
-            (ActionState::Idle, maintain_timer), // `ActionState::Idle`
-            (ActionState::Idle, maintain_timer), // `ActionState::Aiming`
-            (ActionState::AimAt, reset_timer),   // `ActionState::AimAt`
-            (ActionState::Idle, maintain_timer), // `ActionState::AimOff`
-            (ActionState::Attack, reset_timer),  // `ActionState::Attack`
-        ];
-
-        let i = new as usize;
-        let (next_state, timer_func) = TABLE[i];
-
-        timer_func(self);
-        self.action_state = next_state;
     }
 
-    /// `ActionState::Aiming`일 때 `ActionState` 변경을 시도합니다.
-    /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
-    fn change_action_state_when_aiming(&mut self, new: ActionState) {
-        // 변경 가능한 다음 상태
-        // - ActionState::AimOff
-        // - ActionState::Attack
+    /// `ActionState::Aiming`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_aiming(&mut self, input_flags: GameInputFlags) {
+        // 우선순위
+        // ExSkill << Skill << Attack << Aiming
         //
-
-        /// 타이머를 유지합니다.
-        fn maintain_timer(_this: &mut PlayerObject) {
-            /* empty */
+        if input_flags.contains(GameInputFlags::ExSkill) {
+            // TODO
+        } else if input_flags.contains(GameInputFlags::Skill) {
+            // TODO
+        } else if input_flags.contains(GameInputFlags::Attack) {
+            self.prev_action_state = ActionState::Aiming;
+            self.action_state = ActionState::Attack;
+            self.action_state_timer.reset();
+        } else if !input_flags.contains(GameInputFlags::Aiming) {
+            self.prev_action_state = ActionState::Aiming;
+            self.action_state = ActionState::AimOff;
+            self.action_state_timer.reset();
         }
-
-        /// 타이머를 초기화합니다.
-        fn reset_timer(this: &mut PlayerObject) {
-            this.prev_action_state = this.action_state;
-            this.action_state_timer.reset();
-        }
-
-        type Func = fn(&mut PlayerObject);
-        const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
-            (ActionState::Aiming, maintain_timer), // `ActionState::Idle`
-            (ActionState::Aiming, maintain_timer), // `ActionState::Aiming`
-            (ActionState::Aiming, maintain_timer), // `ActionState::AimAt`
-            (ActionState::AimOff, reset_timer),    // `ActionState::AimOff`
-            (ActionState::Attack, reset_timer),    // `ActionState::Attack`
-        ];
-
-        let i = new as usize;
-        let (next_state, timer_func) = TABLE[i];
-
-        timer_func(self);
-        self.action_state = next_state;
     }
 
-    /// `ActionState::AimAt`일 때 `ActionState` 변경을 시도합니다.
-    /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
-    fn change_action_state_when_aim_at(&mut self, new: ActionState) {
-        // 변경 가능한 다음 상태
-        // - ActionState::AimOff
-        //
+    /// `ActionState::AimAt`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_aim_at(&mut self, input_flags: GameInputFlags) {
+        if !input_flags.contains(GameInputFlags::Aiming) {
+            self.prev_action_state = ActionState::AimAt;
+            self.action_state = ActionState::AimOff;
 
-        /// 타이머를 유지합니다.
-        fn maintain_timer(_this: &mut PlayerObject) {
-            /* empty */
+            let length = self.attributes.normal_attack_start_duration;
+            let s = self.action_state_timer.0 / length;
+
+            let length = self.attributes.normal_attack_end_duration;
+            self.action_state_timer.0 = s * length;
         }
-
-        /// 타이머를 변환합니다.
-        fn convert_timer(this: &mut PlayerObject) {
-            this.prev_action_state = this.action_state;
-
-            let length = this.attributes.normal_attack_start_duration;
-            let s = this.action_state_timer.0 / length;
-
-            let length = this.attributes.normal_attack_end_duration;
-            this.action_state_timer.0 = s * length;
-        }
-
-        type Func = fn(&mut PlayerObject);
-        const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
-            (ActionState::AimAt, maintain_timer), // `ActionState::Idle`
-            (ActionState::AimAt, maintain_timer), // `ActionState::Aiming`
-            (ActionState::AimAt, maintain_timer), // `ActionState::AimAt`
-            (ActionState::AimOff, convert_timer), // `ActionState::AimOff`
-            (ActionState::AimAt, maintain_timer), // `ActionState::Attack`
-        ];
-
-        let i = new as usize;
-        let (next_state, timer_func) = TABLE[i];
-
-        timer_func(self);
-        self.action_state = next_state;
     }
 
-    /// `ActionState::AimOff`일 때 `ActionState` 변경을 시도합니다.
-    /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
-    fn change_action_state_when_aim_off(&mut self, new: ActionState) {
-        // 변경 가능한 다음 상태
-        // - ActionState::AimAt
-        //
+    /// `ActionState::AimOff`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_aim_off(&mut self, input_flags: GameInputFlags) {
+        if input_flags.contains(GameInputFlags::Aiming) {
+            self.prev_action_state = ActionState::AimOff;
+            self.action_state = ActionState::AimAt;
 
-        /// 타이머를 유지합니다.
-        fn maintain_timer(_this: &mut PlayerObject) {
-            /* empty */
+            let length = self.attributes.normal_attack_end_duration;
+            let s = self.action_state_timer.0 / length;
+
+            let length = self.attributes.normal_attack_start_duration;
+            self.action_state_timer.0 = s * length;
         }
-
-        /// 타이머를 변환합니다.
-        fn convert_timer(this: &mut PlayerObject) {
-            this.prev_action_state = this.action_state;
-
-            let length = this.attributes.normal_attack_end_duration;
-            let s = this.action_state_timer.0 / length;
-
-            let length = this.attributes.normal_attack_start_duration;
-            this.action_state_timer.0 = s * length;
-        }
-
-        type Func = fn(&mut PlayerObject);
-        const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
-            (ActionState::AimOff, maintain_timer), // `ActionState::Idle`
-            (ActionState::AimOff, maintain_timer), // `ActionState::Aiming`
-            (ActionState::AimOff, convert_timer),  // `ActionState::AimAt`
-            (ActionState::AimOff, maintain_timer), // `ActionState::AimOff`
-            (ActionState::AimOff, maintain_timer), // `ActionState::Attack`
-        ];
-
-        let i = new as usize;
-        let (next_state, timer_func) = TABLE[i];
-
-        timer_func(self);
-        self.action_state = next_state;
     }
 
-    /// `ActionState::Attack`일 때 `ActionState` 변경을 시도합니다.
-    /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
-    fn change_action_state_when_attack(&mut self, _new: ActionState) {
-        // 변경 가능한 다음 상태: 없음
-        //
+    /// `ActionState::Attack`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_attack(&mut self, _input_flags: GameInputFlags) {
+        /* empty */
     }
+    /*
+        /// 클라이언트가 `ActionState` 변경을 시도합니다.
+        /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
+        pub fn change_action_state(&mut self, new: ActionState) {
+            type Func = fn(&mut PlayerObject, ActionState);
+            const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
+                PlayerObject::change_action_state_when_idle,
+                PlayerObject::change_action_state_when_aiming,
+                PlayerObject::change_action_state_when_aim_at,
+                PlayerObject::change_action_state_when_aim_off,
+                PlayerObject::change_action_state_when_attack,
+            ];
+
+            let i = self.action_state as usize;
+            FUNC_TABLE[i](self, new);
+        }
+
+        /// `ActionState::Idle`일 때 `ActionState` 변경을 시도합니다.
+        /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
+        fn change_action_state_when_idle(&mut self, new: ActionState) {
+            // 변경 가능한 다음 상태
+            // - ActionState::AimAt
+            // - ActionState::Attack
+            //
+
+            /// 타이머를 유지합니다.
+            fn maintain_timer(_this: &mut PlayerObject) {
+                /* empty */
+            }
+
+            /// 타이머를 초기화합니다.
+            fn reset_timer(this: &mut PlayerObject) {
+                this.prev_action_state = this.action_state;
+                this.action_state_timer.reset();
+            }
+
+            type Func = fn(&mut PlayerObject);
+            const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+                (ActionState::Idle, maintain_timer), // `ActionState::Idle`
+                (ActionState::Idle, maintain_timer), // `ActionState::Aiming`
+                (ActionState::AimAt, reset_timer),   // `ActionState::AimAt`
+                (ActionState::Idle, maintain_timer), // `ActionState::AimOff`
+                (ActionState::Attack, reset_timer),  // `ActionState::Attack`
+            ];
+
+            let i = new as usize;
+            let (next_state, timer_func) = TABLE[i];
+
+            timer_func(self);
+            self.action_state = next_state;
+        }
+
+        /// `ActionState::Aiming`일 때 `ActionState` 변경을 시도합니다.
+        /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
+        fn change_action_state_when_aiming(&mut self, new: ActionState) {
+            // 변경 가능한 다음 상태
+            // - ActionState::AimOff
+            // - ActionState::Attack
+            //
+
+            /// 타이머를 유지합니다.
+            fn maintain_timer(_this: &mut PlayerObject) {
+                /* empty */
+            }
+
+            /// 타이머를 초기화합니다.
+            fn reset_timer(this: &mut PlayerObject) {
+                this.prev_action_state = this.action_state;
+                this.action_state_timer.reset();
+            }
+
+            type Func = fn(&mut PlayerObject);
+            const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+                (ActionState::Aiming, maintain_timer), // `ActionState::Idle`
+                (ActionState::Aiming, maintain_timer), // `ActionState::Aiming`
+                (ActionState::Aiming, maintain_timer), // `ActionState::AimAt`
+                (ActionState::AimOff, reset_timer),    // `ActionState::AimOff`
+                (ActionState::Attack, reset_timer),    // `ActionState::Attack`
+            ];
+
+            let i = new as usize;
+            let (next_state, timer_func) = TABLE[i];
+
+            timer_func(self);
+            self.action_state = next_state;
+        }
+
+        /// `ActionState::AimAt`일 때 `ActionState` 변경을 시도합니다.
+        /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
+        fn change_action_state_when_aim_at(&mut self, new: ActionState) {
+            // 변경 가능한 다음 상태
+            // - ActionState::AimOff
+            //
+
+            /// 타이머를 유지합니다.
+            fn maintain_timer(_this: &mut PlayerObject) {
+                /* empty */
+            }
+
+            /// 타이머를 변환합니다.
+            fn convert_timer(this: &mut PlayerObject) {
+                this.prev_action_state = this.action_state;
+
+                let length = this.attributes.normal_attack_start_duration;
+                let s = this.action_state_timer.0 / length;
+
+                let length = this.attributes.normal_attack_end_duration;
+                this.action_state_timer.0 = s * length;
+            }
+
+            type Func = fn(&mut PlayerObject);
+            const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+                (ActionState::AimAt, maintain_timer), // `ActionState::Idle`
+                (ActionState::AimAt, maintain_timer), // `ActionState::Aiming`
+                (ActionState::AimAt, maintain_timer), // `ActionState::AimAt`
+                (ActionState::AimOff, convert_timer), // `ActionState::AimOff`
+                (ActionState::AimAt, maintain_timer), // `ActionState::Attack`
+            ];
+
+            let i = new as usize;
+            let (next_state, timer_func) = TABLE[i];
+
+            timer_func(self);
+            self.action_state = next_state;
+        }
+
+        /// `ActionState::AimOff`일 때 `ActionState` 변경을 시도합니다.
+        /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
+        fn change_action_state_when_aim_off(&mut self, new: ActionState) {
+            // 변경 가능한 다음 상태
+            // - ActionState::AimAt
+            //
+
+            /// 타이머를 유지합니다.
+            fn maintain_timer(_this: &mut PlayerObject) {
+                /* empty */
+            }
+
+            /// 타이머를 변환합니다.
+            fn convert_timer(this: &mut PlayerObject) {
+                this.prev_action_state = this.action_state;
+
+                let length = this.attributes.normal_attack_end_duration;
+                let s = this.action_state_timer.0 / length;
+
+                let length = this.attributes.normal_attack_start_duration;
+                this.action_state_timer.0 = s * length;
+            }
+
+            type Func = fn(&mut PlayerObject);
+            const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+                (ActionState::AimOff, maintain_timer), // `ActionState::Idle`
+                (ActionState::AimOff, maintain_timer), // `ActionState::Aiming`
+                (ActionState::AimOff, convert_timer),  // `ActionState::AimAt`
+                (ActionState::AimOff, maintain_timer), // `ActionState::AimOff`
+                (ActionState::AimOff, maintain_timer), // `ActionState::Attack`
+            ];
+
+            let i = new as usize;
+            let (next_state, timer_func) = TABLE[i];
+
+            timer_func(self);
+            self.action_state = next_state;
+        }
+
+        /// `ActionState::Attack`일 때 `ActionState` 변경을 시도합니다.
+        /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
+        fn change_action_state_when_attack(&mut self, _new: ActionState) {
+            // 변경 가능한 다음 상태: 없음
+            //
+        }
+    */
 
     /// `ActionStateTimer`를 갱신합니다.
     fn update_action_state_timer(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
@@ -431,7 +523,7 @@ impl PlayerObject {
         let duration = self.attributes.normal_attack_start_duration;
         let diff_t = self.action_state_timer.0 - duration;
         if diff_t >= 0.0 {
-            self.prev_action_state = self.action_state;
+            self.prev_action_state = ActionState::AimAt;
             self.action_state = ActionState::Aiming;
             self.action_state_timer.0 = diff_t;
         }
@@ -450,7 +542,7 @@ impl PlayerObject {
         let duration = self.attributes.normal_attack_end_duration;
         let diff_t = self.action_state_timer.0 - duration;
         if diff_t >= 0.0 {
-            self.prev_action_state = self.action_state;
+            self.prev_action_state = ActionState::AimOff;
             self.action_state = ActionState::Idle;
             self.action_state_timer.0 = diff_t;
         }
@@ -485,303 +577,425 @@ impl PlayerObject {
         let diff_t = self.action_state_timer.0 - duration;
         if diff_t >= 0.0 {
             self.action_state = self.prev_action_state;
-            self.action_state_timer.0 = diff_t;
             self.prev_action_state = ActionState::Attack;
+            self.action_state_timer.0 = diff_t;
             self.fired_per_attack = 0;
         }
     }
 
-    /// 플레이어 오브젝트의 `MovementState`를 가져옵니다.
-    pub fn movement_state(&self) -> MovementState {
-        self.movement_state
-    }
-
-    /// 클라이언트가 `MovementState` 변경을 시도합니다.   
-    /// 해당 `MovementState`로 변경이 불가능할 경우 무시됩니다.
-    pub fn change_movement_state(&mut self, new: MovementState) {
-        type Func = fn(&mut PlayerObject, MovementState);
-        const FUNC_TABLE: [Func; NUM_MOVEMENT_STATES] = [
-            PlayerObject::change_movement_state_when_idle,
-            PlayerObject::change_movement_state_when_moving,
-            PlayerObject::change_movement_state_when_move_to_end,
-            PlayerObject::change_movement_state_when_in_place_jumping,
-            PlayerObject::change_movement_state_when_in_place_landing,
-            PlayerObject::change_movement_state_when_moving_jumping,
-            PlayerObject::change_movement_state_when_moving_landing,
-        ];
-
-        let i = self.movement_state as usize;
-        FUNC_TABLE[i](self, new);
-    }
-
-    /// `MovementState::Idle`일 때 `MovementState` 변경을 시도합니다.
-    /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
-    fn change_movement_state_when_idle(&mut self, new: MovementState) {
-        // 변경 가능한 다음 상태
-        // - MovementState::Moving
-        // - MovementState::InPlaceJumping
-        //
-
-        /// 타이머를 유지합니다.
-        fn maintain_timer(_: &CharacterAttributes, _: &mut ActionStateTimer) {
-            /* empty */
-        }
-
-        /// 타이머를 초기화합니다.
-        fn reset_timer(_: &CharacterAttributes, timer: &mut ActionStateTimer) {
-            timer.reset();
-        }
-
-        type Func = fn(&CharacterAttributes, &mut ActionStateTimer);
-        const TABLE: [[(MovementState, Func); NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
-            // (`MovementState::Idle`, ActionState::Idle`)
+    /// 플레이어 오브젝트의 `MovementState`를 갱신합니다.
+    fn update_movement_state(&mut self, input_flags: GameInputFlags) {
+        type Func = fn(&mut PlayerObject, GameInputFlags);
+        const FUNC_TABLE: [[Func; NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
+            // `ActionState::Idle`
             [
-                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
-                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
-                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_moving,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
             ],
-            // (`MovementState::Idle`, `ActionState::Aiming`)
+            // `ActionState::Aiming`
             [
-                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
-                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
-                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_walking,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
             ],
-            // (`MovementState::Idle`, `ActionState::AimAt`)
+            // `ActionState::AimAt`
             [
-                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
-                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
-                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_walking,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
             ],
-            // (`MovementState::Idle`, `ActionState::AimOff`)
+            // `ActionState::AimOff`
             [
-                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
-                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
-                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_walking,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
             ],
-            // (`MovementState::Idle`, `ActionState::Attack`)
+            // `ActionState::Attack`
             [
-                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
-                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
-                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
-                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_walking,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
             ],
         ];
 
         let i = self.action_state as usize;
-        let j = new as usize;
-        let (next_state, timer_func) = TABLE[i][j];
-
-        self.movement_state = next_state;
-        timer_func(&self.attributes, &mut self.action_state_timer);
+        let j = self.movement_state as usize;
+        FUNC_TABLE[i][j](self, input_flags);
     }
 
-    /// `MovementState::Moving`일 때 `MovementState` 변경을 시도합니다.
-    /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
-    fn change_movement_state_when_moving(&mut self, new: MovementState) {
-        // 변경 가능한 다음 상태
-        // - MovementState::Idle
-        // - MovementState::MoveToEnd
-        // - MovementState::MovingJumping
-        //
+    /// `MovementState::Idle`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_idle(&mut self, input_flags: GameInputFlags) {
+        if input_flags.bits() & 0x000F != 0x0000 {
+            self.movement_state = MovementState::Moving;
+            self.movement_state_timer.reset();
+        } else if input_flags.contains(GameInputFlags::Jump) {
+            self.movement_state = MovementState::InPlaceJumping;
+            self.movement_state_timer.reset();
+        }
+    }
 
-        /// 타이머를 유지합니다.
-        fn maintain_timer(_: &CharacterAttributes, _: &mut ActionStateTimer) {
-            /* empty */
+    /// `MovementState::Moving`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_moving(&mut self, input_flags: GameInputFlags) {
+        if input_flags.bits() & 0x000F == 0x0000 {
+            self.movement_state = MovementState::MoveToEnd;
+            self.movement_state_timer.reset();
+        } else if input_flags.contains(GameInputFlags::Jump) {
+            self.movement_state = MovementState::MovingJumping;
+            self.movement_state_timer.reset();
+        }
+    }
+
+    /// `ActionState::Aiming`이고, `MovementState::Moving`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_walking(&mut self, input_flags: GameInputFlags) {
+        if input_flags.bits() & 0x000F == 0x0000 {
+            self.movement_state = MovementState::Idle;
+            self.movement_state_timer.reset();
+        } else if input_flags.contains(GameInputFlags::Jump) {
+            self.movement_state = MovementState::MovingJumping;
+            self.movement_state_timer.reset();
+        }
+    }
+
+    /// `MovementState::MoveToEnd`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_move_to_end(&mut self, input_flags: GameInputFlags) {
+        if input_flags.bits() & 0x000F != 0x0000 {
+            self.movement_state = MovementState::Moving;
+            self.movement_state_timer.reset();
+        } else if input_flags.contains(GameInputFlags::Jump) {
+            self.movement_state = MovementState::InPlaceJumping;
+            self.movement_state_timer.reset();
+        }
+    }
+
+    /// `MovementState::InPlaceJumping`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_in_place_jumping(&mut self, _input_flags: GameInputFlags) {
+        /* empty */
+    }
+
+    /// `MovementState::InPlaceLanding`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_in_place_landing(&mut self, _input_flags: GameInputFlags) {
+        /* empty */
+    }
+
+    /// `MovementState::MovingJumping`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_moving_jumping(&mut self, _input_flags: GameInputFlags) {
+        /* empty */
+    }
+
+    /// `MovementState::MovingLanding`일 때 `MovementState`를 갱신합니다.
+    fn update_movement_state_when_moving_landing(&mut self, _input_flags: GameInputFlags) {
+        /* empty */
+    }
+
+    /*
+        /// 클라이언트가 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 변경이 불가능할 경우 무시됩니다.
+        pub fn change_movement_state(&mut self, new: MovementState) {
+            type Func = fn(&mut PlayerObject, MovementState);
+            const FUNC_TABLE: [Func; NUM_MOVEMENT_STATES] = [
+                PlayerObject::change_movement_state_when_idle,
+                PlayerObject::change_movement_state_when_moving,
+                PlayerObject::change_movement_state_when_move_to_end,
+                PlayerObject::change_movement_state_when_in_place_jumping,
+                PlayerObject::change_movement_state_when_in_place_landing,
+                PlayerObject::change_movement_state_when_moving_jumping,
+                PlayerObject::change_movement_state_when_moving_landing,
+            ];
+
+            let i = self.movement_state as usize;
+            FUNC_TABLE[i](self, new);
         }
 
-        /// 타이머를 초기화합니다.
-        fn reset_timer(_: &CharacterAttributes, timer: &mut ActionStateTimer) {
-            timer.reset();
+        /// `MovementState::Idle`일 때 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
+        fn change_movement_state_when_idle(&mut self, new: MovementState) {
+            // 변경 가능한 다음 상태
+            // - MovementState::Moving
+            // - MovementState::InPlaceJumping
+            //
+
+            /// 타이머를 유지합니다.
+            fn maintain_timer(_: &CharacterAttributes, _: &mut ActionStateTimer) {
+                /* empty */
+            }
+
+            /// 타이머를 초기화합니다.
+            fn reset_timer(_: &CharacterAttributes, timer: &mut ActionStateTimer) {
+                timer.reset();
+            }
+
+            type Func = fn(&CharacterAttributes, &mut ActionStateTimer);
+            const TABLE: [[(MovementState, Func); NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
+                // (`MovementState::Idle`, ActionState::Idle`)
+                [
+                    (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Idle`, `ActionState::Aiming`)
+                [
+                    (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Idle`, `ActionState::AimAt`)
+                [
+                    (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Idle`, `ActionState::AimOff`)
+                [
+                    (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Idle`, `ActionState::Attack`)
+                [
+                    (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                    (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+                ],
+            ];
+
+            let i = self.action_state as usize;
+            let j = new as usize;
+            let (next_state, timer_func) = TABLE[i][j];
+
+            self.movement_state = next_state;
+            timer_func(&self.attributes, &mut self.action_state_timer);
         }
 
-        type Func = fn(&CharacterAttributes, &mut ActionStateTimer);
-        const TABLE: [[(MovementState, Func); NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
-            // (`MovementState::Moving`, `ActionState::Idle`)
-            [
-                (MovementState::MoveToEnd, reset_timer), // `MovementState::Idle`
-                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
-                (MovementState::MoveToEnd, reset_timer), // `MovementState::MoveToEnd`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::Moving`, `ActionState::Aiming`)
-            [
-                (MovementState::Idle, reset_timer),      // `MovementState::Idle`
-                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::Moving`, `ActionState::AimAt`)
-            [
-                (MovementState::Idle, reset_timer),      // `MovementState::Idle`
-                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::Moving`, `ActionState::AimOff`)
-            [
-                (MovementState::Idle, reset_timer),      // `MovementState::Idle`
-                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::Moving`, `ActionState::Attack`)
-            [
-                (MovementState::Idle, reset_timer),      // `MovementState::Idle`
-                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
-                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
-            ],
-        ];
+        /// `MovementState::Moving`일 때 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
+        fn change_movement_state_when_moving(&mut self, new: MovementState) {
+            // 변경 가능한 다음 상태
+            // - MovementState::Idle
+            // - MovementState::MoveToEnd
+            // - MovementState::MovingJumping
+            //
 
-        let i = self.action_state as usize;
-        let j = new as usize;
-        let (next_state, timer_func) = TABLE[i][j];
+            /// 타이머를 유지합니다.
+            fn maintain_timer(_: &CharacterAttributes, _: &mut ActionStateTimer) {
+                /* empty */
+            }
 
-        self.movement_state = next_state;
-        timer_func(&self.attributes, &mut self.action_state_timer);
-    }
+            /// 타이머를 초기화합니다.
+            fn reset_timer(_: &CharacterAttributes, timer: &mut ActionStateTimer) {
+                timer.reset();
+            }
 
-    /// `MovementState::MoveToEnd`일 때 `MovementState` 변경을 시도합니다.
-    /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
-    fn change_movement_state_when_move_to_end(&mut self, new: MovementState) {
-        // 변경 가능한 다음 상태
-        // - MovementState::Moving
-        // - MovementState::InPlaceJumping
-        //
+            type Func = fn(&CharacterAttributes, &mut ActionStateTimer);
+            const TABLE: [[(MovementState, Func); NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
+                // (`MovementState::Moving`, `ActionState::Idle`)
+                [
+                    (MovementState::MoveToEnd, reset_timer), // `MovementState::Idle`
+                    (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                    (MovementState::MoveToEnd, reset_timer), // `MovementState::MoveToEnd`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Moving`, `ActionState::Aiming`)
+                [
+                    (MovementState::Idle, reset_timer),      // `MovementState::Idle`
+                    (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Moving`, `ActionState::AimAt`)
+                [
+                    (MovementState::Idle, reset_timer),      // `MovementState::Idle`
+                    (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Moving`, `ActionState::AimOff`)
+                [
+                    (MovementState::Idle, reset_timer),      // `MovementState::Idle`
+                    (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::Moving`, `ActionState::Attack`)
+                [
+                    (MovementState::Idle, reset_timer),      // `MovementState::Idle`
+                    (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                    (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+                ],
+            ];
 
-        /// 타이머를 유지합니다.
-        fn maintain_timer(_: &CharacterAttributes, _: &mut ActionStateTimer) {
-            /* empty */
+            let i = self.action_state as usize;
+            let j = new as usize;
+            let (next_state, timer_func) = TABLE[i][j];
+
+            self.movement_state = next_state;
+            timer_func(&self.attributes, &mut self.action_state_timer);
         }
 
-        /// 타이머를 초기화합니다.
-        fn reset_timer(_: &CharacterAttributes, timer: &mut ActionStateTimer) {
-            timer.reset();
+        /// `MovementState::MoveToEnd`일 때 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
+        fn change_movement_state_when_move_to_end(&mut self, new: MovementState) {
+            // 변경 가능한 다음 상태
+            // - MovementState::Moving
+            // - MovementState::InPlaceJumping
+            //
+
+            /// 타이머를 유지합니다.
+            fn maintain_timer(_: &CharacterAttributes, _: &mut ActionStateTimer) {
+                /* empty */
+            }
+
+            /// 타이머를 초기화합니다.
+            fn reset_timer(_: &CharacterAttributes, timer: &mut ActionStateTimer) {
+                timer.reset();
+            }
+
+            type Func = fn(&CharacterAttributes, &mut ActionStateTimer);
+            const TABLE: [[(MovementState, Func); NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
+                // (`MovementState::MoveToEnd`, `ActionState::Idle`)
+                [
+                    (MovementState::MoveToEnd, maintain_timer), // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer),       // `MovementState::Moving`
+                    (MovementState::MoveToEnd, maintain_timer), // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::MoveToEnd, maintain_timer), // `MovementState::InPlaceLanding`
+                    (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingJumping`
+                    (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::MoveToEnd`, `ActionState::Aiming`)
+                [
+                    (MovementState::Idle, reset_timer),   // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::MoveToEnd`, `ActionState::AimAt`)
+                [
+                    (MovementState::Idle, reset_timer),   // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::MoveToEnd`, `ActionState::AimOff`)
+                [
+                    (MovementState::Idle, reset_timer),   // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
+                ],
+                // (`MovementState::MoveToEnd`, `ActionState::Attack`)
+                [
+                    (MovementState::Idle, reset_timer),   // `MovementState::Idle`
+                    (MovementState::Moving, reset_timer), // `MovementState::Moving`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
+                    (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
+                    (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
+                ],
+            ];
+
+            let i = self.action_state as usize;
+            let j = new as usize;
+            let (next_state, timer_func) = TABLE[i][j];
+
+            self.movement_state = next_state;
+            timer_func(&self.attributes, &mut self.action_state_timer);
         }
 
-        type Func = fn(&CharacterAttributes, &mut ActionStateTimer);
-        const TABLE: [[(MovementState, Func); NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
-            // (`MovementState::MoveToEnd`, `ActionState::Idle`)
-            [
-                (MovementState::MoveToEnd, maintain_timer), // `MovementState::Idle`
-                (MovementState::Moving, reset_timer),       // `MovementState::Moving`
-                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::MoveToEnd, maintain_timer), // `MovementState::InPlaceLanding`
-                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingJumping`
-                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::MoveToEnd`, `ActionState::Aiming`)
-            [
-                (MovementState::Idle, reset_timer),   // `MovementState::Idle`
-                (MovementState::Moving, reset_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::MoveToEnd`, `ActionState::AimAt`)
-            [
-                (MovementState::Idle, reset_timer),   // `MovementState::Idle`
-                (MovementState::Moving, reset_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::MoveToEnd`, `ActionState::AimOff`)
-            [
-                (MovementState::Idle, reset_timer),   // `MovementState::Idle`
-                (MovementState::Moving, reset_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
-            ],
-            // (`MovementState::MoveToEnd`, `ActionState::Attack`)
-            [
-                (MovementState::Idle, reset_timer),   // `MovementState::Idle`
-                (MovementState::Moving, reset_timer), // `MovementState::Moving`
-                (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
-                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
-                (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
-            ],
-        ];
+        /// `MovementState::InPlaceJumping`일 때 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
+        fn change_movement_state_when_in_place_jumping(&mut self, _new: MovementState) {
+            // 변경 가능한 다음 상태: 없음
+            //
+        }
 
-        let i = self.action_state as usize;
-        let j = new as usize;
-        let (next_state, timer_func) = TABLE[i][j];
+        /// `MovementState::InPlaceLanding`일 때 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
+        fn change_movement_state_when_in_place_landing(&mut self, _new: MovementState) {
+            // 변경 가능한 다음 상태: 없음
+            //
+        }
 
-        self.movement_state = next_state;
-        timer_func(&self.attributes, &mut self.action_state_timer);
-    }
+        /// `MovementState::MovingJumping`일 때 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
+        fn change_movement_state_when_moving_jumping(&mut self, _new: MovementState) {
+            // 변경 가능한 다음 상태: 없음
+            //
+        }
 
-    /// `MovementState::InPlaceJumping`일 때 `MovementState` 변경을 시도합니다.
-    /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
-    fn change_movement_state_when_in_place_jumping(&mut self, _new: MovementState) {
-        // 변경 가능한 다음 상태: 없음
-        //
-    }
-
-    /// `MovementState::InPlaceLanding`일 때 `MovementState` 변경을 시도합니다.
-    /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
-    fn change_movement_state_when_in_place_landing(&mut self, _new: MovementState) {
-        // 변경 가능한 다음 상태: 없음
-        //
-    }
-
-    /// `MovementState::MovingJumping`일 때 `MovementState` 변경을 시도합니다.
-    /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
-    fn change_movement_state_when_moving_jumping(&mut self, _new: MovementState) {
-        // 변경 가능한 다음 상태: 없음
-        //
-    }
-
-    /// `MovementState::MovingLanding`일 때 `MovementState` 변경을 시도합니다.
-    /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
-    fn change_movement_state_when_moving_landing(&mut self, _new: MovementState) {
-        // 변경 가능한 다음 상태: 없음
-        //
-    }
+        /// `MovementState::MovingLanding`일 때 `MovementState` 변경을 시도합니다.
+        /// 해당 `MovementState`로 갱신할 수 없는 경우 무시됩니다.
+        fn change_movement_state_when_moving_landing(&mut self, _new: MovementState) {
+            // 변경 가능한 다음 상태: 없음
+            //
+        }
+    */
 
     /// `MovementStateTimer`를 갱신합니다.
     fn update_movement_state_timer(&mut self, world: &GameWorld, elapsed_time_sec: f32) {

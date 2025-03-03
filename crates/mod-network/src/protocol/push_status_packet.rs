@@ -1,5 +1,5 @@
 use crate::components::{
-    ActionStateTimer, BigEndian, CompressedState, Epoch, LatLon, LoginToken, MovementStateTimer,
+    BigEndian, Epoch, GameInputFlags, LatLon, LoginToken, TryFromBigEndian, ViewState,
     ViewStateTimer,
 };
 
@@ -17,12 +17,10 @@ pub struct PushStatusPacket {
     pub rotation: [f32; 4],
     /// XZ평면상의 플레이어 이동 방향
     pub direction: [f32; 3],
-    /// 압축된 플레이어 상태 데이터
-    pub compressed_state: CompressedState,
-    /// 플레이어 행동 상태 타이머 (서버에서 행동 상태를 검증하는데 사용)
-    pub action_state_timer: ActionStateTimer,
-    /// 플레이어 움직임 상태 타이머 (서버에서 움직임 상태를 검증하는데 사용)
-    pub movement_state_timer: MovementStateTimer,
+    /// 클라이언트 컨트롤러 입력 상태 플래그
+    pub input_flags: GameInputFlags,
+    /// 카메라 상태 (서버에서 클라이언트 값을 사용)
+    pub view_state: ViewState,
     /// 카메라 상태 타이머 (서버에서 클라이언트 값을 사용)
     pub view_state_timer: ViewStateTimer,
     /// 카메라 방향 (서버에서 클라이언트 값을 사용)
@@ -36,9 +34,8 @@ impl Default for PushStatusPacket {
             token: LoginToken::default(),
             rotation: [0.0, 0.0, 0.0, 1.0],
             direction: [0.0, 0.0, 1.0],
-            compressed_state: CompressedState::default(),
-            action_state_timer: ActionStateTimer::default(),
-            movement_state_timer: MovementStateTimer::default(),
+            input_flags: GameInputFlags::default(),
+            view_state: ViewState::default(),
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
         }
@@ -55,9 +52,8 @@ impl Packet for PushStatusPacket {
             + LoginToken::byte_size()
             + <[f32; 4]>::byte_size()
             + <[f32; 3]>::byte_size()
-            + CompressedState::byte_size()
-            + ActionStateTimer::byte_size()
-            + MovementStateTimer::byte_size()
+            + GameInputFlags::byte_size()
+            + ViewState::byte_size()
             + ViewStateTimer::byte_size()
             + LatLon::byte_size();
         let mut data = Vec::with_capacity(data_size);
@@ -65,9 +61,8 @@ impl Packet for PushStatusPacket {
         data.extend_from_slice(&self.token.to_big_endian_bytes());
         data.extend_from_slice(&self.rotation.to_big_endian_bytes());
         data.extend_from_slice(&self.direction.to_big_endian_bytes());
-        data.extend_from_slice(&self.compressed_state.to_big_endian_bytes());
-        data.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
-        data.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
+        data.extend_from_slice(&self.input_flags.to_big_endian_bytes());
+        data.extend_from_slice(&self.view_state.to_big_endian_bytes());
         data.extend_from_slice(&self.view_state_timer.to_big_endian_bytes());
         data.extend_from_slice(&self.view_rotation.to_big_endian_bytes());
 
@@ -120,23 +115,17 @@ impl Packet for PushStatusPacket {
         data = &bytes[offset..offset + size];
         let direction = <[f32; 3]>::from_big_endian_bytes(data);
 
-        // 플레이어 압축 상태 데이터를 가져옵니다.
+        // 클라이언트 컨트롤러 입력 상태를 가져옵니다.
         offset = offset + size;
-        size = CompressedState::byte_size();
+        size = GameInputFlags::byte_size();
         data = &bytes[offset..offset + size];
-        let compressed_state = CompressedState::from_big_endian_bytes(data);
+        let input_flags = GameInputFlags::from_big_endian_bytes(data);
 
-        // 행동 상태 타이머를 가져옵니다.
+        // 카메라 상태를 가져옵니다.
         offset = offset + size;
-        size = ActionStateTimer::byte_size();
+        size = ViewState::byte_size();
         data = &bytes[offset..offset + size];
-        let action_state_timer = ActionStateTimer::from_big_endian_bytes(data);
-
-        // 움직임 상태 타이머를 가져옵니다.
-        offset = offset + size;
-        size = MovementStateTimer::byte_size();
-        data = &bytes[offset..offset + size];
-        let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
+        let view_state = ViewState::try_from_big_endian_bytes(data)?;
 
         // 카메라 상태 타이머를 가져옵니다.
         offset = offset + size;
@@ -155,9 +144,8 @@ impl Packet for PushStatusPacket {
             token,
             rotation,
             direction,
-            compressed_state,
-            action_state_timer,
-            movement_state_timer,
+            input_flags,
+            view_state,
             view_state_timer,
             view_rotation,
         })
