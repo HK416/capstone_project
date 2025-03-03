@@ -1,6 +1,8 @@
 mod connect_packet;
 mod enter_stage_packet;
 mod init_stage_packet;
+mod join_failed_packet;
+mod join_request_packet;
 mod parser;
 mod pull_stage_packet;
 mod push_status_packet;
@@ -11,8 +13,9 @@ use std::io::{Error, ErrorKind};
 use crate::components::{BigEndian, TryFromBigEndian};
 
 pub use self::{
-    connect_packet::*, enter_stage_packet::*, init_stage_packet::*, parser::*,
-    pull_stage_packet::*, push_status_packet::*, udp_damage_log_packet::*,
+    connect_packet::*, enter_stage_packet::*, init_stage_packet::*, join_failed_packet::*,
+    join_request_packet::*, parser::*, pull_stage_packet::*, push_status_packet::*,
+    udp_damage_log_packet::*,
 };
 
 /// 패킷의 종류
@@ -25,6 +28,8 @@ pub enum PacketType {
     InitStage = 3,
     PullStage = 4,
     PushStatus = 5,
+    JoinRequest = 6,
+    JoinFailed = 7,
     UdpDamageLog = 128,
 }
 
@@ -55,6 +60,8 @@ impl TryFromBigEndian for PacketType {
             3 => Some(PacketType::InitStage),
             4 => Some(PacketType::PullStage),
             5 => Some(PacketType::PushStatus),
+            6 => Some(PacketType::JoinRequest),
+            7 => Some(PacketType::JoinFailed),
             128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(

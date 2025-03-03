@@ -157,6 +157,37 @@ impl fmt::Display for UserId {
     }
 }
 
+/// 게임 월드를 식별하기 위한 식별자입니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WorldId(u32);
+
+impl WorldId {
+    /// 지정되지 않은 게임 월드 식별자입니다.
+    pub const NULL: Self = Self(0);
+
+    /// 주어진 정수로 새로운 게임 월드 식별자를 생성합니다.
+    pub const fn new(n: u32) -> Self {
+        Self(n)
+    }
+}
+
+impl BigEndian for WorldId {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self(u32::from_big_endian_bytes(bytes))
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.0.to_big_endian_bytes()
+    }
+}
+
+impl fmt::Display for WorldId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:X}", &self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +236,18 @@ mod tests {
 
         // 바이트 배열 크기가 같은지 확인
         assert_eq!(UserId::byte_size(), bytes.len());
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
+
+    #[test]
+    fn validation_test_world_id() {
+        let origin = WorldId::new(12345);
+        let bytes = origin.to_big_endian_bytes();
+        let other = WorldId::from_big_endian_bytes(&bytes);
+
+        // 바이트 배열 크기가 같은지 확인
+        assert_eq!(std::mem::size_of::<WorldId>(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
     }
