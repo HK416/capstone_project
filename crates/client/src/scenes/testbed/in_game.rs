@@ -1002,6 +1002,22 @@ impl TestbedInGameScene {
                     .expect("invalid entity or invalid entity component");
                 *hp = player.health_point;
 
+                // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
+                let (new_action_state, new_movement_state, new_view_state) =
+                    player.compressed_state.try_decompress().unwrap();
+                let (action_state, action_state_timer) = action_state_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                *action_state = new_action_state;
+                *action_state_timer = player.action_state_timer;
+
+                // 움직임 상태, 움직임 상태 지속 시간을 갱신합니다.
+                let (movement_state, movement_state_timer) = movement_state_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                *movement_state = new_movement_state;
+                *movement_state_timer = player.movement_state_timer;
+
                 // 플레이어 엔터티의 위치를 갱신합니다.
                 let local_transform = local_transform_view
                     .get_mut(entity)

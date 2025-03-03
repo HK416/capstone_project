@@ -1,8 +1,9 @@
-mod data;
+mod bullet;
 mod event;
 mod player;
 
 use std::{
+    fmt,
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering as MemOrdering},
         Arc, OnceLock,
@@ -11,24 +12,23 @@ use std::{
 };
 
 use ahash::RandomState;
-use dashmap::{DashMap, DashSet};
+use dashmap::{mapref::one::RefMut, DashMap, DashSet};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, CharacterKind, CompressedState, DamageLog, Epoch,
-        HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, StageKind,
-        UserId, ViewState, ViewStateTimer,
+        CharacterKind, DamageLog, Epoch, HealthPoint, ObjectId, StageKind, UserId, WorldId,
     },
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{Ray, YCapsule};
+use tokio::time::Instant;
 
 use crate::{
-    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position},
+    data::{clamp_x, clamp_z, get_stage_height, is_valid_position},
     session::Session,
 };
 
-pub use self::{data::*, event::*, player::*};
+pub use self::{bullet::*, event::*, player::*};
 
 use super::formula::movement_formulas as formulas;
 
@@ -38,8 +38,10 @@ use super::formula::movement_formulas as formulas;
 /// 테스트 게임 월드는 인원 제한이 없습니다.
 ///
 #[derive(Debug)]
-pub struct World {
-    /// 현재 게임 월드의 시대 정보입니다.
+pub struct GameWorld {
+    /// 게임 월드 식별자입니다.
+    world_id: WorldId,
+    /// 게임 월드의 현재 시대입니다.  
     epoch: AtomicU64,
     /// 오브젝트 식별자를 생성하기 위한 카운터입니다.
     counter: AtomicU32,
@@ -47,320 +49,205 @@ pub struct World {
     /// 게임 지형의 종류입니다.
     stage_kind: StageKind,
 
+    /// 게임 월드에 새로 들어온 세션 데이터입니다.
+    new_sessions: Queue<Arc<Session>>,
     /// 게임 월드에 참가한 세션 데이터입니다.
     sessions: DashSet<Arc<Session>, RandomState>,
     /// 게임 월드에 포함된 플레이어 캐릭터 데이터입니다.
-    players: DashMap<UserId, ServerPlayer, RandomState>,
+    players: DashMap<UserId, PlayerObject, RandomState>,
     /// 게임 월드에 포함된 총알 데이터입니다.
-    bullets: DashMap<ObjectId, ServerBullet, RandomState>,
+    bullets: DashMap<ObjectId, BulletObject, RandomState>,
 
     /// 플레이어 데미지 로그입니다.
     damage_logs: Queue<DamageLog>,
 
     /// 게임 월드에 발생한 이벤트 대기열입니다.
-    events: Queue<WorldEvents>,
+    events: Queue<GameWorldEvent>,
 }
 
-impl World {
+impl GameWorld {
+    /// 게임 월드의 인스턴스를 가져옵니다.
+    pub fn get_instance() -> Arc<Self> {
+        static INSTANCE: OnceLock<Arc<GameWorld>> = OnceLock::new();
+        INSTANCE
+            .get_or_init(|| Arc::new(GameWorld::default()))
+            .clone()
+    }
+
     /// 오브젝트 식별자를 생성합니다.
     pub fn generate_object_id(&self) -> ObjectId {
         let now = SystemTime::now();
         let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
 
-        let part_0 = (self.epoch.load(MemOrdering::Relaxed) & 0xFFF) as u32;
-        let part_1 = self.counter.fetch_add(1, MemOrdering::AcqRel) & 0xFFF;
-        let part_2 = duration.subsec_nanos() & 0xFF;
+        let counter_bit = self.counter.fetch_add(1, MemOrdering::AcqRel) & 0xFFFF;
+        let time_bit = duration.subsec_nanos() & 0xFFFF;
 
-        ObjectId::new((part_0 << 24) | (part_1 << 12) | part_2)
-    }
-
-    /// 게임 월드의 인스턴스를 가져옵니다.
-    pub fn get_instance() -> Arc<Self> {
-        static INSTANCE: OnceLock<Arc<World>> = OnceLock::new();
-        INSTANCE.get_or_init(|| Arc::new(World::default())).clone()
-    }
-
-    /// 현재 게임 월드 시대를 가져옵니다.
-    pub fn get_current_epoch(&self) -> Epoch {
-        Epoch::new(self.epoch.load(MemOrdering::Relaxed))
+        ObjectId::new((time_bit << 16) | counter_bit)
     }
 
     /// 게임 월드에 참가합니다.   
     /// NOTE: 플레이어의 캐릭터가 바로 생성되지 않습니다.
     pub fn join(&self, session: Arc<Session>, character_kind: CharacterKind) {
-        // 오브젝트 식별자를 하나 할당하고, 세션 목록에 추가합니다.
-        let user_id = session.user().id();
-        self.sessions.insert(session);
-
         // 플레이어 생성 이벤트를 추가합니다.
-        self.events
-            .push(WorldEvents::AddPlayer(user_id, character_kind));
+        self.push_event(GameWorldEvent::AddPlayer(session, character_kind));
     }
 
+    /// 게임 월드에서 나갑니다.
     pub fn exit(&self, session: &Session) {
         self.sessions.remove(session);
-        self.events
-            .push(WorldEvents::RemovePlayer(session.user().id()));
-    }
-
-    /// 게임 월드 이벤트를 추가합니다.
-    pub fn send_event(&self, event: WorldEvents) {
-        self.events.push(event);
-    }
-
-    /// 게임 월드의 스냅샷을 생성합니다.
-    fn create_snapshot(&self, epoch: Epoch, total_time_sec: f32) -> StageSnapshot {
-        StageSnapshot {
-            epoch,
-            total_time_sec,
-            stage_kind: self.stage_kind,
-            players: self
-                .players
-                .iter()
-                .map(|player| {
-                    let compressed_state = CompressedState::compress(
-                        player.action_state,
-                        player.movement_state,
-                        player.view_state,
-                    );
-
-                    Player {
-                        user_id: player.user_id,
-                        character_kind: player.character_kind,
-                        health_point: player.health_point,
-                        translation: player.translation.to_array(),
-                        rotation: player.rotation.to_array(),
-                        velocity: player.velocity.to_array(),
-                        compressed_state,
-                        action_state_timer: player.action_state_timer,
-                        movement_state_timer: player.movement_state_timer,
-                        view_state_timer: player.view_state_timer,
-                        view_rotation: player.view_rotation,
-                    }
-                })
-                .collect(),
-            bullets: self
-                .bullets
-                .iter()
-                .map(|bullet| Bullet {
-                    object_id: bullet.object_id,
-                    shooter_id: bullet.shooter_id,
-                    bullet_kind: bullet.bullet_kind,
-                    translation: bullet.translation.to_array(),
-                    rotation: bullet.rotation.to_array(),
-                    velocity: bullet.velocity.to_array(),
-                    remaining_distance: bullet.remaining_distance,
-                })
-                .collect(),
-        }
-    }
-
-    /// 생성된 스냅샷 데이터를 각 클라이언트에 전송합니다.
-    fn broadcast(&self, snapshot: StageSnapshot) {
-        while !self.damage_logs.is_empty() {
-            let mut count = UdpDamageLogPacket::capacity();
-            let mut logs = Vec::with_capacity(count);
-            while count > 0 {
-                match self.damage_logs.pop() {
-                    Some(log) => logs.push(log),
-                    None => break,
-                };
-                count -= 1;
-            }
-
-            let packet = UdpDamageLogPacket::new(snapshot.epoch, logs);
-            for session in self.sessions.iter() {
-                match self.players.get_mut(&session.key().user().id()) {
-                    Some(item) => {
-                        if item.epoch != Epoch::new(0) {
-                            session.key().tcp_write(packet.as_raw());
-                        }
-                    }
-                    None => continue,
-                }
-            }
-        }
-
-        let init_stage_packet =
-            InitStagePacket::new(snapshot.epoch, self.stage_kind, snapshot.players.clone());
-        let pull_stage_packet =
-            PullStagePacket::new(snapshot.epoch, snapshot.players, snapshot.bullets);
-        for session in self.sessions.iter() {
-            match self.players.get_mut(&session.key().user().id()) {
-                Some(mut item) => {
-                    if item.epoch == Epoch::new(0) {
-                        item.epoch = snapshot.epoch;
-                        session.key().tcp_write(init_stage_packet.as_raw());
-                    } else {
-                        session.key().tcp_write(pull_stage_packet.as_raw());
-                    }
-                }
-                None => continue,
-            }
-        }
+        self.push_event(GameWorldEvent::RemovePlayer(session.user().id()));
     }
 
     /// 플레이어 캐릭터를 추가합니다.
-    fn add_player(&self, user_id: UserId, character_kind: CharacterKind) {
-        let attributes = get_character_attributes(character_kind);
-        self.players.insert(
-            user_id,
-            ServerPlayer {
-                epoch: Epoch::new(0),
-                user_id,
-                character_kind,
-                health_point: HealthPoint(attributes.health_point),
-                translation: glam::Vec3A::ZERO,
-                rotation: glam::Quat::IDENTITY,
-                velocity: glam::Vec3A::ZERO,
-                direction: glam::Vec3A::Z,
-                action_state: ActionState::default(),
-                prev_action_state: ActionState::default(),
-                action_state_timer: ActionStateTimer::default(),
-                movement_state: MovementState::default(),
-                movement_state_timer: MovementStateTimer::default(),
-                view_state: ViewState::default(),
-                view_state_timer: ViewStateTimer::default(),
-                view_rotation: LatLon::default(),
-                shot_count: 0,
-            },
-        );
-    }
-
-    /// 플레이어 캐릭터를 제거합니다.
-    fn remove_player(&self, user_id: UserId) {
-        self.players.remove(&user_id);
-    }
-
-    /// 클라이언트에서 보내온 플레이어 정보로 업데이트
-    fn update_player_status(
-        &self,
-        epoch: Epoch,
-        user_id: UserId,
-        rotation: glam::Quat,
-        direction: glam::Vec3A,
-        action_state: ActionState,
-        movement_state: MovementState,
-        view_state: ViewState,
-        view_rotation: LatLon,
-    ) {
-        if let Some(mut player) = self.players.get_mut(&user_id) {
-            let attributes = get_character_attributes(player.character_kind);
-            player.epoch = epoch;
-            player.rotation = rotation;
-            player.direction = direction;
-            player.action_state = action_state;
-            player.movement_state = movement_state;
-            player.view_state = view_state;
-            player.view_rotation = view_rotation;
-
-            if player.action_state != player.prev_action_state {
-                player.action_state_timer.0 = 0.0;
-            }
-
-            // 플레이어 총알 발사 확인
-            match player.action_state {
-                ActionState::Attack => {
-                    if player.shot_count < attributes.normal_attack_count {
-                        let index = player.shot_count as usize;
-                        let timing = attributes.normal_attack_timing[index];
-                        if timing <= player.action_state_timer.0 {
-                            player.shot_count += 1;
-                            self.events.push(WorldEvents::AddBullet(*player.key()));
-                        }
-                    }
-                }
-                _ => {}
-            }
-
-            player.prev_action_state = player.action_state;
-        }
-    }
-
-    /// 총알 오브젝트를 추가합니다.
-    fn add_bullet(&self, shooter_id: UserId) {
-        if let Some(player) = self.players.get(&shooter_id.into()) {
-            let attributes = get_character_attributes(player.character_kind);
-
-            // 각도의 파라미터를 계산합니다.
-            let latitude = player.view_rotation.lat;
-            let t =
-                ((latitude + LatLon::LATITUDE_HALF_RANGE) / LatLon::LATITUDE_RANGE).clamp(0.0, 1.0);
-
-            // 총구가 바라보는 방향을 계산합니다.
-            let mut direction = glam::Vec3A::from(attributes.get_muzzle_direction(t));
-            direction = direction.normalize_or(glam::Vec3A::Z);
-
-            // let mut transform = glam::Mat4::from_translation(glam::Vec3::NEG_Z);
-            let rotate = glam::Mat4::from_rotation_y(player.view_rotation.lon);
-            direction = rotate.transform_vector3a(direction);
-            let velocity = direction * 50.0;
-            let rotation = glam::Quat::from_rotation_arc(glam::Vec3::Z, direction.into());
-
-            // 총구의 위치를 계산합니다.
-            let offset = glam::Vec3::from(attributes.get_muzzle_position(t));
-            let mut offset = glam::Mat4::from_translation(offset);
-            let rotate = glam::Mat4::from_rotation_y(player.view_rotation.lon);
-            offset = rotate * offset;
-            let offset = glam::Vec3A::from_vec4(offset.w_axis);
-            let translation = player.translation + offset;
-
-            let object_id = self.generate_object_id();
-            self.bullets.insert(
-                object_id,
-                ServerBullet {
-                    object_id,
-                    shooter_id,
-                    bullet_kind: player.character_kind.into(),
-                    translation,
-                    rotation,
-                    velocity,
-                    remaining_distance: attributes.attack_range as f32,
-                },
+    fn add_player(&self, session: Arc<Session>, character_kind: CharacterKind) {
+        let user_id = session.user().id();
+        if !self.players.contains_key(&user_id) {
+            // 새로 참가한 세션 목록에 세션을 추가합니다.
+            self.new_sessions.push(session);
+            // 플레이어 오브젝트를 생성합니다.
+            let player = PlayerObject::new(user_id, character_kind);
+            // 플레이어 오브젝트를 추가합니다.
+            self.players.insert(user_id, player);
+            log::info!("the Player({}) has been added to the {}", &user_id, &self);
+        } else {
+            log::warn!(
+                "failed to create player. (REASON:the Player({}) already exists in the {})",
+                &user_id,
+                &self
             );
         }
     }
 
-    /// 총알 오브젝트를 제거합니다.
-    fn remove_bullet(&self, object_id: ObjectId) {
-        self.bullets.remove(&object_id);
+    /// 게임 세상에서 플레이어 오브젝트를 제거합니다.
+    fn remove_player(&self, user_id: UserId) {
+        match self.players.remove(&user_id) {
+            Some(_) => log::info!("Player({}) is removed from the {}", &user_id, &self),
+            None => log::warn!("the Player({}) could not be found in {}!", &user_id, &self),
+        };
     }
 
-    /// 이벤트를 처리합니다.
-    fn handle_events(&self) {
-        while let Some(event) = self.events.pop() {
-            match event {
-                WorldEvents::AddPlayer(user_id, character_kind) => {
-                    self.add_player(user_id, character_kind)
+    /// 게임 세상에 존재하는 해당 플레이어 오브젝트를 가져옵니다.  
+    /// 해당 플레이어 오브젝트가 존재하지 않는 경우 `None`을 전달합니다.
+    pub fn get_mut_player<F>(&self, user_id: UserId, func: F)
+    where
+        F: FnOnce(&GameWorld, Option<RefMut<'_, UserId, PlayerObject>>),
+    {
+        func(self, self.players.get_mut(&user_id))
+    }
+
+    /// 플레이어 상태 타이머를 갱신합니다.
+    fn update_player_state_timer(&self, elapsed_time_sec: f32) {
+        for mut player in self.players.iter_mut() {
+            player.update_state_timer(self, elapsed_time_sec);
+        }
+    }
+
+    /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
+    fn update_player_position(&self, elapsed_time_sec: f32) {
+        for mut player in self.players.iter_mut() {
+            // 플레이어 위치 가져오기
+            let translation = player.translation();
+            // 현재 플레이어의 속도 게산
+            let new_velocity = player.compute_velocity();
+            let velocity = player.velocity_mut();
+            velocity.x = new_velocity.x;
+            velocity.z = new_velocity.z;
+
+            // 중력 누적
+            velocity.y -= 9.8 * elapsed_time_sec;
+
+            // 이동 시도 (이동 전 위치 저장)
+            let mut new_p = translation + (*velocity) * elapsed_time_sec;
+
+            // 기존 영역과 현재 영역을 인자로 넘겨서 x, z중 어느 값이 넘어갔는지 확인
+            // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?
+            // 유효한 영역이 아니라면 현재 영역의 가장 가장자리 부분으로 clamp하기
+            if !is_valid_position(self.stage_kind, new_p.x, translation.z) {
+                velocity.x = 0.0;
+                new_p.x = clamp_x(self.stage_kind, translation.x, new_p.x);
+            }
+            if !is_valid_position(self.stage_kind, translation.x, new_p.z) {
+                velocity.z = 0.0;
+                new_p.z = clamp_z(self.stage_kind, translation.z, new_p.z);
+            }
+
+            new_p = translation + (*velocity) * elapsed_time_sec;
+
+            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
+                if height >= new_p.y {
+                    velocity.y = 0.0;
+                    new_p.y = height;
                 }
-                WorldEvents::UpdatePlayerStatus(
-                    epoch,
-                    client_id,
-                    rotation,
-                    direction,
-                    action_state,
-                    movement_state,
-                    view_state,
-                    view_rotation,
-                ) => self.update_player_status(
-                    epoch,
-                    client_id,
-                    rotation,
-                    direction,
-                    action_state,
-                    movement_state,
-                    view_state,
-                    view_rotation,
-                ),
-                WorldEvents::AddBullet(client_id) => self.add_bullet(client_id),
-                WorldEvents::RemovePlayer(client_id) => self.remove_player(client_id),
-                WorldEvents::RemoveBullet(object_id) => self.remove_bullet(object_id),
+                *player.translation_mut() = new_p;
             }
         }
     }
 
+    /// 게임 세상에 총알 오브젝트를 추가합니다.
+    fn add_bullet(&self, shooter_id: UserId, delay: f32) {
+        // 총알을 발사한 플레이어 정보를 가져옵니다.
+        let player = match self.players.get(&shooter_id) {
+            Some(player) => player,
+            None => {
+                log::warn!(
+                    "failed to create bullet. (REASON:the Player({}) could not be found in {})",
+                    &shooter_id,
+                    &self
+                );
+                return;
+            }
+        };
+
+        let object_id = self.generate_object_id();
+        let bullet = player.generate_bullet(object_id, delay);
+        self.bullets.insert(object_id, bullet);
+        log::info!(
+            "the Player({}) fires a Bullet({}) into the {}",
+            &shooter_id,
+            &object_id,
+            &self
+        );
+    }
+
+    /// 게임 세상에서 총알 오브젝트를 제거합니다.
+    fn remove_bullet(&self, object_id: ObjectId) {
+        match self.bullets.remove(&object_id) {
+            Some(_) => log::info!("Bullet({}) is removed from the {}", &object_id, &self),
+            None => log::warn!(
+                "the Bullet({}) could not be found in {}!",
+                &object_id,
+                &self
+            ),
+        };
+    }
+
+    /// 게임 월드 이벤트를 추가합니다.
+    pub fn push_event(&self, event: GameWorldEvent) {
+        self.events.push(event);
+    }
+
+    /// 이벤트를 처리합니다.
+    pub fn flush_events(&self) {
+        while let Some(event) = self.events.pop() {
+            match event {
+                GameWorldEvent::AddPlayer(session, kind) => {
+                    self.add_player(session, kind);
+                }
+                GameWorldEvent::RemovePlayer(user_id) => {
+                    self.remove_player(user_id);
+                }
+                GameWorldEvent::AddBullet { shooter_id, delay } => {
+                    self.add_bullet(shooter_id, delay);
+                }
+                GameWorldEvent::RemoveBullet(object_id) => {
+                    self.remove_bullet(object_id);
+                }
+            };
+        }
+    }
+
     /// 주어진 시간 간격으로 게임 월드를 갱신합니다.
-    fn update(&self, elapsed_time_sec: f32) {
+    fn advanced(&self, elapsed_time_sec: f32) {
         // NOTE: 이부분은 나중에 글로벌상수로 따로 정의하는게 좋아보이는데, 테스트를 위해 일단 여기에 작성
         const PLAYER_RADIUS: f32 = 0.25;
         const PLAYER_HEIGHT: f32 = 1.0;
@@ -385,13 +272,13 @@ impl World {
                     continue;
                 }
 
-                let attributes = get_character_attributes(player.character_kind);
+                let attributes = player.character_attributes();
 
                 // 충돌 처리: 플레이어 - 총알
                 // 플레이어의 충돌체: YCapsule(총알의 크기 만큼 확대)           나중에 세분화
                 // 총알은 점으로 raycasting
 
-                let mut center = player.translation;
+                let mut center = player.translation();
                 center[1] -= attributes.bullet_radius;
 
                 // mod-network의 Player에 make_collider()를 추가해서 클라이언트에서도 표시할 수 있도록 해도 좋아보임.
@@ -403,7 +290,7 @@ impl World {
 
                 if let Some(dist) = ray.intersect(&player_capsule) {
                     if dist <= move_distance {
-                        println!("Bullet find player (player id: {:?})", player.user_id);
+                        println!("Bullet find player (player id: {:?})", player.user_id());
                         if dist < nearest_distance {
                             nearest_distance = dist;
                             nearest_player_id = Some(*player.key());
@@ -420,7 +307,7 @@ impl World {
 
                     println!("Player {:?} hit by bullet", id);
                     let mut player = self.players.get_mut(&id).unwrap();
-                    let char_info = get_character_attributes(player.character_kind);
+                    let char_info = player.character_attributes();
 
                     // 각 식에서의 상수값은 제안서에 있는 값으로 설정
 
@@ -455,12 +342,14 @@ impl World {
                     let final_dmg =
                         formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u32;
 
-                    player.health_point.0 = (player.health_point.0 - final_dmg).max(0);
+                    let health_point = player.health_mut();
+                    health_point.0 = (health_point.0 - final_dmg).max(0);
+                    println!("  - hp: {:?}(-{})", health_point.0, final_dmg);
+
                     self.damage_logs.push(DamageLog {
-                        user_id: player.user_id,
+                        user_id: player.user_id(),
                         damage: HealthPoint(final_dmg),
                     });
-                    println!("  - hp: {:?}(-{})", player.health_point.0, final_dmg);
                 }
 
                 // 충돌하지 않았다면
@@ -484,69 +373,82 @@ impl World {
         // 살아남은 총알만 남김
         for bullet in self.bullets.iter() {
             if bullet.remaining_distance <= 0.0 {
-                self.events.push(WorldEvents::RemoveBullet(*bullet.key()));
+                self.events
+                    .push(GameWorldEvent::RemoveBullet(*bullet.key()));
             }
         }
     }
 
-    /// 플레이어 상태 타이머를 갱신합니다.
-    fn update_player_state_timer(&self, elapsed_time_sec: f32) {
-        for mut player in self.players.iter_mut() {
-            let attributes = get_character_attributes(player.character_kind);
-            update_character_action_state_timer(&attributes, &mut player, elapsed_time_sec);
-            update_character_movement_state_timer(&attributes, &mut player, elapsed_time_sec);
-        }
-    }
+    /// 모든 세션 데이터에 패킷을 전송합니다.
+    fn broadcast(&self) {
+        let epoch = self.epoch.fetch_add(1, MemOrdering::AcqRel);
+        let players: Vec<_> = self
+            .players
+            .iter()
+            .map(|player| player.as_player())
+            .collect();
+        let bullets: Vec<_> = self
+            .bullets
+            .iter()
+            .map(|bullet| bullet.as_bullet())
+            .collect();
 
-    /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
-    fn update_player_position(&self, elapsed_time_sec: f32) {
-        for mut player in self.players.iter_mut() {
-            let attributes = get_character_attributes(player.character_kind);
-
-            // 플레이어 이동 벡터 계산
-            let velocity = match player.movement_state {
-                MovementState::Moving => player.direction * attributes.speed,
-                _ => glam::Vec3A::ZERO,
-            };
-            player.velocity.x = velocity.x;
-            player.velocity.z = velocity.z;
-            // 중력 누적
-            player.velocity.y += -9.8 * elapsed_time_sec;
-
-            // 이동 시도 (이동 전 위치 저장)
-            let mut new_p = player.translation + player.velocity * elapsed_time_sec;
-
-            // 기존 영역과 현재 영역을 인자로 넘겨서 x, z중 어느 값이 넘어갔는지 확인
-            // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?
-            // 유효한 영역이 아니라면 현재 영역의 가장 가장자리 부분으로 clamp하기
-            if !is_valid_position(self.stage_kind, new_p.x, player.translation.z) {
-                player.velocity.x = 0.0;
-                new_p.x = clamp_x(self.stage_kind, player.translation.x, new_p.x);
-            }
-            if !is_valid_position(self.stage_kind, player.translation.x, new_p.z) {
-                player.velocity.z = 0.0;
-                new_p.z = clamp_z(self.stage_kind, player.translation.z, new_p.z);
-            }
-
-            new_p = player.translation + player.velocity * elapsed_time_sec;
-
-            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
-                if height >= new_p.y {
-                    new_p.y = height;
-                    player.velocity.y = 0.0;
+        // 패킷을 생성하고 전송합니다.
+        let capacity = UdpDamageLogPacket::capacity();
+        loop {
+            let mut logs = Vec::with_capacity(capacity);
+            for _ in 0..capacity {
+                if let Some(log) = self.damage_logs.pop() {
+                    logs.push(log);
+                } else {
+                    break;
                 }
-                player.translation = new_p;
             }
+
+            if !logs.is_empty() {
+                let packet = UdpDamageLogPacket::new(Epoch::new(epoch), logs);
+                for session in self.sessions.iter() {
+                    session.tcp_write(packet.as_raw());
+                }
+            } else {
+                break;
+            }
+        }
+
+        // 패킷을 생성하고 전송합니다.
+        let packet = PullStagePacket {
+            epoch: Epoch::new(epoch),
+            num_players: players.len() as u16,
+            players: players.clone(),
+            num_bullets: bullets.len() as u16,
+            bullets,
+        };
+        for session in self.sessions.iter() {
+            session.tcp_write(packet.as_raw());
+        }
+
+        // 패킷을 생성하고 전송합니다.
+        let packet = InitStagePacket {
+            epoch: Epoch::new(epoch),
+            stage_kind: self.stage_kind,
+            num_players: players.len() as u16,
+            players,
+        };
+        while let Some(session) = self.new_sessions.pop() {
+            session.tcp_write(packet.as_raw());
+            self.sessions.insert(session);
         }
     }
 }
 
-impl Default for World {
+impl Default for GameWorld {
     fn default() -> Self {
         Self {
+            world_id: WorldId::NULL,
             epoch: AtomicU64::new(0),
             counter: AtomicU32::new(0),
             stage_kind: StageKind::default(),
+            new_sessions: Queue::default(),
             sessions: DashSet::default(),
             players: DashMap::default(),
             bullets: DashMap::default(),
@@ -556,39 +458,36 @@ impl Default for World {
     }
 }
 
+impl fmt::Display for GameWorld {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "GameWorld({})", &self.world_id)
+    }
+}
+
 /// 고정 시간 갱신 간격입니다.
 const INTERVAL: f32 = 1.0 / 120.0; // 120 FPS
 
 /// 게임 월드를 갱신하는 루프 함수입니다.
-pub async fn update_game_world(world: Arc<World>) {
-    let mut total_time_sec = 0.0;
-    let mut previous_time_point = tokio::time::Instant::now();
+pub async fn update_game_world(world: Arc<GameWorld>) {
+    let mut previous_time_point = Instant::now();
     loop {
-        // 시대를 증가시킵니다.
-        let epoch = Epoch::new(world.epoch.fetch_add(1, MemOrdering::Release));
-
         // 경과 시간을 계산합니다.
-        let current_time_point = tokio::time::Instant::now();
+        let current_time_point = Instant::now();
         let mut elapsed_time_sec = current_time_point
             .saturating_duration_since(previous_time_point)
             .as_secs_f32();
         previous_time_point = current_time_point;
-        total_time_sec += elapsed_time_sec;
 
         // 게임 월드를 갱신합니다.
-        world.handle_events();
+        world.flush_events();
         while elapsed_time_sec > INTERVAL {
-            world.update(INTERVAL);
-            total_time_sec += INTERVAL;
+            world.advanced(INTERVAL);
             elapsed_time_sec -= INTERVAL;
         }
-        world.update(elapsed_time_sec);
-
-        // 게임 월드의 스냅샷을 생성합니다.
-        let snapshot = world.create_snapshot(epoch, total_time_sec);
+        world.advanced(elapsed_time_sec);
 
         // 모든 세션에 게임 월드 데이터를 전송합니다.
-        world.broadcast(snapshot);
+        world.broadcast();
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
         tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;

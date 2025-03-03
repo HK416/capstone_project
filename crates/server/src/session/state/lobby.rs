@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use mod_network::protocol::{EnterStagePacket, Packet, PacketType};
 
-use crate::{session::Session, world::World};
+use crate::{session::Session, world::GameWorld};
 
 use super::{in_game::InGameState, ControlFlow, SessionState};
 
@@ -31,7 +31,7 @@ impl LobbyState {
 
         // 게임 월드에 플레이어를 추가합니다.
         // TODO: 나중에 매칭 대기열에 추가하는 것으로 변경해야 함.
-        let world = World::get_instance();
+        let world = GameWorld::get_instance();
         world.join(session.clone(), packet.character_kind);
 
         // 다음 상태로 전환합니다.

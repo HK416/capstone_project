@@ -25,7 +25,7 @@ use session::{handle_connection, Session};
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::Level;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
-use world::{update_game_world, World};
+use world::{update_game_world, GameWorld};
 
 /// 현재 접속중인 클라이언트의 수 입니다.
 static NUM_CLIENTS: AtomicU32 = AtomicU32::new(0);
@@ -74,7 +74,7 @@ pub async fn run_server(addr: &str) {
 
     // 게임 월드 업데이트
     // TODO: 나중에 여러 개의 게임 월드를 실행해야함.
-    let world = World::get_instance();
+    let world = GameWorld::get_instance();
     update_game_world(world).await;
 }
 

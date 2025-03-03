@@ -2,21 +2,18 @@ use std::sync::Arc;
 
 use mod_network::protocol::{Packet, PacketType, PushStatusPacket};
 
-use crate::{
-    session::Session,
-    world::{World, WorldEvents},
-};
+use crate::{session::Session, world::GameWorld};
 
 use super::{ControlFlow, SessionState};
 
 #[derive(Debug)]
 pub struct InGameState {
-    world: Arc<World>,
+    world: Arc<GameWorld>,
 }
 
 impl InGameState {
     /// 샤로운 인게임 상태를 생성합니다.
-    pub fn new(world: Arc<World>) -> Self {
+    pub fn new(world: Arc<GameWorld>) -> Self {
         Self { world }
     }
 
@@ -48,26 +45,25 @@ impl InGameState {
         let (action_state, movement_state, view_state) =
             packet.compressed_state.try_decompress().unwrap();
 
-        self.world.send_event(WorldEvents::UpdatePlayerStatus(
-            packet.epoch,
-            session.user.id(),
-            glam::Quat::from_array(packet.rotation),
-            glam::Vec3A::from_array(packet.direction),
-            action_state,
-            movement_state,
-            view_state,
-            packet.view_rotation,
-        ));
+        self.world.get_mut_player(session.user.id(), |_, player| {
+            if let Some(mut player) = player {
+                player.change_action_state(action_state);
+                player.change_movement_state(movement_state);
+                *player.rotation_mut() = glam::Quat::from_array(packet.rotation);
+                *player.direction_mut() = glam::Vec3A::from_array(packet.direction);
+                player.set_view(view_state, packet.view_state_timer, packet.view_rotation);
+                println!("pa:{:?}, a:{:?}, pm:{:?}, m:{:?}", action_state, player.action_state(), movement_state, player.movement_state());
+            }
+        });
     }
 }
 
 impl SessionState for InGameState {
     fn handle_packets(&mut self, flow: &mut Option<ControlFlow>, session: &Arc<Session>) {
-        while let Some(packet) = session.received_packets.pop() {
-            let packet_type = packet.packet_type();
-            match packet_type {
+        if let Some(packet) = session.received_packets.pop() {
+            let mut last_packet = match packet.packet_type() {
                 PacketType::PushStatus => match PushStatusPacket::try_from_raw(packet) {
-                    Some(packet) => self.handle_push_status_packet(packet, flow, session),
+                    Some(packet) => packet,
                     None => {
                         session.close();
                         return;
@@ -78,7 +74,31 @@ impl SessionState for InGameState {
                     session.close();
                     return;
                 }
+            };
+
+            while let Some(packet) = session.received_packets.pop() {
+                let packet = match packet.packet_type() {
+                    PacketType::PushStatus => match PushStatusPacket::try_from_raw(packet) {
+                        Some(packet) => packet,
+                        None => {
+                            session.close();
+                            return;
+                        }
+                    },
+                    _ => {
+                        log::warn!("{} invalid packet received (PACKET:{:?})", session, packet);
+                        session.close();
+                        return;
+                    }
+                };
+
+                if last_packet.epoch < packet.epoch {
+                    self.handle_push_status_packet(last_packet, flow, session);
+                    last_packet = packet;
+                }
             }
+            
+            self.handle_push_status_packet(last_packet, flow, session);
         }
     }
 
