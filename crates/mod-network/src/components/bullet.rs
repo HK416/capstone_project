@@ -198,7 +198,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn creation_test_bullet_kind() {
-        let bytes = [2];
+        let bytes = [127];
         BulletKind::from_big_endian_bytes(&bytes);
     }
 

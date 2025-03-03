@@ -2,10 +2,7 @@ use std::{fs::File, io::Read};
 
 use ahash::HashMap;
 use lazy_static::lazy_static;
-use mod_network::{
-    assets::{StageHeight, StageLayoutData},
-    components::{StageKind, NUM_STAGES},
-};
+use mod_network::components::{StageHeight, StageKind, StageLayoutData, NUM_STAGES};
 
 use super::get_current_path;
 

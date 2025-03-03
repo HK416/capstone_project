@@ -1,14 +1,13 @@
 use std::{error::Error, fmt, sync::Arc};
 
 use ahash::{HashMap, HashSet};
-use glam::Vec4Swizzles;
 use hecs::{Entity, EntityBuilder, With, Without, World};
 use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, CompressedState,
-        DamageLog, Epoch, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer,
-        ObjectId, Player, User, UserId, ViewState, ViewStateTimer,
+        DamageLog, Epoch, GameInputFlags, HealthPoint, LatLon, LoginToken, MovementState,
+        MovementStateTimer, ObjectId, Player, User, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -27,16 +26,13 @@ use winit::{
 use crate::{
     component::{
         animate_character, cleanup, draw_character, set_weapon_position, spawn_player_character,
-        spwan_bullet, update_action_state_by_controller_input_flags, update_action_state_timer,
-        update_character_direction, update_entity_hierarchy,
-        update_movement_state_by_controller_state, update_movement_state_timer,
+        spwan_bullet, update_character_direction, update_entity_hierarchy,
         update_third_person_camera, update_third_person_camera_hierarchy,
         update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection,
-        Child, ControllerInputFlags, ControllerInputTimer, ControllerState, MoveDirection, Parent,
-        Projection, Sibling, SkinningAnimation, StageArea, StageProp, ThirdPersonCamera,
-        ToParentTrans, WorldTransform,
+        Child, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, StageArea, StageProp,
+        ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
-    config::UserConfig,
+    config::{get_input_flag_from_keyboard, get_input_flag_from_mouse, UserConfig},
     render::{
         clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
         draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
@@ -67,12 +63,8 @@ pub struct TestbedInGameScene {
 
     /// 플레이어 움직임 방향
     move_direction: MoveDirection,
-    /// 사용자 입력 상태
-    controller_state: ControllerState,
-    /// 사용자 입력 상태 지속 시간
-    controller_state_timer: ControllerInputTimer,
     /// 사용자 입력 상태 플래그 변수
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputFlags,
 
     /// Skybox 쉐이더 리소스
     skybox_resource: Arc<SkyboxResource>,
@@ -114,9 +106,7 @@ impl TestbedInGameScene {
             objects: HashMap::default(),
             main_camera: Entity::DANGLING,
             move_direction: MoveDirection::default(),
-            controller_state: ControllerState::default(),
-            controller_state_timer: ControllerInputTimer::default(),
-            controller_input_flags: ControllerInputFlags::default(),
+            controller_input_flags: GameInputFlags::default(),
             skybox_resource,
             damage_logs: Vec::default(),
             composite_resource: None,
@@ -371,37 +361,9 @@ impl TestbedInGameScene {
             .expect("invalid entity or invalid entity component");
 
         // 플레이어 움직임 방향을 갱신합니다.
+        let controller_state = self.controller_input_flags.as_state();
         self.move_direction
-            .update_from_third_person_camera(self.controller_state, third_person_camera);
-    }
-
-    /// 컨트롤러 입력 지속 시간을 갱신합니다.
-    fn update_player_controller_input_timer(&mut self, fixed_time_sec: f32) {
-        match self.controller_state {
-            ControllerState::Idle => self
-                .controller_state_timer
-                .update_when_controller_released(fixed_time_sec),
-            _ => self
-                .controller_state_timer
-                .update_when_controller_preesed(fixed_time_sec),
-        }
-    }
-
-    /// 플레이어의 움직임 상태를 갱신합니다.
-    fn update_player_movement_state(&mut self) {
-        // 플레이어 캐릭터 엔터티에서 `MovementState`, `MovementStateTimer`를 가져옵니다.
-        let entity = self.get_player_entity();
-        let (movement_state, movement_state_timer) = self
-            .world
-            .query_one_mut::<(&mut MovementState, &mut MovementStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        // 움직임 상태를 갱신합니다.
-        update_movement_state_by_controller_state(
-            movement_state,
-            movement_state_timer,
-            self.controller_state,
-        );
+            .update_from_third_person_camera(controller_state, third_person_camera);
     }
 
     /// 현재 클라이언트의 플레이어 캐릭터 엔터티를 가져옵니다.
@@ -447,65 +409,6 @@ impl TestbedInGameScene {
             character_kind,
             view_state,
             view_state_timer,
-            elapsed_time_sec,
-        );
-    }
-
-    /// 플레이어 행동 상태를 갱신합니다.
-    fn update_player_action_state(&mut self) {
-        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
-        let entity = self.get_player_entity();
-        let (&character_kind, action_state, action_state_timer) = self
-            .world
-            .query_one_mut::<(&CharacterKind, &mut ActionState, &mut ActionStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        // 행동 상태를 갱신합니다.
-        update_action_state_by_controller_input_flags(
-            character_kind,
-            action_state,
-            action_state_timer,
-            self.controller_input_flags,
-        );
-    }
-
-    /// 플레이어 행동 상태 지속 시간을 갱신합니다.
-    fn update_player_action_state_timer(&mut self, elapsed_time_sec: f32) {
-        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
-        let entity = self.get_player_entity();
-        let (&character_kind, action_state, action_state_timer) = self
-            .world
-            .query_one_mut::<(&CharacterKind, &mut ActionState, &mut ActionStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        update_action_state_timer(
-            character_kind,
-            action_state,
-            action_state_timer,
-            elapsed_time_sec,
-        );
-    }
-
-    /// 플레이어 움직임 상태 지속 시간을 갱신합니다.
-    fn update_player_movement_state_timer(&mut self, elapsed_time_sec: f32) {
-        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
-        type Q<'a> = (
-            &'a CharacterKind,
-            &'a ActionState,
-            &'a mut MovementState,
-            &'a mut MovementStateTimer,
-        );
-        let entity = self.get_player_entity();
-        let (&character_kind, &action_state, movement_state, movement_state_timer) = self
-            .world
-            .query_one_mut::<Q>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        update_movement_state_timer(
-            character_kind,
-            action_state,
-            movement_state,
-            movement_state_timer,
             elapsed_time_sec,
         );
     }
@@ -903,7 +806,7 @@ impl TestbedInGameScene {
             .query_one_mut::<Components>(entity)
             .expect("invalid entity or invalid entity component");
         let rotation = world_transform.get_rotation().to_array();
-        let direction = self.move_direction.0.xyz().to_array();
+        let direction = self.move_direction.0.to_array();
 
         // 메인 카메라 엔터티로부터 카메라 방향 데이터를 가져옵니다.
         let third_person_camera = self
@@ -1003,7 +906,7 @@ impl TestbedInGameScene {
                 *hp = player.health_point;
 
                 // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
-                let (new_action_state, new_movement_state, new_view_state) =
+                let (new_action_state, new_movement_state, _) =
                     player.compressed_state.try_decompress().unwrap();
                 let (action_state, action_state_timer) = action_state_view
                     .get_mut(entity)
@@ -1226,18 +1129,10 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if !repeat && self.user_config.is_some() {
-            // 사용자 입력 상태를 갱신합니다.
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_state
-                .handle_keyboard_pressed(config, keycode, location);
-
-            // 사용자 입력 플래그를 갱신합니다.
-            self.controller_input_flags
-                .handle_keyboard_pressed(config, keycode, location);
+        if !repeat {
+            let flags = get_input_flag_from_keyboard(keycode, location);
+            self.controller_input_flags |= flags;
         }
-
-        // TODO: 사용자 행동 상태를 갱신합니다.
 
         Ok(())
     }
@@ -1253,18 +1148,10 @@ impl GameScene for TestbedInGameScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // 사용자 입력 상태를 갱신합니다.
-        if !repeat && self.user_config.is_some() {
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_state
-                .handle_keyboard_released(config, keycode, location);
-
-            // 사용자 입력 플래그를 갱신합니다.
-            self.controller_input_flags
-                .handle_keyboard_released(config, keycode, location);
+        if !repeat {
+            let flags = get_input_flag_from_keyboard(keycode, location);
+            self.controller_input_flags &= !flags;
         }
-
-        // TODO: 사용자 행동 상태를 갱신합니다.
-
         Ok(())
     }
 
@@ -1277,13 +1164,8 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 사용자 입력 플래그를 갱신합니다.
-        if self.user_config.is_some() {
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_input_flags
-                .handle_mouse_btn_pressed(config, button);
-        }
-
+        let flags = get_input_flag_from_mouse(button);
+        self.controller_input_flags |= flags;
         Ok(())
     }
 
@@ -1296,13 +1178,8 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 사용자 입력 플래그를 갱신합니다.
-        if self.user_config.is_some() {
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_input_flags
-                .handle_mouse_btn_released(config, button);
-        }
-
+        let flags = get_input_flag_from_mouse(button);
+        self.controller_input_flags &= !flags;
         Ok(())
     }
 
@@ -1319,7 +1196,6 @@ impl GameScene for TestbedInGameScene {
         // 메인 카메라를 회전시킵니다.
         self.rotate_main_camera(dx, dy);
 
-        // TODO: 삼인칭 카메라를 회전시킵니다.
         Ok(())
     }
 
@@ -1358,10 +1234,6 @@ impl GameScene for TestbedInGameScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 플레이어 움직임 방향을 갱신합니다.
         self.update_player_move_direction();
-        // 플레이어 행동 상태를 갱신합니다.
-        self.update_player_action_state();
-        // 플레이어 움직임 상태를 갱신합니다.
-        self.update_player_movement_state();
         // 플레이어 카메라 상태를 갱신합니다.
         self.update_player_view_state();
 
@@ -1378,28 +1250,11 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 플레이어 행동 상태 지속 시간을 갱신합니다.
-        self.update_player_action_state_timer(elapsed_time_sec);
-        // 플레이어 움직임 지속 시간을 갱신합니다.
-        self.update_player_movement_state_timer(elapsed_time_sec);
         // 플레이어 카메라 상태 지속 시간을 갱신합니다.
         self.update_player_view_state_timer(elapsed_time_sec);
 
         // 데미지 파티클을 갱신합니다.
         self.update_damage_particles(elapsed_time_sec);
-
-        Ok(())
-    }
-
-    #[allow(unused_variables)]
-    fn on_fixed_update(
-        &mut self,
-        fixed_time_sec: f32,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        // 플레이어 컨트롤러 입력 지속 시간을 갱신합니다.
-        self.update_player_controller_input_timer(fixed_time_sec);
 
         Ok(())
     }
@@ -1412,10 +1267,6 @@ impl GameScene for TestbedInGameScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 플레이어 움직임 방향을 갱신합니다.
         self.update_player_move_direction();
-        // 플레이어 행동 상태를 갱신합니다.
-        self.update_player_action_state();
-        // 플레이어 움직임 상태를 갱신합니다.
-        self.update_player_movement_state();
         // 플레이어 카메라 상태를 갱신합니다.
         self.update_player_view_state();
         // 플레이어 캐릭터의 방향을 갱신합니다.

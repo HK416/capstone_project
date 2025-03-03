@@ -6,19 +6,19 @@ use glam::FloatExt;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer,
-    ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState,
+    MovementStateTimer, ViewState, ViewStateTimer, NUM_ACTION_STATES, NUM_VIEW_STATES,
 };
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
 use crate::{
     asset::{AssetError, ModelHierarchyPool, Motion, MotionPool, Node},
     component::{
-        BoneCollection, Child, ControllerInputFlags, Parent, Sibling, SkinningAnimation,
-        ThirdPersonCamera, ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX,
-        ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
-        IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH,
-        MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX,
+        BoneCollection, Child, Parent, Sibling, SkinningAnimation, ThirdPersonCamera,
+        ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
+        ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX,
+        MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX,
+        MOVING_ANIMATION_SUFFIX,
     },
 };
 
@@ -338,324 +338,14 @@ fn spawn_character_model_recursive(
     entity
 }
 
-/// 캐릭터 모델의 `ActionState`를 갱신합니다.
-pub fn update_character_action_state(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    controller_input_flags: ControllerInputFlags,
-) {
-    type Func = fn(&mut ActionState, &mut ActionStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; 5] = [
-        update_action_state_when_idle,
-        update_action_state_when_aiming,
-        update_action_state_when_aim_at,
-        update_action_state_when_aim_off,
-        update_action_state_when_attack,
-    ];
-
-    let i = *action_state as usize;
-    FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
-}
-
-/// `ActionState::Idle`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
-pub fn update_action_state_when_idle(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    controller_input_flags: ControllerInputFlags,
-) {
-    // 가능한 다음 행동 상태
-    // - ActionState::AimAt
-    // - ActionState::Attack
-    //
-    // 입력 우선 순위: ExSkill < Skill < Attack < Aiming < Jump < Reload
-    //
-    if controller_input_flags.contains(ControllerInputFlags::ExSkill) {
-        // TODO
-    } else if controller_input_flags.contains(ControllerInputFlags::Skill) {
-        // TODO
-    } else if controller_input_flags.contains(ControllerInputFlags::Attack) {
-        *action_state = ActionState::Attack;
-        action_state_timer.reset();
-    } else if controller_input_flags.contains(ControllerInputFlags::Aiming) {
-        *action_state = ActionState::AimAt;
-        action_state_timer.reset();
-    } else if controller_input_flags.contains(ControllerInputFlags::Jump) {
-        // TODO
-    } else if controller_input_flags.contains(ControllerInputFlags::Reload) {
-        // TODO
-    }
-}
-
-/// `ActionState::Aiming`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
-pub fn update_action_state_when_aiming(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    controller_input_flags: ControllerInputFlags,
-) {
-    // 가능한 다음 상태
-    // - ActionState::Attack
-    // - ActionState::AimOff
-    //
-    // 입력 우선 순위: ExSkill < Skill < Attack < Aiming
-    //
-    if controller_input_flags.contains(ControllerInputFlags::ExSkill) {
-        // TODO
-    } else if controller_input_flags.contains(ControllerInputFlags::Skill) {
-        // TODO
-    } else if controller_input_flags.contains(ControllerInputFlags::Attack) {
-        *action_state = ActionState::Attack;
-        action_state_timer.reset();
-    } else if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
-        *action_state = ActionState::AimOff;
-        action_state_timer.reset();
-    }
-}
-
-/// `ActionState::AimAt`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
-pub fn update_action_state_when_aim_at(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    controller_input_flags: ControllerInputFlags,
-) {
-    // 가능한 다음 상태
-    // - ActionState::AimOff
-    //
-    // 입력 우선 순위: Aiming
-    //
-    if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
-        *action_state = ActionState::AimOff;
-        action_state_timer.0 = (1.0 - action_state_timer.0 / NORMAL_ATTACK_START_DURATION)
-            * NORMAL_ATTACK_END_DURATION;
-    }
-}
-
-/// `ActionState::AimOff`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
-pub fn update_action_state_when_aim_off(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    controller_input_flags: ControllerInputFlags,
-) {
-    // 가능한 다음 상태
-    // - ActionState::AimAt
-    //
-    // 입력 우선 순위: Aiming
-    //
-    if controller_input_flags.contains(ControllerInputFlags::Aiming) {
-        *action_state = ActionState::AimAt;
-        action_state_timer.0 = (1.0 - action_state_timer.0 / NORMAL_ATTACK_END_DURATION)
-            * NORMAL_ATTACK_START_DURATION;
-    }
-}
-
-/// `ActionState::Attack`일 때, 캐릭터 모델의 `ActionState`를 갱신합니다.
-pub fn update_action_state_when_attack(
-    _action_state: &mut ActionState,
-    _action_state_timer: &mut ActionStateTimer,
-    _controller_input_flags: ControllerInputFlags,
-) {
-    /* empty */
-}
-
-/// 캐릭터 모델의 `ActionState`와 `ActionStateTimer`를 갱신합니다.
-///
-/// # Note
-/// - 이 함수를 호출하기 전에 사용자 입력에 따른 ActionState를 먼저 갱신해야합니다.
-///
-pub fn update_character_action_state_timer(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
-    const FUNC_TABLE: [Func; 5] = [
-        update_action_state_timer_when_idle,
-        update_action_state_timer_when_aiming,
-        update_action_state_timer_when_aim_at,
-        update_action_state_timer_when_aim_off,
-        update_action_state_timer_when_attack,
-    ];
-
-    let i = *action_state as usize;
-    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
-}
-
-/// `ActionState::Idle`일 때 `ActionStateTimer`를 갱신합니다.
-fn update_action_state_timer_when_idle(
-    _action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
-}
-
-/// `ActionState::Aiming`일 때 `ActionStateTimer`를 갱신합니다.
-fn update_action_state_timer_when_aiming(
-    _action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
-}
-
-/// `ActionState::AimAt`일 때 `ActionState`와 `ActionStateTimer`를 갱신합니다.
-fn update_action_state_timer_when_aim_at(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
-
-    // `*_Normal_Attack_Start` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - NORMAL_ATTACK_START_DURATION;
-    if diff_t >= 0.0 {
-        *action_state = ActionState::Aiming;
-        action_state_timer.0 = diff_t % NORMAL_IDLE_DURATION;
-    }
-}
-
-/// `ActionState::AimOff`일 때 `ActionState`와 `ActionStateTimer`를 갱신합니다.
-fn update_action_state_timer_when_aim_off(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
-
-    // `*_Normal_Attack_End` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - NORMAL_ATTACK_END_DURATION;
-    if diff_t >= 0.0 {
-        *action_state = ActionState::Idle;
-        action_state_timer.0 = diff_t % NORMAL_IDLE_DURATION;
-    }
-}
-
-/// `ActionState::Attack`일 때 `ActionState`와 `ActionStateTimer`를 갱신합니다.
-fn update_action_state_timer_when_attack(
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    action_state_timer.0 = action_state_timer.0 + elapsed_time_sec;
-
-    // `*_Normal_Attack_Ing` 애니메이션 길이보다 클 경우 `ActionState`를 갱신합니다.
-    let diff_t = action_state_timer.0 - NORMAL_ATTACK_ING_DURATION;
-    if diff_t >= 0.0 {
-        *action_state = ActionState::Idle;
-        action_state_timer.0 = diff_t % NORMAL_IDLE_DURATION;
-    }
-}
-
-/// 캐릭터 모델의 `MovementState`와 `MovementStateTimer`를 갱신합니다.
-///
-/// # Note
-/// - 이 함수를 호출하기 전에 ActionState를 먼저 갱신해야합니다.
-/// - 이 함수를 호출하기 전에 ControllerState에 따른 MovementState 갱신이 필요합니다.
-///
-pub fn update_character_movement_state_timer(
-    action_state: ActionState,
-    movement_state: &mut MovementState,
-    movement_state_timer: &mut MovementStateTimer,
-    elapsed_time_sec: f32,
-) {
-    type Func = fn(&mut MovementState, &mut MovementStateTimer, f32);
-    const FUNC_TABLE: [[Func; 3]; 5] = [
-        // `ActionState::Idle`
-        [
-            update_movement_state_timer_when_idle,
-            update_movement_state_timer_when_moving,
-            update_movement_state_timer_when_move_to_end,
-        ],
-        // `ActionState::Aiming`
-        [
-            update_movement_state_timer_when_idle,
-            update_movement_state_timer_when_walking,
-            update_movement_state_timer_when_idle,
-        ],
-        // `ActionState::AimAt`
-        [
-            update_movement_state_timer_when_idle,
-            update_movement_state_timer_when_walking,
-            update_movement_state_timer_when_idle,
-        ],
-        // `ActionState::AimOff`
-        [
-            update_movement_state_timer_when_idle,
-            update_movement_state_timer_when_walking,
-            update_movement_state_timer_when_idle,
-        ],
-        // `ActionState::Attack`
-        [
-            update_movement_state_timer_when_idle,
-            update_movement_state_timer_when_walking,
-            update_movement_state_timer_when_idle,
-        ],
-    ];
-
-    let i = action_state as usize;
-    let j = *movement_state as usize;
-    FUNC_TABLE[i][j](movement_state, movement_state_timer, elapsed_time_sec);
-}
-
-/// `*_Normal_Idle` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
-fn update_movement_state_timer_when_idle(
-    _movement_state: &mut MovementState,
-    movement_state_timer: &mut MovementStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
-}
-
-/// `*_Move_Ing` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
-fn update_movement_state_timer_when_moving(
-    _movement_state: &mut MovementState,
-    movement_state_timer: &mut MovementStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % MOVE_ING_DURATION;
-}
-
-/// `*_Move_End_Normal` 애니메이션 데이터로 `MovementState`와 `MovementStateTimer`를 갱신합니다.
-fn update_movement_state_timer_when_move_to_end(
-    movement_state: &mut MovementState,
-    movement_state_timer: &mut MovementStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    movement_state_timer.0 = movement_state_timer.0 + elapsed_time_sec;
-
-    // `*_Move_End_Normal` 애니메이션 길이보다 클 경우 `MovemenetState`를 갱신합니다.
-    let diff_t = movement_state_timer.0 - MOVE_END_NORMAL_DURATION;
-    if diff_t >= 0.0 {
-        *movement_state = MovementState::Idle;
-        movement_state_timer.0 = diff_t;
-    }
-}
-
-/// `*_Cafe_Walk` 애니메이션 데이터로 `MovementStateTimer`를 갱신합니다.
-fn update_movement_state_timer_when_walking(
-    _movement_state: &mut MovementState,
-    movement_state_timer: &mut MovementStateTimer,
-    elapsed_time_sec: f32,
-) {
-    // 타이머를 갱신합니다.
-    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % CAFE_WALK_DURATION;
-}
-
 /// 캐릭터 모델의 `ViewState`를 갱신합니다.
 pub fn update_character_view_state(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputFlags,
 ) {
-    type Func = fn(&mut ViewState, &mut ViewStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; 4] = [
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, GameInputFlags);
+    const FUNC_TABLE: [Func; NUM_VIEW_STATES] = [
         update_view_state_when_idle,
         update_view_state_when_zoom_in,
         update_view_state_when_zoom_out,
@@ -670,9 +360,9 @@ pub fn update_character_view_state(
 fn update_view_state_when_idle(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputFlags,
 ) {
-    if controller_input_flags.contains(ControllerInputFlags::Aiming) {
+    if controller_input_flags.contains(GameInputFlags::Aiming) {
         *view_state = ViewState::ZoomIn;
         view_state_timer.reset();
     }
@@ -682,9 +372,9 @@ fn update_view_state_when_idle(
 fn update_view_state_when_zoom_in(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputFlags,
 ) {
-    if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
+    if !controller_input_flags.contains(GameInputFlags::Aiming) {
         *view_state = ViewState::ZoomOut;
         view_state_timer.0 =
             (1.0 - view_state_timer.0 / NORMAL_ATTACK_START_DURATION) * NORMAL_ATTACK_END_DURATION;
@@ -695,9 +385,9 @@ fn update_view_state_when_zoom_in(
 fn update_view_state_when_zoom_out(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputFlags,
 ) {
-    if controller_input_flags.contains(ControllerInputFlags::Aiming) {
+    if controller_input_flags.contains(GameInputFlags::Aiming) {
         *view_state = ViewState::ZoomIn;
         view_state_timer.0 =
             (1.0 - view_state_timer.0 / NORMAL_ATTACK_END_DURATION) * NORMAL_ATTACK_START_DURATION;
@@ -708,9 +398,9 @@ fn update_view_state_when_zoom_out(
 fn update_view_state_when_aiming(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputFlags,
 ) {
-    if !controller_input_flags.contains(ControllerInputFlags::Aiming) {
+    if !controller_input_flags.contains(GameInputFlags::Aiming) {
         *view_state = ViewState::ZoomOut;
         view_state_timer.reset();
     }
@@ -722,7 +412,7 @@ pub fn update_character_view_state_timer(
     view_state_timer: &mut ViewStateTimer,
     elapsed_time_sec: f32,
 ) {
-    const FUNC_TABLE: [fn(&mut ViewState, &mut ViewStateTimer, f32); 4] = [
+    const FUNC_TABLE: [fn(&mut ViewState, &mut ViewStateTimer, f32); NUM_VIEW_STATES] = [
         update_timer_when_idle_state,
         update_timer_when_zoom_in_state,
         update_timer_when_zoom_out_state,
@@ -765,12 +455,8 @@ fn update_timer_when_zoom_out_state(
 }
 
 /// `ViewState::Aiming`일 때 `ViewStateTimer`를 갱신하는 함수입니다.
-fn update_timer_when_aiming_state(
-    _view_state: &mut ViewState,
-    view_state_timer: &mut ViewStateTimer,
-    elapsed_time_sec: f32,
-) {
-    view_state_timer.0 = (view_state_timer.0 + elapsed_time_sec) % NORMAL_IDLE_DURATION;
+fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: f32) {
+    /* empty */
 }
 
 /// 캐릭터 모델의 애니메이션을 재생합니다.
@@ -802,7 +488,7 @@ pub fn animate_character(
         &ViewBorrow<&BoneCollection>,
         &mut ViewBorrow<&mut ToParentTrans>,
     );
-    const FUNC_TABLE: [[Func; 3]; 5] = [
+    const FUNC_TABLE: [[Func; 3]; NUM_ACTION_STATES] = [
         // `ActionState::Idle`
         [
             animate_character_when_idle,        // `MovementState::Idle`
@@ -864,8 +550,8 @@ pub fn animate_character(
 fn animate_character_when_idle(
     motions: &Arc<HashMap<String, Motion>>,
     _view_rotation: LatLon,
-    _action_state_timer: ActionStateTimer,
-    movement_state_timer: MovementStateTimer,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
@@ -874,7 +560,8 @@ fn animate_character_when_idle(
     let motion = motions.get(IDLE_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(movement_state_timer.0);
+    let s = action_state_timer.0 % NORMAL_IDLE_DURATION;
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -929,7 +616,8 @@ fn animate_character_when_moving(
     let motion = motions.get(MOVING_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(movement_state_timer.0);
+    let s = movement_state_timer.0 % MOVE_ING_DURATION;
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -984,7 +672,8 @@ fn animate_character_when_move_to_end(
     let motion = motions.get(MOVE_TO_END_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(movement_state_timer.0);
+    let s = movement_state_timer.0.min(MOVE_END_NORMAL_DURATION);
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -1039,7 +728,8 @@ fn animate_character_when_idle_to_aim(
     let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(action_state_timer.0);
+    let s = action_state_timer.0.min(NORMAL_ATTACK_START_DURATION);
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -1072,7 +762,7 @@ fn animate_character_when_idle_to_aim(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = action_state_timer.0 / NORMAL_ATTACK_START_DURATION;
+    let offset = s / NORMAL_ATTACK_START_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1098,7 +788,8 @@ fn animate_character_when_aim_to_idle(
     let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(action_state_timer.0);
+    let s = action_state_timer.0.min(NORMAL_ATTACK_END_DURATION);
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -1131,7 +822,7 @@ fn animate_character_when_aim_to_idle(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = 1.0 - action_state_timer.0 / NORMAL_ATTACK_END_DURATION;
+    let offset = 1.0 - s / NORMAL_ATTACK_END_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1157,7 +848,8 @@ fn animate_character_when_move_to_aim_move(
     let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(action_state_timer.0);
+    let s = action_state_timer.0.min(NORMAL_ATTACK_START_DURATION);
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -1193,7 +885,8 @@ fn animate_character_when_move_to_aim_move(
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(movement_state_timer.0);
+    let t = movement_state_timer.0 % CAFE_WALK_DURATION;
+    let keyframe = motion.linear_sampling(t);
 
     // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
     for keyframe_mesh in keyframe.meshes.iter() {
@@ -1226,7 +919,7 @@ fn animate_character_when_move_to_aim_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = action_state_timer.0 / NORMAL_ATTACK_START_DURATION;
+    let offset = s / NORMAL_ATTACK_START_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1252,7 +945,8 @@ fn animate_character_when_aim_move_to_move(
     let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(action_state_timer.0);
+    let s = action_state_timer.0.min(NORMAL_ATTACK_END_DURATION);
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -1288,7 +982,8 @@ fn animate_character_when_aim_move_to_move(
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(movement_state_timer.0);
+    let t = movement_state_timer.0 % CAFE_WALK_DURATION;
+    let keyframe = motion.linear_sampling(t);
 
     // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
     for keyframe_mesh in keyframe.meshes.iter() {
@@ -1321,7 +1016,7 @@ fn animate_character_when_aim_move_to_move(
     }
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = 1.0 - action_state_timer.0 / NORMAL_ATTACK_END_DURATION;
+    let offset = 1.0 - s / NORMAL_ATTACK_END_DURATION;
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
@@ -1448,7 +1143,8 @@ fn animate_character_when_aim_move(
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(movement_state_timer.0);
+    let s = movement_state_timer.0 % CAFE_WALK_DURATION;
+    let keyframe = motion.linear_sampling(s);
 
     // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
     for keyframe_mesh in keyframe.meshes.iter() {
@@ -1507,7 +1203,8 @@ fn animate_character_when_attacking(
     let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(action_state_timer.0);
+    let s = action_state_timer.0.min(NORMAL_ATTACK_ING_DURATION);
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -1566,7 +1263,8 @@ fn animate_character_when_attack_move(
     let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(action_state_timer.0);
+    let s = action_state_timer.0.min(NORMAL_ATTACK_ING_DURATION);
+    let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
     let local_transform = transform_view
@@ -1602,7 +1300,8 @@ fn animate_character_when_attack_move(
     let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion.linear_sampling(movement_state_timer.0);
+    let s = movement_state_timer.0 % CAFE_WALK_DURATION;
+    let keyframe = motion.linear_sampling(s);
 
     // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
     for keyframe_mesh in keyframe.meshes.iter() {

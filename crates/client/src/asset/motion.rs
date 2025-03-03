@@ -5,7 +5,7 @@ use std::{
 
 use ahash::HashMap;
 use mod_app::asset::AssetManager;
-use mod_network::assets::Matrix;
+use mod_network::components::Matrix;
 use parking_lot::{FairMutex, FairMutexGuard};
 use serde::{Deserialize, Serialize};
 

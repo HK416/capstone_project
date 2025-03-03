@@ -52,7 +52,13 @@ impl InGameState {
                 *player.rotation_mut() = glam::Quat::from_array(packet.rotation);
                 *player.direction_mut() = glam::Vec3A::from_array(packet.direction);
                 player.set_view(view_state, packet.view_state_timer, packet.view_rotation);
-                println!("pa:{:?}, a:{:?}, pm:{:?}, m:{:?}", action_state, player.action_state(), movement_state, player.movement_state());
+                println!(
+                    "pa:{:?}, a:{:?}, pm:{:?}, m:{:?}",
+                    action_state,
+                    player.action_state(),
+                    movement_state,
+                    player.movement_state()
+                );
             }
         });
     }
@@ -97,7 +103,7 @@ impl SessionState for InGameState {
                     last_packet = packet;
                 }
             }
-            
+
             self.handle_push_status_packet(last_packet, flow, session);
         }
     }

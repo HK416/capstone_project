@@ -10,8 +10,8 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer,
-    Player, ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState,
+    MovementStateTimer, Player, ViewState, ViewStateTimer,
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -28,7 +28,7 @@ use crate::{
 
 pub use self::animation::*;
 
-use super::{ControllerInputFlags, MoveDirection, ThirdPersonCamera};
+use super::{MoveDirection, ThirdPersonCamera};
 
 /// 캐릭터의 수
 const NUM_CHARACTERS: usize = 4;
@@ -464,7 +464,7 @@ fn set_character_direction_to_movement(
     let dir = look.lerp(direction, 0.5);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(dir, glam::Vec4::Y);
+    local_transform.look_to(dir, glam::Vec3::Y);
 }
 
 /// `MovementState::Idle` 또는 `MovementState::MoveToEnd`, `ViewState::ZoomIn`일 때 캐릭터의 방향을 갱신합니다.
@@ -484,7 +484,7 @@ fn set_character_direction_to_camera_from_current(
 
     // 삼인칭 카메라의 방향을 계산합니다.
     let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
-    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
+    let look = glam::Vec3A::from_vec4(mat.z_axis).normalize_or(glam::Vec3A::Z);
 
     // 캐릭터의 방향을 가져옵니다.
     let direction = local_transform.get_look_vector();
@@ -495,7 +495,7 @@ fn set_character_direction_to_camera_from_current(
     let look = look.lerp(direction, s).normalize_or(look);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(look, glam::Vec4::Y);
+    local_transform.look_to(look, glam::Vec3::Y);
 }
 
 /// `MovementState::Moving`, `ViewState::ZoomOut`일 때 캐릭터의 방향을 갱신합니다.
@@ -525,7 +525,7 @@ fn set_character_direction_to_current_from_camera(
         .normalize_or(move_direction.0);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(look, glam::Vec4::Y);
+    local_transform.look_to(look, glam::Vec3::Y);
 }
 
 fn set_character_direction_to_camera(
@@ -537,7 +537,7 @@ fn set_character_direction_to_camera(
 ) {
     // 삼인칭 카메라의 방향을 계산합니다.
     let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
-    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
+    let look = glam::Vec3A::from_vec4(mat.z_axis).normalize_or(glam::Vec3A::Z);
 
     // 캐릭터의 방향을 가져옵니다.
     let direction = local_transform.get_look_vector();
@@ -546,80 +546,17 @@ fn set_character_direction_to_camera(
     let look = look.lerp(direction, 0.1).normalize_or(look);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(look, glam::Vec4::Y);
+    local_transform.look_to(look, glam::Vec3::Y);
 }
 
-/// `ControllerInputFlags`에 따라 `ActionState`를 갱신합니다.
-pub fn update_action_state_by_controller_input_flags(
-    character_kind: CharacterKind,
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    controller_input_flags: ControllerInputFlags,
-) {
-    type Func = fn(&mut ActionState, &mut ActionStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
-        aris_original::update_character_action_state,
-        momoi_original::update_character_action_state,
-        midori_original::update_character_action_state,
-        yuuka_original::update_character_action_state,
-    ];
-
-    let i = character_kind as usize;
-    FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
-}
-
-/// 주어진 경과 시간 만큼 `ActionStateTimer`를 갱신합니다.
-pub fn update_action_state_timer(
-    character_kind: CharacterKind,
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
-    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
-        aris_original::update_character_action_state_timer,
-        momoi_original::update_character_action_state_timer,
-        midori_original::update_character_action_state_timer,
-        yuuka_original::update_character_action_state_timer,
-    ];
-
-    let i = character_kind as usize;
-    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
-}
-
-/// 주어진 경과 시간 만큼 `MovementStateTimer`를 갱신합니다.
-pub fn update_movement_state_timer(
-    character_kind: CharacterKind,
-    action_state: ActionState,
-    movement_state: &mut MovementState,
-    movement_state_timer: &mut MovementStateTimer,
-    elapsed_time_sec: f32,
-) {
-    type Func = fn(ActionState, &mut MovementState, &mut MovementStateTimer, f32);
-    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
-        aris_original::update_character_movement_state_timer,
-        momoi_original::update_character_movement_state_timer,
-        midori_original::update_character_movement_state_timer,
-        yuuka_original::update_character_movement_state_timer,
-    ];
-
-    let i = character_kind as usize;
-    FUNC_TABLE[i](
-        action_state,
-        movement_state,
-        movement_state_timer,
-        elapsed_time_sec,
-    );
-}
-
-/// `ControllerInputFlags`에 따라 `ViewState`를 갱신합니다.
+/// `InGameInputFlags`에 따라 `ViewState`를 갱신합니다.
 pub fn update_view_state_by_controller_input_flags(
     character_kind: CharacterKind,
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputFlags,
 ) {
-    type Func = fn(&mut ViewState, &mut ViewStateTimer, ControllerInputFlags);
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, GameInputFlags);
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_view_state,
         momoi_original::update_character_view_state,

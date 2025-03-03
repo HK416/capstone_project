@@ -1,4 +1,102 @@
-use super::{BigEndian, HealthPoint, TryFromBigEndian, UserId};
+use serde::{Deserialize, Serialize};
+
+use super::{BigEndian, Float2, Float3, Float4, HealthPoint, TryFromBigEndian, UserId};
+
+/// 스테이지 종류의 수 입니다.
+pub const NUM_STAGES: usize = 1;
+
+/// 스테이지 종류 목록입니다.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StageKind {
+    City = 0,
+}
+
+impl BigEndian for StageKind {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let index = *self as u8;
+        index.to_big_endian_bytes()
+    }
+}
+
+impl Default for StageKind {
+    fn default() -> Self {
+        StageKind::City
+    }
+}
+
+impl TryFromBigEndian for StageKind {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        let index = u8::from_big_endian_bytes(bytes);
+        match index {
+            0 => Some(StageKind::City),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(StageKind),
+                    index
+                );
+                None
+            }
+        }
+    }
+}
+
+impl ToString for StageKind {
+    fn to_string(&self) -> String {
+        match self {
+            StageKind::City => "City",
+        }
+        .to_string()
+    }
+}
+
+/// 게임 월드 스테이지 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StageLayoutData {
+    /// 게임 월드의 각 지역의 크기입니다.
+    pub area_size: Float2,
+    /// x축 방향의 지역의 수 입니다.
+    pub num_area_width: u32,
+    /// z축 방향의 지역의 수 입니다.
+    pub num_area_depth: u32,
+    /// 게임 월드 스테이지에서 사용되는 모델의 이름입니다.
+    pub models: Vec<String>,
+    /// 게임 월드 스테이지 지역 데이터입니다.
+    pub area: Vec<StageAreaData>,
+    /// 게임 월드 스테이지 소품 데이터입니다.
+    pub props: Vec<StagePropData>,
+}
+
+/// 게임 월드 스테이지를 구성하는 지역 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StageAreaData {
+    pub model: String,
+    pub height: String,
+    pub translation: Float3,
+    pub rotation: Float4,
+}
+
+/// 게임 월드 스테이지를 구성하는 소품 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StagePropData {
+    pub model: String,
+    pub scale: Float3,
+    pub translation: Float3,
+    pub rotation: Float4,
+}
+
+/// 게임 월드 스테이지의 높이 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StageHeight {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<f32>,
+}
 
 /// 게임 월드의 플레이어가 입은 데미지 정보입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -65,6 +163,25 @@ impl TryFromBigEndian for DamageLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[should_panic]
+    fn creation_test_stage_kind() {
+        let bytes = [127];
+        StageKind::from_big_endian_bytes(&bytes);
+    }
+
+    #[test]
+    fn validation_test_stage_kind() {
+        let origin = StageKind::City;
+        let bytes = origin.to_big_endian_bytes();
+        let other = StageKind::from_big_endian_bytes(&bytes);
+
+        // 바이트 배열 크기가 같은지 확인
+        assert_eq!(StageKind::byte_size(), bytes.len());
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
 
     #[test]
     fn validation_test_player() {

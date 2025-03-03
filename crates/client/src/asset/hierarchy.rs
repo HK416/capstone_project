@@ -6,7 +6,7 @@ use std::{
 use ahash::HashMap;
 use ddsfile::Dds;
 use mod_app::asset::AssetManager;
-use mod_network::assets::{
+use mod_network::components::{
     HierarchyNode, MaterialData, MeshData, ModelHierarchyData, SkinningData, TextureData,
 };
 use mod_render::{
