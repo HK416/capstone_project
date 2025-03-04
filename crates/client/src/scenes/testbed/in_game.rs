@@ -5,9 +5,9 @@ use hecs::{Entity, EntityBuilder, With, Without, World};
 use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, CompressedState,
-        DamageLog, Epoch, GameInputFlags, HealthPoint, LatLon, LoginToken, MovementState,
-        MovementStateTimer, ObjectId, Player, User, UserId, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, DamageLog, Epoch,
+        GameInputFlags, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer,
+        ObjectId, Player, User, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -240,7 +240,9 @@ impl TestbedInGameScene {
             .expect("invalid entity or invalid entity component");
 
         // 카메라를 회전시킵니다.
-        third_person_camera.rotate(dx, dy, offset);
+        if cfg!(not(feature = "print-transform")) {
+            third_person_camera.rotate(dx, dy, offset);
+        }
 
         // 플레이어 엔터티에 카메라 방향 컴포넌트에도 적용합니다.
         let rotation = third_person_camera.rotation;
@@ -903,11 +905,14 @@ impl TestbedInGameScene {
                 *movement_state = new_movement_state;
                 *movement_state_timer = player.movement_state_timer;
 
-                // 플레이어 엔터티의 위치를 갱신합니다.
-                let local_transform = local_transform_view
-                    .get_mut(entity)
-                    .expect("invalid entity or invalid entity component");
-                local_transform.set_translation(glam::Vec3::from_array(player.translation));
+                #[cfg(not(feature = "print-transform"))]
+                {
+                    // 플레이어 엔터티의 위치를 갱신합니다.
+                    let local_transform = local_transform_view
+                        .get_mut(entity)
+                        .expect("invalid entity or invalid entity component");
+                    local_transform.set_translation(glam::Vec3::from_array(player.translation));
+                }
 
                 continue;
             }
@@ -1279,7 +1284,7 @@ impl GameScene for TestbedInGameScene {
             app.render_queue(),
         );
 
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "print-transform")]
         {
             let entity = self.get_player_entity();
             let skinning_animation = self
@@ -1292,6 +1297,12 @@ impl GameScene for TestbedInGameScene {
             let muzzle = skinning_animation.muzzle;
             let weapon = skinning_animation.weapon;
             let right_hand = skinning_animation.right_hand;
+            let left_thigh = skinning_animation.left_thigh;
+            let right_thigh = skinning_animation.right_thigh;
+            let left_calf = skinning_animation.left_calf;
+            let right_calf = skinning_animation.right_calf;
+            let left_foot = skinning_animation.left_foot;
+            let right_foot = skinning_animation.right_foot;
 
             let transform = self
                 .world
@@ -1322,6 +1333,54 @@ impl GameScene for TestbedInGameScene {
 
             let transform = self
                 .world
+                .query_one_mut::<&WorldTransform>(left_thigh)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Left_Thigh의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(right_thigh)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Right_Thigh의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(left_calf)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Left_Calf의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(right_calf)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Right_Calf의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
                 .query_one_mut::<&WorldTransform>(muzzle)
                 .expect("invalid entity or invalid entity component");
             log::debug!("총구의 위치: {:?}", transform.get_translation());
@@ -1339,6 +1398,42 @@ impl GameScene for TestbedInGameScene {
                 .expect("invalid entity or invalid entity component");
             let weapon_offset = inverse_right_hand * transform.0;
             println!("오프셋 행렬:{}", weapon_offset);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(left_thigh)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Left Thigh 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(right_thigh)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Right Thigh 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(left_calf)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Left Calf 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(right_calf)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Right Calf 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(left_foot)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Left Foot 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(right_foot)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Right Foot 로컬 변환 행렬: {}", transform.0);
         }
 
         // 총알 엔터티들을 가져옵니다.

@@ -62,3 +62,6 @@ default = ["enable-shader-validation"]
 
 # 쉐이더 생성시 유효성 검사를 활성화합니다.
 enable-shader-validation = []
+
+# 캐릭터의 변환 행렬을 출력할 때 사용합니다.
+print-transform = []

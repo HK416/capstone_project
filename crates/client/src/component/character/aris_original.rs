@@ -7,7 +7,8 @@ use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState,
-    MovementStateTimer, ViewState, ViewStateTimer, NUM_ACTION_STATES, NUM_VIEW_STATES,
+    MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES,
+    NUM_MOVEMENT_STATES, NUM_VIEW_STATES,
 };
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
@@ -23,8 +24,8 @@ use crate::{
 };
 
 use super::{
-    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1,
-    MODEL_BONE_WEAPON,
+    CharacterHaloKind, MODEL_BONE_HEAD, MODEL_BONE_L_CALF, MODEL_BONE_L_FOOT, MODEL_BONE_R_CALF,
+    MODEL_BONE_R_FOOT, MODEL_BONE_R_HAND, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON,
 };
 
 /// 캐릭터 모델의 Idle 애니메이션 길이입니다.
@@ -51,14 +52,114 @@ pub const CAMERA_IDLE_FOV_Y: f32 = 1.309; // 75도
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
 pub const CAMERA_ZOOM_FOV_Y: f32 = 1.13446; // 70도
 
-pub const WORLD_X_TO_HEAD_LOCAL: glam::Vec3 = glam::vec3(-0.06608068, 0.6346726, -0.7699505);
-pub const WORLD_X_TO_SPINE_LOCAL: glam::Vec3 = glam::vec3(0.34206244, 0.9269642, -0.15404683);
-pub const WORLD_X_TO_SPINE_1_LOCAL: glam::Vec3 = glam::vec3(0.10889296, 0.92688817, -0.35919425);
-pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
-    glam::Vec4::new(0.8068547, 0.58844215, 0.052159876, 0.0),
-    glam::Vec4::new(-0.22505426, 0.38781863, -0.89383775, 0.0),
-    glam::Vec4::new(-0.5462008, 0.70945907, 0.44534516, 0.0),
-    glam::Vec4::new(-0.26169276, 0.075413704, 0.07279274, 1.0),
+/// `Bip001_Head`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
+const HEAD_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(-0.06608068, 0.6346726, -0.7699505);
+/// `Bip001_Spine`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
+const SPINE_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(0.34206244, 0.9269642, -0.15404683);
+/// `Bip001_Spine1`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
+const SPINE1_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(0.10889296, 0.92688817, -0.35919425);
+/// `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 `Bip001_L_Hand`에서 `Bip001_Weapon`까지의 변환 행렬입니다.
+const WEAPON_OFFSET: glam::Mat4 = glam::mat4(
+    glam::vec4(0.8068547, 0.58844215, 0.052159876, 0.0),
+    glam::vec4(-0.22505426, 0.38781863, -0.89383775, 0.0),
+    glam::vec4(-0.5462008, 0.70945907, 0.44534516, 0.0),
+    glam::vec4(-0.26169276, 0.075413704, 0.07279274, 1.0),
+);
+
+/// `Bip001_L_Thigh`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const L_THIGH_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(-0.914507, -0.009351098, -0.4044626, 0.0),
+    glam::vec4(0.1610851, 0.9086536, -0.3852281, 0.0),
+    glam::vec4(0.3711186, -0.4174466, -0.8294636, 0.0),
+    glam::vec4(0.00000007629394, 0.0000001049042, 0.07303865, 1.0),
+);
+
+/// `Bip001_R_Thigh`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const R_THIGH_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(-0.9209496, -0.2404988, 0.306615, 0.0),
+    glam::vec4(-0.1418219, 0.9397302, 0.3111172, 0.0),
+    glam::vec4(-0.3629586, 0.2430385, -0.899552, 0.0),
+    glam::vec4(-0.00000009536743, -0.0000001001358, -0.07303863, 1.0),
+);
+
+/// `Bip001_L_Calf`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const L_CALF_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.9008837, 0.4340602, -0.00000002980233, 0.0),
+    glam::vec4(-0.4340602, 0.9008837, 0.00000001490116, 0.0),
+    glam::vec4(0.00000003331644, -0.0000000004882125, 0.9999999, 0.0),
+    glam::vec4(-0.1590945, 0.0, 0.00000001907349, 1.0),
+);
+
+/// `Bip001_R_Calf`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const R_CALF_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.6638219, 0.7478905, -0.0000001192093, 0.0),
+    glam::vec4(-0.7478906, 0.663822, 0.00000002980231, 0.0),
+    glam::vec4(0.0000001014226, 0.00000006937208, 1.0, 0.0),
+    glam::vec4(-0.1590945, 0.000000009536743, 0.0, 1.0),
+);
+
+/// `Bip001_L_Foot`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const L_FOOT_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.8172209, -0.3939509, -0.4206576, 0.0),
+    glam::vec4(0.3484892, 0.9191245, -0.1837534, 0.0),
+    glam::vec4(0.4590265, 0.003572434, 0.8884154, 0.0),
+    glam::vec4(-0.1460184, 0.000000009536743, 0.0, 1.0),
+);
+
+/// `Bip001_R_Foot`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const R_FOOT_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.7886113, -0.4748127, 0.3906981, 0.0),
+    glam::vec4(0.5236893, 0.8516232, -0.02207781, 0.0),
+    glam::vec4(-0.3222447, 0.2220152, 0.9202539, 0.0),
+    glam::vec4(-0.1460184, 0.00000001907349, -0.00000001907349, 1.0),
+);
+
+/// `Bip001_L_Thigh`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const L_THIGH_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(-0.9689184, -0.1076179, -0.2227459, 0.0),
+    glam::vec4(0.008400703, 0.8855835, -0.4644049, 0.0),
+    glam::vec4(0.2472383, -0.4518415, -0.8571539, 0.0),
+    glam::vec4(0.00000009536743, 0.00000009536743, 0.07303865, 1.0),
+);
+
+/// `Bip001_R_Thigh`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const R_THIGH_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(-0.8693725, -0.1518831, 0.4702372, 0.0),
+    glam::vec4(-0.009138854, 0.9563732, 0.2920055, 0.0),
+    glam::vec4(-0.4940729, 0.2495641, -0.8328325, 0.0),
+    glam::vec4(-0.0000001144409, -0.0000001049042, -0.07303862, 1.0),
+);
+
+/// `Bip001_L_Calf`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const L_CALF_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.8196427, 0.5728754, 0.00000005419786, 0.0),
+    glam::vec4(-0.5728753, 0.8196425, 0.000000001892902, 0.0),
+    glam::vec4(-0.00000004333847, -0.00000003260012, 1.0, 0.0),
+    glam::vec4(-0.1590945, -0.000000007152557, 0.0, 1.0),
+);
+
+/// `Bip001_R_Calf`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const R_CALF_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.5968635, 0.8023427, -0.0000001490116, 0.0),
+    glam::vec4(-0.8023427, 0.5968635, 0.00000002980232, 0.0),
+    glam::vec4(0.0000001128513, 0.0000001017705, 1.0, 0.0),
+    glam::vec4(-0.1590945, 0.0, 0.00000001907349, 1.0),
+);
+
+/// `Bip001_L_Foot`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const L_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.8093521, -0.4241125, -0.4062982, 0.0),
+    glam::vec4(0.4180262, 0.9019042, -0.1087341, 0.0),
+    glam::vec4(0.4125574, -0.08183914, 0.9072479, 0.0),
+    glam::vec4(-0.1460184, 0.000000004768371, 0.00000003814697, 1.0),
+);
+
+/// `Bip001_R_Foot`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
+const R_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
+    glam::vec4(0.6853706, -0.5776544, 0.4433765, 0.0),
+    glam::vec4(0.616642, 0.7842523, 0.06856146, 0.0),
+    glam::vec4(-0.3873239, 0.2264145, 0.8937094, 0.0),
+    glam::vec4(-0.1460184, 0.00000001192093, -0.00000001907349, 1.0),
 );
 
 /// 캐릭터 모델 에셋의 상대 경로입니다.
@@ -154,6 +255,30 @@ pub fn spawn_character_model(
             .expect("no such entity"),
         right_hand: entities
             .get(MODEL_BONE_R_HAND)
+            .cloned()
+            .expect("no such entity"),
+        left_thigh: entities
+            .get(MODEL_BONE_L_THIGH)
+            .cloned()
+            .expect("no such entity"),
+        right_thigh: entities
+            .get(MODEL_BONE_R_THIGH)
+            .cloned()
+            .expect("no such entity"),
+        left_calf: entities
+            .get(MODEL_BONE_L_CALF)
+            .cloned()
+            .expect("no such entity"),
+        right_calf: entities
+            .get(MODEL_BONE_R_CALF)
+            .cloned()
+            .expect("no such entity"),
+        left_foot: entities
+            .get(MODEL_BONE_L_FOOT)
+            .cloned()
+            .expect("no such entity"),
+        right_foot: entities
+            .get(MODEL_BONE_R_FOOT)
             .cloned()
             .expect("no such entity"),
         meshes,
@@ -488,36 +613,56 @@ pub fn animate_character(
         &ViewBorrow<&BoneCollection>,
         &mut ViewBorrow<&mut ToParentTrans>,
     );
-    const FUNC_TABLE: [[Func; 3]; NUM_ACTION_STATES] = [
+    const FUNC_TABLE: [[Func; NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
         // `ActionState::Idle`
         [
-            animate_character_when_idle,        // `MovementState::Idle`
-            animate_character_when_moving,      // `MovementState::Moving`
-            animate_character_when_move_to_end, // `MovementState::MoveToEnd`
+            animate_character_when_idle,             // `MovementState::Idle`
+            animate_character_when_moving,           // `MovementState::Moving`
+            animate_character_when_move_to_end,      // `MovementState::MoveToEnd`
+            animate_character_when_in_place_jumping, // `MovementState::InPlaceJumping`
+            animate_character_when_in_place_landing, // `MovementState::InPlaceLanding`
+            animate_character_when_moving_jumping,   // `MovementState::MovingJumping`
+            animate_character_when_moving_landing,   // `MovementState::MovingLanding`
         ],
         // `ActionState::Aiming`
         [
-            animate_character_when_aim,      // `MovementState::Idle`
-            animate_character_when_aim_move, // `MovementState::Moving`
-            animate_character_when_aim,      // `MovementState::MoveToEnd`
+            animate_character_when_aim,              // `MovementState::Idle`
+            animate_character_when_aim_move,         // `MovementState::Moving`
+            animate_character_when_aim,              // `MovementState::MoveToEnd`
+            animate_character_when_aim_jumping,      // `MovementState::InPlaceJumping`
+            animate_character_when_aim_landing,      // `MovementState::InPlaceLanding`
+            animate_character_when_aim_move_jumping, // `MovementState::MovingJumping`
+            animate_character_when_aim_move_landing, // `MovementState::MovingLanding`
         ],
         // `ActionState::AimAt`
         [
             animate_character_when_idle_to_aim,      // `MovementState::Idle`
             animate_character_when_move_to_aim_move, // `MovementState::Moving`
             animate_character_when_idle_to_aim,      // `MovementState::MoveToEnd`
+            animate_character_when_idle_to_aim_jumping, // `MovementState::InPlaceJumping`
+            animate_character_when_idle_to_aim_landing, // `MovementState::InPlaceLanding`
+            animate_character_when_move_to_aim_move_jumping, // `MovementState::MovingJumping`
+            animate_character_when_move_to_aim_move_landing, // `MovementState::MovingLanding`
         ],
         // `ActionState::AimOff`
         [
             animate_character_when_aim_to_idle,      // `MovementState::Idle`
             animate_character_when_aim_move_to_move, // `MovementState::Moving`
             animate_character_when_aim_to_idle,      // `MovementState::MoveToEnd`
+            animate_character_when_aim_to_idle_jumping, // `MovementState::InPlaceJumping`
+            animate_character_when_aim_to_idle_landing, // `MovementState::InPlaceLanding`
+            animate_character_when_aim_move_to_move_jumping, // `MovementState::MovingJumping`
+            animate_character_when_aim_move_to_move_landing, // `MovementState::MovingLanding`
         ],
         // `ActionState::Attack`
         [
-            animate_character_when_attacking,   // `MovementState::Idle`
-            animate_character_when_attack_move, // `MovementState::Moving`
-            animate_character_when_attacking,   // `MovementState::MoveToEnd`
+            animate_character_when_attacking,           // `MovementState::Idle`
+            animate_character_when_attack_move,         // `MovementState::Moving`
+            animate_character_when_attacking,           // `MovementState::MoveToEnd`
+            animate_character_when_attack_jumping,      // `MovementState::InPlaceJumping`
+            animate_character_when_attack_landing,      // `MovementState::InPlaceLanding`
+            animate_character_when_attack_move_jumping, // `MovementState::MovingJumping`
+            animate_character_when_attack_move_landing, // `MovementState::MovingLanding`
         ],
     ];
 
@@ -1338,6 +1483,1454 @@ fn animate_character_when_attack_move(
     look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
+/// `MovementState::InPlaceJumping`이고, `ActionState::Idle`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_in_place_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Idle` 애니메이션을 가져옵니다.
+    let motion = motions.get(IDLE_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0 % NORMAL_IDLE_DURATION;
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    in_place_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+}
+
+/// `MovementState::InPlaceLanding`이고, `ActionState::Idle`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_in_place_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Idle` 애니메이션을 가져옵니다.
+    let motion = motions.get(IDLE_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0 % NORMAL_IDLE_DURATION;
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    in_place_landing_anime(skinning_animation, movement_state_timer, transform_view);
+}
+
+/// `MovementState::MovingJumping`이고, `ActionState::Idle`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_moving_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    _action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 첫 번째 애니메이션 키 프레임을 가져옵니다.
+    let keyframe = motion
+        .keyframes
+        .first()
+        .expect("keyframes must not be empty");
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    moving_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+}
+
+/// `MovementState::MovingLanding`이고, `ActionState::Idle`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_moving_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    _action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 첫 번째 애니메이션 키 프레임을 가져옵니다.
+    let keyframe = motion
+        .keyframes
+        .first()
+        .expect("keyframes must not be empty");
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    moving_landing_anime(skinning_animation, transform_view);
+}
+
+/// `MovementState::InPlaceJumping`이고, `ActionState::Aim`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    _action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `Aris_Original_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let keyframe = motion
+        .keyframes
+        .first()
+        .expect("keyframes must not be empty");
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    in_place_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceLanding`이고, `ActionState::Aim`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    _action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `Aris_Original_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let keyframe = motion
+        .keyframes
+        .first()
+        .expect("keyframes must not be empty");
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    in_place_landing_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::MovingJumping`이고, `ActionState::Aim`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_move_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    _action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let keyframe = motion
+        .keyframes
+        .first()
+        .expect("keyframes must not be empty");
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    moving_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+}
+
+/// `MovementState::MovingLanding`이고, `ActionState::Aim`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_move_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    _action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let keyframe = motion
+        .keyframes
+        .first()
+        .expect("keyframes must not be empty");
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    moving_landing_anime(skinning_animation, transform_view);
+}
+
+/// `MovementState::InPlaceJumping`이고, `ActionState::AimAt`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_idle_to_aim_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Start` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_START_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    in_place_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = s / NORMAL_ATTACK_START_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceLanding`이고, `ActionState::AimAt`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_idle_to_aim_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Start` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_START_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    in_place_landing_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = s / NORMAL_ATTACK_START_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::MovingJumping`이고, `ActionState::AimAt`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_move_to_aim_move_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Start` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_START_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    moving_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = s / NORMAL_ATTACK_START_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::MovingLanding`이고, `ActionState::AimAt`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_move_to_aim_move_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Start` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_START_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_START_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    moving_landing_anime(skinning_animation, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = s / NORMAL_ATTACK_START_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceJumping`이고, `ActionState::AimOff`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_to_idle_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_End` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_END_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    in_place_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0 - s / NORMAL_ATTACK_END_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceLanding`이고, `ActionState::AimOff`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_to_idle_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_End` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_END_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    in_place_landing_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0 - s / NORMAL_ATTACK_END_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::MovingJumping`이고, `ActionState::AimOff`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_move_to_move_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_End` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_END_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    moving_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0 - s / NORMAL_ATTACK_END_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::MovingLanding`이고, `ActionState::AimOff`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_aim_move_to_move_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_End` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_END_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_END_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    moving_landing_anime(skinning_animation, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0 - s / NORMAL_ATTACK_END_DURATION;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceJumping`이고, `ActionState::Attack`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_attack_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_ING_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    in_place_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceLanding`이고, `ActionState::Attack`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_attack_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_ING_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    in_place_landing_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::MovingJumping`이고, `ActionState::Attack`일 때 점프 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_attack_move_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_ING_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    moving_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::MovingLanding`이고, `ActionState::Attack`일 때 착지 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_attack_move_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Attack_Ing` 애니메이션을 가져옵니다.
+    let motion = motions.get(ATTACK_ING_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_ATTACK_ING_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    moving_landing_anime(skinning_animation, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceJumping`일 때 점프 애니메이션을 적용합니다.
+fn in_place_jumping_anime(
+    skinning_animation: &SkinningAnimation,
+    movement_state_timer: MovementStateTimer,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    let t = movement_state_timer.0.min(MAX_JUMP_DURATION) / MAX_JUMP_DURATION;
+
+    let angle = IN_PLACE_JUMPING_THIGH_ANGLE * t;
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.left_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_THIGH_NORMAL_IDLE_IDENTITY * rotate;
+
+    let entity = skinning_animation.right_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_THIGH_NORMAL_IDLE_IDENTITY * rotate;
+
+    let angle = IN_PLACE_JUMPING_CALF_ANGLE * t;
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.left_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_CALF_NORMAL_IDLE_IDENTITY * rotate;
+
+    let entity = skinning_animation.right_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_CALF_NORMAL_IDLE_IDENTITY * rotate;
+
+    let entity = skinning_animation.left_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_FOOT_NORMAL_IDLE_IDENTITY;
+
+    let entity = skinning_animation.right_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_FOOT_NORMAL_IDLE_IDENTITY;
+}
+
+const IN_PLACE_JUMPING_THIGH_ANGLE: f32 = 25f32.to_radians();
+const IN_PLACE_JUMPING_CALF_ANGLE: f32 = 60f32.to_radians();
+
+/// `MovementState::InPlaceJumping`일 때 착지 애니메이션을 적용합니다.
+fn in_place_landing_anime(
+    skinning_animation: &SkinningAnimation,
+    movement_state_timer: MovementStateTimer,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    let t = 1.0 - movement_state_timer.0.min(MAX_JUMP_DURATION) / MAX_JUMP_DURATION;
+
+    let angle = IN_PLACE_JUMPING_THIGH_ANGLE * t;
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.left_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_THIGH_NORMAL_IDLE_IDENTITY * rotate;
+
+    let entity = skinning_animation.right_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_THIGH_NORMAL_IDLE_IDENTITY * rotate;
+
+    let angle = IN_PLACE_JUMPING_CALF_ANGLE * t;
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.left_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_CALF_NORMAL_IDLE_IDENTITY * rotate;
+
+    let entity = skinning_animation.right_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_CALF_NORMAL_IDLE_IDENTITY * rotate;
+
+    let entity = skinning_animation.left_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_FOOT_NORMAL_IDLE_IDENTITY;
+
+    let entity = skinning_animation.right_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_FOOT_NORMAL_IDLE_IDENTITY;
+}
+
+/// `MovementState::MovingJumping`일 때 점프 애니메이션을 적용합니다.
+fn moving_jumping_anime(
+    skinning_animation: &SkinningAnimation,
+    movement_state_timer: MovementStateTimer,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    let t = movement_state_timer.0.min(MAX_JUMP_DURATION) / MAX_JUMP_DURATION;
+
+    let angle = -25f32.to_radians() * t;
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.left_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
+
+    let angle = 10f32.to_radians() * t;
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.right_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
+
+    let entity = skinning_animation.left_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_CALF_NORMAL_ATTACKING_IDENTITY;
+
+    let angle = 60f32.to_radians() * t;
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.right_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_CALF_NORMAL_ATTACKING_IDENTITY * rotate;
+
+    let entity = skinning_animation.left_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_FOOT_NORMAL_ATTACKING_IDENTITY;
+
+    let entity = skinning_animation.right_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_FOOT_NORMAL_ATTACKING_IDENTITY;
+}
+
+/// `MovementState::MovingLanding`일 때 점프 애니메이션을 적용합니다.
+fn moving_landing_anime(
+    skinning_animation: &SkinningAnimation,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    let angle = -25f32.to_radians();
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.left_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
+
+    let angle = 10f32.to_radians();
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.right_thigh;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
+
+    let entity = skinning_animation.left_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_CALF_NORMAL_ATTACKING_IDENTITY;
+
+    let angle = 60f32.to_radians();
+    let rotate = glam::Mat4::from_rotation_z(angle);
+    let entity = skinning_animation.right_calf;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_CALF_NORMAL_ATTACKING_IDENTITY * rotate;
+
+    let entity = skinning_animation.left_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = L_FOOT_NORMAL_ATTACKING_IDENTITY;
+
+    let entity = skinning_animation.right_foot;
+    let local_transform = transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = R_FOOT_NORMAL_ATTACKING_IDENTITY;
+}
+
 /// 캐릭터가 카메라가 바라보는 방향을 바라보도록 로컬 변환 행렬을 수정합니다.
 fn look_to_camera_direction(
     offset: f32,
@@ -1353,22 +2946,23 @@ fn look_to_camera_direction(
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
-    local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_LOCAL, angle);
+    local_transform.0 *= glam::Mat4::from_axis_angle(SPINE_W2L_X_NORMAL_ATTACK_ING, angle);
 
     let angle = 3.0 * latitude / 7.0 * offset;
     let bone_entity = skinning_animation.uppper_spine;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
-    local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_SPINE_1_LOCAL, angle);
+    local_transform.0 *= glam::Mat4::from_axis_angle(SPINE1_W2L_X_NORMAL_ATTACK_ING, angle);
 
     let angle = latitude / 7.0 * offset;
     let bone_entity = skinning_animation.head;
     let local_transform = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
-    local_transform.0 *= glam::Mat4::from_axis_angle(WORLD_X_TO_HEAD_LOCAL, angle);
+    local_transform.0 *= glam::Mat4::from_axis_angle(HEAD_W2L_X_NORMAL_ATTACK_ING, angle);
 }
+
 /// 무기의 위치를 설정합니다.
 ///
 /// # Note

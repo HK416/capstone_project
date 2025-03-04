@@ -11,7 +11,7 @@ use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState,
-    MovementStateTimer, Player, ViewState, ViewStateTimer,
+    MovementStateTimer, Player, ViewState, ViewStateTimer, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -397,7 +397,7 @@ pub fn update_character_direction(
 ) {
     type Func =
         fn(CharacterKind, ActionStateTimer, &MoveDirection, &ThirdPersonCamera, &mut ToParentTrans);
-    const FUNC_TABLE: [[Func; 5]; 3] = [
+    const FUNC_TABLE: [[Func; NUM_ACTION_STATES]; NUM_MOVEMENT_STATES] = [
         // `MovementState::Idle`
         [
             set_character_direction_to_none,                // ActionState::Idle
@@ -421,6 +421,38 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
+        ],
+        // `MovementState::InPlaceJumping`
+        [
+            set_character_direction_to_none,                // ActionState::Idle
+            set_character_direction_to_camera,              // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_none,                // ActionState::AimOff
+            set_character_direction_to_camera,              // ActionState::Attack
+        ],
+        // `MovementState::InPlaceLanding`
+        [
+            set_character_direction_to_none,                // ActionState::Idle
+            set_character_direction_to_camera,              // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_none,                // ActionState::AimOff
+            set_character_direction_to_camera,              // ActionState::Attack
+        ],
+        // `MovementState::MovingJumping`
+        [
+            set_character_direction_to_movement, // ActionState::Idle
+            set_character_direction_to_camera,   // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_current_from_camera, // ActionState::AimOff
+            set_character_direction_to_camera,   // ActionState::Attack
+        ],
+        // `MovementState::MovingLanding`
+        [
+            set_character_direction_to_movement, // ActionState::Idle
+            set_character_direction_to_camera,   // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_current_from_camera, // ActionState::AimOff
+            set_character_direction_to_camera,   // ActionState::Attack
         ],
     ];
 
