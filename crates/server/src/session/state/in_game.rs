@@ -38,8 +38,8 @@ impl InGameState {
 
         self.world.get_mut_player(session.user.id(), |_, player| {
             if let Some(mut player) = player {
-                *player.rotation_mut() = glam::Quat::from_array(packet.rotation);
-                *player.direction_mut() = glam::Vec3A::from_array(packet.direction);
+                player.set_rotation(packet.rotation);
+                player.set_direction(packet.direction);
                 player.update_state(packet.input_flags);
                 player.set_view(
                     packet.view_state,

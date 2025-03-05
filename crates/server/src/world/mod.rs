@@ -15,7 +15,8 @@ use ahash::RandomState;
 use dashmap::{mapref::one::RefMut, DashMap, DashSet};
 use mod_network::{
     components::{
-        CharacterKind, DamageLog, Epoch, HealthPoint, ObjectId, StageKind, UserId, WorldId,
+        CharacterKind, DamageLog, Epoch, HealthPoint, MovementState, ObjectId, StageKind, UserId,
+        WorldId,
     },
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -31,6 +32,9 @@ use crate::{
 pub use self::{bullet::*, event::*, player::*};
 
 use super::formula::movement_formulas as formulas;
+
+/// 중력 가속도입니다.
+const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
 
 /// 게임 개발을 위한 테스트 게임 월드 입니다.
 ///
@@ -145,16 +149,19 @@ impl GameWorld {
     /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
     fn update_player_position(&self, elapsed_time_sec: f32) {
         for mut player in self.players.iter_mut() {
-            // 플레이어 위치 가져오기
+            // 플레이어 위치를 가져옵니다.
             let translation = player.translation();
-            // 현재 플레이어의 속도 게산
-            let new_velocity = player.compute_velocity();
-            let velocity = player.velocity_mut();
-            velocity.x = new_velocity.x;
-            velocity.z = new_velocity.z;
 
-            // 중력 누적
-            velocity.y -= 9.8 * elapsed_time_sec;
+            // 총 가속도를 계산합니다.
+            let mut acceleration = GRAVITY;
+            acceleration += player.acceleration();
+
+            // 플레이어 속도를 갱신합니다.
+            player.update_velocity();
+
+            // 속도에 가속도를 적용합니다.
+            let velocity = player.velocity_mut();
+            *velocity += acceleration * elapsed_time_sec;
 
             // 이동 시도 (이동 전 위치 저장)
             let mut new_p = translation + (*velocity) * elapsed_time_sec;
@@ -175,8 +182,15 @@ impl GameWorld {
 
             if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
                 if height >= new_p.y {
-                    velocity.y = 0.0;
                     new_p.y = height;
+                    velocity.y = 0.0;
+
+                    let current = player.movement_state();
+                    if current == MovementState::InPlaceLanding {
+                        player.change_movement_state(MovementState::Idle);
+                    } else if current == MovementState::MovingLanding {
+                        player.change_movement_state(MovementState::Moving);
+                    }
                 }
                 *player.translation_mut() = new_p;
             }

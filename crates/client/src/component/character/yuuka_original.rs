@@ -6,7 +6,9 @@ use glam::FloatExt;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState, MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES, NUM_VIEW_STATES
+    ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState,
+    MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES,
+    NUM_MOVEMENT_STATES, NUM_VIEW_STATES,
 };
 use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
@@ -54,11 +56,14 @@ pub const CAMERA_IDLE_FOV_Y: f32 = 1.309; // 75도
 pub const CAMERA_ZOOM_FOV_Y: f32 = 1.22173; // 70도
 
 /// `Bip001_Head`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
-pub const HEAD_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(-0.050692074, 0.60760593, -0.792619);
+pub const HEAD_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 =
+    glam::vec3(-0.050692074, 0.60760593, -0.792619);
 /// `Bip001_Spine`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
-pub const SPINE_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(0.018127501, 0.88046324, -0.47376776);
+pub const SPINE_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 =
+    glam::vec3(0.018127501, 0.88046324, -0.47376776);
 /// `Bip001_Spine1`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
-pub const SPINE1_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(-0.16704176, 0.9152928, -0.3665189);
+pub const SPINE1_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 =
+    glam::vec3(-0.16704176, 0.9152928, -0.3665189);
 /// `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 `Bip001_L_Hand`에서 `Bip001_Weapon`까지의 변환 행렬입니다.
 pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
     glam::Vec4::new(-0.25398198, 0.96574277, 0.05343934, 0.0),
