@@ -2,6 +2,10 @@
 chcp 65001 >nul
 title "Project Build (Profile:Release)"
 
+echo "crates.io의 최신 정보를 가져옵니다."
+cargo update
+
+echo "프로젝트를 빌드합니다."
 cargo build --release
 
 set target="\"%cd%\target\release\server.exe\""

@@ -3,8 +3,8 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.package]
-edition = "2021"
-rust-version = "1.82"
+edition = "2024"
+rust-version = "1.85"
 description = "2024년 한국공학대학교 게임공학과 졸업작품"
 authors = [
     "HK416 <powerspirit127@gmail.com>", 
@@ -22,7 +22,7 @@ ahash = "0.8"
 
 # A macro to generate structures which behave like bitflags.
 # License: MIT OR Apache-2.0
-bitflags = "2.8"
+bitflags = "2.9"
 
 # A crate for mucking around with piles of bytes.
 # License: Zlib OR Apache-2.0 OR MIT
@@ -38,15 +38,15 @@ dashmap = "6.1"
 
 # An easy-to-use immediate mode GUI that runs on both web and native
 # License: MIT OR Apache-2.0
-egui = "0.30"
+egui = "0.31"
 
 # Bindings for using egui with winit
 # License: MIT OR Apache-2.0
-egui-winit = "0.30"
+egui-winit = "0.31"
 
 # A simple and fast 3D math library for games and graphics
 # License: MIT OR Apache-2.0
-glam = { version = "0.29", features = ["bytemuck", "rand"] }
+glam = { version = "0.30", features = ["bytemuck", "rand"] }
 
 # A fast, minimal, and ergonomic entity-component-system library
 # License: MIT OR Apache-2.0
