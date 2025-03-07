@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 use super::BigEndian;
 
@@ -26,13 +27,69 @@ impl Default for ControllerState {
     }
 }
 
-/// 게임에서 클라이언트의 컨트롤러 눌림 상태를 나타냅니다.
+/// 게임 입력의 수 입니다.
+pub const NUM_GAME_INPUTS: usize = 12;
+
+/// 게임 입력 목록입니다.
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub enum GameInput {
+    Left = 0x0001,
+    Right = 0x0002,
+    Forward = 0x0004,
+    Backward = 0x0008,
+    Aiming = 0x0010,
+    Attack = 0x0020,
+    Skill = 0x0040,
+    ExSkill = 0x0080,
+    Jump = 0x0100,
+    Reload = 0x0200,
+    Status = 0x0400,
+    Emotion = 0x0800,
+}
+
+impl GameInput {
+    /// `GameInputBits`로 부터 `GameInput`을 생성합니다.
+    /// `GameInput`을 생성할 수 없는 경우 `None`을 반환합니다.
+    pub fn from_bits(bits: GameInputBits) -> Option<Self> {
+        match bits.0 {
+            0x0001 => Some(Self::Left),
+            0x0002 => Some(Self::Right),
+            0x0004 => Some(Self::Forward),
+            0x0008 => Some(Self::Backward),
+            0x0010 => Some(Self::Aiming),
+            0x0020 => Some(Self::Attack),
+            0x0040 => Some(Self::Skill),
+            0x0080 => Some(Self::ExSkill),
+            0x0100 => Some(Self::Jump),
+            0x0200 => Some(Self::Reload),
+            0x0400 => Some(Self::Status),
+            0x0800 => Some(Self::Emotion),
+            _ => {
+                log::warn!(
+                    "failed to convert `{}` to `{}`! (VALUE:{:?})", 
+                    stringify!(GameInputBits),
+                    stringify!(GameInput),
+                    bits
+                );
+                None
+            }
+        }
+    }
+
+    /// `GameInputBits`로 변환합니다.
+    pub fn into_bits(self) -> GameInputBits {
+        GameInputBits(self as u16)
+    }
+}
+
+/// 게임 입력 상태를 나타내는 16바이트 크기의 비트 플래그입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GameInputFlags(pub u16);
+pub struct GameInputBits(u16);
 
 bitflags! {
-    impl GameInputFlags : u16 {
+    impl GameInputBits : u16 {
         const Left = 0x0001;
         const Right = 0x0002;
         const Forward = 0x0004;
@@ -44,14 +101,11 @@ bitflags! {
         const Jump = 0x0100;
         const Reload = 0x0200;
         const Status = 0x0400;
-        const Emotion1 = 0x1000;
-        const Emotion2 = 0x2000;
-        const Emotion3 = 0x4000;
-        const Emotion4 = 0x8000;
+        const Emotion = 0x1000;
     }
 }
 
-impl GameInputFlags {
+impl GameInputBits {
     /// 새로운 `InGameInputFlags`를 생성합니다.
     pub const fn new() -> Self {
         Self::empty()
@@ -81,7 +135,7 @@ impl GameInputFlags {
     }
 }
 
-impl BigEndian for GameInputFlags {
+impl BigEndian for GameInputBits {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self(u16::from_big_endian_bytes(bytes))
     }
@@ -91,7 +145,7 @@ impl BigEndian for GameInputFlags {
     }
 }
 
-impl Default for GameInputFlags {
+impl Default for GameInputBits {
     fn default() -> Self {
         Self::empty()
     }

@@ -6,8 +6,8 @@ use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameS
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, DamageLog, Epoch,
-        GameInputFlags, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer,
-        ObjectId, Player, User, UserId, ViewState, ViewStateTimer,
+        GameInputBits, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer,
+        ObjectId, Player, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -32,7 +32,7 @@ use crate::{
         Child, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, StageArea, StageProp,
         ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
-    config::{get_input_flag_from_keyboard, get_input_flag_from_mouse, UserConfig},
+    config::UserConfig,
     render::{
         clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
         draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
@@ -43,11 +43,9 @@ use crate::{
 
 /// 기본 게임 구조를 테스트하는 공간입니다.
 pub struct TestbedInGameScene {
-    /// 사용자 설정 구성 데이터
-    user_config: Option<Box<UserConfig>>,
-    /// 사용자 정보
-    user: User,
-    /// 사용자 로그인 토큰
+    /// 현재 사용자 식별자
+    user_id: UserId,
+    /// 로그인 토큰
     token: LoginToken,
     /// 이전 서버의 Epoch
     epoch: Epoch,
@@ -64,7 +62,7 @@ pub struct TestbedInGameScene {
     /// 플레이어 움직임 방향
     move_direction: MoveDirection,
     /// 사용자 입력 상태 플래그 변수
-    controller_input_flags: GameInputFlags,
+    controller_input_flags: GameInputBits,
 
     /// Skybox 쉐이더 리소스
     skybox_resource: Arc<SkyboxResource>,
@@ -82,31 +80,23 @@ pub struct TestbedInGameScene {
 
 impl TestbedInGameScene {
     /// 새로운 `TestbedInGameScene`을 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 클라이언트 식별자가 유효하지 않는 경우 [`panic!`]을 호출합니다.
-    ///
     pub fn new(
-        user_config: Box<UserConfig>,
-        user: User,
-        token: LoginToken,
         epoch: Epoch,
         world: World,
         players: HashMap<UserId, Entity>,
         skybox_resource: Arc<SkyboxResource>,
     ) -> Self {
-        assert_ne!(token, LoginToken::NULL, "invalid client id");
+        let config = UserConfig::get();
         Self {
-            user_config: Some(user_config),
-            user,
-            token,
+            user_id: config.info.id(),
+            token: config.token,
             epoch,
             world,
             players,
             objects: HashMap::default(),
             main_camera: Entity::DANGLING,
             move_direction: MoveDirection::default(),
-            controller_input_flags: GameInputFlags::default(),
+            controller_input_flags: GameInputBits::default(),
             skybox_resource,
             damage_logs: Vec::default(),
             composite_resource: None,
@@ -131,7 +121,7 @@ impl TestbedInGameScene {
             .size(18.0);
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::new())
             .show(egui_ctx, |ui| {
                 ui.label(connect_server_text);
             });
@@ -223,14 +213,13 @@ impl TestbedInGameScene {
         // 사용자 설정한 마우스 좌/우, 상/하 반전을 적용합니다.
         let offset = 1.0;
 
-        if let Some(config) = &self.user_config {
-            if config.mouse.left_right_reversal {
-                dx *= -1.0;
-            }
+        let config = UserConfig::get();
+        if config.flip_horizontal {
+            dx *= -1.0;
+        }
 
-            if config.mouse.up_down_reversal {
-                dy *= -1.0;
-            }
+        if config.flip_vertical {
+            dy *= -1.0;
         }
 
         // 카메라 엔터티에서 카메라 방향 컴포넌트를 가져옵니다.
@@ -375,7 +364,7 @@ impl TestbedInGameScene {
     ///
     fn get_player_entity(&self) -> Entity {
         self.players
-            .get(&self.user.id())
+            .get(&self.user_id)
             .cloned()
             .expect("no such entity")
     }
@@ -879,8 +868,8 @@ impl TestbedInGameScene {
 
         for player in players {
             // 현재 플레이어의 경우
-            if player.user_id == self.user.id() {
-                identifiers.remove(&self.user.id());
+            if player.user_id == self.user_id {
+                identifiers.remove(&self.user_id);
                 let entity = self.get_player_entity();
 
                 // 플레이어 체력을 갱신합니다.
@@ -1117,7 +1106,11 @@ impl GameScene for TestbedInGameScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         if !repeat {
-            let flags = get_input_flag_from_keyboard(keycode, location);
+            let config = UserConfig::get();
+            let flags = config
+                .get_keyboard_input(&(keycode, location))
+                .map(|input| input.into_bits())
+                .unwrap_or(GameInputBits::empty());
             self.controller_input_flags |= flags;
         }
 
@@ -1136,7 +1129,11 @@ impl GameScene for TestbedInGameScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 사용자 입력 상태를 갱신합니다.
         if !repeat {
-            let flags = get_input_flag_from_keyboard(keycode, location);
+            let config = UserConfig::get();
+            let flags = config
+                .get_keyboard_input(&(keycode, location))
+                .map(|input| input.into_bits())
+                .unwrap_or(GameInputBits::empty());
             self.controller_input_flags &= !flags;
         }
         Ok(())
@@ -1151,7 +1148,11 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let flags = get_input_flag_from_mouse(button);
+        let config = UserConfig::get();
+        let flags = config
+            .get_mouse_input(&button)
+            .map(|input| input.into_bits())
+            .unwrap_or(GameInputBits::empty());
         self.controller_input_flags |= flags;
         Ok(())
     }
@@ -1165,7 +1166,11 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let flags = get_input_flag_from_mouse(button);
+        let config = UserConfig::get();
+        let flags = config
+            .get_mouse_input(&button)
+            .map(|input| input.into_bits())
+            .unwrap_or(GameInputBits::empty());
         self.controller_input_flags &= !flags;
         Ok(())
     }

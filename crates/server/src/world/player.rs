@@ -1,6 +1,6 @@
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, CompressedState,
-    GameInputFlags, HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player,
+    GameInputBits, HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player,
     UserId, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
 };
 
@@ -319,7 +319,7 @@ impl PlayerObject {
     }
 
     /// 플레이어 오브젝트의 상태를 갱신합니다.
-    pub fn update_state(&mut self, input_flags: GameInputFlags) {
+    pub fn update_state(&mut self, input_flags: GameInputBits) {
         self.update_action_state(input_flags);
         self.update_movement_state(input_flags);
     }
@@ -332,8 +332,8 @@ impl PlayerObject {
     }
 
     /// 플레이어 오브젝트의 `ActionState`를 갱신합니다.
-    fn update_action_state(&mut self, input_flags: GameInputFlags) {
-        type Func = fn(&mut PlayerObject, GameInputFlags);
+    fn update_action_state(&mut self, input_flags: GameInputBits) {
+        type Func = fn(&mut PlayerObject, GameInputBits);
         const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
             PlayerObject::update_action_state_when_idle,
             PlayerObject::update_action_state_when_aiming,
@@ -347,21 +347,21 @@ impl PlayerObject {
     }
 
     /// `ActionState::Idle`일 때 `ActionState`를 갱신합니다.
-    fn update_action_state_when_idle(&mut self, input_flags: GameInputFlags) {
+    fn update_action_state_when_idle(&mut self, input_flags: GameInputBits) {
         // 우선순위
         // ExSkill << Skill << Attack << Reload << Aiming
         //
-        if input_flags.contains(GameInputFlags::ExSkill) {
+        if input_flags.contains(GameInputBits::ExSkill) {
             // TODO
-        } else if input_flags.contains(GameInputFlags::Skill) {
+        } else if input_flags.contains(GameInputBits::Skill) {
             // TODO
-        } else if input_flags.contains(GameInputFlags::Attack) {
+        } else if input_flags.contains(GameInputBits::Attack) {
             self.prev_action_state = ActionState::Idle;
             self.action_state = ActionState::Attack;
             self.action_state_timer.reset();
-        } else if input_flags.contains(GameInputFlags::Reload) {
+        } else if input_flags.contains(GameInputBits::Reload) {
             // TODO
-        } else if input_flags.contains(GameInputFlags::Aiming) {
+        } else if input_flags.contains(GameInputBits::Aiming) {
             self.prev_action_state = ActionState::Idle;
             self.action_state = ActionState::AimAt;
             self.action_state_timer.reset();
@@ -369,19 +369,19 @@ impl PlayerObject {
     }
 
     /// `ActionState::Aiming`일 때 `ActionState`를 갱신합니다.
-    fn update_action_state_when_aiming(&mut self, input_flags: GameInputFlags) {
+    fn update_action_state_when_aiming(&mut self, input_flags: GameInputBits) {
         // 우선순위
         // ExSkill << Skill << Attack << Aiming
         //
-        if input_flags.contains(GameInputFlags::ExSkill) {
+        if input_flags.contains(GameInputBits::ExSkill) {
             // TODO
-        } else if input_flags.contains(GameInputFlags::Skill) {
+        } else if input_flags.contains(GameInputBits::Skill) {
             // TODO
-        } else if input_flags.contains(GameInputFlags::Attack) {
+        } else if input_flags.contains(GameInputBits::Attack) {
             self.prev_action_state = ActionState::Aiming;
             self.action_state = ActionState::Attack;
             self.action_state_timer.reset();
-        } else if !input_flags.contains(GameInputFlags::Aiming) {
+        } else if !input_flags.contains(GameInputBits::Aiming) {
             self.prev_action_state = ActionState::Aiming;
             self.action_state = ActionState::AimOff;
             self.action_state_timer.reset();
@@ -389,8 +389,8 @@ impl PlayerObject {
     }
 
     /// `ActionState::AimAt`일 때 `ActionState`를 갱신합니다.
-    fn update_action_state_when_aim_at(&mut self, input_flags: GameInputFlags) {
-        if !input_flags.contains(GameInputFlags::Aiming) {
+    fn update_action_state_when_aim_at(&mut self, input_flags: GameInputBits) {
+        if !input_flags.contains(GameInputBits::Aiming) {
             self.prev_action_state = ActionState::AimAt;
             self.action_state = ActionState::AimOff;
 
@@ -403,8 +403,8 @@ impl PlayerObject {
     }
 
     /// `ActionState::AimOff`일 때 `ActionState`를 갱신합니다.
-    fn update_action_state_when_aim_off(&mut self, input_flags: GameInputFlags) {
-        if input_flags.contains(GameInputFlags::Aiming) {
+    fn update_action_state_when_aim_off(&mut self, input_flags: GameInputBits) {
+        if input_flags.contains(GameInputBits::Aiming) {
             self.prev_action_state = ActionState::AimOff;
             self.action_state = ActionState::AimAt;
 
@@ -417,7 +417,7 @@ impl PlayerObject {
     }
 
     /// `ActionState::Attack`일 때 `ActionState`를 갱신합니다.
-    fn update_action_state_when_attack(&mut self, _input_flags: GameInputFlags) {
+    fn update_action_state_when_attack(&mut self, _input_flags: GameInputBits) {
         /* empty */
     }
     /*
@@ -697,8 +697,8 @@ impl PlayerObject {
     }
 
     /// 플레이어 오브젝트의 `MovementState`를 갱신합니다.
-    fn update_movement_state(&mut self, input_flags: GameInputFlags) {
-        type Func = fn(&mut PlayerObject, GameInputFlags);
+    fn update_movement_state(&mut self, input_flags: GameInputBits) {
+        type Func = fn(&mut PlayerObject, GameInputBits);
         const FUNC_TABLE: [[Func; NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
             // `ActionState::Idle`
             [
@@ -758,66 +758,66 @@ impl PlayerObject {
     }
 
     /// `MovementState::Idle`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_idle(&mut self, input_flags: GameInputFlags) {
+    fn update_movement_state_when_idle(&mut self, input_flags: GameInputBits) {
         if input_flags.bits() & 0x000F != 0x0000 {
             self.movement_state = MovementState::Moving;
             self.movement_state_timer.reset();
-        } else if input_flags.contains(GameInputFlags::Jump) {
+        } else if input_flags.contains(GameInputBits::Jump) {
             self.movement_state = MovementState::InPlaceJumping;
             self.movement_state_timer.reset();
         }
     }
 
     /// `MovementState::Moving`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_moving(&mut self, input_flags: GameInputFlags) {
+    fn update_movement_state_when_moving(&mut self, input_flags: GameInputBits) {
         if input_flags.bits() & 0x000F == 0x0000 {
             self.movement_state = MovementState::MoveToEnd;
             self.movement_state_timer.reset();
-        } else if input_flags.contains(GameInputFlags::Jump) {
+        } else if input_flags.contains(GameInputBits::Jump) {
             self.movement_state = MovementState::MovingJumping;
             self.movement_state_timer.reset();
         }
     }
 
     /// `ActionState::Aiming`이고, `MovementState::Moving`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_walking(&mut self, input_flags: GameInputFlags) {
+    fn update_movement_state_when_walking(&mut self, input_flags: GameInputBits) {
         if input_flags.bits() & 0x000F == 0x0000 {
             self.movement_state = MovementState::Idle;
             self.movement_state_timer.reset();
-        } else if input_flags.contains(GameInputFlags::Jump) {
+        } else if input_flags.contains(GameInputBits::Jump) {
             self.movement_state = MovementState::MovingJumping;
             self.movement_state_timer.reset();
         }
     }
 
     /// `MovementState::MoveToEnd`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_move_to_end(&mut self, input_flags: GameInputFlags) {
+    fn update_movement_state_when_move_to_end(&mut self, input_flags: GameInputBits) {
         if input_flags.bits() & 0x000F != 0x0000 {
             self.movement_state = MovementState::Moving;
             self.movement_state_timer.reset();
-        } else if input_flags.contains(GameInputFlags::Jump) {
+        } else if input_flags.contains(GameInputBits::Jump) {
             self.movement_state = MovementState::InPlaceJumping;
             self.movement_state_timer.reset();
         }
     }
 
     /// `MovementState::InPlaceJumping`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_in_place_jumping(&mut self, _input_flags: GameInputFlags) {
+    fn update_movement_state_when_in_place_jumping(&mut self, _input_flags: GameInputBits) {
         /* empty */
     }
 
     /// `MovementState::InPlaceLanding`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_in_place_landing(&mut self, _input_flags: GameInputFlags) {
+    fn update_movement_state_when_in_place_landing(&mut self, _input_flags: GameInputBits) {
         /* empty */
     }
 
     /// `MovementState::MovingJumping`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_moving_jumping(&mut self, _input_flags: GameInputFlags) {
+    fn update_movement_state_when_moving_jumping(&mut self, _input_flags: GameInputBits) {
         /* empty */
     }
 
     /// `MovementState::MovingLanding`일 때 `MovementState`를 갱신합니다.
-    fn update_movement_state_when_moving_landing(&mut self, _input_flags: GameInputFlags) {
+    fn update_movement_state_when_moving_landing(&mut self, _input_flags: GameInputBits) {
         /* empty */
     }
 

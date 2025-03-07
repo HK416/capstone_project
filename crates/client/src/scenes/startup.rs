@@ -1,13 +1,9 @@
-use std::{
-    error::Error,
-    fmt,
-    io::{Cursor, ErrorKind},
-};
+use std::{error::Error, fmt};
 
 use mod_app::{
     app::AppHandle,
     asset::AssetManager,
-    etc::AppEvent,
+    etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
 use mod_render::UiRenderer;
@@ -15,9 +11,7 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    channel::TaskResultChannel,
-    config::{InvalidConfig, UserConfig},
-    FONT_STYLE_0, FONT_STYLE_0_BOLD, USER_CONFIG,
+    channel::TaskResultChannel, config::UserConfig, FONT_STYLE_0, FONT_STYLE_0_BOLD, USER_CONFIG,
 };
 
 use super::IntroScene;
@@ -31,9 +25,6 @@ use super::IntroScene;
 /// 2. 시스템 기본 구성 리소스를 로드합니다. (예: 폰트, 자주 사용되는 텍스처, 등)
 ///
 pub struct StartupScene {
-    /// 사용자 구성 설정 데이터
-    user_config: Option<Box<UserConfig>>,
-
     /// 작업 결과 채널
     task_result_channel: TaskResultChannel<()>,
 
@@ -44,7 +35,6 @@ pub struct StartupScene {
 impl StartupScene {
     pub fn new() -> Self {
         Self {
-            user_config: None,
             task_result_channel: TaskResultChannel::new(),
             num_tasks: 0,
         }
@@ -71,20 +61,35 @@ impl GameScene for StartupScene {
         preload_font_style_0_bold(pool, channel, asset_manager);
         self.num_tasks += 1;
 
-        // 사용자 구성 설정 파일을 로드합니다.
-        let user_config = load_user_configuration(app.asset_manager())?;
-        let user_config = Box::new(user_config);
+        // 사용자 구성 파일을 로드합니다.
+        let asset_manager = app.asset_manager();
+        let mut path = asset_manager.get_root_dir().to_path_buf();
+        path.push(USER_CONFIG);
+        let success = UserConfig::load_from_file(&path).is_ok();
+
+        // 사용자 구성 파일이 로드에 실패한 경우 새로운 사용자 구성 파일을 생성합니다.
+        if !success {
+            // 파일 작성 중 발생한 오류는 무시됩니다.
+            let _ = UserConfig::store_from_file(&path);
+        }
 
         // 애플리케이션 창을 조정합니다.
+        let max_window_size = window
+            .current_monitor()
+            .map(|monitor| WindowSize::find_maximize_size(monitor))
+            .flatten()
+            .unwrap_or(WindowSize::MAX);
+
+        let mut config = UserConfig::get();
+        config.window_size = config.window_size.min(max_window_size);
+
         let proxy = app.event_loop_proxy();
         proxy
-            .send_event(AppEvent::ResizeRequest(user_config.window_size))
+            .send_event(AppEvent::ResizeRequest(config.window_size))
             .unwrap();
         proxy
-            .send_event(AppEvent::FullScreenRequest(user_config.fullscreen))
+            .send_event(AppEvent::FullScreenRequest(config.is_fullscreen))
             .unwrap();
-
-        self.user_config = Some(user_config);
 
         Ok(())
     }
@@ -150,13 +155,11 @@ impl GameScene for StartupScene {
 
         // 모든 작업이 끝난 경우 다음 게임 장면으로 전환합니다.
         if self.num_tasks == 0 {
-            if let Some(user_config) = self.user_config.take() {
-                let next_scene = Box::new(IntroScene::new(user_config));
-                let scene_flow = GameSceneFlow::Change(next_scene);
-                let event = AppEvent::SetGameSceneFlow(scene_flow);
-                let proxy = app.event_loop_proxy();
-                proxy.send_event(event).unwrap();
-            }
+            let next_scene = Box::new(IntroScene::new());
+            let scene_flow = GameSceneFlow::Change(next_scene);
+            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let proxy = app.event_loop_proxy();
+            proxy.send_event(event).unwrap();
         }
 
         Ok(())
@@ -234,34 +237,4 @@ fn preload_font_style_0_bold(
         let result = asset_manager.load(FONT_STYLE_0_BOLD);
         channel.send(result.map(|_| ()));
     });
-}
-
-/// 사용자 구성 설정 파일을 로드합니다.
-fn load_user_configuration(
-    asset_manager: &AssetManager,
-) -> Result<UserConfig, Box<dyn Error + Send>> {
-    let result = asset_manager.get_or_init(USER_CONFIG);
-    match result {
-        Ok(cached) => {
-            // 사용자 구성 파일 데이터를 구문 분석합니다.
-            let reader = Cursor::new(cached.as_bytes());
-            let result: Result<UserConfig, _> = serde_json::from_reader(reader);
-            result
-                .map_err(|e| InvalidConfig(e))
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
-        }
-        Err(ref e) if e.kind() == ErrorKind::NotFound => {
-            // 사용자 구성 파일을 생성합니다.
-            let user_config = UserConfig::new();
-            let data = serde_json::ser::to_vec_pretty(&user_config)
-                .map_err(|e| InvalidConfig(e))
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-            asset_manager
-                .create(USER_CONFIG, &data)
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-
-            Ok(user_config)
-        }
-        Err(e) => Err(Box::new(e)),
-    }
 }

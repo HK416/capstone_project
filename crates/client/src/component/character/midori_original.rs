@@ -6,7 +6,7 @@ use glam::FloatExt;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState,
+    ActionState, ActionStateTimer, CharacterKind, GameInputBits, LatLon, MovementState,
     MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES,
     NUM_MOVEMENT_STATES, NUM_VIEW_STATES,
 };
@@ -470,9 +470,9 @@ fn spawn_character_model_recursive(
 pub fn update_character_view_state(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: GameInputFlags,
+    controller_input_flags: GameInputBits,
 ) {
-    type Func = fn(&mut ViewState, &mut ViewStateTimer, GameInputFlags);
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, GameInputBits);
     const FUNC_TABLE: [Func; NUM_VIEW_STATES] = [
         update_view_state_when_idle,
         update_view_state_when_zoom_in,
@@ -488,9 +488,9 @@ pub fn update_character_view_state(
 fn update_view_state_when_idle(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: GameInputFlags,
+    controller_input_flags: GameInputBits,
 ) {
-    if controller_input_flags.contains(GameInputFlags::Aiming) {
+    if controller_input_flags.contains(GameInputBits::Aiming) {
         *view_state = ViewState::ZoomIn;
         view_state_timer.reset();
     }
@@ -500,9 +500,9 @@ fn update_view_state_when_idle(
 fn update_view_state_when_zoom_in(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: GameInputFlags,
+    controller_input_flags: GameInputBits,
 ) {
-    if !controller_input_flags.contains(GameInputFlags::Aiming) {
+    if !controller_input_flags.contains(GameInputBits::Aiming) {
         *view_state = ViewState::ZoomOut;
         view_state_timer.0 =
             (1.0 - view_state_timer.0 / NORMAL_ATTACK_START_DURATION) * NORMAL_ATTACK_END_DURATION;
@@ -513,9 +513,9 @@ fn update_view_state_when_zoom_in(
 fn update_view_state_when_zoom_out(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: GameInputFlags,
+    controller_input_flags: GameInputBits,
 ) {
-    if controller_input_flags.contains(GameInputFlags::Aiming) {
+    if controller_input_flags.contains(GameInputBits::Aiming) {
         *view_state = ViewState::ZoomIn;
         view_state_timer.0 =
             (1.0 - view_state_timer.0 / NORMAL_ATTACK_END_DURATION) * NORMAL_ATTACK_START_DURATION;
@@ -526,9 +526,9 @@ fn update_view_state_when_zoom_out(
 fn update_view_state_when_aiming(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: GameInputFlags,
+    controller_input_flags: GameInputBits,
 ) {
-    if !controller_input_flags.contains(GameInputFlags::Aiming) {
+    if !controller_input_flags.contains(GameInputBits::Aiming) {
         *view_state = ViewState::ZoomOut;
         view_state_timer.reset();
     }

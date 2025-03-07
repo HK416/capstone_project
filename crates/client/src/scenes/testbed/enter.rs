@@ -10,7 +10,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{BulletKind, CharacterKind, Epoch, LoginToken, User, UserId},
+    components::{BulletKind, CharacterKind, Epoch, LoginToken, UserId},
     protocol::{EnterStagePacket, InitStagePacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{
@@ -43,11 +43,7 @@ use super::TestbedInGameScene;
 
 /// 게임 월드에 접속을 요청하는 게임 장면입니다.
 pub struct EnterStageScene {
-    /// 사용자 구성 설정 데이터
-    user_config: Option<Box<UserConfig>>,
-    /// 사용자 정보
-    user: User,
-    /// 사용자 로그인 토큰
+    /// 클라이언트의 로그인 토큰
     token: LoginToken,
     /// 선택한 캐릭터 종류
     character_kind: CharacterKind,
@@ -59,21 +55,10 @@ pub struct EnterStageScene {
 
 impl EnterStageScene {
     /// 새로운 `EnterStageScene`을 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 클라이언트 식별자가 유효하지 않는 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn new(
-        user_config: Box<UserConfig>,
-        user: User,
-        token: LoginToken,
-        character_kind: CharacterKind,
-    ) -> Self {
-        assert_ne!(token, LoginToken::NULL, "invalid token");
+    pub fn new(character_kind: CharacterKind) -> Self {
+        let config = UserConfig::get();
         Self {
-            user_config: Some(user_config),
-            user,
-            token,
+            token: config.token,
             character_kind,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
@@ -94,7 +79,7 @@ impl EnterStageScene {
             .size(18.0);
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::new())
             .show(egui_ctx, |ui| {
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
                     ui.label(connect_server_text);
@@ -131,13 +116,7 @@ impl GameScene for EnterStageScene {
             PacketType::InitStage => {
                 let init_stage_packet = InitStagePacket::from_raw(packet);
                 let proxy = app.event_loop_proxy();
-                let user_config = self.user_config.take().expect("duplicate packet received");
-                let next_scene = LoadStageResourceScene::new(
-                    user_config,
-                    self.user,
-                    self.token,
-                    init_stage_packet,
-                );
+                let next_scene = LoadStageResourceScene::new(init_stage_packet);
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 proxy.send_event(event).unwrap();
@@ -275,12 +254,6 @@ impl fmt::Debug for EnterStageScene {
 
 /// 게임 월드 리소스를 로드하는 게임 장면입니다.
 pub struct LoadStageResourceScene {
-    /// 사용자 구성 설정 데이터
-    user_config: Option<Box<UserConfig>>,
-    /// 사용자 정보
-    user: User,
-    /// 사용자 로그인 토큰
-    token: LoginToken,
     /// 게임 월드 초기화 패킷 데이터
     init_stage_packet: Option<InitStagePacket>,
 
@@ -296,21 +269,8 @@ pub struct LoadStageResourceScene {
 
 impl LoadStageResourceScene {
     /// 새로운 `LoadStageResourceScene`을 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 클라이언트 식별자가 유효하지 않는 경우 [`panic!`]을 호출합니다.
-    ///
-    fn new(
-        user_config: Box<UserConfig>,
-        user: User,
-        token: LoginToken,
-        init_stage_packet: InitStagePacket,
-    ) -> Self {
-        assert_ne!(token, LoginToken::NULL, "invalid token");
+    fn new(init_stage_packet: InitStagePacket) -> Self {
         Self {
-            user_config: Some(user_config),
-            user,
-            token,
             init_stage_packet: Some(init_stage_packet),
             num_tasks: 0,
             task_result_channel: TaskResultChannel::new(),
@@ -333,7 +293,7 @@ impl LoadStageResourceScene {
             .size(18.0);
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::new())
             .show(egui_ctx, |ui| {
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
                     ui.label(connect_server_text);
@@ -456,10 +416,8 @@ impl GameScene for LoadStageResourceScene {
 
         // 모든 작업이 끝난 경우 다음 게임 장면으로 전환합니다.
         if self.num_tasks == 0 {
-            let mut pair = self.user_config.take().zip(self.init_stage_packet.take());
-            if let Some((user_config, init_stage_packet)) = pair.take() {
-                let next_scene =
-                    InitStageScene::new(user_config, self.user, self.token, init_stage_packet);
+            if let Some(init_stage_packet) = self.init_stage_packet.take() {
+                let next_scene = InitStageScene::new(init_stage_packet);
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let proxy = app.event_loop_proxy();
@@ -786,12 +744,6 @@ fn load_damage_font(
 
 /// 게임 월드를 생성하는 게임 장면입니다.
 pub struct InitStageScene {
-    /// 사용자 구성 설정 데이터
-    user_config: Option<Box<UserConfig>>,
-    /// 사용자 정보
-    user: User,
-    /// 사용자 로그인 토큰
-    token: LoginToken,
     /// 서버의 Epoch
     epoch: Epoch,
     /// 게임 월드 초기화 패킷 데이터
@@ -807,21 +759,8 @@ pub struct InitStageScene {
 
 impl InitStageScene {
     /// 새로운 `InitStageScene`을 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 클라이언트 식별자가 유효하지 않는 경우 [`panic!`]을 호출합니다.
-    ///
-    fn new(
-        user_config: Box<UserConfig>,
-        user: User,
-        token: LoginToken,
-        init_stage_packet: InitStagePacket,
-    ) -> Self {
-        assert_ne!(token, LoginToken::NULL, "invalid token");
+    fn new(init_stage_packet: InitStagePacket) -> Self {
         Self {
-            user_config: Some(user_config),
-            user,
-            token,
             epoch: init_stage_packet.epoch,
             init_stage_packet: Some(init_stage_packet),
             task_result_channel: TaskResultChannel::default(),
@@ -844,7 +783,7 @@ impl InitStageScene {
             .size(18.0);
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::new())
             .show(egui_ctx, |ui| {
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::RIGHT), |ui| {
                     ui.label(connect_server_text);
@@ -879,11 +818,6 @@ impl GameScene for InitStageScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 사용자 구성 데이터가 없는 경우 함수 실행을 생략합니다.
-        if self.user_config.is_none() {
-            return Ok(());
-        }
-
         // 작업 처리 결과를 대기합니다.
         if let Some(result) = self.task_result_channel.recv() {
             let (world, players) = result?;
@@ -896,19 +830,7 @@ impl GameScene for InitStageScene {
             )
             .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
-            let user_config = self
-                .user_config
-                .take()
-                .expect("user configuration must exist");
-            let next_scene = TestbedInGameScene::new(
-                user_config,
-                self.user,
-                self.token,
-                self.epoch,
-                world,
-                players,
-                skybox_resource,
-            );
+            let next_scene = TestbedInGameScene::new(self.epoch, world, players, skybox_resource);
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let proxy = app.event_loop_proxy();

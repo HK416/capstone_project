@@ -1,280 +1,264 @@
-use ahash::HashMap;
+use std::{
+    fs::{self, File},
+    io::{self, ErrorKind, Read},
+    ops::Deref,
+    path::Path,
+};
+
+use ahash::{HashMap, HashSet};
 use lazy_static::lazy_static;
 use mod_app::etc::WindowSize;
-use mod_network::components::GameInputFlags;
-use parking_lot::Mutex;
+use mod_network::components::{GameInput, LoginToken, User, NUM_GAME_INPUTS};
+use parking_lot::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use winit::{
     event::MouseButton,
     keyboard::{KeyCode, KeyLocation},
 };
 
-// WARNINGS
-// 락 획득 순서를 지켜야 합니다.
-// 1. Flag_Controller_Map
-// 2. Controller_Flag_Map
-//
 lazy_static! {
-    static ref FLAG_KEYBOARD_MAP: Mutex<HashMap<GameInputFlags, (KeyCode, KeyLocation)>> = {
-        Mutex::new(HashMap::from_iter([
-            (GameInputFlags::Left, (KeyCode::KeyA, KeyLocation::Standard)),
-            (
-                GameInputFlags::Right,
-                (KeyCode::KeyD, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Forward,
-                (KeyCode::KeyW, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Backward,
-                (KeyCode::KeyS, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Skill,
-                (KeyCode::KeyE, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::ExSkill,
-                (KeyCode::KeyQ, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Reload,
-                (KeyCode::KeyR, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Jump,
-                (KeyCode::Space, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Status,
-                (KeyCode::Tab, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Emotion1,
-                (KeyCode::Digit1, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Emotion2,
-                (KeyCode::Digit2, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Emotion3,
-                (KeyCode::Digit3, KeyLocation::Standard),
-            ),
-            (
-                GameInputFlags::Emotion4,
-                (KeyCode::Digit4, KeyLocation::Standard),
-            ),
-        ]))
-    };
-    static ref KEYBOARD_FLAG_MAP: Mutex<HashMap<(KeyCode, KeyLocation), GameInputFlags>> = {
-        Mutex::new(HashMap::from_iter([
-            ((KeyCode::KeyA, KeyLocation::Standard), GameInputFlags::Left),
-            (
-                (KeyCode::KeyD, KeyLocation::Standard),
-                GameInputFlags::Right,
-            ),
-            (
-                (KeyCode::KeyW, KeyLocation::Standard),
-                GameInputFlags::Forward,
-            ),
-            (
-                (KeyCode::KeyS, KeyLocation::Standard),
-                GameInputFlags::Backward,
-            ),
-            (
-                (KeyCode::KeyE, KeyLocation::Standard),
-                GameInputFlags::Skill,
-            ),
-            (
-                (KeyCode::KeyQ, KeyLocation::Standard),
-                GameInputFlags::ExSkill,
-            ),
-            (
-                (KeyCode::KeyR, KeyLocation::Standard),
-                GameInputFlags::Reload,
-            ),
-            (
-                (KeyCode::Space, KeyLocation::Standard),
-                GameInputFlags::Jump,
-            ),
-            (
-                (KeyCode::Tab, KeyLocation::Standard),
-                GameInputFlags::Status,
-            ),
-            (
-                (KeyCode::Digit1, KeyLocation::Standard),
-                GameInputFlags::Emotion1,
-            ),
-            (
-                (KeyCode::Digit2, KeyLocation::Standard),
-                GameInputFlags::Emotion2,
-            ),
-            (
-                (KeyCode::Digit3, KeyLocation::Standard),
-                GameInputFlags::Emotion3,
-            ),
-            (
-                (KeyCode::Digit4, KeyLocation::Standard),
-                GameInputFlags::Emotion4,
-            ),
-        ]))
-    };
-    static ref FLAG_MOUSE_MAP: Mutex<HashMap<GameInputFlags, MouseButton>> = {
-        Mutex::new(HashMap::from_iter([
-            (GameInputFlags::Attack, MouseButton::Left),
-            (GameInputFlags::Aiming, MouseButton::Right),
-        ]))
-    };
-    static ref MOUSE_FLAG_MAP: Mutex<HashMap<MouseButton, GameInputFlags>> = {
-        Mutex::new(HashMap::from_iter([
-            (MouseButton::Left, GameInputFlags::Attack),
-            (MouseButton::Right, GameInputFlags::Aiming),
-        ]))
-    };
+    /// 전역 변수로 선언된 사용자 구성 설정의 인스턴스입니다.
+    static ref USER_CONFIG: Mutex<UserConfig> = Mutex::new(UserConfig::default());
 }
 
-/// 주어진 `Keycode`와 `KeyLocation`에 해당하는 `GameInputFlags`를 반환합니다.
-pub fn get_input_flag_from_keyboard(keycode: KeyCode, location: KeyLocation) -> GameInputFlags {
-    // Warnings: 락의 획득 순서를 반드시 지켜야한다.
-    let _guard = FLAG_KEYBOARD_MAP.lock();
-    let keyboard_flag_map = KEYBOARD_FLAG_MAP.lock();
-
-    keyboard_flag_map
-        .get(&(keycode, location))
-        .cloned()
-        .unwrap_or_default()
+/// 애플리케이션 표시 언어 목록입니다.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub enum Locale {
+    KOR,
 }
 
-/// 주어진 `Keycode`와 `KeyLocation`에 해당하는 `GameInputFlags`를 설정합니다.
-pub fn set_keyboard_input_flags(keycode: KeyCode, location: KeyLocation, flags: GameInputFlags) {
-    // Warnings: 락의 획득 순서를 반드시 지켜야한다.
-    let mut flag_keyboard_map = FLAG_KEYBOARD_MAP.lock();
-    let mut keyboard_flag_map = KEYBOARD_FLAG_MAP.lock();
-
-    let result = flag_keyboard_map.insert(flags, (keycode, location));
-    if let Some(old) = result {
-        keyboard_flag_map.remove(&old);
+impl Default for Locale {
+    fn default() -> Self {
+        Self::KOR
     }
-    keyboard_flag_map.insert((keycode, location), flags);
-}
-
-/// 주어진 `MouseButton`에 해당하는 `GameInputFlags`를 반환합니다.
-pub fn get_input_flag_from_mouse(button: MouseButton) -> GameInputFlags {
-    // Warnings: 락의 획득 순서를 반드시 지켜야한다.
-    let _guard = FLAG_MOUSE_MAP.lock();
-    let keyboard_flag_map = MOUSE_FLAG_MAP.lock();
-
-    keyboard_flag_map.get(&button).cloned().unwrap_or_default()
-}
-
-/// 주어진 `MouseButton`에 해당하는 `GameInputFlags`를 설정합니다.
-pub fn set_mouse_input_flags(button: MouseButton, flags: GameInputFlags) {
-    // Warnings: 락의 획득 순서를 반드시 지켜야한다.
-    let mut flag_mouse_map = FLAG_MOUSE_MAP.lock();
-    let mut mouse_flag_map = MOUSE_FLAG_MAP.lock();
-
-    let result = flag_mouse_map.insert(flags, button);
-    if let Some(old) = result {
-        mouse_flag_map.remove(&old);
-    }
-    mouse_flag_map.insert(button, flags);
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("failed to parse user configuration for the following reason:{0}")]
-pub struct InvalidConfig(pub serde_json::Error);
+pub enum UserConfigError {
+    #[error("could not find user configuration file")]
+    NotFound,
 
-/// ## Application User Configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+    #[error("failed to open user configuration file! (REASON:{0})")]
+    IO(#[from] io::Error),
+
+    #[error("invalid user configuration data file")]
+    InvalidData,
+}
+
+/// 사용자 구성 데이터입니다.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct UserConfig {
-    pub locale: Option<Locale>,
+    /// 현재 사용자의 정보입니다.  
+    /// 사용자의 식별자가 `UserId::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
+    #[serde(skip)]
+    pub info: User,
+    /// 현재 사용자의 로그인 토큰입니다.  
+    /// 로그인 토큰이 `LoginToken::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
+    #[serde(skip)]
+    pub token: LoginToken,
+
+    /// 애플리케이션 표시 언어입니다.
+    pub locale: Locale,
+    /// 애플리케이션 창의 크기입니다.
     pub window_size: WindowSize,
-    pub fullscreen: bool,
-    pub keyboard: KeyboardConfig,
-    pub mouse: MouseConfig,
+    /// 애플리케이션 창의 전체 창 화면 여부입니다.
+    pub is_fullscreen: bool,
+    /// 좌우 움직임 반전 여부입니다.
+    pub flip_horizontal: bool,
+    /// 상하 움직임 반전 여부입니다.
+    pub flip_vertical: bool,
+
+    /// 게임 입력과 키보드 매핑 정보를 저장합니다.
+    input_keyboard_map: HashMap<GameInput, (KeyCode, KeyLocation)>,
+    /// 게임 입력과 마우스 매핑 정보를 저장합니다.
+    input_mouse_map: HashMap<GameInput, MouseButton>,
+    /// 키보드와 게임 입력 매핑 정보를 저장합니다.
+    #[serde(skip)]
+    keyboard_input_map: HashMap<(KeyCode, KeyLocation), GameInput>,
+    /// 마우스와 게임 입력 매핑 정보를 저장합니다.
+    #[serde(skip)]
+    mouse_input_map: HashMap<MouseButton, GameInput>,
 }
 
 impl UserConfig {
-    /// 새로운 사용자 구성을 생성합니다.
-    pub fn new() -> Self {
-        Self::default()
+    /// 사용자 구성을 가져옵니다.
+    pub fn get() -> MutexGuard<'static, UserConfig> {
+        USER_CONFIG.lock()
+    }
+
+    /// 파일에서 사용자 구성을 로드합니다.
+    pub fn load_from_file<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<MutexGuard<'static, UserConfig>, UserConfigError> {
+        // 파일에서 데이터를 읽습니다.
+        let mut file = File::open(path).map_err(|e| {
+            if e.kind() == ErrorKind::NotFound {
+                log::warn!("could not find user configuration file.");
+                UserConfigError::NotFound
+            } else {
+                log::warn!("failed to open user configuration file! (REASON:{})", &e);
+                UserConfigError::IO(e)
+            }
+        })?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).map_err(|e| {
+            log::warn!("failed to read user configuration file! (REASON:{})", &e);
+            UserConfigError::IO(e)
+        })?;
+
+        // 사용자 구성 파일을 구문 분석합니다.
+        let mut config: Self = serde_json::from_slice(&buf).map_err(|e| {
+            log::warn!("failed to parse user configuration file! (REASON:{})", &e);
+            UserConfigError::InvalidData
+        })?;
+
+        // 로드한 사용자 구성 데이터가 유효하지 않은지 확인합니다.
+        if !config.check_pc_input_config() {
+            log::warn!("invalid user configuration data file");
+            return Err(UserConfigError::InvalidData);
+        }
+
+        // 로드한 사용자 구성 데이터를 저장합니다.
+        let mut global = Self::get();
+        global.locale = config.locale;
+        global.window_size = config.window_size;
+        global.is_fullscreen = config.is_fullscreen;
+        global.input_keyboard_map = config.input_keyboard_map;
+        global.input_mouse_map = config.input_mouse_map;
+        global.keyboard_input_map = config.keyboard_input_map;
+        global.mouse_input_map = config.mouse_input_map;
+
+        Ok(global)
+    }
+
+    /// 파일에 사용자 구성을 저장합니다.
+    ///
+    /// # Warnings
+    /// 이 함수는 해당 경로에 파일이 존재하는 경우 기존의 데이터를 제거하고 새로운 데이터로 덮어씁니다.
+    ///
+    pub fn store_from_file<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<MutexGuard<'static, UserConfig>, UserConfigError> {
+        // 사용자 구성 데이터를 가져옵니다.
+        let config = Self::get();
+        let data = serde_json::to_vec_pretty(config.deref()).map_err(|e| {
+            log::warn!(
+                "failed to serialize user configuration data. (REASON:{})",
+                &e
+            );
+            UserConfigError::InvalidData
+        })?;
+
+        // 파일을 씁니다.
+        fs::write(path, data).map_err(|e| {
+            log::warn!("failed to write user configuration data. (REASON:{})", &e);
+            UserConfigError::IO(e)
+        })?;
+
+        Ok(config)
+    }
+
+    /// 사용자 구성의 입력 설정이 유효한지 확인합니다.  
+    /// 유효하지 않은 경우 `false`를 반환합니다.
+    ///
+    /// # Note
+    /// 전역 변수로 선언된 `UserConfig`가 이 함수를 호출할 경우 데이터가 오염될 수 있습니다.
+    ///
+    fn check_pc_input_config(&mut self) -> bool {
+        // 기존의 데이터를 지웁니다.
+        self.keyboard_input_map.clear();
+        self.mouse_input_map.clear();
+
+        // 모든 입력이 존재하는지 확인하기 위한 입력 집합입니다.
+        let mut inputs = HashSet::default();
+        for (&input, &keyboard) in self.input_keyboard_map.iter() {
+            inputs.insert(input);
+            let duplicate = self.keyboard_input_map.insert(keyboard, input).is_some();
+
+            // 중복된 입력 키가 존재할 경우 유효하지 않은 구성 설정입니다.
+            if duplicate {
+                return false;
+            }
+        }
+
+        for (&input, &button) in self.input_mouse_map.iter() {
+            inputs.insert(input);
+            let duplicate = self.mouse_input_map.insert(button, input).is_some();
+
+            // 중복된 입력 키가 존재할 경우 유효하지 않은 구성 설정입니다.
+            if duplicate {
+                return false;
+            }
+        }
+
+        // 게임 입력 집합의 요소가 게임 입력 수와 다른 경우 유효하지 않은 구성 설정입니다.
+        inputs.len() == NUM_GAME_INPUTS
+    }
+}
+
+impl UserConfig {
+    /// 키보드 입력에 대한 게임 입력을 가져옵니다.  
+    /// 해당 키보드 입력에 대한 게임 입력이 없는 경우 `None`을 반환합니다.
+    pub fn get_keyboard_input(&self, keyboard: &(KeyCode, KeyLocation)) -> Option<GameInput> {
+        self.keyboard_input_map.get(keyboard).cloned()
+    }
+
+    /// 마우스 입력에 대한 게임 입력을 가져옵니다.  
+    /// 해당 마우스 입력에 대한 게임 입력이 없는 경우 `None`을 반환합니다.
+    pub fn get_mouse_input(&self, button: &MouseButton) -> Option<GameInput> {
+        self.mouse_input_map.get(button).cloned()
     }
 }
 
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
-            locale: None,
+            info: User::EMPTY,
+            token: LoginToken::NULL,
+            locale: Locale::KOR,
             window_size: WindowSize::MAX,
-            fullscreen: true,
-            keyboard: KeyboardConfig::default(),
-            mouse: MouseConfig::default(),
-        }
-    }
-}
-
-/// ## Application Locale
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub enum Locale {
-    Korean,
-}
-
-/// ## Keyboard Configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct KeyboardConfig {
-    pub left: (KeyCode, KeyLocation),
-    pub right: (KeyCode, KeyLocation),
-    pub forward: (KeyCode, KeyLocation),
-    pub backward: (KeyCode, KeyLocation),
-    pub skill: (KeyCode, KeyLocation),
-    pub ex_skill: (KeyCode, KeyLocation),
-    pub reloading: (KeyCode, KeyLocation),
-    pub jumping: (KeyCode, KeyLocation),
-    pub status: (KeyCode, KeyLocation),
-    pub emotion_1: (KeyCode, KeyLocation),
-    pub emotion_2: (KeyCode, KeyLocation),
-    pub emotion_3: (KeyCode, KeyLocation),
-    pub emotion_4: (KeyCode, KeyLocation),
-}
-
-impl Default for KeyboardConfig {
-    fn default() -> Self {
-        Self {
-            left: (KeyCode::KeyA, KeyLocation::Standard),
-            right: (KeyCode::KeyD, KeyLocation::Standard),
-            forward: (KeyCode::KeyW, KeyLocation::Standard),
-            backward: (KeyCode::KeyS, KeyLocation::Standard),
-            skill: (KeyCode::KeyE, KeyLocation::Standard),
-            ex_skill: (KeyCode::KeyQ, KeyLocation::Standard),
-            reloading: (KeyCode::KeyR, KeyLocation::Standard),
-            jumping: (KeyCode::Space, KeyLocation::Standard),
-            status: (KeyCode::Tab, KeyLocation::Standard),
-            emotion_1: (KeyCode::Digit1, KeyLocation::Standard),
-            emotion_2: (KeyCode::Digit2, KeyLocation::Standard),
-            emotion_3: (KeyCode::Digit3, KeyLocation::Standard),
-            emotion_4: (KeyCode::Digit4, KeyLocation::Standard),
-        }
-    }
-}
-
-/// ## Mouse Configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct MouseConfig {
-    pub attack: MouseButton,
-    pub aiming: MouseButton,
-    pub left_right_reversal: bool,
-    pub up_down_reversal: bool,
-}
-
-impl Default for MouseConfig {
-    fn default() -> Self {
-        Self {
-            attack: MouseButton::Left,
-            aiming: MouseButton::Right,
-            left_right_reversal: false,
-            up_down_reversal: false,
+            is_fullscreen: true,
+            flip_horizontal: false,
+            flip_vertical: false,
+            input_keyboard_map: HashMap::from_iter([
+                (GameInput::Left, (KeyCode::KeyA, KeyLocation::Standard)),
+                (GameInput::Right, (KeyCode::KeyD, KeyLocation::Standard)),
+                (GameInput::Forward, (KeyCode::KeyW, KeyLocation::Standard)),
+                (GameInput::Backward, (KeyCode::KeyS, KeyLocation::Standard)),
+                (GameInput::Skill, (KeyCode::KeyE, KeyLocation::Standard)),
+                (GameInput::ExSkill, (KeyCode::KeyQ, KeyLocation::Standard)),
+                (GameInput::Jump, (KeyCode::Space, KeyLocation::Standard)),
+                (GameInput::Reload, (KeyCode::KeyR, KeyLocation::Standard)),
+                (GameInput::Status, (KeyCode::Tab, KeyLocation::Standard)),
+                (
+                    GameInput::Emotion,
+                    (KeyCode::ShiftLeft, KeyLocation::Standard),
+                ),
+            ]),
+            input_mouse_map: HashMap::from_iter([
+                (GameInput::Aiming, MouseButton::Right),
+                (GameInput::Attack, MouseButton::Left),
+            ]),
+            keyboard_input_map: HashMap::from_iter([
+                ((KeyCode::KeyA, KeyLocation::Standard), GameInput::Left),
+                ((KeyCode::KeyD, KeyLocation::Standard), GameInput::Right),
+                ((KeyCode::KeyW, KeyLocation::Standard), GameInput::Forward),
+                ((KeyCode::KeyS, KeyLocation::Standard), GameInput::Backward),
+                ((KeyCode::KeyE, KeyLocation::Standard), GameInput::Skill),
+                ((KeyCode::KeyQ, KeyLocation::Standard), GameInput::ExSkill),
+                ((KeyCode::Space, KeyLocation::Standard), GameInput::Jump),
+                ((KeyCode::KeyR, KeyLocation::Standard), GameInput::Reload),
+                ((KeyCode::Tab, KeyLocation::Standard), GameInput::Status),
+                (
+                    (KeyCode::ShiftLeft, KeyLocation::Standard),
+                    GameInput::Emotion,
+                ),
+            ]),
+            mouse_input_map: HashMap::from_iter([
+                (MouseButton::Right, GameInput::Aiming),
+                (MouseButton::Left, GameInput::Attack),
+            ]),
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::components::{
-    BigEndian, Epoch, GameInputFlags, LatLon, LoginToken, TryFromBigEndian, ViewState,
+    BigEndian, Epoch, GameInputBits, LatLon, LoginToken, TryFromBigEndian, ViewState,
     ViewStateTimer,
 };
 
@@ -18,7 +18,7 @@ pub struct PushStatusPacket {
     /// XZ평면상의 플레이어 이동 방향
     pub direction: [f32; 3],
     /// 클라이언트 컨트롤러 입력 상태 플래그
-    pub input_flags: GameInputFlags,
+    pub input_flags: GameInputBits,
     /// 카메라 상태 (서버에서 클라이언트 값을 사용)
     pub view_state: ViewState,
     /// 카메라 상태 타이머 (서버에서 클라이언트 값을 사용)
@@ -34,7 +34,7 @@ impl Default for PushStatusPacket {
             token: LoginToken::default(),
             rotation: [0.0, 0.0, 0.0, 1.0],
             direction: [0.0, 0.0, 1.0],
-            input_flags: GameInputFlags::default(),
+            input_flags: GameInputBits::default(),
             view_state: ViewState::default(),
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
@@ -52,7 +52,7 @@ impl Packet for PushStatusPacket {
             + LoginToken::byte_size()
             + <[f32; 4]>::byte_size()
             + <[f32; 3]>::byte_size()
-            + GameInputFlags::byte_size()
+            + GameInputBits::byte_size()
             + ViewState::byte_size()
             + ViewStateTimer::byte_size()
             + LatLon::byte_size();
@@ -117,9 +117,9 @@ impl Packet for PushStatusPacket {
 
         // 클라이언트 컨트롤러 입력 상태를 가져옵니다.
         offset = offset + size;
-        size = GameInputFlags::byte_size();
+        size = GameInputBits::byte_size();
         data = &bytes[offset..offset + size];
-        let input_flags = GameInputFlags::from_big_endian_bytes(data);
+        let input_flags = GameInputBits::from_big_endian_bytes(data);
 
         // 카메라 상태를 가져옵니다.
         offset = offset + size;

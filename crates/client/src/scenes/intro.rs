@@ -6,10 +6,7 @@ use mod_app::{
     net::NetManager,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{
-    components::{LoginToken, User},
-    protocol::{ConnectPacket, Packet, RawPacket},
-};
+use mod_network::protocol::{ConnectPacket, Packet, PacketType, RawPacket};
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
@@ -29,28 +26,19 @@ use super::TestbedTitleScene;
 /// 현재는 서버에 연결하여 사용자 정보와 로그인 토큰을 가져옵니다.
 ///
 pub struct IntroScene {
-    /// 사용자 구성 설정 데이터
-    user_config: Option<Box<UserConfig>>,
-
-    /// 사용자 정보
-    user: User,
-    /// 로그인 토큰
-    token: LoginToken,
-
+    /// 로그인 토근을 받았는지 여부
+    is_received: bool,
     /// 작업 결과 채널
     task_result_channel: TaskResultChannel<()>,
-
     /// 작업의 개수
     num_task: usize,
 }
 
 impl IntroScene {
     /// 새로운 인트로 게임 장면을 생성합니다.
-    pub fn new(user_config: Box<UserConfig>) -> Self {
+    pub fn new() -> Self {
         Self {
-            user_config: Some(user_config),
-            user: User::default(),
-            token: LoginToken::default(),
+            is_received: false,
             task_result_channel: TaskResultChannel::new(),
             num_task: 0,
         }
@@ -89,15 +77,12 @@ impl GameScene for IntroScene {
         }
 
         // 현재는 로그인 토큰을 할당 받은 경우 다음 게임 장면으로 전환합니다.
-        if self.num_task == 0 && self.token != LoginToken::NULL {
-            if let Some(user_config) = self.user_config.take() {
-                let next_scene =
-                    Box::new(TestbedTitleScene::new(user_config, self.user, self.token));
-                let scene_flow = GameSceneFlow::Change(next_scene);
-                let event = AppEvent::SetGameSceneFlow(scene_flow);
-                let proxy = app.event_loop_proxy();
-                proxy.send_event(event).unwrap();
-            }
+        if self.num_task == 0 && self.is_received {
+            let next_scene = Box::new(TestbedTitleScene::new());
+            let scene_flow = GameSceneFlow::Change(next_scene);
+            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let proxy = app.event_loop_proxy();
+            proxy.send_event(event).unwrap();
         }
 
         Ok(())
@@ -110,9 +95,18 @@ impl GameScene for IntroScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // `Connect` 패킷을 수신하고 클라이언트 식별자를 저장합니다.
-        let connect_packet = ConnectPacket::try_from_raw(packet).unwrap();
-        self.user = connect_packet.user;
-        self.token = connect_packet.token;
+        match packet.packet_type() {
+            PacketType::Connect => {
+                // 전달된 유저 정보와 로그인 토큰을 클라이언트에 저장합니다.
+                let packet = ConnectPacket::from_raw(packet);
+                let mut config = UserConfig::get();
+                config.info = packet.user;
+                config.token = packet.token;
+
+                self.is_received = true;
+            }
+            _ => panic!("invalid packet"),
+        }
 
         Ok(())
     }

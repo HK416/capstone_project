@@ -1,4 +1,4 @@
-use std::mem;
+use std::{fmt, mem};
 
 use super::{
     ActionStateTimer, BigEndian, CharacterKind, CompressedState, HealthPoint, LatLon,
@@ -201,6 +201,9 @@ impl TryFromBigEndian for Player {
 pub struct UserName([u16; MAX_NAME_BUF_SIZE]);
 
 impl UserName {
+    /// 비어있는 사용자 닉네임입니다.
+    pub const EMPTY: Self = Self([0; MAX_NAME_BUF_SIZE]);
+
     /// 문자열로부터 사용자 닉네임을 생성합니다.
     ///
     /// 이 함수는 자동으로 문자열 사이의 공백을 제거하고, 닉네임 길이만큼 문자열을 자릅니다.
@@ -248,9 +251,9 @@ impl Default for UserName {
     }
 }
 
-impl ToString for UserName {
-    fn to_string(&self) -> String {
-        String::from_utf16_lossy(&self.0)
+impl fmt::Display for UserName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &String::from_utf16_lossy(&self.0))
     }
 }
 
@@ -264,6 +267,9 @@ pub struct User {
 }
 
 impl User {
+    /// 비어있는 사용자 데이터입니다.
+    pub const EMPTY: Self = Self { id: UserId::NULL, name: UserName::EMPTY };
+
     pub fn new(id: UserId, name: UserName) -> Self {
         Self { id, name }
     }

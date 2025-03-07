@@ -10,7 +10,7 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, GameInputFlags, LatLon, MovementState,
+    ActionState, ActionStateTimer, CharacterKind, GameInputBits, LatLon, MovementState,
     MovementStateTimer, Player, ViewState, ViewStateTimer, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
 };
 use mod_render::{
@@ -586,9 +586,9 @@ pub fn update_view_state_by_controller_input_flags(
     character_kind: CharacterKind,
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: GameInputFlags,
+    controller_input_flags: GameInputBits,
 ) {
-    type Func = fn(&mut ViewState, &mut ViewStateTimer, GameInputFlags);
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, GameInputBits);
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_view_state,
         momoi_original::update_character_view_state,
