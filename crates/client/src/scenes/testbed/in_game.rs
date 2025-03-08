@@ -6,8 +6,8 @@ use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameS
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, DamageLog, Epoch,
-        GameInputBits, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer,
-        ObjectId, Player, UserId, ViewState, ViewStateTimer,
+        GameInputBits, HealthPoint, InGamePlayer, LatLon, LoginToken, MovementState,
+        MovementStateTimer, ObjectId, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -88,7 +88,7 @@ impl TestbedInGameScene {
     ) -> Self {
         let config = UserConfig::get();
         Self {
-            user_id: config.info.id(),
+            user_id: config.info.uid,
             token: config.token,
             epoch,
             world,
@@ -847,9 +847,9 @@ impl TestbedInGameScene {
     ///
     fn update_player_from_packet<'a>(
         &mut self,
-        players: &'a [Player],
+        players: &'a [InGamePlayer],
         identifiers: &mut HashSet<UserId>,
-    ) -> Vec<&'a Player> {
+    ) -> Vec<&'a InGamePlayer> {
         // 컴포넌트 뷰를 준비합니다.
         let mut health_point_view = self.world.view::<&mut HealthPoint>();
         let mut action_state_view = self
@@ -868,7 +868,7 @@ impl TestbedInGameScene {
 
         for player in players {
             // 현재 플레이어의 경우
-            if player.user_id == self.user_id {
+            if player.info.uid == self.user_id {
                 identifiers.remove(&self.user_id);
                 let entity = self.get_player_entity();
 
@@ -879,19 +879,17 @@ impl TestbedInGameScene {
                 *hp = player.health_point;
 
                 // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
-                let (new_action_state, new_movement_state, _) =
-                    player.compressed_state.try_decompress().unwrap();
                 let (action_state, action_state_timer) = action_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *action_state = new_action_state;
+                *action_state = player.action_state;
                 *action_state_timer = player.action_state_timer;
 
                 // 움직임 상태, 움직임 상태 지속 시간을 갱신합니다.
                 let (movement_state, movement_state_timer) = movement_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *movement_state = new_movement_state;
+                *movement_state = player.movement_state;
                 *movement_state_timer = player.movement_state_timer;
 
                 #[cfg(not(feature = "print-transform"))]
@@ -907,11 +905,11 @@ impl TestbedInGameScene {
             }
 
             // 이미 존재했던 오브젝트인 경우 오브젝트의 데이터를 갱신합니다.
-            if identifiers.remove(&player.user_id) {
+            if identifiers.remove(&player.info.uid) {
                 // 오브젝트의 엔터티를 가져옵니다.
                 let entity = self
                     .players
-                    .get(&player.user_id)
+                    .get(&player.info.uid)
                     .cloned()
                     .expect("no such entity");
 
@@ -922,26 +920,24 @@ impl TestbedInGameScene {
                 *hp = player.health_point;
 
                 // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
-                let (new_action_state, new_movement_state, new_view_state) =
-                    player.compressed_state.try_decompress().unwrap();
                 let (action_state, action_state_timer) = action_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *action_state = new_action_state;
+                *action_state = player.action_state;
                 *action_state_timer = player.action_state_timer;
 
                 // 움직임 상태, 움직임 상태 지속 시간을 갱신합니다.
                 let (movement_state, movement_state_timer) = movement_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *movement_state = new_movement_state;
+                *movement_state = player.movement_state;
                 *movement_state_timer = player.movement_state_timer;
 
                 // 카메라 상태, 카메라 상태 지속 시간을 갱신합니다.
                 let (view_state, view_state_timer, view_rotation) = view_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                *view_state = new_view_state;
+                *view_state = player.view_state;
                 *view_state_timer = player.view_state_timer;
                 *view_rotation = player.view_rotation;
 
@@ -1007,7 +1003,7 @@ impl TestbedInGameScene {
     /// 서버에서 보낸 플레이어 데이터 중 새로운 플레이어를 게임 월드에 추가합니다.
     fn add_player_from_packet<'a>(
         &mut self,
-        new: Vec<&'a Player>,
+        new: Vec<&'a InGamePlayer>,
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -1027,7 +1023,7 @@ impl TestbedInGameScene {
             }
 
             // 플레이어 목록에 새로운 엔터티를 추가합니다.
-            self.players.insert(player.user_id, root_entity);
+            self.players.insert(player.info.uid, root_entity);
         }
 
         Ok(())

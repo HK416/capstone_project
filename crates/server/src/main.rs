@@ -17,7 +17,7 @@ use std::{
 use data::{get_current_path, init_character_attributes, init_stage_attributes};
 use mod_network::{
     addr::Addr,
-    components::{LoginToken, User, UserId, UserName},
+    components::{LoginToken, UserId, UserInfo, UserName},
     protocol::RawPacket,
 };
 use mod_parallelism::collections::{Queue, SkipMap};
@@ -150,7 +150,7 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
                 let user_id = UserId::new(counter);
                 let user_name = format!("Player_{}", counter);
                 let user_name = UserName::new(user_name);
-                let user = User::new(user_id, user_name);
+                let user = UserInfo::new(user_id, user_name);
                 //------------------------
                 let udp_sender = udp_sender.clone();
                 tokio::spawn(async move {

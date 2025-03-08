@@ -8,7 +8,7 @@ use std::{
 use ahash::{HashMap, HashSet};
 use lazy_static::lazy_static;
 use mod_app::etc::WindowSize;
-use mod_network::components::{GameInput, LoginToken, User, NUM_GAME_INPUTS};
+use mod_network::components::{GameInput, LoginToken, UserInfo, NUM_GAME_INPUTS};
 use parking_lot::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 use winit::{
@@ -52,7 +52,7 @@ pub struct UserConfig {
     /// 현재 사용자의 정보입니다.  
     /// 사용자의 식별자가 `UserId::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
     #[serde(skip)]
-    pub info: User,
+    pub info: UserInfo,
     /// 현재 사용자의 로그인 토큰입니다.  
     /// 로그인 토큰이 `LoginToken::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
     #[serde(skip)]
@@ -214,7 +214,7 @@ impl UserConfig {
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
-            info: User::EMPTY,
+            info: UserInfo::default(),
             token: LoginToken::NULL,
             locale: Locale::KOR,
             window_size: WindowSize::MAX,

@@ -36,7 +36,7 @@ impl InGameState {
             return;
         }
 
-        self.world.get_mut_player(session.user.id(), |_, player| {
+        self.world.get_mut_player(session.info.uid, |_, player| {
             if let Some(mut player) = player {
                 player.set_rotation(packet.rotation);
                 player.set_direction(packet.direction);

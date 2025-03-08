@@ -1048,7 +1048,7 @@ fn spawn_players(
         let queue = queue.clone();
         let channel = channel.clone();
         let result = spawn_player_character(&player, &asset_manager, &device, &queue, world)
-            .map(|(entity, batch_commands)| (player.user_id, entity, batch_commands));
+            .map(|(entity, batch_commands)| (player.info.uid, entity, batch_commands));
         channel.send(result);
     }
 }

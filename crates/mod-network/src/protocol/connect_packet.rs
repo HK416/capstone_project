@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, LoginToken, User};
+use crate::components::{BigEndian, LoginToken, UserInfo};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -6,12 +6,12 @@ use super::{Packet, PacketType, RawPacket};
 /// 서버에서 클라이언트로 전송되는 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectPacket {
-    pub user: User,
+    pub user: UserInfo,
     pub token: LoginToken,
 }
 
 impl ConnectPacket {
-    pub fn new(user: User, token: LoginToken) -> Self {
+    pub fn new(user: UserInfo, token: LoginToken) -> Self {
         Self { user, token }
     }
 }
@@ -19,7 +19,7 @@ impl ConnectPacket {
 impl Default for ConnectPacket {
     fn default() -> Self {
         Self {
-            user: User::default(),
+            user: UserInfo::default(),
             token: LoginToken::default(),
         }
     }
@@ -31,7 +31,7 @@ impl Packet for ConnectPacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = User::byte_size() + LoginToken::byte_size();
+        let data_size = UserInfo::byte_size() + LoginToken::byte_size();
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.user.to_big_endian_bytes());
         data.extend_from_slice(&self.token.to_big_endian_bytes());
@@ -63,9 +63,9 @@ impl Packet for ConnectPacket {
         // 사용자 정보를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = User::byte_size();
+        let mut size = UserInfo::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let user = User::from_big_endian_bytes(data);
+        let user = UserInfo::from_big_endian_bytes(data);
 
         // 로그인 토큰을 가져옵니다.
         offset = offset + size;
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn validation_test_packet() {
-        let user = User::new(UserId::new(3141592), UserName::new("Hello안녕!"));
+        let user = UserInfo::new(UserId::new(3141592), UserName::new("Hello안녕!"));
         let origin = ConnectPacket::new(user, LoginToken::new(123456123456123456));
         let raw_packet = origin.as_raw();
         let other = ConnectPacket::try_from_raw(raw_packet).unwrap();

@@ -276,6 +276,28 @@ pub enum ActionState {
     Attack = 4,
 }
 
+impl ActionState {
+    /// 주어진 정수로 부터 `ActionState`를 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(ActionState::Idle),
+            1 => Some(ActionState::Aiming),
+            2 => Some(ActionState::AimAt),
+            3 => Some(ActionState::AimOff),
+            4 => Some(ActionState::Attack),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(ActionState),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
 impl BigEndian for ActionState {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
@@ -295,22 +317,7 @@ impl Default for ActionState {
 
 impl TryFromBigEndian for ActionState {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(ActionState::Idle),
-            1 => Some(ActionState::Aiming),
-            2 => Some(ActionState::AimAt),
-            3 => Some(ActionState::AimOff),
-            4 => Some(ActionState::Attack),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(ActionState),
-                    index
-                );
-                None
-            }
-        }
+        Self::new(u8::from_big_endian_bytes(bytes))
     }
 }
 
@@ -370,6 +377,30 @@ pub enum MovementState {
     MovingLanding = 6,
 }
 
+impl MovementState {
+    /// 주어진 정수로 부터 `MovementState`를 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(MovementState::Idle),
+            1 => Some(MovementState::Moving),
+            2 => Some(MovementState::MoveToEnd),
+            3 => Some(MovementState::InPlaceJumping),
+            4 => Some(MovementState::InPlaceLanding),
+            5 => Some(MovementState::MovingJumping),
+            6 => Some(MovementState::MovingLanding),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(MovementState),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
 impl BigEndian for MovementState {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
@@ -389,24 +420,7 @@ impl Default for MovementState {
 
 impl TryFromBigEndian for MovementState {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(MovementState::Idle),
-            1 => Some(MovementState::Moving),
-            2 => Some(MovementState::MoveToEnd),
-            3 => Some(MovementState::InPlaceJumping),
-            4 => Some(MovementState::InPlaceLanding),
-            5 => Some(MovementState::MovingJumping),
-            6 => Some(MovementState::MovingLanding),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(MovementState),
-                    index
-                );
-                None
-            }
-        }
+        Self::new(u8::from_big_endian_bytes(bytes))
     }
 }
 
@@ -458,6 +472,27 @@ pub enum ViewState {
     Aiming = 3,
 }
 
+impl ViewState {
+    /// 주어진 정수로 부터 `ViewState`를 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(ViewState::Idle),
+            1 => Some(ViewState::ZoomIn),
+            2 => Some(ViewState::ZoomOut),
+            3 => Some(ViewState::Aiming),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(ViewState),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
 impl BigEndian for ViewState {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
@@ -477,21 +512,7 @@ impl Default for ViewState {
 
 impl TryFromBigEndian for ViewState {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(ViewState::Idle),
-            1 => Some(ViewState::ZoomIn),
-            2 => Some(ViewState::ZoomOut),
-            3 => Some(ViewState::Aiming),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(ViewState),
-                    index
-                );
-                None
-            }
-        }
+        Self::new(u8::from_big_endian_bytes(bytes))
     }
 }
 
@@ -523,54 +544,6 @@ impl BigEndian for ViewStateTimer {
 impl Default for ViewStateTimer {
     fn default() -> Self {
         Self(Self::MIN_TIME)
-    }
-}
-
-/// `ActionState`, `MovementState`, `ViewState`가 압축된 상태 데이터 입니다.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CompressedState(u16);
-
-impl CompressedState {
-    /// 압축된 상태를 생성합니다.
-    pub fn compress(
-        action_state: ActionState,
-        movement_state: MovementState,
-        view_state: ViewState,
-    ) -> Self {
-        let action_bit = (action_state as u16) & 0xF;
-        let movement_bit = (movement_state as u16) & 0x7;
-        let view_bit = (view_state as u16) & 0x3;
-        Self((view_bit << 7) | (movement_bit << 4) | action_bit)
-    }
-
-    /// 압축을 해제합니다.
-    pub fn try_decompress(self) -> Option<(ActionState, MovementState, ViewState)> {
-        let action_bit = (self.0 & 0xF) as u8;
-        let movement_bit = ((self.0 >> 4) & 0x7) as u8;
-        let view_bit = ((self.0 >> 7) & 0x3) as u8;
-
-        let action_state = ActionState::try_from_big_endian_bytes(&[action_bit])?;
-        let movement_state = MovementState::try_from_big_endian_bytes(&[movement_bit])?;
-        let view_state = ViewState::try_from_big_endian_bytes(&[view_bit])?;
-
-        Some((action_state, movement_state, view_state))
-    }
-}
-
-impl BigEndian for CompressedState {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(u16::from_big_endian_bytes(bytes))
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        self.0.to_big_endian_bytes()
-    }
-}
-
-impl Default for CompressedState {
-    fn default() -> Self {
-        Self(0)
     }
 }
 
@@ -615,28 +588,5 @@ mod tests {
         assert_eq!(LatLon::byte_size(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
-    }
-
-    #[test]
-    fn compress_test() {
-        let action_state = ActionState::Aiming;
-        let movement_state = MovementState::Moving;
-        let view_state = ViewState::Idle;
-
-        let origin = CompressedState::compress(action_state, movement_state, view_state);
-        let bytes = origin.to_big_endian_bytes();
-        let other = CompressedState::from_big_endian_bytes(&bytes);
-
-        // 바이트 배열 크기가 같은지 확인
-        assert_eq!(CompressedState::byte_size(), bytes.len());
-        // 원본과 일치하는지 확인
-        assert_eq!(origin, other);
-
-        // 원본과 일치하는지 확인
-        let (new_action_state, new_movement_state, new_view_state) =
-            other.try_decompress().unwrap();
-        assert_eq!(action_state, new_action_state);
-        assert_eq!(movement_state, new_movement_state);
-        assert_eq!(view_state, new_view_state);
     }
 }

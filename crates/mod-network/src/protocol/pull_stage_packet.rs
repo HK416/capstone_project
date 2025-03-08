@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, Bullet, Epoch, Player, TryFromBigEndian};
+use crate::components::{BigEndian, Bullet, Epoch, InGamePlayer, TryFromBigEndian};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -8,13 +8,13 @@ use super::{Packet, PacketType, RawPacket};
 pub struct PullStagePacket {
     pub epoch: Epoch,
     pub num_players: u16,
-    pub players: Vec<Player>,
+    pub players: Vec<InGamePlayer>,
     pub num_bullets: u16,
     pub bullets: Vec<Bullet>,
 }
 
 impl PullStagePacket {
-    pub fn new(epoch: Epoch, players: Vec<Player>, bullets: Vec<Bullet>) -> Self {
+    pub fn new(epoch: Epoch, players: Vec<InGamePlayer>, bullets: Vec<Bullet>) -> Self {
         Self {
             epoch,
             num_players: players.len() as u16,
@@ -45,7 +45,7 @@ impl Packet for PullStagePacket {
     fn as_raw(&self) -> RawPacket {
         let data_size = Epoch::byte_size()
             + u16::byte_size()
-            + Player::byte_size() * self.num_players as usize
+            + InGamePlayer::byte_size() * self.num_players as usize
             + u16::byte_size()
             + Bullet::byte_size() * self.num_bullets as usize;
         let mut data = Vec::with_capacity(data_size);
@@ -101,9 +101,9 @@ impl Packet for PullStagePacket {
         let mut players = Vec::with_capacity(count);
         while count > 0 {
             offset = offset + size;
-            size = Player::byte_size();
+            size = InGamePlayer::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(Player::try_from_big_endian_bytes(data)?);
+            players.push(InGamePlayer::try_from_big_endian_bytes(data)?);
             count -= 1;
         }
 
@@ -136,7 +136,7 @@ impl Packet for PullStagePacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{ObjectId, UserId};
+    use crate::components::{ObjectId, UserId, UserInfo, UserName};
 
     use super::*;
 
@@ -145,12 +145,12 @@ mod tests {
         let origin = PullStagePacket::new(
             Epoch::new(0),
             vec![
-                Player {
-                    user_id: UserId::new(123456),
+                InGamePlayer {
+                    info: UserInfo::new(UserId::new(123456), UserName::new("Foo")),
                     ..Default::default()
                 },
-                Player {
-                    user_id: UserId::new(1),
+                InGamePlayer {
+                    info: UserInfo::new(UserId::new(654321), UserName::new("Bar")),
                     ..Default::default()
                 },
             ],

@@ -67,7 +67,7 @@ impl GameInput {
             0x0800 => Some(Self::Emotion),
             _ => {
                 log::warn!(
-                    "failed to convert `{}` to `{}`! (VALUE:{:?})", 
+                    "failed to convert `{}` to `{}`! (VALUE:{:?})",
                     stringify!(GameInputBits),
                     stringify!(GameInput),
                     bits

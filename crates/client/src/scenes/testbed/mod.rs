@@ -59,7 +59,7 @@ impl TestbedTitleScene {
         let egui_ctx = app.egui_ctx();
 
         let config = UserConfig::get();
-        let name = config.info.name();
+        let name = config.info.name;
         let scale_factor = window.scale_factor() as f32;
         let (width, _): (f32, f32) = window.inner_size().into();
 

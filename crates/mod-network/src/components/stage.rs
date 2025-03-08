@@ -12,6 +12,24 @@ pub enum StageKind {
     City = 0,
 }
 
+impl StageKind {
+    /// 주어진 정수로 부터 `StageKind`를 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(StageKind::City),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(StageKind),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
 impl BigEndian for StageKind {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
@@ -31,18 +49,7 @@ impl Default for StageKind {
 
 impl TryFromBigEndian for StageKind {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(StageKind::City),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(StageKind),
-                    index
-                );
-                None
-            }
-        }
+        Self::new(u8::from_big_endian_bytes(bytes))
     }
 }
 

@@ -11,7 +11,7 @@ pub struct InitState;
 
 impl SessionState for InitState {
     fn handle_packets(&mut self, flow: &mut Option<ControlFlow>, session: &Arc<Session>) {
-        let user = session.user;
+        let user = session.info;
         let token = session.token;
 
         // `ConnectPacket`을 전송합니다.

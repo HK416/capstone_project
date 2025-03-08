@@ -15,8 +15,8 @@ use ahash::RandomState;
 use dashmap::{mapref::one::RefMut, DashMap, DashSet};
 use mod_network::{
     components::{
-        CharacterKind, DamageLog, Epoch, HealthPoint, MovementState, ObjectId, StageKind, UserId,
-        WorldId,
+        CharacterKind, DamageLog, Epoch, HealthPoint, InGameStatus, MovementState, ObjectId,
+        StageKind, Team, UserId, WorldId,
     },
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -99,17 +99,23 @@ impl GameWorld {
     /// 게임 월드에서 나갑니다.
     pub fn exit(&self, session: &Session) {
         self.sessions.remove(session);
-        self.push_event(GameWorldEvent::RemovePlayer(session.user().id()));
+        self.push_event(GameWorldEvent::RemovePlayer(session.user().uid));
     }
 
     /// 플레이어 캐릭터를 추가합니다.
     fn add_player(&self, session: Arc<Session>, character_kind: CharacterKind) {
-        let user_id = session.user().id();
+        let info = session.user().clone();
+        let user_id = info.uid;
         if !self.players.contains_key(&user_id) {
             // 새로 참가한 세션 목록에 세션을 추가합니다.
             self.new_sessions.push(session);
             // 플레이어 오브젝트를 생성합니다.
-            let player = PlayerObject::new(user_id, character_kind);
+            let player = PlayerObject::new(
+                info,
+                Team::default(),         // Temp
+                InGameStatus::default(), // Temp
+                character_kind,
+            );
             // 플레이어 오브젝트를 추가합니다.
             self.players.insert(user_id, player);
             log::info!("the Player({}) has been added to the {}", &user_id, &self);
@@ -304,7 +310,7 @@ impl GameWorld {
 
                 if let Some(dist) = ray.intersect(&player_capsule) {
                     if dist <= move_distance {
-                        println!("Bullet find player (player id: {:?})", player.user_id());
+                        println!("Bullet find player (player id: {:?})", player.info().uid);
                         if dist < nearest_distance {
                             nearest_distance = dist;
                             nearest_player_id = Some(*player.key());
@@ -361,7 +367,7 @@ impl GameWorld {
                     println!("  - hp: {:?}(-{})", health_point.0, final_dmg);
 
                     self.damage_logs.push(DamageLog {
-                        user_id: player.user_id(),
+                        user_id: player.info().uid,
                         damage: HealthPoint(final_dmg),
                     });
                 }

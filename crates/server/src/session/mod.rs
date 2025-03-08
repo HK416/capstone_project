@@ -11,7 +11,7 @@ use std::{
 };
 
 use mod_network::{
-    components::{LoginToken, User},
+    components::{LoginToken, UserInfo},
     protocol::{PacketParser, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -30,7 +30,7 @@ pub struct Session {
     /// 클라이언트 소켓 주소
     addr: SocketAddr,
     /// 세션의 사용자 데이터
-    user: User,
+    info: UserInfo,
     /// 사용자 로그인 토큰
     token: LoginToken,
 
@@ -49,13 +49,13 @@ impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
     pub fn new(
         addr: SocketAddr,
-        user: User,
+        user: UserInfo,
         token: LoginToken,
         udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
     ) -> Self {
         Self {
             addr,
-            user,
+            info: user,
             token,
             tcp_sender: Queue::new(),
             udp_sender,
@@ -65,8 +65,8 @@ impl Session {
     }
 
     /// 세션의 사용자 정보를 반환합니다.
-    pub fn user(&self) -> &User {
-        &self.user
+    pub fn user(&self) -> &UserInfo {
+        &self.info
     }
 
     /// 클라이언트 세션이 동작중인지 여부를 반환합니다.
@@ -113,7 +113,7 @@ impl Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session({})", &self.user.id())
+        write!(f, "Session(Uid:{})", &self.info.uid)
     }
 }
 
@@ -121,25 +121,25 @@ impl cmp::Eq for Session {}
 
 impl cmp::PartialEq for Session {
     fn eq(&self, other: &Self) -> bool {
-        self.user.eq(&other.user)
+        self.info.eq(&other.info)
     }
 }
 
 impl cmp::Ord for Session {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.user.cmp(&other.user)
+        self.info.cmp(&other.info)
     }
 }
 
 impl cmp::PartialOrd for Session {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.user.partial_cmp(&other.user)
+        self.info.partial_cmp(&other.info)
     }
 }
 
 impl hash::Hash for Session {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.user.hash(state)
+        self.info.hash(state)
     }
 }
 

@@ -1,201 +1,16 @@
-use std::{fmt, mem};
+use std::{cmp, fmt, hash, mem};
 
 use super::{
-    ActionStateTimer, BigEndian, CharacterKind, CompressedState, HealthPoint, LatLon,
-    MovementStateTimer, TryFromBigEndian, UserId, ViewStateTimer,
+    ActionState, ActionStateTimer, BigEndian, CharacterKind, HealthPoint, LatLon, MovementState,
+    MovementStateTimer, TryFromBigEndian, UserId, ViewState, ViewStateTimer,
 };
 
-/// 사용자 닉네임 크기입니다.
+/// 사용자 닉네임 문자열 버퍼의 크기입니다.
 const MAX_NAME_BUF_SIZE: usize = 16;
-/// 최대 사용자 닉네임 길이입니다.
+/// 사용자 닉네임의 최대 길이입니다.
 pub const MAX_NAME_LEN: usize = MAX_NAME_BUF_SIZE - 1;
 
-/// 서버에서 클라이언트로 플레이어 캐릭터 데이터를 보내는데 사용되는 구조체
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Player {
-    /// 사용자 식별자
-    pub user_id: UserId,
-    /// 플레이어 캐릭터의 종류
-    pub character_kind: CharacterKind,
-    /// 플레이어 캐릭터 체력
-    pub health_point: HealthPoint,
-    /// 플레이어 캐릭터의 월드 공간 위치
-    pub translation: [f32; 3],
-    /// 플레이어 캐릭터가 바라보는 월드 공간 방향 (캐릭터가 움직이는 방향과 다를 수 있음)
-    pub rotation: [f32; 4],
-    /// 플레이어 캐릭터의 월드 공간 속도
-    pub velocity: [f32; 3],
-    /// 플레이어의 압축된 상태 데이터 입니다.
-    pub compressed_state: CompressedState,
-    /// 플레이어 캐릭터의 행동 상태 타이머
-    pub action_state_timer: ActionStateTimer,
-    /// 플레이어 캐릭터의 움직임 상태 타이머
-    pub movement_state_timer: MovementStateTimer,
-    /// 플레이어 카메라 상태 타이머
-    pub view_state_timer: ViewStateTimer,
-    /// 플레이어 카메라가 캐릭터를 중심으로 바라보는 방향
-    pub view_rotation: LatLon,
-}
-
-impl BigEndian for Player {
-    fn byte_size() -> usize {
-        UserId::byte_size()
-            + CharacterKind::byte_size()
-            + HealthPoint::byte_size()
-            + <[f32; 3]>::byte_size()
-            + <[f32; 4]>::byte_size()
-            + <[f32; 3]>::byte_size()
-            + CompressedState::byte_size()
-            + ActionStateTimer::byte_size()
-            + MovementStateTimer::byte_size()
-            + ViewStateTimer::byte_size()
-            + LatLon::byte_size()
-    }
-
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("invalid data")
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(Self::byte_size());
-        bytes.extend_from_slice(&self.user_id.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.health_point.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.compressed_state.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.view_state_timer.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.view_rotation.to_big_endian_bytes());
-
-        // 바이트 배열 유효성 검증
-        if cfg!(feature = "check-validation") {
-            assert_eq!(
-                bytes.len(),
-                Self::byte_size(),
-                "the size of the byte array and the size of the `{}` are different!",
-                stringify!(Player)
-            );
-        }
-
-        bytes
-    }
-}
-
-impl Default for Player {
-    fn default() -> Self {
-        // object_id의 기본 값은 NULL이어야 합니다.
-        Self {
-            user_id: UserId::default(),
-            character_kind: CharacterKind::default(),
-            health_point: HealthPoint::default(),
-            translation: [0.0, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            velocity: [0.0, 0.0, 0.0],
-            compressed_state: CompressedState::default(),
-            action_state_timer: ActionStateTimer::default(),
-            movement_state_timer: MovementStateTimer::default(),
-            view_state_timer: ViewStateTimer::default(),
-            view_rotation: LatLon::default(),
-        }
-    }
-}
-
-impl TryFromBigEndian for Player {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        // 바이트 배열의 크기가 다른지 확인한다.
-        assert_eq!(
-            bytes.len(),
-            Self::byte_size(),
-            "the size of the byte array and the size of the `{}` are different!",
-            stringify!(Player)
-        );
-
-        // 사용자 식별자를 가져옵니다.
-        let mut offset = 0;
-        let mut size = UserId::byte_size();
-        let mut data = &bytes[offset..offset + size];
-        let user_id = UserId::from_big_endian_bytes(data);
-
-        // 캐릭터 종류를 가져옵니다.
-        offset = offset + size;
-        size = CharacterKind::byte_size();
-        data = &bytes[offset..offset + size];
-        let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
-
-        // 체력을 가져옵니다.
-        offset = offset + size;
-        size = HealthPoint::byte_size();
-        data = &bytes[offset..offset + size];
-        let health_point = HealthPoint::try_from_big_endian_bytes(data)?;
-
-        // 위치를 가져옵니다.
-        offset = offset + size;
-        size = <[f32; 3]>::byte_size();
-        data = &bytes[offset..offset + size];
-        let translation = <[f32; 3]>::from_big_endian_bytes(data);
-
-        // 방향을 가져옵니다.
-        offset = offset + size;
-        size = <[f32; 4]>::byte_size();
-        data = &bytes[offset..offset + size];
-        let rotation = <[f32; 4]>::from_big_endian_bytes(data);
-
-        // 속도를 가져옵니다.
-        offset = offset + size;
-        size = <[f32; 3]>::byte_size();
-        data = &bytes[offset..offset + size];
-        let velocity = <[f32; 3]>::from_big_endian_bytes(data);
-
-        // 압축된 상태를 가져옵니다.
-        offset = offset + size;
-        size = CompressedState::byte_size();
-        data = &bytes[offset..offset + size];
-        let compressed_state = CompressedState::from_big_endian_bytes(data);
-
-        // 행동 상태 타이머를 가져옵니다.
-        offset = offset + size;
-        size = ActionStateTimer::byte_size();
-        data = &bytes[offset..offset + size];
-        let action_state_timer = ActionStateTimer::from_big_endian_bytes(data);
-
-        // 움직임 상태 타이머를 가져옵니다.
-        offset = offset + size;
-        size = MovementStateTimer::byte_size();
-        data = &bytes[offset..offset + size];
-        let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
-
-        // 카메라 상태 타이머를 가져옵니다.
-        offset = offset + size;
-        size = ViewStateTimer::byte_size();
-        data = &bytes[offset..offset + size];
-        let view_state_timer = ViewStateTimer::from_big_endian_bytes(data);
-
-        // 카메라 방향을 가져옵니다.
-        offset = offset + size;
-        size = LatLon::byte_size();
-        data = &bytes[offset..offset + size];
-        let view_rotation = LatLon::from_big_endian_bytes(data);
-
-        Some(Self {
-            user_id,
-            character_kind,
-            health_point,
-            translation,
-            rotation,
-            velocity,
-            compressed_state,
-            action_state_timer,
-            movement_state_timer,
-            view_state_timer,
-            view_rotation,
-        })
-    }
-}
-
-/// UTF-16 형식의 사용자 닉네임 데이터입니다.
+/// UTF-16 형식의 사용자 닉네임 문자열
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UserName([u16; MAX_NAME_BUF_SIZE]);
@@ -257,35 +72,23 @@ impl fmt::Display for UserName {
     }
 }
 
-/// 사용자 정보입니다.
+/// 사용자 정보
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct User {
+pub struct UserInfo {
     /// 사용자 식별자
-    id: UserId,
-    /// 사용자 닉네임 (UTF-16)
-    name: UserName,
+    pub uid: UserId,
+    /// 사용자 닉네임
+    pub name: UserName,
 }
 
-impl User {
-    /// 비어있는 사용자 데이터입니다.
-    pub const EMPTY: Self = Self { id: UserId::NULL, name: UserName::EMPTY };
-
+impl UserInfo {
+    /// 새로운 사용자 정보를 생성합니다.
     pub fn new(id: UserId, name: UserName) -> Self {
-        Self { id, name }
-    }
-
-    /// 사용자 식별자를 반환합니다.
-    pub fn id(&self) -> UserId {
-        self.id
-    }
-
-    /// 사용자 이름을 반환합니다.
-    pub fn name(&self) -> &UserName {
-        &self.name
+        Self { uid: id, name }
     }
 }
 
-impl BigEndian for User {
+impl BigEndian for UserInfo {
     fn byte_size() -> usize {
         UserId::byte_size() + UserName::byte_size()
     }
@@ -311,12 +114,12 @@ impl BigEndian for User {
         data = &bytes[offset..offset + size];
         let name = UserName::from_big_endian_bytes(data);
 
-        Self { id: user_id, name }
+        Self { uid: user_id, name }
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(Self::byte_size());
-        bytes.extend_from_slice(&self.id.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.uid.to_big_endian_bytes());
         bytes.extend_from_slice(&self.name.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
@@ -333,12 +136,515 @@ impl BigEndian for User {
     }
 }
 
-impl Default for User {
+impl Default for UserInfo {
     fn default() -> Self {
         Self {
-            id: UserId::default(),
+            uid: UserId::default(),
             name: UserName::default(),
         }
+    }
+}
+
+/// 플레이어가 속한 팀의 종류
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Team {
+    Blue = 0,
+    Red = 1,
+}
+
+impl Team {
+    /// 주어진 정수로 부터 `Team`을 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Team::Blue),
+            1 => Some(Team::Red),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(Team),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
+impl BigEndian for Team {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let index = *self as u8;
+        index.to_big_endian_bytes()
+    }
+}
+
+impl Default for Team {
+    fn default() -> Self {
+        Self::Blue
+    }
+}
+
+impl TryFromBigEndian for Team {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::new(u8::from_big_endian_bytes(bytes))
+    }
+}
+
+/// 커스텀 게임 대기실에서 플레이어의 권한
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Permission {
+    User = 0,
+    Admin = 1,
+}
+
+impl Permission {
+    /// 주어진 정수로 부터 `Permission`을 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Permission::User),
+            1 => Some(Permission::Admin),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(Permission),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
+impl BigEndian for Permission {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let index = *self as u8;
+        index.to_big_endian_bytes()
+    }
+}
+
+impl Default for Permission {
+    fn default() -> Self {
+        Self::User
+    }
+}
+
+impl TryFromBigEndian for Permission {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::new(u8::from_big_endian_bytes(bytes))
+    }
+}
+
+/// 커스텀 게임 대기실에서 플레이어의 상태  
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CustomGameStatus {
+    Wait = 0,
+    Ready = 1,
+    Connect = 2,
+    Disconnect = 3,
+}
+
+impl CustomGameStatus {
+    /// 주어진 정수로 부터 `CustomGameStatus`를 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(CustomGameStatus::Wait),
+            1 => Some(CustomGameStatus::Ready),
+            2 => Some(CustomGameStatus::Connect),
+            3 => Some(CustomGameStatus::Disconnect),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(CustomGamePlayerStatus),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
+impl BigEndian for CustomGameStatus {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let index = *self as u8;
+        index.to_big_endian_bytes()
+    }
+}
+
+impl Default for CustomGameStatus {
+    fn default() -> Self {
+        Self::Wait
+    }
+}
+
+impl TryFromBigEndian for CustomGameStatus {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::new(u8::from_big_endian_bytes(bytes))
+    }
+}
+
+/// 서버에서 클라이언트로 보내는 커스텀 게임에 참여한 플레이어 정보
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomGamePlayer {
+    /// 플레이어의 사용자 정보
+    pub info: UserInfo,
+    /// 플레이어가 속한 팀의 종류
+    pub team: Team,
+    /// 플레이어 상태
+    pub status: CustomGameStatus,
+    /// 플레이어의 권한
+    pub permission: Permission,
+}
+
+impl Default for CustomGamePlayer {
+    fn default() -> Self {
+        Self {
+            info: UserInfo::default(),
+            team: Team::default(),
+            status: CustomGameStatus::default(),
+            permission: Permission::default(),
+        }
+    }
+}
+
+impl cmp::Ord for CustomGamePlayer {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.info.uid.cmp(&other.info.uid)
+    }
+}
+
+impl cmp::PartialOrd for CustomGamePlayer {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.info.uid.partial_cmp(&other.info.uid)
+    }
+}
+
+impl hash::Hash for CustomGamePlayer {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.info.uid.hash(state);
+    }
+}
+
+/// 인게임에서 플레이어의 상태
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InGameStatus {
+    Connect = 0,
+    Disconnect = 1,
+    Live = 2,
+    Die = 3,
+}
+
+impl InGameStatus {
+    /// 주어진 정수로 부터 `InGameStatus`를 생성합니다.  
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(InGameStatus::Connect),
+            1 => Some(InGameStatus::Disconnect),
+            2 => Some(InGameStatus::Live),
+            3 => Some(InGameStatus::Die),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(InGameStatus),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
+impl BigEndian for InGameStatus {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let index = *self as u8;
+        index.to_big_endian_bytes()
+    }
+}
+
+impl Default for InGameStatus {
+    fn default() -> Self {
+        Self::Connect
+    }
+}
+
+impl TryFromBigEndian for InGameStatus {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::new(u8::from_big_endian_bytes(bytes))
+    }
+}
+
+/// 서버에서 클라이언트로 보내는 인게임 플레이어 정보
+///
+/// # Note
+/// 아래 데이터는 16bit로 압축되어 보내집니다.
+/// - team (8bit -> 1bit),
+/// - status (8bit -> 3bit),
+/// - action_state (8bit -> 4bit),
+/// - movement_state (8bit -> 3bit),
+/// - view_state (8bit -> 2bit)
+///
+#[derive(Debug, Clone, PartialEq)]
+pub struct InGamePlayer {
+    /// 플레이어의 사용자 정보
+    pub info: UserInfo,
+    /// 플레이어가 속한 팀
+    pub team: Team,
+    /// 플레이어의 상태
+    pub status: InGameStatus,
+
+    /// 플레이어 캐릭터의 종류
+    pub character_kind: CharacterKind,
+    /// 플레이어 캐릭터 체력
+    pub health_point: HealthPoint,
+    /// 플레이어 캐릭터의 월드 공간 위치
+    pub translation: [f32; 3],
+    /// 플레이어 캐릭터가 바라보는 월드 공간 방향 (캐릭터가 움직이는 방향과 다를 수 있음)
+    pub rotation: [f32; 4],
+    /// 플레이어 캐릭터의 월드 공간 속도
+    pub velocity: [f32; 3],
+
+    /// 플레이어 캐릭터의 행동 상태
+    pub action_state: ActionState,
+    /// 플레이어 캐릭터의 움직임 상태
+    pub movement_state: MovementState,
+    /// 플레이어 카메라 상태
+    pub view_state: ViewState,
+    /// 플레이어 캐릭터의 행동 상태 타이머
+    pub action_state_timer: ActionStateTimer,
+    /// 플레이어 캐릭터의 움직임 상태 타이머
+    pub movement_state_timer: MovementStateTimer,
+    /// 플레이어 카메라 상태 타이머
+    pub view_state_timer: ViewStateTimer,
+    /// 플레이어 카메라가 캐릭터를 중심으로 바라보는 방향
+    pub view_rotation: LatLon,
+}
+
+impl InGamePlayer {
+    /// 일부 맴버 변수의 데이터를 압축합니다.
+    fn compress(&self) -> u16 {
+        // +------+-------------+---------------+---------------------+-----------------------+-------------------+
+        // | 3bit | team (1bit) | status (3bit) | action_state (4bit) | movement_state (3bit) | view_state (2bit) |
+        // +------+-------------+---------------+---------------------+-----------------------+-------------------+
+        //
+        let team_bit = (self.team as u16) << 12;
+        let status_bit = (self.status as u16) << 9;
+        let action_bit = (self.action_state as u16) << 5;
+        let movement_bit = (self.movement_state as u16) << 2;
+        let view_bit = (self.view_state as u16) << 0;
+
+        team_bit | status_bit | action_bit | movement_bit | view_bit
+    }
+
+    /// 압축된 데이터를 원래 데이터로 복원합니다.  
+    /// 원래 데이터로 복원에 실패할 경우 `None`을 반환합니다.
+    fn try_decompress(
+        bit: u16,
+    ) -> Option<(Team, InGameStatus, ActionState, MovementState, ViewState)> {
+        let val = (bit >> 12) & 0x1;
+        let team = Team::new(val as u8)?;
+
+        let val = (bit >> 9) & 0x7;
+        let status = InGameStatus::new(val as u8)?;
+
+        let val = (bit >> 5) & 0xF;
+        let action_state = ActionState::new(val as u8)?;
+
+        let val = (bit >> 2) & 0x7;
+        let movement_state = MovementState::new(val as u8)?;
+
+        let val = (bit >> 0) & 0x3;
+        let view_state = ViewState::new(val as u8)?;
+
+        Some((team, status, action_state, movement_state, view_state))
+    }
+}
+
+impl BigEndian for InGamePlayer {
+    fn byte_size() -> usize {
+        UserInfo::byte_size()
+            + CharacterKind::byte_size()
+            + HealthPoint::byte_size()
+            + <[f32; 3]>::byte_size()
+            + <[f32; 4]>::byte_size()
+            + <[f32; 3]>::byte_size()
+            + u16::byte_size() // 압축된 데이터 크기
+            + ActionStateTimer::byte_size()
+            + MovementStateTimer::byte_size()
+            + ViewStateTimer::byte_size()
+            + LatLon::byte_size()
+    }
+
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(Self::byte_size());
+        bytes.extend_from_slice(&self.info.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.health_point.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.compress().to_big_endian_bytes());
+        bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.view_state_timer.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.view_rotation.to_big_endian_bytes());
+
+        // 바이트 배열 유효성 검증
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                bytes.len(),
+                Self::byte_size(),
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(Player)
+            );
+        }
+
+        bytes
+    }
+}
+
+impl Default for InGamePlayer {
+    fn default() -> Self {
+        // object_id의 기본 값은 NULL이어야 합니다.
+        Self {
+            info: UserInfo::default(),
+            team: Team::default(),
+            status: InGameStatus::default(),
+            character_kind: CharacterKind::default(),
+            health_point: HealthPoint::default(),
+            translation: [0.0, 0.0, 0.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            velocity: [0.0, 0.0, 0.0],
+            action_state: ActionState::default(),
+            action_state_timer: ActionStateTimer::default(),
+            movement_state: MovementState::default(),
+            movement_state_timer: MovementStateTimer::default(),
+            view_state: ViewState::default(),
+            view_state_timer: ViewStateTimer::default(),
+            view_rotation: LatLon::default(),
+        }
+    }
+}
+
+impl TryFromBigEndian for InGamePlayer {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        // 바이트 배열의 크기가 다른지 확인한다.
+        assert_eq!(
+            bytes.len(),
+            Self::byte_size(),
+            "the size of the byte array and the size of the `{}` are different!",
+            stringify!(Player)
+        );
+
+        // 사용자 식별자를 가져옵니다.
+        let mut offset = 0;
+        let mut size = UserInfo::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let info = UserInfo::from_big_endian_bytes(data);
+
+        // 캐릭터 종류를 가져옵니다.
+        offset = offset + size;
+        size = CharacterKind::byte_size();
+        data = &bytes[offset..offset + size];
+        let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
+
+        // 체력을 가져옵니다.
+        offset = offset + size;
+        size = HealthPoint::byte_size();
+        data = &bytes[offset..offset + size];
+        let health_point = HealthPoint::try_from_big_endian_bytes(data)?;
+
+        // 위치를 가져옵니다.
+        offset = offset + size;
+        size = <[f32; 3]>::byte_size();
+        data = &bytes[offset..offset + size];
+        let translation = <[f32; 3]>::from_big_endian_bytes(data);
+
+        // 방향을 가져옵니다.
+        offset = offset + size;
+        size = <[f32; 4]>::byte_size();
+        data = &bytes[offset..offset + size];
+        let rotation = <[f32; 4]>::from_big_endian_bytes(data);
+
+        // 속도를 가져옵니다.
+        offset = offset + size;
+        size = <[f32; 3]>::byte_size();
+        data = &bytes[offset..offset + size];
+        let velocity = <[f32; 3]>::from_big_endian_bytes(data);
+
+        // 압축된 데이터를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let (team, status, action_state, movement_state, view_state) =
+            Self::try_decompress(u16::from_big_endian_bytes(data))?;
+
+        // 행동 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = ActionStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let action_state_timer = ActionStateTimer::from_big_endian_bytes(data);
+
+        // 움직임 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = MovementStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
+
+        // 카메라 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = ViewStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let view_state_timer = ViewStateTimer::from_big_endian_bytes(data);
+
+        // 카메라 방향을 가져옵니다.
+        offset = offset + size;
+        size = LatLon::byte_size();
+        data = &bytes[offset..offset + size];
+        let view_rotation = LatLon::from_big_endian_bytes(data);
+
+        Some(Self {
+            info,
+            team,
+            status,
+            character_kind,
+            health_point,
+            translation,
+            rotation,
+            velocity,
+            action_state,
+            movement_state,
+            view_state,
+            action_state_timer,
+            movement_state_timer,
+            view_state_timer,
+            view_rotation,
+        })
     }
 }
 
@@ -348,35 +654,41 @@ mod tests {
 
     #[test]
     fn validation_test_player() {
-        let origin = Player {
-            user_id: UserId::new(3141592),
+        let info = UserInfo::new(UserId::new(3141592), UserName::new("Hello,안녕!"));
+        let origin = InGamePlayer {
+            info,
+            team: Team::Blue,
+            status: InGameStatus::Live,
             character_kind: CharacterKind::MomoiOriginal,
             health_point: HealthPoint(2700),
             translation: [-1.0101, 2.3456, 1000.011],
             rotation: [0.1234, 1.99992, 0.08843, 1.0],
             velocity: [0.0, -0.1334, 0.5887],
+            action_state: ActionState::AimOff,
+            movement_state: MovementState::Idle,
+            view_state: ViewState::ZoomOut,
             ..Default::default()
         };
         let bytes = origin.to_big_endian_bytes();
-        let other = Player::from_big_endian_bytes(&bytes);
+        let other = InGamePlayer::from_big_endian_bytes(&bytes);
 
         // 바이트 배열 크기가 같은지 확인
-        assert_eq!(Player::byte_size(), bytes.len());
+        assert_eq!(InGamePlayer::byte_size(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
     }
 
     #[test]
     fn validation_test_user() {
-        let origin = User {
-            id: UserId::new(3141592),
+        let origin = UserInfo {
+            uid: UserId::new(3141592),
             name: UserName::new("Hello안녕!"),
         };
         let bytes = origin.to_big_endian_bytes();
-        let other = User::from_big_endian_bytes(&bytes);
+        let other = UserInfo::from_big_endian_bytes(&bytes);
 
         // 바이트 배열 크기가 같은지 확인
-        assert_eq!(User::byte_size(), bytes.len());
+        assert_eq!(UserInfo::byte_size(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
     }

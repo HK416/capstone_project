@@ -1,7 +1,7 @@
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, CompressedState,
-    GameInputBits, HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player,
-    UserId, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
+    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameInputBits, HealthPoint,
+    InGamePlayer, InGameStatus, LatLon, MovementState, MovementStateTimer, ObjectId, Team,
+    UserInfo, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
 };
 
 use crate::data::get_character_attributes;
@@ -14,8 +14,12 @@ const MAX_INPUT_DURATION: f32 = 0.25;
 /// 서버에서 관리하는 플레이어 오브젝트 데이터
 #[derive(Debug, Clone)]
 pub struct PlayerObject {
-    /// 플레이어의 사용자 식별자
-    user_id: UserId,
+    /// 플레이어의 사용자 정보
+    info: UserInfo,
+    /// 플레이어의 팀 정보
+    team: Team,
+    /// 플레이어의 상태
+    status: InGameStatus,
 
     /// 플레이어 캐릭터 종류
     character_kind: CharacterKind,
@@ -62,10 +66,17 @@ pub struct PlayerObject {
 }
 
 impl PlayerObject {
-    pub fn new(user_id: UserId, character_kind: CharacterKind) -> Self {
+    pub fn new(
+        info: UserInfo,
+        team: Team,
+        status: InGameStatus,
+        character_kind: CharacterKind,
+    ) -> Self {
         let attributes = get_character_attributes(character_kind);
         Self {
-            user_id,
+            info,
+            team,
+            status,
             character_kind,
             attributes,
             health_point: HealthPoint(attributes.health_point),
@@ -87,9 +98,9 @@ impl PlayerObject {
         }
     }
 
-    /// 플레이어 오브젝트의 사용자 식별자를 가져옵니다.
-    pub fn user_id(&self) -> UserId {
-        self.user_id
+    /// 플레이어 오브젝트의 사용자 정보를 가져옵니다.
+    pub fn info(&self) -> &UserInfo {
+        &self.info
     }
 
     /// 플레이어 오브젝트의 캐릭터 속성을 가져옵니다.
@@ -154,7 +165,7 @@ impl PlayerObject {
 
         BulletObject {
             object_id,
-            shooter_id: self.user_id,
+            shooter_id: self.info.uid,
             bullet_kind: self.character_kind.into(),
             translation,
             rotation,
@@ -676,7 +687,7 @@ impl PlayerObject {
             self.fired_per_attack += 1;
             // self.remaining_bullets -= 1;
 
-            let shooter_id = self.user_id;
+            let shooter_id = self.info.uid;
             let delay = self.action_state_timer.0 - *time_point;
             world.push_event(GameWorldEvent::AddBullet { shooter_id, delay });
         }
@@ -1375,17 +1386,18 @@ impl PlayerObject {
             (self.movement_state_timer.0 + elapsed_time_sec).min(MAX_JUMP_DURATION);
     }
 
-    pub fn as_player(&self) -> Player {
-        let compressed_state =
-            CompressedState::compress(self.action_state, self.movement_state, self.view_state);
-
-        Player {
-            user_id: self.user_id,
+    pub fn as_player(&self) -> InGamePlayer {
+        InGamePlayer {
+            info: self.info,
+            team: self.team,
+            status: self.status,
             character_kind: self.character_kind,
             health_point: self.health_point,
             translation: self.translation.into(),
             rotation: self.rotation.into(),
-            compressed_state,
+            action_state: self.action_state,
+            movement_state: self.movement_state,
+            view_state: self.view_state,
             action_state_timer: self.action_state_timer,
             movement_state_timer: self.movement_state_timer,
             view_state_timer: self.view_state_timer,
