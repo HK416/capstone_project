@@ -3,10 +3,41 @@ mod lobby;
 mod room;
 mod startup;
 mod testbed;
+mod title;
 
 use std::fmt;
 
-pub use self::{intro::*, lobby::*, room::*, startup::*, testbed::*};
+pub use self::{intro::*, lobby::*, room::*, startup::*, testbed::*, title::*};
+
+impl fmt::Debug for GameIntroScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: 게임 인트로 화면을 보여주는 장면입니다.",
+            stringify!(GameIntroScene)
+        )
+    }
+}
+
+impl fmt::Debug for GameLoginScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: 게임 타이틀 화면에서 로그인창을 보여주는 장면입니다.",
+            stringify!(GameLoginScene)
+        )
+    }
+}
+
+impl fmt::Debug for GameTitleScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: 게임 타이틀 화면을 보여주는 장면입니다.",
+            stringify!(GameTitleScene)
+        )
+    }
+}
 
 impl fmt::Debug for MainLobbyEnterScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
