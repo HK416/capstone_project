@@ -4,17 +4,17 @@ use mod_app::{app::AppHandle, scene::GameScene};
 use mod_render::UiRenderer;
 use winit::window::Window;
 
-/// 게임 인트로 화면을 보여주는 장면입니다.
-pub struct GameIntroScene {}
+/// 시스템에서 클라이언트를 처음 실행했을 때 사용자 구성을 설정하는 장면입니다.
+pub struct InitConfigScene {}
 
-impl GameIntroScene {
-    /// 새로운 `GameIntroScene`을 생성합니다.
+impl InitConfigScene {
+    /// 새로운 `InitConfigScene`을 생성합니다.
     pub fn new() -> Self {
         Self {}
     }
 }
 
-impl GameScene for GameIntroScene {
+impl GameScene for InitConfigScene {
     fn on_draw(
         &self,
         window: &Window,

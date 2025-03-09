@@ -4,7 +4,19 @@ mod stage;
 
 use std::io;
 
+use constcat::concat;
+
 pub use self::{hierarchy::*, motion::*, stage::*};
+
+/// 사용자 구성 파일의 상대 경로입니다.
+pub const USER_CONFIG: &'static str = "user_config";
+/// 폰트 에셋의 작업 디렉토리 상대 경로입니다.
+pub const FONT_WORKSPACE: &'static str = "font/";
+/// `NEXON Lv2 고딕` 폰트 파일의 상대 경로입니다.
+pub const NEXON_LV2_GOTHIC: &'static str = concat!(FONT_WORKSPACE, "NEXON_Lv2_Gothic.ttf");
+/// `NEXON Lv2 고딕` 폰트 파일의 상대 경로입니다.
+pub const NEXON_LV2_GOTHIC_BOLD: &'static str =
+    concat!(FONT_WORKSPACE, "NEXON_Lv2_Gothic_Bold.ttf");
 
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]
