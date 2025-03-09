@@ -355,26 +355,44 @@ impl World {
         self.update_player_position(elapsed_time_sec);
 
         let colliders = [
-            Collider::Box(BoundingBox::new(glam::Vec3::ZERO, glam::Vec3::new(1.0, 1.0, 1.0))),
-            // Collider::Sphere(Sphere {
-            //     center: glam::Vec3::ZERO,
-            //     radius: 1.0,
-            // }),
+            // Collider::Box(BoundingBox::new_rotated(
+            //     glam::Vec3::new(0.0, -0.9, 0.0), 
+            //     glam::Vec3::new(2.0, 2.0, 2.0),
+            //     glam::Mat3::from_quat(glam::Quat::from_rotation_x(30f32.to_radians())),
+            // )),
+            Collider::Sphere(Sphere {
+                center: glam::Vec3::ZERO,
+                radius: 1.0,
+            }),
+            // Collider::Capsule(Capsule::build(
+            //     glam::Vec3::new(0.0, 0.0, 0.0),
+            //     glam::Vec3::Y,
+            //     2.0,
+            //     0.5,
+            // ).unwrap()),
         ];
 
         for collider in colliders.iter() {
             for mut player in self.players.iter_mut() {
                 let player_collider = Collider::Capsule(player.collider.clone());
-                let player_collider = Collider::Sphere(Sphere {
-                    center: player.translation.into(),
-                    radius: PLAYER_RADIUS,
-                });
-                let player_collider = Collider::Box(
-                    BoundingBox::new(
-                        player.translation.into(), 
-                        glam::Vec3::new(PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_RADIUS)
-                    )
-                );
+                // let player_collider = Collider::Sphere(Sphere {
+                //     center: glam::Vec3::new(
+                //         player.translation.x,
+                //         player.translation.y + PLAYER_HEIGHT/2.0,
+                //         player.translation.z,
+                //     ),
+                //     radius: PLAYER_HEIGHT/2.0,
+                // });
+                // let player_collider = Collider::Box(
+                //     BoundingBox::new(
+                //         glam::Vec3::new(
+                //             player.translation.x,
+                //             player.translation.y + PLAYER_HEIGHT/2.0,
+                //             player.translation.z,
+                //         ),
+                //         glam::Vec3::new(PLAYER_RADIUS, PLAYER_HEIGHT/2.0, PLAYER_RADIUS)
+                //     )
+                // );
                 if let Some(collision_info) = player_collider.check_collision_details(collider) {
                     player.translation += collision_info.normal * -collision_info.penetration;
                     // println!("Player {:?} collision with box {:?}", player.object_id, bb);

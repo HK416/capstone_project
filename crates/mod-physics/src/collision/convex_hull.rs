@@ -9,8 +9,6 @@ use crate::{
 
 pub trait ConvexHull {
     /// 도형에 속하는 점 중 direction 방향으로 가장 먼 점을 반환한다.  
-    /// 
-    /// direction은 단위 벡터여야 한다.  
     fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A;
 
     /// 두 도형의 Minkowski 차의 Support Point를 구한다.  
@@ -102,7 +100,7 @@ pub trait ConvexHull {
 
     fn gjk_epa(&self, other: &impl ConvexHull) -> Option<CollisionDetails> {
         let simplex = self.gjk(other)?;
-        if simplex.count == 1 {
+        if simplex.count <= 1 {
             return Some(CollisionDetails {
                 normal: glam::Vec3A::ZERO,
                 penetration: 0.0,
@@ -118,13 +116,11 @@ pub trait ConvexHull {
             [3, 2, 1],
             [3, 0, 2],
         ];
-        // 원점이 무조건 simplex 안에 있으므로 distance <= 0이 되어 Min Heap처럼 사용할 수 있다.
+        // 원점은 무조건 simplex 안에 있다.
         let faces = Face::vec(&polytope, &indices);
         let mut faces = faces.into_iter()
             .filter_map(|f| f)
             .collect::<BinaryHeap<_>>();
-
-        let mut cnt = 0;
 
         loop {
             // 2. 최근접면의 법선벡터 방향으로 polytope를 확장한다.
@@ -132,8 +128,8 @@ pub trait ConvexHull {
             let nearest_face = match faces.peek() {
                 Some(face) => face,
                 None => {
-                    println!("indices: {:?}", indices);
                     println!("polytope: {:?}", polytope);
+                    println!("faces: {:?}", faces);
                     panic!("No nearest face");
                 }
             };
@@ -153,7 +149,10 @@ pub trait ConvexHull {
             // 2-2. O to support 벡터와 방향이 같은 모든 면을 제거한다.
             let same_direction_faces;
             (same_direction_faces, faces) = faces.iter()
-                .partition(|f| f.normal.dot(support) > 0.0);
+                .partition(|f| {
+                    let d = support - polytope[f.vertices[0]];
+                    f.normal.dot(d) > 0.0
+                });
 
             // 2-3. 새로운 면을 만든다.
             let edges = same_direction_faces.iter()
@@ -189,28 +188,16 @@ pub trait ConvexHull {
             for face in new_faces {
                 faces.push(face);
             }
-
-            cnt += 1;
-            if cnt >= 25 {
-                return Some(collision_info);
-            }
         }
     }
 }
 
 impl ConvexHull for BoundingBox {
     fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
-        let vertices = self.get_vertices();
-        let mut max = direction.dot(vertices[0]);
-        let mut index = 0;
-        for i in 1..vertices.len() {
-            let dot = direction.dot(vertices[i]);
-            if dot > max {
-                max = dot;
-                index = i;
-            }
-        }
-        vertices[index]
+        self.get_vertices().iter()
+            .max_by(|&a, &b| direction.dot(*a).partial_cmp(&direction.dot(*b)).unwrap())
+            .copied()
+            .unwrap()
     }
 }
 
@@ -250,16 +237,16 @@ struct Face {
 impl Face {
     fn vec(vertices: &[glam::Vec3A], indices: &[[usize; 3]]) -> Vec<Option<Self>> {
         let mut faces = Vec::with_capacity(indices.len());
-        for i in indices {
+        for idx in indices {
             let v = [
-                vertices[i[1]] - vertices[i[0]],
-                vertices[i[2]] - vertices[i[0]],
+                vertices[idx[1]] - vertices[idx[0]],
+                vertices[idx[2]] - vertices[idx[0]],
             ];
             match v[0].cross(v[1]).try_normalize() {
                 Some(normal) => {
-                    let distance = normal.dot(vertices[i[0]]);
+                    let distance = normal.dot(vertices[idx[0]]);
                     faces.push(Some(Face {
-                        vertices: *i,
+                        vertices: *idx,
                         normal,
                         distance,
                     }));
@@ -301,6 +288,7 @@ impl Ord for Face {
 
 /// 바닥면을 이루는 세 점과 나머지 한 점 순으로 저장하고,  
 /// 바닥면의 법선벡터는 항상 원점 반대방향이어야 한다. (CCW)  
+#[derive(Debug)]
 pub struct Simplex {
     vertices: [glam::Vec3A; 4],
     /// 유효한 점의 개수
