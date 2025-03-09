@@ -17,4 +17,11 @@ impl Sphere {
         let dist = line.distance_to_point_sq(&self.center.into());
         dist <= self.radius.powi(2)
     }
+
+    pub fn inflated(&self, amound: f32) -> Sphere {
+        Sphere {
+            center: self.center,
+            radius: self.radius + amound,
+        }
+    }
 }

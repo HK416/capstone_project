@@ -134,7 +134,7 @@ pub trait ConvexHull {
                 }
             };
             let collision_info = CollisionDetails {
-                normal: nearest_face.normal,
+                normal: -nearest_face.normal,
                 penetration: nearest_face.distance,
             };
             let support = self.get_support(other, &nearest_face.normal);

@@ -212,7 +212,7 @@ impl World {
                 view_state_timer: ViewStateTimer::default(),
                 view_rotation: LatLon::default(),
                 shot_count: 0,
-                collider: Capsule::build(glam::Vec3::ZERO, glam::Vec3::Y, PLAYER_HEIGHT, PLAYER_RADIUS).unwrap(),
+                collider: Capsule::new_rotated(glam::Vec3::ZERO, glam::Vec3::Y, PLAYER_HEIGHT, PLAYER_RADIUS).unwrap(),
             },
         );
     }
@@ -355,21 +355,20 @@ impl World {
         self.update_player_position(elapsed_time_sec);
 
         let colliders = [
-            // Collider::Box(BoundingBox::new_rotated(
-            //     glam::Vec3::new(0.0, -0.9, 0.0), 
-            //     glam::Vec3::new(2.0, 2.0, 2.0),
-            //     glam::Mat3::from_quat(glam::Quat::from_rotation_x(30f32.to_radians())),
-            // )),
-            Collider::Sphere(Sphere {
-                center: glam::Vec3::ZERO,
-                radius: 1.0,
-            }),
-            // Collider::Capsule(Capsule::build(
+            Collider::Box(BoundingBox::new_rotated(
+                glam::Vec3::new(0.0, -0.9, 0.0), 
+                glam::Vec3::new(2.0, 2.0, 2.0),
+                glam::Mat3::from_quat(glam::Quat::from_rotation_x(30f32.to_radians())),
+            )),
+            // Collider::Sphere(Sphere {
+            //     center: glam::Vec3::ZERO,
+            //     radius: 1.0,
+            // }),
+            // Collider::Capsule(Capsule::new(
             //     glam::Vec3::new(0.0, 0.0, 0.0),
-            //     glam::Vec3::Y,
             //     2.0,
             //     0.5,
-            // ).unwrap()),
+            // )),
         ];
 
         for collider in colliders.iter() {
@@ -394,7 +393,7 @@ impl World {
                 //     )
                 // );
                 if let Some(collision_info) = player_collider.check_collision_details(collider) {
-                    player.translation += collision_info.normal * -collision_info.penetration;
+                    player.translation += collision_info.normal * collision_info.penetration;
                     // println!("Player {:?} collision with box {:?}", player.object_id, bb);
                     // println!("collision penetration: {}", collision_info.penetration);
                 }

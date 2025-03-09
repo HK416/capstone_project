@@ -84,7 +84,10 @@ impl RayIntersect for Capsule {
         let ray_origin = glam::Vec3A::from(ray.origin);
         let ray_direction = glam::Vec3A::from(ray.direction());
         
-        let cylinder_direction = glam::Vec3A::from(self.direction());
+        let cylinder_direction = match self.direction() {
+            Some(direction) => glam::Vec3A::from(direction),
+            None => glam::Vec3A::Y,
+        };
 
         // 기둥의 아래부분 중심
         let center = glam::Vec3A::from(seg.start);
@@ -138,19 +141,6 @@ impl RayIntersect for Capsule {
         let distance = h_to_origin_len - h_to_intersect;
         Some(distance)
    }
-}
-
-impl RayIntersect for YCapsule {
-    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
-        let capsule = Capsule::build(
-            self.center, 
-            glam::Vec3::Y, 
-            self.height, 
-            self.radius
-        ).unwrap();
-
-        capsule.ray_intersect(ray)
-    }
 }
 
 impl RayIntersect for BoundingBox {
