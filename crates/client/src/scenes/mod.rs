@@ -13,9 +13,21 @@ impl fmt::Debug for GameStartupScene {
     }
 }
 
-impl fmt::Debug for InitConfigScene {
+impl fmt::Debug for InitLocaleScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(InitConfigScene))
+        write!(f, "{}", stringify!(InitLocaleScene))
+    }
+}
+
+impl fmt::Debug for InitWindowScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InitWindowScene))
+    }
+}
+
+impl fmt::Debug for InitFinishScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InitFinishScene))
     }
 }
 

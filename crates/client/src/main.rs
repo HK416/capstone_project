@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod asset;
-mod channel;
 mod component;
 mod config;
 mod render;

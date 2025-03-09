@@ -21,10 +21,15 @@ lazy_static! {
     static ref USER_CONFIG: Mutex<UserConfig> = Mutex::new(UserConfig::default());
 }
 
+/// 애플리케이션 표시 언어 수
+pub const NUM_LOCALE: usize = 1;
+
 /// 애플리케이션 표시 언어 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub enum Locale {
+    // ENG,
+    // JPN,
     KOR,
 }
 

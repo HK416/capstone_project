@@ -3,17 +3,16 @@ mod init;
 use std::{error::Error, path::PathBuf, sync::Arc};
 
 use ahash::HashMap;
-use egui::{FontData, FontDefinitions, FontFamily};
 use mod_app::{
     app::AppHandle,
     asset::AssetManager,
-    etc::AppEvent,
+    etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
-use winit::window::Window;
+use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     asset::{NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD, USER_CONFIG},
@@ -129,8 +128,8 @@ impl GameStartupScene {
     }
 
     /// 폰트를 초기화합니다.
-    fn setup_custom_fonts(&mut self, egui_ctx: &egui::Context) {
-        let mut fonts = FontDefinitions::default();
+    fn setup_custom_fonts(&mut self, ctx: &egui::Context) {
+        let mut fonts = egui::FontDefinitions::default();
 
         // `NEXON Lv2 Gothic` 폰트를 추가합니다.
         let font = self
@@ -139,10 +138,10 @@ impl GameStartupScene {
             .expect("font data is empty!");
         fonts.font_data.insert(
             NEXON_LV2_GOTHIC.to_owned(),
-            FontData::from_owned(font).into(),
+            egui::FontData::from_owned(font).into(),
         );
         fonts.families.insert(
-            FontFamily::Name(NEXON_LV2_GOTHIC.into()),
+            egui::FontFamily::Name(NEXON_LV2_GOTHIC.into()),
             vec![NEXON_LV2_GOTHIC.into()],
         );
 
@@ -153,15 +152,35 @@ impl GameStartupScene {
             .expect("font data is empty!");
         fonts.font_data.insert(
             NEXON_LV2_GOTHIC_BOLD.to_owned(),
-            FontData::from_owned(font).into(),
+            egui::FontData::from_owned(font).into(),
         );
         fonts.families.insert(
-            FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into()),
+            egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into()),
             vec![NEXON_LV2_GOTHIC_BOLD.into()],
         );
 
         // 폰트 설정을 저장합니다.
-        egui_ctx.set_fonts(fonts);
+        ctx.set_fonts(fonts);
+    }
+
+    /// 애플리케이션 창의 설정을 변경합니다.
+    fn change_window_config(&self, window: &Window, event_loop_proxy: &EventLoopProxy<AppEvent>) {
+        // 애플리케이션 창의 최대 크기를 구합니다.
+        let max_window_size = window
+            .current_monitor()
+            .map(|monitor| WindowSize::find_maximize_size(monitor))
+            .flatten()
+            .unwrap_or(WindowSize::MAX);
+
+        // 사용자 설정을 변경합니다.
+        let mut config = UserConfig::get();
+        config.window_size = config.window_size.min(max_window_size);
+
+        // 애플리케이션 창의 설정을 변경합니다.
+        let event = AppEvent::ResizeRequest(config.window_size);
+        event_loop_proxy.send_event(event).unwrap();
+        let event = AppEvent::FullScreenRequest(config.is_fullscreen);
+        event_loop_proxy.send_event(event).unwrap();
     }
 }
 
@@ -181,10 +200,13 @@ impl GameScene for GameStartupScene {
 
     fn on_exit(
         &mut self,
-        _window: Option<&Window>,
+        window: Option<&Window>,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         self.setup_custom_fonts(app.egui_ctx());
+        if let Some(window) = window {
+            self.change_window_config(window, app.event_loop_proxy());
+        }
         Ok(())
     }
 
@@ -204,7 +226,7 @@ impl GameScene for GameStartupScene {
         // 모든 작업이 완료된 경우 다음 게임 장면으로 전환합니다.
         if self.remaining_task_count == 0 {
             let next_scene: Box<dyn GameScene> = match self.needs_initial_setup {
-                true => Box::new(InitConfigScene::new()),
+                true => Box::new(InitLocaleScene::new()),
                 false => Box::new(GameIntroScene::new()),
             };
             let scene_flow = GameSceneFlow::Change(next_scene);
