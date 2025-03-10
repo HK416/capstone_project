@@ -1,4 +1,5 @@
 pub mod area;
+pub mod background;
 pub mod bullet;
 pub mod camera;
 pub mod character;
@@ -17,7 +18,8 @@ use mod_render::{
 use crate::component::{BoneCollection, Child, Sibling, WorldTransform};
 
 pub use self::{
-    area::*, bullet::*, camera::*, character::*, composite::*, fx::*, prop::*, skybox::*,
+    area::*, background::*, bullet::*, camera::*, character::*, composite::*, fx::*, prop::*,
+    skybox::*,
 };
 
 /// 주어진 이름의 사각형 메쉬를 풀 객체에서 가져옵니다.   

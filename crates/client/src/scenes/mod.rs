@@ -36,13 +36,13 @@ impl fmt::Debug for InitFinishScene {
 
 impl fmt::Debug for GameIntroNotifyScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(GameIntroPhase0Scene))
+        write!(f, "{}", stringify!(GameIntroNotifyScene))
     }
 }
 
 impl fmt::Debug for GameLoginTitleScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(GameLoginScene))
+        write!(f, "{}", stringify!(GameLoginTitleScene))
     }
 }
 
