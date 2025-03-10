@@ -2,7 +2,7 @@ use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, Epoch, HealthPoint, LatLon,
     MovementState, MovementStateTimer, ObjectId, ViewState, ViewStateTimer,
 };
-use mod_physics::Capsule;
+use mod_physics::object3d::Capsule;
 
 
 /// 서버에서 관리하는 플레이어 데이터

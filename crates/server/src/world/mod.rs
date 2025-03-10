@@ -19,7 +19,10 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{BoundingBox, Capsule, Collider, Ray, Sphere};
+use mod_physics::{
+    object3d::{BoundingBox, Capsule, Sphere},
+    collision::{Collider, Ray},
+};
 use uuid::Uuid;
 
 use crate::{data::get_character_attributes, session::Session};

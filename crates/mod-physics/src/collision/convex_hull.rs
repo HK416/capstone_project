@@ -1,9 +1,7 @@
 use std::collections::BinaryHeap;
 use crate::{
-    bounds::BoundingBox,
-    capsule::Capsule,
-    sphere::Sphere,
-    CollisionDetails,
+    object3d::{BoundingBox, Capsule, Sphere},
+    collision::CollisionDetails,
 };
 
 
