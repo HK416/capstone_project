@@ -21,7 +21,7 @@ use crate::{
 
 pub use self::init::*;
 
-use super::GameIntroScene;
+use super::GameIntroNotifyScene;
 
 /// 클라이언트 실행시 가장 첫 번째로 진입하는 게임 장면입니다.  
 /// 게임 전반적으로 사용되는 에셋이나, 사용자 구성 설정을 로드합니다.
@@ -227,7 +227,7 @@ impl GameScene for GameStartupScene {
         if self.remaining_task_count == 0 {
             let next_scene: Box<dyn GameScene> = match self.needs_initial_setup {
                 true => Box::new(InitLocaleScene::new()),
-                false => Box::new(GameIntroScene::new()),
+                false => Box::new(GameIntroNotifyScene::new()),
             };
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);

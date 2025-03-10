@@ -11,6 +11,7 @@ use winit::window::Window;
 use crate::{
     asset::NEXON_LV2_GOTHIC,
     config::{Locale, UserConfig},
+    scenes::BASE_WIDTH,
 };
 
 use super::InitWindowScene;
@@ -43,10 +44,11 @@ impl InitLocaleScene {
     fn ui_callback(&mut self, window: &Window, egui_ctx: &egui::Context) {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
+        let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
         let font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
-        let font_id = egui::FontId::new(18.0, font_family);
+        let font_id = egui::FontId::new(48.0 * scale, font_family);
         let font_color = egui::Color32::WHITE;
 
         // 버튼 텍스트 데이터
@@ -72,7 +74,7 @@ impl InitLocaleScene {
         //     .min_size(btn_size.clone());
         let kor_btn = egui::Button::new(kor_btn_text).min_size(btn_size.clone());
 
-        egui::Area::new(egui::Id::new("Layout_0"))
+        egui::Area::new(egui::Id::new("InitLocaleScene"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(egui_ctx, |ui| {
                 ui.vertical_centered(|ui| {

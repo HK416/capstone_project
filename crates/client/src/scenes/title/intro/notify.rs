@@ -2,7 +2,7 @@ use std::error::Error;
 
 use mod_app::{
     app::AppHandle,
-    etc::{AppEvent, WindowSize},
+    etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_render::{ScreenDescriptor, UiRenderer};
@@ -11,50 +11,45 @@ use winit::window::Window;
 use crate::{
     asset::{NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD},
     config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{GameLoginTitleScene, BASE_WIDTH},
 };
 
-use super::InitFinishScene;
+/// 장면 지속 시간(초)
+const SCENE_DURATION: f32 = 5.0;
+/// 장면 전환 지속 시간(초)
+const FADE_IN_DURATION: f32 = 1.0;
+/// 안내사항 텍스트가 사라지는 시간(초)
+const DISAPPER_DURATION: f32 = 0.75;
 
-/// 애플리케이션 표시 언어에 따른 안내 텍스트입니다.
-const INFO_TEXTS: [&'static str; NUM_LOCALE] = ["창 크기 설정"];
-/// 애플리케이션 표시 언어에 따른 해상도 텍스트입니다.
-const SIZE_TEXTS: [&'static str; NUM_LOCALE] = ["해상도"];
-/// 애플리케이션 표시 언어에 따른 전체 창 화면 텍스트입니다.
-const FULLSCREEN_TEXT: [&'static str; NUM_LOCALE] = ["전체 화면"];
-/// 애플리케이션 표시 언어에 따른 확인 버튼 텍스트입니다.
-const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
+/// 애플리케이션 표시 언어에 따른 Head 텍스트
+const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["안내 사항"];
+/// 애플리케이션 표시 언어에 따른 Main 텍스트
+const MAIN_TEXTS: [&'static str; NUM_LOCALE] = ["이 게임은 Blue Archive의 2차 창작 게임이며,"];
+/// 애플리케이션 표시 언어에 따른 Sub 텍스트
+const SUB_TEXTS: [&'static str; NUM_LOCALE] =
+    ["2025년 한국공학대학교 게임공학과 졸업 작품 목적으로 제작되었습니다."];
 
-/// 시스템에서 클라이언트를 처음 실행했을 때 사용자 구성을 설정하는 장면입니다.  
-/// 애플리케이션 창의 속성을 설정합니다.
-pub struct InitWindowScene {
+/// 게임 인트로 화면을 보여주는 장면입니다.  
+/// 검은색 화면에서 하얀색 화면으로 전환되며(Fade in) 화면에 안내사항이 표시됩니다.
+pub struct GameIntroNotifyScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
-    /// 최대 창 크기
-    max_window_size: WindowSize,
 
-    /// 창 크기
-    window_size: WindowSize,
-    /// 전체 창 화면 여부
-    is_fullscreen: bool,
-    /// 설정이 완료된 여부
-    completed: bool,
+    /// 총 경과 시간입니다.
+    total_time_sec: f32,
 
     //----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
-impl InitWindowScene {
-    /// 새로운 `InitWindowScene`을 생성합니다.
+impl GameIntroNotifyScene {
+    /// 새로운 `GameIntroScene`을 생성합니다.
     pub fn new() -> Self {
         let config = UserConfig::get();
         Self {
             locale: config.locale,
-            max_window_size: WindowSize::MAX,
-            window_size: WindowSize::MAX,
-            is_fullscreen: true,
-            completed: false,
+            total_time_sec: 0.0,
             egui_clip_primitives: Vec::default(),
             egui_free_texture_ids: Vec::default(),
         }
@@ -70,138 +65,92 @@ impl InitWindowScene {
         let head_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into());
         let main_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
         let head_font_id = egui::FontId::new(64.0 * scale, head_font_family);
-        let main_font_id = egui::FontId::new(32.0 * scale, main_font_family);
-        let font_color = egui::Color32::WHITE;
+        let main_font_id = egui::FontId::new(48.0 * scale, main_font_family.clone());
+        let sub_font_id = egui::FontId::new(24.0 * scale, main_font_family);
+        let font_color = self.get_font_color();
 
         // 텍스트
-        let text = INFO_TEXTS[self.locale as usize];
-        let info_text = egui::RichText::new(text)
-            .font(head_font_id.clone())
-            .color(font_color.clone());
-        let text = SIZE_TEXTS[self.locale as usize];
-        let size_text = egui::RichText::new(text).font(main_font_id.clone());
-        let text = FULLSCREEN_TEXT[self.locale as usize];
-        let fullscreen_text = egui::RichText::new(text).font(main_font_id.clone());
-        let text = OKAY_TEXTS[self.locale as usize];
-        let okay_text = egui::RichText::new(text)
-            .font(main_font_id.clone())
-            .color(font_color.clone());
-
-        // 콤보 박스 속성
-        let current_size = egui::RichText::new(self.window_size.to_string())
-            .font(main_font_id.clone())
-            .color(font_color.clone());
-
-        // 콤보 박스
-        let combobox = egui::ComboBox::from_label("").selected_text(current_size);
-
-        // 버튼
-        let okay_btn = egui::Button::new(okay_text);
+        let i = self.locale as usize;
+        let text = HEAD_TEXTS[i];
+        let head_text = egui::RichText::new(text)
+            .font(head_font_id)
+            .color(font_color);
+        let text = MAIN_TEXTS[i];
+        let main_text = egui::RichText::new(text)
+            .font(main_font_id)
+            .color(font_color);
+        let text = SUB_TEXTS[i];
+        let sub_text = egui::RichText::new(text)
+            .font(sub_font_id)
+            .color(font_color);
 
         egui::Area::new(egui::Id::new("Layout"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(egui_ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.label(info_text);
-                    ui.separator();
-
-                    egui::Grid::new("SubLayout").num_columns(2).show(ui, |ui| {
-                        ui.label(size_text);
-
-                        ui.add_enabled_ui(!self.is_fullscreen, |ui| {
-                            combobox.show_ui(ui, |ui| {
-                                let mut max_window_size = Some(self.max_window_size);
-                                while let Some(window_size) = max_window_size {
-                                    ui.selectable_value(
-                                        &mut self.window_size,
-                                        window_size,
-                                        window_size.to_string(),
-                                    );
-                                    max_window_size = window_size.downgrade();
-                                }
-                            });
-                        });
-                        ui.end_row();
-
-                        ui.label(fullscreen_text);
-                        ui.checkbox(&mut self.is_fullscreen, "");
-                        ui.end_row();
-                    });
-
-                    ui.separator();
-                    ui.vertical_centered(|ui| {
-                        if ui.add(okay_btn).clicked() {
-                            self.completed = true;
-                        }
-                    });
+                    ui.set_min_width(width);
+                    ui.label(head_text);
+                });
+                ui.add_space(48.0 * scale);
+                ui.vertical_centered(|ui| {
+                    ui.set_min_width(width);
+                    ui.label(main_text);
+                });
+                ui.add_space(12.0 * scale);
+                ui.vertical_centered(|ui| {
+                    ui.set_min_width(width);
+                    ui.label(sub_text);
                 });
             });
     }
+
+    /// 배경 색상을 가져옵니다.
+    fn get_background_color(&self) -> wgpu::Color {
+        let s = self.total_time_sec.min(FADE_IN_DURATION) / FADE_IN_DURATION;
+        let c = (s * s * (3.0 - 2.0 * s)) as f64; // Smooth Step
+        wgpu::Color {
+            r: c,
+            g: c,
+            b: c,
+            a: 1.0,
+        }
+    }
+
+    /// 폰트 색상을 가져옵니다.
+    fn get_font_color(&self) -> egui::Color32 {
+        let s = (self.total_time_sec - (SCENE_DURATION - DISAPPER_DURATION)).max(0.0)
+            / DISAPPER_DURATION;
+        let c = 1.0 - (s * s * (3.0 - 2.0 * s)) as f64; // Smooth Step
+        egui::Color32::from_black_alpha((255.0 * c) as u8)
+    }
 }
 
-impl GameScene for InitWindowScene {
+impl GameScene for GameIntroNotifyScene {
     fn on_enter(
         &mut self,
         window: &Window,
-        app: &dyn AppHandle,
+        _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // 애플리케이션 창을 표시합니다.
         window.set_visible(true);
-        window.set_cursor_visible(true);
-
-        // 최대 윈도우 크기를 설정합니다.
-        self.max_window_size = window
-            .current_monitor()
-            .map(|monitor| WindowSize::find_maximize_size(monitor))
-            .flatten()
-            .unwrap_or(WindowSize::MAX);
-        self.window_size = app.window_size();
-
-        Ok(())
-    }
-
-    fn on_exit(
-        &mut self,
-        _window: Option<&Window>,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let mut config = UserConfig::get();
-        config.window_size = self.window_size;
-        config.is_fullscreen = self.is_fullscreen;
-        Ok(())
-    }
-
-    fn on_window_resized(
-        &mut self,
-        window: &Window,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        // 최대 윈도우 크기를 설정합니다.
-        self.max_window_size = window
-            .current_monitor()
-            .map(|monitor| WindowSize::find_maximize_size(monitor))
-            .flatten()
-            .unwrap_or(WindowSize::MAX);
         Ok(())
     }
 
     fn on_update(
         &mut self,
-        _elapsed_time_sec: f32,
+        elapsed_time_sec: f32,
         _window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let event_loop_proxy = app.event_loop_proxy();
-        let event = AppEvent::ResizeRequest(self.window_size);
-        event_loop_proxy.send_event(event).unwrap();
-        let event = AppEvent::FullScreenRequest(self.is_fullscreen);
-        event_loop_proxy.send_event(event).unwrap();
+        // 총 경과 시간을 갱신합니다.
+        self.total_time_sec += elapsed_time_sec;
 
-        if self.completed {
+        if self.total_time_sec >= SCENE_DURATION {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(InitFinishScene::new());
+            let next_scene = Box::new(GameLoginTitleScene::new());
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
 
@@ -267,10 +216,10 @@ impl GameScene for InitWindowScene {
 
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(InitLocaleScene))),
+                label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(self.get_background_color()),
                         store: wgpu::StoreOp::Store,
                     },
                     view: render_target_view,
