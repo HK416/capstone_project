@@ -3,13 +3,17 @@ use mod_network::components::{
     InGamePlayer, InGameStatus, LatLon, MovementState, MovementStateTimer, ObjectId, Team,
     UserInfo, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
 };
+use mod_physics::object3d::Capsule;
 
 use crate::data::get_character_attributes;
 
 use super::{BulletObject, GameWorld, GameWorldEvent};
 
+const PLAYER_RADIUS: f32 = 0.5;
+const PLAYER_HEIGHT: f32 = 1.2;
 /// 최대 입력 지속 시간
 const MAX_INPUT_DURATION: f32 = 0.25;
+
 
 /// 서버에서 관리하는 플레이어 오브젝트 데이터
 #[derive(Debug, Clone)]
@@ -63,6 +67,9 @@ pub struct PlayerObject {
     view_state_timer: ViewStateTimer,
     /// 플레이어 카메라가 캐릭터 중심으로 바라보는 방향
     view_rotation: LatLon,
+
+    /// 플레이어 충돌체
+    collider: Capsule,
 }
 
 impl PlayerObject {
@@ -95,6 +102,7 @@ impl PlayerObject {
             view_state: ViewState::default(),
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
+            collider: Capsule::new(glam::Vec3::ZERO, PLAYER_RADIUS, PLAYER_HEIGHT),
         }
     }
 
@@ -140,6 +148,16 @@ impl PlayerObject {
         self.view_state = state;
         self.view_state_timer = timer;
         self.view_rotation = rotation;
+    }
+
+    /// 플레이어 오브젝트의 충돌체(캡슐)를 가져옵니다.
+    pub fn collider(&self) -> &Capsule {
+        &self.collider
+    }
+
+    /// 플레이어 오브젝트의 충돌체(캡슐)의 위치를 갱신합니다.
+    pub fn update_collider(&mut self) {
+        self.collider.center = self.translation.into();
     }
 
     /// 현재 플레이어 오브젝트의 데이터로 총알 오브젝트를 생성합니다.
