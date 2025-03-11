@@ -32,7 +32,7 @@ impl Ray {
         self.direction
     }
 
-    pub fn intersect<T: RayIntersect>(&self, object: &T) -> Option<f32> {
+    pub fn intersect<T: RayIntersect>(&self, object: &T) -> Option<RayIntersectInfo> {
         object.ray_intersect(self)
     }
 }
@@ -40,16 +40,17 @@ impl Ray {
 
 pub struct RayIntersectInfo {
     pub distance: f32,
-    pub normal: glam::Vec3,
+    /// 충돌한 지점(표면)의 법선 벡터
+    pub normal: glam::Vec3A,
 }
 
 /// Ray와 다른 객체가 충돌하는지 검사, 충돌한다면 가장 가까운 충돌 지점까지의 거리를 반환한다.
 pub trait RayIntersect {
-    fn ray_intersect(&self, ray: &Ray) -> Option<f32>;
+    fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo>;
 }
 
 impl RayIntersect for Sphere {
-    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
+    fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo> {
         let center = glam::Vec3A::from(self.center);
         let origin = glam::Vec3A::from(ray.origin);
         let origin_to_center = center - origin;
@@ -59,12 +60,15 @@ impl RayIntersect for Sphere {
 
         // 광선이 구 안에서 시작하는 경우
         if oc_len_sq <= radius_sq {
-            return Some(0.0);
+            return Some(RayIntersectInfo {
+                distance: 0.0,
+                normal: glam::Vec3A::ZERO,
+            });
         }
 
         let direction = glam::Vec3A::from(ray.direction());
 
-        let proj = origin_to_center.dot(direction);
+        let proj = direction.dot(origin_to_center);
 
         // 광선이 구의 바깥에서 시작하고 구의 바깥으로 향하는 경우
         if proj <= 0.0 {
@@ -72,18 +76,24 @@ impl RayIntersect for Sphere {
         }
 
         let foot_height_sq = oc_len_sq - proj.powi(2);
-        
-        if foot_height_sq <= radius_sq {
-            Some(proj - (radius_sq - foot_height_sq).sqrt())
+        let depth = radius_sq - foot_height_sq; // 충돌점과 수선의발 사이 거리
+        if depth < 0.0 {
+            return None;
         }
-        else {
-            None
-        }
+
+        let distance = proj - depth.sqrt();
+        let collision_point = origin + direction * distance;
+        let normal = (collision_point - center).normalize();
+
+        Some(RayIntersectInfo {
+            distance,
+            normal,
+        })
     }
 }
 
 impl RayIntersect for Capsule {
-    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
+    fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo> {
         use mod_math::Line;
         
         let seg = self.get_seg();
@@ -103,7 +113,10 @@ impl RayIntersect for Capsule {
 
         // 시작점이 캡슐 안에 있는 경우
         if seg.distance_to_point_sq(&ray.origin.into()) <= radius_sq {
-            return Some(0.0);
+            return Some(RayIntersectInfo {
+                distance: 0.0,
+                normal: glam::Vec3A::ZERO,
+            });
         }
 
         // 기둥부분 충돌체크
@@ -163,14 +176,17 @@ impl RayIntersect for Capsule {
             return ray.intersect(&sphere2);
         }
 
-        // 교점이 기둥 범위 안에 있다면 기둥과 충돌하는 거리 리턴
-        let distance = h_to_origin_len - h_to_intersect;
-        Some(distance)
-   }
+        // 교점이 기둥 범위 안에 있다면 기둥과 충돌체크
+        let normal = intersect - (center + cylinder_direction * center_to_intersect_proj);
+        Some(RayIntersectInfo { 
+            distance: h_to_origin_len - h_to_intersect,
+            normal: normal.normalize(),
+        })
+    }
 }
 
 impl RayIntersect for BoundingBox {
-    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
+    fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo> {
         // 1. Ray를 BoundingBox의 로컬 공간으로 변환
         let (local_ray_origin, local_ray_direction) = match self.rotation() {
             Some(rotation) => {
@@ -186,6 +202,7 @@ impl RayIntersect for BoundingBox {
         let extents = self.extents();
         let mut tmin = f32::NEG_INFINITY;
         let mut tmax = f32::INFINITY;
+        let mut normal = glam::Vec3::ZERO;
 
         for i in 0..3 {
             // Ray가 Box의 면에 평행한 경우
@@ -200,9 +217,19 @@ impl RayIntersect for BoundingBox {
                 let t1 = (-extents[i] - local_ray_origin[i]) / local_ray_direction[i];
                 let t2 = (extents[i] - local_ray_origin[i]) / local_ray_direction[i];
 
-                let (t1, t2) = if t1 > t2 { (t2, t1) } else { (t1, t2) };
+                let mut normal_sign = 1.0;
+                let (t1, t2) = if t1 > t2 {
+                    (t2, t1)
+                } else {
+                    normal_sign = -1.0;
+                    (t1, t2)
+                };
 
-                tmin = tmin.max(t1);
+                if t1 > tmin {
+                    normal = glam::Vec3::ZERO;
+                    normal[i] = normal_sign;
+                    tmin = t1;
+                }
                 tmax = tmax.min(t2);
 
                 if tmin > tmax || tmax < 0.0 {
@@ -214,9 +241,20 @@ impl RayIntersect for BoundingBox {
         // 3. Ray의 충돌 거리 반환
         // Ray 시작점이 Box 안에 있는 경우 거리는 0
         if tmin < 0.0 && 0.0 <= tmax {
-            Some(0.0)
+            Some(RayIntersectInfo {
+                distance: 0.0,
+                normal: glam::Vec3A::ZERO,
+            })
         } else if tmin >= 0.0 {
-            Some(tmin)
+            let normal = glam::Vec3A::from(normal);
+            let normal = match self.rotation() {
+                Some(rotation) => rotation * normal,
+                None => normal,
+            };
+            Some(RayIntersectInfo {
+                distance: tmin,
+                normal,
+            })
         } else {
             None
         }

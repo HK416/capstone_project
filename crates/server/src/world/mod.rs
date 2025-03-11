@@ -418,6 +418,19 @@ impl World {
             let mut nearest_distance = f32::MAX;
             let mut nearest_player_id = None;
 
+            for collider in colliders.iter() {
+                if let Some(info) = ray.intersect(collider) {
+                    if info.distance <= move_distance {
+                        println!("Bullet find collider");
+                        println!("  - distance: {}", info.distance);
+                        println!("  - surface normal: {:?}", info.normal);
+                        if info.distance < nearest_distance {
+                            nearest_distance = info.distance;
+                        }
+                    }
+                }
+            }
+
             for player in self.players.iter() {
                 if *player.key() == bullet.shooter_id {
                     continue;
@@ -430,23 +443,26 @@ impl World {
                 let mut center = player.translation;
                 center[1] -= BULLET_RADIUS;
 
-                if let Some(dist) = ray.intersect(&player.collider.inflated(BULLET_RADIUS)) {
-                    if dist <= move_distance {
+                if let Some(info) = ray.intersect(&player.collider.inflated(BULLET_RADIUS)) {
+                    if info.distance <= move_distance {
                         println!("Bullet find player (player id: {:?})", player.object_id);
-                        if dist < nearest_distance {
-                            nearest_distance = dist;
+                        println!("  - distance: {}", info.distance);
+                        println!("  - surface normal: {:?}", info.normal);
+                        if info.distance < nearest_distance {
+                            nearest_distance = info.distance;
                             nearest_player_id = Some(*player.key());
                         }
                     }
                 }
             }
 
+            if nearest_distance < f32::MAX {
+                bullet.remaining_distance = 0.0;
+            }
+
             match nearest_player_id {
                 // 충돌했다면
                 Some(id) => {
-                    // 피격 처리(회피하더라도 일단 총알은 제거)
-                    bullet.remaining_distance = 0.0;
-
                     println!("Player {:?} hit by bullet", id);
                     let mut player = self.players.get_mut(&id).unwrap();
                     let char_info = get_character_attributes(player.character_kind);
@@ -582,7 +598,7 @@ pub async fn update_game_world(world: Arc<World>) {
         previous_time_point = current_time_point;
         total_time_sec += elapsed_time_sec;
 
-        println!("fps: {}", 1.0 / elapsed_time_sec);
+        // println!("fps: {}", 1.0 / elapsed_time_sec);
 
         // 게임 월드를 갱신합니다.
         world.handle_events();

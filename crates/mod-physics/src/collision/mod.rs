@@ -4,7 +4,7 @@ mod ray;
 
 pub use convex_hull::ConvexHull;
 pub use collider::Collider;
-pub use ray::{Ray, RayIntersect};
+pub use ray::{Ray, RayIntersect, RayIntersectInfo};
 
 
 pub struct CollisionDetails {
@@ -15,7 +15,7 @@ pub struct CollisionDetails {
 
 
 impl RayIntersect for Collider {
-    fn ray_intersect(&self, ray: &Ray) -> Option<f32> {
+    fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo> {
         match self {
             Collider::Box(b) => ray.intersect(b),
             Collider::Capsule(c) => ray.intersect(c),
