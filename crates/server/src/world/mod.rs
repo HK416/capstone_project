@@ -21,10 +21,7 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{
-    object3d::{BoundingBox, Capsule, Sphere},
-    collision::{Collider, Ray},
-};
+use mod_physics::collision::Ray;
 use tokio::time::Instant;
 
 use crate::{
@@ -35,8 +32,6 @@ use crate::{
 pub use self::{bullet::*, event::*, player::*};
 
 use super::formula::movement_formulas as formulas;
-
-const BULLET_RADIUS: f32 = 0.15;
 
 /// 중력 가속도입니다.
 const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
@@ -278,55 +273,6 @@ impl GameWorld {
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
-        let colliders = [
-            Collider::Box(BoundingBox::new_rotated(
-                glam::Vec3::new(0.0, -0.9, 0.0), 
-                glam::Vec3::new(2.0, 2.0, 2.0),
-                glam::Mat3::from_quat(glam::Quat::from_rotation_x(30f32.to_radians())),
-            )),
-            // Collider::Sphere(Sphere {
-            //     center: glam::Vec3::ZERO,
-            //     radius: 1.0,
-            // }),
-            // Collider::Capsule(Capsule::new(
-            //     glam::Vec3::new(0.0, 0.0, 0.0),
-            //     2.0,
-            //     0.5,
-            // )),
-        ];
-
-        for collider in colliders.iter() {
-            for mut player in self.players.iter_mut() {
-                let player_collider = Collider::Capsule(player.collider().clone());
-                // let player_collider = Collider::Sphere(Sphere {
-                //     center: glam::Vec3::new(
-                //         player.translation.x,
-                //         player.translation.y + PLAYER_HEIGHT/2.0,
-                //         player.translation.z,
-                //     ),
-                //     radius: PLAYER_HEIGHT/2.0,
-                // });
-                // let player_collider = Collider::Box(
-                //     BoundingBox::new(
-                //         glam::Vec3::new(
-                //             player.translation.x,
-                //             player.translation.y + PLAYER_HEIGHT/2.0,
-                //             player.translation.z,
-                //         ),
-                //         glam::Vec3::new(PLAYER_RADIUS, PLAYER_HEIGHT/2.0, PLAYER_RADIUS)
-                //     )
-                // );
-                if let Some(collision_info) = player_collider.check_collision_details(collider) {
-                    *player.translation_mut() += collision_info.normal * collision_info.penetration;
-                    // println!("Player {:?} collision with box {:?}", player.object_id, bb);
-                    // println!("collision penetration: {}", collision_info.penetration);
-                }
-                // if player_collider.check_collision(collider) {
-                //     println!("Player {:?} collision with collider {:?}", player.object_id, collider);
-                // }
-            }
-        }
-
         // 총알 이동
         for mut bullet in self.bullets.iter_mut() {
             let translation = bullet.translation;
@@ -345,12 +291,11 @@ impl GameWorld {
                 }
 
                 let attributes = player.character_attributes();
+                let player_collider = player.collider()
+                    .inflated(attributes.bullet_radius);
 
                 // 충돌 처리: 플레이어 - 총알
-                let mut center = player.translation();
-                center[1] -= attributes.bullet_radius;
-
-                if let Some(info) = ray.intersect(&player.collider().inflated(BULLET_RADIUS)) {
+                if let Some(info) = ray.intersect(&player_collider) {
                     if info.distance <= move_distance {
                         println!("Bullet find player (player id: {:?})", player.info().uid);
                         println!("  - distance: {}", info.distance);
