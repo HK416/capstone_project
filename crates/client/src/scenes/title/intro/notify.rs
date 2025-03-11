@@ -8,8 +8,8 @@ use mod_app::{
 };
 use mod_parallelism::collections::Queue;
 use mod_render::{
-    SamplerPool, ScreenDescriptor, TexturePool, TextureViewPool, UiRenderer, DEPTH_FORMAT,
-    SWAPCHAIN_FORMAT,
+    CameraDataLayout, CameraResource, SamplerPool, ScreenDescriptor, TexturePool, TextureViewPool,
+    UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use rayon::ThreadPool;
 use wgpu::util::DeviceExt;
@@ -18,7 +18,7 @@ use winit::window::Window;
 use crate::{
     asset::{AssetError, NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD},
     config::{Locale, UserConfig, NUM_LOCALE},
-    render::{BackgroundResource, LOGIN_PAD_BG, LOGIN_PAD_BG_DATA},
+    render::{BackgroundDataLayout, BackgroundResource, LOGIN_PAD_BG, LOGIN_PAD_BG_DATA},
     scenes::{GameLoginTitleScene, BASE_WIDTH},
 };
 
@@ -44,7 +44,7 @@ pub struct GameIntroNotifyScene {
     locale: Locale,
 
     /// 작업 결과를 저장하는 대기열
-    task_result: Arc<Queue<Result<BackgroundResource, Box<dyn Error + Send>>>>,
+    task_result: Arc<Queue<Result<Box<dyn GameScene>, Box<dyn Error + Send>>>>,
     /// 총 경과 시간입니다.
     total_time_sec: f32,
 
@@ -135,8 +135,8 @@ impl GameIntroNotifyScene {
         egui::Color32::from_black_alpha((255.0 * c) as u8)
     }
 
-    /// 배경 쉐이더 리소스를 생성합니다.
-    fn create_background_resource(
+    /// 다음 게임 장면을 생성합니다.
+    fn build_next_scene(
         &self,
         thread_pool: &ThreadPool,
         device: &Arc<wgpu::Device>,
@@ -146,70 +146,104 @@ impl GameIntroNotifyScene {
         let device = device.clone();
         let queue = queue.clone();
         thread_pool.spawn(move || {
-            // 임베딩된 데이터로부터 텍스처를 생성합니다.
-            let reader = Cursor::new(LOGIN_PAD_BG_DATA);
-            let dds = match Dds::read(reader) {
-                Ok(dds) => dds,
-                Err(e) => {
-                    log::error!("failed to read texture file! (REASON:{e}");
-                    task_result.push(Err(Box::new(e)));
-                    return;
+            let main_camera = Self::create_camera_resource(&device, &queue);
+            let result = Self::create_background_resource(&device, &queue);
+            match result {
+                Ok(background) => {
+                    let next_scene = Box::new(GameLoginTitleScene::new(main_camera, background));
+                    task_result.push(Ok(next_scene));
                 }
-            };
-
-            // 텍스처를 생성합니다.
-            let result: Result<Arc<wgpu::Texture>, AssetError> =
-                TexturePool::get_or_init(LOGIN_PAD_BG, || {
-                    let texture = Arc::new(device.create_texture_with_data(
-                        &queue,
-                        &wgpu::TextureDescriptor {
-                            label: Some(&format!("Texture({})", LOGIN_PAD_BG)),
-                            dimension: wgpu::TextureDimension::D2,
-                            format: wgpu::TextureFormat::Bc7RgbaUnorm,
-                            size: wgpu::Extent3d {
-                                width: dds.get_width(),
-                                height: dds.get_height(),
-                                depth_or_array_layers: dds.get_depth(),
-                            },
-                            mip_level_count: dds.get_num_mipmap_levels(),
-                            sample_count: 1,
-                            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-                            view_formats: &[],
-                        },
-                        wgpu::util::TextureDataOrder::LayerMajor,
-                        &dds.data,
-                    ));
-                    Ok(texture)
-                });
-
-            // 오류를 검사합니다.
-            let texture = match result {
-                Ok(texture) => texture,
                 Err(e) => {
-                    log::error!("failed to create texture! (REASON:{e}");
-                    task_result.push(Err(Box::new(e)));
-                    return;
+                    task_result.push(Err(e));
                 }
-            };
-
-            // 텍스처 뷰와 텍스처 샘플러를 생성합니다.
-            let texture_view =
-                TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-            let sampler = SamplerPool::get_or_init(&device, &wgpu::SamplerDescriptor::default());
-
-            // 배경을 그리는 쉐이더 리소스를 생성합니다.
-            let background = BackgroundResource::uninit(
-                Some("LoginTitle"),
-                &device,
-                &texture_view,
-                &sampler,
-                SWAPCHAIN_FORMAT,
-                DEPTH_FORMAT,
-            );
-
-            // 결과를 전송합니다.
-            task_result.push(Ok(background));
+            }
         });
+    }
+
+    /// 카메라 쉐이더 리소스를 생성합니다.
+    fn create_camera_resource(device: &wgpu::Device, queue: &wgpu::Queue) -> CameraResource {
+        // 카메라 쉐이더 리소스를 생성합니다.
+        let label = format!("MainCamera({})", stringify!(GameLoginTitleScene));
+        let main_camera = CameraResource::uninit(Some(&label), device);
+
+        // 카메라 쉐이더 리소스의 유니폼 버퍼를 갱신합니다.
+        let proj_view = glam::Mat4::orthographic_lh(-1.0, 1.0, -1.0, 1.0, 0.0, 1.0);
+        main_camera.camera_uniform.update(
+            device,
+            queue,
+            CameraDataLayout {
+                proj_view: proj_view.to_cols_array(),
+                ..Default::default()
+            },
+        );
+
+        main_camera
+    }
+
+    /// 배경 쉐이더 리소스를 생성합니다.
+    fn create_background_resource(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<BackgroundResource, Box<dyn Error + Send>> {
+        // 임베딩된 데이터로부터 텍스처를 생성합니다.
+        let reader = Cursor::new(LOGIN_PAD_BG_DATA);
+        let dds = Dds::read(reader).map_err(|e| {
+            log::error!("failed to read texture file! (REASON:{e}");
+            Box::new(e) as Box<dyn Error + Send>
+        })?;
+
+        // 텍스처를 생성합니다.
+        let texture = TexturePool::get_or_init(LOGIN_PAD_BG, || {
+            let texture = Arc::new(device.create_texture_with_data(
+                &queue,
+                &wgpu::TextureDescriptor {
+                    label: Some(&format!("Texture({})", LOGIN_PAD_BG)),
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Bc7RgbaUnorm,
+                    size: wgpu::Extent3d {
+                        width: dds.get_width(),
+                        height: dds.get_height(),
+                        depth_or_array_layers: dds.get_depth(),
+                    },
+                    mip_level_count: dds.get_num_mipmap_levels(),
+                    sample_count: 1,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::LayerMajor,
+                &dds.data,
+            ));
+            Ok(texture)
+        })
+        .map_err(|e: AssetError| {
+            log::error!("failed to create texture! (REASON:{e})");
+            Box::new(e) as Box<dyn Error + Send>
+        })?;
+
+        // 텍스처 뷰와 텍스처 샘플러를 생성합니다.
+        let texture_view =
+            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+        let sampler = SamplerPool::get_or_init(&device, &wgpu::SamplerDescriptor::default());
+
+        // 배경을 그리는 쉐이더 리소스를 생성합니다.
+        let background = BackgroundResource::uninit(
+            Some("LoginTitle"),
+            &device,
+            &texture_view,
+            &sampler,
+            SWAPCHAIN_FORMAT,
+            DEPTH_FORMAT,
+        );
+        background.uniform_buffer.update(
+            device,
+            queue,
+            BackgroundDataLayout {
+                ratio: dds.get_width() as f32 / dds.get_height() as f32,
+                ..Default::default()
+            },
+        );
+
+        Ok(background)
     }
 }
 
@@ -221,7 +255,7 @@ impl GameScene for GameIntroNotifyScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 애플리케이션 창을 표시합니다.
         window.set_visible(true);
-        self.create_background_resource(app.io_threads(), app.render_device(), app.render_queue());
+        self.build_next_scene(app.io_threads(), app.render_device(), app.render_queue());
         Ok(())
     }
 
@@ -235,9 +269,9 @@ impl GameScene for GameIntroNotifyScene {
         self.total_time_sec += elapsed_time_sec;
 
         if self.total_time_sec >= SCENE_DURATION {
-            if let Some(background) = self.task_result.pop() {
+            if let Some(next_scene) = self.task_result.pop() {
                 // 다음 게임 장면으로 전환합니다.
-                let next_scene = Box::new(GameLoginTitleScene::new(background?));
+                let next_scene = next_scene?;
                 let scene_flow = GameSceneFlow::Change(next_scene);
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();

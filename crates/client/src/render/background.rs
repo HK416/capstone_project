@@ -5,6 +5,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use mod_render::CameraResource;
 
 /// 배경을 그리는 렌더링 파이프라인의 이름입니다.
 pub const BACKGROUND_PIPELINE_NAME: &'static str = "Background";
@@ -20,14 +21,14 @@ pub const LOGIN_PAD_BG_DATA: &'static [u8; 2227108] = include_bytes!(concat!(
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct BackgroundDataLayout {
-    pub aspect_ratio: f32,
+    pub ratio: f32,
     pub _padding0: [u8; 12],
 }
 
 impl Default for BackgroundDataLayout {
     fn default() -> Self {
         Self {
-            aspect_ratio: 16.0 / 9.0,
+            ratio: 1.0,
             _padding0: [0; 12],
         }
     }
@@ -48,6 +49,7 @@ impl BackgroundUniform {
         .union(wgpu::BufferUsages::COPY_DST);
 }
 
+#[allow(dead_code)]
 impl BackgroundUniform {
     /// 초기화되지 않은 새로운 `BackgroundUniform`를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
@@ -226,9 +228,10 @@ impl BackgroundResource {
     }
 
     /// 배경을 그립니다.
-    pub fn draw<'a>(&'a self, rpass: &mut wgpu::RenderPass<'a>) {
+    pub fn draw<'a>(&'a self, camera: &CameraResource, rpass: &mut wgpu::RenderPass<'a>) {
         rpass.set_pipeline(&self.pipeline);
-        rpass.set_bind_group(0, &self.bind_group, &[]);
+        rpass.set_bind_group(0, &camera.bind_group, &[]);
+        rpass.set_bind_group(1, &self.bind_group, &[]);
         rpass.draw(0..4, 0..1);
     }
 }
@@ -251,7 +254,10 @@ fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
 fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(&format!("PipelineLayout({})", BACKGROUND_PIPELINE_NAME)),
-        bind_group_layouts: &[BackgroundResource::bind_group_layout(device)],
+        bind_group_layouts: &[
+            CameraResource::bind_group_layout(device),
+            BackgroundResource::bind_group_layout(device),
+        ],
         push_constant_ranges: &[],
     })
 }
