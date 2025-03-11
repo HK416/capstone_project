@@ -150,6 +150,8 @@ impl GameIntroNotifyScene {
             let result = Self::create_background_resource(&device, &queue);
             match result {
                 Ok(background) => {
+                    let main_camera = Arc::new(main_camera);
+                    let background = Arc::new(background);
                     let next_scene = Box::new(GameLoginTitleScene::new(main_camera, background));
                     task_result.push(Ok(next_scene));
                 }

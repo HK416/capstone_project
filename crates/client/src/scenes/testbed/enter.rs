@@ -13,6 +13,7 @@ use mod_network::{
     components::{BulletKind, CharacterKind, Epoch, LoginToken, UserId},
     protocol::{EnterStagePacket, InitStagePacket, Packet, PacketType, RawPacket},
 };
+use mod_parallelism::collections::Queue;
 use mod_render::{
     GraphicsPipelinePool, SamplerPool, ScreenDescriptor, SkyboxResource, TexturePool,
     TextureViewPool, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
@@ -23,7 +24,6 @@ use winit::window::Window;
 
 use crate::{
     asset::{load_stage_from_asset, AssetError, ModelHierarchyPool},
-    channel::TaskResultChannel,
     component::{
         load_bullet_model, load_character_model, spawn_player_character, spawn_stage_area,
         spawn_stage_prop,
@@ -260,7 +260,7 @@ pub struct LoadStageResourceScene {
     /// 작업의 개수
     num_tasks: usize,
     /// 작업 결과 전송 채널
-    task_result_channel: TaskResultChannel<()>,
+    task_result_channel: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
 
     //----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
@@ -273,7 +273,7 @@ impl LoadStageResourceScene {
         Self {
             init_stage_packet: Some(init_stage_packet),
             num_tasks: 0,
-            task_result_channel: TaskResultChannel::new(),
+            task_result_channel: Arc::new(Queue::new()),
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -409,7 +409,7 @@ impl GameScene for LoadStageResourceScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // 작업 결과를 기다립니다.
-        if let Some(result) = self.task_result_channel.recv() {
+        if let Some(result) = self.task_result_channel.pop() {
             self.num_tasks -= 1;
             result?;
         }
@@ -556,7 +556,7 @@ fn load_all_character_models(
     asset_manager: AssetManager,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    channel: TaskResultChannel<()>,
+    channel: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
     num_tasks: &mut usize,
 ) {
     // ArisOriginal 모델을 로드합니다.
@@ -566,12 +566,10 @@ fn load_all_character_models(
         let queue = queue.clone();
         let channel = channel.clone();
         pool.spawn(move || {
-            channel.send(load_character_model(
-                &asset_manager,
-                CharacterKind::ArisOriginal,
-                &device,
-                &queue,
-            ));
+            let result =
+                load_character_model(&asset_manager, CharacterKind::ArisOriginal, &device, &queue)
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            channel.push(result);
         });
         *num_tasks += 1;
     }
@@ -583,12 +581,14 @@ fn load_all_character_models(
         let queue = queue.clone();
         let channel = channel.clone();
         pool.spawn(move || {
-            channel.send(load_character_model(
+            let result = load_character_model(
                 &asset_manager,
                 CharacterKind::MomoiOriginal,
                 &device,
                 &queue,
-            ));
+            )
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            channel.push(result);
         });
         *num_tasks += 1;
     }
@@ -600,12 +600,14 @@ fn load_all_character_models(
         let queue = queue.clone();
         let channel = channel.clone();
         pool.spawn(move || {
-            channel.send(load_character_model(
+            let result = load_character_model(
                 &asset_manager,
                 CharacterKind::MidoriOriginal,
                 &device,
                 &queue,
-            ));
+            )
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            channel.push(result);
         });
         *num_tasks += 1;
     }
@@ -617,12 +619,14 @@ fn load_all_character_models(
         let queue = queue.clone();
         let channel = channel.clone();
         pool.spawn(move || {
-            channel.send(load_character_model(
+            let result = load_character_model(
                 &asset_manager,
                 CharacterKind::YuukaOriginal,
                 &device,
                 &queue,
-            ));
+            )
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            channel.push(result);
         });
         *num_tasks += 1;
     }
@@ -634,7 +638,7 @@ fn load_all_bullet_models(
     asset_manager: AssetManager,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    channel: TaskResultChannel<()>,
+    channel: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
     num_tasks: &mut usize,
 ) {
     // Common 총알 모델을 로드합니다.
@@ -644,12 +648,9 @@ fn load_all_bullet_models(
         let queue = queue.clone();
         let channel = channel.clone();
         pool.spawn(move || {
-            channel.send(load_bullet_model(
-                &asset_manager,
-                BulletKind::Common,
-                &device,
-                &queue,
-            ));
+            let result = load_bullet_model(&asset_manager, BulletKind::Common, &device, &queue)
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            channel.push(result);
         });
         *num_tasks += 1;
     }
@@ -660,12 +661,10 @@ fn load_all_bullet_models(
         let queue = queue.clone();
         let channel = channel.clone();
         pool.spawn(move || {
-            channel.send(load_bullet_model(
-                &asset_manager,
-                BulletKind::ArisOriginal,
-                &device,
-                &queue,
-            ));
+            let result =
+                load_bullet_model(&asset_manager, BulletKind::ArisOriginal, &device, &queue)
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            channel.push(result);
         });
         *num_tasks += 1;
     }
@@ -675,12 +674,16 @@ fn load_all_bullet_models(
 fn load_skybox_texture(
     pool: &ThreadPool,
     asset_manager: AssetManager,
-    channel: TaskResultChannel<()>,
+    channel: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
     num_tasks: &mut usize,
 ) {
     pool.spawn(move || {
         let path = format!("{}/{}.dds", skybox::WORKSPACE, skybox::TEXTURE_NAME);
-        channel.send(asset_manager.load(&path).map(|_| ()));
+        let result = asset_manager
+            .load(&path)
+            .map(|_| ())
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+        channel.push(result);
     });
     *num_tasks += 1;
 }
@@ -691,7 +694,7 @@ fn load_stage_data(
     asset_manager: AssetManager,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    channel: TaskResultChannel<()>,
+    channel: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
     num_tasks: &mut usize,
 ) {
     const STAGE: &'static str = "map.json";
@@ -703,7 +706,8 @@ fn load_stage_data(
         let data = match result {
             Ok(data) => data,
             Err(e) => {
-                channel.send_err(Box::new(e));
+                let e = Box::new(e) as Box<dyn Error + Send>;
+                channel.push(Err(e));
                 return;
             }
         };
@@ -713,12 +717,13 @@ fn load_stage_data(
             let result =
                 ModelHierarchyPool::get_or_init(name, WORKSPACE, &asset_manager, &device, &queue);
             if let Err(e) = result {
-                channel.send_err(Box::new(e));
+                let e = Box::new(e) as Box<dyn Error + Send>;
+                channel.push(Err(e));
                 return;
             }
         }
 
-        channel.send_ok(());
+        channel.push(Ok(()));
     });
 
     *num_tasks += 1;
@@ -727,7 +732,7 @@ fn load_stage_data(
 fn load_damage_font(
     pool: &ThreadPool,
     asset_manager: AssetManager,
-    channel: TaskResultChannel<()>,
+    channel: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
     num_tasks: &mut usize,
 ) {
     // 데미지 폰트 텍스처를 로드합니다.
@@ -736,7 +741,11 @@ fn load_damage_font(
         let channel = channel.clone();
         pool.spawn(move || {
             let path = "font/D_Font_Normal.dds";
-            channel.send(asset_manager.load(&path).map(|_| ()));
+            let result = asset_manager
+                .load(&path)
+                .map(|_| ())
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+            channel.push(result);
         });
         *num_tasks += 1;
     }
@@ -750,7 +759,8 @@ pub struct InitStageScene {
     init_stage_packet: Option<InitStagePacket>,
 
     /// 작업 결과 전송 채널
-    task_result_channel: TaskResultChannel<(World, HashMap<UserId, Entity>)>,
+    task_result_channel:
+        Arc<Queue<Result<(World, HashMap<UserId, Entity>), Box<dyn Error + Send>>>>,
 
     //----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
@@ -763,7 +773,7 @@ impl InitStageScene {
         Self {
             epoch: init_stage_packet.epoch,
             init_stage_packet: Some(init_stage_packet),
-            task_result_channel: TaskResultChannel::default(),
+            task_result_channel: Arc::new(Queue::new()),
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
@@ -819,7 +829,7 @@ impl GameScene for InitStageScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // 작업 처리 결과를 대기합니다.
-        if let Some(result) = self.task_result_channel.recv() {
+        if let Some(result) = self.task_result_channel.pop() {
             let (world, players) = result?;
 
             // Skybox 쉐이더 리소스를 생성합니다.
@@ -971,14 +981,16 @@ fn create_game_world(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     init_stage_packet: InitStagePacket,
-    task_result_channel: TaskResultChannel<(World, HashMap<UserId, Entity>)>,
+    task_result_channel: Arc<
+        Queue<Result<(World, HashMap<UserId, Entity>), Box<dyn Error + Send>>>,
+    >,
 ) {
     rayon::spawn(move || {
         let mut world = World::default();
         let mut entities = HashMap::default();
 
         let mut num_tasks = init_stage_packet.num_players as usize;
-        let channel: TaskResultChannel<LocalResult> = TaskResultChannel::default();
+        let channel = Arc::new(Queue::new());
         {
             let asset_manager = asset_manager.clone();
             let device = device.clone();
@@ -1005,11 +1017,11 @@ fn create_game_world(
                         .expect("no such entity");
                 }
             }
-            Err(e) => task_result_channel.send_err(Box::new(e)),
+            Err(e) => task_result_channel.push(Err(Box::new(e))),
         }
 
         while num_tasks > 0 {
-            if let Some(result) = channel.recv() {
+            if let Some(result) = channel.pop() {
                 match result {
                     Ok((id, entity, batch_commands)) => {
                         for (entity, mut builder) in batch_commands {
@@ -1020,7 +1032,7 @@ fn create_game_world(
                         entities.insert(id, entity);
                     }
                     Err(e) => {
-                        task_result_channel.send_err(e);
+                        task_result_channel.push(Err(e));
                         return;
                     }
                 }
@@ -1028,7 +1040,7 @@ fn create_game_world(
             }
         }
 
-        task_result_channel.send_ok((world, entities));
+        task_result_channel.push(Ok((world, entities)));
     });
 }
 
@@ -1039,7 +1051,7 @@ fn spawn_players(
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     packet: InitStagePacket,
-    channel: TaskResultChannel<LocalResult>,
+    channel: Arc<Queue<Result<LocalResult, Box<dyn Error + Send>>>>,
 ) {
     for player in packet.players.into_iter() {
         let world = world;
@@ -1048,8 +1060,9 @@ fn spawn_players(
         let queue = queue.clone();
         let channel = channel.clone();
         let result = spawn_player_character(&player, &asset_manager, &device, &queue, world)
-            .map(|(entity, batch_commands)| (player.info.uid, entity, batch_commands));
-        channel.send(result);
+            .map(|(entity, batch_commands)| (player.info.uid, entity, batch_commands))
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+        channel.push(result);
     }
 }
 

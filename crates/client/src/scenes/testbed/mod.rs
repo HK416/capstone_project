@@ -12,7 +12,10 @@ use mod_network::components::CharacterKind;
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
-use crate::{config::UserConfig, USER_CONFIG};
+use crate::{
+    asset::{NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD, USER_CONFIG},
+    config::UserConfig,
+};
 
 pub use {self::enter::*, self::in_game::*};
 
@@ -63,29 +66,35 @@ impl TestbedTitleScene {
         let scale_factor = window.scale_factor() as f32;
         let (width, _): (f32, f32) = window.inner_size().into();
 
+        let head_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into());
+        let head_font_id = egui::FontId::new(24.0, head_font_family);
+
+        let main_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let main_font_id = egui::FontId::new(18.0, main_font_family);
+
         let is_config_changed =
             config.is_fullscreen != self.is_fullscreen || config.window_size != self.window_size;
         let title_text = egui::RichText::new("Hello2Halo (개발자 모드)")
             .color(egui::Color32::WHITE)
-            .size(24.0);
+            .font(head_font_id.clone());
         let fullscreen_option_text = egui::RichText::new("전체 화면")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let window_size_option_text = egui::RichText::new("창 크기")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let character_option_text = egui::RichText::new("캐릭터 선택")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let save_button_text = egui::RichText::new("설정 저장")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let join_button_text = egui::RichText::new("게임 월드 입장")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let client_id_text = egui::RichText::new(format!("사용자: {}", name))
             .color(egui::Color32::WHITE)
-            .size(12.0);
+            .font(main_font_id.clone());
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new())

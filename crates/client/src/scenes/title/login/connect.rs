@@ -3,33 +3,29 @@ use std::{error::Error, sync::Arc};
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
+    net::NetManager,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_network::protocol::{ConnectPacket, Packet, PacketType, RawPacket};
+use mod_parallelism::collections::Queue;
 use mod_render::{CameraResource, ScreenDescriptor, UiRenderer};
-use winit::{
-    event::{Modifiers, MouseButton},
-    keyboard::{KeyCode, KeyLocation},
-    window::Window,
-};
+use rayon::ThreadPool;
+use winit::window::Window;
 
 use crate::{
-    asset::NEXON_LV2_GOTHIC_BOLD,
+    asset::NEXON_LV2_GOTHIC,
     config::{Locale, UserConfig, NUM_LOCALE},
-    render::{BackgroundDataLayout, BackgroundResource},
+    render::BackgroundResource,
     scenes::BASE_WIDTH,
+    SERVER_TCP_ADDR,
 };
 
-use super::GameLoginConnectScene;
+/// 애플리케이션 표시 언어에 따른 Main 텍스트
+const MAIN_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결 중..."];
 
-/// 애플리케이션 표시 언어에 따른 Head 텍스트
-const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["아무 키나 눌러 게임을 시작"];
-/// 게임 장면 경과 시간의 최대 지속 시간입니다.
-const MAX_SCENE_DURATION: f32 = 24.0;
-/// 폰트 알파 값의 주기입니다.
-const FONT_APPEAR_CYCLE: f32 = 4.0;
-
-/// 게임 로그인 타이틀 화면을 표시하는 장면입니다.
-pub struct GameLoginTitleScene {
+/// 게임 로그인 타이틀 화면을 표시하는 장면입니다.  
+/// 게임 서버와 연결을 시도 후 로그인을 시도합니다.
+pub struct GameLoginConnectScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
 
@@ -37,26 +33,26 @@ pub struct GameLoginTitleScene {
     main_camera: Arc<CameraResource>,
     /// 배경 리소스입니다.
     background: Arc<BackgroundResource>,
-    /// 게임 장면의 경과 시간입니다.
-    elapsed_time_sec: f32,
-    /// 키 눌림 여부
-    is_pressed: bool,
+    /// 작업 결과를 저장하는 대기열
+    task_result: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
+    /// 사용자 정보와 로그인 토큰이 담긴 패킷입니다.
+    connect_packet: Option<ConnectPacket>,
 
     //----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
-impl GameLoginTitleScene {
-    /// 새로운 `GameLoginTitleScene`을 생성합니다.
+impl GameLoginConnectScene {
+    /// 새로운 `GameLoginConnectScene`을 생성합니다.
     pub fn new(main_camera: Arc<CameraResource>, background: Arc<BackgroundResource>) -> Self {
         let config = UserConfig::get();
         Self {
             locale: config.locale,
             main_camera,
             background,
-            elapsed_time_sec: 0.0,
-            is_pressed: false,
+            task_result: Arc::new(Queue::new()),
+            connect_packet: None,
             egui_clip_primitives: Vec::default(),
             egui_free_texture_ids: Vec::default(),
         }
@@ -69,19 +65,19 @@ impl GameLoginTitleScene {
         let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into());
-        let head_font_id = egui::FontId::new(32.0 * scale, head_font_family);
-        let head_font_color = self.get_font_color();
+        let main_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let main_font_id = egui::FontId::new(16.0 * scale, main_font_family);
+        let main_font_color = egui::Color32::BLACK;
 
         // 텍스트
         let i = self.locale as usize;
-        let text = HEAD_TEXTS[i];
+        let text = MAIN_TEXTS[i];
         let head_text = egui::RichText::new(text)
-            .font(head_font_id)
-            .color(head_font_color);
+            .font(main_font_id)
+            .color(main_font_color);
 
-        egui::Area::new(egui::Id::new("Layout_Enter"))
-            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -128.0 * scale])
+        egui::Area::new(egui::Id::new("Layout"))
+            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -24.0 * scale])
             .show(egui_ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(head_text);
@@ -89,76 +85,80 @@ impl GameLoginTitleScene {
             });
     }
 
-    /// 폰트 색상을 가져옵니다.
-    fn get_font_color(&self) -> egui::Color32 {
-        use core::f32::consts::PI;
-        let s = (self.elapsed_time_sec % FONT_APPEAR_CYCLE) / FONT_APPEAR_CYCLE;
-        let c = (s * PI).sin();
-        egui::Color32::from_rgba_unmultiplied(87, 87, 87, (255.0 * c) as u8)
+    /// 게임 서버와 연결을 시도합니다.
+    fn try_connect_game_server(&mut self, thread_pool: &ThreadPool, net_manager: &NetManager) {
+        let task_result = self.task_result.clone();
+        let net_manager = net_manager.clone();
+        thread_pool.spawn(move || {
+            let result = net_manager
+                .connect(&SERVER_TCP_ADDR)
+                .map(|_| ())
+                .map_err(|e| {
+                    log::error!("failed to connect to game server! (REASON:{e})");
+                    Box::new(e) as Box<dyn Error + Send>
+                });
+            task_result.push(result);
+        });
     }
 }
 
-impl GameScene for GameLoginTitleScene {
+impl GameScene for GameLoginConnectScene {
     fn on_enter(
         &mut self,
-        window: &Window,
+        _window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let (width, height): (f32, f32) = window.inner_size().into();
-        self.background.uniform_buffer.update(
-            app.render_device(),
-            app.render_queue(),
-            BackgroundDataLayout {
-                ratio: width / height,
-                ..Default::default()
-            },
-        );
+        self.try_connect_game_server(app.io_threads(), app.net_manager());
         Ok(())
     }
 
-    fn on_mouse_btn_pressed(
+    fn on_received_packet(
         &mut self,
-        _x: f32,
-        _y: f32,
-        _button: MouseButton,
-        _window: &Window,
+        packet: RawPacket,
         _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.is_pressed = true;
-        Ok(())
-    }
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::Connect => {
+                let packet = ConnectPacket::from_raw(packet);
+                self.connect_packet = Some(packet);
+            }
+            _ => {
+                panic!("invalid packet received! (TYPE:{:?})", &packet_type);
+            }
+        }
 
-    fn on_keyboard_pressed(
-        &mut self,
-        _code: KeyCode,
-        _location: KeyLocation,
-        _modifiers: Modifiers,
-        _repeat: bool,
-        _window: &Window,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        self.is_pressed = true;
         Ok(())
     }
 
     fn on_update(
         &mut self,
-        elapsed_time_sec: f32,
+        _elapsed_time_sec: f32,
         _window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.elapsed_time_sec = (self.elapsed_time_sec + elapsed_time_sec) % MAX_SCENE_DURATION;
+        // 작업 결과를 확인합니다.
+        if let Some(result) = self.task_result.pop() {
+            result?;
+        }
 
-        if self.is_pressed {
+        // `ConnectPakcet` 데이터를 확인합니다.
+        if let Some(connect_packet) = self.connect_packet.take() {
+            // 사용자 구성 정보에 저장합니다.
+            let mut config = UserConfig::get();
+            config.info = connect_packet.user;
+            config.token = connect_packet.token;
+
             // 다음 게임 장면으로 전환합니다.
-            let main_camera = self.main_camera.clone();
-            let background = self.background.clone();
-            let next_scene = Box::new(GameLoginConnectScene::new(main_camera, background));
+            // TODO: MainLobbyEnterScene으로 전환
+            use crate::scenes::testbed::TestbedTitleScene;
+            let next_scene = Box::new(TestbedTitleScene::new());
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
+
         Ok(())
     }
 

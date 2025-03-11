@@ -1,6 +1,7 @@
 mod lobby;
 mod room;
 mod startup;
+mod testbed;
 mod title;
 
 use std::fmt;
@@ -46,9 +47,9 @@ impl fmt::Debug for GameLoginTitleScene {
     }
 }
 
-impl fmt::Debug for GameTitleScene {
+impl fmt::Debug for GameLoginConnectScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(GameTitleScene))
+        write!(f, "{}", stringify!(GameLoginConnectScene))
     }
 }
 
