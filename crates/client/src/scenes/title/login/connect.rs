@@ -13,7 +13,7 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::NEXON_LV2_GOTHIC,
+    asset::NOTOSANS_REGULAR,
     config::{Locale, UserConfig, NUM_LOCALE},
     render::BackgroundResource,
     scenes::BASE_WIDTH,
@@ -65,7 +65,7 @@ impl GameLoginConnectScene {
         let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
-        let main_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let main_font_id = egui::FontId::new(16.0 * scale, main_font_family);
         let main_font_color = egui::Color32::BLACK;
 

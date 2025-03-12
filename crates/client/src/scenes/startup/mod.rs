@@ -15,7 +15,7 @@ use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
-    asset::{NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD, USER_CONFIG},
+    asset::{NOTOSANS_REGULAR, NOTOSANS_BOLD, USER_CONFIG},
     config::UserConfig,
 };
 
@@ -48,8 +48,8 @@ impl GameStartupScene {
         }
     }
 
-    /// `NEXON Lv2 Gothic` 폰트를 로드합니다.
-    fn load_nexon_lv2_gothic_font(
+    /// `NotoSans-Regular` 폰트를 로드합니다.
+    fn load_notosans_regular_font(
         &mut self,
         thread_pool: &ThreadPool,
         asset_manager: &AssetManager,
@@ -60,7 +60,7 @@ impl GameStartupScene {
         thread_pool.spawn(move || {
             // 에셋 데이터를 로드합니다.
             let result = asset_manager
-                .load(NEXON_LV2_GOTHIC)
+                .load(NOTOSANS_REGULAR)
                 .map(|asset| {
                     (
                         asset.filename().to_string_lossy().into_owned(),
@@ -72,7 +72,7 @@ impl GameStartupScene {
                     Box::new(e) as Box<dyn Error + Send>
                 });
             // 남은 에셋 데이터를 제거합니다.
-            asset_manager.remove(NEXON_LV2_GOTHIC);
+            asset_manager.remove(NOTOSANS_REGULAR);
             // 결과를 전송합니다.
             task_results.push(result);
         });
@@ -81,8 +81,8 @@ impl GameStartupScene {
         self.remaining_task_count += 1;
     }
 
-    /// `NEXON Lv2 Gothic Bold` 폰트를 로드합니다.
-    fn load_nexon_lv2_gothic_blod_font(
+    /// `NotoSans-Bold` 폰트를 로드합니다.
+    fn load_notosans_blod_font(
         &mut self,
         thread_pool: &ThreadPool,
         asset_manager: &AssetManager,
@@ -93,7 +93,7 @@ impl GameStartupScene {
         thread_pool.spawn(move || {
             // 에셋 데이터를 로드합니다.
             let result = asset_manager
-                .load(NEXON_LV2_GOTHIC_BOLD)
+                .load(NOTOSANS_BOLD)
                 .map(|asset| {
                     (
                         asset.filename().to_string_lossy().into_owned(),
@@ -105,7 +105,7 @@ impl GameStartupScene {
                     Box::new(e) as Box<dyn Error + Send>
                 });
             // 남은 에셋 데이터를 제거합니다.
-            asset_manager.remove(NEXON_LV2_GOTHIC_BOLD);
+            asset_manager.remove(NOTOSANS_BOLD);
             // 결과를 전송합니다.
             task_results.push(result);
         });
@@ -134,29 +134,29 @@ impl GameStartupScene {
         // `NEXON Lv2 Gothic` 폰트를 추가합니다.
         let font = self
             .raw_asset_data
-            .remove(NEXON_LV2_GOTHIC)
+            .remove(NOTOSANS_REGULAR)
             .expect("font data is empty!");
         fonts.font_data.insert(
-            NEXON_LV2_GOTHIC.to_owned(),
+            NOTOSANS_REGULAR.to_owned(),
             egui::FontData::from_owned(font).into(),
         );
         fonts.families.insert(
-            egui::FontFamily::Name(NEXON_LV2_GOTHIC.into()),
-            vec![NEXON_LV2_GOTHIC.into()],
+            egui::FontFamily::Name(NOTOSANS_REGULAR.into()),
+            vec![NOTOSANS_REGULAR.into()],
         );
 
         // `NEXON Lv2 Gothic Bold` 폰트를 추가합니다.
         let font = self
             .raw_asset_data
-            .remove(NEXON_LV2_GOTHIC_BOLD)
+            .remove(NOTOSANS_BOLD)
             .expect("font data is empty!");
         fonts.font_data.insert(
-            NEXON_LV2_GOTHIC_BOLD.to_owned(),
+            NOTOSANS_BOLD.to_owned(),
             egui::FontData::from_owned(font).into(),
         );
         fonts.families.insert(
-            egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into()),
-            vec![NEXON_LV2_GOTHIC_BOLD.into()],
+            egui::FontFamily::Name(NOTOSANS_BOLD.into()),
+            vec![NOTOSANS_BOLD.into()],
         );
 
         // 폰트 설정을 저장합니다.
@@ -192,8 +192,8 @@ impl GameScene for GameStartupScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let thread_pool = app.io_threads();
         let asset_manager = app.asset_manager();
-        self.load_nexon_lv2_gothic_font(thread_pool, asset_manager);
-        self.load_nexon_lv2_gothic_blod_font(thread_pool, asset_manager);
+        self.load_notosans_regular_font(thread_pool, asset_manager);
+        self.load_notosans_blod_font(thread_pool, asset_manager);
         self.load_user_config(asset_manager.get_root_dir());
         Ok(())
     }

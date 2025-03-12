@@ -13,7 +13,7 @@ use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
-    asset::{NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD, USER_CONFIG},
+    asset::{NOTOSANS_REGULAR, NOTOSANS_BOLD, USER_CONFIG},
     config::UserConfig,
 };
 
@@ -66,10 +66,10 @@ impl TestbedTitleScene {
         let scale_factor = window.scale_factor() as f32;
         let (width, _): (f32, f32) = window.inner_size().into();
 
-        let head_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into());
+        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let head_font_id = egui::FontId::new(24.0, head_font_family);
 
-        let main_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let main_font_id = egui::FontId::new(18.0, main_font_family);
 
         let is_config_changed =

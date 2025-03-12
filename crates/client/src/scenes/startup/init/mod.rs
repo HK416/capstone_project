@@ -20,7 +20,7 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::{NEXON_LV2_GOTHIC, USER_CONFIG},
+    asset::{NOTOSANS_REGULAR, USER_CONFIG},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::GameIntroNotifyScene,
 };
@@ -58,7 +58,7 @@ impl InitFinishScene {
     /// UI 콜백 함수
     fn ui_callback(&mut self, _window: &Window, egui_ctx: &egui::Context) {
         // 폰트 속성
-        let font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0, font_family);
         let font_color = egui::Color32::WHITE;
 

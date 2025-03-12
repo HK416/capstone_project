@@ -9,7 +9,7 @@ use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
-    asset::{NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD},
+    asset::{NOTOSANS_REGULAR, NOTOSANS_BOLD},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };
@@ -67,8 +67,8 @@ impl InitWindowScene {
         let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into());
-        let main_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let head_font_id = egui::FontId::new(64.0 * scale, head_font_family);
         let main_font_id = egui::FontId::new(32.0 * scale, main_font_family);
         let font_color = egui::Color32::WHITE;

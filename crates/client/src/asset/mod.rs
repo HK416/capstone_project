@@ -12,11 +12,10 @@ pub use self::{hierarchy::*, motion::*, stage::*};
 pub const USER_CONFIG: &'static str = "user_config";
 /// 폰트 에셋의 작업 디렉토리 상대 경로입니다.
 pub const FONT_WORKSPACE: &'static str = "font/";
-/// `NEXON Lv2 고딕` 폰트 파일의 상대 경로입니다.
-pub const NEXON_LV2_GOTHIC: &'static str = concat!(FONT_WORKSPACE, "NEXON_Lv2_Gothic.ttf");
-/// `NEXON Lv2 고딕` 폰트 파일의 상대 경로입니다.
-pub const NEXON_LV2_GOTHIC_BOLD: &'static str =
-    concat!(FONT_WORKSPACE, "NEXON_Lv2_Gothic_Bold.ttf");
+/// `NotoSans-Regular` 폰트 파일의 상대 경로입니다.
+pub const NOTOSANS_REGULAR: &'static str = concat!(FONT_WORKSPACE, "NotoSans_Regular.ttf");
+/// `NotoSans-Bold` 폰트 파일의 상대 경로입니다.
+pub const NOTOSANS_BOLD: &'static str = concat!(FONT_WORKSPACE, "NotoSans_Bold.ttf");
 
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]

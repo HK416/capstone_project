@@ -16,7 +16,7 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
-    asset::{AssetError, NEXON_LV2_GOTHIC, NEXON_LV2_GOTHIC_BOLD},
+    asset::{AssetError, NOTOSANS_REGULAR, NOTOSANS_BOLD},
     config::{Locale, UserConfig, NUM_LOCALE},
     render::{BackgroundDataLayout, BackgroundResource, LOGIN_PAD_BG, LOGIN_PAD_BG_DATA},
     scenes::{GameLoginTitleScene, BASE_WIDTH},
@@ -73,8 +73,8 @@ impl GameIntroNotifyScene {
         let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into());
-        let main_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let head_font_id = egui::FontId::new(64.0 * scale, head_font_family);
         let main_font_id = egui::FontId::new(48.0 * scale, main_font_family.clone());
         let sub_font_id = egui::FontId::new(24.0 * scale, main_font_family);

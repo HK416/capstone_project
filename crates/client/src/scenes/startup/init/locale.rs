@@ -9,7 +9,7 @@ use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
-    asset::NEXON_LV2_GOTHIC,
+    asset::NOTOSANS_REGULAR,
     config::{Locale, UserConfig},
     scenes::BASE_WIDTH,
 };
@@ -47,7 +47,7 @@ impl InitLocaleScene {
         let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
-        let font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC.into());
+        let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(48.0 * scale, font_family);
         let font_color = egui::Color32::WHITE;
 

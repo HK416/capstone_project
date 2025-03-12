@@ -13,7 +13,7 @@ use winit::{
 };
 
 use crate::{
-    asset::NEXON_LV2_GOTHIC_BOLD,
+    asset::NOTOSANS_BOLD,
     config::{Locale, UserConfig, NUM_LOCALE},
     render::{BackgroundDataLayout, BackgroundResource},
     scenes::BASE_WIDTH,
@@ -69,7 +69,7 @@ impl GameLoginTitleScene {
         let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NEXON_LV2_GOTHIC_BOLD.into());
+        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let head_font_id = egui::FontId::new(32.0 * scale, head_font_family);
         let head_font_color = self.get_font_color();
 
