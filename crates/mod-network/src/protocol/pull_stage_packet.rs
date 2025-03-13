@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, Bullet, Epoch, Player, TryFromBigEndian};
+use crate::components::{BigEndian, Bullet, Epoch, InGamePlayer, TryFromBigEndian};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -8,13 +8,13 @@ use super::{Packet, PacketType, RawPacket};
 pub struct PullStagePacket {
     pub epoch: Epoch,
     pub num_players: u16,
-    pub players: Vec<Player>,
+    pub players: Vec<InGamePlayer>,
     pub num_bullets: u16,
     pub bullets: Vec<Bullet>,
 }
 
 impl PullStagePacket {
-    pub fn new(epoch: Epoch, players: Vec<Player>, bullets: Vec<Bullet>) -> Self {
+    pub fn new(epoch: Epoch, players: Vec<InGamePlayer>, bullets: Vec<Bullet>) -> Self {
         Self {
             epoch,
             num_players: players.len() as u16,
@@ -45,7 +45,7 @@ impl Packet for PullStagePacket {
     fn as_raw(&self) -> RawPacket {
         let data_size = Epoch::byte_size()
             + u16::byte_size()
-            + Player::byte_size() * self.num_players as usize
+            + InGamePlayer::byte_size() * self.num_players as usize
             + u16::byte_size()
             + Bullet::byte_size() * self.num_bullets as usize;
         let mut data = Vec::with_capacity(data_size);
@@ -88,7 +88,7 @@ impl Packet for PullStagePacket {
         let mut offset = 0;
         let mut size = Epoch::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = Epoch::try_from_big_endian_bytes(data)?;
+        let epoch = Epoch::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
         offset = offset + size;
@@ -101,9 +101,9 @@ impl Packet for PullStagePacket {
         let mut players = Vec::with_capacity(count);
         while count > 0 {
             offset = offset + size;
-            size = Player::byte_size();
+            size = InGamePlayer::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(Player::try_from_big_endian_bytes(data)?);
+            players.push(InGamePlayer::try_from_big_endian_bytes(data)?);
             count -= 1;
         }
 
@@ -136,7 +136,7 @@ impl Packet for PullStagePacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{ClientId, ObjectId};
+    use crate::components::{ObjectId, UserId, UserInfo, UserName};
 
     use super::*;
 
@@ -145,24 +145,24 @@ mod tests {
         let origin = PullStagePacket::new(
             Epoch::new(0),
             vec![
-                Player {
-                    object_id: ObjectId::new(123456),
+                InGamePlayer {
+                    info: UserInfo::new(UserId::new(123456), UserName::new("Foo")),
                     ..Default::default()
                 },
-                Player {
-                    object_id: ObjectId::new(1),
+                InGamePlayer {
+                    info: UserInfo::new(UserId::new(654321), UserName::new("Bar")),
                     ..Default::default()
                 },
             ],
             vec![
                 Bullet {
                     object_id: ObjectId::new(123455),
-                    shooter_id: ClientId::new(1),
+                    shooter_id: UserId::new(1),
                     ..Default::default()
                 },
                 Bullet {
                     object_id: ObjectId::new(1),
-                    shooter_id: ClientId::new(1),
+                    shooter_id: UserId::new(1),
                     ..Default::default()
                 },
             ],

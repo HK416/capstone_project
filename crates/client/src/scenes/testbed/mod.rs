@@ -5,34 +5,35 @@ use std::{error::Error, fmt};
 
 use mod_app::{
     app::AppHandle,
-    asset::AssetManager,
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{CharacterKind, ClientId};
+use mod_network::components::CharacterKind;
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
-    config::{InvalidConfig, UserConfig},
-    USER_CONFIG,
+    asset::{NOTOSANS_REGULAR, NOTOSANS_BOLD, USER_CONFIG},
+    config::UserConfig,
 };
 
 pub use {self::enter::*, self::in_game::*};
 
 /// ## Testbed Title Scene
 pub struct TestbedTitleScene {
-    /// 사용자 구성 설정 데이터
-    user_config: Option<Box<UserConfig>>,
-    /// 클라이언트 식별자
-    client_id: ClientId,
-
     /// 선택된 전체 화면 여부
-    fullscreen: bool,
+    is_fullscreen: bool,
     /// 선택된 윈도우 창 크기
     window_size: WindowSize,
     /// 선택된 캐릭터 종류
     character_kind: CharacterKind,
+
+    /// 다음 장면의 진입 여부입니다.
+    /// `true`일 경우 다음 장면으로 전환합니다.
+    next_scene_transition_request: bool,
+    /// 사용자 구성 파일 저장 여부입니다.
+    /// `true`일 경우 사용자 구성 파일을 저장합니다.
+    configuration_save_request: bool,
 
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
@@ -40,49 +41,16 @@ pub struct TestbedTitleScene {
 
 impl TestbedTitleScene {
     /// 새로운 `TestbedTitleScene`을 생성합니다.
-    pub fn new(user_config: Box<UserConfig>, client_id: ClientId) -> Self {
-        assert_ne!(client_id, ClientId::NULL, "invalid client id");
+    pub fn new() -> Self {
         Self {
-            user_config: Some(user_config),
-            client_id,
-            fullscreen: false,
+            is_fullscreen: false,
             window_size: WindowSize::MAX,
             character_kind: CharacterKind::default(),
+            next_scene_transition_request: false,
+            configuration_save_request: false,
             egui_clip_primitives: Vec::new(),
             egui_free_texture_ids: Vec::new(),
         }
-    }
-
-    /// 사용자 구성이 변경된 경우 `true`를 반환합니다.
-    fn is_configuration_changed(&self) -> bool {
-        self.user_config.as_ref().is_some_and(|user_config| {
-            user_config.fullscreen != self.fullscreen || user_config.window_size != self.window_size
-        })
-    }
-
-    /// 사용자 구성을 저장합니다.
-    fn store_configuration(
-        &mut self,
-        asset_manager: &AssetManager,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        // 사용자 구성 설정 데이터를 변경합니다.
-        let user_config = self
-            .user_config
-            .as_mut()
-            .expect("user configuration must exist");
-        user_config.fullscreen = self.fullscreen;
-        user_config.window_size = self.window_size;
-
-        // 파일 데이터를 가져옵니다.
-        let data = serde_json::to_vec_pretty(&user_config)
-            .map_err(|e| InvalidConfig(e))
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
-
-        // 사용자 구성 설정 파일에 데이터를 저장합니다.
-        asset_manager
-            .store(USER_CONFIG, &data)
-            .map(|_| ())
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }
 
     /// 사용자 인터페이스 콜백 함수입니다.
@@ -93,39 +61,43 @@ impl TestbedTitleScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let egui_ctx = app.egui_ctx();
 
-        let client_id = self.client_id.to_string();
+        let config = UserConfig::get();
+        let name = config.info.name;
         let scale_factor = window.scale_factor() as f32;
         let (width, _): (f32, f32) = window.inner_size().into();
 
+        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let head_font_id = egui::FontId::new(24.0, head_font_family);
+
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let main_font_id = egui::FontId::new(18.0, main_font_family);
+
+        let is_config_changed =
+            config.is_fullscreen != self.is_fullscreen || config.window_size != self.window_size;
         let title_text = egui::RichText::new("Hello2Halo (개발자 모드)")
             .color(egui::Color32::WHITE)
-            .size(24.0);
+            .font(head_font_id.clone());
         let fullscreen_option_text = egui::RichText::new("전체 화면")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let window_size_option_text = egui::RichText::new("창 크기")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let character_option_text = egui::RichText::new("캐릭터 선택")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let save_button_text = egui::RichText::new("설정 저장")
             .color(egui::Color32::WHITE)
-            .size(18.0);
+            .font(main_font_id.clone());
         let join_button_text = egui::RichText::new("게임 월드 입장")
             .color(egui::Color32::WHITE)
-            .size(18.0);
-        let client_id_text = egui::RichText::new(format!("클라이언트 ID: {:?}", client_id))
+            .font(main_font_id.clone());
+        let client_id_text = egui::RichText::new(format!("사용자: {}", name))
             .color(egui::Color32::WHITE)
-            .size(12.0);
-
-        self.fullscreen = app.is_fullscreen();
-        self.window_size = app.window_size();
-        let mut pressed_save_button = false;
-        let mut change_scene = false;
+            .font(main_font_id.clone());
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::new())
             .show(egui_ctx, |ui| {
                 ui.style_mut().interaction.selectable_labels = false;
                 ui.vertical_centered(|ui| {
@@ -140,11 +112,11 @@ impl TestbedTitleScene {
                         .spacing([(width * 0.02) / scale_factor, 4.0])
                         .show(ui, |ui| {
                             ui.label(fullscreen_option_text);
-                            ui.checkbox(&mut self.fullscreen, "");
+                            ui.checkbox(&mut self.is_fullscreen, "");
                             ui.end_row();
 
                             ui.label(window_size_option_text);
-                            ui.add_enabled_ui(!self.fullscreen, |ui| {
+                            ui.add_enabled_ui(!self.is_fullscreen, |ui| {
                                 egui::ComboBox::from_label("")
                                     .selected_text(format!("{}", self.window_size.to_string()))
                                     .show_ui(ui, |ui| {
@@ -168,9 +140,9 @@ impl TestbedTitleScene {
 
                     ui.separator();
                     ui.horizontal(|ui| {
-                        ui.add_enabled_ui(self.is_configuration_changed(), |ui| {
+                        ui.add_enabled_ui(is_config_changed, |ui| {
                             if ui.button(save_button_text).clicked() {
-                                pressed_save_button = true;
+                                self.configuration_save_request = true;
                             }
                         });
                     });
@@ -211,16 +183,38 @@ impl TestbedTitleScene {
                     ui.label(client_id_text);
                     ui.horizontal(|ui| {
                         if ui.button(join_button_text).clicked() {
-                            change_scene = true;
+                            self.next_scene_transition_request = true;
                         }
                     });
                 });
             });
+        Ok(())
+    }
+}
 
+impl GameScene for TestbedTitleScene {
+    fn on_enter(
+        &mut self,
+        _window: &Window,
+        _app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 현재 사용자 구성 설정 값을 가져옵니다.
+        let config = UserConfig::get();
+        self.window_size = config.window_size;
+        self.is_fullscreen = config.is_fullscreen;
+        Ok(())
+    }
+
+    fn on_update(
+        &mut self,
+        _elapsed_time_sec: f32,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
         let proxy = app.event_loop_proxy();
-        if self.fullscreen != app.is_fullscreen() {
+        if self.is_fullscreen != app.is_fullscreen() {
             proxy
-                .send_event(AppEvent::FullScreenRequest(self.fullscreen))
+                .send_event(AppEvent::FullScreenRequest(self.is_fullscreen))
                 .unwrap();
         }
 
@@ -230,31 +224,27 @@ impl TestbedTitleScene {
                 .unwrap();
         }
 
-        if change_scene && self.user_config.is_some() {
-            if let Some(user_config) = self.user_config.take() {
-                let next_scene =
-                    EnterStageScene::new(user_config, self.client_id, self.character_kind);
-                let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
-                let event = AppEvent::SetGameSceneFlow(scene_flow);
-                proxy.send_event(event).unwrap();
-            }
+        if self.next_scene_transition_request {
+            let next_scene = EnterStageScene::new(self.character_kind);
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            proxy.send_event(event).unwrap();
         }
 
-        if pressed_save_button {
-            self.store_configuration(app.asset_manager())?;
+        if self.configuration_save_request {
+            let mut config = UserConfig::get();
+            config.window_size = self.window_size;
+            config.is_fullscreen = self.is_fullscreen;
+            drop(config);
+
+            let mut path = app.asset_manager().get_root_dir().to_path_buf();
+            path.push(USER_CONFIG);
+            let _ = UserConfig::store_from_file(path)
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+            self.configuration_save_request = false;
         }
 
-        Ok(())
-    }
-}
-
-impl GameScene for TestbedTitleScene {
-    fn on_enter(
-        &mut self,
-        window: &Window,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        window.set_visible(true);
         Ok(())
     }
 

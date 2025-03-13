@@ -1,5 +1,5 @@
 use mod_app::asset::AssetManager;
-use mod_network::assets::StageLayoutData;
+use mod_network::components::StageLayoutData;
 
 use super::AssetError;
 

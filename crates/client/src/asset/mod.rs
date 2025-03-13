@@ -4,7 +4,18 @@ mod stage;
 
 use std::io;
 
+use constcat::concat;
+
 pub use self::{hierarchy::*, motion::*, stage::*};
+
+/// 사용자 구성 파일의 상대 경로입니다.
+pub const USER_CONFIG: &'static str = "user_config";
+/// 폰트 에셋의 작업 디렉토리 상대 경로입니다.
+pub const FONT_WORKSPACE: &'static str = "font/";
+/// `NotoSans-Regular` 폰트 파일의 상대 경로입니다.
+pub const NOTOSANS_REGULAR: &'static str = concat!(FONT_WORKSPACE, "NotoSans_Regular.ttf");
+/// `NotoSans-Bold` 폰트 파일의 상대 경로입니다.
+pub const NOTOSANS_BOLD: &'static str = concat!(FONT_WORKSPACE, "NotoSans_Bold.ttf");
 
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]

@@ -2,6 +2,9 @@
 chcp 65001 >nul
 title "Project Build (Profile:Release)"
 
+echo "Rust의 최신 버전을 다운로드합니다."
+rustup update
+
 echo "crates.io의 최신 정보를 가져옵니다."
 cargo update
 

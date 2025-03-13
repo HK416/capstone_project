@@ -95,7 +95,7 @@ impl Packet for UdpDamageLogPacket {
         let mut offset = 0;
         let mut size = Epoch::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = Epoch::try_from_big_endian_bytes(data)?;
+        let epoch = Epoch::from_big_endian_bytes(data);
 
         // 로그의 수를 가져옵니다.
         offset = offset + size;
@@ -124,7 +124,7 @@ impl Packet for UdpDamageLogPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{HealthPoint, ObjectId};
+    use crate::components::{HealthPoint, UserId};
 
     use super::*;
 
@@ -134,11 +134,11 @@ mod tests {
             Epoch::new(0),
             vec![
                 DamageLog {
-                    object_id: ObjectId::new(123456),
+                    user_id: UserId::new(123456),
                     damage: HealthPoint(1010),
                 },
                 DamageLog {
-                    object_id: ObjectId::new(1),
+                    user_id: UserId::new(1),
                     damage: HealthPoint(52),
                 },
             ],

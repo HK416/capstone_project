@@ -1,14 +1,13 @@
 use std::{error::Error, fmt, sync::Arc};
 
 use ahash::{HashMap, HashSet};
-use glam::Vec4Swizzles;
 use hecs::{Entity, EntityBuilder, With, Without, World};
 use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, ClientId, DamageLog,
-        Epoch, HealthPoint, LatLon, MovementState, MovementStateTimer, ObjectId, Player, ViewState,
-        ViewStateTimer,
+        ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, DamageLog, Epoch,
+        GameInputBits, HealthPoint, InGamePlayer, LatLon, LoginToken, MovementState,
+        MovementStateTimer, ObjectId, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -27,14 +26,11 @@ use winit::{
 use crate::{
     component::{
         animate_character, cleanup, draw_character, set_weapon_position, spawn_player_character,
-        spwan_bullet, update_action_state_by_controller_input_flags, update_action_state_timer,
-        update_character_direction, update_entity_hierarchy,
-        update_movement_state_by_controller_state, update_movement_state_timer,
+        spwan_bullet, update_character_direction, update_entity_hierarchy,
         update_third_person_camera, update_third_person_camera_hierarchy,
         update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection,
-        Child, ControllerInputFlags, ControllerInputTimer, ControllerState, MoveDirection, Parent,
-        Projection, Sibling, SkinningAnimation, StageArea, StageProp, ThirdPersonCamera,
-        ToParentTrans, WorldTransform,
+        Child, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, StageArea, StageProp,
+        ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::UserConfig,
     render::{
@@ -47,30 +43,26 @@ use crate::{
 
 /// 기본 게임 구조를 테스트하는 공간입니다.
 pub struct TestbedInGameScene {
-    /// 사용자 설정 구성 데이터
-    user_config: Option<Box<UserConfig>>,
-    /// 클라이언트 식별자
-    client_id: ClientId,
-    /// 플레이어의 오브젝트 식별자
-    object_id: ObjectId,
+    /// 현재 사용자 식별자
+    user_id: UserId,
+    /// 로그인 토큰
+    token: LoginToken,
     /// 이전 서버의 Epoch
     epoch: Epoch,
 
     /// 게임 월드
     world: World,
-    /// 게임 월드 엔터티 목록
-    entities: HashMap<ObjectId, Entity>,
+    /// 플레이어 엔터티 목록
+    players: HashMap<UserId, Entity>,
+    /// 오브젝트 엔터티 목록
+    objects: HashMap<ObjectId, Entity>,
     /// 메인 카메라 엔터티
     main_camera: Entity,
 
     /// 플레이어 움직임 방향
     move_direction: MoveDirection,
-    /// 사용자 입력 상태
-    controller_state: ControllerState,
-    /// 사용자 입력 상태 지속 시간
-    controller_state_timer: ControllerInputTimer,
     /// 사용자 입력 상태 플래그 변수
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputBits,
 
     /// Skybox 쉐이더 리소스
     skybox_resource: Arc<SkyboxResource>,
@@ -88,32 +80,23 @@ pub struct TestbedInGameScene {
 
 impl TestbedInGameScene {
     /// 새로운 `TestbedInGameScene`을 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 클라이언트 식별자가 유효하지 않는 경우 [`panic!`]을 호출합니다.
-    ///
     pub fn new(
-        user_config: Box<UserConfig>,
-        client_id: ClientId,
-        object_id: ObjectId,
         epoch: Epoch,
         world: World,
-        entities: HashMap<ObjectId, Entity>,
+        players: HashMap<UserId, Entity>,
         skybox_resource: Arc<SkyboxResource>,
     ) -> Self {
-        assert_ne!(client_id, ClientId::NULL, "invalid client id");
+        let config = UserConfig::get();
         Self {
-            user_config: Some(user_config),
-            client_id,
-            object_id,
+            user_id: config.info.uid,
+            token: config.token,
             epoch,
             world,
-            entities,
+            players,
+            objects: HashMap::default(),
             main_camera: Entity::DANGLING,
             move_direction: MoveDirection::default(),
-            controller_state: ControllerState::default(),
-            controller_state_timer: ControllerInputTimer::default(),
-            controller_input_flags: ControllerInputFlags::default(),
+            controller_input_flags: GameInputBits::default(),
             skybox_resource,
             damage_logs: Vec::default(),
             composite_resource: None,
@@ -138,7 +121,7 @@ impl TestbedInGameScene {
             .size(18.0);
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::none())
+            .frame(egui::Frame::new())
             .show(egui_ctx, |ui| {
                 ui.label(connect_server_text);
             });
@@ -230,14 +213,13 @@ impl TestbedInGameScene {
         // 사용자 설정한 마우스 좌/우, 상/하 반전을 적용합니다.
         let offset = 1.0;
 
-        if let Some(config) = &self.user_config {
-            if config.mouse.left_right_reversal {
-                dx *= -1.0;
-            }
+        let config = UserConfig::get();
+        if config.flip_horizontal {
+            dx *= -1.0;
+        }
 
-            if config.mouse.up_down_reversal {
-                dy *= -1.0;
-            }
+        if config.flip_vertical {
+            dy *= -1.0;
         }
 
         // 카메라 엔터티에서 카메라 방향 컴포넌트를 가져옵니다.
@@ -247,7 +229,9 @@ impl TestbedInGameScene {
             .expect("invalid entity or invalid entity component");
 
         // 카메라를 회전시킵니다.
-        third_person_camera.rotate(dx, dy, offset);
+        if cfg!(not(feature = "print-transform")) {
+            third_person_camera.rotate(dx, dy, offset);
+        }
 
         // 플레이어 엔터티에 카메라 방향 컴포넌트에도 적용합니다.
         let rotation = third_person_camera.rotation;
@@ -368,37 +352,9 @@ impl TestbedInGameScene {
             .expect("invalid entity or invalid entity component");
 
         // 플레이어 움직임 방향을 갱신합니다.
+        let controller_state = self.controller_input_flags.as_state();
         self.move_direction
-            .update_from_third_person_camera(self.controller_state, third_person_camera);
-    }
-
-    /// 컨트롤러 입력 지속 시간을 갱신합니다.
-    fn update_player_controller_input_timer(&mut self, fixed_time_sec: f32) {
-        match self.controller_state {
-            ControllerState::Idle => self
-                .controller_state_timer
-                .update_when_controller_released(fixed_time_sec),
-            _ => self
-                .controller_state_timer
-                .update_when_controller_preesed(fixed_time_sec),
-        }
-    }
-
-    /// 플레이어의 움직임 상태를 갱신합니다.
-    fn update_player_movement_state(&mut self) {
-        // 플레이어 캐릭터 엔터티에서 `MovementState`, `MovementStateTimer`를 가져옵니다.
-        let entity = self.get_player_entity();
-        let (movement_state, movement_state_timer) = self
-            .world
-            .query_one_mut::<(&mut MovementState, &mut MovementStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        // 움직임 상태를 갱신합니다.
-        update_movement_state_by_controller_state(
-            movement_state,
-            movement_state_timer,
-            self.controller_state,
-        );
+            .update_from_third_person_camera(controller_state, third_person_camera);
     }
 
     /// 현재 클라이언트의 플레이어 캐릭터 엔터티를 가져옵니다.
@@ -407,8 +363,8 @@ impl TestbedInGameScene {
     /// 엔터티 목록에서 오브젝트 식별자에 해당하는 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
     ///
     fn get_player_entity(&self) -> Entity {
-        self.entities
-            .get(&self.object_id)
+        self.players
+            .get(&self.user_id)
             .cloned()
             .expect("no such entity")
     }
@@ -444,65 +400,6 @@ impl TestbedInGameScene {
             character_kind,
             view_state,
             view_state_timer,
-            elapsed_time_sec,
-        );
-    }
-
-    /// 플레이어 행동 상태를 갱신합니다.
-    fn update_player_action_state(&mut self) {
-        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
-        let entity = self.get_player_entity();
-        let (&character_kind, action_state, action_state_timer) = self
-            .world
-            .query_one_mut::<(&CharacterKind, &mut ActionState, &mut ActionStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        // 행동 상태를 갱신합니다.
-        update_action_state_by_controller_input_flags(
-            character_kind,
-            action_state,
-            action_state_timer,
-            self.controller_input_flags,
-        );
-    }
-
-    /// 플레이어 행동 상태 지속 시간을 갱신합니다.
-    fn update_player_action_state_timer(&mut self, elapsed_time_sec: f32) {
-        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
-        let entity = self.get_player_entity();
-        let (&character_kind, action_state, action_state_timer) = self
-            .world
-            .query_one_mut::<(&CharacterKind, &mut ActionState, &mut ActionStateTimer)>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        update_action_state_timer(
-            character_kind,
-            action_state,
-            action_state_timer,
-            elapsed_time_sec,
-        );
-    }
-
-    /// 플레이어 움직임 상태 지속 시간을 갱신합니다.
-    fn update_player_movement_state_timer(&mut self, elapsed_time_sec: f32) {
-        // 플레이어 캐릭터 엔터티에서 `CharacterKind`, `ActionState`, `ActionStateTimer`를 가져옵니다.
-        type Q<'a> = (
-            &'a CharacterKind,
-            &'a ActionState,
-            &'a mut MovementState,
-            &'a mut MovementStateTimer,
-        );
-        let entity = self.get_player_entity();
-        let (&character_kind, &action_state, movement_state, movement_state_timer) = self
-            .world
-            .query_one_mut::<Q>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        update_movement_state_timer(
-            character_kind,
-            action_state,
-            movement_state,
-            movement_state_timer,
             elapsed_time_sec,
         );
     }
@@ -594,7 +491,7 @@ impl TestbedInGameScene {
 
         while let Some(log) = self.damage_logs.pop() {
             // 엔터티를 가져옵니다.
-            let entity = match self.entities.get(&log.object_id) {
+            let entity = match self.players.get(&log.user_id) {
                 Some(&entity) => entity,
                 None => continue,
             };
@@ -875,32 +772,16 @@ impl TestbedInGameScene {
 
     /// 게임 서버에 플레이어 데이터를 전송합니다.
     fn push_player_data(&mut self, net_manager: &NetManager) {
-        type Components<'a> = (
-            &'a WorldTransform,
-            &'a ActionState,
-            &'a ActionStateTimer,
-            &'a MovementState,
-            &'a MovementStateTimer,
-            &'a ViewState,
-            &'a ViewStateTimer,
-        );
+        type Components<'a> = (&'a WorldTransform, &'a ViewState, &'a ViewStateTimer);
 
         // 플레이어 엔터티로부터 필요한 컴포넌트 데이터를 가져옵니다.
         let entity = self.get_player_entity();
-        let (
-            world_transform,
-            &action_state,
-            &action_state_timer,
-            &movement_state,
-            &movement_state_timer,
-            &view_state,
-            &view_state_timer,
-        ) = self
+        let (world_transform, &view_state, &view_state_timer) = self
             .world
             .query_one_mut::<Components>(entity)
             .expect("invalid entity or invalid entity component");
         let rotation = world_transform.get_rotation().to_array();
-        let direction = self.move_direction.0.xyz().to_array();
+        let direction = self.move_direction.0.to_array();
 
         // 메인 카메라 엔터티로부터 카메라 방향 데이터를 가져옵니다.
         let third_person_camera = self
@@ -912,13 +793,10 @@ impl TestbedInGameScene {
         // 패킷을 생성하고, 전송합니다.
         let pakcet = PushStatusPacket {
             epoch: self.epoch,
-            client_id: self.client_id,
+            token: self.token,
             rotation,
             direction,
-            action_state,
-            action_state_timer,
-            movement_state,
-            movement_state_timer,
+            input_flags: self.controller_input_flags,
             view_state,
             view_state_timer,
             view_rotation,
@@ -933,11 +811,10 @@ impl TestbedInGameScene {
         packet: PullStagePacket,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
-        let mut objects: HashSet<ObjectId> = self.entities.keys().cloned().collect();
-
+        // 현재 게임 월드에 존재하는 플레이어의 식별자를 수집합니다.
+        let mut identifiers: HashSet<UserId> = self.players.keys().cloned().collect();
         // 게임 월드에 존재하는 플레이어를 갱신합니다.
-        let new = self.update_player_from_packet(&packet.players, &mut objects);
+        let new = self.update_player_from_packet(&packet.players, &mut identifiers);
         // 새로운 플레이어를 게임 월드에 추가합니다.
         self.add_player_from_packet(
             new,
@@ -945,9 +822,12 @@ impl TestbedInGameScene {
             app.render_device(),
             app.render_queue(),
         )?;
+        self.remove_player_from_packet(identifiers.into_iter());
 
+        // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
+        let mut identifiers: HashSet<ObjectId> = self.objects.keys().cloned().collect();
         // 게임 월드에 존재하는 총알을 갱신합니다.
-        let new = self.update_bullet_from_packet(&packet.bullets, &mut objects);
+        let new = self.update_bullet_from_packet(&packet.bullets, &mut identifiers);
         // 새로운 총알을 게임 월드에 추가합니다.
         self.add_bullet_from_packet(
             new,
@@ -955,9 +835,8 @@ impl TestbedInGameScene {
             app.render_device(),
             app.render_queue(),
         )?;
-
         // 제거된 오브젝트를 게임월드에서 제거합니다.
-        self.remove_entity_from_packet(objects.into_iter());
+        self.remove_object_from_packet(identifiers.into_iter());
 
         Ok(())
     }
@@ -968,9 +847,9 @@ impl TestbedInGameScene {
     ///
     fn update_player_from_packet<'a>(
         &mut self,
-        players: &'a [Player],
-        objects: &mut HashSet<ObjectId>,
-    ) -> Vec<&'a Player> {
+        players: &'a [InGamePlayer],
+        identifiers: &mut HashSet<UserId>,
+    ) -> Vec<&'a InGamePlayer> {
         // 컴포넌트 뷰를 준비합니다.
         let mut health_point_view = self.world.view::<&mut HealthPoint>();
         let mut action_state_view = self
@@ -989,8 +868,8 @@ impl TestbedInGameScene {
 
         for player in players {
             // 현재 플레이어의 경우
-            if player.object_id == self.object_id {
-                objects.remove(&self.object_id);
+            if player.info.uid == self.user_id {
+                identifiers.remove(&self.user_id);
                 let entity = self.get_player_entity();
 
                 // 플레이어 체력을 갱신합니다.
@@ -999,21 +878,38 @@ impl TestbedInGameScene {
                     .expect("invalid entity or invalid entity component");
                 *hp = player.health_point;
 
-                // 플레이어 엔터티의 위치를 갱신합니다.
-                let local_transform = local_transform_view
+                // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
+                let (action_state, action_state_timer) = action_state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
-                local_transform.set_translation(glam::Vec3::from_array(player.translation));
+                *action_state = player.action_state;
+                *action_state_timer = player.action_state_timer;
+
+                // 움직임 상태, 움직임 상태 지속 시간을 갱신합니다.
+                let (movement_state, movement_state_timer) = movement_state_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component");
+                *movement_state = player.movement_state;
+                *movement_state_timer = player.movement_state_timer;
+
+                #[cfg(not(feature = "print-transform"))]
+                {
+                    // 플레이어 엔터티의 위치를 갱신합니다.
+                    let local_transform = local_transform_view
+                        .get_mut(entity)
+                        .expect("invalid entity or invalid entity component");
+                    local_transform.set_translation(glam::Vec3::from_array(player.translation));
+                }
 
                 continue;
             }
 
             // 이미 존재했던 오브젝트인 경우 오브젝트의 데이터를 갱신합니다.
-            if objects.remove(&player.object_id) {
+            if identifiers.remove(&player.info.uid) {
                 // 오브젝트의 엔터티를 가져옵니다.
                 let entity = self
-                    .entities
-                    .get(&player.object_id)
+                    .players
+                    .get(&player.info.uid)
                     .cloned()
                     .expect("no such entity");
 
@@ -1069,7 +965,7 @@ impl TestbedInGameScene {
     fn update_bullet_from_packet<'a>(
         &mut self,
         bullet: &'a [Bullet],
-        objects: &mut HashSet<ObjectId>,
+        identifiers: &mut HashSet<ObjectId>,
     ) -> Vec<&'a Bullet> {
         // 컴포넌트 뷰를 준비합니다.
         let mut local_transform_view = self.world.view::<&mut ToParentTrans>();
@@ -1079,10 +975,10 @@ impl TestbedInGameScene {
 
         for bullet in bullet {
             // 이미 존재했던 오브젝트인 경우 오브젝트의 데이터를 갱신합니다.
-            if objects.remove(&bullet.object_id) {
+            if identifiers.remove(&bullet.object_id) {
                 // 오브젝트의 엔터티를 가져옵니다.
                 let entity = self
-                    .entities
+                    .objects
                     .get(&bullet.object_id)
                     .cloned()
                     .expect("no such entity");
@@ -1107,7 +1003,7 @@ impl TestbedInGameScene {
     /// 서버에서 보낸 플레이어 데이터 중 새로운 플레이어를 게임 월드에 추가합니다.
     fn add_player_from_packet<'a>(
         &mut self,
-        new: Vec<&'a Player>,
+        new: Vec<&'a InGamePlayer>,
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -1126,13 +1022,21 @@ impl TestbedInGameScene {
                     .expect("no such entity");
             }
 
-            // 엔터티 목록에 새로운 엔터티를 추가합니다.
-            self.entities.insert(player.object_id, root_entity);
+            // 플레이어 목록에 새로운 엔터티를 추가합니다.
+            self.players.insert(player.info.uid, root_entity);
         }
 
         Ok(())
     }
 
+    /// 제거된 플레이어를 게임 월드에서 제거합니다.
+    fn remove_player_from_packet(&mut self, identifiers: impl Iterator<Item = UserId>) {
+        // 제거된 엔터티를 플레이어 목록에서 제거합니다.
+        for id in identifiers {
+            let entity = self.players.remove(&id).expect("no such entity");
+            cleanup(&mut self.world, entity);
+        }
+    }
     /// 서버에서 보낸 총알 데이터 중 새로운 총알을 게임 월드에 추가합니다.
     fn add_bullet_from_packet<'a>(
         &mut self,
@@ -1155,18 +1059,18 @@ impl TestbedInGameScene {
                     .expect("no such entity");
             }
 
-            // 엔터티 목록에 새로운 엔터티를 추가합니다.
-            self.entities.insert(bullet.object_id, root_entity);
+            // 오브젝트 목록에 새로운 엔터티를 추가합니다.
+            self.objects.insert(bullet.object_id, root_entity);
         }
 
         Ok(())
     }
 
-    /// 제거된 엔터티를 게임 월드에서 제거합니다.
-    fn remove_entity_from_packet(&mut self, objects: impl Iterator<Item = ObjectId>) {
-        // 제거된 엔터티를 엔터티 목록에서 제거합니다.
+    /// 제거된 엔터티를 오프젝트에서 제거합니다.
+    fn remove_object_from_packet(&mut self, objects: impl Iterator<Item = ObjectId>) {
+        // 제거된 엔터티를 오브젝트 목록에서 제거합니다.
         for id in objects {
-            let entity = self.entities.remove(&id).expect("no such entity");
+            let entity = self.objects.remove(&id).expect("no such entity");
             cleanup(&mut self.world, entity);
         }
     }
@@ -1197,18 +1101,14 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if !repeat && self.user_config.is_some() {
-            // 사용자 입력 상태를 갱신합니다.
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_state
-                .handle_keyboard_pressed(config, keycode, location);
-
-            // 사용자 입력 플래그를 갱신합니다.
-            self.controller_input_flags
-                .handle_keyboard_pressed(config, keycode, location);
+        if !repeat {
+            let config = UserConfig::get();
+            let flags = config
+                .get_keyboard_input(&(keycode, location))
+                .map(|input| input.into_bits())
+                .unwrap_or(GameInputBits::empty());
+            self.controller_input_flags |= flags;
         }
-
-        // TODO: 사용자 행동 상태를 갱신합니다.
 
         Ok(())
     }
@@ -1224,18 +1124,14 @@ impl GameScene for TestbedInGameScene {
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // 사용자 입력 상태를 갱신합니다.
-        if !repeat && self.user_config.is_some() {
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_state
-                .handle_keyboard_released(config, keycode, location);
-
-            // 사용자 입력 플래그를 갱신합니다.
-            self.controller_input_flags
-                .handle_keyboard_released(config, keycode, location);
+        if !repeat {
+            let config = UserConfig::get();
+            let flags = config
+                .get_keyboard_input(&(keycode, location))
+                .map(|input| input.into_bits())
+                .unwrap_or(GameInputBits::empty());
+            self.controller_input_flags &= !flags;
         }
-
-        // TODO: 사용자 행동 상태를 갱신합니다.
-
         Ok(())
     }
 
@@ -1248,13 +1144,12 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 사용자 입력 플래그를 갱신합니다.
-        if self.user_config.is_some() {
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_input_flags
-                .handle_mouse_btn_pressed(config, button);
-        }
-
+        let config = UserConfig::get();
+        let flags = config
+            .get_mouse_input(&button)
+            .map(|input| input.into_bits())
+            .unwrap_or(GameInputBits::empty());
+        self.controller_input_flags |= flags;
         Ok(())
     }
 
@@ -1267,13 +1162,12 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 사용자 입력 플래그를 갱신합니다.
-        if self.user_config.is_some() {
-            let config = unsafe { self.user_config.as_ref().unwrap_unchecked() };
-            self.controller_input_flags
-                .handle_mouse_btn_released(config, button);
-        }
-
+        let config = UserConfig::get();
+        let flags = config
+            .get_mouse_input(&button)
+            .map(|input| input.into_bits())
+            .unwrap_or(GameInputBits::empty());
+        self.controller_input_flags &= !flags;
         Ok(())
     }
 
@@ -1290,7 +1184,6 @@ impl GameScene for TestbedInGameScene {
         // 메인 카메라를 회전시킵니다.
         self.rotate_main_camera(dx, dy);
 
-        // TODO: 삼인칭 카메라를 회전시킵니다.
         Ok(())
     }
 
@@ -1329,10 +1222,6 @@ impl GameScene for TestbedInGameScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 플레이어 움직임 방향을 갱신합니다.
         self.update_player_move_direction();
-        // 플레이어 행동 상태를 갱신합니다.
-        self.update_player_action_state();
-        // 플레이어 움직임 상태를 갱신합니다.
-        self.update_player_movement_state();
         // 플레이어 카메라 상태를 갱신합니다.
         self.update_player_view_state();
 
@@ -1349,28 +1238,11 @@ impl GameScene for TestbedInGameScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 플레이어 행동 상태 지속 시간을 갱신합니다.
-        self.update_player_action_state_timer(elapsed_time_sec);
-        // 플레이어 움직임 지속 시간을 갱신합니다.
-        self.update_player_movement_state_timer(elapsed_time_sec);
         // 플레이어 카메라 상태 지속 시간을 갱신합니다.
         self.update_player_view_state_timer(elapsed_time_sec);
 
         // 데미지 파티클을 갱신합니다.
         self.update_damage_particles(elapsed_time_sec);
-
-        Ok(())
-    }
-
-    #[allow(unused_variables)]
-    fn on_fixed_update(
-        &mut self,
-        fixed_time_sec: f32,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        // 플레이어 컨트롤러 입력 지속 시간을 갱신합니다.
-        self.update_player_controller_input_timer(fixed_time_sec);
 
         Ok(())
     }
@@ -1383,10 +1255,6 @@ impl GameScene for TestbedInGameScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 플레이어 움직임 방향을 갱신합니다.
         self.update_player_move_direction();
-        // 플레이어 행동 상태를 갱신합니다.
-        self.update_player_action_state();
-        // 플레이어 움직임 상태를 갱신합니다.
-        self.update_player_movement_state();
         // 플레이어 카메라 상태를 갱신합니다.
         self.update_player_view_state();
         // 플레이어 캐릭터의 방향을 갱신합니다.
@@ -1417,7 +1285,7 @@ impl GameScene for TestbedInGameScene {
             app.render_queue(),
         );
 
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "print-transform")]
         {
             let entity = self.get_player_entity();
             let skinning_animation = self
@@ -1430,6 +1298,12 @@ impl GameScene for TestbedInGameScene {
             let muzzle = skinning_animation.muzzle;
             let weapon = skinning_animation.weapon;
             let right_hand = skinning_animation.right_hand;
+            let left_thigh = skinning_animation.left_thigh;
+            let right_thigh = skinning_animation.right_thigh;
+            let left_calf = skinning_animation.left_calf;
+            let right_calf = skinning_animation.right_calf;
+            let left_foot = skinning_animation.left_foot;
+            let right_foot = skinning_animation.right_foot;
 
             let transform = self
                 .world
@@ -1460,6 +1334,54 @@ impl GameScene for TestbedInGameScene {
 
             let transform = self
                 .world
+                .query_one_mut::<&WorldTransform>(left_thigh)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Left_Thigh의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(right_thigh)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Right_Thigh의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(left_calf)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Left_Calf의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
+                .query_one_mut::<&WorldTransform>(right_calf)
+                .expect("invalid entity or invalid entity component");
+            let local_x_axis = transform.world_to_model_vector3a(glam::Vec3A::X);
+            let local_z_axis = transform.world_to_model_vector3a(glam::Vec3A::Z);
+            log::debug!(
+                "Right_Calf의 로컬 좌표계상의 월드 좌표계 X축:{:?}, Z축:{:?}",
+                local_x_axis,
+                local_z_axis,
+            );
+
+            let transform = self
+                .world
                 .query_one_mut::<&WorldTransform>(muzzle)
                 .expect("invalid entity or invalid entity component");
             log::debug!("총구의 위치: {:?}", transform.get_translation());
@@ -1477,6 +1399,42 @@ impl GameScene for TestbedInGameScene {
                 .expect("invalid entity or invalid entity component");
             let weapon_offset = inverse_right_hand * transform.0;
             println!("오프셋 행렬:{}", weapon_offset);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(left_thigh)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Left Thigh 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(right_thigh)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Right Thigh 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(left_calf)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Left Calf 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(right_calf)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Right Calf 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(left_foot)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Left Foot 로컬 변환 행렬: {}", transform.0);
+
+            let transform = self
+                .world
+                .query_one_mut::<&ToParentTrans>(right_foot)
+                .expect("invalid entity or invalid entity component");
+            log::debug!("Right Foot 로컬 변환 행렬: {}", transform.0);
         }
 
         // 총알 엔터티들을 가져옵니다.

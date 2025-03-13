@@ -124,59 +124,56 @@ impl NetManager {
     /// 소켓을 연결하는 도중 오류가 발생한 경우 [`std::io::Error`]를 반환합니다.
     ///
     pub fn connect(&self, address: &IpAddress) -> io::Result<Arc<SocketStatus>> {
-        // 소켓을 생성합니다.
-        let status = match address {
+        match address {
             IpAddress::Tcp(addr) => {
-                // TCP 스트림을 생성하고 연결합니다.
+                // TCP 스트림을 생성합니다.
                 let stream = TcpStream::connect_timeout(addr, Duration::from_secs(5))?;
-
-                Arc::new(SocketStatus {
+                let status = Arc::new(SocketStatus {
                     address: address.clone(),
                     socket: Socket::Tcp(stream, *addr),
                     cvar: Condvar::new(),
                     queue: Mutex::new(VecDeque::new()),
                     is_connected: AtomicBool::new(true),
-                })
-            }
+                });
+
+                let status_cloned = status.clone();
+                let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
+                std::thread::spawn(|| tcp_packet_receive_loop(event_loop_proxy_cloned, status_cloned));
+
+                let status_cloned = status.clone();
+                let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
+                std::thread::spawn(|| tcp_packet_send_loop(event_loop_proxy_cloned, status_cloned));
+                
+                let status_cloned = status.clone();
+                self.0.sockets.insert(address.clone(), status);
+        
+                Ok(status_cloned)
+            },
             IpAddress::Udp { port, remote } => {
-                // UDP 소켓을 생성하고 연결합니다.
-                #[cfg(feature = "dev")] {
-                    let socket = util::get_udp_socket(*port)?;
+                // UDP 소켓을 생성합니다.
+                let socket = if cfg!(feature = "dev") {
+                    util::get_udp_socket(*port)
+                } else {
+                    UdpSocket::bind(remote)
+                }?;
+                let status = Arc::new(SocketStatus {
+                    address: address.clone(),
+                    socket: Socket::Udp(socket, *remote),
+                    cvar: Condvar::new(),
+                    queue: Mutex::new(VecDeque::new()),
+                    is_connected: AtomicBool::new(true)
+                });
 
-                    Arc::new(SocketStatus {
-                        address: address.clone(),
-                        socket: Socket::Udp(socket, *remote),
-                        cvar: Condvar::new(),
-                        queue: Mutex::new(VecDeque::new()),
-                        is_connected: AtomicBool::new(true)
-                    })
-                }
-                #[cfg(not(feature = "dev"))] {
-                    let socket = UdpSocket::bind(addr)?;
+                let status_cloned = status.clone();
+                let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
+                std::thread::spawn(|| udp_packet_receive_loop(event_loop_proxy_cloned, status_cloned));
 
-                    Arc::new(SocketStatus {
-                        address: address.clone(),
-                        socket: Socket::Udp(socket, *addr),
-                        cvar: Condvar::new(),
-                        queue: Mutex::new(VecDeque::new()),
-                        is_connected: AtomicBool::new(true)
-                    })
-                }
-            }
-        };
-
-        let status_cloned = status.clone();
-        let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-        std::thread::spawn(|| packet_receive_loop(event_loop_proxy_cloned, status_cloned));
-
-        let status_cloned = status.clone();
-        let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-        std::thread::spawn(|| packet_send_loop(event_loop_proxy_cloned, status_cloned));
-
-        let status_cloned = status.clone();
-        self.0.sockets.insert(address.clone(), status);
-
-        Ok(status_cloned)
+                let status_cloned = status.clone();
+                self.0.sockets.insert(address.clone(), status);
+        
+                Ok(status_cloned)
+            },
+        }
     }
 
     /// 주어진 IP 주소에 해당하는 소켓 상태를 가져옵니다.  
@@ -195,8 +192,8 @@ impl NetManager {
     }
 }
 
-/// 패킷을 보내는 루프 함수입니다.
-fn packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc<SocketStatus>) {
+/// TCP 패킷을 보내는 루프 함수입니다.
+fn tcp_packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc<SocketStatus>) {
     loop {
         let mut queue = status.queue.lock();
         if status.is_connected() {
@@ -242,8 +239,11 @@ fn packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc
     }
 }
 
-/// 패킷을 받는 루프 함수입니다.
-fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc<SocketStatus>) {
+/// TCP 패킷을 받는 루프 함수입니다.
+fn tcp_packet_receive_loop(
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
+    status: Arc<SocketStatus>
+) {
     // 받은 패킷을 구문 분석하는 구문 분석기입니다.
     // 구문 분석한 패킷은 EventLoopProxy를 통해 애플리케이션 이벤트 루프로 전송됩니다.
     //
@@ -268,7 +268,7 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
                 break;
             }
             Ok((n, addr)) => {
-                log::debug!("received packet data (SIZE:{})", n);
+                log::debug!("received tcp packet data (SIZE:{})", n);
                 if addr == *status.address.target_addr() {
                     parser.push(&buffer[..n])
                 }
@@ -295,6 +295,69 @@ fn packet_receive_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: 
                 break; // 애플리케이션 이벤트 루프가 종료되었을 경우(애플리케이션의 종료) 루프 함수를 빠져나옵니다.
             }
         }
+    }
+}
+
+/// UDP 패킷을 수신하는 루프 함수입니다.
+fn udp_packet_receive_loop(
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
+    status: Arc<SocketStatus>,
+) {
+    // UDP 패킷의 크기는 1KB를 넘지 않습니다.
+    let mut buffer = [0; 1024]; // 1KB
+
+    while status.is_connected() {
+        // 버퍼를 초기화 합니다.
+        buffer[..].fill(0);
+
+        // 수신받은 데이터를 읽습니다.
+        let result = status.socket.recv_stream(&mut buffer);
+        match result {
+            Ok((0, _)) => {
+                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
+                unsafe {
+                    event_loop_proxy
+                        .send_event(AppEvent::ClosedSocket(status.address))
+                        .unwrap_unchecked()
+                };
+                status.is_connected.store(false, MemOrdering::Release);
+                break;
+            }
+            Ok((n, addr)) => {
+                log::debug!("received udp packet data (SIZE:{})", n);
+                let received_data = &buffer[0..n];
+                if addr == *status.address.target_addr() {
+                    // 바이트 배열을 RawPacket으로 변환한다.
+                    // 이때, RawPacket으로 변환에 실패한 경우 해당 데이터를 버린다.
+                    // (UDP로 보낸 패킷 데이터는 중요하지 않고, 1KB보다 작은 데이터이기 때문)
+                    //
+                    match RawPacket::try_from_bytes(received_data) {
+                        Ok(packet) => {
+                            unsafe { 
+                                event_loop_proxy
+                                    .send_event(AppEvent::PacketReceived(packet))
+                                    .unwrap_unchecked();
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!("failed to parse packet from {addr}: {e}");
+                        }
+                    }
+                }
+            },
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => {
+                continue;
+            }
+            Err(e) => {
+                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
+                unsafe {
+                    event_loop_proxy
+                        .send_event(AppEvent::IOError(e))
+                        .unwrap_unchecked()
+                };
+                break;
+            }
+        };
     }
 }
 

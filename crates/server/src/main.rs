@@ -1,22 +1,34 @@
+mod data;
+mod formula;
+mod session;
+mod world;
+
 use std::{
     env,
     net::SocketAddr,
     str::FromStr,
     sync::{
-        atomic::{AtomicU64, Ordering as MemOrdering},
+        atomic::{AtomicU32, Ordering as MemOrdering},
         Arc, OnceLock,
     },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use mod_network::{addr::Addr, components::ClientId, protocol::RawPacket};
-use mod_parallelism::collections::{Queue, SkipMap};
-use server::{
-    identifier::IdentifierGenerator, session::{handle_connection, Session}, world::{update_game_world, World}
+use data::{get_current_path, init_character_attributes, init_stage_attributes};
+use mod_network::{
+    addr::Addr,
+    components::{LoginToken, UserId, UserInfo, UserName},
+    protocol::RawPacket,
 };
+use mod_parallelism::collections::{Queue, SkipMap};
+use session::{handle_connection, Session};
 use tokio::net::{TcpListener, UdpSocket};
+use tracing::Level;
+use tracing_appender::{non_blocking::WorkerGuard, rolling};
+use world::{update_game_world, GameWorld};
 
 /// 현재 접속중인 클라이언트의 수 입니다.
-static NUM_CLIENTS: AtomicU64 = AtomicU64::new(0);
+static NUM_CLIENTS: AtomicU32 = AtomicU32::new(0);
 /// 현재 서버에 접속중인 세션 집합입니다.
 static SESSIONS: OnceLock<SkipMap<SocketAddr, Arc<Session>>> = OnceLock::new();
 
@@ -26,7 +38,7 @@ fn get_sessions() -> &'static SkipMap<SocketAddr, Arc<Session>> {
 }
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
-pub async fn run_server(addr: &str, client_id_gen: IdentifierGenerator) {
+pub async fn run_server(addr: &str) {
     // TCP 소켓을 바인드합니다.
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -58,11 +70,11 @@ pub async fn run_server(addr: &str, client_id_gen: IdentifierGenerator) {
     tokio::spawn(udp_packet_send_loop(udp_send_socket, udp_sender_clone));
 
     // 새로운 쓰레드에서 클라이언트 연결 관리
-    tokio::spawn(wait_for_players(listener, udp_sender, client_id_gen));
+    tokio::spawn(wait_for_players(listener, udp_sender));
 
     // 게임 월드 업데이트
     // TODO: 나중에 여러 개의 게임 월드를 실행해야함.
-    let world = World::get_instance();
+    let world = GameWorld::get_instance();
     update_game_world(world).await;
 }
 
@@ -125,30 +137,47 @@ async fn udp_packet_send_loop(
     }
 }
 
-async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>, client_id_gen: IdentifierGenerator) {
+async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) {
+    // FIXME: 임시 사용자 식별자를 생성하기 위한 카운터입니다.
+    let mut counter = 0;
+    //-------------------------------------------
+
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
-                // 클라이언트 식별자를 할당합니다.
-                let n = client_id_gen.generate();
-                let client_id = ClientId::new(n);
-
+                // 임시 사용자 정보를 생성합니다.
+                counter += 1;
+                let user_id = UserId::new(counter);
+                let user_name = format!("Player_{}", counter);
+                let user_name = UserName::new(user_name);
+                let user = UserInfo::new(user_id, user_name);
+                //------------------------
                 let udp_sender = udp_sender.clone();
                 tokio::spawn(async move {
-                    
+                    // 임시 사용자의 로그인 토큰을 발행하고 등록합니다.
+                    let token = generate_token();
+
                     // 클라이언트 세션을 생성하고 등록합니다.
-                    let session = Arc::new(Session::new(addr, client_id, udp_sender));
+                    let session = Arc::new(Session::new(addr, user, token, udp_sender));
                     get_sessions().insert(addr, session.clone());
                     NUM_CLIENTS.fetch_add(1, MemOrdering::AcqRel);
 
-                    println!("Accepted connection from: {} (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
-                    
+                    println!(
+                        "Accepted connection from: {} (Concurrent Users:{})",
+                        &user_id,
+                        &NUM_CLIENTS.load(MemOrdering::Relaxed)
+                    );
+
                     handle_connection(stream, session).await;
-                    
+
                     // 등록된 클라이언트 세션을 제거합니다.
                     get_sessions().remove(&addr);
                     NUM_CLIENTS.fetch_sub(1, MemOrdering::AcqRel);
-                    println!("{} left. (Concurrent Users:{})", &client_id, &NUM_CLIENTS.load(MemOrdering::Relaxed));
+                    println!(
+                        "{} left. (Concurrent Users:{})",
+                        &user_id,
+                        &NUM_CLIENTS.load(MemOrdering::Relaxed)
+                    );
                 });
             }
             Err(e) => {
@@ -161,7 +190,9 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
 fn main() {
     // 서버를 실행하기 전에 필요한 모든 데이터를 여기서 초기화합니다.
     //
-    env_logger::init();
+    let _guard = init_log_system();
+    init_character_attributes();
+    init_stage_attributes();
 
     let mut args = env::args();
     args.next();
@@ -202,13 +233,49 @@ fn main() {
 
     println!("num_threads: {}", num_threads);
 
-    // 클라이언트 식별자 생성기를 생성합니다.
-    let client_id_gen = IdentifierGenerator::new();
-
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_threads)
         .enable_all()
         .build()
         .unwrap()
-        .block_on(run_server(&addr.to_string(), client_id_gen));
+        .block_on(run_server(&addr.to_string()));
+}
+
+/// 로그 시스템을 초기화 합니다.
+///
+/// # Note
+/// 반환되는 `WorkerGuard`를 유지해야 로그가 정상적으로 저장됩니다.
+///
+fn init_log_system() -> WorkerGuard {
+    // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
+    let mut dir = get_current_path().to_path_buf();
+    dir.push("logs");
+
+    // 매 시간 마다 새 파일을 생성하는 로그 시스템을 생성합니다.
+    let file_appender = rolling::hourly(dir, "service_log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .with_max_level(Level::INFO)
+        .init();
+
+    guard
+}
+
+/// 무작위의 로그인 토큰을 발행합니다.
+fn generate_token() -> LoginToken {
+    /// 난수를 생성하기 위한 카운터입니다.
+    /// 해당 함수를 호출할 때 마다 1씩 증가합니다.
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    let now = SystemTime::now();
+    let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+
+    let counter_bit = COUNTER.fetch_add(1, MemOrdering::AcqRel) as u64 & 0xFFFFFF;
+    let time_bit = duration.subsec_micros() as u64 & 0xFFFFFF;
+    let rand_bit = rand::random::<u64>() & 0xFFFF;
+
+    LoginToken::new((rand_bit << 48) | (time_bit << 24) | counter_bit)
 }

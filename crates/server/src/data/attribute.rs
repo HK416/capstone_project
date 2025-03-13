@@ -1,61 +1,67 @@
-use std::fs;
+use std::{fs::File, io::Read};
 
 use ahash::HashMap;
 use lazy_static::lazy_static;
-use mod_network::components::{CharacterAttributes, CharacterKind};
-use serde::de::Error as SerdeError;
-use serde_json::Error;
+use mod_network::components::{CharacterAttributes, CharacterKind, NUM_CHARACTERS};
 
 use crate::data::get_current_path;
 
+const ROOT_WORKSPACE: &'static str = "server_data/characters";
+const CHARACTERS: [(CharacterKind, &'static str); NUM_CHARACTERS] = [
+    (CharacterKind::ArisOriginal, "aris_original"),
+    (CharacterKind::MomoiOriginal, "momoi_original"),
+    (CharacterKind::MidoriOriginal, "midori_original"),
+    (CharacterKind::YuukaOriginal, "yuuka_original"),
+];
+const FILENAME: &'static str = "attribute.json";
+
 lazy_static! {
-    static ref CHARACTER_INFO: HashMap<CharacterKind, CharacterAttributes> = {
-        // # Errors
-        // 프로그램을 실행하고 있는 도중 프로그램 디렉토리를 삭제할 경우 정의되지 않은 동작을 수행합니다.
-        let path = get_current_path().to_str().unwrap();
-        HashMap::from_iter([
-            (
-                CharacterKind::ArisOriginal,
-                load_character_attribute(
-                    &format!("{}/server_data/characters/aris_original/attribute.json", path)
-                ).unwrap()
-            ),
-            (
-                CharacterKind::MomoiOriginal,
-                load_character_attribute(
-                    &format!("{}/server_data/characters/momoi_original/attribute.json", path)
-                ).unwrap()
-            ),
-            (
-                CharacterKind::MidoriOriginal,
-                load_character_attribute(
-                    &format!("{}/server_data/characters/midori_original/attribute.json", path)
-                ).unwrap()
-            ),
-            (
-                CharacterKind::YuukaOriginal,
-                load_character_attribute(
-                    &format!("{}/server_data/characters/yuuka_original/attribute.json", path)
-                ).unwrap()
-            )
-        ])
+    static ref CHARACTER_ATTRIBUTES: HashMap<CharacterKind, CharacterAttributes> = {
+        let mut map = HashMap::default();
+        let current_path = get_current_path().to_string_lossy().into_owned();
+        for (kind, sub_workspace) in CHARACTERS {
+            let path = format!(
+                "{}/{}/{}/{}",
+                current_path, ROOT_WORKSPACE, sub_workspace, FILENAME
+            );
+            map.insert(kind, load_character_attribute(&path));
+        }
+        map
     };
 }
 
-/// server_data 디렉토리가 실행파일과 같은 위치에 있다고 가정
-pub fn get_character_attributes(kind: CharacterKind) -> CharacterAttributes {
-    CHARACTER_INFO.get(&kind).unwrap().clone()
+/// 캐릭터 속성 정보를 초기화합니다.
+pub fn init_character_attributes() {
+    // `lazy_static` crate는 처음 전역 변수가 사용될 때 초기화를 시도합니다.
+    log::info!("initializes character attribute data.");
+    CHARACTER_ATTRIBUTES.len();
 }
 
-fn load_character_attribute(path: &str) -> Result<CharacterAttributes, Error> {
-    // 파일 내용 읽기
-    let file_content = fs::read_to_string(path).map_err(|err| {
-        Error::custom(format!("파일 읽기 에러: {}", err)) // `serde::de::Error` 트레이트를 통해 custom 메서드 호출
-    })?;
+/// 주어진 캐릭터 종류에 대한 속성 데이터를 가져옵니다.
+pub fn get_character_attributes(kind: CharacterKind) -> &'static CharacterAttributes {
+    CHARACTER_ATTRIBUTES.get(&kind).unwrap()
+}
 
-    // JSON 파싱
-    let attributes: CharacterAttributes = serde_json::from_str(&file_content)?;
-    Ok(attributes)
+/// 캐릭터 속성 데이터 파일을 로드합니다.
+///
+/// # Panics
+/// 캐릭터 속성 데이터 파일을 찾지 못하거나, 읽기에 실패한 경우 `panic!`을 호출합니다.
+///
+fn load_character_attribute(path: &str) -> CharacterAttributes {
+    let mut file = File::open(path)
+        .map_err(|e| log::error!("failed to open file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("캐릭터 속성 데이터 파일 열기에 실패했습니다!");
+
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)
+        .map_err(|e| log::error!("failed to read file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("캐릭터 속성 데이터 파일 읽기에 실패했습니다!");
+
+    let attribute = serde_json::from_slice(&buf)
+        .map_err(|e| log::error!("failed to parse file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("캐릭터 속성 데이터 파일 구문 분석에 실패했습니다!");
+
+    attribute
 }
 
 #[cfg(test)]
@@ -64,16 +70,14 @@ mod tests {
 
     #[test]
     fn test_load_character_attribute() {
-        let aris_path = concat!(
-            env!("CARGO_WORKSPACE_DIR"),
-            "assets/characters/aris_original/attribute.json"
-        );
-        let momoi_path = concat!(
-            env!("CARGO_WORKSPACE_DIR"),
-            "assets/characters/momoi_original/attribute.json"
-        );
-
-        assert!(load_character_attribute(aris_path).is_ok());
-        assert!(load_character_attribute(momoi_path).is_ok());
+        let current_path = env!("CARGO_WORKSPACE_DIR");
+        let root_workspace = "assets/characters";
+        for (_, sub_workspace) in CHARACTERS {
+            let path = format!(
+                "{}/{}/{}/{}",
+                current_path, root_workspace, sub_workspace, FILENAME
+            );
+            load_character_attribute(&path);
+        }
     }
 }

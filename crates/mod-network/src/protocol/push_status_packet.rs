@@ -1,6 +1,6 @@
 use crate::components::{
-    ActionState, ActionStateTimer, BigEndian, ClientId, Epoch, LatLon, MovementState,
-    MovementStateTimer, TryFromBigEndian, ViewState, ViewStateTimer,
+    BigEndian, Epoch, GameInputBits, LatLon, LoginToken, TryFromBigEndian, ViewState,
+    ViewStateTimer,
 };
 
 use super::{Packet, PacketType, RawPacket};
@@ -11,20 +11,14 @@ use super::{Packet, PacketType, RawPacket};
 pub struct PushStatusPacket {
     /// 클라이언트가 이전에 받은 서버의 시대
     pub epoch: Epoch,
-    /// 클라이언트 식별자
-    pub client_id: ClientId,
+    /// 사용자 로그인 토큰
+    pub token: LoginToken,
     /// 플레이어 캐릭터가 바라보는 방향 (이동 방향과 다를 수 있음)
     pub rotation: [f32; 4],
     /// XZ평면상의 플레이어 이동 방향
     pub direction: [f32; 3],
-    /// 플레이어 행동 상태 (서버에서 상태 변화만 살펴봄)
-    pub action_state: ActionState,
-    /// 플레이어 행동 상태 타이머 (서버에서 행동 상태를 검증하는데 사용)
-    pub action_state_timer: ActionStateTimer,
-    /// 플레이어 움직임 상태 (서버에서 상태 변화만 살펴봄)
-    pub movement_state: MovementState,
-    /// 플레이어 움직임 상태 타이머 (서버에서 움직임 상태를 검증하는데 사용)
-    pub movement_state_timer: MovementStateTimer,
+    /// 클라이언트 컨트롤러 입력 상태 플래그
+    pub input_flags: GameInputBits,
     /// 카메라 상태 (서버에서 클라이언트 값을 사용)
     pub view_state: ViewState,
     /// 카메라 상태 타이머 (서버에서 클라이언트 값을 사용)
@@ -34,17 +28,13 @@ pub struct PushStatusPacket {
 }
 
 impl Default for PushStatusPacket {
-    // client_id의 기본 값은 NULL이어야 합니다.
     fn default() -> Self {
         Self {
-            epoch: Epoch::new(0),
-            client_id: ClientId::NULL,
+            epoch: Epoch::default(),
+            token: LoginToken::default(),
             rotation: [0.0, 0.0, 0.0, 1.0],
             direction: [0.0, 0.0, 1.0],
-            action_state: ActionState::default(),
-            action_state_timer: ActionStateTimer::default(),
-            movement_state: MovementState::default(),
-            movement_state_timer: MovementStateTimer::default(),
+            input_flags: GameInputBits::default(),
             view_state: ViewState::default(),
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
@@ -59,25 +49,19 @@ impl Packet for PushStatusPacket {
 
     fn as_raw(&self) -> RawPacket {
         let data_size = Epoch::byte_size()
-            + ClientId::byte_size()
+            + LoginToken::byte_size()
             + <[f32; 4]>::byte_size()
             + <[f32; 3]>::byte_size()
-            + ActionState::byte_size()
-            + ActionStateTimer::byte_size()
-            + MovementState::byte_size()
-            + MovementStateTimer::byte_size()
+            + GameInputBits::byte_size()
             + ViewState::byte_size()
             + ViewStateTimer::byte_size()
             + LatLon::byte_size();
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.epoch.to_big_endian_bytes());
-        data.extend_from_slice(&self.client_id.to_big_endian_bytes());
+        data.extend_from_slice(&self.token.to_big_endian_bytes());
         data.extend_from_slice(&self.rotation.to_big_endian_bytes());
         data.extend_from_slice(&self.direction.to_big_endian_bytes());
-        data.extend_from_slice(&self.action_state.to_big_endian_bytes());
-        data.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
-        data.extend_from_slice(&self.movement_state.to_big_endian_bytes());
-        data.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
+        data.extend_from_slice(&self.input_flags.to_big_endian_bytes());
         data.extend_from_slice(&self.view_state.to_big_endian_bytes());
         data.extend_from_slice(&self.view_state_timer.to_big_endian_bytes());
         data.extend_from_slice(&self.view_rotation.to_big_endian_bytes());
@@ -111,13 +95,13 @@ impl Packet for PushStatusPacket {
         let mut offset = 0;
         let mut size = Epoch::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = Epoch::try_from_big_endian_bytes(data)?;
+        let epoch = Epoch::from_big_endian_bytes(data);
 
-        // 클라이언트 식별자를 가져옵니다.
+        // 사용자 로그인 토큰을 가져옵니다.
         offset = offset + size;
-        size = ClientId::byte_size();
+        size = LoginToken::byte_size();
         data = &bytes[offset..offset + size];
-        let client_id = ClientId::try_from_big_endian_bytes(data)?;
+        let token = LoginToken::from_big_endian_bytes(data);
 
         // 플레이어 캐릭터 방향을 가져옵니다.
         offset = offset + size;
@@ -131,29 +115,11 @@ impl Packet for PushStatusPacket {
         data = &bytes[offset..offset + size];
         let direction = <[f32; 3]>::from_big_endian_bytes(data);
 
-        // 행동 상태를 가져옵니다.
+        // 클라이언트 컨트롤러 입력 상태를 가져옵니다.
         offset = offset + size;
-        size = ActionState::byte_size();
+        size = GameInputBits::byte_size();
         data = &bytes[offset..offset + size];
-        let action_state = ActionState::try_from_big_endian_bytes(data)?;
-
-        // 행동 상태 타이머를 가져옵니다.
-        offset = offset + size;
-        size = ActionStateTimer::byte_size();
-        data = &bytes[offset..offset + size];
-        let action_state_timer = ActionStateTimer::from_big_endian_bytes(data);
-
-        // 움직임 상태를 가져옵니다.
-        offset = offset + size;
-        size = MovementState::byte_size();
-        data = &bytes[offset..offset + size];
-        let movement_state = MovementState::try_from_big_endian_bytes(data)?;
-
-        // 움직임 상태 타이머를 가져옵니다.
-        offset = offset + size;
-        size = MovementStateTimer::byte_size();
-        data = &bytes[offset..offset + size];
-        let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
+        let input_flags = GameInputBits::from_big_endian_bytes(data);
 
         // 카메라 상태를 가져옵니다.
         offset = offset + size;
@@ -175,13 +141,10 @@ impl Packet for PushStatusPacket {
 
         Some(Self {
             epoch,
-            client_id,
+            token,
             rotation,
             direction,
-            action_state,
-            action_state_timer,
-            movement_state,
-            movement_state_timer,
+            input_flags,
             view_state,
             view_state_timer,
             view_rotation,
@@ -196,7 +159,6 @@ mod tests {
     #[test]
     fn validation_test_packet() {
         let origin = PushStatusPacket {
-            client_id: ClientId::new(134),
             ..Default::default()
         };
         let raw_packet = origin.as_raw();

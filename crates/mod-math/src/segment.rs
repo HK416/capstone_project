@@ -48,24 +48,8 @@ impl Segment {
 
     /// 다른 선분까지의 거리가 최소가 되는 점
     pub fn nearest_to_other(&self, other: &Segment) -> glam::Vec3A {
-        let start = glam::Vec3A::from(self.start);
-        let end = glam::Vec3A::from(self.end);
-        let other_start = glam::Vec3A::from(other.start);
-        let other_end = glam::Vec3A::from(other.end);
-
-        let this_line = match Line::build(start, end - start) {
-            Ok(line) => line,
-            Err(_)   => return start,
-        };
-
-        let other_line = match Line::build(other_start, other_end - other_start) {
-            Ok(line) => line,
-            Err(_)   => return self.nearest_to_point(&other_start),
-        };
-
-        let this_h = this_line.foot_of_perpendicular_from_other(&other_line);
-        let other_nearest = other.nearest_to_point(&this_h);
-        self.nearest_to_point(&other_nearest)
+        let (a, _) = Segment::each_nearest(self, other);
+        a
     }
 
     /// line까지의 거리가 최소가 되는 선분 위의 점
@@ -110,5 +94,27 @@ impl Segment {
 impl Segment {
     pub fn distance_between_segments(a: &Segment, b: &Segment) -> f32 {
         a.distance_to_other(b)
+    }
+
+    /// 두 선분의 서로 가장 가까운 점
+    pub fn each_nearest(a: &Segment, b: &Segment) -> (glam::Vec3A, glam::Vec3A) {
+        let start = glam::Vec3A::from(a.start);
+        let end = glam::Vec3A::from(a.end);
+        let other_start = glam::Vec3A::from(b.start);
+        let other_end = glam::Vec3A::from(b.end);
+
+        let this_line = match Line::build(start, end - start) {
+            Ok(line) => line,
+            Err(_)   => return (start, b.nearest_to_point(&start)),
+        };
+
+        let other_line = match Line::build(other_start, other_end - other_start) {
+            Ok(line) => line,
+            Err(_)   => return (a.nearest_to_point(&other_start), other_start),
+        };
+
+        let this_h = this_line.foot_of_perpendicular_from_other(&other_line);
+        let other_nearest = b.nearest_to_point(&this_h);
+        (a.nearest_to_point(&other_nearest), other_nearest)
     }
 }

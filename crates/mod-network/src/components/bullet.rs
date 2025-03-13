@@ -1,4 +1,4 @@
-use super::{BigEndian, CharacterKind, ClientId, ObjectId, TryFromBigEndian};
+use super::{BigEndian, CharacterKind, ObjectId, TryFromBigEndian, UserId};
 
 /// 총알 모델 종류입니다.
 #[repr(u8)]
@@ -60,7 +60,7 @@ pub struct Bullet {
     /// 총알의 오브젝트 식별자
     pub object_id: ObjectId,
     /// 총알을 발사한 클라이언트 식별자
-    pub shooter_id: ClientId,
+    pub shooter_id: UserId,
     /// 총알의 종류
     pub bullet_kind: BulletKind,
     /// 총알의 월드 공간 위치
@@ -76,7 +76,7 @@ pub struct Bullet {
 impl BigEndian for Bullet {
     fn byte_size() -> usize {
         ObjectId::byte_size()
-            + ClientId::byte_size()
+            + UserId::byte_size()
             + BulletKind::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 4]>::byte_size()
@@ -116,8 +116,8 @@ impl Default for Bullet {
     fn default() -> Self {
         // object_id, shooter_id의 기본 값은 NULL이어야 합니다.
         Self {
-            object_id: ObjectId::NULL,
-            shooter_id: ClientId::NULL,
+            object_id: ObjectId::default(),
+            shooter_id: UserId::default(),
             bullet_kind: BulletKind::default(),
             translation: [0.0, 0.0, 0.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
@@ -141,13 +141,13 @@ impl TryFromBigEndian for Bullet {
         let mut offset = 0;
         let mut size = ObjectId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let object_id = ObjectId::try_from_big_endian_bytes(data)?;
+        let object_id = ObjectId::from_big_endian_bytes(data);
 
         // 클라이언트 식별자를 가져옵니다.
         offset = offset + size;
-        size = ClientId::byte_size();
+        size = UserId::byte_size();
         data = &bytes[offset..offset + size];
-        let shooter_id = ClientId::try_from_big_endian_bytes(data)?;
+        let shooter_id = UserId::from_big_endian_bytes(data);
 
         // 총알 종류를 가져옵니다.
         offset = offset + size;
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn creation_test_bullet_kind() {
-        let bytes = [2];
+        let bytes = [127];
         BulletKind::from_big_endian_bytes(&bytes);
     }
 
@@ -218,7 +218,7 @@ mod tests {
     fn validation_test_bullet() {
         let origin = Bullet {
             object_id: ObjectId::new(3141592),
-            shooter_id: ClientId::new(577888),
+            shooter_id: UserId::new(577888),
             bullet_kind: BulletKind::Common,
             translation: [-1.0101, 2.3456, 1000.011],
             rotation: [0.1234, 1.99992, 0.08843, 1.0],

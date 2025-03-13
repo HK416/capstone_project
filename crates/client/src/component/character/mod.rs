@@ -10,8 +10,9 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer,
-    Player, ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, CharacterKind, GameInputBits, InGamePlayer, LatLon,
+    MovementState, MovementStateTimer, ViewState, ViewStateTimer, NUM_ACTION_STATES,
+    NUM_MOVEMENT_STATES,
 };
 use mod_render::{
     AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
@@ -28,7 +29,7 @@ use crate::{
 
 pub use self::animation::*;
 
-use super::{ControllerInputFlags, MoveDirection, ThirdPersonCamera};
+use super::{MoveDirection, ThirdPersonCamera};
 
 /// 캐릭터의 수
 const NUM_CHARACTERS: usize = 4;
@@ -74,22 +75,10 @@ pub fn load_character_model(
     queue: &wgpu::Queue,
 ) -> Result<(), AssetError> {
     const MODELS: [(&'static str, &'static str); NUM_CHARACTERS] = [
-        (
-            aris_original::WORKSPACE,
-            aris_original::MODEL_NAME,
-        ),
-        (
-            momoi_original::WORKSPACE,
-            momoi_original::MODEL_NAME,
-        ),
-        (
-            midori_original::WORKSPACE,
-            midori_original::MODEL_NAME,
-        ),
-        (
-            yuuka_original::WORKSPACE,
-            yuuka_original::MODEL_NAME,
-        )
+        (aris_original::WORKSPACE, aris_original::MODEL_NAME),
+        (momoi_original::WORKSPACE, momoi_original::MODEL_NAME),
+        (midori_original::WORKSPACE, midori_original::MODEL_NAME),
+        (yuuka_original::WORKSPACE, yuuka_original::MODEL_NAME),
     ];
 
     let i = character_kind as usize;
@@ -125,7 +114,7 @@ pub fn load_character_model(
 /// - 시야 방향(`Latlon`)
 ///
 pub fn spawn_player_character(
-    player: &Player,
+    player: &InGamePlayer,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -160,10 +149,10 @@ pub fn spawn_player_character(
     let world_transform = WorldTransform::default();
     let health_point = player.health_point;
     let action_state = player.action_state;
-    let action_state_timer = player.action_state_timer;
     let movement_state = player.movement_state;
-    let movement_state_timer = player.movement_state_timer;
     let view_state = player.view_state;
+    let action_state_timer = player.action_state_timer;
+    let movement_state_timer = player.movement_state_timer;
     let view_state_timer = player.view_state_timer;
     let view_rotation = player.view_rotation;
 
@@ -410,7 +399,7 @@ pub fn update_character_direction(
 ) {
     type Func =
         fn(CharacterKind, ActionStateTimer, &MoveDirection, &ThirdPersonCamera, &mut ToParentTrans);
-    const FUNC_TABLE: [[Func; 5]; 3] = [
+    const FUNC_TABLE: [[Func; NUM_ACTION_STATES]; NUM_MOVEMENT_STATES] = [
         // `MovementState::Idle`
         [
             set_character_direction_to_none,                // ActionState::Idle
@@ -434,6 +423,38 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
+        ],
+        // `MovementState::InPlaceJumping`
+        [
+            set_character_direction_to_none,                // ActionState::Idle
+            set_character_direction_to_camera,              // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_none,                // ActionState::AimOff
+            set_character_direction_to_camera,              // ActionState::Attack
+        ],
+        // `MovementState::InPlaceLanding`
+        [
+            set_character_direction_to_none,                // ActionState::Idle
+            set_character_direction_to_camera,              // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_none,                // ActionState::AimOff
+            set_character_direction_to_camera,              // ActionState::Attack
+        ],
+        // `MovementState::MovingJumping`
+        [
+            set_character_direction_to_movement, // ActionState::Idle
+            set_character_direction_to_camera,   // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_current_from_camera, // ActionState::AimOff
+            set_character_direction_to_camera,   // ActionState::Attack
+        ],
+        // `MovementState::MovingLanding`
+        [
+            set_character_direction_to_movement, // ActionState::Idle
+            set_character_direction_to_camera,   // ActionState::Aiming
+            set_character_direction_to_camera_from_current, // ActionState::AimAt
+            set_character_direction_to_current_from_camera, // ActionState::AimOff
+            set_character_direction_to_camera,   // ActionState::Attack
         ],
     ];
 
@@ -477,7 +498,7 @@ fn set_character_direction_to_movement(
     let dir = look.lerp(direction, 0.5);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(dir, glam::Vec4::Y);
+    local_transform.look_to(dir, glam::Vec3::Y);
 }
 
 /// `MovementState::Idle` 또는 `MovementState::MoveToEnd`, `ViewState::ZoomIn`일 때 캐릭터의 방향을 갱신합니다.
@@ -497,7 +518,7 @@ fn set_character_direction_to_camera_from_current(
 
     // 삼인칭 카메라의 방향을 계산합니다.
     let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
-    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
+    let look = glam::Vec3A::from_vec4(mat.z_axis).normalize_or(glam::Vec3A::Z);
 
     // 캐릭터의 방향을 가져옵니다.
     let direction = local_transform.get_look_vector();
@@ -508,7 +529,7 @@ fn set_character_direction_to_camera_from_current(
     let look = look.lerp(direction, s).normalize_or(look);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(look, glam::Vec4::Y);
+    local_transform.look_to(look, glam::Vec3::Y);
 }
 
 /// `MovementState::Moving`, `ViewState::ZoomOut`일 때 캐릭터의 방향을 갱신합니다.
@@ -538,7 +559,7 @@ fn set_character_direction_to_current_from_camera(
         .normalize_or(move_direction.0);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(look, glam::Vec4::Y);
+    local_transform.look_to(look, glam::Vec3::Y);
 }
 
 fn set_character_direction_to_camera(
@@ -550,7 +571,7 @@ fn set_character_direction_to_camera(
 ) {
     // 삼인칭 카메라의 방향을 계산합니다.
     let mat = glam::Mat4::from_rotation_y(third_person_camera.rotation.lon);
-    let look = mat.z_axis.normalize_or(glam::Vec4::Z);
+    let look = glam::Vec3A::from_vec4(mat.z_axis).normalize_or(glam::Vec3A::Z);
 
     // 캐릭터의 방향을 가져옵니다.
     let direction = local_transform.get_look_vector();
@@ -559,80 +580,17 @@ fn set_character_direction_to_camera(
     let look = look.lerp(direction, 0.1).normalize_or(look);
 
     // 로컬 변환 행렬을 갱신합니다.
-    local_transform.look_to(look, glam::Vec4::Y);
+    local_transform.look_to(look, glam::Vec3::Y);
 }
 
-/// `ControllerInputFlags`에 따라 `ActionState`를 갱신합니다.
-pub fn update_action_state_by_controller_input_flags(
-    character_kind: CharacterKind,
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    controller_input_flags: ControllerInputFlags,
-) {
-    type Func = fn(&mut ActionState, &mut ActionStateTimer, ControllerInputFlags);
-    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
-        aris_original::update_character_action_state,
-        momoi_original::update_character_action_state,
-        midori_original::update_character_action_state,
-        yuuka_original::update_character_action_state,
-    ];
-
-    let i = character_kind as usize;
-    FUNC_TABLE[i](action_state, action_state_timer, controller_input_flags);
-}
-
-/// 주어진 경과 시간 만큼 `ActionStateTimer`를 갱신합니다.
-pub fn update_action_state_timer(
-    character_kind: CharacterKind,
-    action_state: &mut ActionState,
-    action_state_timer: &mut ActionStateTimer,
-    elapsed_time_sec: f32,
-) {
-    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
-    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
-        aris_original::update_character_action_state_timer,
-        momoi_original::update_character_action_state_timer,
-        midori_original::update_character_action_state_timer,
-        yuuka_original::update_character_action_state_timer,
-    ];
-
-    let i = character_kind as usize;
-    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
-}
-
-/// 주어진 경과 시간 만큼 `MovementStateTimer`를 갱신합니다.
-pub fn update_movement_state_timer(
-    character_kind: CharacterKind,
-    action_state: ActionState,
-    movement_state: &mut MovementState,
-    movement_state_timer: &mut MovementStateTimer,
-    elapsed_time_sec: f32,
-) {
-    type Func = fn(ActionState, &mut MovementState, &mut MovementStateTimer, f32);
-    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
-        aris_original::update_character_movement_state_timer,
-        momoi_original::update_character_movement_state_timer,
-        midori_original::update_character_movement_state_timer,
-        yuuka_original::update_character_movement_state_timer,
-    ];
-
-    let i = character_kind as usize;
-    FUNC_TABLE[i](
-        action_state,
-        movement_state,
-        movement_state_timer,
-        elapsed_time_sec,
-    );
-}
-
-/// `ControllerInputFlags`에 따라 `ViewState`를 갱신합니다.
+/// `InGameInputFlags`에 따라 `ViewState`를 갱신합니다.
 pub fn update_view_state_by_controller_input_flags(
     character_kind: CharacterKind,
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
-    controller_input_flags: ControllerInputFlags,
+    controller_input_flags: GameInputBits,
 ) {
-    type Func = fn(&mut ViewState, &mut ViewStateTimer, ControllerInputFlags);
+    type Func = fn(&mut ViewState, &mut ViewStateTimer, GameInputBits);
     const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::update_character_view_state,
         momoi_original::update_character_view_state,
@@ -735,7 +693,13 @@ pub fn set_weapon_position(
     ];
 
     let i = character_kind as usize;
-    FUNC_TABLE[i](action_state, skinning_animation, child_view, sibling_view, transform_view);
+    FUNC_TABLE[i](
+        action_state,
+        skinning_animation,
+        child_view,
+        sibling_view,
+        transform_view,
+    );
 }
 
 /// 캐릭터의 삼인칭 카메라를 생성합니다.

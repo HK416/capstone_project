@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, CharacterKind, ClientId, TryFromBigEndian};
+use crate::components::{BigEndian, CharacterKind, LoginToken, TryFromBigEndian};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -6,14 +6,14 @@ use super::{Packet, PacketType, RawPacket};
 /// 클라이언트에서 서버로 전송되는 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnterStagePacket {
-    pub client_id: ClientId,
+    pub token: LoginToken,
     pub character_kind: CharacterKind,
 }
 
 impl EnterStagePacket {
-    pub fn new(client_id: ClientId, character_kind: CharacterKind) -> Self {
+    pub fn new(token: LoginToken, character_kind: CharacterKind) -> Self {
         Self {
-            client_id,
+            token,
             character_kind,
         }
     }
@@ -21,9 +21,8 @@ impl EnterStagePacket {
 
 impl Default for EnterStagePacket {
     fn default() -> Self {
-        // client_id의 기본 값은 NULL이어야 합니다.
         Self {
-            client_id: ClientId::NULL,
+            token: LoginToken::default(),
             character_kind: CharacterKind::default(),
         }
     }
@@ -35,9 +34,10 @@ impl Packet for EnterStagePacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = ClientId::byte_size() + CharacterKind::byte_size();
+        let data_size = LoginToken::byte_size() + CharacterKind::byte_size();
+
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.client_id.to_big_endian_bytes());
+        data.extend_from_slice(&self.token.to_big_endian_bytes());
         data.extend_from_slice(&self.character_kind.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
@@ -64,12 +64,12 @@ impl Packet for EnterStagePacket {
             return None;
         }
 
-        // 클라이언트 식별자를 가져옵니다.
+        // 로그인 토큰을 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = ClientId::byte_size();
+        let mut size = LoginToken::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let client_id = ClientId::try_from_big_endian_bytes(data)?;
+        let token = LoginToken::from_big_endian_bytes(data);
 
         // 캐릭터 종류를 가져옵니다.
         offset = offset + size;
@@ -78,7 +78,7 @@ impl Packet for EnterStagePacket {
         let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
 
         Some(Self {
-            client_id,
+            token,
             character_kind,
         })
     }
@@ -90,7 +90,10 @@ mod tests {
 
     #[test]
     fn validation_test_packet() {
-        let origin = EnterStagePacket::new(ClientId::new(123456), CharacterKind::MomoiOriginal);
+        let origin = EnterStagePacket::new(
+            LoginToken::new(123456123456123456),
+            CharacterKind::MomoiOriginal,
+        );
         let raw_packet = origin.as_raw();
         let other = EnterStagePacket::try_from_raw(raw_packet).unwrap();
 

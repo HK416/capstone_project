@@ -15,12 +15,24 @@ pub fn get_current_path() -> &'static Path {
     static PATH: OnceLock<PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
         let mut args = env::args();
-        let argument = args.next().expect("command line arguments are empty!");
+        let argument = match args.next() {
+            Some(arg) => arg,
+            None => {
+                log::error!("command line arguments are empty!");
+                panic!("명령줄 인자가 비어있습니다!");
+            }
+        };
+
         let current_exe = PathBuf::from(argument);
-        let current_path = current_exe
-            .parent()
-            .expect("the path to the executable file could not be found!")
-            .to_path_buf();
+        let current_path = match current_exe.parent() {
+            Some(path) => path,
+            None => {
+                log::error!("the path to the executable file could not be found!");
+                panic!("실행 파일의 디렉토리 경로를 찾을 수 없습니다!")
+            }
+        }
+        .to_path_buf();
+
         current_path
     })
 }

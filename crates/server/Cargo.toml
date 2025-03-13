@@ -1,6 +1,6 @@
 [package]
 name = "server"
-version = "0.1.1"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -22,18 +22,30 @@ serde_json = { workspace = true }
 static_assertions = { workspace = true }
 thiserror = { workspace = true }
 
+# An implementation of futures and streams featuring zero allocations, composability, and iterator-like interfaces.
+# License: MIT OR Apache-2.0
 futures = "0.3"
+
+# An event-driven, non-blocking I/O platform for writing asynchronous I/O backed applications.
+# License: MIT
 tokio = { version = "1.43", features = ["full"] }
+
+# Application-level tracing for Rust.
+# License: MIT
+tracing = "0.1"
+
+# Utilities for implementing and composing `tracing` subscribers.
+# License: MIT
+tracing-subscriber = "0.3"
+
+# Provides utilities for file appenders and making non-blocking writers.
+# License: MIT
+tracing-appender = "0.2"
 
 mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }
 mod-physics = { path = "../mod-physics" }
 mod-math = { path = "../mod-math" }
-
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-# A logging implementation for `log` which is configured via an environment variable.
-# License: MIT OR Apache-2.0
-env_logger = "0.11"
 
 [build-dependencies]
 serde = { workspace = true }
