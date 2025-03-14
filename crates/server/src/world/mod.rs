@@ -318,6 +318,10 @@ impl GameWorld {
                     let mut player = self.players.get_mut(&id).unwrap();
                     let char_info = player.character_attributes();
 
+                    //발포자 정보
+                    let mut shooter = self.players.get_mut(&bullet.shooter_id).unwrap();
+                    let shooter_info = shooter.character_attributes();
+
                     // 각 식에서의 상수값은 제안서에 있는 값으로 설정
 
                     // 1. 회피 계산
@@ -335,19 +339,25 @@ impl GameWorld {
                     // }
 
                     // 데미지 계산
-                    let atk = char_info.attack_power as f32;
                     let def = char_info.defense_power as f32;
-                    let dmg = formulas::default_damage(atk, def, 100.0);
+                    
+                    //기존: let atk = char_info.attack_power as f32;
+                    let atk = shooter_info.attack_power as f32; //발포자의 공격력 수치여야 하는거아닌가?
+                    let dur = shooter_info.normal_attack_ing_duration as f32;
+                    let cnt = shooter_info.normal_attack_count as f32;
+                    let dmg = formulas::default_damage(atk, def, 100.0, dur,cnt );
 
                     // 치명타 계산
-                    let crit = char_info.critical_rate as f32;
+                    //기존: let crit = char_info.critical_rate as f32; 
+                    let crit = shooter_info.critical_rate as f32; //발포자의 치명 수치여야 하는거아닌가?
                     let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
                     if crit_rate == 1.0 {
                         println!("  - critical!");
                     }
 
                     // 최종 데미지 계산
-                    let crit_dam = char_info.critical_damage as f32;
+                    //기존: let crit_dam = char_info.critical_damage as f32;
+                    let crit_dam = shooter_info.critical_damage as f32;//발포자의 치명 수치여야 하는거아닌가?
                     let final_dmg =
                         formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u32;
 
