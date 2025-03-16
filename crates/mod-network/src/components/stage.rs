@@ -83,7 +83,7 @@ pub struct StageLayoutData {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StageAreaData {
     pub model: String,
-    pub height: String,
+    pub height: Option<String>,
     pub translation: Float3,
     pub rotation: Float4,
 }

@@ -29,91 +29,91 @@
     "area": [
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0.25, "z": 60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -30, "y": 0.25, "z": 60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 30, "y": 0.25, "z": 60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_03",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0, "z": 60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 60, "y": 0.25, "z": 60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_02",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0, "z": 45 },
             "rotation" : { "x": 0, "y": 0.7071068, "z": 0, "w": 0.7071068 }
         },
         {
             "model" : "City_Plane_04",
-            "height" : "City_Plane_04_Height",
+            "height" : null,
             "translation" : { "x": -30, "y": 0, "z": 45 },
             "rotation" : { "x": 0, "y": 0.7071068, "z": 0, "w": 0.7071068 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -15, "y": 0.25, "z": 45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 0, "y": 0.25, "z": 45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 15, "y": 0.25, "z": 45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_05",
-            "height" : "City_Plane_04_Height",
+            "height" : null,
             "translation" : { "x": 30, "y": 0, "z": 45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_05",
-            "height" : "City_Plane_04_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0, "z": 45 },
             "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 60, "y": 0.25, "z": 45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0.25, "z": 30 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_02",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": -30, "y": 0, "z": 30 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
@@ -143,19 +143,19 @@
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0.25, "z": 30 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0.25, "z": 15 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_02",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": -30, "y": 0, "z": 15 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
@@ -185,13 +185,13 @@
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0.25, "z": 15 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0.25, "z": 0 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
@@ -227,13 +227,13 @@
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0.25, "z": 0 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0.25, "z": -15 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
@@ -263,19 +263,19 @@
         },
         {
             "model" : "City_Plane_02",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": 30, "y": 0, "z": -15 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0.25, "z": -15 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0.25, "z": -30 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
@@ -305,91 +305,91 @@
         },
         {
             "model" : "City_Plane_02",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": 30, "y": 0, "z": -30 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0.25, "z": -30 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -60, "y": 0.25, "z": -45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_05",
-            "height" : "City_Plane_04_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0, "z": -45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_05",
-            "height" : "City_Plane_04_Height",
+            "height" : null,
             "translation" : { "x": -30, "y": 0, "z": -45 },
             "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -15, "y": 0.25, "z": -45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 0, "y": 0.25, "z": -45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 15, "y": 0.25, "z": -45 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_04",
-            "height" : "City_Plane_04_Height",
+            "height" : null,
             "translation" : { "x": 30, "y": 0, "z": -45 },
             "rotation" : { "x": 0, "y": -0.7071068, "z": 0, "w": 0.7071068 }
         },
         {
             "model" : "City_Plane_02",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0, "z": -45 },
             "rotation" : { "x": 0, "y": 0.7071068, "z": 0, "w": 0.7071068 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -60, "y": 0.25, "z": -60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_03",
-            "height" : "City_Plane_02_Height",
+            "height" : null,
             "translation" : { "x": -45, "y": 0, "z": -60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": -30, "y": 0.25, "z": -60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 30, "y": 0.25, "z": -60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         },
         {
             "model" : "City_Plane_00",
-            "height" : "City_Plane_00_Height",
+            "height" : null,
             "translation" : { "x": 45, "y": 0.25, "z": -60 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 }
         }
