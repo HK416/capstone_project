@@ -6,7 +6,8 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Collider {
-    Box(BoundingBox),
+    Aabb(BoundingBox),
+    Obb(BoundingBox),
     Capsule(Capsule),
     Sphere(Sphere),
 }
@@ -14,7 +15,8 @@ pub enum Collider {
 impl Collider {
     pub fn check_collision(&self, other: &Self) -> bool {
         match other {
-            Collider::Box(b) => self.check_box_collision(b),
+            Collider::Aabb(b) => self.check_box_collision(b),
+            Collider::Obb(b) => self.check_box_collision(b),
             Collider::Capsule(c) => self.check_capsule_collision(c),
             Collider::Sphere(s) => self.check_sphere_collision(s),
         }
@@ -22,7 +24,8 @@ impl Collider {
 
     pub fn check_collision_details(&self, other: &Self) -> Option<CollisionDetails> {
         match other {
-            Collider::Box(b) => self.check_box_collision_details(b),
+            Collider::Aabb(b) => self.check_box_collision_details(b),
+            Collider::Obb(b) => self.check_box_collision_details(b),
             Collider::Capsule(c) => self.check_capsule_collision_details(c),
             Collider::Sphere(s) => self.check_sphere_collision_details(s),
         }
@@ -31,7 +34,8 @@ impl Collider {
 
     fn check_box_collision(&self, other: &BoundingBox) -> bool {
         match self {
-            Collider::Box(b) => b.check_boundingbox_collision(other),
+            Collider::Aabb(b) => b.check_boundingbox_collision(other),
+            Collider::Obb(b) => b.check_boundingbox_collision(other),
             Collider::Capsule(c) => c.gjk(other).is_some(),
             Collider::Sphere(s) => s.gjk(other).is_some(),
         }
@@ -39,7 +43,8 @@ impl Collider {
     
     fn check_capsule_collision(&self, other: &Capsule) -> bool {
         match self {
-            Collider::Box(b) => b.gjk(other).is_some(),
+            Collider::Aabb(b) => b.gjk(other).is_some(),
+            Collider::Obb(b) => b.gjk(other).is_some(),
             Collider::Capsule(c) => c.check_capsule_collision(other),
             Collider::Sphere(s) => s.check_capsule_collision(other),
         }
@@ -47,7 +52,8 @@ impl Collider {
 
     fn check_sphere_collision(&self, other: &Sphere) -> bool {
         match self {
-            Collider::Box(b) => b.gjk(other).is_some(),
+            Collider::Aabb(b) => b.gjk(other).is_some(),
+            Collider::Obb(b) => b.gjk(other).is_some(),
             Collider::Capsule(c) => c.check_sphere_collision(other),
             Collider::Sphere(s) => s.check_sphere_collision(other),
         }
@@ -55,7 +61,8 @@ impl Collider {
 
     fn check_box_collision_details(&self, other: &BoundingBox) -> Option<CollisionDetails> {
         match self {
-            Collider::Box(b) => b.gjk_epa(other),
+            Collider::Aabb(b) => b.check_boundingbox_collision_details(other),
+            Collider::Obb(b) => b.check_boundingbox_collision_details(other),
             Collider::Capsule(c) => c.gjk_epa(other),
             Collider::Sphere(s) => s.gjk_epa(other),
         }
@@ -63,7 +70,8 @@ impl Collider {
 
     fn check_capsule_collision_details(&self, other: &Capsule) -> Option<CollisionDetails> {
         match self {
-            Collider::Box(b) => b.gjk_epa(other),
+            Collider::Aabb(b) => b.gjk_epa(other),
+            Collider::Obb(b) => b.gjk_epa(other),
             Collider::Capsule(c) => c.check_capsule_collision_details(other),
             Collider::Sphere(s) => s.check_capsule_collision_details(other),
         }
@@ -71,7 +79,8 @@ impl Collider {
 
     fn check_sphere_collision_details(&self, other: &Sphere) -> Option<CollisionDetails> {
         match self {
-            Collider::Box(b) => b.gjk_epa(other),
+            Collider::Aabb(b) => b.gjk_epa(other),
+            Collider::Obb(b) => b.gjk_epa(other),
             Collider::Capsule(c) => c.check_sphere_collision_details(other),
             Collider::Sphere(s) => s.check_sphere_collision_details(other),
         }
@@ -85,6 +94,14 @@ impl BoundingBox {
             self.obb_collision(other)
         } else {
             self.aabb_collision(other)
+        }
+    }
+
+    pub fn check_boundingbox_collision_details(&self, other: &BoundingBox) -> Option<CollisionDetails> {
+        if self.rotation().is_some() || other.rotation().is_some() {
+            self.obb_collision_details(other)
+        } else {
+            self.aabb_collision_details(other)
         }
     }
 }
