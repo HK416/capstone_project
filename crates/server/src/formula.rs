@@ -23,11 +23,16 @@ pub mod movement_formulas {
 
     //========damage==========
 
-    // 기본 데미지 계산 함수
-    pub fn default_damage(attack: f32, defense: f32, k: f32) -> f32 {
-        attack * defense / (defense + k)
-    }
+    // 기본 데미지 계산 함수 (애니메이션 길이에 따른 가중치 반영)
+    pub fn default_damage( attack: f32, defense: f32, k: f32, dur: f32, cnt: f32) -> f32 {
 
+        // 발사 횟수에 따른 데미지 감소 (횟수가 많을수록 개별 탄환의 데미지가 감소)
+        let total_damage = (attack * defense / (defense + k)) * dur;
+        let damage_per_bullet = total_damage / cnt ;
+    
+        // 총 데미지 리턴
+        damage_per_bullet
+    }
     // 명중 확률 계산 함수
     pub fn cal_hit_rate(hit: f32, evasion: f32, d: f32) -> f32 {
         hit / (hit + evasion + d)
