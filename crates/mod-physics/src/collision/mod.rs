@@ -17,7 +17,8 @@ pub struct CollisionDetails {
 impl RayIntersect for Collider {
     fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo> {
         match self {
-            Collider::Box(b) => ray.intersect(b),
+            Collider::Aabb(b) => ray.intersect(b),
+            Collider::Obb(b) => ray.intersect(b),
             Collider::Capsule(c) => ray.intersect(c),
             Collider::Sphere(s) => ray.intersect(s),
         }
