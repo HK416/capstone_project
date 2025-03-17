@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{BigEndian, Float2, Float3, Float4, HealthPoint, TryFromBigEndian, UserId};
+use crate::components::{BigEndian, Float2, Float3, Float4, HealthPoint, TryFromBigEndian, UserId};
 
 /// 스테이지 종류의 수 입니다.
 pub const NUM_STAGES: usize = 1;

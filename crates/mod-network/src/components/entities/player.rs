@@ -1,6 +1,6 @@
 use std::{cmp, fmt, hash, mem};
 
-use super::{
+use crate::components::{
     ActionState, ActionStateTimer, BigEndian, CharacterKind, HealthPoint, LatLon, MovementState,
     MovementStateTimer, TryFromBigEndian, UserId, ViewState, ViewStateTimer,
 };

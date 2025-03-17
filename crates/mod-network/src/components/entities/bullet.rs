@@ -1,4 +1,7 @@
-use super::{BigEndian, CharacterKind, ObjectId, TryFromBigEndian, UserId};
+use crate::components::{BigEndian, CharacterKind, ObjectId, TryFromBigEndian, UserId};
+
+/// 총알 모델의 수 입니다.
+pub const NUM_BULLETS: usize = 2;
 
 /// 총알 모델 종류입니다.
 #[repr(u8)]

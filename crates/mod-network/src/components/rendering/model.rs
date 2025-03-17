@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{Float2, Float3, Float4, Matrix, Uint4};
+use crate::components::{Float2, Float3, Float4, Matrix, Uint4};
 
 /// 모델의 계층 구조 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
