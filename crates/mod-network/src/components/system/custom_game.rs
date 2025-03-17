@@ -1,5 +1,8 @@
 use crate::components::{BigEndian, TryFromBigEndian};
 
+/// 커스텀 게임에 참여 가능한 최대 인원 수 입니다.
+pub const MAX_CUSTOM_GAME_PLAYERS: usize = 10;
+
 /// (커스텀) 게임 접속 실패 사유
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

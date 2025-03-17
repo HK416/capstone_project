@@ -251,8 +251,7 @@ impl TryFromBigEndian for Permission {
 pub enum CustomGameStatus {
     Wait = 0,
     Ready = 1,
-    Connect = 2,
-    Disconnect = 3,
+    InGame = 2,
 }
 
 impl CustomGameStatus {
@@ -262,8 +261,7 @@ impl CustomGameStatus {
         match val {
             0 => Some(CustomGameStatus::Wait),
             1 => Some(CustomGameStatus::Ready),
-            2 => Some(CustomGameStatus::Connect),
-            3 => Some(CustomGameStatus::Disconnect),
+            2 => Some(CustomGameStatus::InGame),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",
@@ -300,6 +298,13 @@ impl TryFromBigEndian for CustomGameStatus {
 }
 
 /// 서버에서 클라이언트로 보내는 커스텀 게임에 참여한 플레이어 정보
+///
+/// # Note
+/// 아래 데이터는 1byte로 압축되어 보내집니다.
+/// - team (8bit -> 1bit)
+/// - status (8bit -> 3bit)
+/// - permission (8bit -> 1bit)
+///
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomGamePlayer {
     /// 플레이어의 사용자 정보
@@ -312,6 +317,64 @@ pub struct CustomGamePlayer {
     pub permission: Permission,
 }
 
+impl CustomGamePlayer {
+    /// 일부 맴버 변수의 데이터를 압축합니다.
+    fn compress(&self) -> u8 {
+        // +------+-------------------+---------------+-------------+
+        // | 3bit | permission (1bit) | status (3bit) | team (1bit) |
+        // +------+-------------------+---------------+-------------+
+        //
+        let permission_bit = (self.permission as u8) << 4;
+        let status_bit = (self.status as u8) << 1;
+        let team_bit = (self.team as u8) << 0;
+
+        permission_bit | status_bit | team_bit
+    }
+
+    /// 압축된 데이터를 원래 데이터로 복원합니다.  
+    /// 원래 데이터로 복원에 실패할 경우 `None`을 반환합니다.
+    fn try_decompress(bit: u8) -> Option<(Permission, CustomGameStatus, Team)> {
+        let val = (bit >> 4) & 0x1;
+        let permission = Permission::new(val)?;
+
+        let val = (bit >> 1) & 0x7;
+        let status = CustomGameStatus::new(val)?;
+
+        let val = (bit >> 0) & 0x1;
+        let team = Team::new(val)?;
+
+        Some((permission, status, team))
+    }
+}
+
+impl BigEndian for CustomGamePlayer {
+    fn byte_size() -> usize {
+        UserInfo::byte_size() + u8::byte_size() // 압축된 데이터 크기
+    }
+
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(Self::byte_size());
+        bytes.extend_from_slice(&self.info.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.compress().to_big_endian_bytes());
+
+        // 바이트 배열 유효성 검증
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                bytes.len(),
+                Self::byte_size(),
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(CustomGamePlayer)
+            );
+        }
+
+        bytes
+    }
+}
+
 impl Default for CustomGamePlayer {
     fn default() -> Self {
         Self {
@@ -320,6 +383,37 @@ impl Default for CustomGamePlayer {
             status: CustomGameStatus::default(),
             permission: Permission::default(),
         }
+    }
+}
+
+impl TryFromBigEndian for CustomGamePlayer {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        // 바이트 배열의 크기가 다른지 확인한다.
+        assert_eq!(
+            bytes.len(),
+            Self::byte_size(),
+            "the size of the byte array and the size of the `{}` are different!",
+            stringify!(CustomGamePlayer)
+        );
+
+        // 사용자 정보를 가져옵니다.
+        let mut offset = 0;
+        let mut size = UserInfo::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let info = UserInfo::from_big_endian_bytes(data);
+
+        // 압축된 데이터를 가져옵니다.
+        offset = offset + size;
+        size = u8::byte_size();
+        data = &bytes[offset..offset + size];
+        let (permission, status, team) = Self::try_decompress(u8::from_big_endian_bytes(data))?;
+
+        Some(Self {
+            info,
+            team,
+            status,
+            permission,
+        })
     }
 }
 
@@ -520,7 +614,7 @@ impl BigEndian for InGamePlayer {
                 bytes.len(),
                 Self::byte_size(),
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(Player)
+                stringify!(InGamePlayer)
             );
         }
 
@@ -558,7 +652,7 @@ impl TryFromBigEndian for InGamePlayer {
             bytes.len(),
             Self::byte_size(),
             "the size of the byte array and the size of the `{}` are different!",
-            stringify!(Player)
+            stringify!(InGamePlayer)
         );
 
         // 사용자 식별자를 가져옵니다.
@@ -567,7 +661,7 @@ impl TryFromBigEndian for InGamePlayer {
         let mut data = &bytes[offset..offset + size];
         let info = UserInfo::from_big_endian_bytes(data);
 
-        // 캐릭터 종류를 가져옵니다.
+        // 사용자 정보를 가져옵니다.
         offset = offset + size;
         size = CharacterKind::byte_size();
         data = &bytes[offset..offset + size];
@@ -653,8 +747,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validation_test_player() {
+    fn test_user_info() {
+        let origin = UserInfo {
+            uid: UserId::new(3141592),
+            name: UserName::new("Hello안녕!"),
+        };
+        let bytes = origin.to_big_endian_bytes();
+        let other = UserInfo::from_big_endian_bytes(&bytes);
+
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
+
+    #[test]
+    fn test_custom_game_player() {
+        let id = UserId::new(123576);
+        let name = UserName::new("Hello,안녕!");
+        let info = UserInfo::new(id, name);
+        let team = Team::Red;
+        let status = CustomGameStatus::Ready;
+        let permission = Permission::Admin;
+
+        let origin = CustomGamePlayer {
+            info,
+            team,
+            status,
+            permission,
+        };
+        let bytes = origin.to_big_endian_bytes();
+        let other = CustomGamePlayer::from_big_endian_bytes(&bytes);
+
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
+
+    #[test]
+    fn test_in_game_player() {
         let info = UserInfo::new(UserId::new(3141592), UserName::new("Hello,안녕!"));
+
         let origin = InGamePlayer {
             info,
             team: Team::Blue,
@@ -672,23 +802,6 @@ mod tests {
         let bytes = origin.to_big_endian_bytes();
         let other = InGamePlayer::from_big_endian_bytes(&bytes);
 
-        // 바이트 배열 크기가 같은지 확인
-        assert_eq!(InGamePlayer::byte_size(), bytes.len());
-        // 원본과 일치하는지 확인
-        assert_eq!(origin, other);
-    }
-
-    #[test]
-    fn validation_test_user() {
-        let origin = UserInfo {
-            uid: UserId::new(3141592),
-            name: UserName::new("Hello안녕!"),
-        };
-        let bytes = origin.to_big_endian_bytes();
-        let other = UserInfo::from_big_endian_bytes(&bytes);
-
-        // 바이트 배열 크기가 같은지 확인
-        assert_eq!(UserInfo::byte_size(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
     }
