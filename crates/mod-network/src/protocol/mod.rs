@@ -32,6 +32,8 @@ pub enum PacketType {
     CustomGameJoinFailed = 7,
     CustomGameJoinSuccess = 8,
     CustomGamePull = 9,
+    CustomGameLeave = 10,
+    CustomGamePushStatus = 11,
     UdpDamageLog = 128,
 }
 
@@ -66,6 +68,8 @@ impl TryFromBigEndian for PacketType {
             7 => Some(PacketType::CustomGameJoinFailed),
             8 => Some(PacketType::CustomGameJoinSuccess),
             9 => Some(PacketType::CustomGamePull),
+            10 => Some(PacketType::CustomGameLeave),
+            11 => Some(PacketType::CustomGamePushStatus),
             128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(

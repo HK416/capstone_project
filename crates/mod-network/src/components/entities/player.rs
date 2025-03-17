@@ -251,7 +251,6 @@ impl TryFromBigEndian for Permission {
 pub enum CustomGameStatus {
     Wait = 0,
     Ready = 1,
-    InGame = 2,
 }
 
 impl CustomGameStatus {
@@ -261,7 +260,6 @@ impl CustomGameStatus {
         match val {
             0 => Some(CustomGameStatus::Wait),
             1 => Some(CustomGameStatus::Ready),
-            2 => Some(CustomGameStatus::InGame),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",
@@ -302,7 +300,7 @@ impl TryFromBigEndian for CustomGameStatus {
 /// # Note
 /// 아래 데이터는 1byte로 압축되어 보내집니다.
 /// - team (8bit -> 1bit)
-/// - status (8bit -> 3bit)
+/// - status (8bit -> 2bit)
 /// - permission (8bit -> 1bit)
 ///
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -321,7 +319,7 @@ impl CustomGamePlayer {
     /// 일부 맴버 변수의 데이터를 압축합니다.
     fn compress(&self) -> u8 {
         // +------+-------------------+---------------+-------------+
-        // | 3bit | permission (1bit) | status (3bit) | team (1bit) |
+        // | 3bit | permission (1bit) | status (2bit) | team (1bit) |
         // +------+-------------------+---------------+-------------+
         //
         let permission_bit = (self.permission as u8) << 4;
@@ -337,7 +335,7 @@ impl CustomGamePlayer {
         let val = (bit >> 4) & 0x1;
         let permission = Permission::new(val)?;
 
-        let val = (bit >> 1) & 0x7;
+        let val = (bit >> 1) & 0x3;
         let status = CustomGameStatus::new(val)?;
 
         let val = (bit >> 0) & 0x1;
