@@ -1,4 +1,5 @@
 pub mod lobby;
+pub mod room;
 
 mod connect_packet;
 mod enter_stage_packet;
@@ -14,7 +15,7 @@ use crate::components::{BigEndian, TryFromBigEndian};
 
 pub use self::{
     connect_packet::*, enter_stage_packet::*, init_stage_packet::*, lobby::*, parser::*,
-    pull_stage_packet::*, push_status_packet::*, udp_damage_log_packet::*,
+    pull_stage_packet::*, push_status_packet::*, room::*, udp_damage_log_packet::*,
 };
 
 /// 패킷의 종류
@@ -30,6 +31,7 @@ pub enum PacketType {
     CustomGameJoinRequest = 6,
     CustomGameJoinFailed = 7,
     CustomGameJoinSuccess = 8,
+    CustomGamePull = 9,
     UdpDamageLog = 128,
 }
 
@@ -63,6 +65,7 @@ impl TryFromBigEndian for PacketType {
             6 => Some(PacketType::CustomGameJoinRequest),
             7 => Some(PacketType::CustomGameJoinFailed),
             8 => Some(PacketType::CustomGameJoinSuccess),
+            9 => Some(PacketType::CustomGamePull),
             128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(

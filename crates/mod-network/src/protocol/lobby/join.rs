@@ -253,9 +253,9 @@ impl Packet for CustomGameJoinSuccessPacket {
 
         // 커스텀 게임 플레이어 정보를 가져옵니다.
         let mut players = Vec::with_capacity(MAX_CUSTOM_GAME_PLAYERS);
-        size = CustomGamePlayer::byte_size();
         for _ in 0..num_players {
             offset = offset + size;
+            size = CustomGamePlayer::byte_size();
             data = &bytes[offset..offset + size];
             players.push(CustomGamePlayer::try_from_big_endian_bytes(data)?);
         }
@@ -266,6 +266,8 @@ impl Packet for CustomGameJoinSuccessPacket {
 
 #[cfg(test)]
 mod tests {
+    use crate::components::{CustomGameStatus, Permission, Team, UserInfo, UserName};
+
     use super::*;
 
     #[test]
@@ -289,6 +291,42 @@ mod tests {
         let origin = CustomGameJoinFailedPacket::new(reason);
         let raw = origin.as_raw();
         let other = CustomGameJoinFailedPacket::from_raw(raw);
+
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
+
+    #[test]
+    fn test_custom_game_join_success_packet() {
+        let player_0 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Foo")),
+            team: Team::Blue,
+            status: CustomGameStatus::Wait,
+            permission: Permission::Admin,
+        };
+        let player_1 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Bar")),
+            team: Team::Red,
+            status: CustomGameStatus::Ready,
+            permission: Permission::User,
+        };
+        let player_2 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Aris")),
+            team: Team::Blue,
+            status: CustomGameStatus::Wait,
+            permission: Permission::User,
+        };
+        let player_3 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Momoi")),
+            team: Team::Red,
+            status: CustomGameStatus::Ready,
+            permission: Permission::User,
+        };
+        let players = vec![player_0, player_1, player_2, player_3];
+
+        let origin = CustomGameJoinSuccessPacket::new(players);
+        let raw = origin.as_raw();
+        let other = CustomGameJoinSuccessPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

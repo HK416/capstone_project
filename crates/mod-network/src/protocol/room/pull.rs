@@ -1,0 +1,160 @@
+use crate::{
+    components::{BigEndian, CustomGamePlayer, TryFromBigEndian, MAX_CUSTOM_GAME_PLAYERS},
+    protocol::{Packet, PacketType, RawPacket},
+};
+
+/// 서버에서 클라이언트로 보내는 커스텀 게임 갱신 요청 패킷입니다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomGamePullPacket {
+    pub players: Vec<CustomGamePlayer>,
+}
+
+impl CustomGamePullPacket {
+    /// 새로운 패킷을 생성합니다.
+    ///
+    /// # Panics
+    /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    ///
+    pub fn new(players: Vec<CustomGamePlayer>) -> Self {
+        assert!(
+            players.len() < MAX_CUSTOM_GAME_PLAYERS,
+            "There are more people participaing in the game than the capacity!"
+        );
+        Self { players }
+    }
+
+    /// 새로운 패킷을 생성합니다.
+    ///
+    /// # Panics
+    /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    ///
+    pub fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = CustomGamePlayer>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        Self::new(iter.into_iter().collect())
+    }
+}
+
+impl Packet for CustomGamePullPacket {
+    fn packet_type() -> PacketType {
+        PacketType::CustomGamePull
+    }
+
+    /// 패킷을 RawPacket으로 변환합니다.
+    ///
+    /// # Panics
+    /// `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    ///
+    fn as_raw(&self) -> RawPacket {
+        // 바이트 스트림 레이아웃
+        // +-------------------+
+        // | 참가 인원 수 (1byte) |
+        // +-------------------+
+        // | 사용자 정보          |
+        // +-------------------+
+        //
+        let num_players = self.players.len();
+        assert!(
+            num_players <= MAX_CUSTOM_GAME_PLAYERS,
+            "There are more people participaing in the game than the capacity!"
+        );
+        let data_size = u8::byte_size() + num_players * CustomGamePlayer::byte_size();
+
+        // 바이트 스트림을 생성합니다.
+        let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
+        for player in self.players.iter() {
+            data.extend_from_slice(&player.to_big_endian_bytes());
+        }
+
+        // 바이트 배열 유효성 검증
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                data.len(),
+                data_size,
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(CustomGamePullPacket)
+            );
+        }
+
+        RawPacket::new(Self::packet_type(), &data)
+    }
+
+    fn try_from_raw(raw: RawPacket) -> Option<Self> {
+        // 패킷 종류가 일치하는지 확인합니다.
+        if raw.packet_type() != Self::packet_type() {
+            log::warn!(
+                "invalid packet type. (RAW:{:?}, PACKET:{:?})",
+                raw.packet_type(),
+                Self::packet_type(),
+            );
+            return None;
+        }
+
+        // 플레이어 수를 가져옵니다.
+        let bytes = raw.data();
+        let mut offset = 0;
+        let mut size = u8::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let num_players = u8::from_big_endian_bytes(data) as usize;
+        if num_players > MAX_CUSTOM_GAME_PLAYERS {
+            return None;
+        }
+
+        // 커스텀 게임 플레이어 정보를 가져옵니다.
+        let mut players = Vec::with_capacity(MAX_CUSTOM_GAME_PLAYERS);
+        for _ in 0..num_players {
+            offset = offset + size;
+            size = CustomGamePlayer::byte_size();
+            data = &bytes[offset..offset + size];
+            players.push(CustomGamePlayer::try_from_big_endian_bytes(data)?);
+        }
+
+        Some(Self { players })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::components::{CustomGameStatus, Permission, Team, UserId, UserInfo, UserName};
+
+    use super::*;
+
+    #[test]
+    fn test_custom_game_pull_packet() {
+        let player_0 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Foo")),
+            team: Team::Blue,
+            status: CustomGameStatus::Wait,
+            permission: Permission::Admin,
+        };
+        let player_1 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Bar")),
+            team: Team::Red,
+            status: CustomGameStatus::Ready,
+            permission: Permission::User,
+        };
+        let player_2 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Aris")),
+            team: Team::Blue,
+            status: CustomGameStatus::Wait,
+            permission: Permission::User,
+        };
+        let player_3 = CustomGamePlayer {
+            info: UserInfo::new(UserId::new(1), UserName::new("Momoi")),
+            team: Team::Red,
+            status: CustomGameStatus::Ready,
+            permission: Permission::User,
+        };
+        let players = vec![player_0, player_1, player_2, player_3];
+
+        let origin = CustomGamePullPacket::new(players);
+        let raw = origin.as_raw();
+        let other = CustomGamePullPacket::from_raw(raw);
+
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
+}
