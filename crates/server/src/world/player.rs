@@ -9,8 +9,8 @@ use crate::data::get_character_attributes;
 
 use super::{BulletObject, GameWorld, GameWorldEvent};
 
-const PLAYER_RADIUS: f32 = 0.5;
-const PLAYER_HEIGHT: f32 = 1.2;
+const PLAYER_RADIUS: f32 = 0.25;
+const PLAYER_HEIGHT: f32 = 1.0;
 /// 최대 입력 지속 시간
 const MAX_INPUT_DURATION: f32 = 0.25;
 
@@ -102,7 +102,7 @@ impl PlayerObject {
             view_state: ViewState::default(),
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
-            collider: Capsule::new(glam::Vec3::ZERO, PLAYER_RADIUS, PLAYER_HEIGHT),
+            collider: Capsule::new(glam::Vec3::ZERO, PLAYER_HEIGHT, PLAYER_RADIUS),
         }
     }
 
