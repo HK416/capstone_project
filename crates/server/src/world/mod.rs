@@ -21,11 +21,11 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::collision::Ray;
+use mod_physics::{collision::DynamicCollision, object3d::Sphere};
 use tokio::time::Instant;
 
 use crate::{
-    data::{clamp_x, clamp_z, get_stage_height, is_valid_position},
+    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position},
     session::Session,
 };
 
@@ -280,7 +280,12 @@ impl GameWorld {
             let move_distance = direction.length();
 
             // bullet.velocity가 영벡터가 아니라고 가정
-            let ray = Ray::build(bullet.translation, direction).unwrap();
+            // TODO: 총알에 반지름값 추가해야함 - 플레이어가 총을 쏜 후 나가면 shooter_id로 플레이어를 가져올 수 없음 -> panic
+            let bullet_radius = self.players.get(&bullet.shooter_id).unwrap().character_attributes().bullet_radius;
+            let bullet_collider = Sphere { 
+                center: translation.into(), 
+                radius: bullet_radius,
+            };
 
             let mut nearest_distance = f32::MAX;
             let mut nearest_player_id = None;
@@ -290,12 +295,10 @@ impl GameWorld {
                     continue;
                 }
 
-                let attributes = player.character_attributes();
-                let player_collider = player.collider()
-                    .inflated(attributes.bullet_radius);
+                let player_collider = player.collider();
 
                 // 충돌 처리: 플레이어 - 총알
-                if let Some(info) = ray.intersect(&player_collider) {
+                if let Some(info) = bullet_collider.check_dynamic_collision_details(&bullet.velocity, &player_collider) {
                     if info.distance <= move_distance {
                         println!("Bullet find player (player id: {:?})", player.info().uid);
                         println!("  - distance: {}", info.distance);

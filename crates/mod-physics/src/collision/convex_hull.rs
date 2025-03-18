@@ -1,6 +1,10 @@
 use std::collections::BinaryHeap;
 use crate::{
-    object3d::{BoundingBox, OrientedBoundingBox, VertexBox, Capsule, Sphere},
+    object3d::{
+        BoundingBox, OrientedBoundingBox, VertexBox, 
+        Capsule, OrientedCapsule,
+        Sphere
+    },
     collision::CollisionDetails,
 };
 
@@ -238,6 +242,18 @@ impl ConvexHull for VertexBox {
 }
 
 impl ConvexHull for Capsule {
+    fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
+        let capsule = OrientedCapsule::new(
+            self.center,
+            glam::Vec3::Y,
+            self.height,
+            self.radius,
+        ).unwrap();
+        capsule.get_furthest_point(direction)
+    }
+}
+
+impl ConvexHull for OrientedCapsule {
     fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
         let seg = self.get_seg();
         let start = glam::Vec3A::from(seg.start);
