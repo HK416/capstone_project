@@ -1,5 +1,6 @@
 pub mod lobby;
 pub mod room;
+pub mod title;
 
 mod connect_packet;
 mod enter_stage_packet;
@@ -15,7 +16,7 @@ use crate::components::{BigEndian, TryFromBigEndian};
 
 pub use self::{
     connect_packet::*, enter_stage_packet::*, init_stage_packet::*, lobby::*, parser::*,
-    pull_stage_packet::*, push_status_packet::*, room::*, udp_damage_log_packet::*,
+    pull_stage_packet::*, push_status_packet::*, room::*, title::*, udp_damage_log_packet::*,
 };
 
 /// 패킷의 종류
@@ -23,17 +24,27 @@ pub use self::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PacketType {
     Raw = 0,
-    Connect = 1,
-    EnterStage = 2,
-    InitStage = 3,
-    PullStage = 4,
-    PushStatus = 5,
-    CustomGameJoinRequest = 6,
-    CustomGameJoinFailed = 7,
-    CustomGameJoinSuccess = 8,
-    CustomGamePull = 9,
-    CustomGameLeave = 10,
-    CustomGamePushStatus = 11,
+    Connect = 5,
+
+    ClientVerify = 1,
+    LoginRequest = 2,
+    LoginFailed = 3,
+    LoginSuccess = 4,
+
+    LobbyPull = 8,
+
+    CustomGameJoinRequest = 24,
+    CustomGameJoinFailed = 25,
+    CustomGameJoinSuccess = 26,
+    CustomGamePull = 27,
+    CustomGameLeave = 28,
+    CustomGamePushStatus = 29,
+
+    EnterStage = 48,
+    InitStage = 49,
+    PullStage = 50,
+    PushStatus = 51,
+
     UdpDamageLog = 128,
 }
 
@@ -59,17 +70,22 @@ impl TryFromBigEndian for PacketType {
         let index = u8::from_big_endian_bytes(bytes);
         match index {
             0 => Some(PacketType::Raw),
-            1 => Some(PacketType::Connect),
-            2 => Some(PacketType::EnterStage),
-            3 => Some(PacketType::InitStage),
-            4 => Some(PacketType::PullStage),
-            5 => Some(PacketType::PushStatus),
-            6 => Some(PacketType::CustomGameJoinRequest),
-            7 => Some(PacketType::CustomGameJoinFailed),
-            8 => Some(PacketType::CustomGameJoinSuccess),
-            9 => Some(PacketType::CustomGamePull),
-            10 => Some(PacketType::CustomGameLeave),
-            11 => Some(PacketType::CustomGamePushStatus),
+            1 => Some(PacketType::ClientVerify),
+            2 => Some(PacketType::LoginRequest),
+            3 => Some(PacketType::LoginFailed),
+            4 => Some(PacketType::LoginSuccess),
+            5 => Some(PacketType::Connect),
+            8 => Some(PacketType::LobbyPull),
+            24 => Some(PacketType::CustomGameJoinRequest),
+            25 => Some(PacketType::CustomGameJoinFailed),
+            26 => Some(PacketType::CustomGameJoinSuccess),
+            27 => Some(PacketType::CustomGamePull),
+            28 => Some(PacketType::CustomGameLeave),
+            29 => Some(PacketType::CustomGamePushStatus),
+            48 => Some(PacketType::EnterStage),
+            49 => Some(PacketType::InitStage),
+            50 => Some(PacketType::PullStage),
+            51 => Some(PacketType::PushStatus),
             128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(
