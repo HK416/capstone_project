@@ -1,4 +1,4 @@
-use crate::object3d::{BoundingBox, Capsule, Sphere};
+use crate::object3d::{BoundingBox, OrientedBoundingBox, Capsule, Sphere};
 
 
 pub struct Ray {
@@ -187,18 +187,9 @@ impl RayIntersect for Capsule {
 
 impl RayIntersect for BoundingBox {
     fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo> {
-        // 1. Ray를 BoundingBox의 로컬 공간으로 변환
-        let (local_ray_origin, local_ray_direction) = match self.rotation() {
-            Some(rotation) => {
-                let inv_rotation = rotation.transpose();    // 회전행렬의 전치행렬은 역행렬과 같다.
-                let local_origin = inv_rotation * (ray.origin - self.center);
-                let local_dir = inv_rotation * ray.direction();
-                (local_origin, local_dir)
-            }
-            None => (ray.origin - self.center, ray.direction()),
-        };
+        let ray_direction = ray.direction();
+        let local_ray_origin = ray.origin - self.center;
         
-        // 2. Ray와 BoundingBox 충돌 검사
         let extents = self.extents();
         let mut tmin = f32::NEG_INFINITY;
         let mut tmax = f32::INFINITY;
@@ -206,7 +197,7 @@ impl RayIntersect for BoundingBox {
 
         for i in 0..3 {
             // Ray가 Box의 면에 평행한 경우
-            if local_ray_direction[i] == 0.0 {
+            if ray_direction[i] == 0.0 {
                 // Ray의 시작점이 Box 밖에 있는 경우
                 if local_ray_origin[i] < -extents[i] || extents[i] < local_ray_origin[i] {
                     return None;
@@ -214,8 +205,8 @@ impl RayIntersect for BoundingBox {
                 // Ray의 시작점이 Box 안에 있는 경우
                 continue;
             } else {
-                let t1 = (-extents[i] - local_ray_origin[i]) / local_ray_direction[i];
-                let t2 = (extents[i] - local_ray_origin[i]) / local_ray_direction[i];
+                let t1 = (-extents[i] - local_ray_origin[i]) / ray_direction[i];
+                let t2 = (extents[i] - local_ray_origin[i]) / ray_direction[i];
 
                 let mut normal_sign = 1.0;
                 let (t1, t2) = if t1 > t2 {
@@ -247,10 +238,6 @@ impl RayIntersect for BoundingBox {
             })
         } else if tmin >= 0.0 {
             let normal = glam::Vec3A::from(normal);
-            let normal = match self.rotation() {
-                Some(rotation) => rotation * normal,
-                None => normal,
-            };
             Some(RayIntersectInfo {
                 distance: tmin,
                 normal,
@@ -258,5 +245,26 @@ impl RayIntersect for BoundingBox {
         } else {
             None
         }
+    }
+}
+
+impl RayIntersect for OrientedBoundingBox {
+    fn ray_intersect(&self, ray: &Ray) -> Option<RayIntersectInfo> {
+        let rotation = self.rotation();
+        let inv_rotation = rotation.transpose();    // 회전행렬의 전치행렬은 역행렬과 같다.
+        let local_ray_origin = inv_rotation * (ray.origin - self.center);
+        let local_ray_direction = inv_rotation * ray.direction();
+
+        let ray = Ray {
+            origin: local_ray_origin,
+            direction: local_ray_direction,
+        };
+        let aabb = BoundingBox::new(glam::Vec3::ZERO, self.extents());
+        
+        let info = aabb.ray_intersect(&ray)?;
+        Some(RayIntersectInfo {
+            distance: info.distance,
+            normal: rotation * info.normal,
+        })
     }
 }

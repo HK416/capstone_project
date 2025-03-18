@@ -1,6 +1,6 @@
 use std::collections::BinaryHeap;
 use crate::{
-    object3d::{BoundingBox, VertexBox, Capsule, Sphere},
+    object3d::{BoundingBox, OrientedBoundingBox, VertexBox, Capsule, Sphere},
     collision::CollisionDetails,
 };
 
@@ -191,6 +191,25 @@ pub trait ConvexHull {
 }
 
 impl ConvexHull for BoundingBox {
+    fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
+        self.get_vertices().iter()
+            .max_by(|&a, &b| direction.dot(*a).partial_cmp(&direction.dot(*b)).unwrap())
+            .copied()
+            .unwrap()
+    }
+
+    fn gjk(&self, other: &impl ConvexHull) -> Option<Simplex> {
+        let vertex_box = VertexBox::from(self);
+        vertex_box.gjk(other)
+    }
+
+    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<CollisionDetails> {
+        let vertex_box = VertexBox::from(self);
+        vertex_box.gjk_epa(other)
+    }
+}
+
+impl ConvexHull for OrientedBoundingBox {
     fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
         self.get_vertices().iter()
             .max_by(|&a, &b| direction.dot(*a).partial_cmp(&direction.dot(*b)).unwrap())
