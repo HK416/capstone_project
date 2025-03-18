@@ -1,5 +1,6 @@
 //! 최신 `wgpu` 버전을 적용하기 위해 `egui` 저장소에 있는 코드를 가져와 수정했습니다.
 //!
+
 #![allow(unsafe_code)]
 
 use std::{
@@ -9,13 +10,13 @@ use std::{
     ops::Range,
 };
 
-use ahash::AHashMap;
-use egui::epaint::{self, emath::NumExt, PaintCallbackInfo, Primitive, Vertex};
+use ahash::HashMap;
+use egui::epaint::{self, PaintCallbackInfo, Primitive, Vertex, emath::NumExt};
 
 use wgpu::util::DeviceExt as _;
 
 /// You can use this for storage when implementing [`CallbackTrait`].
-pub type CallbackResources = AHashMap<TypeId, Box<dyn Any>>;
+pub type CallbackResources = HashMap<TypeId, Box<dyn Any>>;
 
 /// You can use this to do custom [`wgpu`] rendering in an egui app.
 ///
@@ -108,10 +109,10 @@ pub trait CallbackTrait: Send + Sync {
     ///
     /// It is given access to the [`wgpu::RenderPass`] so that it can issue draw commands
     /// into the same [`wgpu::RenderPass`] that is used for all other egui elements.
-    fn paint<'a>(
+    fn paint(
         &self,
         info: PaintCallbackInfo,
-        render_pass: &mut wgpu::RenderPass<'a>,
+        render_pass: &mut wgpu::RenderPass<'static>,
         callback_resources: &CallbackResources,
     );
 }
@@ -121,7 +122,7 @@ pub struct ScreenDescriptor {
     /// Size of the window in physical pixels.
     pub size_in_pixels: [u32; 2],
 
-    /// HiDPI scale factor (pixels per point).
+    /// High-DPI scale factor (pixels per point).
     pub pixels_per_point: f32,
 }
 
@@ -186,8 +187,9 @@ pub struct UiRenderer {
     /// Map of egui texture IDs to textures and their associated bindgroups (texture view +
     /// sampler). The texture may be None if the `TextureId` is just a handle to a user-provided
     /// sampler.
-    textures: AHashMap<epaint::TextureId, Texture>,
-    samplers: AHashMap<epaint::textures::TextureOptions, wgpu::Sampler>,
+    textures: HashMap<epaint::TextureId, Texture>,
+    next_user_texture_id: u64,
+    samplers: HashMap<epaint::textures::TextureOptions, wgpu::Sampler>,
 
     dithering: bool,
 
@@ -385,8 +387,9 @@ impl UiRenderer {
             },
             uniform_bind_group,
             texture_bind_group_layout,
-            textures: AHashMap::default(),
-            samplers: AHashMap::default(),
+            textures: HashMap::default(),
+            next_user_texture_id: 0,
+            samplers: HashMap::default(),
             dithering,
             callback_resources: CallbackResources::default(),
         }
@@ -399,9 +402,9 @@ impl UiRenderer {
     /// The render pass internally keeps all referenced resources alive as long as necessary.
     /// The only consequence of `forget_lifetime` is that any operation on the parent encoder will cause a runtime error
     /// instead of a compile time error.
-    pub fn render<'a>(
+    pub fn render(
         &self,
-        render_pass: &mut wgpu::RenderPass<'a>,
+        render_pass: &mut wgpu::RenderPass<'static>,
         paint_jobs: &[epaint::ClippedPrimitive],
         screen_descriptor: &ScreenDescriptor,
     ) {
@@ -455,8 +458,8 @@ impl UiRenderer {
                     let index_buffer_slice = index_buffer_slices.next().unwrap();
                     let vertex_buffer_slice = vertex_buffer_slices.next().unwrap();
 
-                    if let Some(texture) = self.textures.get(&mesh.texture_id) {
-                        render_pass.set_bind_group(1, &texture.bind_group, &[]);
+                    if let Some(Texture { bind_group, .. }) = self.textures.get(&mesh.texture_id) {
+                        render_pass.set_bind_group(1, bind_group, &[]);
                         render_pass.set_index_buffer(
                             self.index_buffer.buffer.slice(
                                 index_buffer_slice.start as u64..index_buffer_slice.end as u64,
@@ -640,7 +643,7 @@ impl UiRenderer {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
+                        resource: wgpu::BindingResource::Sampler(sampler),
                     },
                 ],
             })
@@ -658,7 +661,155 @@ impl UiRenderer {
     }
 
     pub fn free_texture(&mut self, id: &epaint::TextureId) {
-        self.textures.remove(id);
+        if let Some(texture) = self.textures.remove(id).and_then(|t| t.texture) {
+            texture.destroy();
+        }
+    }
+
+    /// Get the WGPU texture and bind group associated to a texture that has been allocated by egui.
+    ///
+    /// This could be used by custom paint hooks to render images that have been added through
+    /// [`epaint::Context::load_texture`](https://docs.rs/egui/latest/egui/struct.Context.html#method.load_texture).
+    pub fn texture(&self, id: &epaint::TextureId) -> Option<&Texture> {
+        self.textures.get(id)
+    }
+
+    /// Registers a [`wgpu::Texture`] with a [`epaint::TextureId`].
+    ///
+    /// This enables the application to reference the texture inside an image ui element.
+    /// This effectively enables off-screen rendering inside the egui UI. Texture must have
+    /// the texture format [`wgpu::TextureFormat::Rgba8UnormSrgb`].
+    pub fn register_native_texture(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::TextureView,
+        texture_filter: wgpu::FilterMode,
+    ) -> epaint::TextureId {
+        self.register_native_texture_with_sampler_options(
+            device,
+            texture,
+            wgpu::SamplerDescriptor {
+                label: Some(format!("egui_user_image_{}", self.next_user_texture_id).as_str()),
+                mag_filter: texture_filter,
+                min_filter: texture_filter,
+                ..Default::default()
+            },
+        )
+    }
+
+    /// Registers a [`wgpu::Texture`] with an existing [`epaint::TextureId`].
+    ///
+    /// This enables applications to reuse [`epaint::TextureId`]s.
+    pub fn update_egui_texture_from_wgpu_texture(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::TextureView,
+        texture_filter: wgpu::FilterMode,
+        id: epaint::TextureId,
+    ) {
+        self.update_egui_texture_from_wgpu_texture_with_sampler_options(
+            device,
+            texture,
+            wgpu::SamplerDescriptor {
+                label: Some(format!("egui_user_image_{}", self.next_user_texture_id).as_str()),
+                mag_filter: texture_filter,
+                min_filter: texture_filter,
+                ..Default::default()
+            },
+            id,
+        );
+    }
+
+    /// Registers a [`wgpu::Texture`] with a [`epaint::TextureId`] while also accepting custom
+    /// [`wgpu::SamplerDescriptor`] options.
+    ///
+    /// This allows applications to specify individual minification/magnification filters as well as
+    /// custom mipmap and tiling options.
+    ///
+    /// The texture must have the format [`wgpu::TextureFormat::Rgba8UnormSrgb`].
+    /// Any compare function supplied in the [`wgpu::SamplerDescriptor`] will be ignored.
+    #[allow(clippy::needless_pass_by_value)] // false positive
+    pub fn register_native_texture_with_sampler_options(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::TextureView,
+        sampler_descriptor: wgpu::SamplerDescriptor<'_>,
+    ) -> epaint::TextureId {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            compare: None,
+            ..sampler_descriptor
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("egui_user_image_{}", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(texture),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        let id = epaint::TextureId::User(self.next_user_texture_id);
+        self.textures.insert(
+            id,
+            Texture {
+                texture: None,
+                bind_group,
+                options: None,
+            },
+        );
+        self.next_user_texture_id += 1;
+
+        id
+    }
+
+    /// Registers a [`wgpu::Texture`] with an existing [`epaint::TextureId`] while also accepting custom
+    /// [`wgpu::SamplerDescriptor`] options.
+    ///
+    /// This allows applications to reuse [`epaint::TextureId`]s created with custom sampler options.
+    #[allow(clippy::needless_pass_by_value)] // false positive
+    pub fn update_egui_texture_from_wgpu_texture_with_sampler_options(
+        &mut self,
+        device: &wgpu::Device,
+        texture: &wgpu::TextureView,
+        sampler_descriptor: wgpu::SamplerDescriptor<'_>,
+        id: epaint::TextureId,
+    ) {
+        let Texture {
+            bind_group: user_texture_binding,
+            ..
+        } = self
+            .textures
+            .get_mut(&id)
+            .expect("Tried to update a texture that has not been allocated yet.");
+
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            compare: None,
+            ..sampler_descriptor
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(format!("egui_user_image_{}", self.next_user_texture_id).as_str()),
+            layout: &self.texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(texture),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        *user_texture_binding = bind_group;
     }
 
     /// Uploads the uniform, vertex and index data used by the renderer.
@@ -727,7 +878,11 @@ impl UiRenderer {
             );
 
             let Some(mut index_buffer_staging) = index_buffer_staging else {
-                panic!("Failed to create staging buffer for index data. Index count: {index_count}. Required index buffer size: {required_index_buffer_size}. Actual size {} and capacity: {} (bytes)", self.index_buffer.buffer.size(), self.index_buffer.capacity);
+                panic!(
+                    "Failed to create staging buffer for index data. Index count: {index_count}. Required index buffer size: {required_index_buffer_size}. Actual size {} and capacity: {} (bytes)",
+                    self.index_buffer.buffer.size(),
+                    self.index_buffer.capacity
+                );
             };
 
             let mut index_offset = 0;
@@ -764,7 +919,11 @@ impl UiRenderer {
             );
 
             let Some(mut vertex_buffer_staging) = vertex_buffer_staging else {
-                panic!("Failed to create staging buffer for vertex data. Vertex count: {vertex_count}. Required vertex buffer size: {required_vertex_buffer_size}. Actual size {} and capacity: {} (bytes)", self.vertex_buffer.buffer.size(), self.vertex_buffer.capacity);
+                panic!(
+                    "Failed to create staging buffer for vertex data. Vertex count: {vertex_count}. Required vertex buffer size: {required_vertex_buffer_size}. Actual size {} and capacity: {} (bytes)",
+                    self.vertex_buffer.buffer.size(),
+                    self.vertex_buffer.capacity
+                );
             };
 
             let mut vertex_offset = 0;

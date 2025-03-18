@@ -15,7 +15,7 @@ use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
-    asset::{NOTOSANS_REGULAR, NOTOSANS_BOLD, USER_CONFIG},
+    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG},
     config::UserConfig,
 };
 
@@ -82,11 +82,7 @@ impl GameStartupScene {
     }
 
     /// `NotoSans-Bold` 폰트를 로드합니다.
-    fn load_notosans_blod_font(
-        &mut self,
-        thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
-    ) {
+    fn load_notosans_blod_font(&mut self, thread_pool: &ThreadPool, asset_manager: &AssetManager) {
         // 스레드 풀에서 에셋을 로드합니다.
         let asset_manager = asset_manager.clone();
         let task_results = self.task_results.clone();

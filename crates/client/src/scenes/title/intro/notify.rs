@@ -16,7 +16,7 @@ use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
-    asset::{AssetError, NOTOSANS_REGULAR, NOTOSANS_BOLD},
+    asset::{AssetError, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, UserConfig, NUM_LOCALE},
     render::{BackgroundDataLayout, BackgroundResource, LOGIN_PAD_BG, LOGIN_PAD_BG_DATA},
     scenes::{GameLoginTitleScene, BASE_WIDTH},
@@ -342,27 +342,32 @@ impl GameScene for GameIntroNotifyScene {
         });
 
         {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(self.get_background_color()),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    view: render_target_view,
-                    resolve_target: None,
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_buffer_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Discard,
+            let mut rpass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some(&format!(
+                        "RenderPass(UI({}))",
+                        stringify!(GameIntroNotifyScene)
+                    )),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(self.get_background_color()),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: render_target_view,
+                        resolve_target: None,
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: depth_buffer_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Discard,
+                        }),
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                })
+                .forget_lifetime();
 
             egui_renderer.render(
                 &mut rpass,
