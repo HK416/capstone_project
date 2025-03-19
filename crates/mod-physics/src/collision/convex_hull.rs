@@ -5,7 +5,7 @@ use crate::{
         Capsule, OrientedCapsule,
         Sphere
     },
-    collision::CollisionDetails,
+    collision::StaticCollisionDetails,
 };
 
 
@@ -100,10 +100,10 @@ pub trait ConvexHull {
         Some(simplex)
     }
 
-    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<CollisionDetails> {
+    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<StaticCollisionDetails> {
         let simplex = self.gjk(other)?;
         if simplex.count <= 1 {
-            return Some(CollisionDetails {
+            return Some(StaticCollisionDetails {
                 normal: glam::Vec3A::ZERO,
                 penetration: 0.0,
             });
@@ -135,7 +135,7 @@ pub trait ConvexHull {
                     panic!("No nearest face");
                 }
             };
-            let collision_info = CollisionDetails {
+            let collision_info = StaticCollisionDetails {
                 normal: -nearest_face.normal,
                 penetration: nearest_face.distance,
             };
@@ -207,7 +207,7 @@ impl ConvexHull for BoundingBox {
         vertex_box.gjk(other)
     }
 
-    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<CollisionDetails> {
+    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<StaticCollisionDetails> {
         let vertex_box = VertexBox::from(self);
         vertex_box.gjk_epa(other)
     }
@@ -226,7 +226,7 @@ impl ConvexHull for OrientedBoundingBox {
         vertex_box.gjk(other)
     }
 
-    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<CollisionDetails> {
+    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<StaticCollisionDetails> {
         let vertex_box = VertexBox::from(self);
         vertex_box.gjk_epa(other)
     }

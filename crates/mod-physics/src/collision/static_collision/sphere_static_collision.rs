@@ -3,7 +3,7 @@ use crate::object3d::{
     Capsule, OrientedCapsule,
     Sphere
 };
-use super::{CollisionDetails, StaticCollision};
+use super::{StaticCollision, StaticCollisionDetails};
 
 
 impl StaticCollision<BoundingBox> for Sphere {
@@ -11,7 +11,7 @@ impl StaticCollision<BoundingBox> for Sphere {
         other.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<StaticCollisionDetails> {
         let mut details = other.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -23,7 +23,7 @@ impl StaticCollision<OrientedBoundingBox> for Sphere {
         other.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
         let mut details = other.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -35,7 +35,7 @@ impl StaticCollision<Capsule> for Sphere {
         capsule.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, capsule: &Capsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, capsule: &Capsule) -> Option<StaticCollisionDetails> {
         let mut details = capsule.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -47,7 +47,7 @@ impl StaticCollision<OrientedCapsule> for Sphere {
         capsule.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, capsule: &OrientedCapsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, capsule: &OrientedCapsule) -> Option<StaticCollisionDetails> {
         let mut details = capsule.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -61,7 +61,7 @@ impl StaticCollision<Sphere> for Sphere {
         (center1 - center2).length_squared() <= (self.radius + other.radius).powi(2)
     }
 
-    fn check_static_collision_details(&self, other: &Sphere) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &Sphere) -> Option<StaticCollisionDetails> {
         let center1 = glam::Vec3A::from(self.center);
         let center2 = glam::Vec3A::from(other.center);
         let normal = center1 - center2;
@@ -72,7 +72,7 @@ impl StaticCollision<Sphere> for Sphere {
             return None;
         }
 
-        Some(CollisionDetails {
+        Some(StaticCollisionDetails {
             normal: normal.normalize_or_zero(),
             penetration,
         })

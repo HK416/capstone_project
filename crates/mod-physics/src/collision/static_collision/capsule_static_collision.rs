@@ -3,7 +3,7 @@ use crate::object3d::{
     Capsule, OrientedCapsule, 
     Sphere
 };
-use super::{CollisionDetails, StaticCollision};
+use super::{StaticCollision, StaticCollisionDetails};
 use mod_math::Segment;
 
 
@@ -12,7 +12,7 @@ impl StaticCollision<BoundingBox> for Capsule {
         other.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<StaticCollisionDetails> {
         let mut details = other.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -24,7 +24,7 @@ impl StaticCollision<OrientedBoundingBox> for Capsule {
         other.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
         let mut details = other.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -49,7 +49,7 @@ impl StaticCollision<Capsule> for Capsule {
         }
     }
 
-    fn check_static_collision_details(&self, other: &Capsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &Capsule) -> Option<StaticCollisionDetails> {
         use mod_math::Segment;
         
         let (nearest1, nearest2) = Segment::each_nearest(&self.get_seg(), &other.get_seg());
@@ -60,7 +60,7 @@ impl StaticCollision<Capsule> for Capsule {
             return None;
         }
 
-        Some(CollisionDetails {
+        Some(StaticCollisionDetails {
             normal: normal.normalize_or_zero(),
             penetration,
         })
@@ -73,7 +73,7 @@ impl StaticCollision<OrientedCapsule> for Capsule {
         other.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, other: &OrientedCapsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &OrientedCapsule) -> Option<StaticCollisionDetails> {
         let mut details = other.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -91,7 +91,7 @@ impl StaticCollision<Sphere> for Capsule {
         }
     }
 
-    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<StaticCollisionDetails> {
         let center = glam::Vec3A::from(sphere.center);
         let nearest = self.get_seg().nearest_to_point(&center);
         let from_center = nearest - center;
@@ -102,7 +102,7 @@ impl StaticCollision<Sphere> for Capsule {
         }
 
         let normal = from_center.normalize_or_zero();
-        Some(CollisionDetails {
+        Some(StaticCollisionDetails {
             normal,
             penetration,
         })

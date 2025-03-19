@@ -3,7 +3,7 @@ use crate::object3d::{
     Capsule, OrientedCapsule,
     Sphere
 };
-use super::{CollisionDetails, ConvexHull, StaticCollision};
+use super::{ConvexHull, StaticCollision, StaticCollisionDetails};
 
 
 impl StaticCollision<BoundingBox> for OrientedBoundingBox {
@@ -16,7 +16,7 @@ impl StaticCollision<BoundingBox> for OrientedBoundingBox {
         self.check_static_collision(&aabb)
     }
 
-    fn check_static_collision_details(&self, aabb: &BoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, aabb: &BoundingBox) -> Option<StaticCollisionDetails> {
         let aabb = OrientedBoundingBox::new(
             aabb.center, 
             aabb.extents(), 
@@ -64,7 +64,7 @@ impl StaticCollision<OrientedBoundingBox> for OrientedBoundingBox {
     }
 
     /// SAT 를 이용한 OBB collision detection + 충돌 상세 정보 반환
-    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
         let self_axes = self.get_axes();
         let other_axes = other.get_axes();
 
@@ -106,7 +106,7 @@ impl StaticCollision<OrientedBoundingBox> for OrientedBoundingBox {
         }
 
         if min_penetration != f32::MAX {
-            Some(CollisionDetails {
+            Some(StaticCollisionDetails {
                 normal: collision_normal,
                 penetration: min_penetration,
             })
@@ -121,7 +121,7 @@ impl StaticCollision<Capsule> for OrientedBoundingBox {
         self.gjk(capsule).is_some()
     }
 
-    fn check_static_collision_details(&self, capsule: &Capsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, capsule: &Capsule) -> Option<StaticCollisionDetails> {
         self.gjk_epa(capsule)
     }
 }
@@ -131,7 +131,7 @@ impl StaticCollision<OrientedCapsule> for OrientedBoundingBox {
         self.gjk(capsule).is_some()
     }
 
-    fn check_static_collision_details(&self, capsule: &OrientedCapsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, capsule: &OrientedCapsule) -> Option<StaticCollisionDetails> {
         self.gjk_epa(capsule)
     }
 }
@@ -154,7 +154,7 @@ impl StaticCollision<Sphere> for OrientedBoundingBox {
         aabb.check_static_collision(&sphere)
     }
 
-    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<StaticCollisionDetails> {
         // Sphere를 BoundingBox의 로컬 공간으로 변환
         let rotation = self.rotation();
         let inv_rotation = rotation.transpose();    // 회전행렬의 전치행렬은 역행렬과 같다.

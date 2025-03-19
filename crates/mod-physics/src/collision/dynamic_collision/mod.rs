@@ -9,6 +9,7 @@ pub trait DynamicCollision<T: ConvexHull> {
     fn check_dynamic_collision_details(&self, velocity: &glam::Vec3A, other: &T) -> Option<DynamicCollisionDetails>;
 }
 
+
 pub struct DynamicCollisionDetails {
     pub normal: glam::Vec3A,
     pub distance: f32,

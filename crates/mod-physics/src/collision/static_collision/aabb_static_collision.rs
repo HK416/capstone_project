@@ -3,7 +3,7 @@ use crate::object3d::{
     Capsule, OrientedCapsule,
     Sphere
 };
-use super::{CollisionDetails, ConvexHull, StaticCollision};
+use super::{ConvexHull, StaticCollision, StaticCollisionDetails};
 
 
 impl StaticCollision<BoundingBox> for BoundingBox {
@@ -17,7 +17,7 @@ impl StaticCollision<BoundingBox> for BoundingBox {
         x_overlap && y_overlap && z_overlap
     }
 
-    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<StaticCollisionDetails> {
         let min_a = self.center - self.extents();
         let max_a = self.center + self.extents();
         let min_b = other.center - other.extents();
@@ -63,7 +63,7 @@ impl StaticCollision<BoundingBox> for BoundingBox {
             collision_normal = glam::Vec3A::ZERO;
         }
 
-        Some(CollisionDetails {
+        Some(StaticCollisionDetails {
             normal: collision_normal,
             penetration: min_penetration,
         })
@@ -80,7 +80,7 @@ impl StaticCollision<OrientedBoundingBox> for BoundingBox {
         this.check_static_collision(obb)
     }
 
-    fn check_static_collision_details(&self, obb: &OrientedBoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, obb: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
         let this = OrientedBoundingBox::new(
             glam::Vec3::ZERO, 
             self.extents(), 
@@ -95,7 +95,7 @@ impl StaticCollision<Capsule> for BoundingBox {
         self.gjk(capsule).is_some()
     }
 
-    fn check_static_collision_details(&self, capsule: &Capsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, capsule: &Capsule) -> Option<StaticCollisionDetails> {
         self.gjk_epa(capsule)
     }
 }
@@ -105,7 +105,7 @@ impl StaticCollision<OrientedCapsule> for BoundingBox {
         self.gjk(capsule).is_some()
     }
 
-    fn check_static_collision_details(&self, capsule: &OrientedCapsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, capsule: &OrientedCapsule) -> Option<StaticCollisionDetails> {
         self.gjk_epa(capsule)
     }
 }
@@ -128,7 +128,7 @@ impl StaticCollision<Sphere> for BoundingBox {
         distance_sq <= sphere.radius.powi(2)
     }
 
-    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<StaticCollisionDetails> {
         let local_sphere_center = sphere.center - self.center;
         let aabb_extents = self.extents();
         let mut to_center = glam::Vec3::ZERO;
@@ -150,7 +150,7 @@ impl StaticCollision<Sphere> for BoundingBox {
         
         let normal = -to_center.normalize_or_zero();
         
-        Some(CollisionDetails {
+        Some(StaticCollisionDetails {
             normal,
             penetration,
         })

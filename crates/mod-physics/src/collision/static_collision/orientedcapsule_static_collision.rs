@@ -3,7 +3,7 @@ use crate::object3d::{
     Capsule, OrientedCapsule, 
     Sphere
 };
-use super::{CollisionDetails, StaticCollision};
+use super::{StaticCollision, StaticCollisionDetails};
 
 
 impl StaticCollision<BoundingBox> for OrientedCapsule {
@@ -11,7 +11,7 @@ impl StaticCollision<BoundingBox> for OrientedCapsule {
         other.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &BoundingBox) -> Option<StaticCollisionDetails> {
         let mut details = other.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -23,7 +23,7 @@ impl StaticCollision<OrientedBoundingBox> for OrientedCapsule {
         other.check_static_collision(self)
     }
 
-    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
         let mut details = other.check_static_collision_details(self)?;
         details.normal = -details.normal;
         Some(details)
@@ -41,7 +41,7 @@ impl StaticCollision<Capsule> for OrientedCapsule {
         self.check_static_collision(&other)
     }
 
-    fn check_static_collision_details(&self, other: &Capsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &Capsule) -> Option<StaticCollisionDetails> {
         let other = OrientedCapsule::new(
             other.center.into(),
             glam::Vec3::Y,
@@ -69,7 +69,7 @@ impl StaticCollision<OrientedCapsule> for OrientedCapsule {
         distance <= self.radius + other.radius
     }
 
-    fn check_static_collision_details(&self, other: &OrientedCapsule) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, other: &OrientedCapsule) -> Option<StaticCollisionDetails> {
         use mod_math::Segment;
         
         let (nearest1, nearest2) = Segment::each_nearest(&self.get_seg(), &other.get_seg());
@@ -80,7 +80,7 @@ impl StaticCollision<OrientedCapsule> for OrientedCapsule {
             return None;
         }
 
-        Some(CollisionDetails {
+        Some(StaticCollisionDetails {
             normal: normal.normalize_or_zero(),
             penetration,
         })
@@ -95,7 +95,7 @@ impl StaticCollision<Sphere> for OrientedCapsule {
         segment.distance_to_point(&center) <= sphere.radius + self.radius
     }
 
-    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<CollisionDetails> {
+    fn check_static_collision_details(&self, sphere: &Sphere) -> Option<StaticCollisionDetails> {
         let center = sphere.center - self.center;
         let sphere = Sphere {
             center,

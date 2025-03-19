@@ -5,7 +5,7 @@ use crate::{
         Sphere
     }, 
     collision::{
-        CollisionDetails, StaticCollision, 
+        StaticCollision, StaticCollisionDetails, 
         Ray, RayIntersect, RayIntersectInfo
     },
 };
@@ -84,7 +84,7 @@ impl Collider {
 
 
 impl Collider {
-    pub fn check_collision_details(&self, other: &Self) -> Option<CollisionDetails> {
+    pub fn check_collision_details(&self, other: &Self) -> Option<StaticCollisionDetails> {
         match other {
             Collider::Aabb(b) => self.check_aabb_collision_details(b),
             Collider::Obb(b) => self.check_obb_collision_details(b),
@@ -94,7 +94,7 @@ impl Collider {
         }
     }
 
-    fn check_aabb_collision_details(&self, other: &BoundingBox) -> Option<CollisionDetails> {
+    fn check_aabb_collision_details(&self, other: &BoundingBox) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -104,7 +104,7 @@ impl Collider {
         }
     }
 
-    fn check_obb_collision_details(&self, other: &OrientedBoundingBox) -> Option<CollisionDetails> {
+    fn check_obb_collision_details(&self, other: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -114,7 +114,7 @@ impl Collider {
         }
     }
 
-    fn check_capsule_collision_details(&self, other: &Capsule) -> Option<CollisionDetails> {
+    fn check_capsule_collision_details(&self, other: &Capsule) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -124,7 +124,7 @@ impl Collider {
         }
     }
 
-    fn check_orientedcapsule_collision_details(&self, other: &OrientedCapsule) -> Option<CollisionDetails> {
+    fn check_orientedcapsule_collision_details(&self, other: &OrientedCapsule) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -134,7 +134,7 @@ impl Collider {
         }
     }
 
-    fn check_sphere_collision_details(&self, other: &Sphere) -> Option<CollisionDetails> {
+    fn check_sphere_collision_details(&self, other: &Sphere) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
