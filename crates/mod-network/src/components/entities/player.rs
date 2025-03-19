@@ -1,4 +1,4 @@
-use std::{cmp, fmt, hash, mem};
+use std::{cmp, fmt, hash};
 
 use crate::components::{
     ActionState, ActionStateTimer, BigEndian, CharacterKind, HealthPoint, LatLon, MovementState,
@@ -11,13 +11,15 @@ const MAX_NAME_BUF_SIZE: usize = 16;
 pub const MAX_NAME_LEN: usize = MAX_NAME_BUF_SIZE - 1;
 
 /// UTF-16 형식의 사용자 닉네임 문자열
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UserName([u16; MAX_NAME_BUF_SIZE]);
+pub struct UserName {
+    len: usize,
+    buffer: [u16; MAX_NAME_BUF_SIZE]
+}
 
 impl UserName {
-    /// 비어있는 사용자 닉네임입니다.
-    pub const EMPTY: Self = Self([0; MAX_NAME_BUF_SIZE]);
+    /// 문자열 요소의 크기입니다.
+    pub const ELEMENT_SIZE: usize = core::mem::size_of::<u16>();
 
     /// 문자열로부터 사용자 닉네임을 생성합니다.
     ///
@@ -25,36 +27,59 @@ impl UserName {
     ///
     pub fn new<T: AsRef<str>>(s: T) -> Self {
         let mut iter = s.as_ref().trim().encode_utf16();
-        let mut name = [0; MAX_NAME_BUF_SIZE];
+        let mut buffer = [0; MAX_NAME_BUF_SIZE];
+        let mut len = 0;
         for i in 0..MAX_NAME_LEN {
             match iter.next() {
-                Some(ch) => name[i] = ch,
+                Some(ch) => {
+                    buffer[i] = ch;
+                    len += 1;
+                },
                 None => break,
             };
         }
-        Self(name)
+
+        Self { len, buffer }
     }
 }
 
 impl BigEndian for UserName {
+    fn byte_size() -> usize {
+        u8::byte_size() + Self::ELEMENT_SIZE * MAX_NAME_BUF_SIZE
+    }
+    
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        const SIZE: usize = mem::size_of::<u16>();
-        let mut name = [0; MAX_NAME_BUF_SIZE];
+        // 바이트 배열 크기가 다른지 확인한다.
+        assert_eq!(
+            bytes.len(),
+            Self::byte_size(),
+            "the size of the byte array and the size of the `{}` are different!",
+            stringify!(UserName)
+        );
+
+        // 문자열 길이를 가져옵니다.
         let mut offset = 0;
-        for i in 0..MAX_NAME_LEN {
-            let data = &bytes[offset..offset + SIZE];
-            name[i] = u16::from_big_endian_bytes(data);
-            offset += SIZE;
+        let mut size = u8::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let len = u8::from_big_endian_bytes(data) as usize;
+
+        // 문자열 버퍼를 가져옵니다.
+        let mut buffer = [0; MAX_NAME_BUF_SIZE];
+        for i in 0..MAX_NAME_LEN.min(len) {
+            offset = offset + size;
+            size = Self::ELEMENT_SIZE;
+            data = &bytes[offset..offset + size];
+            buffer[i] = u16::from_big_endian_bytes(data);
         }
 
-        Self(name)
+        Self { len, buffer }
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(Self::byte_size());
-        let name = &self.0;
+        bytes.extend_from_slice(&(self.len as u8).to_big_endian_bytes());
         for i in 0..MAX_NAME_BUF_SIZE {
-            bytes.extend_from_slice(&name[i].to_big_endian_bytes());
+            bytes.extend_from_slice(&self.buffer[i].to_big_endian_bytes());
         }
         bytes
     }
@@ -62,13 +87,16 @@ impl BigEndian for UserName {
 
 impl Default for UserName {
     fn default() -> Self {
-        Self([0; MAX_NAME_BUF_SIZE])
+        Self {
+            len: 0,
+            buffer: [0; MAX_NAME_BUF_SIZE],
+        }
     }
 }
 
 impl fmt::Display for UserName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &String::from_utf16_lossy(&self.0))
+        write!(f, "{}", &String::from_utf16_lossy(&self.buffer[..self.len]))
     }
 }
 
