@@ -22,8 +22,8 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{
-    collision::{Collider, ColliderTreeIterator, DynamicCollision},
-    object3d::Sphere
+    collision::{Collider, ColliderTreeIterator, DynamicCollision, StaticCollision},
+    object3d::{BoundingBox, Sphere},
 };
 use tokio::time::Instant;
 
@@ -279,8 +279,21 @@ impl GameWorld {
         let colliders = get_stage_colliders(self.stage_kind);
         let colliders_iter = ColliderTreeIterator::new(colliders);
         for collider in colliders_iter {
+            let aabb = match collider {
+                Collider::Aabb(aabb) => aabb,
+                Collider::Obb(obb) => &BoundingBox::from(obb),
+                Collider::Capsule(capsule) => &BoundingBox::from(capsule),
+                Collider::OrientedCapsule(ocapsule) => &BoundingBox::from(ocapsule),
+                Collider::Sphere(sphere) => &BoundingBox::from(sphere),
+            };
             for mut player in self.players.iter_mut() {
-                let player_collider = Collider::Capsule(player.collider().clone());
+                let player_capsule = player.collider();
+                let player_aabb = BoundingBox::from(player_capsule);
+                if !aabb.check_static_collision(&player_aabb) {
+                    continue;
+                }
+                
+                let player_collider = Collider::Capsule(player_capsule.clone());
                 if let Some(collision_info) = player_collider.check_collision_details(collider) {
                     *player.translation_mut() += collision_info.normal * collision_info.penetration;
                 }
@@ -526,6 +539,6 @@ pub async fn update_game_world(world: Arc<GameWorld>) {
         world.broadcast();
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+        // tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
     }
 }

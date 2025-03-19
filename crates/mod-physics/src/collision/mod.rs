@@ -1,3 +1,4 @@
+mod boundingbox_from;
 mod convex_hull;
 mod collider;
 mod static_collision;
