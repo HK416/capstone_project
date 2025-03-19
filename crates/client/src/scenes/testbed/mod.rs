@@ -8,13 +8,19 @@ use mod_app::{
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{components::{CharacterKind, LoginToken, UserId, UserInfo, WorldId}, protocol::{CustomGameJoinRequestPacket, Packet}};
+use mod_network::{
+    components::{CharacterKind, JoinFailedReason, LoginToken, UserId, UserInfo, WorldId},
+    protocol::{
+        CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, Packet, PacketType, RawPacket,
+    },
+};
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
     asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG},
-    config::UserConfig, SERVER_TCP_ADDR,
+    config::UserConfig,
+    SERVER_TCP_ADDR,
 };
 
 pub use {self::enter::*, self::in_game::*};
@@ -57,7 +63,7 @@ impl TestbedTitleScene {
 
         Self {
             user_id,
-            token, 
+            token,
             is_fullscreen: false,
             window_size: WindowSize::MAX,
             character_kind: CharacterKind::default(),
@@ -202,14 +208,14 @@ impl TestbedTitleScene {
                                 self.next_scene_transition_request = true;
                                 // 커스텀 게임 입장 요청 패킷을 전송합니다.
                                 let packet = CustomGameJoinRequestPacket::new(
-                                    WorldId::new(1), 
-                                    self.user_id, 
-                                    self.token
+                                    WorldId::NULL,
+                                    self.user_id,
+                                    self.token,
                                 );
                                 let net_manager = app.net_manager();
                                 let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
                                 socket.push_packet(packet.as_raw());
-                            } 
+                            }
                         });
                     });
                 });
@@ -228,6 +234,38 @@ impl GameScene for TestbedTitleScene {
         let config = UserConfig::get();
         self.window_size = config.window_size;
         self.is_fullscreen = config.is_fullscreen;
+        Ok(())
+    }
+
+    fn on_received_packet(
+        &mut self,
+        packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::CustomGameJoinSuccess => {
+                self.next_scene_transition_request = false;
+                println!("슝")
+            }
+            PacketType::CustomGameJoinFailed => {
+                self.next_scene_transition_request = false;
+                let packet = CustomGameJoinFailedPacket::from_raw(packet);
+                match packet.reason {
+                    JoinFailedReason::NotFound => println!("커스텀 방이 없음"),
+                    JoinFailedReason::FullCapacity => println!("인원이 가득 참"),
+                    JoinFailedReason::InProgress => println!("이미 게임이 진행 중"),
+                    JoinFailedReason::Banned => println!("차단됨"),
+                };
+            }
+            _ => {
+                log::warn!(
+                    "packet ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type
+                );
+            }
+        }
+
         Ok(())
     }
 

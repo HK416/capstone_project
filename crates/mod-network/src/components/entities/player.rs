@@ -14,7 +14,7 @@ pub const MAX_NAME_LEN: usize = MAX_NAME_BUF_SIZE - 1;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UserName {
     len: usize,
-    buffer: [u16; MAX_NAME_BUF_SIZE]
+    buffer: [u16; MAX_NAME_BUF_SIZE],
 }
 
 impl UserName {
@@ -34,7 +34,7 @@ impl UserName {
                 Some(ch) => {
                     buffer[i] = ch;
                     len += 1;
-                },
+                }
                 None => break,
             };
         }
@@ -47,7 +47,7 @@ impl BigEndian for UserName {
     fn byte_size() -> usize {
         u8::byte_size() + Self::ELEMENT_SIZE * MAX_NAME_BUF_SIZE
     }
-    
+
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         // 바이트 배열 크기가 다른지 확인한다.
         assert_eq!(

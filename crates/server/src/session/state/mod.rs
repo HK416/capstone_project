@@ -4,11 +4,13 @@
 //! ## 세션 상태 목록
 //! - Init: 클라이언트가 서버에 연결된 직후의 상태입니다.
 //! - Lobby: 클라이언트가 게임 로비 장면에 있는 상태입니다.
+//! - Room: 클라이언트가 커스텀 게임 대기실 장면에 있는 상태입니다.
 //! - InGame: 클라이언트가 인게임 장면에 있는 상태입니다.
 //!
 mod in_game;
 mod init;
 mod lobby;
+mod room;
 
 use std::{collections::VecDeque, fmt, sync::Arc};
 

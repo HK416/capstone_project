@@ -33,9 +33,13 @@ pub enum PacketType {
 
     LobbyPull = 8,
 
+    /// 커스텀 게임 참여 또는 생성하기 위해 클라이언트에서 서버로 보내는 패킷
     CustomGameJoinRequest = 24,
+    /// 커스텀 게임 참여 실패 사유를 서버에서 클라이언트로 보내는 패킷
     CustomGameJoinFailed = 25,
+    /// 커스텀 게임 참여 성공을 서버에서 클라이언트로 보내는 패킷
     CustomGameJoinSuccess = 26,
+    /// 매번 커스텀 게임 데이터를 서버에서 클라이언트로 보내는 패킷
     CustomGamePull = 27,
     CustomGameLeave = 28,
     CustomGamePushStatus = 29,

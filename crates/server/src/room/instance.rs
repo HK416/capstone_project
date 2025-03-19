@@ -7,7 +7,6 @@ use ahash::{HashMap, RandomState};
 use mod_network::components::{
     CustomGamePlayer, CustomGameStatus, JoinFailedReason, Permission, Team, UserId, WorldId,
 };
-use mod_parallelism::collections::Queue;
 use parking_lot::{FairMutex, RwLock};
 use rand::seq::SliceRandom;
 
@@ -23,8 +22,6 @@ pub struct CustomGameRoom {
     is_activate: AtomicBool,
     /// 커스텀 게임의 게임 월드 식별자입니다.
     world_id: WorldId,
-    /// 비활성화 요청 이벤트 대기열
-    pool_handle: Arc<Queue<WorldId>>,
 
     /// 커스텀 게임 관리자의 식별자입니다.
     admin: RwLock<UserId>,
@@ -35,11 +32,10 @@ pub struct CustomGameRoom {
 
 impl CustomGameRoom {
     /// 새로운 커스텀 게임 대기실을 생성합니다.
-    pub fn new(world_id: WorldId, pool_handle: Arc<Queue<WorldId>>) -> Self {
+    pub fn new(world_id: WorldId) -> Self {
         Self {
             is_activate: AtomicBool::new(false),
             world_id,
-            pool_handle,
             admin: RwLock::new(UserId::NULL),
             players: FairMutex::new(HashMap::with_capacity_and_hasher(
                 MAX_PLAYERS,
@@ -49,7 +45,7 @@ impl CustomGameRoom {
     }
 
     /// 커스텀 게임 대기실을 재설정합니다.
-    pub fn reset(&self, session: &Arc<Session>) {
+    pub fn reset(&self, session: &Arc<Session>) -> Vec<CustomGamePlayer> {
         // 플레이어 집합을 비웁니다.
         let mut players = self.players.lock();
         players.clear();
@@ -68,6 +64,13 @@ impl CustomGameRoom {
 
         // 커스텀 게임 대기실을 활성화합니다.
         self.is_activate.store(true, MemOrdering::Relaxed);
+
+        players.values().cloned().collect()
+    }
+
+    /// 커스텀 게임 대기실의 활성화 여부를 가져옵니다.
+    pub fn is_activate(&self) -> bool {
+        self.is_activate.load(MemOrdering::Acquire)
     }
 
     /// 커스텀 게임에 해당 플레이어를 추가합니다.  
