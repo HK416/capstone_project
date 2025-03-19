@@ -21,11 +21,14 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{collision::DynamicCollision, object3d::Sphere};
+use mod_physics::{
+    collision::{Collider, ColliderTreeIterator, DynamicCollision},
+    object3d::Sphere
+};
 use tokio::time::Instant;
 
 use crate::{
-    data::{clamp_x, clamp_z, get_character_attributes, get_stage_height, is_valid_position},
+    data::{clamp_x, clamp_z, get_stage_colliders, get_stage_height, is_valid_position},
     session::Session,
 };
 
@@ -272,6 +275,17 @@ impl GameWorld {
     fn advanced(&self, elapsed_time_sec: f32) {
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
+
+        let colliders = get_stage_colliders(self.stage_kind);
+        let colliders_iter = ColliderTreeIterator::new(colliders);
+        for collider in colliders_iter {
+            for mut player in self.players.iter_mut() {
+                let player_collider = Collider::Capsule(player.collider().clone());
+                if let Some(collision_info) = player_collider.check_collision_details(collider) {
+                    *player.translation_mut() += collision_info.normal * collision_info.penetration;
+                }
+            }
+        }
 
         // 총알 이동
         for mut bullet in self.bullets.iter_mut() {

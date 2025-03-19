@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 use ahash::HashMap;
 use lazy_static::lazy_static;
 use mod_network::components::{StageHeight, StageKind, StageLayoutData, NUM_STAGES};
-use mod_physics::ColliderTree;
+use mod_physics::collision::ColliderTree;
 
 use super::get_current_path;
 
@@ -232,4 +232,9 @@ pub fn clamp_z(kind: StageKind, z1: f32, z2: f32) -> f32 {
     let z = z2.clamp(z_min, z_max);
 
     z
+}
+
+/// 주어진 스테이지 종류에 대한 충돌체 데이터를 가져옵니다.
+pub fn get_stage_colliders(kind: StageKind) -> &'static ColliderTree {
+    &get_stage_attributes(kind).colliders
 }
