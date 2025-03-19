@@ -2,7 +2,7 @@ use std::{fs::File, io::Read};
 
 use ahash::HashMap;
 use lazy_static::lazy_static;
-use mod_network::components::{StageHeight, StageKind, StageLayoutData, NUM_STAGES};
+use mod_network::components::{NUM_STAGES, StageHeight, StageKind, StageLayoutData};
 
 use super::get_current_path;
 
@@ -87,12 +87,14 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         if let Some(height_map) = &data.height {
             let i = ((data.translation.x + 0.5 * w) / stage_layout.area_size.x).floor() as usize;
             let j = ((data.translation.z + 0.5 * d) / stage_layout.area_size.y).floor() as usize;
-            
+
             // 역행렬을 계산합니다.
-            let transform =
-            glam::Mat4::from_rotation_translation(data.rotation.into(), data.translation.into());
+            let transform = glam::Mat4::from_rotation_translation(
+                data.rotation.into(),
+                data.translation.into(),
+            );
             let inv_transform = transform.inverse();
-            
+
             // 지역의 높이 데이터를 가져옵니다.
             let path = format!("{}/{}.json", workspace, height_map);
             let mut file = File::open(&path)

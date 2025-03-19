@@ -5,14 +5,14 @@ mod player;
 use std::{
     fmt,
     sync::{
-        atomic::{AtomicU32, AtomicU64, Ordering as MemOrdering},
         Arc, OnceLock,
+        atomic::{AtomicU32, AtomicU64, Ordering as MemOrdering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use ahash::RandomState;
-use dashmap::{mapref::one::RefMut, DashMap, DashSet};
+use dashmap::{DashMap, DashSet, mapref::one::RefMut};
 use mod_network::{
     components::{
         CharacterKind, DamageLog, Epoch, HealthPoint, InGameStatus, MovementState, ObjectId,
@@ -35,7 +35,6 @@ use super::formula::movement_formulas as formulas;
 
 /// 중력 가속도입니다.
 const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
-
 
 /// 게임 개발을 위한 테스트 게임 월드 입니다.
 ///
@@ -291,8 +290,7 @@ impl GameWorld {
                 }
 
                 let attributes = player.character_attributes();
-                let player_collider = player.collider()
-                    .inflated(attributes.bullet_radius);
+                let player_collider = player.collider().inflated(attributes.bullet_radius);
 
                 // 충돌 처리: 플레이어 - 총알
                 if let Some(info) = ray.intersect(&player_collider) {
@@ -340,15 +338,15 @@ impl GameWorld {
 
                     // 데미지 계산
                     let def = char_info.defense_power as f32;
-                    
+
                     //기존: let atk = char_info.attack_power as f32;
                     let atk = shooter_info.attack_power as f32; //발포자의 공격력 수치여야 하는거아닌가?
                     let dur = shooter_info.normal_attack_ing_duration as f32;
                     let cnt = shooter_info.normal_attack_count as f32;
-                    let dmg = formulas::default_damage(atk, def, 100.0, dur,cnt );
+                    let dmg = formulas::default_damage(atk, def, 100.0, dur, cnt);
 
                     // 치명타 계산
-                    //기존: let crit = char_info.critical_rate as f32; 
+                    //기존: let crit = char_info.critical_rate as f32;
                     let crit = shooter_info.critical_rate as f32; //발포자의 치명 수치여야 하는거아닌가?
                     let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
                     if crit_rate == 1.0 {
@@ -357,7 +355,7 @@ impl GameWorld {
 
                     // 최종 데미지 계산
                     //기존: let crit_dam = char_info.critical_damage as f32;
-                    let crit_dam = shooter_info.critical_damage as f32;//발포자의 치명 수치여야 하는거아닌가?
+                    let crit_dam = shooter_info.critical_damage as f32; //발포자의 치명 수치여야 하는거아닌가?
                     let final_dmg =
                         formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u32;
 

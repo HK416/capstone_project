@@ -148,6 +148,8 @@ impl GameScene for GameLoginConnectScene {
             let mut config = UserConfig::get();
             config.info = connect_packet.user;
             config.token = connect_packet.token;
+            drop(config);
+            println!("!");
 
             // 다음 게임 장면으로 전환합니다.
             // TODO: MainLobbyEnterScene으로 전환

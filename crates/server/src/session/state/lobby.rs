@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use mod_network::protocol::{EnterStagePacket, Packet, PacketType};
+use mod_network::protocol::{CustomGameJoinRequestPacket, EnterStagePacket, Packet, PacketType};
 
 use crate::{session::Session, world::GameWorld};
 
-use super::{in_game::InGameState, ControlFlow, SessionState};
+use super::{ControlFlow, SessionState, in_game::InGameState};
 
 #[derive(Debug)]
 pub struct LobbyState;
@@ -45,13 +45,16 @@ impl SessionState for LobbyState {
         while let Some(packet) = session.received_packets.pop() {
             let packet_type = packet.packet_type();
             match packet_type {
-                PacketType::EnterStage => match EnterStagePacket::try_from_raw(packet) {
-                    Some(packet) => self.handle_enter_stage_packet(packet, flow, session),
-                    None => {
-                        session.close();
-                        return;
+                PacketType::CustomGameJoinRequest => {
+                    match CustomGameJoinRequestPacket::try_from_raw(packet) {
+                        Some(packet) => {}
+                        None => {
+                            log::warn!("{} failed to convert packet!", session);
+                            session.close();
+                            return;
+                        }
                     }
-                },
+                }
                 _ => {
                     log::warn!("{} invalid packet received (PACKET:{:?})", session, packet);
                     session.close();

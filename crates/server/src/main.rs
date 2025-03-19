@@ -1,5 +1,6 @@
 mod data;
 mod formula;
+mod room;
 mod session;
 mod world;
 
@@ -8,8 +9,8 @@ use std::{
     net::SocketAddr,
     str::FromStr,
     sync::{
-        atomic::{AtomicU32, Ordering as MemOrdering},
         Arc, OnceLock,
+        atomic::{AtomicU32, Ordering as MemOrdering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -21,11 +22,11 @@ use mod_network::{
     protocol::RawPacket,
 };
 use mod_parallelism::collections::{Queue, SkipMap};
-use session::{handle_connection, Session};
+use session::{Session, handle_connection};
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::Level;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
-use world::{update_game_world, GameWorld};
+use world::{GameWorld, update_game_world};
 
 /// 현재 접속중인 클라이언트의 수 입니다.
 static NUM_CLIENTS: AtomicU32 = AtomicU32::new(0);
@@ -207,7 +208,10 @@ fn main() {
                     addr = match Addr::from_str(&addr_str) {
                         Ok(addr) => addr,
                         Err(e) => {
-                            eprintln!("명령줄 인자 형식이 잘못되었습니다.\n  `--set-addr` - 잘못된 주소 형식입니다.\n{}", e);
+                            eprintln!(
+                                "명령줄 인자 형식이 잘못되었습니다.\n  `--set-addr` - 잘못된 주소 형식입니다.\n{}",
+                                e
+                            );
                             return;
                         }
                     }
@@ -218,7 +222,10 @@ fn main() {
                     num_threads = match threads_str.parse::<usize>() {
                         Ok(num_threads) => num_threads,
                         Err(e) => {
-                            eprintln!("명령줄 인자 형식이 잘못되었습니다.\n  `--num_threads` - 스레드 수는 양의 정수여야 합니다.\n{}", e);
+                            eprintln!(
+                                "명령줄 인자 형식이 잘못되었습니다.\n  `--num_threads` - 스레드 수는 양의 정수여야 합니다.\n{}",
+                                e
+                            );
                             return;
                         }
                     }

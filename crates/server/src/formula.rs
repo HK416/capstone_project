@@ -1,4 +1,3 @@
-
 //게임 내 공식
 
 pub mod movement_formulas {
@@ -26,17 +25,17 @@ pub mod movement_formulas {
     //========damage==========
 
     // 기본 데미지 계산 함수 (애니메이션 길이에 따른 가중치 반영)
-    pub fn default_damage( attack: f32, defense: f32, k: f32, dur: f32, cnt: f32) -> f32 {
+    pub fn default_damage(attack: f32, defense: f32, k: f32, dur: f32, cnt: f32) -> f32 {
         let mut rng = rand::thread_rng(); // 랜덤 생성기 초기화
 
         // 발사 횟수에 따른 데미지 감소 (횟수가 많을수록 개별 탄환의 데미지가 감소)
-        let adjustment: f32 =6.0;
+        let adjustment: f32 = 6.0;
         let total_damage = (attack * defense / (defense + k)) * (dur * adjustment);
-        let damage_per_bullet = total_damage / cnt ;
+        let damage_per_bullet = total_damage / cnt;
 
         let range: f32 = rng.gen_range(0.7..=1.0); // 70% ~ 100% 사이의 난수
         let default_damage = damage_per_bullet * range;
-    
+
         // 총 데미지 리턴
         default_damage
     }

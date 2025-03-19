@@ -1,7 +1,7 @@
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameInputBits, HealthPoint,
-    InGamePlayer, InGameStatus, LatLon, MovementState, MovementStateTimer, ObjectId, Team,
-    UserInfo, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES, NUM_MOVEMENT_STATES,
+    InGamePlayer, InGameStatus, LatLon, MAX_JUMP_DURATION, MovementState, MovementStateTimer,
+    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Team, UserInfo, ViewState, ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
 
@@ -13,7 +13,6 @@ const PLAYER_RADIUS: f32 = 0.5;
 const PLAYER_HEIGHT: f32 = 1.2;
 /// 최대 입력 지속 시간
 const MAX_INPUT_DURATION: f32 = 0.25;
-
 
 /// 서버에서 관리하는 플레이어 오브젝트 데이터
 #[derive(Debug, Clone)]

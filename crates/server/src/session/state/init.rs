@@ -4,7 +4,7 @@ use mod_network::protocol::{ConnectPacket, Packet};
 
 use crate::session::Session;
 
-use super::{lobby::LobbyState, ControlFlow, SessionState};
+use super::{ControlFlow, SessionState, lobby::LobbyState};
 
 #[derive(Debug)]
 pub struct InitState;

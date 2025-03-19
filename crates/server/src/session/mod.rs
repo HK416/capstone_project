@@ -5,8 +5,8 @@ use std::{
     io::ErrorKind,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicBool, Ordering as MemOrdering},
         Arc,
+        atomic::{AtomicBool, Ordering as MemOrdering},
     },
 };
 
@@ -19,8 +19,8 @@ use state::SessionStateManager;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
     },
 };
 
@@ -96,7 +96,7 @@ impl Session {
     pub fn udp_write(&self, packet: RawPacket) {
         assert!(
             packet.as_bytes().len() < 1024,
-            "the size of the UDP packet to be transmitted from {} is greather than or equal to 1KB.", 
+            "the size of the UDP packet to be transmitted from {} is greather than or equal to 1KB.",
             &self
         );
         self.udp_sender.push((self.addr, packet));
