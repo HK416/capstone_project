@@ -36,7 +36,7 @@ impl<'de> serde::Deserialize<'de> for BoundingBox {
         let helper = BoundingBoxHelper::deserialize(deserializer)?;
         Ok(BoundingBox::new(
             helper.center.to_glam(),
-            helper.size.to_glam(),
+            helper.size.to_glam() / 2.0,
         ))
     }
 }
@@ -67,7 +67,7 @@ impl<'de> serde::Deserialize<'de> for OrientedBoundingBox {
         let rotation = glam::Mat3::from_quat(rotation);
         Ok(OrientedBoundingBox::new(
             helper.center.to_glam(),
-            helper.size.to_glam(),
+            helper.size.to_glam() / 2.0,
             rotation,
         ))
     }
