@@ -9,9 +9,10 @@ use crate::{
         Ray, RayIntersect, RayIntersectInfo
     },
 };
+use serde::{Serialize, Deserialize};
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Collider {
     Aabb(BoundingBox),
     Obb(OrientedBoundingBox),

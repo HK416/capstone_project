@@ -3,6 +3,7 @@ use std::{fs::File, io::Read};
 use ahash::HashMap;
 use lazy_static::lazy_static;
 use mod_network::components::{StageHeight, StageKind, StageLayoutData, NUM_STAGES};
+use mod_physics::ColliderTree;
 
 use super::get_current_path;
 
@@ -36,6 +37,8 @@ pub struct StageAttributes {
     /// 게임 월드 스테이지를 구성하는 각 지역 데이터입니다.   
     /// 인덱스 기반으로 접근하여 높이 값을 가져옵니다.
     area: Vec<Vec<Option<Area>>>,
+    /// 게임 월드 스테이지를 구성하는 충돌체 데이터입니다.
+    colliders: ColliderTree,
 }
 
 #[derive(Debug, Clone)]
@@ -116,12 +119,27 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         }
     }
 
+    let path = format!("{}/collider.json", workspace);
+    let mut file = File::open(&path)
+        .map_err(|e| log::error!("failed to open file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("스테이지 충돌체 데이터 파일 열기에 실패했습니다!");
+
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)
+        .map_err(|e| log::error!("failed to read file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("스테이지 충돌체 데이터 파일 읽기에 실패했습니다!");
+
+    let colliders: ColliderTree = serde_json::from_slice(&buf)
+        .map_err(|e| log::error!("failed to parse file. (PATH:{}, REASON:{})", &path, &e))
+        .expect("스테이지 충돌체 데이터 파일 구문 분석에 실패했습니다!");
+
     StageAttributes {
         num_width: n,
         num_depth: m,
         size: glam::vec2(w, d),
         area_size: stage_layout.area_size.into(),
         area,
+        colliders,
     }
 }
 
