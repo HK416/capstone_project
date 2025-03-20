@@ -1,3 +1,5 @@
+mod logo;
 mod notify;
+mod verify;
 
-pub use self::notify::*;
+pub use self::{logo::*, notify::*, verify::*};

@@ -1,8 +1,9 @@
 mod init;
 
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{error::Error, io::Cursor, path::PathBuf, sync::Arc};
 
 use ahash::HashMap;
+use image::{ImageFormat, ImageReader};
 use mod_app::{
     app::AppHandle,
     asset::AssetManager,
@@ -10,18 +11,26 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
-use mod_render::UiRenderer;
+use mod_render::{TexturePool, UiRenderer};
 use rayon::ThreadPool;
+use wgpu::util::DeviceExt;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG},
+    asset::{GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG},
     config::UserConfig,
 };
 
 pub use self::init::*;
 
 use super::GameIntroNotifyScene;
+
+/// 작업 결과 목록입니다.
+#[derive(Debug)]
+enum TaskResult {
+    Font { uri: String, bytes: Vec<u8> },
+    Texture,
+}
 
 /// 클라이언트 실행시 가장 첫 번째로 진입하는 게임 장면입니다.  
 /// 게임 전반적으로 사용되는 에셋이나, 사용자 구성 설정을 로드합니다.
@@ -32,9 +41,9 @@ pub struct GameStartupScene {
     /// 남은 작업의 개수
     remaining_task_count: usize,
     /// 작업 결과를 저장하는 대기열
-    task_results: Arc<Queue<Result<(String, Vec<u8>), Box<dyn Error + Send>>>>,
-    /// 로드된 에셋 데이터 집합
-    raw_asset_data: HashMap<String, Vec<u8>>,
+    task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
+    /// 로드된 폰트 에셋 데이터 집합
+    font_asset_data: HashMap<String, Vec<u8>>,
 }
 
 impl GameStartupScene {
@@ -44,7 +53,7 @@ impl GameStartupScene {
             needs_initial_setup: false,
             remaining_task_count: 0,
             task_results: Arc::new(Queue::new()),
-            raw_asset_data: HashMap::default(),
+            font_asset_data: HashMap::default(),
         }
     }
 
@@ -61,16 +70,15 @@ impl GameStartupScene {
             // 에셋 데이터를 로드합니다.
             let result = asset_manager
                 .load(NOTOSANS_REGULAR)
-                .map(|asset| {
-                    (
-                        asset.filename().to_string_lossy().into_owned(),
-                        asset.as_bytes().to_vec(),
-                    )
+                .map(|asset| TaskResult::Font {
+                    uri: NOTOSANS_REGULAR.into(),
+                    bytes: asset.as_bytes().to_vec(),
                 })
                 .map_err(|e| {
                     log::error!("failed to load asset! (REASON:{e})");
                     Box::new(e) as Box<dyn Error + Send>
                 });
+
             // 남은 에셋 데이터를 제거합니다.
             asset_manager.remove(NOTOSANS_REGULAR);
             // 결과를 전송합니다.
@@ -90,16 +98,15 @@ impl GameStartupScene {
             // 에셋 데이터를 로드합니다.
             let result = asset_manager
                 .load(NOTOSANS_BOLD)
-                .map(|asset| {
-                    (
-                        asset.filename().to_string_lossy().into_owned(),
-                        asset.as_bytes().to_vec(),
-                    )
+                .map(|asset| TaskResult::Font {
+                    uri: NOTOSANS_BOLD.into(),
+                    bytes: asset.as_bytes().to_vec(),
                 })
                 .map_err(|e| {
                     log::error!("failed to load asset! (REASON:{e})");
                     Box::new(e) as Box<dyn Error + Send>
                 });
+
             // 남은 에셋 데이터를 제거합니다.
             asset_manager.remove(NOTOSANS_BOLD);
             // 결과를 전송합니다.
@@ -107,6 +114,61 @@ impl GameStartupScene {
         });
 
         // 남은 작업의 수를 증가시킵니다.
+        self.remaining_task_count += 1;
+    }
+
+    /// 텍스처를 디코드하고, 텍스처 풀 객체에 등록합니다.
+    fn regist_game_logo_texture(
+        &mut self,
+        thread_pool: &ThreadPool,
+        device: &Arc<wgpu::Device>,
+        queue: &Arc<wgpu::Queue>,
+    ) {
+        let task_results = self.task_results.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        thread_pool.spawn(move || {
+            // 게임 로고 텍스처 데이터를 디코딩합니다.
+            let pixels = Cursor::new(GAME_LOGO_DATA);
+            let mut reader = ImageReader::new(pixels);
+            reader.set_format(ImageFormat::Png);
+
+            let image = match reader.decode() {
+                Ok(image) => image,
+                Err(e) => {
+                    log::error!("failed to load texture! (REASON:{e}");
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            };
+
+            // 텍스처를 생성합니다.
+            let texture = device.create_texture_with_data(
+                &queue,
+                &wgpu::TextureDescriptor {
+                    label: Some(&format!("Texture({})", GAME_LOGO_URI)),
+                    size: wgpu::Extent3d {
+                        width: image.width(),
+                        height: image.height(),
+                        depth_or_array_layers: 1,
+                    },
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    dimension: wgpu::TextureDimension::D2,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::default(),
+                &image.to_rgba8(),
+            );
+
+            // 텍스처 풀 객체에 등록합니다.
+            TexturePool::register(GAME_LOGO_URI.into(), texture.into());
+
+            // 결과를 전송합니다.
+            task_results.push(Ok(TaskResult::Texture));
+        });
         self.remaining_task_count += 1;
     }
 
@@ -129,7 +191,7 @@ impl GameStartupScene {
 
         // `NEXON Lv2 Gothic` 폰트를 추가합니다.
         let font = self
-            .raw_asset_data
+            .font_asset_data
             .remove(NOTOSANS_REGULAR)
             .expect("font data is empty!");
         fonts.font_data.insert(
@@ -143,7 +205,7 @@ impl GameStartupScene {
 
         // `NEXON Lv2 Gothic Bold` 폰트를 추가합니다.
         let font = self
-            .raw_asset_data
+            .font_asset_data
             .remove(NOTOSANS_BOLD)
             .expect("font data is empty!");
         fonts.font_data.insert(
@@ -186,10 +248,13 @@ impl GameScene for GameStartupScene {
         _window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        let device = app.render_device();
+        let queue = app.render_queue();
         let thread_pool = app.io_threads();
         let asset_manager = app.asset_manager();
         self.load_notosans_regular_font(thread_pool, asset_manager);
         self.load_notosans_blod_font(thread_pool, asset_manager);
+        self.regist_game_logo_texture(thread_pool, device, queue);
         self.load_user_config(asset_manager.get_root_dir());
         Ok(())
     }
@@ -215,15 +280,22 @@ impl GameScene for GameStartupScene {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_results.pop() {
             self.remaining_task_count -= 1;
-            let (key, value) = result?;
-            self.raw_asset_data.insert(key, value);
+            match result? {
+                TaskResult::Font { uri, bytes } => {
+                    self.font_asset_data.insert(uri, bytes);
+                }
+                TaskResult::Texture => {}
+            }
         }
 
         // 모든 작업이 완료된 경우 다음 게임 장면으로 전환합니다.
         if self.remaining_task_count == 0 {
             let next_scene: Box<dyn GameScene> = match self.needs_initial_setup {
                 true => Box::new(InitLocaleScene::new()),
-                false => Box::new(GameIntroNotifyScene::new()),
+                false => {
+                    let config = UserConfig::get();
+                    Box::new(GameIntroNotifyScene::new(config.locale))
+                }
             };
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);

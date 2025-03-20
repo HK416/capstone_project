@@ -4,18 +4,26 @@ mod stage;
 
 use std::io;
 
-use constcat::concat;
-
 pub use self::{hierarchy::*, motion::*, stage::*};
 
 /// 사용자 구성 파일의 상대 경로입니다.
 pub const USER_CONFIG: &'static str = "user_config";
+
 /// 폰트 에셋의 작업 디렉토리 상대 경로입니다.
 pub const FONT_WORKSPACE: &'static str = "font/";
 /// `NotoSans-Regular` 폰트 파일의 상대 경로입니다.
-pub const NOTOSANS_REGULAR: &'static str = concat!(FONT_WORKSPACE, "NotoSans_Regular.ttf");
+pub const NOTOSANS_REGULAR: &'static str =
+    constcat::concat!(FONT_WORKSPACE, "NotoSans_Regular.ttf");
 /// `NotoSans-Bold` 폰트 파일의 상대 경로입니다.
-pub const NOTOSANS_BOLD: &'static str = concat!(FONT_WORKSPACE, "NotoSans_Bold.ttf");
+pub const NOTOSANS_BOLD: &'static str = constcat::concat!(FONT_WORKSPACE, "NotoSans_Bold.ttf");
+
+/// 게임 로고 텍스처의 `Uri`입니다.
+pub const GAME_LOGO_URI: &'static str = "assets/ui/Game_Logo.png";
+/// 게임 로고 텍스처의 데이터입니다.
+pub const GAME_LOGO_DATA: &'static [u8; 26506] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/ui/Game_Logo.png",
+));
 
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]

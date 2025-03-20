@@ -56,7 +56,11 @@ impl InitFinishScene {
     }
 
     /// UI 콜백 함수
-    fn ui_callback(&mut self, _window: &Window, egui_ctx: &egui::Context) {
+    fn ui_callback(
+        &mut self,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
         // 폰트 속성
         let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0, font_family);
@@ -70,9 +74,11 @@ impl InitFinishScene {
 
         egui::Area::new(egui::Id::new("Layout_0"))
             .anchor(egui::Align2::RIGHT_BOTTOM, [0.0, 0.0])
-            .show(egui_ctx, |ui| {
+            .show(app.egui_ctx(), |ui| {
                 ui.label(loading_text);
             });
+
+        Ok(())
     }
 
     /// 사용자 구성을 저장합니다.
@@ -107,7 +113,7 @@ impl GameScene for InitFinishScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         if self.completed.load(MemOrdering::Acquire) {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(GameIntroNotifyScene::new());
+            let next_scene = Box::new(GameIntroNotifyScene::new(self.locale));
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
@@ -133,7 +139,7 @@ impl GameScene for InitFinishScene {
         };
 
         egui_ctx.begin_pass(egui_raw_input);
-        self.ui_callback(window, egui_ctx);
+        self.ui_callback(window, app)?;
         let egui_full_output = egui_ctx.end_pass();
 
         let egui_primitive =

@@ -5,38 +5,51 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_render::{ScreenDescriptor, UiRenderer};
-use winit::window::Window;
-
-use crate::{
-    asset::NOTOSANS_REGULAR,
-    config::{Locale, UserConfig},
-    scenes::BASE_WIDTH,
+use mod_render::{ScreenDescriptor, TexturePool, TextureViewPool, UiRenderer};
+use winit::{
+    event::{Modifiers, MouseButton},
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
 };
 
-use super::InitWindowScene;
+use crate::{asset::GAME_LOGO_URI, config::Locale};
 
-/// 시스템에서 클라이언트를 처음 실행했을 때 사용자 구성을 설정하는 장면입니다.  
-/// 애플리케이션 표시 언어를 선택합니다.
-pub struct InitLocaleScene {
-    /// 선택된 언어
+use super::GameIntroVerifyScene;
+
+/// 장면 지속 시간(초)
+const SCENE_DURATION: f32 = 2.8;
+/// 장면 전환 지속 시간(초)
+const FADE_IN_DURATION: f32 = 0.8;
+
+/// 게임 인트로 화면을 보여주는 장면입니다.  
+/// 하얀색 화면 중앙에 게임 로고를 표시합니다.
+pub struct GameIntroLogoScene {
+    /// 애플리케이션 표시 언어
     locale: Locale,
-    /// 언어가 선택된 여부
-    selected: bool,
 
-    //----- UI -----
+    /// 게임 장면의 경과 시간입니다.
+    elapsed_time_sec: f32,
+
+    // ----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
+
+    /// 게임 로고 텍스처의 텍스처 식별자입니다.
+    game_logo_texture_id: egui::load::SizedTexture,
 }
 
-impl InitLocaleScene {
-    /// 새로운 `InitLocaleScene`을 생성합니다.
-    pub fn new() -> Self {
+impl GameIntroLogoScene {
+    /// 새로운 `GameIntroLogoScene`을 생성합니다.
+    pub fn new(locale: Locale) -> Self {
         Self {
-            locale: Locale::default(),
-            selected: false,
+            locale,
+            elapsed_time_sec: 0.0,
             egui_clip_primitives: Vec::default(),
             egui_free_texture_ids: Vec::default(),
+            game_logo_texture_id: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
         }
     }
 
@@ -46,100 +59,131 @@ impl InitLocaleScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
 
-        // 폰트 속성
-        let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let font_id = egui::FontId::new(48.0 * scale, font_family);
-        let font_color = egui::Color32::WHITE;
+        let ratio = self.game_logo_texture_id.size.x / self.game_logo_texture_id.size.y;
+        let center_x = width * 0.5;
+        let center_y = height * 0.5;
+        let img_width = width * 0.3;
+        let img_height = img_width / ratio;
 
-        // 버튼 텍스트 데이터
-        // let eng_btn_text = egui::RichText::new("English")
-        //     .font(font_id.clone())
-        //     .color(font_color.clone());
-        // let jpn_btn_text = egui::RichText::new("日本語")
-        //     .font(font_id.clone())
-        //     .color(font_color.clone());
-        let kor_btn_text = egui::RichText::new("한국어")
-            .font(font_id.clone())
-            .color(font_color.clone());
+        let rect = egui::Rect {
+            min: egui::pos2(
+                (center_x - 0.5 * img_width) / scale_factor,
+                (center_y - 0.5 * img_height) / scale_factor,
+            ),
+            max: egui::pos2(
+                (center_x + 0.5 * img_width) / scale_factor,
+                (center_y + 0.5 * img_height) / scale_factor,
+            ),
+        };
 
-        // 버튼 속성
-        let btn_width = width / (6.0 * scale_factor);
-        let btn_height = btn_width / 6.0;
-        let btn_size = egui::Vec2::new(btn_width, btn_height);
-
-        // 버튼
-        // let eng_btn = egui::Button::new(eng_btn_text)
-        //     .min_size(btn_size.clone());
-        // let jpn_btn = egui::Button::new(jpn_btn_text)
-        //     .min_size(btn_size.clone());
-        let kor_btn = egui::Button::new(kor_btn_text).min_size(btn_size.clone());
-
-        egui::Area::new(egui::Id::new("InitLocaleScene"))
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new())
             .show(app.egui_ctx(), |ui| {
-                ui.vertical_centered(|ui| {
-                    // if ui.add(eng_btn).clicked() && !self.selected {
-                    //     self.locale = Locale::ENG;
-                    //     self.button_pressed = true;
-                    // }
-
-                    // if ui.add(jpn_btn).clicked() && !self.selected {
-                    //     self.locale = Locale::JPN;
-                    //     self.button_pressed = true;
-                    // }
-
-                    if ui.add(kor_btn).clicked() && !self.selected {
-                        self.locale = Locale::KOR;
-                        self.selected = true;
-                    }
-                });
+                egui::Image::new(self.game_logo_texture_id)
+                    .bg_fill(self.get_logo_color())
+                    .paint_at(ui, rect);
             });
 
         Ok(())
     }
+
+    /// 게임 로고의 색상을 가져옵니다.
+    fn get_logo_color(&self) -> egui::Color32 {
+        let t = self.elapsed_time_sec.min(FADE_IN_DURATION) / FADE_IN_DURATION;
+        let a = t * t * (3.0 - 2.0 * t);
+        egui::Color32::from_white_alpha((a * 255.0) as u8)
+    }
 }
 
-impl GameScene for InitLocaleScene {
+impl GameScene for GameIntroLogoScene {
     fn on_enter(
         &mut self,
-        window: &Window,
-        _app: &dyn AppHandle,
+        _window: &Window,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // 애플리케이션 창을 표시합니다.
-        window.set_visible(true);
-        window.set_cursor_visible(true);
+        // 게임 로고 텍스처를 가져옵니다.
+        let texture =
+            TexturePool::get(GAME_LOGO_URI).expect("Game_Logo texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 게임 로고 텍스처의 텍스처 뷰를 생성합니다.
+        let texture =
+            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let mut egui_renderer = app.egui_renderer_mut();
+        let texture_id = egui_renderer.register_native_texture(
+            app.render_device(),
+            &texture,
+            wgpu::FilterMode::Linear,
+        );
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.game_logo_texture_id = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+
         Ok(())
     }
 
     fn on_exit(
         &mut self,
         _window: Option<&Window>,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 등록된 텍스처를 해제합니다.
+        let mut egui_renderer = app.egui_renderer_mut();
+        egui_renderer.free_texture(&self.game_logo_texture_id.id);
+
+        Ok(())
+    }
+
+    fn on_keyboard_released(
+        &mut self,
+        _code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        _repeat: bool,
+        _window: &Window,
         _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let mut config = UserConfig::get();
-        config.locale = self.locale;
+        self.elapsed_time_sec = SCENE_DURATION;
+        Ok(())
+    }
+
+    fn on_mouse_btn_released(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _button: MouseButton,
+        _window: &Window,
+        _app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.elapsed_time_sec = SCENE_DURATION;
         Ok(())
     }
 
     fn on_update(
         &mut self,
-        _elapsed_time_sec: f32,
+        elapsed_time_sec: f32,
         _window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        if self.selected {
-            // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(InitWindowScene::new());
+        // 게임 장면 경과 시간을 갱신합니다.
+        self.elapsed_time_sec += elapsed_time_sec;
+
+        // 다음 게임 장면으로 전환합니다.
+        if self.elapsed_time_sec >= SCENE_DURATION {
+            let next_scene = Box::new(GameIntroVerifyScene::new(self.locale));
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-
         Ok(())
     }
 
@@ -203,10 +247,13 @@ impl GameScene for InitLocaleScene {
         {
             let mut rpass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some(&format!("RenderPass(UI({}))", stringify!(InitLocaleScene))),
+                    label: Some(&format!(
+                        "RenderPass(UI({}))",
+                        stringify!(GameIntroLogoScene)
+                    )),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                             store: wgpu::StoreOp::Store,
                         },
                         view: render_target_view,
@@ -215,8 +262,8 @@ impl GameScene for InitLocaleScene {
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                         view: depth_buffer_view,
                         depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Discard,
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
                         }),
                         stencil_ops: None,
                     }),

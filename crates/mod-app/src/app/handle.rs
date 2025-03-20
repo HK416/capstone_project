@@ -1,5 +1,6 @@
-use std::{path::Path, sync::Arc};
+use std::{cell::RefMut, path::Path, sync::Arc};
 
+use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
@@ -58,6 +59,9 @@ pub trait AppHandle {
 
     /// `egui` 입력기를 가져옵니다.
     fn egui_raw_input(&self) -> egui::RawInput;
+
+    /// `egui` 렌더러를 빌립니다.
+    fn egui_renderer_mut(&self) -> RefMut<'_, UiRenderer>;
 
     /// 애플리케이션 창을 가져옵니다.
     fn window(&self) -> Option<&Arc<Window>>;

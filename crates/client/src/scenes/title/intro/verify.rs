@@ -1,31 +1,33 @@
-mod enter;
-mod exit;
-
 use std::error::Error;
 
 use mod_app::{app::AppHandle, scene::GameScene};
-use mod_network::components::{LoginToken, UserId};
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::config::Locale;
 
-pub use self::{enter::*, exit::*};
-
-pub struct MainLobbyScene {
-    /// 애플리케이션 표시 언어입니다.
+/// 게임 인트로 화면을 보여주는 장면입니다.  
+/// 클라이언트 데이터 무결성 검사를 진행합니다. (현재 이 기능은 작동하지 않습니다)
+pub struct GameIntroVerifyScene {
+    /// 애플리케이션 표시 언어
     locale: Locale,
-    /// 현재 클라이언트의 사용자 식별자입니다.
-    user_id: UserId,
-    /// 현재 클라이언트의 로그인 토큰입니다.
-    token: LoginToken,
 
     // ----- UI -----
     egui_clip_primitives: Vec<egui::ClippedPrimitive>,
     egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
-impl MainLobbyScene {
+impl GameIntroVerifyScene {
+    /// 새로운 `GameIntroVerifyScene`을 생성합니다.
+    pub fn new(locale: Locale) -> Self {
+        Self {
+            locale,
+            egui_clip_primitives: Vec::default(),
+            egui_free_texture_ids: Vec::default(),
+        }
+    }
+
+    /// UI 콜백 함수
     fn ui_callback(
         &mut self,
         window: &Window,
@@ -35,7 +37,7 @@ impl MainLobbyScene {
     }
 }
 
-impl GameScene for MainLobbyScene {
+impl GameScene for GameIntroVerifyScene {
     fn on_prepare_draw(
         &mut self,
         window: &Window,
@@ -44,6 +46,7 @@ impl GameScene for MainLobbyScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let device = app.render_device();
         let queue = app.render_queue();
+
         let egui_ctx = app.egui_ctx();
         let egui_raw_input = app.egui_raw_input();
         let screen_descriptor = ScreenDescriptor {
@@ -65,12 +68,11 @@ impl GameScene for MainLobbyScene {
             &egui_primitive,
             &screen_descriptor,
         );
-        commands.push(encoder.finish());
-        queue.submit(commands);
-
         for (id, image_delta) in &egui_full_output.textures_delta.set {
             egui_renderer.update_texture(device, queue, *id, image_delta);
         }
+        commands.push(encoder.finish());
+        queue.submit(commands);
 
         self.egui_clip_primitives = egui_primitive;
         self.egui_free_texture_ids = egui_full_output.textures_delta.free;
@@ -78,7 +80,6 @@ impl GameScene for MainLobbyScene {
         Ok(())
     }
 
-    #[allow(unused_variables)]
     fn on_draw(
         &self,
         window: &Window,
@@ -87,8 +88,6 @@ impl GameScene for MainLobbyScene {
         egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        //! UI를 띄웁니다.
-        //!
         let device = app.render_device();
         let queue = app.render_queue();
 
@@ -99,10 +98,13 @@ impl GameScene for MainLobbyScene {
         {
             let mut rpass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("RenderPass(UI(TestbadTitleScene))"),
+                    label: Some(&format!(
+                        "RenderPass(UI({}))",
+                        stringify!(GameIntroLogoScene)
+                    )),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                             store: wgpu::StoreOp::Store,
                         },
                         view: render_target_view,
@@ -111,8 +113,8 @@ impl GameScene for MainLobbyScene {
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                         view: depth_buffer_view,
                         depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Discard,
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
                         }),
                         stencil_ops: None,
                     }),
@@ -132,15 +134,15 @@ impl GameScene for MainLobbyScene {
         }
 
         queue.submit([encoder.finish()]);
+
         Ok(())
     }
 
-    #[allow(unused_variables)]
     fn on_finish_draw(
         &mut self,
-        window: &Window,
+        _window: &Window,
         egui_renderer: &mut UiRenderer,
-        app: &dyn AppHandle,
+        _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         self.egui_clip_primitives.clear();
         while let Some(id) = self.egui_free_texture_ids.pop() {

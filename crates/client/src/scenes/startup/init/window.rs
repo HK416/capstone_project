@@ -61,7 +61,11 @@ impl InitWindowScene {
     }
 
     /// UI 콜백 함수
-    fn ui_callback(&mut self, window: &Window, egui_ctx: &egui::Context) {
+    fn ui_callback(
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -100,7 +104,7 @@ impl InitWindowScene {
 
         egui::Area::new(egui::Id::new("Layout"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(egui_ctx, |ui| {
+            .show(app.egui_ctx(), |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(info_text);
                     ui.separator();
@@ -136,6 +140,8 @@ impl InitWindowScene {
                     });
                 });
             });
+
+        Ok(())
     }
 }
 
@@ -225,7 +231,7 @@ impl GameScene for InitWindowScene {
         };
 
         egui_ctx.begin_pass(egui_raw_input);
-        self.ui_callback(window, egui_ctx);
+        self.ui_callback(window, app)?;
         let egui_full_output = egui_ctx.end_pass();
 
         let egui_primitive =

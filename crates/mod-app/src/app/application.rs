@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{RefCell, RefMut},
     collections::VecDeque,
     error::Error,
     path::{Path, PathBuf},
@@ -718,6 +718,10 @@ impl AppHandle for Application {
                 state.take_egui_input(&app_window.window)
             })
             .unwrap_or_default()
+    }
+
+    fn egui_renderer_mut(&self) -> RefMut<'_, UiRenderer> {
+        self.egui_renderer.borrow_mut()
     }
 
     fn window(&self) -> Option<&Arc<Window>> {
