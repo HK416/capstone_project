@@ -47,6 +47,12 @@ impl fmt::Debug for GameIntroLogoScene {
     }
 }
 
+impl fmt::Debug for GameIntroConnectScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameIntroConnectScene))
+    }
+}
+
 impl fmt::Debug for GameIntroVerifyScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(GameIntroVerifyScene))
