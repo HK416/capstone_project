@@ -1,5 +1,4 @@
 mod enter;
-mod exit;
 
 use std::error::Error;
 
@@ -10,7 +9,7 @@ use winit::window::Window;
 
 use crate::config::Locale;
 
-pub use self::{enter::*, exit::*};
+pub use self::enter::*;
 
 pub struct MainLobbyScene {
     /// 애플리케이션 표시 언어입니다.
@@ -83,7 +82,7 @@ impl GameScene for MainLobbyScene {
         &self,
         window: &Window,
         render_target_view: &wgpu::TextureView,
-        depth_buffer_view: &wgpu::TextureView,
+        _depth_buffer_view: &wgpu::TextureView,
         egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -99,7 +98,7 @@ impl GameScene for MainLobbyScene {
         {
             let mut rpass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("RenderPass(UI(TestbadTitleScene))"),
+                    label: Some(&format!("RenderPass(UI({}))", stringify!(MainLobbyScene))),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -108,14 +107,7 @@ impl GameScene for MainLobbyScene {
                         view: render_target_view,
                         resolve_target: None,
                     })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: depth_buffer_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Discard,
-                        }),
-                        stencil_ops: None,
-                    }),
+                    depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 })

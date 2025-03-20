@@ -192,7 +192,7 @@ impl GameScene for GameIntroLogoScene {
         &self,
         window: &Window,
         render_target_view: &wgpu::TextureView,
-        depth_buffer_view: &wgpu::TextureView,
+        _depth_buffer_view: &wgpu::TextureView,
         egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -218,14 +218,7 @@ impl GameScene for GameIntroLogoScene {
                         view: render_target_view,
                         resolve_target: None,
                     })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: depth_buffer_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
+                    depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 })

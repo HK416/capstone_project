@@ -65,21 +65,9 @@ impl fmt::Debug for GameLoginTitleScene {
     }
 }
 
-impl fmt::Debug for GameLoginConnectScene {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(GameLoginConnectScene))
-    }
-}
-
 impl fmt::Debug for MainLobbyEnterScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(MainLobbyEnterScene))
-    }
-}
-
-impl fmt::Debug for MainLobbyExitScene {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(MainLobbyExitScene))
     }
 }
 

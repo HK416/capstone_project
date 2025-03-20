@@ -1,12 +1,22 @@
 use std::{error::Error, sync::Arc};
 
-use mod_app::{app::AppHandle, etc::AppEvent, net::NetManager, scene::{GameScene, GameSceneFlow}};
+use mod_app::{
+    app::AppHandle,
+    etc::AppEvent,
+    net::NetManager,
+    scene::{GameScene, GameSceneFlow},
+};
 use mod_parallelism::collections::Queue;
 use mod_render::{ScreenDescriptor, UiRenderer};
 use rayon::ThreadPool;
 use winit::window::Window;
 
-use crate::{asset::NOTOSANS_REGULAR, config::{Locale, NUM_LOCALE}, scenes::BASE_WIDTH, SERVER_TCP_ADDR};
+use crate::{
+    asset::NOTOSANS_REGULAR,
+    config::{Locale, NUM_LOCALE},
+    scenes::BASE_WIDTH,
+    SERVER_TCP_ADDR,
+};
 
 use super::GameIntroVerifyScene;
 
@@ -21,8 +31,8 @@ pub struct GameIntroConnectScene {
     task_result: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
 
     // ----- UI -----
-    egui_clip_primitives: Vec<egui::ClippedPrimitive>, 
-    egui_free_texture_ids: Vec<egui::TextureId>, 
+    egui_clip_primitives: Vec<egui::ClippedPrimitive>,
+    egui_free_texture_ids: Vec<egui::TextureId>,
 
     /// 게임 로고 텍스처 식별자
     game_logo_texture_id: egui::load::SizedTexture,
@@ -31,15 +41,15 @@ pub struct GameIntroConnectScene {
 impl GameIntroConnectScene {
     /// 새로운 `GameIntroConnectScene`을 생성합니다.
     pub fn new(locale: Locale) -> Self {
-        Self { 
-            locale, 
-            task_result: Arc::new(Queue::new()), 
-            egui_clip_primitives: Vec::default(), 
-            egui_free_texture_ids: Vec::default(), 
+        Self {
+            locale,
+            task_result: Arc::new(Queue::new()),
+            egui_clip_primitives: Vec::default(),
+            egui_free_texture_ids: Vec::default(),
             game_logo_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
-            } 
+            },
         }
     }
 
@@ -56,7 +66,7 @@ impl GameIntroConnectScene {
         // 폰트 속성
         let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let main_font_id = egui::FontId::new(18.0 * scale, main_font_family);
-        
+
         // 텍스트
         let i = self.locale as usize;
         let text = CONNECT_TEXTS[i];
@@ -193,7 +203,7 @@ impl GameScene for GameIntroConnectScene {
         &self,
         window: &Window,
         render_target_view: &wgpu::TextureView,
-        depth_buffer_view: &wgpu::TextureView,
+        _depth_buffer_view: &wgpu::TextureView,
         egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -213,20 +223,13 @@ impl GameScene for GameIntroConnectScene {
                     )),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
+                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                             store: wgpu::StoreOp::Store,
                         },
                         view: render_target_view,
                         resolve_target: None,
                     })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: depth_buffer_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
+                    depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 })

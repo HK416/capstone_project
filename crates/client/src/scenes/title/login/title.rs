@@ -21,8 +21,6 @@ use crate::{
     scenes::BASE_WIDTH,
 };
 
-use super::GameLoginConnectScene;
-
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["아무 키나 눌러 게임을 시작"];
 /// 게임 장면 경과 시간의 최대 지속 시간입니다.
@@ -262,7 +260,7 @@ impl GameScene for GameLoginTitleScene {
         &self,
         window: &Window,
         render_target_view: &wgpu::TextureView,
-        depth_buffer_view: &wgpu::TextureView,
+        _depth_buffer_view: &wgpu::TextureView,
         egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
@@ -282,20 +280,13 @@ impl GameScene for GameLoginTitleScene {
                     )),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                             store: wgpu::StoreOp::Store,
                         },
                         view: render_target_view,
                         resolve_target: None,
                     })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: depth_buffer_view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.0),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
-                    }),
+                    depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
                 })

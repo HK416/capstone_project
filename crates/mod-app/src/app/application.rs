@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use mod_render::{init_wgpu, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use mod_render::{init_wgpu, UiRenderer, SWAPCHAIN_FORMAT};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -168,7 +168,7 @@ impl Application {
             egui_renderer: RefCell::new(UiRenderer::new(
                 &device,
                 SWAPCHAIN_FORMAT,
-                Some(DEPTH_FORMAT),
+                None,
                 1,
                 false,
             )),
