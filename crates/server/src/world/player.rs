@@ -151,8 +151,8 @@ impl PlayerObject {
     }
 
     /// 플레이어 오브젝트의 충돌체(캡슐)를 가져옵니다.
-    pub fn collider(&self) -> &Capsule {
-        &self.collider
+    pub fn collider(&self) -> Capsule {
+        self.collider.clone()
     }
 
     /// 플레이어 오브젝트의 충돌체(캡슐)의 위치를 갱신합니다.
@@ -218,6 +218,11 @@ impl PlayerObject {
 
         let i = self.movement_state as usize;
         FUNC_TABLE[i](self)
+    }
+
+    /// 플레이어 오브젝트의 속도를 가져옵니다.
+    pub fn velocity(&self) -> glam::Vec3A {
+        self.velocity
     }
 
     /// 플레이어 오브젝트의 속도를 가져옵니다.

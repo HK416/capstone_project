@@ -22,13 +22,13 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{
-    collision::{Collider, ColliderTreeIterator, DynamicCollision, StaticCollision},
+    collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
 use tokio::time::Instant;
 
 use crate::{
-    data::{clamp_x, clamp_z, get_stage_colliders, get_stage_height, is_valid_position},
+    data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
     session::Session,
 };
 
@@ -158,6 +158,8 @@ impl GameWorld {
 
     /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
     fn update_player_position(&self, elapsed_time_sec: f32) {
+        let colliders = get_stage_colliders(self.stage_kind);
+
         for mut player in self.players.iter_mut() {
             // 플레이어 위치를 가져옵니다.
             let translation = player.translation();
@@ -170,25 +172,43 @@ impl GameWorld {
             player.update_velocity();
 
             // 속도에 가속도를 적용합니다.
-            let velocity = player.velocity_mut();
-            *velocity += acceleration * elapsed_time_sec;
+            *player.velocity_mut() += acceleration * elapsed_time_sec;
+            
+            // 플레이어의 이동 속도를 가져옵니다.
+            let mut velocity = player.velocity();
 
             // 이동 시도 (이동 전 위치 저장)
-            let mut new_p = translation + (*velocity) * elapsed_time_sec;
+            let mut new_p = translation + velocity * elapsed_time_sec;
+            
+            let mut player_capsule = player.collider();
+            player_capsule.center = new_p.into();
+            let player_aabb = BoundingBox::from(&player_capsule);
+            let player_collider = Collider::Capsule(player_capsule);
+
+            for collider in ColliderTreeIterator::new(colliders) {
+                if !collider.check_aabb_collision(&player_aabb) {
+                    continue;
+                }
+                if let Some(collision_info) = player_collider.check_collision_details(collider) {
+                    new_p += collision_info.normal * collision_info.penetration;
+                    velocity = velocity - collision_info.normal * velocity.dot(collision_info.normal);
+                }
+            }
 
             // 기존 영역과 현재 영역을 인자로 넘겨서 x, z중 어느 값이 넘어갔는지 확인
             // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?
             // 유효한 영역이 아니라면 현재 영역의 가장 가장자리 부분으로 clamp하기
-            if !is_valid_position(self.stage_kind, new_p.x, translation.z) {
-                velocity.x = 0.0;
-                new_p.x = clamp_x(self.stage_kind, translation.x, new_p.x);
+            if !is_valid_position(self.stage_kind, new_p.x, new_p.z) {
+                let (x, z) = get_nearest_valid_position(self.stage_kind, new_p.x, new_p.z);
+                if x != new_p.x {
+                    velocity.x = 0.0;
+                    new_p.x = x;
+                }
+                if z != new_p.z {
+                    velocity.z = 0.0;
+                    new_p.z = z;
+                }
             }
-            if !is_valid_position(self.stage_kind, translation.x, new_p.z) {
-                velocity.z = 0.0;
-                new_p.z = clamp_z(self.stage_kind, translation.z, new_p.z);
-            }
-
-            new_p = translation + (*velocity) * elapsed_time_sec;
 
             if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
                 if height >= new_p.y {
@@ -204,6 +224,7 @@ impl GameWorld {
                 }
                 *player.translation_mut() = new_p;
                 player.update_collider();
+                *player.velocity_mut() = velocity;
             }
         }
     }
@@ -276,30 +297,6 @@ impl GameWorld {
         self.update_player_state_timer(elapsed_time_sec);
         self.update_player_position(elapsed_time_sec);
 
-        let colliders = get_stage_colliders(self.stage_kind);
-        let colliders_iter = ColliderTreeIterator::new(colliders);
-        for collider in colliders_iter {
-            let aabb = match collider {
-                Collider::Aabb(aabb) => aabb,
-                Collider::Obb(obb) => &BoundingBox::from(obb),
-                Collider::Capsule(capsule) => &BoundingBox::from(capsule),
-                Collider::OrientedCapsule(ocapsule) => &BoundingBox::from(ocapsule),
-                Collider::Sphere(sphere) => &BoundingBox::from(sphere),
-            };
-            for mut player in self.players.iter_mut() {
-                let player_capsule = player.collider();
-                let player_aabb = BoundingBox::from(player_capsule);
-                if !aabb.check_static_collision(&player_aabb) {
-                    continue;
-                }
-                
-                let player_collider = Collider::Capsule(player_capsule.clone());
-                if let Some(collision_info) = player_collider.check_collision_details(collider) {
-                    *player.translation_mut() += collision_info.normal * collision_info.penetration;
-                }
-            }
-        }
-
         // 총알 이동
         for mut bullet in self.bullets.iter_mut() {
             let translation = bullet.translation;
@@ -349,7 +346,7 @@ impl GameWorld {
                     let char_info = player.character_attributes();
 
                     //발포자 정보
-                    let mut shooter = self.players.get_mut(&bullet.shooter_id).unwrap();
+                    let shooter = self.players.get_mut(&bullet.shooter_id).unwrap();
                     let shooter_info = shooter.character_attributes();
 
                     // 각 식에서의 상수값은 제안서에 있는 값으로 설정
@@ -539,6 +536,6 @@ pub async fn update_game_world(world: Arc<GameWorld>) {
         world.broadcast();
 
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        // tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
     }
 }

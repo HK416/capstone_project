@@ -32,7 +32,7 @@ impl Collider {
         }
     }
 
-    fn check_aabb_collision(&self, other: &BoundingBox) -> bool {
+    pub fn check_aabb_collision(&self, other: &BoundingBox) -> bool {
         match self {
             Collider::Aabb(b) => b.check_static_collision(other),
             Collider::Obb(b) => b.check_static_collision(other),
@@ -42,7 +42,7 @@ impl Collider {
         }
     }
 
-    fn check_obb_collision(&self, other: &OrientedBoundingBox) -> bool {
+    pub fn check_obb_collision(&self, other: &OrientedBoundingBox) -> bool {
         match self {
             Collider::Aabb(b) => b.check_static_collision(other),
             Collider::Obb(b) => b.check_static_collision(other),
@@ -52,7 +52,7 @@ impl Collider {
         }
     }
     
-    fn check_capsule_collision(&self, other: &Capsule) -> bool {
+    pub fn check_capsule_collision(&self, other: &Capsule) -> bool {
         match self {
             Collider::Aabb(b) => b.check_static_collision(other),
             Collider::Obb(b) => b.check_static_collision(other),
@@ -62,7 +62,7 @@ impl Collider {
         }
     }
 
-    fn check_orientedcapsule_collision(&self, other: &OrientedCapsule) -> bool {
+    pub fn check_orientedcapsule_collision(&self, other: &OrientedCapsule) -> bool {
         match self {
             Collider::Aabb(b) => b.check_static_collision(other),
             Collider::Obb(b) => b.check_static_collision(other),
@@ -72,7 +72,7 @@ impl Collider {
         }
     }
 
-    fn check_sphere_collision(&self, other: &Sphere) -> bool {
+    pub fn check_sphere_collision(&self, other: &Sphere) -> bool {
         match self {
             Collider::Aabb(b) => b.check_static_collision(other),
             Collider::Obb(b) => b.check_static_collision(other),
@@ -95,7 +95,7 @@ impl Collider {
         }
     }
 
-    fn check_aabb_collision_details(&self, other: &BoundingBox) -> Option<StaticCollisionDetails> {
+    pub fn check_aabb_collision_details(&self, other: &BoundingBox) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -105,7 +105,7 @@ impl Collider {
         }
     }
 
-    fn check_obb_collision_details(&self, other: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
+    pub fn check_obb_collision_details(&self, other: &OrientedBoundingBox) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -115,7 +115,7 @@ impl Collider {
         }
     }
 
-    fn check_capsule_collision_details(&self, other: &Capsule) -> Option<StaticCollisionDetails> {
+    pub fn check_capsule_collision_details(&self, other: &Capsule) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -125,7 +125,7 @@ impl Collider {
         }
     }
 
-    fn check_orientedcapsule_collision_details(&self, other: &OrientedCapsule) -> Option<StaticCollisionDetails> {
+    pub fn check_orientedcapsule_collision_details(&self, other: &OrientedCapsule) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),
@@ -135,7 +135,7 @@ impl Collider {
         }
     }
 
-    fn check_sphere_collision_details(&self, other: &Sphere) -> Option<StaticCollisionDetails> {
+    pub fn check_sphere_collision_details(&self, other: &Sphere) -> Option<StaticCollisionDetails> {
         match self {
             Collider::Aabb(b) => b.check_static_collision_details(other),
             Collider::Obb(b) => b.check_static_collision_details(other),

@@ -149,27 +149,46 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
     let stage = get_stage_attributes(kind);
     let n = stage.num_width;
     let m = stage.num_depth;
-    let i = ((x + 0.5 * stage.size.x) / stage.area_size.x).floor();
-    let j = ((z + 0.5 * stage.size.y) / stage.area_size.y).floor();
-    if i < 0.0 || i >= n as f32 || j < 0.0 || j >= m as f32 {
-        return None;
+    let translation = glam::Vec3A::new(x, 0.0, z);
+    let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
+    let z = (z + 0.5 * stage.size.y) / stage.area_size.y;
+    let i = x.floor();
+    let j = z.floor();
+    let mut idx = vec![(i, j)];
+    // 정수이면
+    if x == i {
+        // i+1도 검사
+        idx.push((i - 1.0, j));
+        idx.push((i + 1.0, j));
+    }
+    if z == j {
+        // j+1도 검사
+        idx.push((i, j - 1.0));
+        idx.push((i, j + 1.0));
+    }
+    if x == i && z == j {
+        // i+1, j+1도 검사
+        idx.push((i - 1.0, j - 1.0));
+        idx.push((i + 1.0, j + 1.0));
+        idx.push((i - 1.0, j + 1.0));
+        idx.push((i + 1.0, j - 1.0));
     }
 
-    let (area, height) = match &stage.area[i as usize][j as usize] {
-        Some(area) => (area, &area.height),
-        None => return None,
-    };
+    let (area, height) = idx.iter()
+        .filter(|(i, j)| *i >= 0.0 && *i < n as f32 && *j >= 0.0 && *j < m as f32)
+        .filter_map(|(i, j)| stage.area[*i as usize][*j as usize].as_ref())
+        .map(|area| (area, &area.height))
+        .next()?;
 
     let hw = 0.5 * stage.area_size.x;
     let hh = 0.5 * stage.area_size.y;
-    let translation = glam::Vec3A::new(x, 0.0, z);
     let translation = area.inv_transform.transform_point3a(translation);
-    if translation.x < -hw || translation.x >= hw || translation.z < -hh || translation.z >= hh {
+    if translation.x < -hw || translation.x > hw || translation.z < -hh || translation.z > hh {
         return None;
     }
 
-    let i = (translation.x + hw) / stage.area_size.x * height.width as f32;
-    let j = (translation.z + hh) / stage.area_size.y * height.height as f32;
+    let i = (translation.x + hw) / stage.area_size.x * (height.width - 1) as f32;
+    let j = (translation.z + hh) / stage.area_size.y * (height.height - 1) as f32;
 
     let px = i.floor();
     let pz = j.floor();
@@ -208,30 +227,29 @@ pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
         .any(|(i, j)| stage.area[*i as usize][*j as usize].is_some())
 }
 
-/// 두번째 좌표를 첫번째 좌표가 속한 영역 안으로 clamp합니다.  
-pub fn clamp_x(kind: StageKind, x1: f32, x2: f32) -> f32 {
+pub fn get_nearest_valid_position(kind: StageKind, x: f32, z: f32) -> (f32, f32) {
     let stage = get_stage_attributes(kind);
+    let mut min_distance_position = (x, z);
+    let mut min_distance = f32::MAX;
+    for row in 0..stage.num_depth {
+        for col in 0..stage.num_width {
+            if let Some(area) = &stage.area[row][col] {
+                let min_x = area.translation.x - 0.5 * stage.area_size.x;
+                let max_x = area.translation.x + 0.5 * stage.area_size.x;
+                let min_z = area.translation.z - 0.5 * stage.area_size.y;
+                let max_z = area.translation.z + 0.5 * stage.area_size.y;
+                let dx = x.clamp(min_x, max_x) - x;
+                let dz = z.clamp(min_z, max_z) - z;
+                let distance = dx * dx + dz * dz;
+                if distance < min_distance {
+                    min_distance = distance;
+                    min_distance_position = (x + dx, z + dz);
+                }
+            }
+        }
+    }
 
-    let x_min = ((x1 + 0.5 * stage.area_size.x) / stage.area_size.x).floor() * stage.area_size.x
-        - 0.5 * stage.area_size.x;
-    let x_max = x_min + stage.area_size.x;
-
-    let x = x2.clamp(x_min, x_max);
-
-    x
-}
-
-/// 두번째 좌표를 첫번째 좌표가 속한 영역 안으로 clamp합니다.  
-pub fn clamp_z(kind: StageKind, z1: f32, z2: f32) -> f32 {
-    let stage = get_stage_attributes(kind);
-
-    let z_min = ((z1 + 0.5 * stage.area_size.y) / stage.area_size.y).floor() * stage.area_size.y
-        - 0.5 * stage.area_size.y;
-    let z_max = z_min + stage.area_size.y;
-
-    let z = z2.clamp(z_min, z_max);
-
-    z
+    min_distance_position
 }
 
 /// 주어진 스테이지 종류에 대한 충돌체 데이터를 가져옵니다.
