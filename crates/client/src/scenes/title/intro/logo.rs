@@ -6,11 +6,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_render::{ScreenDescriptor, TexturePool, TextureViewPool, UiRenderer};
-use winit::{
-    event::{Modifiers, MouseButton},
-    keyboard::{KeyCode, KeyLocation},
-    window::Window,
-};
+use winit::window::Window;
 
 use crate::{asset::GAME_LOGO_URI, config::Locale};
 
@@ -18,8 +14,6 @@ use super::GameIntroVerifyScene;
 
 /// 장면 지속 시간(초)
 const SCENE_DURATION: f32 = 2.8;
-/// 장면 전환 지속 시간(초)
-const FADE_IN_DURATION: f32 = 0.8;
 
 /// 게임 인트로 화면을 보여주는 장면입니다.  
 /// 하얀색 화면 중앙에 게임 로고를 표시합니다.
@@ -67,7 +61,6 @@ impl GameIntroLogoScene {
         let center_y = height * 0.5;
         let img_width = width * 0.3;
         let img_height = img_width / ratio;
-
         let rect = egui::Rect {
             min: egui::pos2(
                 (center_x - 0.5 * img_width) / scale_factor,
@@ -82,19 +75,10 @@ impl GameIntroLogoScene {
         egui::CentralPanel::default()
             .frame(egui::Frame::new())
             .show(app.egui_ctx(), |ui| {
-                egui::Image::new(self.game_logo_texture_id)
-                    .bg_fill(self.get_logo_color())
-                    .paint_at(ui, rect);
+                egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
             });
 
         Ok(())
-    }
-
-    /// 게임 로고의 색상을 가져옵니다.
-    fn get_logo_color(&self) -> egui::Color32 {
-        let t = self.elapsed_time_sec.min(FADE_IN_DURATION) / FADE_IN_DURATION;
-        let a = t * t * (3.0 - 2.0 * t);
-        egui::Color32::from_white_alpha((a * 255.0) as u8)
     }
 }
 
@@ -139,31 +123,6 @@ impl GameScene for GameIntroLogoScene {
         let mut egui_renderer = app.egui_renderer_mut();
         egui_renderer.free_texture(&self.game_logo_texture_id.id);
 
-        Ok(())
-    }
-
-    fn on_keyboard_released(
-        &mut self,
-        _code: KeyCode,
-        _location: KeyLocation,
-        _modifiers: Modifiers,
-        _repeat: bool,
-        _window: &Window,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        self.elapsed_time_sec = SCENE_DURATION;
-        Ok(())
-    }
-
-    fn on_mouse_btn_released(
-        &mut self,
-        _x: f32,
-        _y: f32,
-        _button: MouseButton,
-        _window: &Window,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        self.elapsed_time_sec = SCENE_DURATION;
         Ok(())
     }
 

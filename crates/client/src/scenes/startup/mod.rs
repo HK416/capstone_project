@@ -17,7 +17,12 @@ use wgpu::util::DeviceExt;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
-    asset::{GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG},
+    asset::{
+        BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI,
+        BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
+        BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
+        GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
+    },
     config::UserConfig,
 };
 
@@ -118,18 +123,20 @@ impl GameStartupScene {
     }
 
     /// 텍스처를 디코드하고, 텍스처 풀 객체에 등록합니다.
-    fn regist_game_logo_texture(
+    fn regist_texture(
         &mut self,
         thread_pool: &ThreadPool,
         device: &Arc<wgpu::Device>,
         queue: &Arc<wgpu::Queue>,
+        uri: &'static str,
+        bytes: &'static [u8],
     ) {
         let task_results = self.task_results.clone();
         let device = device.clone();
         let queue = queue.clone();
         thread_pool.spawn(move || {
-            // 게임 로고 텍스처 데이터를 디코딩합니다.
-            let pixels = Cursor::new(GAME_LOGO_DATA);
+            // 텍스처 데이터를 디코딩합니다.
+            let pixels = Cursor::new(bytes);
             let mut reader = ImageReader::new(pixels);
             reader.set_format(ImageFormat::Png);
 
@@ -146,7 +153,7 @@ impl GameStartupScene {
             let texture = device.create_texture_with_data(
                 &queue,
                 &wgpu::TextureDescriptor {
-                    label: Some(&format!("Texture({})", GAME_LOGO_URI)),
+                    label: Some(&format!("Texture({})", &uri)),
                     size: wgpu::Extent3d {
                         width: image.width(),
                         height: image.height(),
@@ -164,7 +171,7 @@ impl GameStartupScene {
             );
 
             // 텍스처 풀 객체에 등록합니다.
-            TexturePool::register(GAME_LOGO_URI.into(), texture.into());
+            TexturePool::register(uri.into(), texture.into());
 
             // 결과를 전송합니다.
             task_results.push(Ok(TaskResult::Texture));
@@ -254,7 +261,49 @@ impl GameScene for GameStartupScene {
         let asset_manager = app.asset_manager();
         self.load_notosans_regular_font(thread_pool, asset_manager);
         self.load_notosans_blod_font(thread_pool, asset_manager);
-        self.regist_game_logo_texture(thread_pool, device, queue);
+        self.regist_texture(thread_pool, device, queue, GAME_LOGO_URI, GAME_LOGO_DATA);
+        self.regist_texture(
+            thread_pool,
+            device,
+            queue,
+            BG_LOGIN_TITLE_0_URI,
+            BG_LOGIN_TITLE_0_DATA,
+        );
+        self.regist_texture(
+            thread_pool,
+            device,
+            queue,
+            BG_LOGIN_TITLE_1_URI,
+            BG_LOGIN_TITLE_1_DATA,
+        );
+        self.regist_texture(
+            thread_pool,
+            device,
+            queue,
+            BG_LOGIN_TITLE_2_URI,
+            BG_LOGIN_TITLE_2_DATA,
+        );
+        self.regist_texture(
+            thread_pool,
+            device,
+            queue,
+            BG_LOGIN_TITLE_3_URI,
+            BG_LOGIN_TITLE_3_DATA,
+        );
+        self.regist_texture(
+            thread_pool,
+            device,
+            queue,
+            BG_LOGIN_TITLE_4_URI,
+            BG_LOGIN_TITLE_4_DATA,
+        );
+        self.regist_texture(
+            thread_pool,
+            device,
+            queue,
+            BG_LOGIN_TITLE_5_URI,
+            BG_LOGIN_TITLE_5_DATA,
+        );
         self.load_user_config(asset_manager.get_root_dir());
         Ok(())
     }
