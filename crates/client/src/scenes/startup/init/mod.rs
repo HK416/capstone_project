@@ -15,7 +15,6 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_render::{ScreenDescriptor, UiRenderer};
 use rayon::ThreadPool;
 use winit::window::Window;
 
@@ -37,10 +36,6 @@ pub struct InitFinishScene {
     locale: Locale,
     /// 저장의 완료 여부
     completed: Arc<AtomicBool>,
-
-    //----- UI -----
-    egui_clip_primitives: Vec<egui::ClippedPrimitive>,
-    egui_free_texture_ids: Vec<egui::TextureId>,
 }
 
 impl InitFinishScene {
@@ -50,35 +45,7 @@ impl InitFinishScene {
         Self {
             locale: config.locale,
             completed: Arc::new(AtomicBool::new(false)),
-            egui_clip_primitives: Vec::default(),
-            egui_free_texture_ids: Vec::default(),
         }
-    }
-
-    /// UI 콜백 함수
-    fn ui_callback(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        // 폰트 속성
-        let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let font_id = egui::FontId::new(24.0, font_family);
-        let font_color = egui::Color32::WHITE;
-
-        // 텍스트
-        let text = LOAD_TEXTS[self.locale as usize];
-        let loading_text = egui::RichText::new(text)
-            .font(font_id.clone())
-            .color(font_color.clone());
-
-        egui::Area::new(egui::Id::new("Layout_0"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, [0.0, 0.0])
-            .show(app.egui_ctx(), |ui| {
-                ui.label(loading_text);
-            });
-
-        Ok(())
     }
 
     /// 사용자 구성을 저장합니다.
@@ -122,106 +89,38 @@ impl GameScene for InitFinishScene {
         Ok(())
     }
 
-    fn on_prepare_draw(
-        &mut self,
-        window: &Window,
-        egui_renderer: &mut UiRenderer,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let device = app.render_device();
-        let queue = app.render_queue();
-
-        let egui_ctx = app.egui_ctx();
-        let egui_raw_input = app.egui_raw_input();
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: window.inner_size().into(),
-            pixels_per_point: window.scale_factor() as f32,
-        };
-
-        egui_ctx.begin_pass(egui_raw_input);
-        self.ui_callback(window, app)?;
-        let egui_full_output = egui_ctx.end_pass();
-
-        let egui_primitive =
-            egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let mut commands = egui_renderer.update_buffers(
-            device,
-            queue,
-            &mut encoder,
-            &egui_primitive,
-            &screen_descriptor,
-        );
-        for (id, image_delta) in &egui_full_output.textures_delta.set {
-            egui_renderer.update_texture(device, queue, *id, image_delta);
-        }
-        commands.push(encoder.finish());
-        queue.submit(commands);
-
-        self.egui_clip_primitives = egui_primitive;
-        self.egui_free_texture_ids = egui_full_output.textures_delta.free;
-
-        Ok(())
-    }
-
     fn on_draw(
         &self,
-        window: &Window,
-        render_target_view: &wgpu::TextureView,
+        _window: &Window,
+        _encoder: &mut wgpu::CommandEncoder, 
+        _render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
-        egui_renderer: &UiRenderer,
-        app: &dyn AppHandle,
+        _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let device = app.render_device();
-        let queue = app.render_queue();
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            ..Default::default()
-        });
-
-        {
-            let mut rpass = encoder
-                .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some(&format!("RenderPass(UI({}))", stringify!(InitLocaleScene))),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        view: render_target_view,
-                        resolve_target: None,
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                })
-                .forget_lifetime();
-
-            egui_renderer.render(
-                &mut rpass,
-                &self.egui_clip_primitives,
-                &ScreenDescriptor {
-                    size_in_pixels: window.inner_size().into(),
-                    pixels_per_point: window.scale_factor() as f32,
-                },
-            );
-        }
-
-        queue.submit([encoder.finish()]);
-
         Ok(())
     }
 
-    fn on_finish_draw(
+    fn ui_callback(
         &mut self,
         _window: &Window,
-        egui_renderer: &mut UiRenderer,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.egui_clip_primitives.clear();
-        while let Some(id) = self.egui_free_texture_ids.pop() {
-            egui_renderer.free_texture(&id);
-        }
+        // 폰트 속성
+        let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0, font_family);
+        let font_color = egui::Color32::WHITE;
+
+        // 텍스트
+        let text = LOAD_TEXTS[self.locale as usize];
+        let loading_text = egui::RichText::new(text)
+            .font(font_id.clone())
+            .color(font_color.clone());
+
+        egui::Area::new(egui::Id::new("Layout_0"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, [0.0, 0.0])
+            .show(app.egui_ctx(), |ui| {
+                ui.label(loading_text);
+            });
 
         Ok(())
     }

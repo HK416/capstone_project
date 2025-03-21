@@ -1,7 +1,6 @@
 use std::{error::Error, fmt::Debug};
 
 use mod_network::protocol::RawPacket;
-use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -22,6 +21,7 @@ pub enum GameSceneFlow {
 }
 
 /// ## Game Scene Interface
+#[allow(unused_variables)]
 pub trait GameScene: Debug + Send {
     /// 현재 게임 장면이 투명한지 여부를 반환합니다.
     ///
@@ -34,13 +34,11 @@ pub trait GameScene: Debug + Send {
 
     /// 애플리케이션 창의 종료 버튼이 눌렸을 때 호출되는 콜백 함수입니다.  
     /// `true`를 반환할 경우 애플리케이션을 종료합니다.
-    #[allow(unused_variables)]
     fn on_close_request(&mut self, app: &dyn AppHandle) -> bool {
         true
     }
 
     /// 게임 장면에 진입할 때 한 번만 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_enter(
         &mut self,
         window: &Window,
@@ -51,7 +49,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 게임 장면에서 빠져나올 때 한 번만 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_exit(
         &mut self,
         window: Option<&Window>,
@@ -66,7 +63,6 @@ pub trait GameScene: Debug + Send {
     /// 애플리케이션이 일시정지되는 상황은 다음과 같습니다.
     /// - 애플리케이션이 Background로 이동되었을 때.
     ///
-    #[allow(unused_variables)]
     fn on_paused(&mut self, app: &dyn AppHandle) -> Result<(), Box<dyn Error + Send>> {
         log::info!("게임 장면 {:?}이 일시정지됐습니다.", self);
         Ok(())
@@ -77,14 +73,12 @@ pub trait GameScene: Debug + Send {
     /// 애플리케이션이 재개되는 상황은 다음과 같습니다.
     /// - 애플리케이션이 Foreground로 이동되었을 때.
     ///
-    #[allow(unused_variables)]
     fn on_resumed(&mut self, app: &dyn AppHandle) -> Result<(), Box<dyn Error + Send>> {
         log::info!("게임 장면 {:?}이 재개됐습니다.", self);
         Ok(())
     }
 
     /// 애플리케이션 창의 크기가 변경되거나 창이 다른 모니터로 이동되어 `Scale`값이 달라질 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_window_resized(
         &mut self,
         window: &Window,
@@ -94,7 +88,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션 창이 이동될 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_window_moved(
         &mut self,
         window: &Window,
@@ -104,7 +97,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션에 키보드 눌림 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_keyboard_pressed(
         &mut self,
         code: KeyCode,
@@ -118,7 +110,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션에 키보드 떼임 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_keyboard_released(
         &mut self,
         code: KeyCode,
@@ -132,7 +123,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션에 마우스 버튼 눌림 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_mouse_btn_pressed(
         &mut self,
         x: f32,
@@ -145,7 +135,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션에 마우스 버튼 떼임 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_mouse_btn_released(
         &mut self,
         x: f32,
@@ -158,7 +147,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션 창에 마우스 휠 조작 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_mouse_wheel(
         &mut self,
         dx: f32,
@@ -170,7 +158,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션 창에 커서가 이동됐을 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_cursor_moved(
         &mut self,
         x: f32,
@@ -184,7 +171,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션이 패킷을 수신받았을 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_received_packet(
         &mut self,
         packet: RawPacket,
@@ -194,7 +180,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 게임 장면을 갱신 전에 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_pre_update(
         &mut self,
         window: &Window,
@@ -204,7 +189,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 게임 장면을 갱신할 때 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_update(
         &mut self,
         elapsed_time_sec: f32,
@@ -219,7 +203,6 @@ pub trait GameScene: Debug + Send {
     /// 이 함수는 한 게임 루프에서 여러 번 호출될 수 있으며,
     /// 너무 많이 호출될 경우 `fixed_time_sec`이 지정한 시간임을 보장할 수 없습니다.
     ///
-    #[allow(unused_variables)]
     fn on_fixed_update(
         &mut self,
         fixed_time_sec: f32,
@@ -230,7 +213,6 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 게임 장면을 갱신 후에 호출되는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_post_update(
         &mut self,
         window: &Window,
@@ -240,12 +222,19 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션이 게임 장면을 그리기 전에 호출하는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_prepare_draw(
         &mut self,
         window: &Window,
-        egui_renderer: &mut UiRenderer,
         app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
+    }
+
+    /// UI 콜백 함수입니다.
+    fn ui_callback(
+        &mut self,
+        window: &Window, 
+        app: &dyn AppHandle
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }
@@ -254,18 +243,18 @@ pub trait GameScene: Debug + Send {
     fn on_draw(
         &self,
         window: &Window,
+        encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
         depth_buffer_view: &wgpu::TextureView,
-        egui_renderer: &UiRenderer,
         app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>>;
+    ) -> Result<(), Box<dyn Error + Send>> {
+        Ok(())
+    }
 
     /// 애플리케이션이 게임 장면을 그린 후에 호출하는 콜백 함수입니다.
-    #[allow(unused_variables)]
     fn on_finish_draw(
         &mut self,
         window: &Window,
-        egui_renderer: &mut UiRenderer,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())

@@ -1,5 +1,4 @@
 pub mod area;
-pub mod background;
 pub mod bullet;
 pub mod camera;
 pub mod character;
@@ -18,7 +17,7 @@ use mod_render::{
 use crate::component::{BoneCollection, Child, Sibling, WorldTransform};
 
 pub use self::{
-    area::*, background::*, bullet::*, camera::*, character::*, composite::*, fx::*, prop::*,
+    area::*, bullet::*, camera::*, character::*, composite::*, fx::*, prop::*,
     skybox::*,
 };
 

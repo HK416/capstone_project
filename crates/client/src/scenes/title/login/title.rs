@@ -5,7 +5,7 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_render::{ScreenDescriptor, TexturePool, TextureViewPool, UiRenderer};
+use mod_render::{TexturePool, TextureViewPool};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -20,6 +20,8 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };
+
+use super::GameLoginModalScene;
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["아무 키나 눌러 게임을 시작"];
@@ -40,10 +42,6 @@ pub struct GameLoginTitleScene {
     /// 키 눌림 여부
     is_pressed: bool,
 
-    //----- UI -----
-    egui_clip_primitives: Vec<egui::ClippedPrimitive>,
-    egui_free_texture_ids: Vec<egui::TextureId>,
-
     /// 게임 배경화면 텍스처의 텍스처 식별자입니다.
     bg_texture_ids: Vec<egui::load::SizedTexture>,
 }
@@ -55,66 +53,8 @@ impl GameLoginTitleScene {
             locale,
             elapsed_time_sec: 0.0,
             is_pressed: false,
-            egui_clip_primitives: Vec::default(),
-            egui_free_texture_ids: Vec::default(),
             bg_texture_ids: Vec::with_capacity(6),
         }
-    }
-
-    /// UI 콜백 함수
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let (width, height): (f32, f32) = window.inner_size().into();
-        let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
-
-        // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let head_font_id = egui::FontId::new(32.0 * scale, head_font_family);
-        let head_font_color = self.get_font_color();
-
-        // 텍스트
-        let i = self.locale as usize;
-        let text = HEAD_TEXTS[i];
-        let head_text = egui::RichText::new(text)
-            .font(head_font_id)
-            .color(head_font_color);
-
-        egui::Area::new(egui::Id::new("Layout_Enter"))
-            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -128.0 * scale])
-            .show(app.egui_ctx(), |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.label(head_text);
-                })
-            });
-
-        let index = (self.elapsed_time_sec / CUT_SWITCH_CYCLE).floor() as usize;
-        let source = self.bg_texture_ids[index];
-        let ratio = source.size.x / source.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width;
-        let img_height = img_width / ratio;
-        let rect = egui::Rect {
-            min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
-            ),
-            max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
-            ),
-        };
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new())
-            .show(app.egui_ctx(), |ui| {
-                egui::Image::new(source).paint_at(ui, rect);
-            });
-        Ok(())
     }
 
     /// 폰트 색상을 가져옵니다.
@@ -205,8 +145,8 @@ impl GameScene for GameLoginTitleScene {
 
         // 다음 게임 장면으로 전환합니다.
         if self.is_pressed {
-            let next_scene = todo!();
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = Box::new(GameLoginModalScene::new(self.locale));
+            let scene_flow = GameSceneFlow::Push(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
@@ -214,110 +154,69 @@ impl GameScene for GameLoginTitleScene {
         Ok(())
     }
 
-    fn on_prepare_draw(
-        &mut self,
-        window: &Window,
-        egui_renderer: &mut UiRenderer,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let device = app.render_device();
-        let queue = app.render_queue();
-
-        let egui_ctx = app.egui_ctx();
-        let egui_raw_input = app.egui_raw_input();
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: window.inner_size().into(),
-            pixels_per_point: window.scale_factor() as f32,
-        };
-
-        egui_ctx.begin_pass(egui_raw_input);
-        self.ui_callback(window, app)?;
-        let egui_full_output = egui_ctx.end_pass();
-
-        let egui_primitive =
-            egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let mut commands = egui_renderer.update_buffers(
-            device,
-            queue,
-            &mut encoder,
-            &egui_primitive,
-            &screen_descriptor,
-        );
-        for (id, image_delta) in &egui_full_output.textures_delta.set {
-            egui_renderer.update_texture(device, queue, *id, image_delta);
-        }
-        commands.push(encoder.finish());
-        queue.submit(commands);
-
-        self.egui_clip_primitives = egui_primitive;
-        self.egui_free_texture_ids = egui_full_output.textures_delta.free;
-
-        Ok(())
-    }
-
     fn on_draw(
         &self,
-        window: &Window,
-        render_target_view: &wgpu::TextureView,
+        _window: &Window,
+        _encoder: &mut wgpu::CommandEncoder, 
+        _render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
-        egui_renderer: &UiRenderer,
-        app: &dyn AppHandle,
+        _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let device = app.render_device();
-        let queue = app.render_queue();
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            ..Default::default()
-        });
-
-        {
-            let mut rpass = encoder
-                .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some(&format!(
-                        "RenderPass(UI({}))",
-                        stringify!(GameLoginTitleScene)
-                    )),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                        view: render_target_view,
-                        resolve_target: None,
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                })
-                .forget_lifetime();
-
-            egui_renderer.render(
-                &mut rpass,
-                &self.egui_clip_primitives,
-                &ScreenDescriptor {
-                    size_in_pixels: window.inner_size().into(),
-                    pixels_per_point: window.scale_factor() as f32,
-                },
-            );
-        }
-
-        queue.submit([encoder.finish()]);
-
         Ok(())
     }
 
-    fn on_finish_draw(
+    fn ui_callback(
         &mut self,
-        _window: &Window,
-        egui_renderer: &mut UiRenderer,
-        _app: &dyn AppHandle,
+        window: &Window,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.egui_clip_primitives.clear();
-        while let Some(id) = self.egui_free_texture_ids.pop() {
-            egui_renderer.free_texture(&id);
-        }
+        let (width, height): (f32, f32) = window.inner_size().into();
+        let scale_factor = window.scale_factor() as f32;
+        let scale = width / scale_factor / BASE_WIDTH;
 
+        // 폰트 속성
+        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let head_font_id = egui::FontId::new(32.0 * scale, head_font_family);
+        let head_font_color = self.get_font_color();
+
+        // 텍스트
+        let i = self.locale as usize;
+        let text = HEAD_TEXTS[i];
+        let head_text = egui::RichText::new(text)
+            .font(head_font_id)
+            .color(head_font_color);
+
+        egui::Area::new(egui::Id::new("Layout_Enter"))
+            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -128.0 * scale])
+            .show(app.egui_ctx(), |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(head_text);
+                })
+            });
+
+        let index = (self.elapsed_time_sec / CUT_SWITCH_CYCLE).floor() as usize;
+        let source = self.bg_texture_ids[index];
+        let ratio = source.size.x / source.size.y;
+        let center_x = width * 0.5;
+        let center_y = height * 0.5;
+        let img_width = width;
+        let img_height = img_width / ratio;
+        let rect = egui::Rect {
+            min: egui::pos2(
+                (center_x - 0.5 * img_width) / scale_factor,
+                (center_y - 0.5 * img_height) / scale_factor,
+            ),
+            max: egui::pos2(
+                (center_x + 0.5 * img_width) / scale_factor,
+                (center_y + 0.5 * img_height) / scale_factor,
+            ),
+        };
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new())
+            .show(app.egui_ctx(), |ui| {
+                egui::Image::new(source).paint_at(ui, rect);
+            });
         Ok(())
     }
 }

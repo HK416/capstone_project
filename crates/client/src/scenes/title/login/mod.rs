@@ -1,3 +1,4 @@
+mod modal;
 mod title;
 
-pub use self::title::*;
+pub use self::{modal::*, title::*};

@@ -11,7 +11,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
-use mod_render::{TexturePool, UiRenderer};
+use mod_render::TexturePool;
 use rayon::ThreadPool;
 use wgpu::util::DeviceExt;
 use winit::{event_loop::EventLoopProxy, window::Window};
@@ -358,20 +358,13 @@ impl GameScene for GameStartupScene {
     fn on_draw(
         &self,
         _window: &Window,
+        encoder: &mut wgpu::CommandEncoder, 
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
-        _egui_renderer: &UiRenderer,
-        app: &dyn AppHandle,
+        _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         // 게임을 초기화 하는 동안 검정색 화면을 출력합니다.
         //
-        let device = app.render_device();
-        let queue = app.render_queue();
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            ..Default::default()
-        });
-
         {
             let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(&format!("RenderPass({})", stringify!(GameStartupScene))),
@@ -388,8 +381,6 @@ impl GameScene for GameStartupScene {
                 occlusion_query_set: None,
             });
         }
-
-        queue.submit([encoder.finish()]);
 
         Ok(())
     }

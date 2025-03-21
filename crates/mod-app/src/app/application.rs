@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use mod_render::{init_wgpu, UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -183,15 +183,54 @@ impl Application {
     fn draw(
         &self,
         window: &Window,
+        egui_ctx: &egui::Context,
+        egui_raw_input: egui::RawInput,
+        egui_renderer: &mut UiRenderer,
         surface: &wgpu::Surface<'static>,
         depth_buffer_view: &wgpu::TextureView,
-        curr_scene: &mut Box<dyn GameScene>,
+        scene_stack: &mut VecDeque<Box<dyn GameScene>>,
     ) -> Result<(), Box<dyn Error + Send>> {
-        // `egui` 렌더러를 가져옵니다.
-        let mut egui_renderer = self.egui_renderer.borrow_mut();
+        // 그려야 하는 게임 장면의 시작 인덱스를 계산합니다.
+        let mut begin = scene_stack.len();
+        for scene in scene_stack.iter().rev() {
+            begin -= 1;
+            if !scene.transparents() {
+                break;
+            }
+        }
 
         // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
-        curr_scene.on_prepare_draw(&window, &mut egui_renderer, self)?;
+        for i in begin..scene_stack.len() {
+            scene_stack[i].on_prepare_draw(&window, self)?;
+        }
+
+        // UI 그리기 준비를 합니다.
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: window.inner_size().into(),
+            pixels_per_point: window.scale_factor() as f32,
+        };
+
+        egui_ctx.begin_pass(egui_raw_input);
+        for i in (begin..scene_stack.len()).rev() {
+            scene_stack[i].ui_callback(window, self)?;
+        }
+        let egui_full_output = egui_ctx.end_pass();
+
+        let egui_primitive = 
+            egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut commands = egui_renderer.update_buffers(
+            &self.device, 
+            &self.queue, 
+            &mut encoder, 
+            &egui_primitive, 
+            &screen_descriptor,
+        );
+        for (id, image_delta) in &egui_full_output.textures_delta.set {
+            egui_renderer.update_texture(&self.device, &self.queue, *id, image_delta);
+        }
+        commands.push(encoder.finish());
+        self.queue.submit(commands);
 
         // 이전 렌더링 작업이 끝날때 까지 대기합니다.
         self.device.poll(wgpu::Maintain::Wait);
@@ -212,23 +251,57 @@ impl Application {
             ..Default::default()
         });
 
+        // 현재 게임 장면에 그리기 콜백 함수를 호출합니다.
+        // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        for i in begin..scene_stack.len() {
+            scene_stack[i].on_draw(
+                window,
+                &mut encoder, 
+                &render_target_view,
+                depth_buffer_view,
+                self,
+            )?;
+        }
+
+        // UI 렌더 패스
+        {
+            let mut rpass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("RenderPass(UI)"), 
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: &render_target_view,
+                        resolve_target: None,
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None
+                }).forget_lifetime();
+
+            egui_renderer.render(
+                &mut rpass, 
+                &egui_primitive, 
+                &screen_descriptor
+            );
+        }
+
+        // 그리기 명령을 제출합니다.
+        self.queue.submit([encoder.finish()]);
+
         // `winit` API에 애플리케이션 창을 갱신한다고 알립니다.
         window.pre_present_notify();
-
-        // 현재 게임 장면에 그리기 콜백 함수를 호출합니다.
-        curr_scene.on_draw(
-            window,
-            &render_target_view,
-            depth_buffer_view,
-            &egui_renderer,
-            self,
-        )?;
 
         // 프레임 버퍼를 출력합니다.
         frame.present();
 
         // 현재 게임 장면의 그리기 마침 콜백 함수를 호출합니다.
-        curr_scene.on_finish_draw(&window, &mut egui_renderer, self)?;
+        for i in begin..scene_stack.len() {
+            scene_stack[i].on_finish_draw(&window, self)?;
+        }
 
         Ok(())
     }
@@ -545,12 +618,18 @@ impl ApplicationHandler<AppEvent> for Application {
                 Ok(())
             }
             WindowEvent::RedrawRequested => {
+                let mut state = app_window.egui_state.borrow_mut();
+                let egui_raw_input = state.take_egui_input(&app_window.window);
+                let mut egui_renderer = self.egui_renderer.borrow_mut();
                 let depth_buffer_view = app_window.depth_buffer_view.borrow();
                 self.draw(
                     &app_window.window,
+                    &self.egui_ctx, 
+                    egui_raw_input, 
+                    &mut egui_renderer, 
                     &app_window.surface,
                     &depth_buffer_view,
-                    curr_scene,
+                    &mut scene_stack,
                 )
             }
             _ => Ok(()),

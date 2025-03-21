@@ -5,7 +5,7 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_render::{ScreenDescriptor, TexturePool, TextureViewPool, UiRenderer};
+use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
 
 use crate::{asset::GAME_LOGO_URI, config::Locale};
@@ -24,10 +24,6 @@ pub struct GameIntroLogoScene {
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
 
-    // ----- UI -----
-    egui_clip_primitives: Vec<egui::ClippedPrimitive>,
-    egui_free_texture_ids: Vec<egui::TextureId>,
-
     /// 게임 로고 텍스처의 텍스처 식별자입니다.
     game_logo_texture_id: egui::load::SizedTexture,
 }
@@ -38,47 +34,11 @@ impl GameIntroLogoScene {
         Self {
             locale,
             elapsed_time_sec: 0.0,
-            egui_clip_primitives: Vec::default(),
-            egui_free_texture_ids: Vec::default(),
             game_logo_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
         }
-    }
-
-    /// UI 콜백 함수
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let (width, height): (f32, f32) = window.inner_size().into();
-        let scale_factor = window.scale_factor() as f32;
-
-        let ratio = self.game_logo_texture_id.size.x / self.game_logo_texture_id.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width * 0.3;
-        let img_height = img_width / ratio;
-        let rect = egui::Rect {
-            min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
-            ),
-            max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
-            ),
-        };
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new())
-            .show(app.egui_ctx(), |ui| {
-                egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
-            });
-
-        Ok(())
     }
 }
 
@@ -146,109 +106,63 @@ impl GameScene for GameIntroLogoScene {
         Ok(())
     }
 
-    fn on_prepare_draw(
-        &mut self,
-        window: &Window,
-        egui_renderer: &mut UiRenderer,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let device = app.render_device();
-        let queue = app.render_queue();
-
-        let egui_ctx = app.egui_ctx();
-        let egui_raw_input = app.egui_raw_input();
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: window.inner_size().into(),
-            pixels_per_point: window.scale_factor() as f32,
-        };
-
-        egui_ctx.begin_pass(egui_raw_input);
-        self.ui_callback(window, app)?;
-        let egui_full_output = egui_ctx.end_pass();
-
-        let egui_primitive =
-            egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let mut commands = egui_renderer.update_buffers(
-            device,
-            queue,
-            &mut encoder,
-            &egui_primitive,
-            &screen_descriptor,
-        );
-        for (id, image_delta) in &egui_full_output.textures_delta.set {
-            egui_renderer.update_texture(device, queue, *id, image_delta);
-        }
-        commands.push(encoder.finish());
-        queue.submit(commands);
-
-        self.egui_clip_primitives = egui_primitive;
-        self.egui_free_texture_ids = egui_full_output.textures_delta.free;
-
-        Ok(())
-    }
-
     fn on_draw(
         &self,
-        window: &Window,
+        _window: &Window,
+        encoder: &mut wgpu::CommandEncoder, 
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
-        egui_renderer: &UiRenderer,
-        app: &dyn AppHandle,
+        _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        let device = app.render_device();
-        let queue = app.render_queue();
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            ..Default::default()
-        });
-
         {
-            let mut rpass = encoder
+            let _rpass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some(&format!(
-                        "RenderPass(UI({}))",
-                        stringify!(GameIntroLogoScene)
-                    )),
+                    label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))), 
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                            store: wgpu::StoreOp::Store,
+                        ops: wgpu::Operations { 
+                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), 
+                            store: wgpu::StoreOp::Store 
                         },
-                        view: render_target_view,
+                        view: render_target_view, 
                         resolve_target: None,
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
-                })
-                .forget_lifetime();
-
-            egui_renderer.render(
-                &mut rpass,
-                &self.egui_clip_primitives,
-                &ScreenDescriptor {
-                    size_in_pixels: window.inner_size().into(),
-                    pixels_per_point: window.scale_factor() as f32,
-                },
-            );
+                });
         }
-
-        queue.submit([encoder.finish()]);
-
         Ok(())
     }
 
-    fn on_finish_draw(
+    fn ui_callback(
         &mut self,
-        _window: &Window,
-        egui_renderer: &mut UiRenderer,
-        _app: &dyn AppHandle,
+        window: &Window,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        self.egui_clip_primitives.clear();
-        while let Some(id) = self.egui_free_texture_ids.pop() {
-            egui_renderer.free_texture(&id);
-        }
+        let (width, height): (f32, f32) = window.inner_size().into();
+        let scale_factor = window.scale_factor() as f32;
+
+        let ratio = self.game_logo_texture_id.size.x / self.game_logo_texture_id.size.y;
+        let center_x = width * 0.5;
+        let center_y = height * 0.5;
+        let img_width = width * 0.3;
+        let img_height = img_width / ratio;
+        let rect = egui::Rect {
+            min: egui::pos2(
+                (center_x - 0.5 * img_width) / scale_factor,
+                (center_y - 0.5 * img_height) / scale_factor,
+            ),
+            max: egui::pos2(
+                (center_x + 0.5 * img_width) / scale_factor,
+                (center_y + 0.5 * img_height) / scale_factor,
+            ),
+        };
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new())
+            .show(app.egui_ctx(), |ui| {
+                egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
+            });
 
         Ok(())
     }
