@@ -1,0 +1,68 @@
+use std::sync::Arc;
+
+use mod_network::protocol::{LoginRequestPacket, LoginSuccessPacket, Packet, PacketType};
+
+use crate::{account::AccountManager, session::Session, token::UserTokenMap};
+
+use super::{ControlFlow, SessionState, lobby::LobbyState};
+
+/// 클라이언트가 서버에 로그인을 시도하는 상태입니다.
+#[derive(Debug)]
+pub struct LoginState;
+
+impl LoginState {
+    /// `LoginRequestPacket`을 처리합니다.
+    fn handle_login_request_packet(
+        &mut self,
+        _packet: LoginRequestPacket,
+        flow: &mut Option<ControlFlow>,
+        session: &Arc<Session>,
+    ) {
+        // 현재는 로그인 데이터베이스가 없습니다.
+        // 로그인 요청 순서대로 사용자 계정을 할당 후 로그인 토큰을 발행합니다.
+
+        // 사용자 계정을 할당합니다.
+        let user_info = AccountManager::alloc();
+
+        // 로그인 토큰을 발행합니다.
+        let token = UserTokenMap::alloc((user_info.uid, session.addr));
+
+        // 패킷을 생성하고 전송합니다.
+        let packet = LoginSuccessPacket::new(user_info, token);
+        session.tcp_write(packet.as_raw());
+
+        // 다음 세션 상태로 전환합니다.
+        let next_state = Box::new(LobbyState);
+        *flow = Some(ControlFlow::Change(next_state));
+    }
+}
+
+impl SessionState for LoginState {
+    fn handle_packets(&mut self, flow: &mut Option<ControlFlow>, session: &Arc<Session>) {
+        if let Some(packet) = session.received_packets.pop() {
+            let packet_type = packet.packet_type();
+            match packet_type {
+                PacketType::LoginRequest => {
+                    let packet = match LoginRequestPacket::try_from_raw(packet) {
+                        Some(packet) => packet,
+                        None => {
+                            session.close();
+                            return;
+                        }
+                    };
+                    self.handle_login_request_packet(packet, flow, session);
+                }
+                _ => {
+                    log::warn!(
+                        "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
+                        &session,
+                        &self,
+                        &packet
+                    );
+                    session.close();
+                    return;
+                }
+            }
+        }
+    }
+}

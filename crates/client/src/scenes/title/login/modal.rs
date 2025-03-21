@@ -1,9 +1,22 @@
 use std::error::Error;
 
-use mod_app::{app::AppHandle, scene::GameScene};
+use mod_app::{
+    app::AppHandle,
+    etc::AppEvent,
+    scene::{GameScene, GameSceneFlow},
+};
+use mod_network::{
+    components::{Email, Passwd},
+    protocol::{LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket},
+};
 use winit::window::Window;
 
-use crate::{asset::NOTOSANS_REGULAR, config::{Locale, NUM_LOCALE}, scenes::BASE_WIDTH};
+use crate::{
+    asset::NOTOSANS_REGULAR,
+    config::{Locale, UserConfig, NUM_LOCALE},
+    scenes::BASE_WIDTH,
+    SERVER_TCP_ADDR,
+};
 
 /// 애플리케이션 표시 언어에 따른 로그인 텍스트
 const LOGIN_TEXTS: [&'static str; NUM_LOCALE] = ["로그인"];
@@ -11,6 +24,11 @@ const LOGIN_TEXTS: [&'static str; NUM_LOCALE] = ["로그인"];
 pub struct GameLoginModalScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
+
+    /// 계정 이메일
+    email: Email,
+    /// 계정 비밀번호
+    passwd: Passwd,
 
     /// 로그인 요청 여부
     requested: bool,
@@ -20,7 +38,9 @@ impl GameLoginModalScene {
     /// 새로운 `GameLoginModalScene`을 생성합니다.
     pub fn new(locale: Locale) -> Self {
         Self {
-            locale, 
+            locale,
+            email: Email::default(),
+            passwd: Passwd::default(),
             requested: false,
         }
     }
@@ -31,10 +51,48 @@ impl GameScene for GameLoginModalScene {
         true
     }
 
+    fn on_received_packet(
+        &mut self,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::LoginFailed => {
+                self.requested = false;
+                // TODO 로그인 실패 처리
+            }
+            PacketType::LoginSuccess => {
+                // 사용자 정보와 로그인 토큰을 저장합니다.
+                let packet = LoginSuccessPacket::from_raw(packet);
+                let mut config = UserConfig::get();
+                config.info = packet.user_info;
+                config.token = packet.token;
+                drop(config);
+
+                // 다음 게임 장면으로 전환합니다.
+                let next_scene = todo!();
+                let scene_flow = GameSceneFlow::Reset(next_scene);
+                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
+            _ => {
+                log::warn!(
+                    "invalid packet received! (SCENE:{:?}, TYPE:{:?})",
+                    &self,
+                    packet_type
+                );
+            }
+        }
+
+        Ok(())
+    }
+
     fn on_draw(
         &self,
         _window: &Window,
-        _encoder: &mut wgpu::CommandEncoder, 
+        _encoder: &mut wgpu::CommandEncoder,
         _render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,
@@ -44,7 +102,7 @@ impl GameScene for GameLoginModalScene {
 
     fn ui_callback(
         &mut self,
-        window: &Window, 
+        window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         let (width, _height): (f32, f32) = window.inner_size().into();
@@ -68,7 +126,6 @@ impl GameScene for GameLoginModalScene {
             .corner_radius(3.0)
             .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK));
 
-
         let frame = egui::Frame::new()
             .fill(egui::Color32::WHITE)
             .corner_radius(3.0)
@@ -80,20 +137,29 @@ impl GameScene for GameLoginModalScene {
                 ui.set_height(480.0 * scale);
 
                 ui.vertical_centered(|ui| {
-                    ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| {
-                        ui.add_enabled_ui(!self.requested, |ui| {
-                            ui.set_width(128.0 * scale);
-                            ui.set_height(96.0 * scale);
-                            if ui.add(login_button).clicked() {
-                                self.requested = true;
-                            }
-                        });
-                    });
+                    ui.with_layout(
+                        egui::Layout::centered_and_justified(egui::Direction::TopDown),
+                        |ui| {
+                            ui.add_enabled_ui(!self.requested, |ui| {
+                                ui.set_width(128.0 * scale);
+                                ui.set_height(96.0 * scale);
+                                if ui.add(login_button).clicked() {
+                                    self.requested = true;
+
+                                    // 로그인 요청 패킷을 생성합니다.
+                                    let packet = LoginRequestPacket::new(self.email, self.passwd);
+
+                                    // 패킷을 게임 서버에 전송합니다.
+                                    let net_manager = app.net_manager();
+                                    let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                                    socket.push_packet(packet.as_raw());
+                                }
+                            });
+                        },
+                    );
                 });
             });
 
         Ok(())
     }
 }
-
-

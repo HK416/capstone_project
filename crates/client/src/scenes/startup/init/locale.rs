@@ -77,7 +77,7 @@ impl GameScene for InitLocaleScene {
     fn on_draw(
         &self,
         _window: &Window,
-        _encoder: &mut wgpu::CommandEncoder, 
+        _encoder: &mut wgpu::CommandEncoder,
         _render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,

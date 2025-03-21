@@ -109,27 +109,26 @@ impl GameScene for GameIntroLogoScene {
     fn on_draw(
         &self,
         _window: &Window,
-        encoder: &mut wgpu::CommandEncoder, 
+        encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         {
-            let _rpass = encoder
-                .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))), 
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        ops: wgpu::Operations { 
-                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), 
-                            store: wgpu::StoreOp::Store 
-                        },
-                        view: render_target_view, 
-                        resolve_target: None,
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
+            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    view: render_target_view,
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
         }
         Ok(())
     }

@@ -358,7 +358,7 @@ impl GameScene for GameStartupScene {
     fn on_draw(
         &self,
         _window: &Window,
-        encoder: &mut wgpu::CommandEncoder, 
+        encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,

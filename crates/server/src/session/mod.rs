@@ -1,3 +1,4 @@
+mod pool;
 mod state;
 
 use std::{
@@ -24,6 +25,8 @@ use tokio::{
     },
 };
 
+pub use self::pool::*;
+
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
@@ -47,16 +50,11 @@ pub struct Session {
 
 impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
-    pub fn new(
-        addr: SocketAddr,
-        user: UserInfo,
-        token: LoginToken,
-        udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
-    ) -> Self {
+    pub fn new(addr: SocketAddr, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) -> Self {
         Self {
             addr,
-            info: user,
-            token,
+            info: UserInfo::default(),
+            token: LoginToken::default(),
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
@@ -113,7 +111,7 @@ impl Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session(Uid:{})", &self.info.uid)
+        write!(f, "Session(Addr:{})", &self.addr)
     }
 }
 

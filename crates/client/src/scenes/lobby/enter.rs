@@ -6,6 +6,4 @@ use winit::window::Window;
 
 pub struct MainLobbyEnterScene {}
 
-impl GameScene for MainLobbyEnterScene {
-    
-}
+impl GameScene for MainLobbyEnterScene {}

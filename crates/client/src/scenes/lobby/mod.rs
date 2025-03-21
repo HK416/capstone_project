@@ -30,6 +30,4 @@ impl MainLobbyScene {
     }
 }
 
-impl GameScene for MainLobbyScene {
-    
-}
+impl GameScene for MainLobbyScene {}

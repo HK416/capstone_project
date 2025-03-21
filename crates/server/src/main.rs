@@ -1,42 +1,21 @@
+mod account;
 mod data;
 mod formula;
 mod room;
 mod session;
+mod token;
 mod world;
 
-use std::{
-    env,
-    net::SocketAddr,
-    str::FromStr,
-    sync::{
-        Arc, OnceLock,
-        atomic::{AtomicU32, Ordering as MemOrdering},
-    },
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 
 use data::{get_current_path, init_character_attributes, init_stage_attributes};
-use mod_network::{
-    addr::Addr,
-    components::{LoginToken, UserId, UserInfo, UserName},
-    protocol::RawPacket,
-};
-use mod_parallelism::collections::{Queue, SkipMap};
-use session::{Session, handle_connection};
+use mod_network::{addr::Addr, protocol::RawPacket};
+use mod_parallelism::collections::Queue;
+use session::{Session, SessionManager, handle_connection};
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::Level;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 use world::{GameWorld, update_game_world};
-
-/// 현재 접속중인 클라이언트의 수 입니다.
-static NUM_CLIENTS: AtomicU32 = AtomicU32::new(0);
-/// 현재 서버에 접속중인 세션 집합입니다.
-static SESSIONS: OnceLock<SkipMap<SocketAddr, Arc<Session>>> = OnceLock::new();
-
-/// 현재 서버에 접속중인 세션 집합을 가져옵니다.
-fn get_sessions() -> &'static SkipMap<SocketAddr, Arc<Session>> {
-    SESSIONS.get_or_init(|| SkipMap::default())
-}
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
@@ -95,10 +74,9 @@ async fn udp_packet_receive_loop(socket: Arc<UdpSocket>) {
                 //      (UDP로 보낸 패킷 데이터는 중요하지 않고, 1024byte 보다 작은 데이터이기 때문)
                 match RawPacket::try_from_bytes(received_data) {
                     Ok(packet) => {
-                        let sessions = get_sessions();
                         // 3. SESSIONS에 클라이언트 주소에 해당하는 세션이 존재할 경우
                         //    - 해당 세션으로 RawPacket을 전송한다.
-                        if let Some(session) = sessions.get(&addr) {
+                        if let Some(session) = SessionManager::get(&addr) {
                             session.push_received_packet(packet);
                         }
                     }
@@ -139,45 +117,28 @@ async fn udp_packet_send_loop(
 }
 
 async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) {
-    // FIXME: 임시 사용자 식별자를 생성하기 위한 카운터입니다.
-    let mut counter = 0;
-    //-------------------------------------------
-
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
-                // 임시 사용자 정보를 생성합니다.
-                counter += 1;
-                let user_id = UserId::new(counter);
-                let user_name = format!("Player_{}", counter);
-                let user_name = UserName::new(user_name);
-                let user = UserInfo::new(user_id, user_name);
-                //------------------------
                 let udp_sender = udp_sender.clone();
                 tokio::spawn(async move {
-                    // 임시 사용자의 로그인 토큰을 발행하고 등록합니다.
-                    let token = generate_token();
-
                     // 클라이언트 세션을 생성하고 등록합니다.
-                    let session = Arc::new(Session::new(addr, user, token, udp_sender));
-                    get_sessions().insert(addr, session.clone());
-                    NUM_CLIENTS.fetch_add(1, MemOrdering::AcqRel);
-
+                    let session = Arc::new(Session::new(addr, udp_sender));
+                    SessionManager::regist(addr, session.clone());
                     println!(
                         "Accepted connection from: {} (Concurrent Users:{})",
-                        &user_id,
-                        &NUM_CLIENTS.load(MemOrdering::Relaxed)
+                        &session,
+                        &SessionManager::count()
                     );
 
                     handle_connection(stream, session).await;
 
                     // 등록된 클라이언트 세션을 제거합니다.
-                    get_sessions().remove(&addr);
-                    NUM_CLIENTS.fetch_sub(1, MemOrdering::AcqRel);
+                    let session = SessionManager::unregist(&addr).unwrap();
                     println!(
                         "{} left. (Concurrent Users:{})",
-                        &user_id,
-                        &NUM_CLIENTS.load(MemOrdering::Relaxed)
+                        &session,
+                        &SessionManager::count()
                     );
                 });
             }
@@ -269,20 +230,4 @@ fn init_log_system() -> WorkerGuard {
         .init();
 
     guard
-}
-
-/// 무작위의 로그인 토큰을 발행합니다.
-fn generate_token() -> LoginToken {
-    /// 난수를 생성하기 위한 카운터입니다.
-    /// 해당 함수를 호출할 때 마다 1씩 증가합니다.
-    static COUNTER: AtomicU32 = AtomicU32::new(0);
-
-    let now = SystemTime::now();
-    let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-
-    let counter_bit = COUNTER.fetch_add(1, MemOrdering::AcqRel) as u64 & 0xFFFFFF;
-    let time_bit = duration.subsec_micros() as u64 & 0xFFFFFF;
-    let rand_bit = rand::random::<u64>() & 0xFFFF;
-
-    LoginToken::new((rand_bit << 48) | (time_bit << 24) | counter_bit)
 }

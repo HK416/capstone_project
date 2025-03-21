@@ -2,19 +2,21 @@
 //! 따라서 세션 상태에 따라 패킷을 다르게 처리합니다.
 //!
 //! ## 세션 상태 목록
-//! - Init: 클라이언트가 서버에 연결된 직후의 상태입니다.
+//! - Verify: 클라이언트가 서버에 연결된 직후의 데이터 무결성을 검사하는 상태입니다.
+//! - Login: 클라이언트가 게임 서버에 로그인을 시도하는 상태입니다.
 //! - Lobby: 클라이언트가 게임 로비 장면에 있는 상태입니다.
 //! - Room: 클라이언트가 커스텀 게임 대기실 장면에 있는 상태입니다.
 //! - InGame: 클라이언트가 인게임 장면에 있는 상태입니다.
 //!
 mod in_game;
-mod init;
 mod lobby;
+mod login;
 mod room;
+mod verify;
 
 use std::{collections::VecDeque, fmt, sync::Arc};
 
-use init::InitState;
+use verify::VerifyState;
 
 use super::Session;
 
@@ -53,7 +55,7 @@ impl<'a> SessionStateManager<'a> {
     /// 세션 상태 관리자를 실행합니다.
     pub async fn run(mut self) {
         let session = self.session;
-        let init_state = Box::new(InitState);
+        let init_state = Box::new(VerifyState);
         let mut control_flow = Some(ControlFlow::Reset(init_state));
 
         while session.is_running() {
