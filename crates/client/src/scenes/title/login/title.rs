@@ -31,7 +31,15 @@ const MAX_SCENE_DURATION: f32 = 15.0;
 const CUT_SWITCH_CYCLE: f32 = 2.5;
 /// 폰트 알파 값의 주기입니다.
 const FONT_APPEAR_CYCLE: f32 = 4.0;
-
+/// 로그인 배경화면 텍스처의 `Uri`입니다.
+const BG_TEXTURE_URI: [&'static str; 6] = [
+    BG_LOGIN_TITLE_0_URI,
+    BG_LOGIN_TITLE_1_URI,
+    BG_LOGIN_TITLE_2_URI,
+    BG_LOGIN_TITLE_3_URI,
+    BG_LOGIN_TITLE_4_URI,
+    BG_LOGIN_TITLE_5_URI,
+];
 /// 게임 로그인 타이틀 화면을 표시하는 장면입니다.
 pub struct GameLoginTitleScene {
     /// 애플리케이션 표시 언어
@@ -72,15 +80,6 @@ impl GameScene for GameLoginTitleScene {
         _window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        const BG_TEXTURE_URI: [&'static str; 6] = [
-            BG_LOGIN_TITLE_0_URI,
-            BG_LOGIN_TITLE_1_URI,
-            BG_LOGIN_TITLE_2_URI,
-            BG_LOGIN_TITLE_3_URI,
-            BG_LOGIN_TITLE_4_URI,
-            BG_LOGIN_TITLE_5_URI,
-        ];
-
         for uri in BG_TEXTURE_URI {
             // 로그인 배경화면 텍스처를 가져옵니다.
             let texture =
@@ -104,6 +103,21 @@ impl GameScene for GameLoginTitleScene {
                 id: texture_id,
                 size: texture_size,
             });
+        }
+
+        Ok(())
+    }
+
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        // 텍스처 풀 객체에서 로그인 타이틀 텍스처를 제거합니다.
+        for uri in BG_TEXTURE_URI {
+            if let Some(texture) = TexturePool::unregister(uri) {
+                TextureViewPool::remove(&texture);
+            }
         }
 
         Ok(())

@@ -14,7 +14,7 @@ use winit::window::Window;
 use crate::{
     asset::NOTOSANS_REGULAR,
     config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{MainLobbyEnterScene, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
 
@@ -71,7 +71,11 @@ impl GameScene for GameLoginModalScene {
                 drop(config);
 
                 // 다음 게임 장면으로 전환합니다.
-                let next_scene = todo!();
+                let next_scene = Box::new(MainLobbyEnterScene::new(
+                    self.locale,
+                    packet.user_info,
+                    packet.token,
+                ));
                 let scene_flow = GameSceneFlow::Reset(next_scene);
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
