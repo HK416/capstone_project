@@ -44,6 +44,11 @@ impl CustomGameRoom {
         }
     }
 
+    /// 게임 월드 식별자를 반환합니다.
+    pub fn id(&self) -> WorldId {
+        self.world_id
+    }
+
     /// 커스텀 게임 대기실을 재설정합니다.
     pub fn reset(&self, session: &Arc<Session>) -> Vec<CustomGamePlayer> {
         // 플레이어 집합을 비웁니다.

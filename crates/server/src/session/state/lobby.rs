@@ -4,47 +4,18 @@ use mod_network::{
     components::{JoinFailedReason, WorldId},
     protocol::{
         CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket,
-        EnterStagePacket, Packet, PacketType,
+        Packet, PacketType,
     },
 };
 
-use crate::{room::CustomGamePool, session::Session, world::GameWorld};
+use crate::{room::CustomGamePool, session::Session, token::UserTokenMap};
 
-use super::{ControlFlow, SessionState, in_game::InGameState, room::RoomState};
+use super::{ControlFlow, SessionState, room::RoomState};
 
 #[derive(Debug)]
 pub struct LobbyState;
 
 impl LobbyState {
-    /// `EnterStagePacket`을 처리합니다.
-    fn handle_enter_stage_packet(
-        &mut self,
-        packet: EnterStagePacket,
-        flow: &mut Option<ControlFlow>,
-        session: &Arc<Session>,
-    ) {
-        // 수신한 패킷이 올바른지 검사합니다.
-        if packet.token != session.token {
-            log::warn!(
-                "{} invalid token (SESSION:{}, PACKET:{})",
-                &session,
-                &session.token.to_string(),
-                &packet.token.to_string(),
-            );
-            session.close();
-            return;
-        }
-
-        // 게임 월드에 플레이어를 추가합니다.
-        // TODO: 나중에 매칭 대기열에 추가하는 것으로 변경해야 함.
-        let world = GameWorld::get_instance();
-        world.join(session.clone(), packet.character_kind);
-
-        // 다음 상태로 전환합니다.
-        let next_state = Box::new(InGameState::new(world));
-        *flow = Some(ControlFlow::Push(next_state));
-    }
-
     /// `CustomGameJoinRequestPacket`을 처리합니다.
     fn handle_custom_game_join_request_packet(
         &mut self,
@@ -53,13 +24,11 @@ impl LobbyState {
         session: &Arc<Session>,
     ) {
         // 수신한 패킷이 올바른지 검사합니다.
-        if packet.token != session.token {
-            log::warn!(
-                "{} invalid token (SESSION:{}, PACKET:{})",
-                &session,
-                &session.token.to_string(),
-                &packet.token.to_string(),
-            );
+        let user_id = packet.user_id;
+        let addr = session.addr;
+        let token = packet.token;
+        if !UserTokenMap::verify(&(user_id, addr), token) {
+            log::warn!("{} invalid token (PACKET:{:?})", &session, &packet,);
             session.close();
             return;
         }
@@ -70,7 +39,7 @@ impl LobbyState {
             let (room, players) = pool.create(session);
 
             // `CustomGameJoinSuccessPacket`을 생성 후 전송합니다.
-            let packet = CustomGameJoinSuccessPacket::new(players);
+            let packet = CustomGameJoinSuccessPacket::new(room.id(), players);
             session.tcp_write(packet.as_raw());
 
             // 세션 상태를 변경합니다.
@@ -82,7 +51,7 @@ impl LobbyState {
                 Some(room) => match room.join(session) {
                     Ok(players) => {
                         // `CustomGameJoinSuccessPacket`을 생성 후 전송합니다.
-                        let packet = CustomGameJoinSuccessPacket::new(players);
+                        let packet = CustomGameJoinSuccessPacket::new(room.id(), players);
                         session.tcp_write(packet.as_raw());
 
                         // 세션 상태를 변경합니다.

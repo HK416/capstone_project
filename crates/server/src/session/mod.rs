@@ -34,8 +34,6 @@ pub struct Session {
     addr: SocketAddr,
     /// 세션의 사용자 데이터
     info: UserInfo,
-    /// 사용자 로그인 토큰
-    token: LoginToken,
 
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
@@ -54,7 +52,6 @@ impl Session {
         Self {
             addr,
             info: UserInfo::default(),
-            token: LoginToken::default(),
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),

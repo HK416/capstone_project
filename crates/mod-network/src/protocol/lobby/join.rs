@@ -154,6 +154,7 @@ impl Packet for CustomGameJoinFailedPacket {
 /// 커스텀 게임 참여에 성공했을 때 서버에서 클라이언트로 보내는 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomGameJoinSuccessPacket {
+    pub world_id: WorldId,
     pub players: Vec<CustomGamePlayer>,
 }
 
@@ -163,12 +164,12 @@ impl CustomGameJoinSuccessPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
-    pub fn new(players: Vec<CustomGamePlayer>) -> Self {
+    pub fn new(world_id: WorldId, players: Vec<CustomGamePlayer>) -> Self {
         assert!(
             players.len() <= MAX_CUSTOM_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
-        Self { players }
+        Self { world_id, players }
     }
 
     /// 새로운 패킷을 생성합니다.
@@ -176,12 +177,12 @@ impl CustomGameJoinSuccessPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
-    pub fn from_iter<I>(iter: I) -> Self
+    pub fn from_iter<I>(world_id: WorldId, iter: I) -> Self
     where
         I: IntoIterator<Item = CustomGamePlayer>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(iter.into_iter().collect())
+        Self::new(world_id, iter.into_iter().collect())
     }
 }
 
@@ -198,6 +199,8 @@ impl Packet for CustomGameJoinSuccessPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림 레이아웃
         // +-------------------+
+        // | 게임 월드 식별자      |
+        // +-------------------+
         // | 참가 인원 수 (1byte) |
         // +-------------------+
         // | 사용자 정보          |
@@ -208,10 +211,12 @@ impl Packet for CustomGameJoinSuccessPacket {
             num_players <= MAX_CUSTOM_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
-        let data_size = u8::byte_size() + num_players * CustomGamePlayer::byte_size();
+        let data_size =
+            WorldId::byte_size() + u8::byte_size() + num_players * CustomGamePlayer::byte_size();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&self.world_id.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
             data.extend_from_slice(&player.to_big_endian_bytes());
@@ -241,11 +246,17 @@ impl Packet for CustomGameJoinSuccessPacket {
             return None;
         }
 
-        // 플레이어 수를 가져옵니다.
+        // 게임 월드 식별자를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = u8::byte_size();
+        let mut size = WorldId::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let world_id = WorldId::from_big_endian_bytes(data);
+
+        // 플레이어 수를 가져옵니다.
+        offset = offset + size;
+        size = u8::byte_size();
+        data = &bytes[offset..offset + size];
         let num_players = u8::from_big_endian_bytes(data) as usize;
         if num_players > MAX_CUSTOM_GAME_PLAYERS {
             return None;
@@ -260,7 +271,7 @@ impl Packet for CustomGameJoinSuccessPacket {
             players.push(CustomGamePlayer::try_from_big_endian_bytes(data)?);
         }
 
-        Some(Self { players })
+        Some(Self { world_id, players })
     }
 }
 
@@ -322,9 +333,10 @@ mod tests {
             status: CustomGameStatus::Ready,
             permission: Permission::User,
         };
+        let world_id = WorldId::new(104321);
         let players = vec![player_0, player_1, player_2, player_3];
 
-        let origin = CustomGameJoinSuccessPacket::new(players);
+        let origin = CustomGameJoinSuccessPacket::new(world_id, players);
         let raw = origin.as_raw();
         let other = CustomGameJoinSuccessPacket::from_raw(raw);
 

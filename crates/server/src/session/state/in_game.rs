@@ -24,18 +24,6 @@ impl InGameState {
         _flow: &mut Option<ControlFlow>,
         session: &Arc<Session>,
     ) {
-        // 수신한 패킷이 올바른지 검사합니다.
-        if packet.token != session.token {
-            log::warn!(
-                "{} invalid token (SESSION:{}, PACKET:{})",
-                &session,
-                &session.token,
-                &packet.token,
-            );
-            session.close();
-            return;
-        }
-
         self.world.get_mut_player(session.info.uid, |_, player| {
             if let Some(mut player) = player {
                 player.set_rotation(packet.rotation);
