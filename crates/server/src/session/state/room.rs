@@ -64,7 +64,7 @@ impl RoomState {
     /// `CustomGamePushPacket`을 처리합니다.
     fn handle_custom_game_push_status_packet(
         &mut self,
-        flow: &mut Option<ControlFlow>,
+        _flow: &mut Option<ControlFlow>,
         session: &Arc<Session>,
         packet: RawPacket,
     ) {
@@ -97,9 +97,6 @@ impl RoomState {
                 session.close();
                 return;
             }
-
-            // 다음 세션 상태로 전환합니다.
-            *flow = Some(ControlFlow::Pop);
         } else {
             log::warn!("{} accesses an invalid custom game", session);
             session.close();

@@ -4,10 +4,13 @@ use std::sync::{
 };
 
 use ahash::{HashMap, RandomState};
-use mod_network::{components::{
-    CustomGamePlayer, CustomGameStatus, JoinFailedReason, Permission, Team, UserId, UserInfo,
-    WorldId,
-}, protocol::{CustomGamePullPacket, Packet}};
+use mod_network::{
+    components::{
+        CustomGamePlayer, CustomGameStatus, JoinFailedReason, Permission, Team, UserId, UserInfo,
+        WorldId,
+    },
+    protocol::{CustomGamePullPacket, Packet},
+};
 use parking_lot::{FairMutex, RwLock};
 use rand::seq::SliceRandom;
 
@@ -149,6 +152,9 @@ impl CustomGameRoom {
 
                 let player = remaining_players.pop().unwrap();
                 player.permission = Permission::Admin;
+                if player.status == CustomGameStatus::Ready {
+                    player.status = CustomGameStatus::Wait;
+                }
                 *self.admin.write() = player.info.uid;
             }
         }
@@ -171,10 +177,10 @@ impl CustomGameRoom {
     pub fn on_process(&self) {
         // 락을 획득합니다.
         let players = self.players.lock();
-        
+
         // 패킷을 생성합니다.
         let packet = CustomGamePullPacket::from_iter(players.values().cloned());
-        
+
         // 패킷을 각 세션에 전송합니다.
         for session in players.keys() {
             session.tcp_write(packet.as_raw());

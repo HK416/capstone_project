@@ -12,7 +12,10 @@ use mod_network::{
         CustomGamePlayer, CustomGameStatus, LoginToken, Permission, Team, UserId, WorldId,
         MAX_CUSTOM_GAME_PLAYERS,
     },
-    protocol::{CustomGameLeavePacket, CustomGamePullPacket, Packet, PacketType, RawPacket},
+    protocol::{
+        CustomGameLeavePacket, CustomGamePullPacket, CustomGamePushStatusPacket, Packet,
+        PacketType, RawPacket,
+    },
 };
 use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
@@ -27,6 +30,10 @@ use super::BASE_WIDTH;
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 대기실"];
+/// 애플리케이션 표시 언어에 따른 `준비 버튼` 텍스트
+const READY_TEXTS: [&'static str; NUM_LOCALE] = ["준비"];
+/// 애플리케이션 표시 언어에 따른 `시작 버튼` 텍스트
+const START_TEXTS: [&'static str; NUM_LOCALE] = ["시작"];
 
 /// 커스텀 게임 대기실 장면입니다.
 pub struct CustomGameRoomScene {
@@ -169,18 +176,49 @@ impl GameScene for CustomGameRoomScene {
         let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
+        let i = self.locale as usize;
 
         // 폰트 속성
         let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
 
         // Head 텍스트
-        let i = self.locale as usize;
         let text = format!("{} - {}", HEAD_TEXTS[i], self.world_id);
         let font_id = egui::FontId::new(32.0 * scale, head_font_family.clone());
         let head_text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::DARK_GRAY);
+
+        // 준비/시작 버튼 텍스트
+        let mut other_players_ready = self.players.len() >= 2;
+        let mut current_permission = Permission::User;
+        let mut current_status = CustomGameStatus::Wait;
+        for player in self.players.iter() {
+            if self.user_id == player.info.uid {
+                current_permission = player.permission;
+                current_status = player.status;
+            } else {
+                other_players_ready &= player.status == CustomGameStatus::Ready;
+            }
+        }
+        let button_color = match current_status {
+            CustomGameStatus::Ready => egui::Color32::YELLOW,
+            _ => egui::Color32::WHITE,
+        };
+        let enable_enter_button = current_permission == Permission::User
+            || (current_permission == Permission::Admin && other_players_ready);
+        let text = match current_permission {
+            Permission::Admin => START_TEXTS[i],
+            Permission::User => READY_TEXTS[i],
+        };
+        let font_id = egui::FontId::new(48.0 * scale, head_font_family.clone());
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::DARK_GRAY);
+        let enter_button = egui::Button::new(text)
+            .fill(button_color)
+            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
+            .corner_radius(1.5);
 
         // 나가기 버튼
         // TODO: 나중에 이미지 버튼으로 수정해야 함.
@@ -229,7 +267,7 @@ impl GameScene for CustomGameRoomScene {
             });
 
         egui::Area::new(egui::Id::new("List_Layout"))
-            .anchor(egui::Align2::CENTER_CENTER, (-72.0 * scale, 0.0))
+            .anchor(egui::Align2::CENTER_CENTER, (-96.0 * scale, 48.0 * scale))
             .show(app.egui_ctx(), |ui| {
                 ui.set_width(960.0 * scale);
                 ui.set_height(500.0 * scale);
@@ -280,6 +318,32 @@ impl GameScene for CustomGameRoomScene {
                         ui.add_space(20.0 * scale);
                     }
                 });
+            });
+
+        egui::Area::new(egui::Id::new("Control_Pannel"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 * scale, -48.0 * scale))
+            .show(app.egui_ctx(), |ui| {
+                ui.add_enabled_ui(enable_enter_button, |ui| {
+                    ui.set_width(200.0 * scale);
+                    ui.set_height(140.0 * scale);
+                    ui.centered_and_justified(|ui| {
+                        if ui.add(enter_button).clicked() {
+                            // 패킷을 생성하고 전송합니다.
+                            let packet = CustomGamePushStatusPacket::new(
+                                self.user_id,
+                                self.token,
+                                match current_status {
+                                    CustomGameStatus::Ready => CustomGameStatus::Wait,
+                                    CustomGameStatus::Wait => CustomGameStatus::Ready,
+                                    _ => current_status,
+                                },
+                            );
+                            let net_manager = app.net_manager();
+                            let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+                        }
+                    });
+                })
             });
 
         egui::CentralPanel::default()
