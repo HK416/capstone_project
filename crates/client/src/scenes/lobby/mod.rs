@@ -1,4 +1,6 @@
 mod enter;
+mod join_modal;
+mod msg_modal;
 
 use std::error::Error;
 
@@ -22,7 +24,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-pub use self::enter::*;
+pub use self::{enter::*, join_modal::*, msg_modal::*};
 
 use super::{CustomGameRoomScene, BASE_WIDTH};
 
@@ -229,7 +231,18 @@ impl GameScene for MainLobbyScene {
                         return;
                     }
 
-                    if ui.add(join_button).clicked() {}
+                    if ui.add(join_button).clicked() {
+                        // 다음 게임 장면으로 전환합니다.
+                        let next_scene = Box::new(MainLobbyJoinModalScene::new(
+                            self.locale,
+                            self.user_info.uid,
+                            self.token,
+                        ));
+                        let scene_flow = GameSceneFlow::Push(next_scene);
+                        let event = AppEvent::SetGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
+                    }
                 });
             });
 

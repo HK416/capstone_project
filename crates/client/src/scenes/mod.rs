@@ -83,6 +83,18 @@ impl fmt::Debug for MainLobbyScene {
     }
 }
 
+impl fmt::Debug for MainLobbyJoinModalScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(MainLobbyJoinModalScene))
+    }
+}
+
+impl fmt::Debug for MainLobbyMessageModalScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(MainLobbyMessageModalScene))
+    }
+}
+
 impl fmt::Debug for CustomGameRoomScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(CustomGameRoomScene))
