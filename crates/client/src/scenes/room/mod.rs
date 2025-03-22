@@ -8,14 +8,17 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{CustomGamePlayer, LoginToken, UserId, WorldId},
+    components::{
+        CustomGamePlayer, CustomGameStatus, LoginToken, Permission, Team, UserId, WorldId,
+        MAX_CUSTOM_GAME_PLAYERS,
+    },
     protocol::{CustomGameLeavePacket, CustomGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
 
 use crate::{
-    asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD},
+    asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
     SERVER_TCP_ADDR,
 };
@@ -121,7 +124,7 @@ impl GameScene for CustomGameRoomScene {
                 let packet = CustomGamePullPacket::from_raw(packet);
                 self.players = packet.players;
                 self.players
-                    .sort_by(|lhs, rhs| lhs.info.uid.cmp(&rhs.info.uid));
+                    .sort_by(|lhs, rhs| rhs.info.uid.cmp(&lhs.info.uid));
             }
             _ => {
                 log::warn!("invalid packet received! (TYPE:{:?})", packet_type);
@@ -169,6 +172,7 @@ impl GameScene for CustomGameRoomScene {
 
         // 폰트 속성
         let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
 
         // Head 텍스트
         let i = self.locale as usize;
@@ -221,6 +225,60 @@ impl GameScene for CustomGameRoomScene {
                         event_loop_proxy.send_event(event).unwrap();
                     }
                     ui.label(head_text);
+                });
+            });
+
+        egui::Area::new(egui::Id::new("List_Layout"))
+            .anchor(egui::Align2::CENTER_CENTER, (-72.0 * scale, 0.0))
+            .show(app.egui_ctx(), |ui| {
+                ui.set_width(960.0 * scale);
+                ui.set_height(500.0 * scale);
+
+                ui.columns(2, |cols| {
+                    let font_id = egui::FontId::new(24.0 * scale, main_font_family);
+                    let mut iter = self.players.iter();
+                    for i in 0..MAX_CUSTOM_GAME_PLAYERS {
+                        let ui = &mut cols[i % 2];
+                        if let Some(player) = iter.next() {
+                            let text = if player.info.uid == self.user_id {
+                                &format!("*{}", &player.info.name.to_string())
+                            } else {
+                                &player.info.name.to_string()
+                            };
+                            let text = egui::RichText::new(text)
+                                .font(font_id.clone())
+                                .color(egui::Color32::DARK_GRAY);
+                            let button = egui::Button::new(text)
+                                .corner_radius(1.0)
+                                .min_size((470.0 * scale, 80.0 * scale).into())
+                                .stroke(egui::Stroke::new(
+                                    3.0,
+                                    match player.team {
+                                        Team::Blue => match player.status {
+                                            CustomGameStatus::Ready => egui::Color32::BLUE,
+                                            _ => egui::Color32::DARK_BLUE,
+                                        },
+                                        Team::Red => match player.status {
+                                            CustomGameStatus::Ready => egui::Color32::RED,
+                                            _ => egui::Color32::DARK_RED,
+                                        },
+                                    },
+                                ))
+                                .fill(match player.permission {
+                                    Permission::Admin => egui::Color32::YELLOW,
+                                    Permission::User => egui::Color32::WHITE,
+                                });
+                            ui.add(button);
+                        } else {
+                            let button = egui::Button::new("")
+                                .corner_radius(1.0)
+                                .min_size((470.0 * scale, 80.0 * scale).into())
+                                .stroke(egui::Stroke::new(3.0, egui::Color32::DARK_GRAY))
+                                .fill(egui::Color32::LIGHT_GRAY);
+                            ui.add(button);
+                        }
+                        ui.add_space(20.0 * scale);
+                    }
                 });
             });
 

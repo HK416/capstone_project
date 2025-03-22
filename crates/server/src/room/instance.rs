@@ -4,10 +4,10 @@ use std::sync::{
 };
 
 use ahash::{HashMap, RandomState};
-use mod_network::components::{
+use mod_network::{components::{
     CustomGamePlayer, CustomGameStatus, JoinFailedReason, Permission, Team, UserId, UserInfo,
     WorldId,
-};
+}, protocol::{CustomGamePullPacket, Packet}};
 use parking_lot::{FairMutex, RwLock};
 use rand::seq::SliceRandom;
 
@@ -165,5 +165,19 @@ impl CustomGameRoom {
             return true;
         }
         false
+    }
+
+    /// 커스텀 게임에 참가한 세션에 주기적으로 패킷을 전송합니다.
+    pub fn on_process(&self) {
+        // 락을 획득합니다.
+        let players = self.players.lock();
+        
+        // 패킷을 생성합니다.
+        let packet = CustomGamePullPacket::from_iter(players.values().cloned());
+        
+        // 패킷을 각 세션에 전송합니다.
+        for session in players.keys() {
+            session.tcp_write(packet.as_raw());
+        }
     }
 }

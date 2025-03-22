@@ -91,8 +91,11 @@ impl CustomGamePool {
 async fn running_loop(retires: Arc<Queue<Arc<CustomGameRoom>>>, room: Arc<CustomGameRoom>) {
     // 활성화된 커스텀 게임 대기실을 실행합니다.
     while room.is_activate() {
+        // 커스텀 게임을 실행합니다.
+        room.on_process();
+
         // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2)).await;
     }
 
     // 비활성화된 커스텀 게임 대기실을 회수합니다.
