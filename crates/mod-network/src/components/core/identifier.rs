@@ -38,7 +38,7 @@ impl Default for ObjectId {
 
 impl fmt::Display for ObjectId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:o}", &self.0)
+        write!(f, "{}", &self.0)
     }
 }
 
@@ -75,7 +75,7 @@ impl Default for UserId {
 
 impl fmt::Display for UserId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:o}", &self.0)
+        write!(f, "{}", &self.0)
     }
 }
 
@@ -106,7 +106,7 @@ impl BigEndian for WorldId {
 
 impl fmt::Display for WorldId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:X}", &self.0)
+        write!(f, "{}", &self.0)
     }
 }
 

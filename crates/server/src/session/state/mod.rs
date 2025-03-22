@@ -8,7 +8,7 @@
 //! - Room: 클라이언트가 커스텀 게임 대기실 장면에 있는 상태입니다.
 //! - InGame: 클라이언트가 인게임 장면에 있는 상태입니다.
 //!
-mod in_game;
+// mod in_game;
 mod lobby;
 mod login;
 mod room;
@@ -55,7 +55,7 @@ impl<'a> SessionStateManager<'a> {
     /// 세션 상태 관리자를 실행합니다.
     pub async fn run(mut self) {
         let session = self.session;
-        let init_state = Box::new(VerifyState);
+        let init_state = Box::new(VerifyState::new());
         let mut control_flow = Some(ControlFlow::Reset(init_state));
 
         while session.is_running() {

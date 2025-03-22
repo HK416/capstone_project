@@ -33,7 +33,7 @@ impl UserTokenMap {
     }
 
     /// 사용자의 로그인 토큰을 확인합니다.
-    pub fn verify(key: &(UserId, SocketAddr), token: LoginToken) -> bool {
+    pub fn is_valid(key: &(UserId, SocketAddr), token: LoginToken) -> bool {
         get_tokens().get(key).is_some_and(|item| {
             // 로그인 토큰이 일치하는지, 토큰 발행 시간이 30분을 넘기지 않았는지 확인합니다.
             item.0 == token && item.1.elapsed() < Duration::from_secs(1800)

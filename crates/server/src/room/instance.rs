@@ -5,7 +5,8 @@ use std::sync::{
 
 use ahash::{HashMap, RandomState};
 use mod_network::components::{
-    CustomGamePlayer, CustomGameStatus, JoinFailedReason, Permission, Team, UserId, WorldId,
+    CustomGamePlayer, CustomGameStatus, JoinFailedReason, Permission, Team, UserId, UserInfo,
+    WorldId,
 };
 use parking_lot::{FairMutex, RwLock};
 use rand::seq::SliceRandom;
@@ -50,17 +51,17 @@ impl CustomGameRoom {
     }
 
     /// 커스텀 게임 대기실을 재설정합니다.
-    pub fn reset(&self, session: &Arc<Session>) -> Vec<CustomGamePlayer> {
+    pub fn reset(&self, user_info: UserInfo, session: &Arc<Session>) -> Vec<CustomGamePlayer> {
         // 플레이어 집합을 비웁니다.
         let mut players = self.players.lock();
         players.clear();
 
         // 커스텀 게임 관리자 플레이어를 추가합니다.
-        *self.admin.write() = session.user().uid;
+        *self.admin.write() = user_info.uid;
         players.insert(
             session.clone(),
             CustomGamePlayer {
-                info: session.user().clone(),
+                info: user_info,
                 team: Team::Blue,
                 permission: Permission::Admin,
                 status: CustomGameStatus::Wait,
@@ -81,7 +82,11 @@ impl CustomGameRoom {
     /// 커스텀 게임에 해당 플레이어를 추가합니다.  
     /// - 플레이어 추가에 성공한 경우 현재 참여한 플레이어 정보를 반환합니다.  
     /// - 플레이어 추가에 실패한 경우 실패 사유를 반환합니다.  
-    pub fn join(&self, session: &Arc<Session>) -> Result<Vec<CustomGamePlayer>, JoinFailedReason> {
+    pub fn join(
+        &self,
+        user_info: UserInfo,
+        session: &Arc<Session>,
+    ) -> Result<Vec<CustomGamePlayer>, JoinFailedReason> {
         // 락을 획득합니다.
         let mut players = self.players.lock();
 
@@ -109,7 +114,7 @@ impl CustomGameRoom {
         players.insert(
             session.clone(),
             CustomGamePlayer {
-                info: session.user().clone(),
+                info: user_info,
                 team: if red_team_players < blue_team_players {
                     Team::Red
                 } else {
@@ -147,5 +152,18 @@ impl CustomGameRoom {
                 *self.admin.write() = player.info.uid;
             }
         }
+    }
+
+    /// 세션에 해당하는 커스텀 게임 참가 플레이어에 접근합니다.
+    pub fn access<F>(&self, session: &Arc<Session>, func: F) -> bool
+    where
+        F: FnOnce(&mut CustomGamePlayer),
+    {
+        let mut players = self.players.lock();
+        if let Some(player) = players.get_mut(session) {
+            func(player);
+            return true;
+        }
+        false
     }
 }

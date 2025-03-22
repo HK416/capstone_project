@@ -9,13 +9,13 @@ use mod_network::components::{UserId, UserInfo, UserName};
 pub struct AccountManager;
 
 impl AccountManager {
-    /// 사용자 계정을 할당하는 **임시** 함수입니다.
+    /// 사용자 계정을 할당하는 **"임시"** 함수입니다.
     pub fn alloc() -> UserInfo {
         static COUNT: AtomicU32 = AtomicU32::new(1);
         let id = COUNT.fetch_add(1, MemOrdering::AcqRel);
-        UserInfo {
-            uid: UserId::new(id),
-            name: UserName::new(&format!("Player_{}", id)),
-        }
+        let uid = UserId::new(id);
+        let name = UserName::new(&format!("Player_{}", uid));
+        let user_info = UserInfo::new(uid, name);
+        user_info
     }
 }

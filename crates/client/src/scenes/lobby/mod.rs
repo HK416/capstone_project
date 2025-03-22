@@ -2,25 +2,34 @@ mod enter;
 
 use std::error::Error;
 
-use mod_app::{app::AppHandle, etc::AppEvent, scene::{GameScene, GameSceneFlow}};
-use mod_network::{components::{LoginToken, UserInfo, WorldId}, protocol::{CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket, Packet, PacketType, RawPacket}};
+use mod_app::{
+    app::AppHandle,
+    etc::AppEvent,
+    scene::{GameScene, GameSceneFlow},
+};
+use mod_network::{
+    components::{LoginToken, UserInfo, WorldId},
+    protocol::{
+        CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket, Packet, PacketType, RawPacket,
+    },
+};
 use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
 
-use crate::{asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR}, config::{Locale, NUM_LOCALE}, SERVER_TCP_ADDR};
+use crate::{
+    asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    config::{Locale, NUM_LOCALE},
+    SERVER_TCP_ADDR,
+};
 
 pub use self::enter::*;
 
 use super::{CustomGameRoomScene, BASE_WIDTH};
 
 /// 애플리케이션 표시 언어에 따른 `커스텀 게임 생성` 버튼 텍스트입니다.
-const CREATE_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = [
-    "게임 생성"
-];
+const CREATE_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["게임 생성"];
 /// 애플리케이션 표시 언어에 따른 `커스텀 게임 참가` 버튼 텍스트입니다.
-const JOIN_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = [
-    "게임 참가"
-];
+const JOIN_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참가"];
 
 /// 게임의 메인 로비 화면입니다.
 pub struct MainLobbyScene {
@@ -45,7 +54,7 @@ impl MainLobbyScene {
             locale,
             user_info,
             token,
-            button_enabled: true, 
+            button_enabled: true,
             bg_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
@@ -105,31 +114,30 @@ impl GameScene for MainLobbyScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CustomGameJoinFailed => {
-                
-            },
+            PacketType::CustomGameJoinFailed => {}
             PacketType::CustomGameJoinSuccess => {
                 // 패킷을 생성합니다
                 let packet = CustomGameJoinSuccessPacket::from_raw(packet);
-                
+
                 // 게임 장면을 변경합니다.
                 let next_scene = Box::new(CustomGameRoomScene::new(
-                    self.locale, 
-                    self.user_info.uid, 
-                    self.token, 
-                    packet.world_id, 
-                    packet.players
+                    self.locale,
+                    self.user_info.uid,
+                    self.token,
+                    packet.world_id,
+                    packet.players,
                 ));
                 let scene_flow = GameSceneFlow::Push(next_scene);
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
-            },
-            PacketType::LobbyPull => {
-
-            },
+            }
+            PacketType::LobbyPull => {}
             _ => {
-                log::warn!("packet ignored: invalid packet received! (TYPE:{:?})", packet_type);
+                log::warn!(
+                    "packet ignored: invalid packet received! (TYPE:{:?})",
+                    packet_type
+                );
             }
         }
 
@@ -167,7 +175,7 @@ impl GameScene for MainLobbyScene {
             .fill(egui::Color32::LIGHT_GRAY)
             .corner_radius(3.0)
             .stroke(egui::Stroke::new(1.0, egui::Color32::DARK_GRAY));
-        
+
         // 게임 참가 버튼
         let text = JOIN_GAME_BTN_TEXTS[i];
         let text = egui::RichText::new(text)
@@ -209,21 +217,19 @@ impl GameScene for MainLobbyScene {
                     if ui.add(create_button).clicked() {
                         // 커스텀 게임 생성 패킷을 생성합니다.
                         let packet = CustomGameJoinRequestPacket::new(
-                            WorldId::NULL, 
-                            self.user_info.uid, 
-                            self.token
+                            WorldId::NULL,
+                            self.user_info.uid,
+                            self.token,
                         );
-                        
+
                         // 패킷을 전송합니다.
                         let net_manager = app.net_manager();
                         let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
                         socket.push_packet(packet.as_raw());
                         return;
                     }
-                    
-                    if ui.add(join_button).clicked() {
-                        
-                    }
+
+                    if ui.add(join_button).clicked() {}
                 });
             });
 

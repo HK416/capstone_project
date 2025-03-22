@@ -4,7 +4,7 @@ mod formula;
 mod room;
 mod session;
 mod token;
-mod world;
+// mod world;
 
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 
@@ -15,7 +15,7 @@ use session::{Session, SessionManager, handle_connection};
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::Level;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
-use world::{GameWorld, update_game_world};
+// use world::{GameWorld, update_game_world};
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
@@ -49,13 +49,13 @@ pub async fn run_server(addr: &str) {
     let udp_sender_clone = udp_sender.clone();
     tokio::spawn(udp_packet_send_loop(udp_send_socket, udp_sender_clone));
 
-    // 새로운 쓰레드에서 클라이언트 연결 관리
-    tokio::spawn(wait_for_players(listener, udp_sender));
+    // 클라이언트 연결 관리
+    wait_for_players(listener, udp_sender).await;
 
     // 게임 월드 업데이트
     // TODO: 나중에 여러 개의 게임 월드를 실행해야함.
-    let world = GameWorld::get_instance();
-    update_game_world(world).await;
+    // let world = GameWorld::get_instance();
+    // update_game_world(world).await;
 }
 
 /// UDP 통신으로 수신된 패킷을 각 세션에 전달하는 루프 함수입니다.

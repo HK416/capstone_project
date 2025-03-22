@@ -11,10 +11,7 @@ use std::{
     },
 };
 
-use mod_network::{
-    components::{LoginToken, UserInfo},
-    protocol::{PacketParser, RawPacket},
-};
+use mod_network::protocol::{PacketParser, RawPacket};
 use mod_parallelism::collections::Queue;
 use state::SessionStateManager;
 use tokio::{
@@ -32,8 +29,6 @@ pub use self::pool::*;
 pub struct Session {
     /// 클라이언트 소켓 주소
     addr: SocketAddr,
-    /// 세션의 사용자 데이터
-    info: UserInfo,
 
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
@@ -51,17 +46,11 @@ impl Session {
     pub fn new(addr: SocketAddr, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) -> Self {
         Self {
             addr,
-            info: UserInfo::default(),
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
             running: AtomicBool::new(true),
         }
-    }
-
-    /// 세션의 사용자 정보를 반환합니다.
-    pub fn user(&self) -> &UserInfo {
-        &self.info
     }
 
     /// 클라이언트 세션이 동작중인지 여부를 반환합니다.
@@ -116,25 +105,25 @@ impl cmp::Eq for Session {}
 
 impl cmp::PartialEq for Session {
     fn eq(&self, other: &Self) -> bool {
-        self.info.eq(&other.info)
+        self.addr.eq(&other.addr)
     }
 }
 
 impl cmp::Ord for Session {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.info.cmp(&other.info)
+        self.addr.cmp(&other.addr)
     }
 }
 
 impl cmp::PartialOrd for Session {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.info.partial_cmp(&other.info)
+        self.addr.partial_cmp(&other.addr)
     }
 }
 
 impl hash::Hash for Session {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.info.hash(state)
+        self.addr.hash(state)
     }
 }
 

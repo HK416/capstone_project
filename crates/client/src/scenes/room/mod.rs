@@ -46,11 +46,11 @@ impl CustomGameRoomScene {
     /// `UserId` 또는 `LoginToken`이 NULL인 경우 `panic!`을 호출합니다.
     ///
     pub fn new<I>(
-        locale: Locale, 
-        user_id: UserId, 
+        locale: Locale,
+        user_id: UserId,
         token: LoginToken,
-        world_id: WorldId, 
-        iter: I
+        world_id: WorldId,
+        iter: I,
     ) -> Self
     where
         I: IntoIterator<Item = CustomGamePlayer>,
@@ -65,10 +65,10 @@ impl CustomGameRoomScene {
             token,
             world_id,
             players: iter.into_iter().collect(),
-            bg_texture_id: egui::load::SizedTexture { 
-                id: egui::TextureId::User(0), 
-                size: egui::Vec2::ZERO 
-            }
+            bg_texture_id: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
         }
     }
 }
@@ -135,26 +135,29 @@ impl GameScene for CustomGameRoomScene {
         _app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         {
-            let _rpass = encoder
-                .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some(&format!("RenderPass({})", stringify!(CustomGameRoomScene))),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), 
-                            store: wgpu::StoreOp::Store,
-                        },
-                        view: render_target_view,
-                        resolve_target: None,
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
+            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some(&format!("RenderPass({})", stringify!(CustomGameRoomScene))),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    view: render_target_view,
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
         }
         Ok(())
     }
 
-    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
         let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;

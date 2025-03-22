@@ -149,11 +149,7 @@ impl GameScene for MainLobbyEnterScene {
 
         // 다음 게임 장면으로 전환합니다.
         if self.num_remaining_tasks == 0 {
-            let next_scene = Box::new(MainLobbyScene::new(
-                self.locale, 
-                self.user_info, 
-                self.token
-            ));
+            let next_scene = Box::new(MainLobbyScene::new(self.locale, self.user_info, self.token));
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
