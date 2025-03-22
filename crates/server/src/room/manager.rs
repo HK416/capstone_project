@@ -74,6 +74,9 @@ impl CustomGamePool {
             }
         };
 
+        log::info!("CustomGameRoom({}) is allocated.", room.id());
+        println!("CustomGameRoom({}) is allocated.", room.id());
+
         // 커스텀 게임 대기실을 초기화합니다.
         let players = room.reset(user_info, session);
 
@@ -93,5 +96,7 @@ async fn running_loop(retires: Arc<Queue<Arc<CustomGameRoom>>>, room: Arc<Custom
     }
 
     // 비활성화된 커스텀 게임 대기실을 회수합니다.
+    log::info!("CustomGameRoom({}) is released.", room.id());
+    println!("CustomGameRoom({}) is released.", room.id());
     retires.push(room);
 }

@@ -2,10 +2,14 @@
 //!
 use std::error::Error;
 
-use mod_app::{app::AppHandle, scene::GameScene};
+use mod_app::{
+    app::AppHandle,
+    etc::AppEvent,
+    scene::{GameScene, GameSceneFlow},
+};
 use mod_network::{
     components::{CustomGamePlayer, LoginToken, UserId, WorldId},
-    protocol::{CustomGamePullPacket, Packet, PacketType, RawPacket},
+    protocol::{CustomGameLeavePacket, CustomGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
@@ -13,6 +17,7 @@ use winit::window::Window;
 use crate::{
     asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD},
     config::{Locale, NUM_LOCALE},
+    SERVER_TCP_ADDR,
 };
 
 use super::BASE_WIDTH;
@@ -164,15 +169,21 @@ impl GameScene for CustomGameRoomScene {
 
         // 폰트 속성
         let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let head_font_id = egui::FontId::new(32.0 * scale, head_font_family);
-        let head_font_color = egui::Color32::DARK_GRAY;
 
-        // 텍스트
+        // Head 텍스트
         let i = self.locale as usize;
-        let head_text = format!("{} - {}", HEAD_TEXTS[i], self.world_id);
-        let head_text = egui::RichText::new(head_text)
-            .font(head_font_id)
-            .color(head_font_color);
+        let text = format!("{} - {}", HEAD_TEXTS[i], self.world_id);
+        let font_id = egui::FontId::new(32.0 * scale, head_font_family.clone());
+        let head_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::DARK_GRAY);
+
+        // 나가기 버튼
+        // TODO: 나중에 이미지 버튼으로 수정해야 함.
+        let exit_button = egui::Button::new("X")
+            .corner_radius(1.5)
+            .fill(egui::Color32::WHITE)
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::DARK_GRAY));
 
         // 배경화면
         let source = self.bg_texture_id;
@@ -192,11 +203,25 @@ impl GameScene for CustomGameRoomScene {
             ),
         };
 
-        egui::Area::new(egui::Id::new("World_Id"))
-            .anchor(egui::Align2::LEFT_TOP, (32.0 * scale, 8.0 * scale))
+        egui::Area::new(egui::Id::new("Head_Layout"))
+            .anchor(egui::Align2::LEFT_TOP, (16.0 * scale, 16.0 * scale))
             .show(app.egui_ctx(), |ui| {
-                ui.style_mut().interaction.selectable_labels = false;
-                ui.label(head_text);
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    if ui.add(exit_button).clicked() {
+                        // 패킷을 생성하고 전송합니다.
+                        let packet = CustomGameLeavePacket::new(self.user_id, self.token);
+                        let net_manager = app.net_manager();
+                        let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                        socket.push_packet(packet.as_raw());
+
+                        // 장면을 전환합니다.
+                        let scene_flow = GameSceneFlow::Pop;
+                        let event = AppEvent::SetGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
+                    }
+                    ui.label(head_text);
+                });
             });
 
         egui::CentralPanel::default()
