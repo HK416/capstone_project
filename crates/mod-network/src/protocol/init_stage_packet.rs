@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, Epoch, InGamePlayer, StageKind, TryFromBigEndian};
+use crate::components::{BigEndian, Epoch, PlayPhasePlayer, StageKind, TryFromBigEndian};
 
 use crate::protocol::{Packet, PacketType, RawPacket};
 
@@ -13,11 +13,11 @@ pub struct InitStagePacket {
     /// 클라이언트를 포함한 게임 월드에 존재하는 플레이어의 수
     pub num_players: u16,
     /// 클라이언트를 포함한 게임 월드 플레이어 데이터
-    pub players: Vec<InGamePlayer>,
+    pub players: Vec<PlayPhasePlayer>,
 }
 
 impl InitStagePacket {
-    pub fn new(epoch: Epoch, stage_kind: StageKind, players: Vec<InGamePlayer>) -> Self {
+    pub fn new(epoch: Epoch, stage_kind: StageKind, players: Vec<PlayPhasePlayer>) -> Self {
         Self {
             epoch,
             stage_kind,
@@ -48,7 +48,7 @@ impl Packet for InitStagePacket {
         let data_size = Epoch::byte_size()
             + StageKind::byte_size()
             + u16::byte_size()
-            + InGamePlayer::byte_size() * self.num_players as usize;
+            + PlayPhasePlayer::byte_size() * self.num_players as usize;
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.epoch.to_big_endian_bytes());
         data.extend_from_slice(&self.stage_kind.to_big_endian_bytes());
@@ -105,9 +105,9 @@ impl Packet for InitStagePacket {
         let mut players = Vec::with_capacity(count);
         while count > 0 {
             offset = offset + size;
-            size = InGamePlayer::byte_size();
+            size = PlayPhasePlayer::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(InGamePlayer::try_from_big_endian_bytes(data)?);
+            players.push(PlayPhasePlayer::try_from_big_endian_bytes(data)?);
             count -= 1;
         }
 
@@ -122,7 +122,7 @@ impl Packet for InitStagePacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{UserId, UserInfo, UserName};
+    use crate::components::{UserId, UserAccount, UserName};
 
     use super::*;
 
@@ -132,12 +132,12 @@ mod tests {
             Epoch::new(0),
             StageKind::City,
             vec![
-                InGamePlayer {
-                    info: UserInfo::new(UserId::new(123456), UserName::new("Foo")),
+                PlayPhasePlayer {
+                    account: UserAccount::new(UserId::new(123456), UserName::from_str("Foo")),
                     ..Default::default()
                 },
-                InGamePlayer {
-                    info: UserInfo::new(UserId::new(654321), UserName::new("Bar")),
+                PlayPhasePlayer {
+                    account: UserAccount::new(UserId::new(654321), UserName::from_str("Bar")),
                     ..Default::default()
                 },
             ],

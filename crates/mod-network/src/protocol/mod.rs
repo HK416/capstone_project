@@ -1,23 +1,15 @@
-pub mod draft;
+pub mod formation;
 pub mod lobby;
 pub mod room;
 pub mod title;
 
-mod enter_stage_packet;
-mod init_stage_packet;
 mod parser;
-mod pull_stage_packet;
-mod push_status_packet;
-mod udp_damage_log_packet;
 
 use std::io::{Error, ErrorKind};
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
-pub use self::{
-    draft::*, enter_stage_packet::*, init_stage_packet::*, lobby::*, parser::*,
-    pull_stage_packet::*, push_status_packet::*, room::*, title::*, udp_damage_log_packet::*,
-};
+pub use self::{formation::*, lobby::*, parser::*, room::*, title::*};
 
 /// 패킷의 종류
 #[repr(u8)]

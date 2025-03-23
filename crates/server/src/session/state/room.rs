@@ -91,7 +91,7 @@ impl RoomState {
         if let Some(room) = self.room.upgrade() {
             // 커스텀 게임 대기실에서 플레이어 정보를 제거합니다.
             if !room.access(session, |player| {
-                player.status = packet.status;
+                player.with_ready(packet.ready);
             }) {
                 log::warn!("{} accesses an invalid custom game player", session);
                 session.close();

@@ -1,8 +1,5 @@
 use crate::{
-    components::{
-        BigEndian, InGameDraftPlayer, LoginToken, Team, TryFromBigEndian, UserId,
-        MAX_IN_GAME_PLAYERS,
-    },
+    components::{BigEndian, FormationPhasePlayer, LoginToken, Team, UserId, MAX_IN_GAME_PLAYERS},
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -99,9 +96,9 @@ pub struct ProcessDraftPacket {
     /// 남은 캐릭터 편성 시간입니다.
     remaining_time: f32,
     /// 블루팀에 속한 플레이어 집합입니다.
-    blue_team_players: Vec<InGameDraftPlayer>,
+    blue_team_players: Vec<FormationPhasePlayer>,
     /// 레드팀에 속한 플레이어 집합입니다.
-    red_team_players: Vec<InGameDraftPlayer>,
+    red_team_players: Vec<FormationPhasePlayer>,
 }
 
 impl ProcessDraftPacket {
@@ -110,7 +107,7 @@ impl ProcessDraftPacket {
     /// # Panics
     /// 주어진 플레이어 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
-    pub fn new(remaining_time: f32, players: Vec<InGameDraftPlayer>) -> Self {
+    pub fn new(remaining_time: f32, players: Vec<FormationPhasePlayer>) -> Self {
         assert!(
             players.len() <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
@@ -119,7 +116,7 @@ impl ProcessDraftPacket {
         // 플레이어가 속한 팀에 따라 나눕니다.
         let (blue_team_players, red_team_players) = players
             .into_iter()
-            .partition(|player| player.team == Team::Blue);
+            .partition(|player| player.team() == Team::Blue);
 
         Self {
             remaining_time,
@@ -135,7 +132,7 @@ impl ProcessDraftPacket {
     ///
     pub fn from_iter<I>(remaining_time: f32, players: I) -> Self
     where
-        I: IntoIterator<Item = InGameDraftPlayer>,
+        I: IntoIterator<Item = FormationPhasePlayer>,
         I::IntoIter: ExactSizeIterator,
     {
         Self::new(remaining_time, players.into_iter().collect())
@@ -168,7 +165,7 @@ impl Packet for ProcessDraftPacket {
             "There are more people participaing in the game than the capacity!"
         );
         let data_size =
-            f32::byte_size() + u8::byte_size() + num_players * InGameDraftPlayer::byte_size();
+            f32::byte_size() + u8::byte_size() + num_players * FormationPhasePlayer::byte_size();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -226,9 +223,9 @@ impl Packet for ProcessDraftPacket {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
         for _ in 0..num_players {
             offset = offset + size;
-            size = InGameDraftPlayer::byte_size();
+            size = FormationPhasePlayer::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(InGameDraftPlayer::try_from_big_endian_bytes(data)?);
+            players.push(FormationPhasePlayer::from_big_endian_bytes(data));
         }
 
         Some(Self::new(remaining_time, players))
@@ -237,31 +234,41 @@ impl Packet for ProcessDraftPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{CharacterKind, DraftStatus, UserId, UserInfo, UserName};
+    use crate::components::{CharacterKind, UserAccount, UserId, UserName};
 
     use super::*;
 
     #[test]
     fn test_process_draft_packet() {
-        let player_0 = InGameDraftPlayer {
-            info: UserInfo::new(UserId::new(1234), UserName::new("Aris")),
-            character_kind: CharacterKind::ArisOriginal,
-            team: Team::Blue,
-            status: DraftStatus::Ready,
-        };
-        let player_1 = InGameDraftPlayer {
-            info: UserInfo::new(UserId::new(5678), UserName::new("Momoi")),
-            character_kind: CharacterKind::MomoiOriginal,
-            team: Team::Red,
-            status: DraftStatus::Wait,
-        };
-        let player_2 = InGameDraftPlayer {
-            info: UserInfo::new(UserId::new(9012), UserName::new("Midori")),
-            character_kind: CharacterKind::MidoriOriginal,
-            team: Team::Blue,
-            status: DraftStatus::Ready,
-        };
-        let players = vec![player_0, player_1, player_2];
+        let player_0 = FormationPhasePlayer::new(
+            UserAccount::new(UserId::new(123145234), UserName::from_str("Aris")),
+            Some(CharacterKind::ArisOriginal),
+            true,
+            true,
+            Team::Blue,
+        );
+        let player_1 = FormationPhasePlayer::new(
+            UserAccount::new(UserId::new(123324134), UserName::from_str("Yuzu")),
+            None,
+            true,
+            false,
+            Team::Blue,
+        );
+        let player_2 = FormationPhasePlayer::new(
+            UserAccount::new(UserId::new(6531234), UserName::from_str("Momoi")),
+            Some(CharacterKind::MomoiOriginal),
+            true,
+            true,
+            Team::Red,
+        );
+        let player_3 = FormationPhasePlayer::new(
+            UserAccount::new(UserId::new(61234534), UserName::from_str("Midori")),
+            Some(CharacterKind::MidoriOriginal),
+            true,
+            true,
+            Team::Red,
+        );
+        let players = vec![player_0, player_1, player_2, player_3];
 
         let origin = ProcessDraftPacket::new(3.123, players);
         let raw = origin.as_raw();

@@ -2,7 +2,7 @@ use std::{fs::File, io::Read};
 
 use ahash::HashMap;
 use lazy_static::lazy_static;
-use mod_network::components::{StageHeight, StageKind, StageLayoutData, NUM_STAGES};
+use mod_network::components::{NUM_STAGES, StageHeight, StageKind, StageLayoutData};
 use mod_physics::collision::ColliderTree;
 
 use super::get_current_path;

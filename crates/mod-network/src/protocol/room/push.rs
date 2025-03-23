@@ -1,5 +1,5 @@
 use crate::{
-    components::{BigEndian, CustomGameStatus, LoginToken, TryFromBigEndian, UserId},
+    components::{BigEndian, LoginToken, UserId},
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -75,16 +75,16 @@ impl Packet for CustomGameLeavePacket {
 pub struct CustomGamePushStatusPacket {
     pub user_id: UserId,
     pub token: LoginToken,
-    pub status: CustomGameStatus,
+    pub ready: bool,
 }
 
 impl CustomGamePushStatusPacket {
     /// 새로운 패킷을 생성합니다.
-    pub fn new(user_id: UserId, token: LoginToken, status: CustomGameStatus) -> Self {
+    pub fn new(user_id: UserId, token: LoginToken, ready: bool) -> Self {
         Self {
             user_id,
             token,
-            status,
+            ready,
         }
     }
 }
@@ -95,14 +95,19 @@ impl Packet for CustomGamePushStatusPacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size =
-            UserId::byte_size() + LoginToken::byte_size() + CustomGameStatus::byte_size();
+        let data_size = UserId::byte_size() + LoginToken::byte_size() + u8::byte_size();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.user_id.to_big_endian_bytes());
         data.extend_from_slice(&self.token.to_big_endian_bytes());
-        data.extend_from_slice(&self.status.to_big_endian_bytes());
+        data.extend_from_slice(
+            &match self.ready {
+                true => 0xFFu8,
+                false => 0x00u8,
+            }
+            .to_big_endian_bytes(),
+        );
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -143,14 +148,15 @@ impl Packet for CustomGamePushStatusPacket {
 
         // 플레이어 상태를 가져옵니다.
         offset = offset + size;
-        size = CustomGameStatus::byte_size();
+        size = u8::byte_size();
         data = &bytes[offset..offset + size];
-        let status = CustomGameStatus::try_from_big_endian_bytes(data)?;
+        let ready_field = u8::from_big_endian_bytes(data);
+        let ready = ready_field == 0xFF;
 
         Some(Self {
             user_id,
             token,
-            status,
+            ready,
         })
     }
 }
@@ -176,9 +182,9 @@ mod tests {
     fn test_custom_game_push_status_packet() {
         let user_id = UserId::new(851351);
         let token = LoginToken::new(501859034151);
-        let status = CustomGameStatus::Ready;
+        let ready = true;
 
-        let origin = CustomGamePushStatusPacket::new(user_id, token, status);
+        let origin = CustomGamePushStatusPacket::new(user_id, token, ready);
         let raw = origin.as_raw();
         let other = CustomGamePushStatusPacket::from_raw(raw);
 

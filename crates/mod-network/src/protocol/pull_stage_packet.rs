@@ -1,4 +1,4 @@
-use crate::components::{BigEndian, Bullet, Epoch, InGamePlayer, TryFromBigEndian};
+use crate::components::{BigEndian, Bullet, Epoch, PlayPhasePlayer, TryFromBigEndian};
 
 use super::{Packet, PacketType, RawPacket};
 
@@ -7,19 +7,15 @@ use super::{Packet, PacketType, RawPacket};
 #[derive(Debug, Clone, PartialEq)]
 pub struct PullStagePacket {
     pub epoch: Epoch,
-    pub num_players: u16,
-    pub players: Vec<InGamePlayer>,
-    pub num_bullets: u16,
+    pub players: Vec<PlayPhasePlayer>,
     pub bullets: Vec<Bullet>,
 }
 
 impl PullStagePacket {
-    pub fn new(epoch: Epoch, players: Vec<InGamePlayer>, bullets: Vec<Bullet>) -> Self {
+    pub fn new(epoch: Epoch, players: Vec<PlayPhasePlayer>, bullets: Vec<Bullet>) -> Self {
         Self {
             epoch,
-            num_players: players.len() as u16,
             players,
-            num_bullets: bullets.len() as u16,
             bullets,
         }
     }
@@ -29,9 +25,7 @@ impl Default for PullStagePacket {
     fn default() -> Self {
         Self {
             epoch: Epoch::new(0),
-            num_players: 0,
             players: Vec::default(),
-            num_bullets: 0,
             bullets: Vec::default(),
         }
     }
@@ -45,7 +39,7 @@ impl Packet for PullStagePacket {
     fn as_raw(&self) -> RawPacket {
         let data_size = Epoch::byte_size()
             + u16::byte_size()
-            + InGamePlayer::byte_size() * self.num_players as usize
+            + PlayPhasePlayer::byte_size() * self.num_players as usize
             + u16::byte_size()
             + Bullet::byte_size() * self.num_bullets as usize;
         let mut data = Vec::with_capacity(data_size);

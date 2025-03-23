@@ -9,8 +9,7 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        CustomGamePlayer, CustomGameStatus, LoginToken, Permission, Team, UserId, WorldId,
-        MAX_IN_GAME_PLAYERS,
+        LoginToken, Permission, RecruitPhasePlayer, Team, UserId, WorldId, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
         CustomGameLeavePacket, CustomGamePullPacket, CustomGamePushStatusPacket, Packet,
@@ -46,9 +45,8 @@ pub struct CustomGameRoomScene {
 
     /// 커스텀 게임 대기실의 월드 식별자입니다.
     world_id: WorldId,
-    /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.  
-    /// 사용자 식별자의 오름차순으로 정렬됩니다.
-    players: Vec<CustomGamePlayer>,
+    /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.
+    players: Vec<RecruitPhasePlayer>,
 
     /// 배경화면 텍스처의 식별자입니다.
     bg_texture_id: egui::load::SizedTexture,
@@ -68,7 +66,7 @@ impl CustomGameRoomScene {
         iter: I,
     ) -> Self
     where
-        I: IntoIterator<Item = CustomGamePlayer>,
+        I: IntoIterator<Item = RecruitPhasePlayer>,
         I::IntoIter: ExactSizeIterator,
     {
         assert_ne!(user_id, UserId::NULL, "invalid user identifier");
@@ -130,8 +128,6 @@ impl GameScene for CustomGameRoomScene {
             PacketType::CustomGamePull => {
                 let packet = CustomGamePullPacket::from_raw(packet);
                 self.players = packet.players;
-                self.players
-                    .sort_by(|lhs, rhs| rhs.info.uid.cmp(&lhs.info.uid));
             }
             _ => {
                 log::warn!("invalid packet received! (TYPE:{:?})", packet_type);
@@ -191,23 +187,23 @@ impl GameScene for CustomGameRoomScene {
 
         // 준비/시작 버튼 텍스트
         let mut other_players_ready = self.players.len() >= 2;
-        let mut current_permission = Permission::User;
-        let mut current_status = CustomGameStatus::Wait;
+        let mut permission = Permission::User;
+        let mut ready = false;
         for player in self.players.iter() {
-            if self.user_id == player.info.uid {
-                current_permission = player.permission;
-                current_status = player.status;
+            if self.user_id == player.account.uid {
+                permission = player.permission();
+                ready = player.is_ready();
             } else {
-                other_players_ready &= player.status == CustomGameStatus::Ready;
+                other_players_ready &= player.is_ready();
             }
         }
-        let button_color = match current_status {
-            CustomGameStatus::Ready => egui::Color32::YELLOW,
-            _ => egui::Color32::WHITE,
+        let button_color = match ready {
+            true => egui::Color32::YELLOW,
+            false => egui::Color32::WHITE,
         };
-        let enable_enter_button = current_permission == Permission::User
-            || (current_permission == Permission::Admin && other_players_ready);
-        let text = match current_permission {
+        let enable_enter_button = permission == Permission::User
+            || (permission == Permission::Admin && other_players_ready);
+        let text = match permission {
             Permission::Admin => START_TEXTS[i],
             Permission::User => READY_TEXTS[i],
         };
@@ -278,10 +274,10 @@ impl GameScene for CustomGameRoomScene {
                     for i in 0..MAX_IN_GAME_PLAYERS {
                         let ui = &mut cols[i % 2];
                         if let Some(player) = iter.next() {
-                            let text = if player.info.uid == self.user_id {
-                                &format!("*{}", &player.info.name.to_string())
+                            let text = if player.account.uid == self.user_id {
+                                &format!("*{}", &player.account.name.to_string())
                             } else {
-                                &player.info.name.to_string()
+                                &player.account.name.to_string()
                             };
                             let text = egui::RichText::new(text)
                                 .font(font_id.clone())
@@ -291,18 +287,18 @@ impl GameScene for CustomGameRoomScene {
                                 .min_size((470.0 * scale, 80.0 * scale).into())
                                 .stroke(egui::Stroke::new(
                                     3.0,
-                                    match player.team {
-                                        Team::Blue => match player.status {
-                                            CustomGameStatus::Ready => egui::Color32::BLUE,
-                                            _ => egui::Color32::DARK_BLUE,
+                                    match player.team() {
+                                        Team::Blue => match player.is_ready() {
+                                            true => egui::Color32::BLUE,
+                                            false => egui::Color32::DARK_BLUE,
                                         },
-                                        Team::Red => match player.status {
-                                            CustomGameStatus::Ready => egui::Color32::RED,
-                                            _ => egui::Color32::DARK_RED,
+                                        Team::Red => match player.is_ready() {
+                                            true => egui::Color32::RED,
+                                            false => egui::Color32::DARK_RED,
                                         },
                                     },
                                 ))
-                                .fill(match player.permission {
+                                .fill(match player.permission() {
                                     Permission::Admin => egui::Color32::YELLOW,
                                     Permission::User => egui::Color32::WHITE,
                                 });
@@ -329,16 +325,8 @@ impl GameScene for CustomGameRoomScene {
                     ui.centered_and_justified(|ui| {
                         if ui.add(enter_button).clicked() {
                             // 패킷을 생성하고 전송합니다.
-                            let packet = CustomGamePushStatusPacket::new(
-                                self.user_id,
-                                self.token,
-                                #[allow(unreachable_patterns)]
-                                match current_status {
-                                    CustomGameStatus::Ready => CustomGameStatus::Wait,
-                                    CustomGameStatus::Wait => CustomGameStatus::Ready,
-                                    _ => current_status,
-                                },
-                            );
+                            let packet =
+                                CustomGamePushStatusPacket::new(self.user_id, self.token, !ready);
                             let net_manager = app.net_manager();
                             let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
                             socket.push_packet(packet.as_raw());

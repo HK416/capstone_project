@@ -10,7 +10,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, UserInfo, WorldId},
+    components::{LoginToken, UserAccount, WorldId},
     protocol::{
         CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket, Packet, PacketType, RawPacket,
     },
@@ -38,7 +38,7 @@ pub struct MainLobbyScene {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
     /// 현재 클라이언트의 사용자 정보입니다.
-    user_info: UserInfo,
+    user_info: UserAccount,
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
@@ -51,7 +51,7 @@ pub struct MainLobbyScene {
 
 impl MainLobbyScene {
     /// 새로운 `MainLobbyScene`을 생성합니다.
-    pub fn new(locale: Locale, user_info: UserInfo, token: LoginToken) -> Self {
+    pub fn new(locale: Locale, user_info: UserAccount, token: LoginToken) -> Self {
         Self {
             locale,
             user_info,

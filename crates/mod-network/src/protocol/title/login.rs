@@ -1,6 +1,6 @@
 use crate::{
     components::{
-        BigEndian, Email, LoginFailedReason, LoginToken, Passwd, TryFromBigEndian, UserInfo,
+        BigEndian, Email, LoginFailedReason, LoginToken, Passwd, TryFromBigEndian, UserAccount,
     },
     protocol::{Packet, PacketType, RawPacket},
 };
@@ -145,14 +145,14 @@ impl Packet for LoginFailedPacket {
 /// 서버에서 클라이언트로 보내는 로그인 성공 알림 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoginSuccessPacket {
-    pub user_info: UserInfo,
+    pub account: UserAccount,
     pub token: LoginToken,
 }
 
 impl LoginSuccessPacket {
     /// 새로운 패킷을 생성합니다.
-    pub fn new(user_info: UserInfo, token: LoginToken) -> Self {
-        Self { user_info, token }
+    pub fn new(account: UserAccount, token: LoginToken) -> Self {
+        Self { account, token }
     }
 }
 
@@ -162,11 +162,11 @@ impl Packet for LoginSuccessPacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = UserInfo::byte_size() + LoginToken::byte_size();
+        let data_size = UserAccount::byte_size() + LoginToken::byte_size();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.user_info.to_big_endian_bytes());
+        data.extend_from_slice(&self.account.to_big_endian_bytes());
         data.extend_from_slice(&self.token.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
@@ -196,9 +196,9 @@ impl Packet for LoginSuccessPacket {
         // 사용자 정보를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = UserInfo::byte_size();
+        let mut size = UserAccount::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let user_info = UserInfo::from_big_endian_bytes(data);
+        let user_info = UserAccount::from_big_endian_bytes(data);
 
         // 로그인 토큰을 가져옵니다.
         offset = offset + size;
@@ -206,7 +206,10 @@ impl Packet for LoginSuccessPacket {
         data = &bytes[offset..offset + size];
         let token = LoginToken::from_big_endian_bytes(data);
 
-        Some(Self { user_info, token })
+        Some(Self {
+            account: user_info,
+            token,
+        })
     }
 }
 
@@ -243,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_login_success_packet() {
-        let user_info = UserInfo::new(UserId::new(1234566), UserName::new("Hello=안녕"));
+        let user_info = UserAccount::new(UserId::new(1234566), UserName::from_str("Hello=안녕"));
         let token = LoginToken::new(123451375890);
 
         let origin = LoginSuccessPacket::new(user_info, token);

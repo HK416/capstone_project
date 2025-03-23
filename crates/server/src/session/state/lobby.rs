@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mod_network::{
-    components::{JoinFailedReason, UserInfo, WorldId},
+    components::{JoinFailedReason, UserAccount, WorldId},
     protocol::{
         CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket,
         Packet, PacketType, RawPacket,
@@ -14,12 +14,12 @@ use super::{ControlFlow, SessionState, room::RoomState};
 
 #[derive(Debug)]
 pub struct LobbyState {
-    user_info: UserInfo,
+    user_info: UserAccount,
 }
 
 impl LobbyState {
     /// 새로운 `LobbyState`를 생성합니다.
-    pub fn new(user_info: UserInfo) -> Self {
+    pub fn new(user_info: UserAccount) -> Self {
         Self { user_info }
     }
 

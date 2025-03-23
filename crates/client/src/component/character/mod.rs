@@ -10,8 +10,8 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, GameInputBits, InGamePlayer, LatLon,
-    MovementState, MovementStateTimer, ViewState, ViewStateTimer, NUM_ACTION_STATES,
+    ActionState, ActionStateTimer, CharacterKind, GameInputBits, LatLon, MovementState,
+    MovementStateTimer, PlayPhasePlayer, ViewState, ViewStateTimer, NUM_ACTION_STATES,
     NUM_MOVEMENT_STATES,
 };
 use mod_render::{
@@ -114,7 +114,7 @@ pub fn load_character_model(
 /// - 시야 방향(`Latlon`)
 ///
 pub fn spawn_player_character(
-    player: &InGamePlayer,
+    player: &PlayPhasePlayer,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -148,9 +148,9 @@ pub fn spawn_player_character(
     ));
     let world_transform = WorldTransform::default();
     let health_point = player.health_point;
-    let action_state = player.action_state;
-    let movement_state = player.movement_state;
-    let view_state = player.view_state;
+    let action_state = player.action_state();
+    let movement_state = player.movement_state();
+    let view_state = player.view_state();
     let action_state_timer = player.action_state_timer;
     let movement_state_timer = player.movement_state_timer;
     let view_state_timer = player.view_state_timer;

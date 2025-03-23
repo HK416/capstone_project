@@ -1,6 +1,6 @@
 use crate::{
     components::{
-        BigEndian, CustomGamePlayer, JoinFailedReason, LoginToken, TryFromBigEndian, UserId,
+        BigEndian, JoinFailedReason, LoginToken, RecruitPhasePlayer, TryFromBigEndian, UserId,
         WorldId, MAX_IN_GAME_PLAYERS,
     },
     protocol::{Packet, PacketType, RawPacket},
@@ -155,7 +155,7 @@ impl Packet for CustomGameJoinFailedPacket {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomGameJoinSuccessPacket {
     pub world_id: WorldId,
-    pub players: Vec<CustomGamePlayer>,
+    pub players: Vec<RecruitPhasePlayer>,
 }
 
 impl CustomGameJoinSuccessPacket {
@@ -164,7 +164,7 @@ impl CustomGameJoinSuccessPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
-    pub fn new(world_id: WorldId, players: Vec<CustomGamePlayer>) -> Self {
+    pub fn new(world_id: WorldId, players: Vec<RecruitPhasePlayer>) -> Self {
         assert!(
             players.len() <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
@@ -179,7 +179,7 @@ impl CustomGameJoinSuccessPacket {
     ///
     pub fn from_iter<I>(world_id: WorldId, iter: I) -> Self
     where
-        I: IntoIterator<Item = CustomGamePlayer>,
+        I: IntoIterator<Item = RecruitPhasePlayer>,
         I::IntoIter: ExactSizeIterator,
     {
         Self::new(world_id, iter.into_iter().collect())
@@ -212,7 +212,7 @@ impl Packet for CustomGameJoinSuccessPacket {
             "There are more people participaing in the game than the capacity!"
         );
         let data_size =
-            WorldId::byte_size() + u8::byte_size() + num_players * CustomGamePlayer::byte_size();
+            WorldId::byte_size() + u8::byte_size() + num_players * RecruitPhasePlayer::byte_size();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -266,9 +266,9 @@ impl Packet for CustomGameJoinSuccessPacket {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
         for _ in 0..num_players {
             offset = offset + size;
-            size = CustomGamePlayer::byte_size();
+            size = RecruitPhasePlayer::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(CustomGamePlayer::try_from_big_endian_bytes(data)?);
+            players.push(RecruitPhasePlayer::from_big_endian_bytes(data));
         }
 
         Some(Self { world_id, players })
@@ -277,7 +277,7 @@ impl Packet for CustomGameJoinSuccessPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{CustomGameStatus, Permission, Team, UserInfo, UserName};
+    use crate::components::{Permission, RecruitPhasePlayer, Team, UserAccount, UserName};
 
     use super::*;
 
@@ -309,32 +309,32 @@ mod tests {
 
     #[test]
     fn test_custom_game_join_success_packet() {
-        let player_0 = CustomGamePlayer {
-            info: UserInfo::new(UserId::new(1), UserName::new("Foo")),
-            team: Team::Blue,
-            status: CustomGameStatus::Wait,
-            permission: Permission::Admin,
-        };
-        let player_1 = CustomGamePlayer {
-            info: UserInfo::new(UserId::new(1), UserName::new("Bar")),
-            team: Team::Red,
-            status: CustomGameStatus::Ready,
-            permission: Permission::User,
-        };
-        let player_2 = CustomGamePlayer {
-            info: UserInfo::new(UserId::new(1), UserName::new("Aris")),
-            team: Team::Blue,
-            status: CustomGameStatus::Wait,
-            permission: Permission::User,
-        };
-        let player_3 = CustomGamePlayer {
-            info: UserInfo::new(UserId::new(1), UserName::new("Momoi")),
-            team: Team::Red,
-            status: CustomGameStatus::Ready,
-            permission: Permission::User,
-        };
-        let world_id = WorldId::new(104321);
+        let player_0 = RecruitPhasePlayer::new(
+            UserAccount::new(UserId::new(12341), UserName::from_str("Aris")),
+            Team::Blue,
+            false,
+            Permission::Admin,
+        );
+        let player_1 = RecruitPhasePlayer::new(
+            UserAccount::new(UserId::new(21321), UserName::from_str("Yuzu")),
+            Team::Red,
+            true,
+            Permission::User,
+        );
+        let player_2 = RecruitPhasePlayer::new(
+            UserAccount::new(UserId::new(34121), UserName::from_str("Momoi")),
+            Team::Blue,
+            false,
+            Permission::User,
+        );
+        let player_3 = RecruitPhasePlayer::new(
+            UserAccount::new(UserId::new(14211), UserName::from_str("Midori")),
+            Team::Red,
+            true,
+            Permission::User,
+        );
         let players = vec![player_0, player_1, player_2, player_3];
+        let world_id = WorldId::new(104321);
 
         let origin = CustomGameJoinSuccessPacket::new(world_id, players);
         let raw = origin.as_raw();

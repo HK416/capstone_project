@@ -25,7 +25,7 @@ const SYNC_PACKET_TICK: f32 = 0.16;
 
 /// 인 게임 장면에 진입하기 전 캐릭터를 편성하는 장면입니다.  
 /// `InGameDraftScene`에서 사용할 에셋을 로드하고 다른 플레이어와 동기화합니다.
-pub struct InGameDraftEnterScene {
+pub struct EnterCharacterFormationScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
     /// 현재 사용자 식별자
@@ -42,7 +42,7 @@ pub struct InGameDraftEnterScene {
     num_remaining_task: usize,
 }
 
-impl InGameDraftEnterScene {
+impl EnterCharacterFormationScene {
     /// 새로운 `InGameDraftEnterScene`을 생성합니다.
     pub fn new(locale: Locale, user_id: UserId, token: LoginToken) -> Self {
         Self {
@@ -56,7 +56,7 @@ impl InGameDraftEnterScene {
     }
 }
 
-impl GameScene for InGameDraftEnterScene {
+impl GameScene for EnterCharacterFormationScene {
     fn on_update(
         &mut self,
         elapsed_time_sec: f32,

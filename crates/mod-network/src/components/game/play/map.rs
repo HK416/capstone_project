@@ -173,25 +173,23 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn creation_test_stage_kind() {
+    fn test_create_stage_kind() {
         let bytes = [127];
         StageKind::from_big_endian_bytes(&bytes);
     }
 
     #[test]
-    fn validation_test_stage_kind() {
+    fn _test_stage_kind() {
         let origin = StageKind::City;
         let bytes = origin.to_big_endian_bytes();
         let other = StageKind::from_big_endian_bytes(&bytes);
 
-        // 바이트 배열 크기가 같은지 확인
-        assert_eq!(StageKind::byte_size(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
     }
 
     #[test]
-    fn validation_test_player() {
+    fn test_player() {
         let origin = DamageLog {
             user_id: UserId::new(3141592),
             damage: HealthPoint(2700),
@@ -199,8 +197,6 @@ mod tests {
         let bytes = origin.to_big_endian_bytes();
         let other = DamageLog::from_big_endian_bytes(&bytes);
 
-        // 바이트 배열 크기가 같은지 확인
-        assert_eq!(DamageLog::byte_size(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
     }

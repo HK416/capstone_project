@@ -1,10 +1,11 @@
 pub mod core;
-pub mod entities;
+pub mod game;
 pub mod input;
 pub mod rendering;
 pub mod system;
 
-pub use self::{core::*, entities::*, input::*, rendering::*, system::*};
+#[allow(ambiguous_glob_reexports)]
+pub use self::{core::*, game::*, input::*, rendering::*, system::*};
 
 use serde::{Deserialize, Serialize};
 

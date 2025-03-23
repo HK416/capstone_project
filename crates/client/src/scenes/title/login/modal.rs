@@ -66,14 +66,14 @@ impl GameScene for GameLoginModalScene {
                 // 사용자 정보와 로그인 토큰을 저장합니다.
                 let packet = LoginSuccessPacket::from_raw(packet);
                 let mut config = UserConfig::get();
-                config.info = packet.user_info;
+                config.info = packet.account;
                 config.token = packet.token;
                 drop(config);
 
                 // 다음 게임 장면으로 전환합니다.
                 let next_scene = Box::new(MainLobbyEnterScene::new(
                     self.locale,
-                    packet.user_info,
+                    packet.account,
                     packet.token,
                 ));
                 let scene_flow = GameSceneFlow::Reset(next_scene);

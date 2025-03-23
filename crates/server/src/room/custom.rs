@@ -6,8 +6,7 @@ use std::sync::{
 use ahash::{HashMap, RandomState};
 use mod_network::{
     components::{
-        CustomGamePlayer, CustomGameStatus, JoinFailedReason, Permission, Team, UserId, UserInfo,
-        WorldId,
+        JoinFailedReason, Permission, RecruitPhasePlayer, Team, UserAccount, UserId, WorldId,
     },
     protocol::{CustomGamePullPacket, Packet},
 };
@@ -60,7 +59,7 @@ pub struct CustomGameRoom {
     admin: RwLock<UserId>,
 
     /// 참여한 플레이어 집합입니다.
-    players: FairMutex<HashMap<Arc<Session>, CustomGamePlayer>>,
+    players: FairMutex<HashMap<Arc<Session>, RecruitPhasePlayer>>,
 }
 
 impl CustomGameRoom {
@@ -83,21 +82,16 @@ impl CustomGameRoom {
     }
 
     /// 커스텀 게임 대기실을 재설정합니다.
-    pub fn reset(&self, user_info: UserInfo, session: &Arc<Session>) -> Vec<CustomGamePlayer> {
+    pub fn reset(&self, account: UserAccount, session: &Arc<Session>) -> Vec<RecruitPhasePlayer> {
         // 플레이어 집합을 비웁니다.
         let mut players = self.players.lock();
         players.clear();
 
         // 커스텀 게임 관리자 플레이어를 추가합니다.
-        *self.admin.write() = user_info.uid;
+        *self.admin.write() = account.uid;
         players.insert(
             session.clone(),
-            CustomGamePlayer {
-                info: user_info,
-                team: Team::Blue,
-                permission: Permission::Admin,
-                status: CustomGameStatus::Wait,
-            },
+            RecruitPhasePlayer::new(account, Team::Blue, false, Permission::Admin),
         );
 
         // 커스텀 게임 대기실을 활성화합니다.
@@ -118,9 +112,9 @@ impl CustomGameRoom {
     /// - 플레이어 추가에 실패한 경우 실패 사유를 반환합니다.  
     pub fn join(
         &self,
-        user_info: UserInfo,
+        account: UserAccount,
         session: &Arc<Session>,
-    ) -> Result<Vec<CustomGamePlayer>, JoinFailedReason> {
+    ) -> Result<Vec<RecruitPhasePlayer>, JoinFailedReason> {
         // 락을 획득합니다.
         let mut players = self.players.lock();
 
@@ -142,25 +136,21 @@ impl CustomGameRoom {
         let mut red_team_players = 0;
         let mut blue_team_players = 0;
         for player in players.values() {
-            match player.team {
+            match player.team() {
                 Team::Blue => blue_team_players += 1,
                 Team::Red => red_team_players += 1,
             };
         }
 
         // 플레이어를 생성합니다.
+        let team = if red_team_players < blue_team_players {
+            Team::Red
+        } else {
+            Team::Blue
+        };
         players.insert(
             session.clone(),
-            CustomGamePlayer {
-                info: user_info,
-                team: if red_team_players < blue_team_players {
-                    Team::Red
-                } else {
-                    Team::Blue
-                },
-                status: CustomGameStatus::Wait,
-                permission: Permission::User,
-            },
+            RecruitPhasePlayer::new(account, team, false, Permission::User),
         );
 
         Ok(players.values().cloned().collect())
@@ -182,16 +172,13 @@ impl CustomGameRoom {
 
             // 제거된 플레이어의 권한이 관리자인 경우
             // 남아있는 플레이어 중 무작위로 한 명을 선정하여 권한을 넘겨줍니다.
-            if player.permission == Permission::Admin {
+            if player.permission() == Permission::Admin {
                 let mut remaining_players: Vec<_> = players.values_mut().collect();
                 remaining_players.shuffle(&mut rand::rng());
 
                 let player = remaining_players.pop().unwrap();
-                player.permission = Permission::Admin;
-                if player.status == CustomGameStatus::Ready {
-                    player.status = CustomGameStatus::Wait;
-                }
-                *self.admin.write() = player.info.uid;
+                player.with_permission(Permission::Admin).with_ready(false);
+                *self.admin.write() = player.account.uid;
             }
         }
     }
@@ -199,7 +186,7 @@ impl CustomGameRoom {
     /// 세션에 해당하는 커스텀 게임 참가 플레이어에 접근합니다.
     pub fn access<F>(&self, session: &Arc<Session>, func: F) -> bool
     where
-        F: FnOnce(&mut CustomGamePlayer),
+        F: FnOnce(&mut RecruitPhasePlayer),
     {
         let mut players = self.players.lock();
         if let Some(player) = players.get_mut(session) {

@@ -6,7 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use mod_network::components::{CustomGamePlayer, UserInfo, WorldId};
+use mod_network::components::{RecruitPhasePlayer, UserAccount, WorldId};
 use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::session::Session;
@@ -57,9 +57,9 @@ impl CustomGamePool {
     /// 새로운 커스텀 게임 대기실을 생성합니다.  
     pub fn create(
         &self,
-        user_info: UserInfo,
+        account: UserAccount,
         session: &Arc<Session>,
-    ) -> (Arc<CustomGameRoom>, Vec<CustomGamePlayer>) {
+    ) -> (Arc<CustomGameRoom>, Vec<RecruitPhasePlayer>) {
         // 커스텀 게임 대기실을 할당받습니다.
         let room = match self.retires.pop() {
             Some(room) => room,
@@ -78,7 +78,7 @@ impl CustomGamePool {
         println!("CustomGameRoom({}) is allocated.", room.id());
 
         // 커스텀 게임 대기실을 초기화합니다.
-        let players = room.reset(user_info, session);
+        let players = room.reset(account, session);
 
         // 커스텀 게임 대기실을 실행합니다.
         tokio::spawn(running_loop(self.retires.clone(), room.clone()));

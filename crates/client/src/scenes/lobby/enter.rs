@@ -7,7 +7,7 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{LoginToken, UserInfo};
+use mod_network::components::{LoginToken, UserAccount};
 use mod_parallelism::collections::Queue;
 use mod_render::TexturePool;
 use rayon::ThreadPool;
@@ -26,7 +26,7 @@ pub struct MainLobbyEnterScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
     /// 사용자 계정 정보
-    user_info: UserInfo,
+    user_info: UserAccount,
     /// 로그인 토큰
     token: LoginToken,
 
@@ -38,7 +38,7 @@ pub struct MainLobbyEnterScene {
 
 impl MainLobbyEnterScene {
     /// 새로운 `MainLobbyEnterScene`을 생성합니다.
-    pub fn new(locale: Locale, user_info: UserInfo, token: LoginToken) -> Self {
+    pub fn new(locale: Locale, user_info: UserAccount, token: LoginToken) -> Self {
         Self {
             locale,
             user_info,
