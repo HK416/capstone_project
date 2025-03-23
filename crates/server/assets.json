@@ -39,7 +39,8 @@
                         "City_Plane_01_Height.json",
                         "City_Plane_02_Height.json",
                         "City_Plane_04_Height.json",
-                        "map.json"
+                        "map.json",
+                        "collider.json"
                     ],
                     "directories" : { }
                 }

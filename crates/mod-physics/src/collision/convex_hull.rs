@@ -1,7 +1,11 @@
 use std::collections::BinaryHeap;
 use crate::{
-    object3d::{BoundingBox, VertexBox, Capsule, Sphere},
-    collision::CollisionDetails,
+    object3d::{
+        BoundingBox, OrientedBoundingBox, VertexBox, 
+        Capsule, OrientedCapsule,
+        Sphere
+    },
+    collision::StaticCollisionDetails,
 };
 
 
@@ -96,10 +100,10 @@ pub trait ConvexHull {
         Some(simplex)
     }
 
-    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<CollisionDetails> {
+    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<StaticCollisionDetails> {
         let simplex = self.gjk(other)?;
         if simplex.count <= 1 {
-            return Some(CollisionDetails {
+            return Some(StaticCollisionDetails {
                 normal: glam::Vec3A::ZERO,
                 penetration: 0.0,
             });
@@ -131,7 +135,7 @@ pub trait ConvexHull {
                     panic!("No nearest face");
                 }
             };
-            let collision_info = CollisionDetails {
+            let collision_info = StaticCollisionDetails {
                 normal: -nearest_face.normal,
                 penetration: nearest_face.distance,
             };
@@ -203,7 +207,26 @@ impl ConvexHull for BoundingBox {
         vertex_box.gjk(other)
     }
 
-    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<CollisionDetails> {
+    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<StaticCollisionDetails> {
+        let vertex_box = VertexBox::from(self);
+        vertex_box.gjk_epa(other)
+    }
+}
+
+impl ConvexHull for OrientedBoundingBox {
+    fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
+        self.get_vertices().iter()
+            .max_by(|&a, &b| direction.dot(*a).partial_cmp(&direction.dot(*b)).unwrap())
+            .copied()
+            .unwrap()
+    }
+
+    fn gjk(&self, other: &impl ConvexHull) -> Option<Simplex> {
+        let vertex_box = VertexBox::from(self);
+        vertex_box.gjk(other)
+    }
+
+    fn gjk_epa(&self, other: &impl ConvexHull) -> Option<StaticCollisionDetails> {
         let vertex_box = VertexBox::from(self);
         vertex_box.gjk_epa(other)
     }
@@ -219,6 +242,18 @@ impl ConvexHull for VertexBox {
 }
 
 impl ConvexHull for Capsule {
+    fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
+        let capsule = OrientedCapsule::new(
+            self.center,
+            glam::Vec3::Y,
+            self.height,
+            self.radius,
+        ).unwrap();
+        capsule.get_furthest_point(direction)
+    }
+}
+
+impl ConvexHull for OrientedCapsule {
     fn get_furthest_point(&self, direction: &glam::Vec3A) -> glam::Vec3A {
         let seg = self.get_seg();
         let start = glam::Vec3A::from(seg.start);
