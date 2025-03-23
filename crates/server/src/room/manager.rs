@@ -11,7 +11,7 @@ use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::session::Session;
 
-use super::CustomGameRoom;
+use super::{CustomGameRoom, RoomStatus};
 
 /// 생성된 커스텀 게임을 관리하는 풀 객체입니다.
 #[derive(Debug)]
@@ -39,8 +39,8 @@ impl CustomGamePool {
     pub fn get(&self, key: &WorldId) -> Option<Arc<CustomGameRoom>> {
         self.pool
             .get(key)
+            .filter(|room| room.get_status() == RoomStatus::Activate)
             .map(|item| item.clone())
-            .filter(|room| room.is_activate())
     }
 
     /// 커스텀 게임 식별자를 생성합니다.
@@ -90,7 +90,7 @@ impl CustomGamePool {
 /// 커스텀 게임 대기실을 실행하는 루프 함수입니다.
 async fn running_loop(retires: Arc<Queue<Arc<CustomGameRoom>>>, room: Arc<CustomGameRoom>) {
     // 활성화된 커스텀 게임 대기실을 실행합니다.
-    while room.is_activate() {
+    while room.get_status() == RoomStatus::Activate {
         // 커스텀 게임을 실행합니다.
         room.on_process();
 
@@ -99,7 +99,9 @@ async fn running_loop(retires: Arc<Queue<Arc<CustomGameRoom>>>, room: Arc<Custom
     }
 
     // 비활성화된 커스텀 게임 대기실을 회수합니다.
-    log::info!("CustomGameRoom({}) is released.", room.id());
-    println!("CustomGameRoom({}) is released.", room.id());
-    retires.push(room);
+    if room.get_status() == RoomStatus::Deactivate {
+        log::info!("CustomGameRoom({}) is released.", room.id());
+        println!("CustomGameRoom({}) is released.", room.id());
+        retires.push(room);
+    }
 }

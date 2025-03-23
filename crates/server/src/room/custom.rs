@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering as MemOrdering},
+    atomic::{AtomicU8, Ordering as MemOrdering},
 };
 
 use ahash::{HashMap, RandomState};
@@ -19,11 +19,40 @@ use crate::session::Session;
 /// 최대 수용 가능한 플레이어 수 입니다.
 const MAX_PLAYERS: usize = 10;
 
+/// 게임 대기실의 상태 목록입니다.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RoomStatus {
+    Activate = 0,
+    Sleep = 1,
+    Deactivate = 2,
+}
+
+impl RoomStatus {
+    /// 주어진 정수로부터 `RoomStatus`를 생성합니다.
+    /// 주어진 정수가 범위를 벗어난 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Self::Activate),
+            1 => Some(Self::Sleep),
+            2 => Some(Self::Deactivate),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(RoomStatus),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
 /// 커스텀 게임 대기실입니다.
 #[derive(Debug)]
 pub struct CustomGameRoom {
     /// 커스텀 게임 대기실의 활성화 여부
-    is_activate: AtomicBool,
+    status: AtomicU8,
     /// 커스텀 게임의 게임 월드 식별자입니다.
     world_id: WorldId,
 
@@ -38,7 +67,7 @@ impl CustomGameRoom {
     /// 새로운 커스텀 게임 대기실을 생성합니다.
     pub fn new(world_id: WorldId) -> Self {
         Self {
-            is_activate: AtomicBool::new(false),
+            status: AtomicU8::new(RoomStatus::Deactivate as u8),
             world_id,
             admin: RwLock::new(UserId::NULL),
             players: FairMutex::new(HashMap::with_capacity_and_hasher(
@@ -72,14 +101,16 @@ impl CustomGameRoom {
         );
 
         // 커스텀 게임 대기실을 활성화합니다.
-        self.is_activate.store(true, MemOrdering::Relaxed);
+        self.status
+            .store(RoomStatus::Activate as u8, MemOrdering::Relaxed);
 
         players.values().cloned().collect()
     }
 
-    /// 커스텀 게임 대기실의 활성화 여부를 가져옵니다.
-    pub fn is_activate(&self) -> bool {
-        self.is_activate.load(MemOrdering::Acquire)
+    /// 커스텀 게임 대기실의 상태를 가져옵니다.
+    pub fn get_status(&self) -> RoomStatus {
+        let val = self.status.load(MemOrdering::Relaxed);
+        RoomStatus::new(val & 0x3).expect("out of bounds")
     }
 
     /// 커스텀 게임에 해당 플레이어를 추가합니다.  
@@ -94,9 +125,13 @@ impl CustomGameRoom {
         let mut players = self.players.lock();
 
         // 커스텀 게임이 활성화 상태인지 확인합니다.
-        if !self.is_activate.load(MemOrdering::Relaxed) {
-            return Err(JoinFailedReason::NotFound);
-        }
+        let val = self.status.load(MemOrdering::Relaxed);
+        let status = RoomStatus::new(val & 0x3).expect("out of bounds");
+        match status {
+            RoomStatus::Sleep => return Err(JoinFailedReason::InProgress),
+            RoomStatus::Deactivate => return Err(JoinFailedReason::NotFound),
+            _ => {}
+        };
 
         // 커스텀 게임 대기실에 인원이 가득찼는지 확인합니다.
         if players.len() == MAX_PLAYERS {
@@ -140,7 +175,8 @@ impl CustomGameRoom {
         if let Some(player) = players.remove(session) {
             // 모든 플레이어가 게임 대기실에서 나간 경우 대기실을 비활성화 합니다.
             if players.len() == 0 {
-                self.is_activate.store(false, MemOrdering::Release);
+                self.status
+                    .store(RoomStatus::Deactivate as u8, MemOrdering::Release);
                 return;
             }
 
