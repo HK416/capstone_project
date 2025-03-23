@@ -1,6 +1,7 @@
 mod account;
 mod data;
 mod formula;
+mod game;
 mod room;
 mod session;
 mod token;
