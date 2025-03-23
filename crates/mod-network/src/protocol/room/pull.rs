@@ -1,5 +1,5 @@
 use crate::{
-    components::{BigEndian, CustomGamePlayer, TryFromBigEndian, MAX_CUSTOM_GAME_PLAYERS},
+    components::{BigEndian, CustomGamePlayer, TryFromBigEndian, MAX_IN_GAME_PLAYERS},
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -17,7 +17,7 @@ impl CustomGamePullPacket {
     ///
     pub fn new(players: Vec<CustomGamePlayer>) -> Self {
         assert!(
-            players.len() < MAX_CUSTOM_GAME_PLAYERS,
+            players.len() < MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
         Self { players }
@@ -57,7 +57,7 @@ impl Packet for CustomGamePullPacket {
         //
         let num_players = self.players.len();
         assert!(
-            num_players <= MAX_CUSTOM_GAME_PLAYERS,
+            num_players <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
         let data_size = u8::byte_size() + num_players * CustomGamePlayer::byte_size();
@@ -99,12 +99,12 @@ impl Packet for CustomGamePullPacket {
         let mut size = u8::byte_size();
         let mut data = &bytes[offset..offset + size];
         let num_players = u8::from_big_endian_bytes(data) as usize;
-        if num_players > MAX_CUSTOM_GAME_PLAYERS {
+        if num_players > MAX_IN_GAME_PLAYERS {
             return None;
         }
 
         // 커스텀 게임 플레이어 정보를 가져옵니다.
-        let mut players = Vec::with_capacity(MAX_CUSTOM_GAME_PLAYERS);
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
         for _ in 0..num_players {
             offset = offset + size;
             size = CustomGamePlayer::byte_size();

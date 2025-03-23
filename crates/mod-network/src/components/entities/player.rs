@@ -461,6 +461,163 @@ impl hash::Hash for CustomGamePlayer {
     }
 }
 
+/// 플레이어의 팀 편성 상태입니다.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DraftStatus {
+    Wait = 0,
+    Ready = 1,
+}
+
+impl DraftStatus {
+    /// 주어진 정수로부터 `DraftStatus`를 생성합니다.  
+    /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Self::Wait),
+            1 => Some(Self::Ready),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(DraftStatus),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
+impl BigEndian for DraftStatus {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let index = *self as u8;
+        index.to_big_endian_bytes()
+    }
+}
+
+impl Default for DraftStatus {
+    fn default() -> Self {
+        Self::Wait
+    }
+}
+
+impl TryFromBigEndian for DraftStatus {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::new(u8::from_big_endian_bytes(bytes))
+    }
+}
+
+/// 인게임에 진입하기 전 팀을 편성할 때의 플레이어 정보
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InGameDraftPlayer {
+    /// 플레이어의 사용자 정보
+    pub info: UserInfo,
+    /// 플레이어가 속한 팀
+    pub team: Team,
+    /// 팀 편성 상태
+    pub status: DraftStatus,
+    /// 플레이어 캐릭터의 종류
+    pub character_kind: CharacterKind,
+}
+
+impl InGameDraftPlayer {
+    /// 일부 맴버 변수의 데이터를 압축합니다.
+    fn compress(&self) -> u8 {
+        // +------+-------------+---------------+
+        // | 6bit | team (1bit) | status (1bit) |
+        // +------+-------------+---------------+
+        //
+        let team_bit = (self.team as u8) << 1;
+        let status_bit = (self.status as u8) << 0;
+
+        team_bit | status_bit
+    }
+
+    /// 압축된 데이터를 원래 데이터로 복원합니다.
+    /// 원래 데이터로 복원에 실패할 경우 `None`을 반환합니다.
+    fn try_decompress(bit: u8) -> Option<(Team, DraftStatus)> {
+        let val = (bit >> 1) & 0x1;
+        let team = Team::new(val)?;
+
+        let val = (bit >> 0) & 0x1;
+        let status = DraftStatus::new(val)?;
+
+        Some((team, status))
+    }
+}
+
+impl BigEndian for InGameDraftPlayer {
+    fn byte_size() -> usize {
+        UserInfo::byte_size()
+            + u8::byte_size() // 압축된 데이터 크기
+            + CharacterKind::byte_size()
+    }
+
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(Self::byte_size());
+        bytes.extend_from_slice(&self.info.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.compress().to_big_endian_bytes());
+        bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
+
+        // 바이트 배열 유효성 검증
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                bytes.len(),
+                Self::byte_size(),
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(InGameDraftPlayer)
+            );
+        }
+
+        bytes
+    }
+}
+
+impl TryFromBigEndian for InGameDraftPlayer {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        // 바이트 배열의 크기가 다른지 확인한다.
+        assert_eq!(
+            bytes.len(),
+            Self::byte_size(),
+            "the size of the byte array and the size of the `{}` are different!",
+            stringify!(InGameDraftPlayer)
+        );
+
+        // 사용자 정보를 가져옵니다.
+        let mut offset = 0;
+        let mut size = UserInfo::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let info = UserInfo::from_big_endian_bytes(data);
+
+        // 압축된 데이터를 가져옵니다.
+        offset = offset + size;
+        size = u8::byte_size();
+        data = &bytes[offset..offset + size];
+        let (team, status) = Self::try_decompress(u8::from_big_endian_bytes(data))?;
+
+        // 캐릭터 종류를 가져옵니다.
+        offset = offset + size;
+        size = CharacterKind::byte_size();
+        data = &bytes[offset..offset + size];
+        let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
+
+        Some(Self {
+            info,
+            team,
+            status,
+            character_kind,
+        })
+    }
+}
+
 /// 인게임에서 플레이어의 상태
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -802,6 +959,23 @@ mod tests {
         };
         let bytes = origin.to_big_endian_bytes();
         let other = CustomGamePlayer::from_big_endian_bytes(&bytes);
+
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
+    }
+
+    #[test]
+    fn test_in_game_draft_player() {
+        let info = UserInfo::new(UserId::new(3141592), UserName::new("Hello,안녕!"));
+
+        let origin = InGameDraftPlayer {
+            info,
+            team: Team::Blue,
+            status: DraftStatus::Ready,
+            character_kind: CharacterKind::MomoiOriginal,
+        };
+        let bytes = origin.to_big_endian_bytes();
+        let other = InGameDraftPlayer::from_big_endian_bytes(&bytes);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

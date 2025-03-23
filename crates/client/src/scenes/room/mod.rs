@@ -10,7 +10,7 @@ use mod_app::{
 use mod_network::{
     components::{
         CustomGamePlayer, CustomGameStatus, LoginToken, Permission, Team, UserId, WorldId,
-        MAX_CUSTOM_GAME_PLAYERS,
+        MAX_IN_GAME_PLAYERS,
     },
     protocol::{
         CustomGameLeavePacket, CustomGamePullPacket, CustomGamePushStatusPacket, Packet,
@@ -275,7 +275,7 @@ impl GameScene for CustomGameRoomScene {
                 ui.columns(2, |cols| {
                     let font_id = egui::FontId::new(24.0 * scale, main_font_family);
                     let mut iter = self.players.iter();
-                    for i in 0..MAX_CUSTOM_GAME_PLAYERS {
+                    for i in 0..MAX_IN_GAME_PLAYERS {
                         let ui = &mut cols[i % 2];
                         if let Some(player) = iter.next() {
                             let text = if player.info.uid == self.user_id {
@@ -332,6 +332,7 @@ impl GameScene for CustomGameRoomScene {
                             let packet = CustomGamePushStatusPacket::new(
                                 self.user_id,
                                 self.token,
+                                #[allow(unreachable_patterns)]
                                 match current_status {
                                     CustomGameStatus::Ready => CustomGameStatus::Wait,
                                     CustomGameStatus::Wait => CustomGameStatus::Ready,

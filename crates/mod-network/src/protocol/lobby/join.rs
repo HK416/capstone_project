@@ -1,7 +1,7 @@
 use crate::{
     components::{
         BigEndian, CustomGamePlayer, JoinFailedReason, LoginToken, TryFromBigEndian, UserId,
-        WorldId, MAX_CUSTOM_GAME_PLAYERS,
+        WorldId, MAX_IN_GAME_PLAYERS,
     },
     protocol::{Packet, PacketType, RawPacket},
 };
@@ -162,11 +162,11 @@ impl CustomGameJoinSuccessPacket {
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
-    /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
     pub fn new(world_id: WorldId, players: Vec<CustomGamePlayer>) -> Self {
         assert!(
-            players.len() <= MAX_CUSTOM_GAME_PLAYERS,
+            players.len() <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
         Self { world_id, players }
@@ -175,7 +175,7 @@ impl CustomGameJoinSuccessPacket {
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
-    /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
     pub fn from_iter<I>(world_id: WorldId, iter: I) -> Self
     where
@@ -194,7 +194,7 @@ impl Packet for CustomGameJoinSuccessPacket {
     /// 패킷을 RawPacket으로 변환합니다.
     ///
     /// # Panics
-    /// `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    /// `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림 레이아웃
@@ -208,7 +208,7 @@ impl Packet for CustomGameJoinSuccessPacket {
         //
         let num_players = self.players.len();
         assert!(
-            num_players <= MAX_CUSTOM_GAME_PLAYERS,
+            num_players <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
         let data_size =
@@ -258,12 +258,12 @@ impl Packet for CustomGameJoinSuccessPacket {
         size = u8::byte_size();
         data = &bytes[offset..offset + size];
         let num_players = u8::from_big_endian_bytes(data) as usize;
-        if num_players > MAX_CUSTOM_GAME_PLAYERS {
+        if num_players > MAX_IN_GAME_PLAYERS {
             return None;
         }
 
         // 커스텀 게임 플레이어 정보를 가져옵니다.
-        let mut players = Vec::with_capacity(MAX_CUSTOM_GAME_PLAYERS);
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
         for _ in 0..num_players {
             offset = offset + size;
             size = CustomGamePlayer::byte_size();

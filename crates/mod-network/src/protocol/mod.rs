@@ -1,3 +1,4 @@
+pub mod draft;
 pub mod lobby;
 pub mod room;
 pub mod title;
@@ -14,8 +15,8 @@ use std::io::{Error, ErrorKind};
 use crate::components::{BigEndian, TryFromBigEndian};
 
 pub use self::{
-    enter_stage_packet::*, init_stage_packet::*, lobby::*, parser::*, pull_stage_packet::*,
-    push_status_packet::*, room::*, title::*, udp_damage_log_packet::*,
+    draft::*, enter_stage_packet::*, init_stage_packet::*, lobby::*, parser::*,
+    pull_stage_packet::*, push_status_packet::*, room::*, title::*, udp_damage_log_packet::*,
 };
 
 /// 패킷의 종류
@@ -42,6 +43,9 @@ pub enum PacketType {
     CustomGamePull = 27,
     CustomGameLeave = 28,
     CustomGamePushStatus = 29,
+
+    SyncDraft = 32,
+    ProcessDraft = 34,
 
     EnterStage = 48,
     InitStage = 49,
@@ -85,6 +89,8 @@ impl TryFromBigEndian for PacketType {
             27 => Some(PacketType::CustomGamePull),
             28 => Some(PacketType::CustomGameLeave),
             29 => Some(PacketType::CustomGamePushStatus),
+            32 => Some(PacketType::SyncDraft),
+            34 => Some(PacketType::ProcessDraft),
             48 => Some(PacketType::EnterStage),
             49 => Some(PacketType::InitStage),
             50 => Some(PacketType::PullStage),

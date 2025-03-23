@@ -1,3 +1,4 @@
+mod draft;
 mod lobby;
 mod room;
 mod startup;
@@ -6,7 +7,7 @@ mod title;
 
 use std::fmt;
 
-pub use self::{lobby::*, room::*, startup::*, title::*};
+pub use self::{draft::*, lobby::*, room::*, startup::*, title::*};
 
 /// 기본 애플리케이션 창의 가로 길이 입니다.
 const BASE_WIDTH: f32 = 1280.0;
@@ -98,5 +99,17 @@ impl fmt::Debug for MainLobbyMessageModalScene {
 impl fmt::Debug for CustomGameRoomScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(CustomGameRoomScene))
+    }
+}
+
+impl fmt::Debug for InGameDraftEnterScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameDraftEnterScene))
+    }
+}
+
+impl fmt::Debug for InGameDraftScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameDraftScene))
     }
 }
