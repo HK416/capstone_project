@@ -2,4 +2,4 @@
 //!
 
 /// 게임을 진행하는 단계입니다.
-pub struct GamePlayPhase;
+pub struct GamePlayState;

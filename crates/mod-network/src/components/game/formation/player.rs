@@ -13,16 +13,15 @@ pub struct FormationPhasePlayer {
     /// 여러 자료형의 데이터를 저장한 비트 필드입니다.  
     /// 아래 데이터가 포함됩니다.
     /// - bool (1bit): 플레이어가 준비되었는지 여부를 나타냄
-    /// - bool (1bit): 캐릭터를 선택했는지 여부를 나타냄
     /// - Team (1bit): 플레이어가 속한 팀의 종류를 나타냄
     ///
     pub bitfield: u8,
 }
 
 // bitfield 구조
-// +------+--------------+-----------------+-------------+
-// | 5bit | ready (1bit) | selected (1bit) | team (1bit) |
-// +------+--------------+-----------------+-------------+
+// +------+--------------+-------------+
+// | 6bit | ready (1bit) | team (1bit) |
+// +------+--------------+-------------+
 //
 impl FormationPhasePlayer {
     /// 새로운 플레이어 데이터를 생성합니다.
@@ -30,17 +29,15 @@ impl FormationPhasePlayer {
         account: UserAccount,
         character_kind: Option<CharacterKind>,
         ready: bool,
-        selected: bool,
         team: Team,
     ) -> Self {
-        let ready_field = (ready as u8) << 2;
-        let selected_field = (selected as u8) << 1;
+        let ready_field = (ready as u8) << 1;
         let team_field = (team as u8) << 0;
 
         Self {
             account,
             character_kind,
-            bitfield: ready_field | selected_field | team_field,
+            bitfield: ready_field | team_field,
         }
     }
 
@@ -52,27 +49,12 @@ impl FormationPhasePlayer {
 
     /// 준비 여부를 설정합니다.
     pub fn with_ready(&mut self, ready: bool) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 2)) | (ready as u8) << 2;
+        self.bitfield = (self.bitfield & !(0x1 << 1)) | (ready as u8) << 1;
         self
     }
 
     /// 준비 여부를 가져옵니다.
     pub fn is_ready(&self) -> bool {
-        if (self.bitfield >> 2) & 0x1 == 0 {
-            false
-        } else {
-            true
-        }
-    }
-
-    /// 선택 여부를 설정합니다.
-    pub fn with_selected(&mut self, selected: bool) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 1)) | (selected as u8) << 1;
-        self
-    }
-
-    /// 준비 여부를 가져옵니다.
-    pub fn is_selected(&self) -> bool {
         if (self.bitfield >> 1) & 0x1 == 0 {
             false
         } else {
@@ -177,7 +159,7 @@ mod tests {
         let id = UserId::new(1314311);
         let name = UserName::from_str("Aris");
         let account = UserAccount::new(id, name);
-        let origin = FormationPhasePlayer::new(account, None, true, true, Team::Blue);
+        let origin = FormationPhasePlayer::new(account, None, true, Team::Blue);
         let bytes = origin.to_big_endian_bytes();
         let other = FormationPhasePlayer::from_big_endian_bytes(&bytes);
 

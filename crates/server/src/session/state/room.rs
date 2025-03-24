@@ -4,18 +4,18 @@ use mod_network::protocol::{
     CustomGameLeavePacket, CustomGamePushStatusPacket, Packet, PacketType, RawPacket,
 };
 
-use crate::{room::CustomGameRoom, session::Session, token::UserTokenMap};
+use crate::{game::GameWorld, session::Session, token::UserTokenMap};
 
 use super::{ControlFlow, SessionState};
 
 #[derive(Debug)]
 pub struct RoomState {
-    room: Weak<CustomGameRoom>,
+    room: Weak<GameWorld>,
 }
 
 impl RoomState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(room: &Arc<CustomGameRoom>) -> Self {
+    pub fn new(room: &Arc<GameWorld>) -> Self {
         Self {
             room: Arc::downgrade(room),
         }
@@ -91,7 +91,8 @@ impl RoomState {
         if let Some(room) = self.room.upgrade() {
             // 커스텀 게임 대기실에서 플레이어 정보를 제거합니다.
             if !room.access(session, |player| {
-                player.with_ready(packet.ready);
+                let mut game = player.game_play.lock();
+                game.with_ready(packet.ready);
             }) {
                 log::warn!("{} accesses an invalid custom game player", session);
                 session.close();

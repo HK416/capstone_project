@@ -244,13 +244,11 @@ mod tests {
             UserAccount::new(UserId::new(123145234), UserName::from_str("Aris")),
             Some(CharacterKind::ArisOriginal),
             true,
-            true,
             Team::Blue,
         );
         let player_1 = FormationPhasePlayer::new(
             UserAccount::new(UserId::new(123324134), UserName::from_str("Yuzu")),
             None,
-            true,
             false,
             Team::Blue,
         );
@@ -258,13 +256,11 @@ mod tests {
             UserAccount::new(UserId::new(6531234), UserName::from_str("Momoi")),
             Some(CharacterKind::MomoiOriginal),
             true,
-            true,
             Team::Red,
         );
         let player_3 = FormationPhasePlayer::new(
             UserAccount::new(UserId::new(61234534), UserName::from_str("Midori")),
             Some(CharacterKind::MidoriOriginal),
-            true,
             true,
             Team::Red,
         );

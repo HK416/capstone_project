@@ -2,10 +2,8 @@ mod account;
 mod data;
 mod formula;
 mod game;
-mod room;
 mod session;
 mod token;
-// mod world;
 
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 
@@ -16,7 +14,6 @@ use session::{Session, SessionManager, handle_connection};
 use tokio::net::{TcpListener, UdpSocket};
 use tracing::Level;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
-// use world::{GameWorld, update_game_world};
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {

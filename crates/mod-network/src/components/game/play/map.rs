@@ -158,7 +158,7 @@ impl TryFromBigEndian for DamageLog {
         offset = offset + size;
         size = HealthPoint::byte_size();
         data = &bytes[offset..offset + size];
-        let damage = HealthPoint::try_from_big_endian_bytes(data)?;
+        let damage = HealthPoint::from_big_endian_bytes(data);
 
         Some(Self {
             user_id: object_id,

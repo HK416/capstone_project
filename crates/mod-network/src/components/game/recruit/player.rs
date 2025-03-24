@@ -53,11 +53,7 @@ impl RecruitPhasePlayer {
 
     /// 준비 여부를 가져옵니다.
     pub fn is_ready(&self) -> bool {
-        if (self.bitfield >> 1) & 0x1 == 0 {
-            false
-        } else {
-            true
-        }
+        (self.bitfield >> 1) & 0x1 == 0x1
     }
 
     /// 권한을 설정합니다.

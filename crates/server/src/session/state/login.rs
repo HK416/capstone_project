@@ -38,17 +38,17 @@ impl LoginState {
         };
 
         // 사용자 계정을 할당합니다.
-        let user_info = AccountManager::alloc();
+        let account = AccountManager::alloc();
 
         // 로그인 토큰을 발행합니다.
-        let token = UserTokenMap::alloc((user_info.uid, session.addr));
+        let token = UserTokenMap::alloc((account.uid, session.addr));
 
         // 패킷을 생성하고 전송합니다.
-        let packet = LoginSuccessPacket::new(user_info, token);
+        let packet = LoginSuccessPacket::new(account, token);
         session.tcp_write(packet.as_raw());
 
         // 다음 세션 상태로 전환합니다.
-        let next_state = Box::new(LobbyState::new(user_info));
+        let next_state = Box::new(LobbyState::new(account));
         *flow = Some(ControlFlow::Change(next_state));
     }
 }
