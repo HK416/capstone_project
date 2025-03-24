@@ -33,6 +33,7 @@ pub struct Session {
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
     /// UDP 패킷 데이터 전송 대기열
+    #[allow(dead_code)]
     udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
     /// 수신된 패킷 데이터 대기열
     received_packets: Queue<RawPacket>,
@@ -77,6 +78,7 @@ impl Session {
     /// 주어진 `RawPacket`의 크기는 1KB 미만이어야합니다.
     /// 그렇지 않는 경우 [`panic!`]을 호출합니다.
     ///
+    #[allow(dead_code)]
     pub fn udp_write(&self, packet: RawPacket) {
         assert!(
             packet.as_bytes().len() < 1024,

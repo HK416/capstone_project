@@ -9,6 +9,7 @@ use std::io::{Error, ErrorKind};
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
+#[allow(ambiguous_glob_reexports)]
 pub use self::{formation::*, lobby::*, parser::*, room::*, title::*};
 
 /// 패킷의 종류
@@ -36,8 +37,9 @@ pub enum PacketType {
     CustomGameLeave = 28,
     CustomGamePushStatus = 29,
 
-    SyncDraft = 32,
-    ProcessDraft = 34,
+    FormationSelect = 32,
+    FormationSelectResult = 33,
+    FormationPull = 34,
 
     EnterStage = 48,
     InitStage = 49,
@@ -45,6 +47,9 @@ pub enum PacketType {
     PushStatus = 51,
 
     UdpDamageLog = 128,
+
+    /// 게임 서버 내부에서 사용되는 세션에 다음 세션 상태로 변경함을 알리는 패킷입니다.
+    EnterFormationState = 192,
 }
 
 impl BigEndian for PacketType {
@@ -81,13 +86,15 @@ impl TryFromBigEndian for PacketType {
             27 => Some(PacketType::CustomGamePull),
             28 => Some(PacketType::CustomGameLeave),
             29 => Some(PacketType::CustomGamePushStatus),
-            32 => Some(PacketType::SyncDraft),
-            34 => Some(PacketType::ProcessDraft),
+            32 => Some(PacketType::FormationSelect),
+            33 => Some(PacketType::FormationSelectResult),
+            34 => Some(PacketType::FormationPull),
             48 => Some(PacketType::EnterStage),
             49 => Some(PacketType::InitStage),
             50 => Some(PacketType::PullStage),
             51 => Some(PacketType::PushStatus),
             128 => Some(PacketType::UdpDamageLog),
+            192 => Some(PacketType::EnterFormationState),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",

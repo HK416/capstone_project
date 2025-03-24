@@ -40,7 +40,6 @@ fn generate_id() -> WorldId {
     /// 게임 월드 식별자를 생성하기 위한 카운터입니다.
     static COUNTER: AtomicU32 = AtomicU32::new(1);
 
-    let mut id = WorldId::NULL;
     loop {
         let now = SystemTime::now();
         let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
@@ -48,13 +47,12 @@ fn generate_id() -> WorldId {
         let counter_bitfield = COUNTER.fetch_add(1, MemOrdering::AcqRel) & 0xFFF;
         let time_bitfield = duration.subsec_millis() & 0xFF;
         let val = (time_bitfield << 12 | counter_bitfield) % (MAX_GAME_WORLDS as u32);
-        id = WorldId::new(val);
+        let id = WorldId::new(val);
 
         if !get_pool().contains_key(&id) {
-            break;
+            return id;
         }
     }
-    id
 }
 
 /// 생성된 게임 월드를 관리하는 풀 객체입니다.  
@@ -119,7 +117,7 @@ impl GameWorldPool {
 /// 게임 월드를 실행하는 루프함수입니다.
 async fn running_loop(world: Arc<GameWorld>) {
     // 상태 스텍
-    let mut stack: VecDeque<Box<dyn GameWorldState>> = VecDeque::with_capacity(4);
+    let mut stack = VecDeque::with_capacity(4);
 
     // 상태 제어자
     let mut flow = Some(StateControlFlow::Reset(Box::new(PlayerRecruitState::new())));

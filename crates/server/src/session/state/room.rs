@@ -1,12 +1,14 @@
 use std::sync::{Arc, Weak};
 
-use mod_network::protocol::{
-    CustomGameLeavePacket, CustomGamePushStatusPacket, Packet, PacketType, RawPacket,
+use mod_network::{
+    components::CharacterKind,
+    protocol::{CustomGameLeavePacket, CustomGamePushStatusPacket, Packet, PacketType, RawPacket},
 };
+use mod_parallelism::collections::Queue;
 
 use crate::{game::GameWorld, session::Session, token::UserTokenMap};
 
-use super::{ControlFlow, SessionState};
+use super::{ControlFlow, SessionState, formation::FormationState};
 
 #[derive(Debug)]
 pub struct RoomState {
@@ -104,6 +106,23 @@ impl RoomState {
             return;
         }
     }
+
+    /// `EnterFormationStatePacket`을 처리합니다.
+    fn handle_enter_formation_state_packet(
+        &mut self,
+        flow: &mut Option<ControlFlow>,
+        _session: &Arc<Session>,
+        packet: RawPacket,
+    ) {
+        // 포인터를 가져옵니다.
+        let ptr = usize::from_be_bytes(packet.data().try_into().unwrap());
+        let select_commands =
+            unsafe { Arc::from_raw(ptr as *const Queue<(Arc<Session>, CharacterKind)>) };
+
+        // 다음 세션 상태로 전환합니다.
+        let next_state = Box::new(FormationState::new(select_commands));
+        *flow = Some(ControlFlow::Change(next_state));
+    }
 }
 
 impl SessionState for RoomState {
@@ -116,6 +135,9 @@ impl SessionState for RoomState {
                 }
                 PacketType::CustomGamePushStatus => {
                     self.handle_custom_game_push_status_packet(flow, session, packet);
+                }
+                PacketType::EnterFormationState => {
+                    self.handle_enter_formation_state_packet(flow, session, packet);
                 }
                 _ => {
                     log::warn!(

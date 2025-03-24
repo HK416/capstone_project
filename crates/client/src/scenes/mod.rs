@@ -102,12 +102,6 @@ impl fmt::Debug for CustomGameRoomScene {
     }
 }
 
-impl fmt::Debug for EnterCharacterFormationScene {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(EnterCharacterFormationScene))
-    }
-}
-
 impl fmt::Debug for CharacterFormationScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(CharacterFormationScene))

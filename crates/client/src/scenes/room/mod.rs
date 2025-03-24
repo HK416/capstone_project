@@ -12,8 +12,8 @@ use mod_network::{
         LoginToken, Permission, RecruitPhasePlayer, Team, UserId, WorldId, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
-        CustomGameLeavePacket, CustomGamePullPacket, CustomGamePushStatusPacket, Packet,
-        PacketType, RawPacket,
+        CustomGameLeavePacket, CustomGamePullPacket, CustomGamePushStatusPacket,
+        FormationPullPacket, Packet, PacketType, RawPacket,
     },
 };
 use mod_render::{TexturePool, TextureViewPool};
@@ -25,7 +25,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-use super::BASE_WIDTH;
+use super::{CharacterFormationScene, BASE_WIDTH};
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 대기실"];
@@ -121,13 +121,29 @@ impl GameScene for CustomGameRoomScene {
     fn on_received_packet(
         &mut self,
         packet: RawPacket,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::CustomGamePull => {
                 let packet = CustomGamePullPacket::from_raw(packet);
                 self.players = packet.players;
+            }
+            PacketType::FormationPull => {
+                let packet = FormationPullPacket::from_raw(packet);
+
+                // 다음 게임 장면으로 전환합니다.
+                let next_scene = Box::new(CharacterFormationScene::new(
+                    self.locale,
+                    self.user_id,
+                    self.token,
+                    packet.remaining_time,
+                    packet.players,
+                ));
+                let scene_flow = GameSceneFlow::Push(next_scene);
+                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
             }
             _ => {
                 log::warn!("invalid packet received! (TYPE:{:?})", packet_type);

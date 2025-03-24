@@ -12,6 +12,7 @@ pub use self::{formation::*, play::*, recruit::*};
 use super::GameWorld;
 
 /// 게임 월드 상태를 제어합니다.
+#[allow(dead_code)]
 pub enum StateControlFlow {
     /// 아무것도 지정되지 않은 상태입니다.
     None,

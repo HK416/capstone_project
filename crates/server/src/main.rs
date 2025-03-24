@@ -8,6 +8,7 @@ mod token;
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 
 use data::{get_current_path, init_character_attributes, init_stage_attributes};
+use game::GameWorldPool;
 use mod_network::{addr::Addr, protocol::RawPacket};
 use mod_parallelism::collections::Queue;
 use session::{Session, SessionManager, handle_connection};
@@ -216,6 +217,9 @@ fn init_log_system() -> WorkerGuard {
     // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
     let mut dir = get_current_path().to_path_buf();
     dir.push("logs");
+
+    // 게임 월드 풀 객체를 초기화합니다.
+    GameWorldPool::init();
 
     // 매 시간 마다 새 파일을 생성하는 로그 시스템을 생성합니다.
     let file_appender = rolling::hourly(dir, "service_log");
