@@ -1,8 +1,8 @@
 //! 모든 단계에서 흔하게 사용되는 코드를 관리합니다.
 //!
 
-pub mod account;
-pub mod character;
+mod account;
+mod character;
 
 use crate::components::{BigEndian, TryFromBigEndian};
 

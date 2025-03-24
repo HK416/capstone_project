@@ -1,16 +1,16 @@
-use crate::components::{
-    BigEndian, Epoch, GameInputBits, LatLon, LoginToken, TryFromBigEndian, ViewState,
-    ViewStateTimer,
+use crate::{
+    components::{
+        BigEndian, GameInputBits, LatLon, LoginToken, TryFromBigEndian, UserId, ViewState,
+        ViewStateTimer,
+    },
+    protocol::{Packet, PacketType, RawPacket},
 };
 
-use super::{Packet, PacketType, RawPacket};
-
-/// 클라이언트에서 서버로 보내는
-/// 플레이어 정보를 갱신하기 위한 패킷
+/// 클라이언트에서 서버로 보내는 플레이어 정보를 갱신하기 위한 패킷
 #[derive(Debug, Clone, PartialEq)]
 pub struct PushStatusPacket {
-    /// 클라이언트가 이전에 받은 서버의 시대
-    pub epoch: Epoch,
+    /// 사용자 식별자
+    pub user_id: UserId,
     /// 사용자 로그인 토큰
     pub token: LoginToken,
     /// 플레이어 캐릭터가 바라보는 방향 (이동 방향과 다를 수 있음)
@@ -27,28 +27,13 @@ pub struct PushStatusPacket {
     pub view_rotation: LatLon,
 }
 
-impl Default for PushStatusPacket {
-    fn default() -> Self {
-        Self {
-            epoch: Epoch::default(),
-            token: LoginToken::default(),
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            direction: [0.0, 0.0, 1.0],
-            input_flags: GameInputBits::default(),
-            view_state: ViewState::default(),
-            view_state_timer: ViewStateTimer::default(),
-            view_rotation: LatLon::default(),
-        }
-    }
-}
-
 impl Packet for PushStatusPacket {
     fn packet_type() -> PacketType {
         PacketType::PushStatus
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = Epoch::byte_size()
+        let data_size = UserId::byte_size()
             + LoginToken::byte_size()
             + <[f32; 4]>::byte_size()
             + <[f32; 3]>::byte_size()
@@ -56,8 +41,10 @@ impl Packet for PushStatusPacket {
             + ViewState::byte_size()
             + ViewStateTimer::byte_size()
             + LatLon::byte_size();
+
+        // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.epoch.to_big_endian_bytes());
+        data.extend_from_slice(&self.user_id.to_big_endian_bytes());
         data.extend_from_slice(&self.token.to_big_endian_bytes());
         data.extend_from_slice(&self.rotation.to_big_endian_bytes());
         data.extend_from_slice(&self.direction.to_big_endian_bytes());
@@ -90,12 +77,12 @@ impl Packet for PushStatusPacket {
             return None;
         }
 
-        // 서버의 시대를 가져옵니다.
+        // 사용자 식별자를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = Epoch::byte_size();
+        let mut size = UserId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = Epoch::from_big_endian_bytes(data);
+        let user_id = UserId::from_big_endian_bytes(data);
 
         // 사용자 로그인 토큰을 가져옵니다.
         offset = offset + size;
@@ -140,7 +127,7 @@ impl Packet for PushStatusPacket {
         let view_rotation = LatLon::from_big_endian_bytes(data);
 
         Some(Self {
-            epoch,
+            user_id,
             token,
             rotation,
             direction,
@@ -157,9 +144,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validation_test_packet() {
+    fn test_push_status_packet() {
         let origin = PushStatusPacket {
-            ..Default::default()
+            user_id: UserId::new(1515161),
+            token: LoginToken::new(909515132),
+            rotation: [0.15132516, 0.1234165125, 1.251651, 0.15151],
+            direction: [0.1512515, 1.241561, 0.1451351],
+            input_flags: GameInputBits::Left | GameInputBits::Forward | GameInputBits::Jump,
+            view_state: ViewState::Idle,
+            view_state_timer: ViewStateTimer(2.134151),
+            view_rotation: LatLon {
+                lat: 1.1512512,
+                lon: 2.1516165,
+            },
         };
         let raw_packet = origin.as_raw();
         let other = PushStatusPacket::try_from_raw(raw_packet).unwrap();

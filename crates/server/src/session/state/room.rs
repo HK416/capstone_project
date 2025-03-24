@@ -2,7 +2,7 @@ use std::sync::{Arc, Weak};
 
 use mod_network::{
     components::CharacterKind,
-    protocol::{CustomGameLeavePacket, CustomGamePushStatusPacket, Packet, PacketType, RawPacket},
+    protocol::{CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 
@@ -70,7 +70,7 @@ impl RoomState {
         session: &Arc<Session>,
         packet: RawPacket,
     ) {
-        let packet = match CustomGamePushStatusPacket::try_from_raw(packet) {
+        let packet = match CustomGameReadyPacket::try_from_raw(packet) {
             Some(packet) => packet,
             None => {
                 log::warn!("{} failed to convert packet!", session);
@@ -133,7 +133,7 @@ impl SessionState for RoomState {
                 PacketType::CustomGameLeave => {
                     self.handle_custom_game_leave_packet(flow, session, packet);
                 }
-                PacketType::CustomGamePushStatus => {
+                PacketType::CustomGameReady => {
                     self.handle_custom_game_push_status_packet(flow, session, packet);
                 }
                 PacketType::EnterFormationState => {

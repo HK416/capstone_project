@@ -12,7 +12,7 @@ use mod_network::{
         LoginToken, Permission, RecruitPhasePlayer, Team, UserId, WorldId, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
-        CustomGameLeavePacket, CustomGamePullPacket, CustomGamePushStatusPacket,
+        CustomGameLeavePacket, CustomGamePullPacket, CustomGameReadyPacket,
         FormationPullPacket, Packet, PacketType, RawPacket,
     },
 };
@@ -342,7 +342,7 @@ impl GameScene for CustomGameRoomScene {
                         if ui.add(enter_button).clicked() {
                             // 패킷을 생성하고 전송합니다.
                             let packet =
-                                CustomGamePushStatusPacket::new(self.user_id, self.token, !ready);
+                                CustomGameReadyPacket::new(self.user_id, self.token, !ready);
                             let net_manager = app.net_manager();
                             let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
                             socket.push_packet(packet.as_raw());

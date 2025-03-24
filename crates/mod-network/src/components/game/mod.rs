@@ -1,7 +1,6 @@
-pub mod common;
-pub mod formation;
-pub mod play;
-pub mod recruit;
+mod common;
+mod formation;
+mod in_game;
+mod recruit;
 
-#[allow(ambiguous_glob_reexports)]
-pub use self::{common::*, formation::*, play::*, recruit::*};
+pub use self::{common::*, formation::*, in_game::*, recruit::*};

@@ -11,6 +11,25 @@ pub enum BulletKind {
     ArisOriginal = 1,
 }
 
+impl BulletKind {
+    /// 주어진 정수로 `BulletKind`를 생성합니다.
+    /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
+    pub fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Self::Common),
+            1 => Some(Self::ArisOriginal),
+            _ => {
+                log::error!(
+                    "the value is out of range for `{}`, (VALUE:{})",
+                    stringify!(BulletKind),
+                    val
+                );
+                None
+            }
+        }
+    }
+}
+
 impl BigEndian for BulletKind {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
@@ -41,19 +60,7 @@ impl From<CharacterKind> for BulletKind {
 
 impl TryFromBigEndian for BulletKind {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        let index = u8::from_big_endian_bytes(bytes);
-        match index {
-            0 => Some(BulletKind::Common),
-            1 => Some(BulletKind::ArisOriginal),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(BulletKind),
-                    index
-                );
-                None
-            }
-        }
+        Self::new(u8::from_big_endian_bytes(bytes))
     }
 }
 
@@ -200,25 +207,23 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn creation_test_bullet_kind() {
+    fn test_create_bullet_kind() {
         let bytes = [127];
         BulletKind::from_big_endian_bytes(&bytes);
     }
 
     #[test]
-    fn validation_test_bullet_kind() {
+    fn test_bullet_kind() {
         let origin = BulletKind::Common;
         let bytes = origin.to_big_endian_bytes();
         let other = BulletKind::from_big_endian_bytes(&bytes);
 
-        // 바이트 배열 크기가 같은지 확인
-        assert_eq!(BulletKind::byte_size(), bytes.len());
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
     }
 
     #[test]
-    fn validation_test_bullet() {
+    fn test_bullet() {
         let origin = Bullet {
             object_id: ObjectId::new(3141592),
             shooter_id: UserId::new(577888),

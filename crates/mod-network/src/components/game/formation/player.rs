@@ -7,8 +7,7 @@ pub struct FormationPhasePlayer {
     pub account: UserAccount,
 
     /// 선택한 캐릭터의 종류  
-    /// `None`을 바이트 스트림으로 변환할 때 `0xFF`로 저장됩니다.
-    pub character_kind: Option<CharacterKind>,
+    pub character_kind: CharacterKind,
 
     /// 여러 자료형의 데이터를 저장한 비트 필드입니다.  
     /// 아래 데이터가 포함됩니다.
@@ -27,7 +26,7 @@ impl FormationPhasePlayer {
     /// 새로운 플레이어 데이터를 생성합니다.
     pub fn new(
         account: UserAccount,
-        character_kind: Option<CharacterKind>,
+        character_kind: CharacterKind,
         ready: bool,
         team: Team,
     ) -> Self {
@@ -42,7 +41,7 @@ impl FormationPhasePlayer {
     }
 
     /// 캐릭터 종류를 설정합니다.
-    pub fn with_character(&mut self, character_kind: Option<CharacterKind>) -> &mut Self {
+    pub fn with_character(&mut self, character_kind: CharacterKind) -> &mut Self {
         self.character_kind = character_kind;
         self
     }
@@ -55,11 +54,7 @@ impl FormationPhasePlayer {
 
     /// 준비 여부를 가져옵니다.
     pub fn is_ready(&self) -> bool {
-        if (self.bitfield >> 1) & 0x1 == 0 {
-            false
-        } else {
-            true
-        }
+        (self.bitfield >> 1) & 0x1 == 0x1
     }
 
     /// Team을 설정합니다.
@@ -81,47 +76,14 @@ impl BigEndian for FormationPhasePlayer {
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        // 바이트 배열의 크기가 다른지 확인한다.
-        assert_eq!(
-            bytes.len(),
-            Self::byte_size(),
-            "the size of the byte array and the size of the `{}` are different!",
-            stringify!(FormationPhasePlayer)
-        );
-
-        // 사용자 계정 데이터를 가져옵니다.
-        let mut offset = 0;
-        let mut size = UserAccount::byte_size();
-        let mut data = &bytes[offset..offset + size];
-        let account = UserAccount::from_big_endian_bytes(data);
-
-        // 캐릭터 종류를 가져옵니다.
-        offset = offset + size;
-        size = u8::byte_size();
-        data = &bytes[offset..offset + size];
-        let character_kind = CharacterKind::try_from_big_endian_bytes(data);
-
-        // 비트 필드를 가져옵니다.
-        offset = offset + size;
-        size = u8::byte_size();
-        data = &bytes[offset..offset + size];
-        let bitfield = u8::from_big_endian_bytes(data);
-
-        Self {
-            account,
-            character_kind,
-            bitfield,
-        }
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data")
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.account.to_big_endian_bytes());
-        bytes.extend_from_slice(&match self.character_kind {
-            Some(kind) => kind.to_big_endian_bytes(),
-            None => (0xFF as u8).to_big_endian_bytes(),
-        });
+        bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
@@ -142,9 +104,45 @@ impl Default for FormationPhasePlayer {
     fn default() -> Self {
         Self {
             account: UserAccount::default(),
-            character_kind: None,
+            character_kind: CharacterKind::default(),
             bitfield: 0x00,
         }
+    }
+}
+
+impl TryFromBigEndian for FormationPhasePlayer {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        // 바이트 배열의 크기가 다른지 확인한다.
+        assert_eq!(
+            bytes.len(),
+            Self::byte_size(),
+            "the size of the byte array and the size of the `{}` are different!",
+            stringify!(FormationPhasePlayer)
+        );
+
+        // 사용자 계정 데이터를 가져옵니다.
+        let mut offset = 0;
+        let mut size = UserAccount::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let account = UserAccount::from_big_endian_bytes(data);
+
+        // 캐릭터 종류를 가져옵니다.
+        offset = offset + size;
+        size = u8::byte_size();
+        data = &bytes[offset..offset + size];
+        let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
+
+        // 비트 필드를 가져옵니다.
+        offset = offset + size;
+        size = u8::byte_size();
+        data = &bytes[offset..offset + size];
+        let bitfield = u8::from_big_endian_bytes(data);
+
+        Some(Self {
+            account,
+            character_kind,
+            bitfield,
+        })
     }
 }
 
@@ -159,7 +157,8 @@ mod tests {
         let id = UserId::new(1314311);
         let name = UserName::from_str("Aris");
         let account = UserAccount::new(id, name);
-        let origin = FormationPhasePlayer::new(account, None, true, Team::Blue);
+        let origin =
+            FormationPhasePlayer::new(account, CharacterKind::MidoriOriginal, true, Team::Blue);
         let bytes = origin.to_big_endian_bytes();
         let other = FormationPhasePlayer::from_big_endian_bytes(&bytes);
 

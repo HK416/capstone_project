@@ -1,7 +1,8 @@
-pub mod formation;
-pub mod lobby;
-pub mod room;
-pub mod title;
+mod formation;
+mod in_game;
+mod lobby;
+mod room;
+mod title;
 
 mod parser;
 
@@ -9,8 +10,7 @@ use std::io::{Error, ErrorKind};
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
-#[allow(ambiguous_glob_reexports)]
-pub use self::{formation::*, lobby::*, parser::*, room::*, title::*};
+pub use self::{formation::*, in_game::*, lobby::*, parser::*, room::*, title::*};
 
 /// 패킷의 종류
 #[repr(u8)]
@@ -35,10 +35,10 @@ pub enum PacketType {
     /// 매번 커스텀 게임 데이터를 서버에서 클라이언트로 보내는 패킷
     CustomGamePull = 27,
     CustomGameLeave = 28,
-    CustomGamePushStatus = 29,
+    CustomGameReady = 29,
 
     FormationSelect = 32,
-    FormationSelectResult = 33,
+    FormationSelectResponse = 33,
     FormationPull = 34,
 
     EnterStage = 48,
@@ -85,9 +85,9 @@ impl TryFromBigEndian for PacketType {
             26 => Some(PacketType::CustomGameJoinSuccess),
             27 => Some(PacketType::CustomGamePull),
             28 => Some(PacketType::CustomGameLeave),
-            29 => Some(PacketType::CustomGamePushStatus),
+            29 => Some(PacketType::CustomGameReady),
             32 => Some(PacketType::FormationSelect),
-            33 => Some(PacketType::FormationSelectResult),
+            33 => Some(PacketType::FormationSelectResponse),
             34 => Some(PacketType::FormationPull),
             48 => Some(PacketType::EnterStage),
             49 => Some(PacketType::InitStage),

@@ -1,42 +1,41 @@
-use crate::components::{BigEndian, CharacterKind, LoginToken, TryFromBigEndian};
+use crate::{
+    components::{BigEndian, CharacterKind, LoginToken, TryFromBigEndian, UserId},
+    protocol::{Packet, PacketType, RawPacket},
+};
 
-use super::{Packet, PacketType, RawPacket};
-
-/// 클라이언트가 게임에 참가하길 희망할 때
-/// 클라이언트에서 서버로 전송되는 패킷입니다.
+// 클라이언트에서 서버로 보내는 캐릭터 선택 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EnterStagePacket {
+pub struct FormationSelectPacket {
+    /// 사용자 계정 식별자
+    pub user_id: UserId,
+    /// 로그인 토큰
     pub token: LoginToken,
+    /// 선택한 캐릭터 종류
     pub character_kind: CharacterKind,
 }
 
-impl EnterStagePacket {
-    pub fn new(token: LoginToken, character_kind: CharacterKind) -> Self {
+impl FormationSelectPacket {
+    /// 새로운 패킷을 생성합니다.
+    pub fn new(user_id: UserId, token: LoginToken, character_kind: CharacterKind) -> Self {
         Self {
+            user_id,
             token,
             character_kind,
         }
     }
 }
 
-impl Default for EnterStagePacket {
-    fn default() -> Self {
-        Self {
-            token: LoginToken::default(),
-            character_kind: CharacterKind::default(),
-        }
-    }
-}
-
-impl Packet for EnterStagePacket {
+impl Packet for FormationSelectPacket {
     fn packet_type() -> PacketType {
-        PacketType::EnterStage
+        PacketType::FormationSelect
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = LoginToken::byte_size() + CharacterKind::byte_size();
+        let data_size = UserId::byte_size() + LoginToken::byte_size() + CharacterKind::byte_size();
 
+        // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&self.user_id.to_big_endian_bytes());
         data.extend_from_slice(&self.token.to_big_endian_bytes());
         data.extend_from_slice(&self.character_kind.to_big_endian_bytes());
 
@@ -46,7 +45,7 @@ impl Packet for EnterStagePacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(EnterStagePacket)
+                stringify!(FormationSelectPacket)
             );
         }
 
@@ -59,16 +58,22 @@ impl Packet for EnterStagePacket {
             log::warn!(
                 "invalid packet type. (RAW:{:?}, PACKET:{:?})",
                 raw.packet_type(),
-                Self::packet_type()
+                Self::packet_type(),
             );
             return None;
         }
 
-        // 로그인 토큰을 가져옵니다.
+        // 사용자 계정 식별자를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = LoginToken::byte_size();
+        let mut size = UserId::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let user_id = UserId::from_big_endian_bytes(data);
+
+        // 로그인 토큰을 가져옵니다.
+        offset = offset + size;
+        size = LoginToken::byte_size();
+        data = &bytes[offset..offset + size];
         let token = LoginToken::from_big_endian_bytes(data);
 
         // 캐릭터 종류를 가져옵니다.
@@ -78,6 +83,7 @@ impl Packet for EnterStagePacket {
         let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
 
         Some(Self {
+            user_id,
             token,
             character_kind,
         })
@@ -89,13 +95,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validation_test_packet() {
-        let origin = EnterStagePacket::new(
-            LoginToken::new(123456123456123456),
+    fn test_formation_select_packet() {
+        let origin = FormationSelectPacket::new(
+            UserId::new(12351432),
+            LoginToken::new(1513425161),
             CharacterKind::MomoiOriginal,
         );
-        let raw_packet = origin.as_raw();
-        let other = EnterStagePacket::try_from_raw(raw_packet).unwrap();
+        let raw = origin.as_raw();
+        let other = FormationSelectPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

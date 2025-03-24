@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn _test_stage_kind() {
+    fn test_stage_kind() {
         let origin = StageKind::City;
         let bytes = origin.to_big_endian_bytes();
         let other = StageKind::from_big_endian_bytes(&bytes);

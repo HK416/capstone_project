@@ -1,8 +1,8 @@
-pub mod core;
-pub mod game;
-pub mod input;
-pub mod rendering;
-pub mod system;
+mod core;
+mod game;
+mod input;
+mod rendering;
+mod system;
 
 #[allow(ambiguous_glob_reexports)]
 pub use self::{core::*, game::*, input::*, rendering::*, system::*};
