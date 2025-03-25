@@ -4,6 +4,8 @@ mod stage;
 
 use std::io;
 
+use mod_network::components::NUM_STAGES;
+
 pub use self::{hierarchy::*, motion::*, stage::*};
 
 /// 사용자 구성 파일의 상대 경로입니다.
@@ -70,6 +72,17 @@ pub const BG_LOGIN_TITLE_5_DATA: &'static [u8; 3016216] = include_bytes!(concat!
 
 /// 메인 로비 화면 배경화면 텍스처의 `Uri`입니다.
 pub const BG_MAIN_LOBBY_URI: &'static str = "ui/BG_Main_Lobby.png";
+
+/// 데미지 폰트 텍스처의 `Uri`입니다.
+pub const DAMAGE_FONT_URI: &'static str = "font/D_Font_Normal.dds";
+
+/// 스카이박스 텍스처의 `Uri`입니다.
+pub const SKYBOX_URI: &'static str = "stage/Sky.dds";
+
+/// 지형 데이터의 작업공간 상대 위치입니다.
+pub const STAGE_WORKSPACES: [&'static str; NUM_STAGES] = ["stage/city/"];
+/// 지형 데이터의 `Uri`입니다.
+pub const STAGE_URIS: [&'static str; NUM_STAGES] = ["stage/city/map.json"];
 
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]

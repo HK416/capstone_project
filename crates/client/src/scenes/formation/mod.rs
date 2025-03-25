@@ -1,13 +1,30 @@
 use std::error::Error;
 
-use mod_app::{app::AppHandle, etc::AppEvent, scene::{GameScene, GameSceneFlow}};
-use mod_network::{components::{CharacterKind, FormationPhasePlayer, GamePlayStopReason, LoginToken, SelectResult, UserId, NUM_CHARACTERS}, protocol::{FormationPullPacket, FormationSelectPacket, FormationSelectResponsePacket, GamePlayStopPacket, Packet, PacketType, RawPacket}};
+use mod_app::{
+    app::AppHandle,
+    etc::AppEvent,
+    scene::{GameScene, GameSceneFlow},
+};
+use mod_network::{
+    components::{
+        CharacterKind, FormationPhasePlayer, GamePlayStopReason, LoginToken, SelectResult, UserId,
+        NUM_CHARACTERS,
+    },
+    protocol::{
+        FormationPullPacket, FormationSelectPacket, FormationSelectResponsePacket,
+        GamePlayStopPacket, InitStagePacket, Packet, PacketType, RawPacket,
+    },
+};
 use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
 
-use crate::{asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR}, config::{Locale, NUM_LOCALE}, SERVER_TCP_ADDR};
+use crate::{
+    asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    config::{Locale, NUM_LOCALE},
+    SERVER_TCP_ADDR,
+};
 
-use super::BASE_WIDTH;
+use super::{InGameLoadScene, BASE_WIDTH};
 
 /// 애플리케이션 표시 언어에 따른 Title 텍스트
 const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 편성"];
@@ -29,14 +46,14 @@ pub struct CharacterFormationScene {
     remaining_time_sec: f32,
 
     /// 플레이어 집하
-    players: Vec<FormationPhasePlayer>, 
+    players: Vec<FormationPhasePlayer>,
 
     /// 배경화면 텍스처의 식별자입니다.
     bg_texture_id: egui::load::SizedTexture,
     /// 현재 선택한 캐릭터 종류
     select_character: Option<CharacterKind>,
     /// 캐릭터 선택 여부
-    is_selected: bool, 
+    is_selected: bool,
 }
 
 impl CharacterFormationScene {
@@ -53,7 +70,7 @@ impl CharacterFormationScene {
             user_id,
             token,
             remaining_time_sec,
-            players, 
+            players,
             bg_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
@@ -107,31 +124,29 @@ impl GameScene for CharacterFormationScene {
                 let packet = FormationSelectResponsePacket::from_raw(packet);
                 println!("{:?}", packet.result);
                 match packet.result {
-                    SelectResult::Success => {
-                        self.is_selected = true
-                    },
+                    SelectResult::Success => self.is_selected = true,
                     SelectResult::Duplicates => {
                         // TODO : 오류 메시지 네비게이션 모달 띄우기
-                    },
+                    }
                     SelectResult::Banned => {
                         // TODO : 오류 메시지 네비게이션 모달 띄우기
-                    },
+                    }
                 }
-            },
+            }
             PacketType::FormationPull => {
                 let packet = FormationPullPacket::from_raw(packet);
                 self.remaining_time_sec = packet.remaining_time;
                 self.players = packet.players;
-            },
+            }
             PacketType::GamePlayStop => {
                 let packet = GamePlayStopPacket::from_raw(packet);
                 match packet.reason {
                     GamePlayStopReason::NotEnughPlayers => {
                         // TODO : 오류 메시지 모달 띄우기
-                    },
+                    }
                     GamePlayStopReason::OneTeamEmpty => {
                         // TODO: 오류 메시지 모달 띄우기
-                    },
+                    }
                 };
 
                 // 게임 장면을 변경합니다.
@@ -141,10 +156,21 @@ impl GameScene for CharacterFormationScene {
                 event_loop_proxy.send_event(event).unwrap();
             }
             PacketType::InitStage => {
+                let packet = InitStagePacket::from_raw(packet);
 
-            }, 
+                // 게임 장면을 변경합니다.
+                let next_scene =
+                    InGameLoadScene::new(self.locale, self.user_id, self.token, packet);
+                let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
             _ => {
-                log::warn!("ignored >> invalid packet received! (TYPE:{:?})", packet_type);
+                log::warn!(
+                    "ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type
+                );
             }
         }
         Ok(())
@@ -182,8 +208,8 @@ impl GameScene for CharacterFormationScene {
 
     fn ui_callback(
         &mut self,
-        window: &Window, 
-        app: &dyn mod_app::app::AppHandle
+        window: &Window,
+        app: &dyn mod_app::app::AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
@@ -229,22 +255,26 @@ impl GameScene for CharacterFormationScene {
 
         // 캐릭터 버튼
         const CHARACTERS: [CharacterKind; NUM_CHARACTERS] = [
-            CharacterKind::ArisOriginal, 
-            CharacterKind::MidoriOriginal, 
-            CharacterKind::MomoiOriginal, 
+            CharacterKind::ArisOriginal,
+            CharacterKind::MidoriOriginal,
+            CharacterKind::MomoiOriginal,
             CharacterKind::YuukaOriginal,
         ];
         let enable_character_button = !self.is_selected;
-        let character_buttons: Vec<_> = CHARACTERS.into_iter()
+        let character_buttons: Vec<_> = CHARACTERS
+            .into_iter()
             .map(|kind| {
                 egui::Button::new(kind.to_string())
                     .fill(egui::Color32::DARK_GRAY)
                     .corner_radius(1.5)
                     .min_size((200.0 * scale, 84.0 * scale).into())
-                    .stroke(egui::Stroke::new(1.0, match self.select_character {
-                        Some(character) if character == kind => egui::Color32::YELLOW,
-                        _ => egui::Color32::BLACK
-                    }))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        match self.select_character {
+                            Some(character) if character == kind => egui::Color32::YELLOW,
+                            _ => egui::Color32::BLACK,
+                        },
+                    ))
             })
             .collect();
 
@@ -308,9 +338,10 @@ impl GameScene for CharacterFormationScene {
                             if !self.is_selected {
                                 // 패킷을 전송합니다.
                                 let packet = FormationSelectPacket::new(
-                                    self.user_id, 
-                                    self.token, 
-                                    self.select_character.expect("there are no selected character!")
+                                    self.user_id,
+                                    self.token,
+                                    self.select_character
+                                        .expect("there are no selected character!"),
                                 );
                                 let net_manager = app.net_manager();
                                 let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();

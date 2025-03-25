@@ -2,7 +2,8 @@ use std::{fmt, sync::Arc};
 
 use mod_network::{
     components::{
-        CharacterKind, FormationPhasePlayer, GamePlayStopReason, SelectResult, StageKind, Team, UserId
+        CharacterKind, FormationPhasePlayer, GamePlayStopReason, SelectResult, StageKind, Team,
+        UserId,
     },
     protocol::{FormationPullPacket, FormationSelectResponsePacket, GamePlayStopPacket, Packet},
 };
@@ -174,7 +175,7 @@ impl GameWorldFormationState {
             let control_flow = GameWorldStateFlow::Pop;
             let event = GameWorldEvent::SetControlFlow(control_flow);
             world.push_event(event);
-            
+
             return;
         }
 

@@ -247,7 +247,9 @@ impl GameWorld {
                     // 게임 관리자를 설정합니다.
                     self.admin.store(uid.into_inner(), MemOrdering::Release);
                     let mut player = unsafe { self.players.get_mut(&uid).unwrap_unchecked() };
-                    player.with_permission(Permission::Admin).with_bool_flag(false);
+                    player
+                        .with_permission(Permission::Admin)
+                        .with_bool_flag(false);
                 }
             }
         }

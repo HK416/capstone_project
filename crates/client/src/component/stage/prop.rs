@@ -5,7 +5,7 @@ use mod_app::asset::AssetManager;
 use mod_render::{MaterialResource, MeshResource};
 
 use crate::{
-    asset::{AssetError, ModelHierarchyPool, Node},
+    asset::{AssetError, ModelHierarchyPool, Node, Root},
     component::{Child, Parent, Sibling, ToParentTrans, WorldTransform},
 };
 
@@ -62,6 +62,53 @@ pub fn spawn_stage_prop(
     Ok((entity, batch_commands))
 }
 
+/// 게임 스테이지 소품 엔터티를 생성합니다.
+///
+/// 생성된 엔터티는 아래 컴포넌트를 가집니다.
+/// - 자식 엔터티(`Child`)
+/// - 소품 태그(`StageProp`)
+/// - 로컬 변환 행렬(`ToParentTrans`)
+/// - 월드 변환 행렬(`WorldTransform`)
+///
+pub fn spawn_stage_prop_from_root(
+    root: Arc<Root>,
+    scale: glam::Vec3,
+    rotation: glam::Quat,
+    translation: glam::Vec3,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    world: &World,
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
+    // 엔터티를 하나 할당받습니다.
+    let entity = world.reserve_entity();
+    let mut builder = EntityBuilder::new();
+
+    // 컴포넌트 데이터를 준비합니다.
+    let tag = StageProp;
+    let local_transform = ToParentTrans(glam::Mat4::from_scale_rotation_translation(
+        scale,
+        rotation,
+        translation,
+    ));
+    let world_transform = WorldTransform::default();
+
+    // 컴포넌트를 추가합니다.
+    builder.add_bundle((tag, local_transform, world_transform));
+
+    // 소품 모델을 구성하는 엔터티를 생성합니다.
+
+    let (model_root_entity, mut batch_commands) =
+        spawn_stage_prop_model_from_root(root, device, queue, world, entity)?;
+
+    // 자식 엔터티를 추가합니다.
+    builder.add(Child(model_root_entity));
+
+    // 엔터티 생성 명령어를 추가합니다.
+    batch_commands.push((entity, builder));
+
+    Ok((entity, batch_commands))
+}
+
 /// 스테이지 소품을 구성하는 엔터티를 생성합니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
@@ -88,6 +135,42 @@ fn spawn_stage_prop_model(
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root = ModelHierarchyPool::get_or_init(name, workspace, asset_manager, device, queue)?;
 
+    let mut batch_commands = Vec::with_capacity(root.num_nodes);
+    let entity = spawn_stage_prop_model_recursion(
+        world,
+        device,
+        queue,
+        &mut batch_commands,
+        parent,
+        &root.node,
+        &[],
+    );
+
+    Ok((entity, batch_commands))
+}
+
+/// 스테이지 소품을 구성하는 엔터티를 생성합니다.
+///
+/// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
+/// - 부모 엔터티(`Parent`)
+/// - 로컬 변환 행렬(`ToParentTrans`)
+/// - 월드 변환 행렬(`WorldTransform`)
+///
+/// 일부 엔터티는 아래 컴포넌트를 선택적으로 가집니다.
+/// - 자식 엔터티(`Child`)
+/// - 형제 엔터티(`Sibling`)
+/// - 모델 메쉬(`Arc<Mesh>`)
+/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
+/// - 소품 태크(`StageProp`)
+/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>`)
+///
+fn spawn_stage_prop_model_from_root(
+    root: Arc<Root>,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    world: &World,
+    parent: Entity,
+) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
     let entity = spawn_stage_prop_model_recursion(
         world,
