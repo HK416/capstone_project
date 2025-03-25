@@ -1,13 +1,16 @@
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameInputBits, HealthPoint,
-    InGamePlayer, InGameStatus, LatLon, MAX_JUMP_DURATION, MovementState, MovementStateTimer,
-    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Team, UserInfo, ViewState, ViewStateTimer,
+    LatLon, MAX_JUMP_DURATION, MovementState, MovementStateTimer, NUM_ACTION_STATES,
+    NUM_MOVEMENT_STATES, ObjectId, Permission, Team, UserAccount, ViewState, ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
 
-use crate::data::get_character_attributes;
+use crate::{
+    data::get_character_attributes,
+    world::{GameWorld, GameWorldEvent},
+};
 
-use super::{BulletObject, GameWorld, GameWorldEvent};
+use super::BulletObject;
 
 const PLAYER_RADIUS: f32 = 0.25;
 const PLAYER_HEIGHT: f32 = 1.0;
@@ -18,11 +21,14 @@ const MAX_INPUT_DURATION: f32 = 0.25;
 #[derive(Debug, Clone)]
 pub struct PlayerObject {
     /// 플레이어의 사용자 정보
-    info: UserInfo,
-    /// 플레이어의 팀 정보
-    team: Team,
-    /// 플레이어의 상태
-    status: InGameStatus,
+    account: UserAccount,
+
+    /// 여러 자료형의 데이터가 포함된 비트 필드입니다.  
+    /// 아래와 같은 자료형이 포함되어있습니다.
+    /// - Team (1bit): 플레이어가 속한 팀
+    /// - Permission (1bit): 플레이어 권한
+    /// - bool (1bit): 다양한 용도로 사용되는 부울 플래그
+    bitfield: u8,
 
     /// 플레이어 캐릭터 종류
     character_kind: CharacterKind,
@@ -72,20 +78,18 @@ pub struct PlayerObject {
 }
 
 impl PlayerObject {
-    pub fn new(
-        info: UserInfo,
-        team: Team,
-        status: InGameStatus,
-        character_kind: CharacterKind,
-    ) -> Self {
-        let attributes = get_character_attributes(character_kind);
+    pub fn new(account: UserAccount, permission: Permission, team: Team) -> Self {
+        let team_bitfield = (team as u8) << 2;
+        let permission_bitfield = (permission as u8) << 1;
+        let bool_bitfield = (false as u8) << 0;
+        let bitfield = team_bitfield | permission_bitfield | bool_bitfield;
+
         Self {
-            info,
-            team,
-            status,
-            character_kind,
-            attributes,
-            health_point: HealthPoint(attributes.health_point),
+            account,
+            bitfield,
+            character_kind: CharacterKind::default(),
+            attributes: get_character_attributes(CharacterKind::default()),
+            health_point: HealthPoint(0),
             fired_per_attack: 0,
             remaining_bullets: 1,
             translation: glam::Vec3A::ZERO,
@@ -106,8 +110,56 @@ impl PlayerObject {
     }
 
     /// 플레이어 오브젝트의 사용자 정보를 가져옵니다.
-    pub fn info(&self) -> &UserInfo {
-        &self.info
+    pub fn account(&self) -> &UserAccount {
+        &self.account
+    }
+
+    /// 플레이어가 속한 팀을 설정합니다.
+    #[allow(dead_code)]
+    pub fn with_team(&mut self, team: Team) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x1 << 2)) | (team as u8) << 2;
+        self
+    }
+
+    /// 플레이어가 속한 팀을 가져옵니다.
+    pub fn team(&self) -> Team {
+        // Safe: 값이 범위를 벗어나지 않음
+        unsafe { Team::new((self.bitfield >> 2) & 0x1).unwrap_unchecked() }
+    }
+
+    /// 플레이어의 권한을 설정합니다.
+    pub fn with_permission(&mut self, permission: Permission) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x1 << 1)) | (permission as u8) << 1;
+        self
+    }
+
+    /// 플레이어의 권한을 가져옵니다.
+    pub fn permission(&self) -> Permission {
+        // Safe: 값이 범위를 벗어나지 않음
+        unsafe { Permission::new((self.bitfield >> 1) & 0x1).unwrap_unchecked() }
+    }
+
+    /// 부울 플래그 변수의 값을 설정합니다.
+    pub fn with_bool_flag(&mut self, flag: bool) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x1 << 0)) | (flag as u8) << 0;
+        self
+    }
+
+    /// 부울 플래그 변수의 값을 가져옵니다.
+    pub fn bool_flag(&self) -> bool {
+        (self.bitfield >> 0) & 0x1 == 0x1
+    }
+
+    /// 플레이어 캐릭터 종류를 가져옵니다.
+    pub fn character_kind(&self) -> CharacterKind {
+        self.character_kind
+    }
+
+    /// 플레이어 캐릭터 종류를 설정합니다.
+    pub fn with_character_kind(&mut self, character_kind: CharacterKind) -> &mut Self {
+        self.character_kind = character_kind;
+        self.attributes = get_character_attributes(character_kind);
+        self
     }
 
     /// 플레이어 오브젝트의 캐릭터 속성을 가져옵니다.
@@ -115,8 +167,13 @@ impl PlayerObject {
         self.attributes
     }
 
+    /// 플레이어 오브젝트 체력을 가져옵니다.
+    pub fn health_point(&self) -> HealthPoint {
+        self.health_point
+    }
+
     /// 플레이어 오브젝트의 체력을 가져옵니다.
-    pub fn health_mut(&mut self) -> &mut HealthPoint {
+    pub fn health_point_mut(&mut self) -> &mut HealthPoint {
         &mut self.health_point
     }
 
@@ -130,6 +187,11 @@ impl PlayerObject {
         &mut self.translation
     }
 
+    /// 플레이어 오브젝트 방향을 가져옵니다.
+    pub fn rotation(&self) -> glam::Quat {
+        self.rotation
+    }
+
     /// 플레이어 오브젝트의 방향을 설정합니다.
     pub fn set_rotation(&mut self, q: [f32; 4]) {
         let q = glam::Quat::from_array(q);
@@ -140,6 +202,41 @@ impl PlayerObject {
     pub fn set_direction<T: Into<glam::Vec3A>>(&mut self, v: T) {
         let v: glam::Vec3A = v.into();
         self.direction = v.with_y(0.0).normalize_or(glam::Vec3A::Z);
+    }
+
+    /// 플레이어 행동 상태를 가져옵니다.
+    pub fn action_state(&self) -> ActionState {
+        self.action_state
+    }
+
+    /// 플레이어 행동 상태 타이머를 가져옵니다.
+    pub fn action_state_timer(&self) -> ActionStateTimer {
+        self.action_state_timer
+    }
+
+    /// 플레이어 움직임 상태를 가져옵니다.
+    pub fn movement_state(&self) -> MovementState {
+        self.movement_state
+    }
+
+    /// 플레이어 움직임 상태 타이머를 가져옵니다.
+    pub fn movement_state_timer(&self) -> MovementStateTimer {
+        self.movement_state_timer
+    }
+
+    /// 플레이어 카메라 움직임 상태를 가져옵니다.
+    pub fn view_state(&self) -> ViewState {
+        self.view_state
+    }
+
+    /// 플레이어 카메라 움직임 상태 타이머를 가져옵니다.
+    pub fn view_state_timer(&self) -> ViewStateTimer {
+        self.view_state_timer
+    }
+
+    /// 플레이어 카메라가 캐릭터를 중심으로 회전한 각도를 가져옵니다.
+    pub fn view_rotation(&self) -> LatLon {
+        self.view_rotation
     }
 
     /// 플레이어 오브젝트의 `ViewState`, `ViewStateTimer`, `Latlon`을 설정합니다.
@@ -182,7 +279,7 @@ impl PlayerObject {
 
         BulletObject {
             object_id,
-            shooter_id: self.info.uid,
+            shooter_id: self.account.uid,
             bullet_kind: self.character_kind.into(),
             translation,
             rotation,
@@ -704,7 +801,7 @@ impl PlayerObject {
             self.fired_per_attack += 1;
             // self.remaining_bullets -= 1;
 
-            let shooter_id = self.info.uid;
+            let shooter_id = self.account.uid;
             let delay = self.action_state_timer.0 - *time_point;
             world.push_event(GameWorldEvent::AddBullet { shooter_id, delay });
         }
@@ -717,11 +814,6 @@ impl PlayerObject {
             self.action_state_timer.0 = diff_t;
             self.fired_per_attack = 0;
         }
-    }
-
-    /// 플레이어 오브젝트의 `MovementState`를 가져옵니다.
-    pub fn movement_state(&self) -> MovementState {
-        self.movement_state
     }
 
     /// 플레이어 오브젝트의 `MovementState`를 갱신합니다.
@@ -1401,26 +1493,6 @@ impl PlayerObject {
         // 타이머를 갱신합니다.
         self.movement_state_timer.0 =
             (self.movement_state_timer.0 + elapsed_time_sec).min(MAX_JUMP_DURATION);
-    }
-
-    pub fn as_player(&self) -> InGamePlayer {
-        InGamePlayer {
-            info: self.info,
-            team: self.team,
-            status: self.status,
-            character_kind: self.character_kind,
-            health_point: self.health_point,
-            translation: self.translation.into(),
-            rotation: self.rotation.into(),
-            action_state: self.action_state,
-            movement_state: self.movement_state,
-            view_state: self.view_state,
-            action_state_timer: self.action_state_timer,
-            movement_state_timer: self.movement_state_timer,
-            view_state_timer: self.view_state_timer,
-            view_rotation: self.view_rotation,
-            ..Default::default()
-        }
     }
 
     /// 입력 지속시간을 갱신합니다.

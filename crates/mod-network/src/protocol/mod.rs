@@ -36,20 +36,20 @@ pub enum PacketType {
     CustomGamePull = 27,
     CustomGameLeave = 28,
     CustomGameReady = 29,
+    CustomGameStartFailed = 30,
 
     FormationSelect = 32,
     FormationSelectResponse = 33,
     FormationPull = 34,
+    GamePlayStop = 35,
 
     EnterStage = 48,
     InitStage = 49,
     PullStage = 50,
     PushStatus = 51,
+    PushSync = 52,
 
     UdpDamageLog = 128,
-
-    /// 게임 서버 내부에서 사용되는 세션에 다음 세션 상태로 변경함을 알리는 패킷입니다.
-    EnterFormationState = 192,
 }
 
 impl BigEndian for PacketType {
@@ -86,15 +86,17 @@ impl TryFromBigEndian for PacketType {
             27 => Some(PacketType::CustomGamePull),
             28 => Some(PacketType::CustomGameLeave),
             29 => Some(PacketType::CustomGameReady),
+            30 => Some(PacketType::CustomGameStartFailed),
             32 => Some(PacketType::FormationSelect),
             33 => Some(PacketType::FormationSelectResponse),
             34 => Some(PacketType::FormationPull),
+            35 => Some(PacketType::GamePlayStop),
             48 => Some(PacketType::EnterStage),
             49 => Some(PacketType::InitStage),
             50 => Some(PacketType::PullStage),
             51 => Some(PacketType::PushStatus),
+            52 => Some(PacketType::PushSync),
             128 => Some(PacketType::UdpDamageLog),
-            192 => Some(PacketType::EnterFormationState),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",

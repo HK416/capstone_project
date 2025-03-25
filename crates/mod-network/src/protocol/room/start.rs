@@ -1,33 +1,32 @@
 use crate::{
-    components::{BigEndian, SelectResult, TryFromBigEndian},
+    components::{BigEndian, StartFailedReason, TryFromBigEndian},
     protocol::{Packet, PacketType, RawPacket},
 };
 
-/// 서버에서 클라이언트로 보내는 캐릭터 선택 응답 패킷입니다.
-#[repr(transparent)]
+/// 커스텀 게임 시작에 실패했을 때 서버에서 클라이언트로 보내는 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FormationSelectResponsePacket {
-    pub result: SelectResult,
+pub struct CustomGameStartFailedPacket {
+    pub reason: StartFailedReason,
 }
 
-impl FormationSelectResponsePacket {
+impl CustomGameStartFailedPacket {
     /// 새로운 패킷을 생성합니다.
-    pub fn new(result: SelectResult) -> Self {
-        Self { result }
+    pub fn new(reason: StartFailedReason) -> Self {
+        Self { reason }
     }
 }
 
-impl Packet for FormationSelectResponsePacket {
+impl Packet for CustomGameStartFailedPacket {
     fn packet_type() -> PacketType {
-        PacketType::FormationSelectResponse
+        PacketType::CustomGameStartFailed
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = SelectResult::byte_size();
+        let data_size = StartFailedReason::byte_size();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.result.to_big_endian_bytes());
+        data.extend_from_slice(&self.reason.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -35,7 +34,7 @@ impl Packet for FormationSelectResponsePacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(FormationSelectResponsePacket)
+                stringify!(CustomGameStartFailedPacket)
             );
         }
 
@@ -54,14 +53,14 @@ impl Packet for FormationSelectResponsePacket {
             return None;
         }
 
-        // 선택 결과를 가져옵니다.
+        // 실패 사유를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = SelectResult::byte_size();
+        let mut size = StartFailedReason::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let result = SelectResult::try_from_big_endian_bytes(data)?;
+        let reason = StartFailedReason::try_from_big_endian_bytes(data)?;
 
-        Some(Self { result })
+        Some(Self { reason })
     }
 }
 
@@ -70,10 +69,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_formation_select_response_packet() {
-        let origin = FormationSelectResponsePacket::new(SelectResult::Duplicates);
+    fn test_custom_game_start_failed_packet() {
+        let reason = StartFailedReason::PlayersNotReady;
+
+        let origin = CustomGameStartFailedPacket::new(reason);
         let raw = origin.as_raw();
-        let other = FormationSelectResponsePacket::from_raw(raw);
+        let other = CustomGameStartFailedPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

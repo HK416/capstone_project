@@ -12,8 +12,8 @@ use mod_network::{
         LoginToken, Permission, RecruitPhasePlayer, Team, UserId, WorldId, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
-        CustomGameLeavePacket, CustomGamePullPacket, CustomGameReadyPacket,
-        FormationPullPacket, Packet, PacketType, RawPacket,
+        CustomGameLeavePacket, CustomGamePullPacket, CustomGameReadyPacket, FormationPullPacket,
+        Packet, PacketType, RawPacket,
     },
 };
 use mod_render::{TexturePool, TextureViewPool};
@@ -144,6 +144,9 @@ impl GameScene for CustomGameRoomScene {
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+            }
+            PacketType::CustomGameStartFailed => {
+                // TODO : 오류 메시지 네비게이션 모달 띄우기
             }
             _ => {
                 log::warn!("invalid packet received! (TYPE:{:?})", packet_type);

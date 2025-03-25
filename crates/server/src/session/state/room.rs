@@ -1,35 +1,43 @@
-use std::sync::{Arc, Weak};
+use std::{
+    fmt,
+    sync::{Arc, Weak},
+};
 
 use mod_network::{
-    components::CharacterKind,
+    components::UserAccount,
     protocol::{CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket},
 };
-use mod_parallelism::collections::Queue;
 
-use crate::{game::GameWorld, session::Session, token::UserTokenMap};
+use crate::{
+    session::{Session, SessionEvents},
+    token::UserTokenMap,
+    world::{GameWorld, GameWorldEvent},
+};
 
-use super::{ControlFlow, SessionState, formation::FormationState};
+use super::{SessionState, SessionStateFlow, formation::SessionFormationState};
 
-#[derive(Debug)]
-pub struct RoomState {
-    room: Weak<GameWorld>,
+pub struct SessionRoomState {
+    /// 세션 상태 실행 여부
+    is_running: bool,
+
+    /// 사용자 계정 데이터
+    account: UserAccount,
+    /// 연결된 게임 월드
+    world: Weak<GameWorld>,
 }
 
-impl RoomState {
+impl SessionRoomState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(room: &Arc<GameWorld>) -> Self {
+    pub fn new(account: UserAccount, world: &Arc<GameWorld>) -> Self {
         Self {
-            room: Arc::downgrade(room),
+            is_running: true,
+            account,
+            world: Arc::downgrade(world),
         }
     }
 
     /// `CustomGameLeavePacket`을 처리합니다.
-    fn handle_custom_game_leave_packet(
-        &mut self,
-        flow: &mut Option<ControlFlow>,
-        session: &Arc<Session>,
-        packet: RawPacket,
-    ) {
+    fn handle_custom_game_leave_packet(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet = match CustomGameLeavePacket::try_from_raw(packet) {
             Some(packet) => packet,
             None => {
@@ -50,12 +58,14 @@ impl RoomState {
         }
 
         // 커스텀 게임 대기실 객체를 가져옵니다.
-        if let Some(room) = self.room.upgrade() {
+        if let Some(world) = self.world.upgrade() {
             // 커스텀 게임 대기실에서 플레이어 정보를 제거합니다.
-            room.exit(session);
+            world.exit(session);
 
             // 다음 세션 상태로 전환합니다.
-            *flow = Some(ControlFlow::Pop);
+            let control_flow = SessionStateFlow::Pop;
+            let event = SessionEvents::SetControlFlow(control_flow);
+            session.push_event(event);
         } else {
             log::warn!("{} accesses an invalid custom game", session);
             session.close();
@@ -63,13 +73,8 @@ impl RoomState {
         }
     }
 
-    /// `CustomGamePushPacket`을 처리합니다.
-    fn handle_custom_game_push_status_packet(
-        &mut self,
-        _flow: &mut Option<ControlFlow>,
-        session: &Arc<Session>,
-        packet: RawPacket,
-    ) {
+    /// `CustomGameReadyPacket`을 처리합니다.
+    fn handle_custom_game_ready_packet(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet = match CustomGameReadyPacket::try_from_raw(packet) {
             Some(packet) => packet,
             None => {
@@ -90,54 +95,57 @@ impl RoomState {
         }
 
         // 커스텀 게임 대기실 객체를 가져옵니다.
-        if let Some(room) = self.room.upgrade() {
-            // 커스텀 게임 대기실에서 플레이어 정보를 제거합니다.
-            if !room.access(session, |player| {
-                let mut game = player.game_play.lock();
-                game.with_ready(packet.ready);
-            }) {
-                log::warn!("{} accesses an invalid custom game player", session);
-                session.close();
-                return;
-            }
+        if let Some(world) = self.world.upgrade() {
+            // 게임 준비 요청을 보냅니다.
+            let event = GameWorldEvent::CustomRoomReady {
+                session: session.clone(),
+                uid: packet.user_id,
+                ready: packet.ready,
+            };
+            world.push_event(event);
         } else {
             log::warn!("{} accesses an invalid custom game", session);
             session.close();
             return;
         }
     }
-
-    /// `EnterFormationStatePacket`을 처리합니다.
-    fn handle_enter_formation_state_packet(
-        &mut self,
-        flow: &mut Option<ControlFlow>,
-        _session: &Arc<Session>,
-        packet: RawPacket,
-    ) {
-        // 포인터를 가져옵니다.
-        let ptr = usize::from_be_bytes(packet.data().try_into().unwrap());
-        let select_commands =
-            unsafe { Arc::from_raw(ptr as *const Queue<(Arc<Session>, CharacterKind)>) };
-
-        // 다음 세션 상태로 전환합니다.
-        let next_state = Box::new(FormationState::new(select_commands));
-        *flow = Some(ControlFlow::Change(next_state));
-    }
 }
 
-impl SessionState for RoomState {
-    fn handle_packets(&mut self, flow: &mut Option<ControlFlow>, session: &Arc<Session>) {
+impl SessionState for SessionRoomState {
+    fn on_resume(&mut self, _session: &Arc<Session>) {
+        self.is_running = true;
+    }
+
+    fn handle_event(&mut self, event: SessionEvents, session: &Arc<Session>) {
+        match event {
+            SessionEvents::EnterFormation => {
+                // 다음 세션 상태로 전환합니다.
+                self.is_running = false;
+                let next_state = Box::new(SessionFormationState::new(self.account, &self.world));
+                let control_flow = SessionStateFlow::Push(next_state);
+                let event = SessionEvents::SetControlFlow(control_flow);
+                session.push_event(event);
+            }
+            _ => {
+                log::warn!("ignored >> unused session event (STATE:{:?})", &self);
+            }
+        }
+    }
+
+    fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
+            // 세션 상태가 실행 중이 아닌 경우 스킵합니다.
+            if !self.is_running {
+                continue;
+            }
+
             let packet_type = packet.packet_type();
             match packet_type {
                 PacketType::CustomGameLeave => {
-                    self.handle_custom_game_leave_packet(flow, session, packet);
+                    self.handle_custom_game_leave_packet(session, packet);
                 }
                 PacketType::CustomGameReady => {
-                    self.handle_custom_game_push_status_packet(flow, session, packet);
-                }
-                PacketType::EnterFormationState => {
-                    self.handle_enter_formation_state_packet(flow, session, packet);
+                    self.handle_custom_game_ready_packet(session, packet);
                 }
                 _ => {
                     log::warn!(
@@ -155,8 +163,14 @@ impl SessionState for RoomState {
 
     fn on_exit(&mut self, session: &Arc<Session>) {
         // 커스텀 게임 대기실에서 플레이어를 제거합니다.
-        if let Some(room) = self.room.upgrade() {
-            room.exit(session);
+        if let Some(world) = self.world.upgrade() {
+            world.exit(session);
         }
+    }
+}
+
+impl fmt::Debug for SessionRoomState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(SessionRoomState))
     }
 }

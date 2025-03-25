@@ -1,3 +1,8 @@
+use rand::{
+    distr::{Distribution, StandardUniform},
+    Rng,
+};
+
 use crate::components::{BigEndian, TryFromBigEndian};
 
 /// 캐릭터 모델 종류 수 입니다.
@@ -48,6 +53,15 @@ impl BigEndian for CharacterKind {
 impl Default for CharacterKind {
     fn default() -> Self {
         CharacterKind::ArisOriginal
+    }
+}
+
+impl Distribution<CharacterKind> for StandardUniform {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CharacterKind {
+        let val = rng.random_range(0..NUM_CHARACTERS) as u8;
+
+        // Safe: 주어진 값은 범위를 벗어나지 않음
+        CharacterKind::new(val).unwrap_or_default()
     }
 }
 

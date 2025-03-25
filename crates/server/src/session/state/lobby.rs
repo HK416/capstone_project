@@ -1,32 +1,34 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use mod_network::{
-    components::{JoinFailedReason, UserAccount, WorldId},
+    components::{JoinFailedReason, RecruitPhasePlayer, UserAccount, WorldId},
     protocol::{
         CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket,
         Packet, PacketType, RawPacket,
     },
 };
 
-use crate::{game::GameWorldPool, session::Session, token::UserTokenMap};
+use crate::{
+    session::{Session, SessionEvents},
+    token::UserTokenMap,
+    world::GameWorldPool,
+};
 
-use super::{ControlFlow, SessionState, room::RoomState};
+use super::{SessionState, SessionStateFlow, room::SessionRoomState};
 
-#[derive(Debug)]
-pub struct LobbyState {
+pub struct SessionLobbyState {
     account: UserAccount,
 }
 
-impl LobbyState {
+impl SessionLobbyState {
     /// 새로운 `LobbyState`를 생성합니다.
-    pub fn new(user_info: UserAccount) -> Self {
-        Self { account: user_info }
+    pub fn new(account: UserAccount) -> Self {
+        Self { account }
     }
 
     /// `CustomGameJoinRequestPacket`을 처리합니다.
     fn handle_custom_game_join_request_packet(
         &mut self,
-        flow: &mut Option<ControlFlow>,
         session: &Arc<Session>,
         packet: RawPacket,
     ) {
@@ -50,36 +52,46 @@ impl LobbyState {
         }
 
         if packet.world_id == WorldId::NULL {
-            self.create_custom_game(flow, session, packet);
+            self.create_custom_game(session, packet);
         } else {
-            self.try_join_custom_game(flow, session, packet);
+            self.try_join_custom_game(session, packet);
         }
     }
 
     /// 커스텀 게임 대기실을 생성합니다.
-    fn create_custom_game(
-        &mut self,
-        flow: &mut Option<ControlFlow>,
-        session: &Arc<Session>,
-        _packet: CustomGameJoinRequestPacket,
-    ) {
+    fn create_custom_game(&mut self, session: &Arc<Session>, _packet: CustomGameJoinRequestPacket) {
         // 새로운 커스텀 게임 대기실을 생성합니다.
-        let (room, players) = GameWorldPool::create_custom(self.account, session);
+        if let Some(world) = GameWorldPool::create_custom(&self.account, session) {
+            // 플레이어 정보를 수집합니다.
+            let players = world
+                .iter_players()
+                .map(|item| {
+                    RecruitPhasePlayer::new(
+                        item.account().clone(),
+                        item.team(),
+                        item.bool_flag(),
+                        item.permission(),
+                    )
+                })
+                .collect();
 
-        // 패킷을 생성합니다.
-        let packet = CustomGameJoinSuccessPacket::new(room.id(), players);
-        // 패킷을 전송합니다.
-        session.tcp_write(packet.as_raw());
+            // 패킷을 생성합니다.
+            let packet = CustomGameJoinSuccessPacket::new(world.id(), players);
+            // 패킷을 전송합니다.
+            session.tcp_write(packet.as_raw());
 
-        // 다음 세션 상태로 전환합니다.
-        let next_state = Box::new(RoomState::new(&room));
-        *flow = Some(ControlFlow::Push(next_state));
+            // 다음 세션 상태로 전환합니다.
+            let next_state = Box::new(SessionRoomState::new(self.account, &world));
+            let control_flow = SessionStateFlow::Push(next_state);
+            let event = SessionEvents::SetControlFlow(control_flow);
+            session.push_event(event);
+        } else {
+        }
     }
 
     /// 커스텀 게임 참여를 시도합니다.
     fn try_join_custom_game(
         &mut self,
-        flow: &mut Option<ControlFlow>,
         session: &Arc<Session>,
         packet: CustomGameJoinRequestPacket,
     ) {
@@ -88,15 +100,30 @@ impl LobbyState {
             Some(world) => {
                 // 커스텀 게임 대기실에 참가를 시도합니다.
                 match world.try_join(self.account, session) {
-                    Ok(players) => {
+                    Ok(()) => {
+                        // 플레이어 정보를 수집합니다.
+                        let players = world
+                            .iter_players()
+                            .map(|item| {
+                                RecruitPhasePlayer::new(
+                                    item.account().clone(),
+                                    item.team(),
+                                    item.bool_flag(),
+                                    item.permission(),
+                                )
+                            })
+                            .collect();
+
                         // 패킷을 생성합니다.
                         let packet = CustomGameJoinSuccessPacket::new(world.id(), players);
                         // 패킷을 전송합니다.
                         session.tcp_write(packet.as_raw());
 
                         // 다음 세션 상태로 전환합니다.
-                        let next_state = Box::new(RoomState::new(&world));
-                        *flow = Some(ControlFlow::Push(next_state));
+                        let next_state = Box::new(SessionRoomState::new(self.account, &world));
+                        let control_flow = SessionStateFlow::Push(next_state);
+                        let event = SessionEvents::SetControlFlow(control_flow);
+                        session.push_event(event);
                     }
                     Err(reason) => {
                         // 패킷을 생성합니다.
@@ -117,13 +144,13 @@ impl LobbyState {
     }
 }
 
-impl SessionState for LobbyState {
-    fn handle_packets(&mut self, flow: &mut Option<ControlFlow>, session: &Arc<Session>) {
+impl SessionState for SessionLobbyState {
+    fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
             let packet_type = packet.packet_type();
             match packet_type {
                 PacketType::CustomGameJoinRequest => {
-                    self.handle_custom_game_join_request_packet(flow, session, packet);
+                    self.handle_custom_game_join_request_packet(session, packet);
                 }
                 _ => {
                     log::warn!(
@@ -144,5 +171,11 @@ impl SessionState for LobbyState {
         let uid = self.account.uid;
         let addr = session.addr;
         UserTokenMap::remove(&(uid, addr));
+    }
+}
+
+impl fmt::Debug for SessionLobbyState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(SessionLobbyState))
     }
 }

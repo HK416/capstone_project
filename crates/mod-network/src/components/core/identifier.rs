@@ -55,6 +55,11 @@ impl UserId {
     pub const fn new(n: u32) -> Self {
         Self(n)
     }
+
+    /// 내부 정수 값을 반환합니다.
+    pub fn into_inner(self) -> u32 {
+        self.0
+    }
 }
 
 impl BigEndian for UserId {

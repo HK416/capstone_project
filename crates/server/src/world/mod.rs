@@ -1,543 +1,397 @@
-mod bullet;
 mod event;
-mod player;
+mod pool;
+mod state;
 
 use std::{
-    fmt,
+    collections::VecDeque,
     sync::{
-        Arc, OnceLock,
-        atomic::{AtomicU32, AtomicU64, Ordering as MemOrdering},
+        Arc,
+        atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering},
     },
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use ahash::RandomState;
-use dashmap::{DashMap, DashSet, mapref::one::RefMut};
-use mod_network::{
-    components::{
-        CharacterKind, DamageLog, Epoch, HealthPoint, InGameStatus, MovementState, ObjectId,
-        StageKind, Team, UserId, WorldId,
-    },
-    protocol::{InitStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
+use dashmap::{DashMap, iter::Iter};
+use mod_network::components::{
+    JoinFailedReason, MAX_IN_GAME_PLAYERS, ObjectId, Permission, Team, UserAccount, UserId, WorldId,
 };
 use mod_parallelism::collections::Queue;
-use mod_physics::{
-    collision::{Collider, ColliderTreeIterator, DynamicCollision, StaticCollision},
-    object3d::{BoundingBox, Sphere},
-};
-use tokio::time::Instant;
+use parking_lot::FairMutex;
+use rand::seq::SliceRandom;
 
 use crate::{
-    data::{clamp_x, clamp_z, get_stage_colliders, get_stage_height, is_valid_position},
+    entities::{BulletObject, PlayerObject},
     session::Session,
 };
 
-pub use self::{bullet::*, event::*, player::*};
+pub use self::{event::*, pool::*, state::*};
 
-use super::formula::movement_formulas as formulas;
-
-/// 중력 가속도입니다.
-const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
-
-/// 게임 개발을 위한 테스트 게임 월드 입니다.
-///
-/// # Note
-/// 테스트 게임 월드는 인원 제한이 없습니다.
-///
+/// 게임을 진행하고, 생성된 오브젝트를 관리합니다.
 #[derive(Debug)]
 pub struct GameWorld {
     /// 게임 월드 식별자입니다.
     world_id: WorldId,
-    /// 게임 월드의 현재 시대입니다.  
-    epoch: AtomicU64,
-    /// 오브젝트 식별자를 생성하기 위한 카운터입니다.
-    counter: AtomicU32,
+    /// 게임 월드의 실행 여부입니다.
+    is_running: AtomicBool,
+    /// 외부 플레이어 출입의 제한 여부입니다.
+    is_closed: AtomicBool,
 
-    /// 게임 지형의 종류입니다.
-    stage_kind: StageKind,
+    /// 게임 월드 관리자의 사용자 식별자입니다.
+    admin: AtomicU32,
 
-    /// 게임 월드에 새로 들어온 세션 데이터입니다.
-    new_sessions: Queue<Arc<Session>>,
-    /// 게임 월드에 참가한 세션 데이터입니다.
-    sessions: DashSet<Arc<Session>, RandomState>,
-    /// 게임 월드에 포함된 플레이어 캐릭터 데이터입니다.
+    /// 커스텀 게임 대기실에 참여한 플레이어 수 (동기화를 위해 Mutex를 사용함)
+    num_players: FairMutex<usize>,
+
+    /// 게임 월드에 참여한 세션 집합입니다.
+    sessions: DashMap<Arc<Session>, UserId>,
+    /// 플레이어 오브젝트 집합입니다.
     players: DashMap<UserId, PlayerObject, RandomState>,
-    /// 게임 월드에 포함된 총알 데이터입니다.
+    /// 총알 오브젝트 집합입니다.
     bullets: DashMap<ObjectId, BulletObject, RandomState>,
 
-    /// 플레이어 데미지 로그입니다.
-    damage_logs: Queue<DamageLog>,
-
-    /// 게임 월드에 발생한 이벤트 대기열입니다.
+    /// 게임 월드 이벤트 대기열입니다.
     events: Queue<GameWorldEvent>,
 }
 
 impl GameWorld {
-    /// 게임 월드의 인스턴스를 가져옵니다.
-    pub fn get_instance() -> Arc<Self> {
-        static INSTANCE: OnceLock<Arc<GameWorld>> = OnceLock::new();
-        INSTANCE
-            .get_or_init(|| Arc::new(GameWorld::default()))
-            .clone()
-    }
-
-    /// 오브젝트 식별자를 생성합니다.
-    pub fn generate_object_id(&self) -> ObjectId {
-        let now = SystemTime::now();
-        let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
-
-        let counter_bit = self.counter.fetch_add(1, MemOrdering::AcqRel) & 0xFFFF;
-        let time_bit = duration.subsec_nanos() & 0xFFFF;
-
-        ObjectId::new((time_bit << 16) | counter_bit)
-    }
-
-    /// 게임 월드에 참가합니다.   
-    /// NOTE: 플레이어의 캐릭터가 바로 생성되지 않습니다.
-    pub fn join(&self, session: Arc<Session>, character_kind: CharacterKind) {
-        // 플레이어 생성 이벤트를 추가합니다.
-        self.push_event(GameWorldEvent::AddPlayer(session, character_kind));
-    }
-
-    /// 게임 월드에서 나갑니다.
-    pub fn exit(&self, session: &Session) {
-        self.sessions.remove(session);
-        self.push_event(GameWorldEvent::RemovePlayer(session.user().uid));
-    }
-
-    /// 플레이어 캐릭터를 추가합니다.
-    fn add_player(&self, session: Arc<Session>, character_kind: CharacterKind) {
-        let info = session.user().clone();
-        let user_id = info.uid;
-        if !self.players.contains_key(&user_id) {
-            // 새로 참가한 세션 목록에 세션을 추가합니다.
-            self.new_sessions.push(session);
-            // 플레이어 오브젝트를 생성합니다.
-            let player = PlayerObject::new(
-                info,
-                Team::default(),         // Temp
-                InGameStatus::default(), // Temp
-                character_kind,
-            );
-            // 플레이어 오브젝트를 추가합니다.
-            self.players.insert(user_id, player);
-            log::info!("the Player({}) has been added to the {}", &user_id, &self);
-        } else {
-            log::warn!(
-                "failed to create player. (REASON:the Player({}) already exists in the {})",
-                &user_id,
-                &self
-            );
+    /// 새로운 게임 월드를 생성합니다.
+    pub fn new(world_id: WorldId) -> Self {
+        Self {
+            world_id,
+            is_running: AtomicBool::new(false),
+            is_closed: AtomicBool::new(true),
+            admin: AtomicU32::new(UserId::NULL.into_inner()),
+            num_players: FairMutex::new(0),
+            sessions: DashMap::default(),
+            players: DashMap::default(),
+            bullets: DashMap::default(),
+            events: Queue::new(),
         }
     }
 
-    /// 게임 세상에서 플레이어 오브젝트를 제거합니다.
-    fn remove_player(&self, user_id: UserId) {
-        match self.players.remove(&user_id) {
-            Some(_) => log::info!("Player({}) is removed from the {}", &user_id, &self),
-            None => log::warn!("the Player({}) could not be found in {}!", &user_id, &self),
-        };
+    /// 게임 월드의 식별자를 반환합니다.
+    pub fn id(&self) -> WorldId {
+        self.world_id
     }
 
-    /// 게임 세상에 존재하는 해당 플레이어 오브젝트를 가져옵니다.  
-    /// 해당 플레이어 오브젝트가 존재하지 않는 경우 `None`을 전달합니다.
-    pub fn get_mut_player<F>(&self, user_id: UserId, func: F)
-    where
-        F: FnOnce(&GameWorld, Option<RefMut<'_, UserId, PlayerObject>>),
-    {
-        func(self, self.players.get_mut(&user_id))
+    /// 게임 월드의 실행 여부를 가져옵니다.
+    pub fn is_running(&self) -> bool {
+        self.is_running.load(MemOrdering::Relaxed)
     }
 
-    /// 플레이어 상태 타이머를 갱신합니다.
-    fn update_player_state_timer(&self, elapsed_time_sec: f32) {
-        for mut player in self.players.iter_mut() {
-            player.update_state_timer(self, elapsed_time_sec);
-        }
+    /// 게임 월드의 외부 출입 차단 여부를 가져옵니다.
+    pub fn is_closed(&self) -> bool {
+        self.is_closed.load(MemOrdering::Relaxed)
     }
 
-    /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
-    fn update_player_position(&self, elapsed_time_sec: f32) {
-        for mut player in self.players.iter_mut() {
-            // 플레이어 위치를 가져옵니다.
-            let translation = player.translation();
+    /// 게임 월드를 비활성화합니다.
+    pub fn disable(&self) {
+        // 락을 획득합니다.
+        let mut num_player = self.num_players.lock();
+        // 게임 월드를 비활성화 합니다.
+        self.is_running.store(false, MemOrdering::Release);
+        self.is_closed.store(true, MemOrdering::Release);
+        // 게임 월드 데이터를 초기화합니다.
+        self.admin
+            .store(UserId::NULL.into_inner(), MemOrdering::Release);
+        self.sessions.clear();
 
-            // 총 가속도를 계산합니다.
-            let mut acceleration = GRAVITY;
-            acceleration += player.acceleration();
-
-            // 플레이어 속도를 갱신합니다.
-            player.update_velocity();
-
-            // 속도에 가속도를 적용합니다.
-            let velocity = player.velocity_mut();
-            *velocity += acceleration * elapsed_time_sec;
-
-            // 이동 시도 (이동 전 위치 저장)
-            let mut new_p = translation + (*velocity) * elapsed_time_sec;
-
-            // 기존 영역과 현재 영역을 인자로 넘겨서 x, z중 어느 값이 넘어갔는지 확인
-            // 아니면 x만 이동했을때의 영역과 z만 이동했을때의 영역을 보고, 유효한 영역일때만 이동시키도록?
-            // 유효한 영역이 아니라면 현재 영역의 가장 가장자리 부분으로 clamp하기
-            if !is_valid_position(self.stage_kind, new_p.x, translation.z) {
-                velocity.x = 0.0;
-                new_p.x = clamp_x(self.stage_kind, translation.x, new_p.x);
-            }
-            if !is_valid_position(self.stage_kind, translation.x, new_p.z) {
-                velocity.z = 0.0;
-                new_p.z = clamp_z(self.stage_kind, translation.z, new_p.z);
-            }
-
-            new_p = translation + (*velocity) * elapsed_time_sec;
-
-            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
-                if height >= new_p.y {
-                    new_p.y = height;
-                    velocity.y = 0.0;
-
-                    let current = player.movement_state();
-                    if current == MovementState::InPlaceLanding {
-                        player.change_movement_state(MovementState::Idle);
-                    } else if current == MovementState::MovingLanding {
-                        player.change_movement_state(MovementState::Moving);
-                    }
-                }
-                *player.translation_mut() = new_p;
-                player.update_collider();
-            }
-        }
+        self.players.clear();
+        self.bullets.clear();
+        *num_player = 0;
     }
 
-    /// 게임 세상에 총알 오브젝트를 추가합니다.
-    fn add_bullet(&self, shooter_id: UserId, delay: f32) {
-        // 총알을 발사한 플레이어 정보를 가져옵니다.
-        let player = match self.players.get(&shooter_id) {
-            Some(player) => player,
-            None => {
-                log::warn!(
-                    "failed to create bullet. (REASON:the Player({}) could not be found in {})",
-                    &shooter_id,
-                    &self
-                );
-                return;
-            }
-        };
-
-        let object_id = self.generate_object_id();
-        let bullet = player.generate_bullet(object_id, delay);
-        self.bullets.insert(object_id, bullet);
-        log::info!(
-            "the Player({}) fires a Bullet({}) into the {}",
-            &shooter_id,
-            &object_id,
-            &self
-        );
-    }
-
-    /// 게임 세상에서 총알 오브젝트를 제거합니다.
-    fn remove_bullet(&self, object_id: ObjectId) {
-        match self.bullets.remove(&object_id) {
-            Some(_) => log::info!("Bullet({}) is removed from the {}", &object_id, &self),
-            None => log::warn!(
-                "the Bullet({}) could not be found in {}!",
-                &object_id,
-                &self
-            ),
-        };
+    /// 게임 월드 관리자의 식별자를 가져옵니다.
+    pub fn admin(&self) -> UserId {
+        UserId::new(self.admin.load(MemOrdering::Acquire))
     }
 
     /// 게임 월드 이벤트를 추가합니다.
     pub fn push_event(&self, event: GameWorldEvent) {
-        self.events.push(event);
-    }
-
-    /// 이벤트를 처리합니다.
-    pub fn flush_events(&self) {
-        while let Some(event) = self.events.pop() {
-            match event {
-                GameWorldEvent::AddPlayer(session, kind) => {
-                    self.add_player(session, kind);
-                }
-                GameWorldEvent::RemovePlayer(user_id) => {
-                    self.remove_player(user_id);
-                }
-                GameWorldEvent::AddBullet { shooter_id, delay } => {
-                    self.add_bullet(shooter_id, delay);
-                }
-                GameWorldEvent::RemoveBullet(object_id) => {
-                    self.remove_bullet(object_id);
-                }
-            };
+        if self.is_running() {
+            self.events.push(event);
         }
     }
 
-    /// 주어진 시간 간격으로 게임 월드를 갱신합니다.
-    fn advanced(&self, elapsed_time_sec: f32) {
-        self.update_player_state_timer(elapsed_time_sec);
-        self.update_player_position(elapsed_time_sec);
+    /// 게임 월드를 커스텀 게임 월드로 재설정합니다.
+    ///
+    /// # Panics
+    /// 게임 월드는 비활성화된 상태여야합니다. 그렇지 않은 경우 `panic!`을 호출합니다.
+    ///
+    pub fn run_custom(self: &Arc<Self>, account: &UserAccount, session: &Arc<Session>) {
+        // 락을 획득합니다.
+        let mut num_players = self.num_players.lock();
+        assert!(!self.is_running(), "the game world is active!");
 
-        let colliders = get_stage_colliders(self.stage_kind);
-        let colliders_iter = ColliderTreeIterator::new(colliders);
-        for collider in colliders_iter {
-            let aabb = match collider {
-                Collider::Aabb(aabb) => aabb,
-                Collider::Obb(obb) => &BoundingBox::from(obb),
-                Collider::Capsule(capsule) => &BoundingBox::from(capsule),
-                Collider::OrientedCapsule(ocapsule) => &BoundingBox::from(ocapsule),
-                Collider::Sphere(sphere) => &BoundingBox::from(sphere),
-            };
-            for mut player in self.players.iter_mut() {
-                let player_capsule = player.collider();
-                let player_aabb = BoundingBox::from(player_capsule);
-                if !aabb.check_static_collision(&player_aabb) {
-                    continue;
-                }
-                
-                let player_collider = Collider::Capsule(player_capsule.clone());
-                if let Some(collision_info) = player_collider.check_collision_details(collider) {
-                    *player.translation_mut() += collision_info.normal * collision_info.penetration;
-                }
-            }
-        }
+        // 게임 관리자를 설정합니다.
+        self.admin
+            .store(account.uid.into_inner(), MemOrdering::Release);
 
-        // 총알 이동
-        for mut bullet in self.bullets.iter_mut() {
-            let translation = bullet.translation;
-            let direction = bullet.velocity * elapsed_time_sec;
-            let move_distance = direction.length();
+        // 세션 집합과 플레이어 집합에 게임 관리자를 추가합니다.
+        self.sessions.insert(session.clone(), account.uid);
+        self.players.insert(
+            account.uid,
+            PlayerObject::new(account.clone(), Permission::Admin, Team::Blue),
+        );
+        *num_players += 1;
 
-            // bullet.velocity가 영벡터가 아니라고 가정
-            // TODO: 총알에 반지름값 추가해야함 - 플레이어가 총을 쏜 후 나가면 shooter_id로 플레이어를 가져올 수 없음 -> panic
-            let bullet_radius = self.players.get(&bullet.shooter_id).unwrap().character_attributes().bullet_radius;
-            let bullet_collider = Sphere { 
-                center: translation.into(), 
-                radius: bullet_radius,
-            };
+        // 게임 월드를 활성화합니다.
+        self.is_running.store(true, MemOrdering::Release);
+        self.is_closed.store(false, MemOrdering::Release);
 
-            let mut nearest_distance = f32::MAX;
-            let mut nearest_player_id = None;
+        // 상태 변경 이벤트를 추가합니다.
+        let init_state = Box::new(GameWorldRoomState::new());
+        let control_flow = GameWorldStateFlow::Reset(init_state);
+        let event = GameWorldEvent::SetControlFlow(control_flow);
+        self.push_event(event);
 
-            for player in self.players.iter() {
-                if *player.key() == bullet.shooter_id {
-                    continue;
-                }
+        atomic::fence(MemOrdering::SeqCst);
 
-                let player_collider = player.collider();
-
-                // 충돌 처리: 플레이어 - 총알
-                if let Some(info) = bullet_collider.check_dynamic_collision_details(&bullet.velocity, &player_collider) {
-                    if info.distance <= move_distance {
-                        println!("Bullet find player (player id: {:?})", player.info().uid);
-                        println!("  - distance: {}", info.distance);
-                        println!("  - surface normal: {:?}", info.normal);
-                        if info.distance < nearest_distance {
-                            nearest_distance = info.distance;
-                            nearest_player_id = Some(*player.key());
-                        }
-                    }
-                }
-            }
-
-            match nearest_player_id {
-                // 충돌했다면
-                Some(id) => {
-                    // 피격 처리(회피하더라도 일단 총알은 제거)
-                    bullet.remaining_distance = 0.0;
-
-                    println!("Player {:?} hit by bullet", id);
-                    let mut player = self.players.get_mut(&id).unwrap();
-                    let char_info = player.character_attributes();
-
-                    //발포자 정보
-                    let mut shooter = self.players.get_mut(&bullet.shooter_id).unwrap();
-                    let shooter_info = shooter.character_attributes();
-
-                    // 각 식에서의 상수값은 제안서에 있는 값으로 설정
-
-                    // 1. 회피 계산
-                    // 2. 기본 데미지 계산
-                    // 3. 치명타 계산
-                    // 4. 최종 데미지 계산
-
-                    // 회피 계산
-                    let accuracy = char_info.accuracy_stat as f32;
-                    let evasion = char_info.evasion_stat as f32;
-                    let hit_rate = formulas::cal_hit_rate(accuracy, evasion, 100.0);
-                    // if rand::random::<f64>() > hit_rate {
-                    //     println!("  - miss");
-                    //     continue;
-                    // }
-
-                    // 데미지 계산
-                    let def = char_info.defense_power as f32;
-
-                    //기존: let atk = char_info.attack_power as f32;
-                    let atk = shooter_info.attack_power as f32; //발포자의 공격력 수치여야 하는거아닌가?
-                    let dur = shooter_info.normal_attack_ing_duration as f32;
-                    let cnt = shooter_info.normal_attack_count as f32;
-                    let dmg = formulas::default_damage(atk, def, 100.0, dur, cnt);
-
-                    // 치명타 계산
-                    //기존: let crit = char_info.critical_rate as f32;
-                    let crit = shooter_info.critical_rate as f32; //발포자의 치명 수치여야 하는거아닌가?
-                    let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
-                    if crit_rate == 1.0 {
-                        println!("  - critical!");
-                    }
-
-                    // 최종 데미지 계산
-                    //기존: let crit_dam = char_info.critical_damage as f32;
-                    let crit_dam = shooter_info.critical_damage as f32; //발포자의 치명 수치여야 하는거아닌가?
-                    let final_dmg =
-                        formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u32;
-
-                    let health_point = player.health_mut();
-                    health_point.0 = (health_point.0 - final_dmg).max(0);
-                    println!("  - hp: {:?}(-{})", health_point.0, final_dmg);
-
-                    self.damage_logs.push(DamageLog {
-                        user_id: player.info().uid,
-                        damage: HealthPoint(final_dmg),
-                    });
-                }
-
-                // 충돌하지 않았다면
-                None => {
-                    // 누적 이동거리 증가
-                    bullet.remaining_distance -= move_distance;
-
-                    // println!("range: {}, moved: {}", bullet.blob.range, bullet.moved_distance);
-
-                    // 총알 사거리를 넘어가면 총알 제거
-                    if bullet.remaining_distance <= 0.0 {
-                        println!("Bullet range over");
-                    } else {
-                        // 총알 위치 이동
-                        bullet.translation = translation + direction;
-                    }
-                }
-            }
-        }
-
-        // 살아남은 총알만 남김
-        for bullet in self.bullets.iter() {
-            if bullet.remaining_distance <= 0.0 {
-                self.events
-                    .push(GameWorldEvent::RemoveBullet(*bullet.key()));
-            }
-        }
+        // 게임 월드를 실행합니다.
+        tokio::spawn(running_loop(self.clone()));
     }
 
-    /// 모든 세션 데이터에 패킷을 전송합니다.
-    fn broadcast(&self) {
-        let epoch = self.epoch.fetch_add(1, MemOrdering::AcqRel);
-        let players: Vec<_> = self
-            .players
-            .iter()
-            .map(|player| player.as_player())
-            .collect();
-        let bullets: Vec<_> = self
-            .bullets
-            .iter()
-            .map(|bullet| bullet.as_bullet())
-            .collect();
+    /// 커스텀 게임 참여를 시도합니다.
+    /// - 플레이어 추가에 성공한 경우 현재 참여한 플레이어 정보를 반환합니다.
+    /// - 플레이어 추가에 실패한 경우 실패 사유를 반환합니다.
+    pub fn try_join(
+        &self,
+        account: UserAccount,
+        session: &Arc<Session>,
+    ) -> Result<(), JoinFailedReason> {
+        // 락을 획득합니다.
+        let mut num_players = self.num_players.lock();
 
-        // 패킷을 생성하고 전송합니다.
-        let capacity = UdpDamageLogPacket::capacity();
-        loop {
-            let mut logs = Vec::with_capacity(capacity);
-            for _ in 0..capacity {
-                if let Some(log) = self.damage_logs.pop() {
-                    logs.push(log);
-                } else {
-                    break;
-                }
-            }
+        // 게임 월드가 활성화 상태인지 확인합니다.
+        if !self.is_running() {
+            return Err(JoinFailedReason::NotFound);
+        }
 
-            if !logs.is_empty() {
-                let packet = UdpDamageLogPacket::new(Epoch::new(epoch), logs);
-                for session in self.sessions.iter() {
-                    session.tcp_write(packet.as_raw());
-                }
+        // 게임 월드가 외부 출입을 허용하고 있는지 확인합니다.
+        if self.is_closed() {
+            return Err(JoinFailedReason::InProgress);
+        }
+
+        // 게임 월드에 참여 인원이 가득찼는지 확인합니다.
+        if *num_players == MAX_IN_GAME_PLAYERS {
+            return Err(JoinFailedReason::FullCapacity);
+        }
+
+        // 각 팀의 인원 수를 계산합니다.
+        let mut num_red_team = 0;
+        let mut num_blue_team = 0;
+        for player in self.players.iter() {
+            if player.team() == Team::Blue {
+                num_blue_team += 1;
             } else {
+                num_red_team += 1;
+            }
+        }
+
+        if num_red_team < num_blue_team {
+            // 세션을 추가합니다.
+            self.sessions.insert(session.clone(), account.uid);
+            // 플레이어를 추가합니다.
+            self.players.insert(
+                account.uid,
+                PlayerObject::new(account, Permission::User, Team::Red),
+            );
+        } else {
+            // 세션을 추가합니다.
+            self.sessions.insert(session.clone(), account.uid);
+            // 플레이어를 추가합니다.
+            self.players.insert(
+                account.uid,
+                PlayerObject::new(account, Permission::User, Team::Blue),
+            );
+        }
+        *num_players += 1;
+
+        Ok(())
+    }
+
+    /// 게임 월드에서 해당 플레이어를 제거합니다.
+    pub fn exit(&self, session: &Session) {
+        // 락을 획득합니다.
+        let mut num_players = self.num_players.lock();
+
+        // 해당 플레이어를 제거합니다.
+        if let Some((_, uid)) = self.sessions.remove(session) {
+            if let Some((_, player)) = self.players.remove(&uid) {
+                *num_players -= 1;
+
+                // 모든 플레이어가 게임 월드에서 나간 경우 게임 월드를 비활성화합니다.
+                if self.players.len() == 0 {
+                    // 게임 월드를 비활성화 합니다.
+                    self.is_running.store(false, MemOrdering::Release);
+                    self.is_closed.store(true, MemOrdering::Release);
+                    // 게임 월드 데이터를 초기화합니다.
+                    self.admin
+                        .store(UserId::NULL.into_inner(), MemOrdering::Release);
+                    self.sessions.clear();
+                    self.players.clear();
+                    self.bullets.clear();
+                    *num_players = 0;
+                    return;
+                }
+
+                // 제거된 플레이어의 권한이 관리자인 경우
+                // 남아있는 플레이어 중 무작위로 한 명을 선정하여 권한을 넘겨줍니다.
+                if player.permission() == Permission::Admin {
+                    let mut remaining_players: Vec<_> =
+                        self.players.iter().map(|item| item.key().clone()).collect();
+                    remaining_players.shuffle(&mut rand::rng());
+
+                    // Safe: 플레이어는 비어있지 않음
+                    let uid = unsafe { remaining_players.pop().unwrap_unchecked() };
+                    // 게임 관리자를 설정합니다.
+                    self.admin.store(uid.into_inner(), MemOrdering::Release);
+                    let mut player = unsafe { self.players.get_mut(&uid).unwrap_unchecked() };
+                    player.with_permission(Permission::Admin).with_bool_flag(false);
+                }
+            }
+        }
+    }
+
+    /// 세션에 해당하는 게임 월드 플레이어에 접근합니다.  
+    /// 주어진 세션에 해당하는 게임 월드 플레이어가 존재하지 않는 경우 `false`를 반환합니다.
+    pub fn access_mut<F>(&self, session: &Session, func: F) -> bool
+    where
+        F: FnOnce(&mut PlayerObject),
+    {
+        if let Some(uid) = self.sessions.get(session) {
+            if let Some(mut player) = self.players.get_mut(&uid) {
+                func(&mut player);
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// 플레이어의 반복자를 반환합니다.
+    pub fn iter_players(&self) -> Iter<'_, UserId, PlayerObject, RandomState> {
+        self.players.iter()
+    }
+}
+
+/// 게임 월드를 실행하는 루프함수입니다.
+async fn running_loop(world: Arc<GameWorld>) {
+    // 게임 월드 상태를 저장하는 스텍 컨테이너입니다.
+    let mut stack = VecDeque::new();
+    let mut events = VecDeque::new();
+    while world.is_running() {
+        // 게임 월드 이벤트를 처리합니다.
+        while let Some(event) = world.events.pop() {
+            match event {
+                GameWorldEvent::SetControlFlow(control_flow) => {
+                    update_state(&mut stack, control_flow, &world);
+                }
+                _ => events.push_back(event),
+            };
+        }
+
+        // 현재 상태를 가져옵니다.
+        let curr_state = match stack.back_mut() {
+            Some(state) => state,
+            None => {
+                // 현재 상태가 없는 경우 게임 월드를 비활성화합니다.
+                world.disable();
                 break;
             }
-        }
-
-        // 패킷을 생성하고 전송합니다.
-        let packet = PullStagePacket {
-            epoch: Epoch::new(epoch),
-            num_players: players.len() as u16,
-            players: players.clone(),
-            num_bullets: bullets.len() as u16,
-            bullets,
         };
-        for session in self.sessions.iter() {
-            session.tcp_write(packet.as_raw());
+
+        // 처리하지 않은 게임 월드 이벤트를 게임 월드 상태에서 처리합니다.
+        while let Some(event) = events.pop_front() {
+            curr_state.handle_event(event, &world);
         }
 
-        // 패킷을 생성하고 전송합니다.
-        let packet = InitStagePacket {
-            epoch: Epoch::new(epoch),
-            stage_kind: self.stage_kind,
-            num_players: players.len() as u16,
-            players,
-        };
-        while let Some(session) = self.new_sessions.pop() {
-            session.tcp_write(packet.as_raw());
-            self.sessions.insert(session);
+        // 현재 상태를 갱신합니다.
+        curr_state.on_advanced(&world);
+
+        // 다른 작업에 양도합니다.
+        curr_state.yield_now();
+    }
+
+    // 비활성화된 게임 월드를 회수합니다.
+    log::info!("GameWorld({}) is released.", world.id());
+    println!("GameWorld({}) is released.", world.id());
+    get_retires().push(world);
+}
+
+/// 게임 월드의 이벤트를 처리합니다.
+fn update_state(
+    stack: &mut VecDeque<Box<dyn GameWorldState>>,
+    control_flow: GameWorldStateFlow,
+    world: &Arc<GameWorld>,
+) {
+    match control_flow {
+        GameWorldStateFlow::Clear => {
+            clear_state(stack, world);
+        }
+        GameWorldStateFlow::Change(new) => {
+            change_state(stack, world, new);
+        }
+        GameWorldStateFlow::Push(new) => {
+            push_state(stack, world, new);
+        }
+        GameWorldStateFlow::Pop => {
+            pop_state(stack, world);
+        }
+        GameWorldStateFlow::Reset(new) => {
+            reset_state(stack, world, new);
         }
     }
 }
 
-impl Default for GameWorld {
-    fn default() -> Self {
-        Self {
-            world_id: WorldId::NULL,
-            epoch: AtomicU64::new(0),
-            counter: AtomicU32::new(0),
-            stage_kind: StageKind::default(),
-            new_sessions: Queue::default(),
-            sessions: DashSet::default(),
-            players: DashMap::default(),
-            bullets: DashMap::default(),
-            damage_logs: Queue::default(),
-            events: Queue::default(),
-        }
+/// 모든 게임 월드 상태를 정리합니다.
+fn clear_state(stack: &mut VecDeque<Box<dyn GameWorldState>>, world: &Arc<GameWorld>) {
+    while let Some(mut state) = stack.pop_back() {
+        state.on_exit(world);
     }
 }
 
-impl fmt::Display for GameWorld {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GameWorld({})", &self.world_id)
+/// 현재 게임 월드 상태를 정리하고, 새로운 게임 월드 상태를 추가합니다.
+fn change_state(
+    stack: &mut VecDeque<Box<dyn GameWorldState>>,
+    world: &Arc<GameWorld>,
+    new: Box<dyn GameWorldState>,
+) {
+    pop_state(stack, world);
+    push_state(stack, world, new);
+}
+
+/// 새로운 게임 월드 상태를 추가합니다.
+fn push_state(
+    stack: &mut VecDeque<Box<dyn GameWorldState>>,
+    world: &Arc<GameWorld>,
+    mut new: Box<dyn GameWorldState>,
+) {
+    if let Some(curr_state) = stack.back_mut() {
+        curr_state.on_pause(world);
+    }
+
+    new.on_enter(world);
+    stack.push_back(new);
+}
+
+/// 현재 게임 월드 상태를 제거합니다.
+fn pop_state(stack: &mut VecDeque<Box<dyn GameWorldState>>, world: &Arc<GameWorld>) {
+    if let Some(mut state) = stack.pop_back() {
+        state.on_exit(world);
+    }
+
+    if let Some(curr_state) = stack.back_mut() {
+        curr_state.on_resume(world);
     }
 }
 
-/// 고정 시간 갱신 간격입니다.
-const INTERVAL: f32 = 1.0 / 120.0; // 120 FPS
-
-/// 게임 월드를 갱신하는 루프 함수입니다.
-pub async fn update_game_world(world: Arc<GameWorld>) {
-    let mut previous_time_point = Instant::now();
-    loop {
-        // 경과 시간을 계산합니다.
-        let current_time_point = Instant::now();
-        let mut elapsed_time_sec = current_time_point
-            .saturating_duration_since(previous_time_point)
-            .as_secs_f32();
-        previous_time_point = current_time_point;
-
-        // 게임 월드를 갱신합니다.
-        world.flush_events();
-        while elapsed_time_sec > INTERVAL {
-            world.advanced(INTERVAL);
-            elapsed_time_sec -= INTERVAL;
-        }
-        world.advanced(elapsed_time_sec);
-
-        // 모든 세션에 게임 월드 데이터를 전송합니다.
-        world.broadcast();
-
-        // 다른 태스크들이 실행될 기회를 주기 위해 양보
-        // tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-    }
+/// 모든 게임 월드 상태를 정리하고, 새로운 게임 월드 상태를 추가합니다.
+fn reset_state(
+    stack: &mut VecDeque<Box<dyn GameWorldState>>,
+    world: &Arc<GameWorld>,
+    new: Box<dyn GameWorldState>,
+) {
+    clear_state(stack, world);
+    push_state(stack, world, new);
 }

@@ -1,3 +1,4 @@
+mod event;
 mod pool;
 mod state;
 
@@ -22,7 +23,7 @@ use tokio::{
     },
 };
 
-pub use self::pool::*;
+pub use self::{event::*, pool::*, state::*};
 
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
@@ -38,6 +39,9 @@ pub struct Session {
     /// 수신된 패킷 데이터 대기열
     received_packets: Queue<RawPacket>,
 
+    /// 세션 이벤트 대기열입니다.
+    events: Queue<SessionEvents>,
+
     /// 세션의 실행 상태
     running: AtomicBool,
 }
@@ -50,6 +54,7 @@ impl Session {
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
+            events: Queue::new(),
             running: AtomicBool::new(true),
         }
     }
@@ -88,12 +93,16 @@ impl Session {
         self.udp_sender.push((self.addr, packet));
     }
 
-    /// 수신된 패킷 데이터를 세션에 추가합니다.
-    ///
+    /// 수신된 패킷 데이터를 세션에 추가합니다.  
     /// 추가된 패킷 데이터는 바로 처리되지 않습니다.
-    ///
     pub fn push_received_packet(&self, packet: RawPacket) {
         self.received_packets.push(packet);
+    }
+
+    /// 세션 이벤트를 대기열에 추가합니다.  
+    /// 추가된 이벤트는 바로 처리되지 않습니다.
+    pub fn push_event(&self, event: SessionEvents) {
+        self.events.push(event);
     }
 }
 

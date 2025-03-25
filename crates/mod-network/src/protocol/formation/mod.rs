@@ -4,5 +4,6 @@
 mod pull;
 mod response;
 mod select;
+mod stop;
 
-pub use self::{pull::*, response::*, select::*};
+pub use self::{pull::*, response::*, select::*, stop::*};
