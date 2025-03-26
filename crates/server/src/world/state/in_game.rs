@@ -206,16 +206,9 @@ impl GameWorldInGameState {
             let move_distance = direction.length();
 
             // bullet.velocity가 영벡터가 아니라고 가정
-            // TODO: 총알에 반지름값 추가해야함 - 플레이어가 총을 쏜 후 나가면 shooter_id로 플레이어를 가져올 수 없음 -> panic
-            let bullet_radius = world
-                .players
-                .get(&bullet.shooter_id)
-                .unwrap()
-                .character_attributes()
-                .bullet_radius;
             let bullet_collider = Sphere {
                 center: translation.into(),
-                radius: bullet_radius,
+                radius: bullet.radius,
             };
 
             let mut nearest_distance = f32::MAX;

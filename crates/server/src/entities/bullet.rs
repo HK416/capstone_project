@@ -17,6 +17,8 @@ pub struct BulletObject {
     pub velocity: glam::Vec3A,
     /// 총알의 남은 사거리
     pub remaining_distance: f32,
+    /// 총알의 반지름
+    pub radius: f32,
 }
 
 impl BulletObject {

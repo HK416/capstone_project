@@ -285,6 +285,7 @@ impl PlayerObject {
             rotation,
             velocity,
             remaining_distance: self.attributes.attack_range as f32,
+            radius: self.attributes.bullet_radius,
         }
     }
 
