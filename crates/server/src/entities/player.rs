@@ -75,6 +75,9 @@ pub struct PlayerObject {
 
     /// 플레이어 충돌체
     collider: Capsule,
+
+    /// 땅을 밟고 있는지
+    pub is_grounded: bool,
 }
 
 impl PlayerObject {
@@ -106,6 +109,7 @@ impl PlayerObject {
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
             collider: Capsule::new(glam::Vec3::ZERO, PLAYER_HEIGHT, PLAYER_RADIUS),
+            is_grounded: false,
         }
     }
 

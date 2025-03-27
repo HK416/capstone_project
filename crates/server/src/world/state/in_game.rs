@@ -84,7 +84,7 @@ impl GameWorldInGameState {
 
             // 총 가속도를 계산합니다.
             let mut acceleration = GRAVITY;
-            acceleration += player.acceleration();
+            // acceleration += player.acceleration();
 
             // 플레이어 속도를 갱신합니다.
             player.update_velocity();
@@ -127,6 +127,7 @@ impl GameWorldInGameState {
 
             if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
                 if height >= new_p.y {
+                    player.is_grounded = true;
                     new_p.y = height;
                     velocity.y = 0.0;
 
@@ -136,10 +137,20 @@ impl GameWorldInGameState {
                     } else if current == MovementState::MovingLanding {
                         player.change_movement_state(MovementState::Moving);
                     }
+                } else {
+                    player.is_grounded = false;
                 }
                 *player.translation_mut() = new_p;
                 player.update_collider();
                 *player.velocity_mut() = velocity;
+                if player.is_grounded {
+                    match player.movement_state() {
+                        MovementState::InPlaceJumping | MovementState::MovingJumping => {
+                            player.velocity_mut().y = 5.0;
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
     }
