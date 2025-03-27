@@ -5,6 +5,7 @@ pub mod character;
 pub mod composite;
 pub mod fx;
 pub mod prop;
+pub mod shadow;
 pub mod skybox;
 
 use std::sync::Arc;

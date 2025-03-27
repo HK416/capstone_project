@@ -193,21 +193,21 @@ impl GameWorldInGameState {
         let bullet = player.generate_bullet(object_id, delay);
         world.bullets.insert(object_id, bullet);
         log::info!(
-            "the Player({}) fires a Bullet({}) into the {:?}",
+            "the Player({}) fires a Bullet({}) into the GameWorld({})",
             &shooter_id,
             &object_id,
-            &world
+            &world.id()
         );
     }
 
     /// 게임 세상에서 총알 오브젝트를 제거합니다.
     fn remove_bullet(&self, world: &GameWorld, object_id: ObjectId) {
         match world.bullets.remove(&object_id) {
-            Some(_) => log::info!("Bullet({}) is removed from the {:?}", &object_id, &world),
+            Some(_) => log::info!("Bullet({}) is removed from the GameWorld({})", &object_id, &world.id()),
             None => log::warn!(
-                "the Bullet({}) could not be found in {:?}!",
+                "the Bullet({}) could not be found in GameWorld({})!",
                 &object_id,
-                &world
+                &world.id()
             ),
         };
     }
@@ -250,9 +250,9 @@ impl GameWorldInGameState {
                     .check_dynamic_collision_details(&bullet.velocity, &player_collider)
                 {
                     if info.distance <= move_distance {
-                        println!("Bullet find player (player id: {:?})", player.account().uid);
+                        println!("Bullet find player (player id: {})", player.account().uid);
                         println!("  - distance: {}", info.distance);
-                        println!("  - surface normal: {:?}", info.normal);
+                        println!("  - surface normal: {}", info.normal);
                         if info.distance < nearest_distance {
                             nearest_distance = info.distance;
                             nearest_player_id = Some(*player.key());
@@ -267,7 +267,7 @@ impl GameWorldInGameState {
                     // 피격 처리(회피하더라도 일단 총알은 제거)
                     bullet.remaining_distance = 0.0;
 
-                    println!("Player {:?} hit by bullet", id);
+                    println!("Player({}) hit by bullet", id);
                     let mut player = world.players.get_mut(&id).unwrap();
                     let char_info = player.character_attributes();
 
@@ -316,7 +316,7 @@ impl GameWorldInGameState {
 
                     let health_point = player.health_point_mut();
                     health_point.0 = (health_point.0 - final_dmg).max(0);
-                    println!("  - hp: {:?}(-{})", health_point.0, final_dmg);
+                    println!("  - hp: {}(-{})", health_point.0, final_dmg);
 
                     self.damage_logs.push(DamageLog {
                         user_id: player.account().uid,

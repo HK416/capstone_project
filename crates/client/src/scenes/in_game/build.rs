@@ -15,7 +15,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, UserAccount, UserId},
+    components::{LoginToken, UserId},
     protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -24,10 +24,7 @@ use winit::window::Window;
 
 use crate::{
     asset::{StageModel, NOTOSANS_BOLD, SKYBOX_URI},
-    component::{
-        spawn_player_character, spawn_stage_area, spawn_stage_area_from_root, spawn_stage_prop,
-        spawn_stage_prop_from_root,
-    },
+    component::{spawn_player_character, spawn_stage_area_from_root, spawn_stage_prop_from_root},
     config::{Locale, NUM_LOCALE},
     scenes::BASE_WIDTH,
     SERVER_TCP_ADDR,

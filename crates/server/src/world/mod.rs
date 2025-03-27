@@ -3,11 +3,9 @@ mod pool;
 mod state;
 
 use std::{
-    collections::VecDeque,
-    sync::{
-        Arc,
-        atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering},
-    },
+    collections::VecDeque, fmt, sync::{
+        atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering}, Arc
+    }
 };
 
 use ahash::RandomState;
@@ -27,7 +25,6 @@ use crate::{
 pub use self::{event::*, pool::*, state::*};
 
 /// 게임을 진행하고, 생성된 오브젝트를 관리합니다.
-#[derive(Debug)]
 pub struct GameWorld {
     /// 게임 월드 식별자입니다.
     world_id: WorldId,
@@ -274,6 +271,12 @@ impl GameWorld {
     /// 플레이어의 반복자를 반환합니다.
     pub fn iter_players(&self) -> Iter<'_, UserId, PlayerObject, RandomState> {
         self.players.iter()
+    }
+}
+
+impl fmt::Debug for GameWorld {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "GameWorld({})", self.world_id)
     }
 }
 

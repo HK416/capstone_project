@@ -29,7 +29,7 @@ use crate::{
         create_bullet_render_pipeline, create_character_halo_render_pipeline,
         create_character_render_pipeline, create_fx_damage_render_pipeline,
         create_skybox_render_pipeline, create_stage_area_render_pipeline, BULLET_PIPELINE_NAME,
-        CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME, STAGE_AREA_PIPELINE_NAME,
+        CHARACTER_HALO_PIPELINE_ID, CHARACTER_PIPELINE_ID, STAGE_AREA_PIPELINE_NAME,
     },
     scenes::BASE_WIDTH,
 };
@@ -399,7 +399,7 @@ impl InGameLoadScene {
         let device_cloned = device.clone();
         thread_pool.spawn(move || {
             // 캐릭터 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_NAME, move || {
+            GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_ID, move || {
                 create_character_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
             });
             // 결과를 전송합니다.
@@ -411,7 +411,7 @@ impl InGameLoadScene {
         let device_cloned = device.clone();
         thread_pool.spawn(move || {
             // 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_NAME, move || {
+            GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_ID, move || {
                 create_character_halo_render_pipeline(
                     &device_cloned,
                     DEPTH_FORMAT,

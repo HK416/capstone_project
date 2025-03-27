@@ -23,7 +23,7 @@ use crate::{
     component::{Acceleration, Child, Force, Sibling, ToParentTrans, Velocity, WorldTransform},
     render::{
         create_character_halo_render_pipeline, create_character_render_pipeline,
-        CHARACTER_HALO_PIPELINE_NAME, CHARACTER_PIPELINE_NAME,
+        CHARACTER_HALO_PIPELINE_ID, CHARACTER_PIPELINE_ID,
     },
 };
 
@@ -200,7 +200,7 @@ pub fn draw_character<'a>(
     let (character, character_halo) = categorize_character_resource(world, &entities);
 
     // 캐릭터 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_NAME, || {
+    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_ID, || {
         create_character_render_pipeline(device, depth_stencil_format, render_target_format)
     });
     rpass.set_pipeline(&pipeline);
@@ -235,7 +235,7 @@ pub fn draw_character<'a>(
     }
 
     // 캐릭터 헤일로 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_NAME, || {
+    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_ID, || {
         create_character_halo_render_pipeline(device, depth_stencil_format, render_target_format)
     });
     rpass.set_pipeline(&pipeline);
