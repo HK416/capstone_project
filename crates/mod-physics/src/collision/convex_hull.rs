@@ -124,6 +124,8 @@ pub trait ConvexHull {
             .filter_map(|f| f)
             .collect::<BinaryHeap<_>>();
 
+        let mut loop_count = 0;
+
         loop {
             // 2. 최근접면의 법선벡터 방향으로 polytope를 확장한다.
             // 2-1. 최근접면을 찾고 법선벡터 방향으로 support point를 구한다.
@@ -189,6 +191,12 @@ pub trait ConvexHull {
             // 3. 새로 만들어진 면들을 Heap에 추가한다.
             for face in new_faces {
                 faces.push(face);
+            }
+
+            loop_count += 1;
+            if loop_count > 25 {
+                println!("loop count exceeded");
+                return Some(collision_info);
             }
         }
     }
