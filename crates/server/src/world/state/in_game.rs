@@ -27,6 +27,10 @@ use super::GameWorldState;
 
 /// 중력 가속도입니다.
 const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
+const GROUNDED_ANGLE: f32 = 60.0;
+lazy_static::lazy_static! {
+    static ref GROUNDED_ANGLE_COS: f32 = f32::cos(f32::to_radians(GROUNDED_ANGLE));
+}
 
 pub struct GameWorldInGameState {
     /// 게임 월드 상태 실행 여부
@@ -81,22 +85,23 @@ impl GameWorldInGameState {
         for mut player in world.players.iter_mut() {
             // 플레이어 위치를 가져옵니다.
             let translation = player.translation();
-
-            // 총 가속도를 계산합니다.
-            let mut acceleration = GRAVITY;
-            // acceleration += player.acceleration();
-
+            
             // 플레이어 속도를 갱신합니다.
             player.update_velocity();
-
-            // 속도에 가속도를 적용합니다.
-            *player.velocity_mut() += acceleration * elapsed_time_sec;
             
             // 플레이어의 이동 속도를 가져옵니다.
             let mut velocity = player.velocity();
 
+            // 속도에 가속도를 적용합니다.
+            if !player.is_grounded {
+                velocity += GRAVITY * elapsed_time_sec;
+            }
+            
             // 이동 시도 (이동 전 위치 저장)
             let mut new_p = translation + velocity * elapsed_time_sec;
+
+            // 충돌처리 시작
+            player.is_grounded = false;
             
             let mut player_capsule = player.collider();
             player_capsule.center = new_p.into();
@@ -109,7 +114,22 @@ impl GameWorldInGameState {
                 }
                 if let Some(collision_info) = player_collider.check_collision_details(collider) {
                     new_p += collision_info.normal * collision_info.penetration;
-                    velocity = velocity - collision_info.normal * velocity.dot(collision_info.normal);
+                    // 충돌벡터가 지면(xz평면)과 일정 이상의 각을 이루면 서있을 수 있음
+                    if collision_info.normal.y >= *GROUNDED_ANGLE_COS {
+                        velocity.y = 0.0;
+                        player.is_grounded = true;
+                    }
+                    // 아니라면 미끄러지도록 처리
+                    else {
+                        let slide = velocity - collision_info.normal * velocity.dot(collision_info.normal);
+                        // +y방향으로 튀어오르지 않게 한다.
+                        let vy = if slide.y < velocity.y { 
+                            slide.y
+                        } else {
+                            velocity.y
+                        };
+                        velocity = glam::Vec3A::new(slide.x, vy, slide.z);
+                    }
                 }
             }
 
@@ -127,31 +147,30 @@ impl GameWorldInGameState {
 
             if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
                 if height >= new_p.y {
-                    player.is_grounded = true;
                     new_p.y = height;
                     velocity.y = 0.0;
-
-                    let current = player.movement_state();
-                    if current == MovementState::InPlaceLanding {
-                        player.change_movement_state(MovementState::Idle);
-                    } else if current == MovementState::MovingLanding {
-                        player.change_movement_state(MovementState::Moving);
-                    }
-                } else {
-                    player.is_grounded = false;
-                }
-                *player.translation_mut() = new_p;
-                player.update_collider();
-                *player.velocity_mut() = velocity;
-                if player.is_grounded {
-                    match player.movement_state() {
-                        MovementState::InPlaceJumping | MovementState::MovingJumping => {
-                            player.velocity_mut().y = 5.0;
-                        }
-                        _ => {}
-                    }
+                    player.is_grounded = true;
                 }
             }
+            
+            if player.is_grounded {
+                match player.movement_state() {
+                    MovementState::InPlaceLanding => {
+                        player.change_movement_state(MovementState::Idle);
+                    }
+                    MovementState::MovingLanding => {
+                        player.change_movement_state(MovementState::Moving);
+                    }
+                    MovementState::InPlaceJumping | MovementState::MovingJumping => {
+                        velocity.y = 5.0;
+                    }
+                    _ => {}
+                }
+            }
+
+            *player.velocity_mut() = velocity;
+            *player.translation_mut() = new_p;
+            player.update_collider();
         }
     }
 
