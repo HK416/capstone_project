@@ -92,11 +92,33 @@ impl StaticCollision<OrientedBoundingBox> for BoundingBox {
 
 impl StaticCollision<Capsule> for BoundingBox {
     fn check_static_collision(&self, capsule: &Capsule) -> bool {
-        self.gjk(capsule).is_some()
+        // capsule segment y min, max
+        let cs_y_min = capsule.center.y + capsule.radius;
+        let cs_y_max = capsule.center.y + capsule.height - capsule.radius;
+
+        let nearest_y = self.center.y.clamp(cs_y_min, cs_y_max);
+
+        let sphere = Sphere {
+            center: glam::Vec3::new(capsule.center.x, nearest_y, capsule.center.z),
+            radius: capsule.radius,
+        };
+
+        self.check_static_collision(&sphere)
     }
 
     fn check_static_collision_details(&self, capsule: &Capsule) -> Option<StaticCollisionDetails> {
-        self.gjk_epa(capsule)
+        // capsule segment y min, max
+        let cs_y_min = capsule.center.y + capsule.radius;
+        let cs_y_max = capsule.center.y + capsule.height - capsule.radius;
+
+        let nearest_y = self.center.y.clamp(cs_y_min, cs_y_max);
+
+        let sphere = Sphere {
+            center: glam::Vec3::new(capsule.center.x, nearest_y, capsule.center.z),
+            radius: capsule.radius,
+        };
+
+        self.check_static_collision_details(&sphere)
     }
 }
 
