@@ -270,14 +270,16 @@ impl InGameDominationModeScene {
             .query_one_mut::<&WorldTransform>(self.main_camera)
             .expect("invalid entity or invalid entity component");
         let camera_pos = transform.get_translation();
+        let camera_dir = transform.get_look_vector();
 
         // 전역 조명의 방향을 가져옵니다.
         let light_dir = self.directional_light.get_look_vector();
 
         // 그림자 쉐이더 리소스의 변환 행렬을 계산합니다.
-        let eye = camera_pos - light_dir * 10.0;
-        let view = glam::Mat4::look_at_lh(eye.into(), camera_pos.into(), glam::Vec3::Y);
-        let proj = glam::Mat4::orthographic_lh(-10.0, 10.0, -10.0, 10.0, -10.0, 50.0);
+        let center = camera_pos + camera_dir * 5.0;
+        let eye = center - light_dir * 10.0;
+        let view = glam::Mat4::look_at_lh(eye.into(), center.into(), glam::Vec3::Y);
+        let proj = glam::Mat4::orthographic_lh(-5.0, 5.0, -5.0, 5.0, 0.0, 50.0);
 
         // 전역 조명을 갱신합니다.
         GlobalLightUniform::get_or_uninit(device).update(

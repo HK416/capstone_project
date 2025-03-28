@@ -148,10 +148,10 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     var albedo = textureSample(t_albedo, s_albedo, input.texcoord);
 
     // 전역 조명 그림자를 계산합니다.
-    var color = vec3<f32>(0.0);
+    var color = vec3<f32>(0.3);
     let shadow = calculate_shadow(u_global_light.proj_view * vec4<f32>(input.position_w, 1.0));
     let light_dir = -u_global_light.direction_w;
-    color += shadow * u_global_light.color.xyz;
+    color = min(color + shadow * u_global_light.color.xyz, vec3<f32>(1.0));
 
     var out: RenderTarget;
     out.color = albedo * vec4<f32>(color, 1.0);
