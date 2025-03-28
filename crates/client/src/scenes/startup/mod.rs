@@ -11,7 +11,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
-use mod_render::TexturePool;
+use mod_render::{GraphicsPipelinePool, TexturePool, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use rayon::ThreadPool;
 use wgpu::util::DeviceExt;
 use winit::{event_loop::EventLoopProxy, window::Window};
@@ -21,9 +21,18 @@ use crate::{
         BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI,
         BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
         BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
-        GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
+        DAMAGE_FONT_URI, GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        SKYBOX_URI, USER_CONFIG,
     },
     config::UserConfig,
+    render::{
+        create_bullet_render_pipeline, create_character_halo_render_pipeline,
+        create_character_render_pipeline, create_character_shadow_render_pipeline,
+        create_fx_damage_render_pipeline, create_skybox_render_pipeline,
+        create_stage_area_render_pipeline, create_stage_area_shadow_render_pipeline,
+        BULLET_PIPELINE_NAME, CHARACTER_HALO_PIPELINE_ID, CHARACTER_PIPELINE_ID,
+        CHARACTER_SHADOW_PIPELINE_ID, STAGE_PIPELINE_ID, STAGE_SHADOW_PIPELINE_ID,
+    },
 };
 
 pub use self::init::*;
@@ -35,6 +44,7 @@ use super::GameIntroNotifyScene;
 enum TaskResult {
     Font { uri: String, bytes: Vec<u8> },
     Texture,
+    Pipeline,
 }
 
 /// 클라이언트 실행시 가장 첫 번째로 진입하는 게임 장면입니다.  
@@ -44,7 +54,7 @@ pub struct GameStartupScene {
     needs_initial_setup: bool,
 
     /// 남은 작업의 개수
-    remaining_task_count: usize,
+    num_remaining_tasks: usize,
     /// 작업 결과를 저장하는 대기열
     task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
     /// 로드된 폰트 에셋 데이터 집합
@@ -56,10 +66,119 @@ impl GameStartupScene {
     pub fn new() -> Self {
         Self {
             needs_initial_setup: false,
-            remaining_task_count: 0,
+            num_remaining_tasks: 0,
             task_results: Arc::new(Queue::new()),
             font_asset_data: HashMap::default(),
         }
+    }
+
+    /// 그래픽스 파이프라인을 생성합니다.
+    fn load_graphics_pipelines(&mut self, thread_pool: &ThreadPool, device: &Arc<wgpu::Device>) {
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // 캐릭터 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_ID, move || {
+                create_character_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_ID, move || {
+                create_character_halo_render_pipeline(
+                    &device_cloned,
+                    DEPTH_FORMAT,
+                    SWAPCHAIN_FORMAT,
+                )
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // 캐릭터의 그림자 맵을 생성하는 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(CHARACTER_SHADOW_PIPELINE_ID, move || {
+                create_character_shadow_render_pipeline(
+                    &device_cloned,
+                    wgpu::TextureFormat::Depth32Float,
+                )
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // 총알 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(BULLET_PIPELINE_NAME, move || {
+                create_bullet_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // 지형 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(STAGE_PIPELINE_ID, move || {
+                create_stage_area_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // 지형 그림자 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(STAGE_SHADOW_PIPELINE_ID, move || {
+                create_stage_area_shadow_render_pipeline(
+                    &device_cloned,
+                    wgpu::TextureFormat::Depth32Float,
+                )
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // Skybox 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(SKYBOX_URI, move || {
+                create_skybox_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        let task_result_cloned = self.task_results.clone();
+        let device_cloned = device.clone();
+        thread_pool.spawn(move || {
+            // 데미지 파티클 렌더링 파이프라인을 생성합니다.
+            GraphicsPipelinePool::get_or_init(DAMAGE_FONT_URI, move || {
+                create_fx_damage_render_pipeline(&device_cloned, DEPTH_FORMAT)
+            });
+            // 결과를 전송합니다.
+            task_result_cloned.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
     }
 
     /// `NotoSans-Regular` 폰트를 로드합니다.
@@ -91,7 +210,7 @@ impl GameStartupScene {
         });
 
         // 남은 작업의 수를 증가시킵니다.
-        self.remaining_task_count += 1;
+        self.num_remaining_tasks += 1;
     }
 
     /// `NotoSans-Bold` 폰트를 로드합니다.
@@ -119,7 +238,7 @@ impl GameStartupScene {
         });
 
         // 남은 작업의 수를 증가시킵니다.
-        self.remaining_task_count += 1;
+        self.num_remaining_tasks += 1;
     }
 
     /// 텍스처를 디코드하고, 텍스처 풀 객체에 등록합니다.
@@ -176,7 +295,7 @@ impl GameStartupScene {
             // 결과를 전송합니다.
             task_results.push(Ok(TaskResult::Texture));
         });
-        self.remaining_task_count += 1;
+        self.num_remaining_tasks += 1;
     }
 
     /// 사용자 구성 파일을 로드합니다.
@@ -259,6 +378,7 @@ impl GameScene for GameStartupScene {
         let queue = app.render_queue();
         let thread_pool = app.io_threads();
         let asset_manager = app.asset_manager();
+        self.load_graphics_pipelines(thread_pool, device);
         self.load_notosans_regular_font(thread_pool, asset_manager);
         self.load_notosans_blod_font(thread_pool, asset_manager);
         self.regist_texture(thread_pool, device, queue, GAME_LOGO_URI, GAME_LOGO_DATA);
@@ -328,17 +448,17 @@ impl GameScene for GameStartupScene {
     ) -> Result<(), Box<dyn Error + Send>> {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_results.pop() {
-            self.remaining_task_count -= 1;
+            self.num_remaining_tasks -= 1;
             match result? {
                 TaskResult::Font { uri, bytes } => {
                     self.font_asset_data.insert(uri, bytes);
                 }
-                TaskResult::Texture => {}
+                _ => {}
             }
         }
 
         // 모든 작업이 완료된 경우 다음 게임 장면으로 전환합니다.
-        if self.remaining_task_count == 0 {
+        if self.num_remaining_tasks == 0 {
             let next_scene: Box<dyn GameScene> = match self.needs_initial_setup {
                 true => Box::new(InitLocaleScene::new()),
                 false => {

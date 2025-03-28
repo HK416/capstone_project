@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use glam::Vec4Swizzles;
 use hecs::{Entity, World};
+use mod_physics::object3d::Frustum;
 use mod_render::{CameraDataLayout, CameraResource};
 
 use crate::component::{Projection, WorldTransform};
@@ -28,22 +28,26 @@ pub fn prepare_camera_resource(
             scope.spawn(move |_| {
                 // 엔터티에서 카메라 리소스와 월드 변환 행렬, 투영 변환 행렬을 가져옵니다.
                 let mut query = world
-                    .query_one::<(&Arc<CameraResource>, &WorldTransform, &Projection)>(entity)
+                    .query_one::<(&Arc<CameraResource>, &WorldTransform, &Projection, &mut Frustum)>(entity)
                     .expect("invalid entity");
-                let (camera_resource, world_transform, projection) =
+                let (camera_resource, world_transform, projection, frustum) =
                     query.get().expect("invalid entity component");
 
                 // 카메라 리소스를 갱신합니다.
+                let proj_view = projection.0 * world_transform.to_view_trans();
                 camera_resource.camera_uniform.update(
                     device,
                     queue,
                     CameraDataLayout {
-                        proj_view: (projection.0 * world_transform.to_view_trans()).to_cols_array(),
-                        position_w: world_transform.get_translation().xyz().to_array(),
-                        direction_w: world_transform.get_look_vector().xyz().to_array(),
+                        proj_view: proj_view.to_cols_array(),
+                        position_w: world_transform.get_translation().to_array(),
+                        direction_w: world_transform.get_look_vector().to_array(),
                         ..Default::default()
                     },
                 );
+
+                // 카메라 절두체를 갱신합니다.
+                *frustum = Frustum::from_mat4(proj_view);
             });
         }
     });

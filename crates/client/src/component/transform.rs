@@ -1,5 +1,3 @@
-use glam::Vec4Swizzles;
-
 /// ## To Parent Transform Matrix
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -61,8 +59,8 @@ pub struct WorldTransform(pub glam::Mat4);
 
 impl WorldTransform {
     /// 월드 변환 행렬의 위치를 반환합니다.
-    pub fn get_translation(&self) -> glam::Vec4 {
-        self.0.w_axis
+    pub fn get_translation(&self) -> glam::Vec3A {
+        glam::Vec3A::from_vec4(self.0.w_axis)
     }
 
     /// 월드 변환 행렬의 회전 데이터를 가져옵니다.
@@ -71,21 +69,21 @@ impl WorldTransform {
     }
 
     /// 월드 변환 행렬의 위쪽 방향 벡터를 반환합니다.
-    pub fn get_up_vector(&self) -> glam::Vec4 {
-        self.0.y_axis.normalize_or(glam::Vec4::Y)
+    pub fn get_up_vector(&self) -> glam::Vec3A {
+        glam::Vec3A::from_vec4(self.0.y_axis).normalize_or(glam::Vec3A::Y)
     }
 
     /// 월드 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
-    pub fn get_look_vector(&self) -> glam::Vec4 {
-        self.0.z_axis.normalize_or(glam::Vec4::Z)
+    pub fn get_look_vector(&self) -> glam::Vec3A {
+        glam::Vec3A::from_vec4(self.0.z_axis).normalize_or(glam::Vec3A::Z)
     }
 
     /// 월드 변환 행렬의 뷰 변환 행렬을 반환합니다.
     pub fn to_view_trans(&self) -> glam::Mat4 {
         glam::Mat4::look_to_lh(
-            self.get_translation().xyz(),
-            self.get_look_vector().xyz(),
-            self.get_up_vector().xyz(),
+            self.get_translation().into(),
+            self.get_look_vector().into(),
+            self.get_up_vector().into(),
         )
     }
 

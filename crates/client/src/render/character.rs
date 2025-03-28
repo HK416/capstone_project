@@ -34,20 +34,6 @@ fn create_character_halo_shader_module(device: &wgpu::Device) -> wgpu::ShaderMod
     }
 }
 
-/// 캐릭터 그림자 쉐이더 모듈을 생성합니다.
-fn create_character_shadow_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
-    let desc = wgpu::include_wgsl!(concat!(
-        env!("CARGO_WORKSPACE_DIR"),
-        "/assets/shaders/character_shadow.wgsl"
-    ));
-
-    if cfg!(feature = "enable-shader-validation") {
-        device.create_shader_module(desc)
-    } else {
-        unsafe { device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::unchecked()) }
-    }
-}
-
 /// 파이프라인 레이아웃을 생성합니다.
 fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -254,15 +240,18 @@ pub fn create_character_halo_render_pipeline(
 }
 
 /// 그림자를 생성하는 그래픽스 파이프라인을 생성합니다.
-pub fn create_character_shadow_render_pipeline(device: &wgpu::Device) -> Arc<wgpu::RenderPipeline> {
-    let module = create_character_shadow_shader_module(device);
+pub fn create_character_shadow_render_pipeline(
+    device: &wgpu::Device,
+    shadow_format: wgpu::TextureFormat,
+) -> Arc<wgpu::RenderPipeline> {
+    let module = create_character_shader_module(device);
     let layout = create_shadow_pipeline_layout(device);
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("RenderPipeline(Shadow)"),
+        label: Some(&format!("RenderPipeline({})", CHARACTER_SHADOW_PIPELINE_ID)),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &module,
-            entry_point: Some("vs_main"),
+            entry_point: Some("vs_bake"),
             buffers: &[
                 // 0번 입력 속성: 위치
                 wgpu::VertexBufferLayout {
@@ -298,8 +287,8 @@ pub fn create_character_shadow_render_pipeline(device: &wgpu::Device) -> Arc<wgp
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         primitive: wgpu::PrimitiveState {
-            cull_mode: Some(wgpu::Face::Front),
-            front_face: wgpu::FrontFace::Cw,
+            cull_mode: Some(wgpu::Face::Back),
+            front_face: wgpu::FrontFace::Ccw,
             topology: wgpu::PrimitiveTopology::TriangleList,
             polygon_mode: wgpu::PolygonMode::Fill,
             unclipped_depth: device
@@ -310,7 +299,7 @@ pub fn create_character_shadow_render_pipeline(device: &wgpu::Device) -> Arc<wgp
         depth_stencil: Some(wgpu::DepthStencilState {
             depth_compare: wgpu::CompareFunction::LessEqual,
             depth_write_enabled: true,
-            format: wgpu::TextureFormat::Depth32Float,
+            format: shadow_format,
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState {
                 constant: 2,

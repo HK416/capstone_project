@@ -13,9 +13,10 @@ use mod_network::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
     },
 };
+use mod_physics::object3d::Frustum;
 use mod_render::{
-    CameraResource, SamplerPool, SkyboxDataLayout, SkyboxResource, TextureViewPool, DEPTH_FORMAT,
-    SWAPCHAIN_FORMAT,
+    CameraResource, GlobalLightDataLayout, GlobalLightUniform, SamplerPool, SkyboxDataLayout,
+    SkyboxResource, TextureViewPool, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use winit::{
     event::{Modifiers, MouseButton},
@@ -25,18 +26,20 @@ use winit::{
 
 use crate::{
     component::{
-        animate_character, cleanup, draw_character, set_weapon_position, spawn_player_character,
+        animate_character, bake_character_shadow, categorize_character_resource, cleanup,
+        draw_character, draw_character_halo, set_weapon_position, spawn_player_character,
         spwan_bullet, update_character_direction, update_entity_hierarchy,
         update_third_person_camera, update_third_person_camera_hierarchy,
         update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection,
-        Child, MoveDirection, Parent, Projection, Sibling, SkinningAnimation, StageArea, StageProp,
-        ThirdPersonCamera, ToParentTrans, WorldTransform,
+        Child, DirectionLight, MoveDirection, Parent, Projection, Sibling, SkinningAnimation,
+        StageArea, StageProp, ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
     config::{Locale, UserConfig},
     render::{
-        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
-        draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
-        spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
+        clear_render_target_with_skybox, draw_bullet, draw_damage_particle,
+        draw_stage_area, draw_stage_props, get_damage_font, prepare_camera_resource,
+        prepare_mesh_resource, shadow::ShadowMapResource, spawn_damage_fx, CompositeResource,
+        Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
     },
     SERVER_TCP_ADDR,
 };
@@ -44,6 +47,7 @@ use crate::{
 /// 기본 게임 구조를 테스트하는 공간입니다.
 pub struct InGameDominationModeScene {
     /// 애플리케이션 표시 언어
+    #[allow(dead_code)]
     locale: Locale,
     /// 현재 사용자 식별자
     user_id: UserId,
@@ -59,6 +63,9 @@ pub struct InGameDominationModeScene {
     /// 메인 카메라 엔터티
     main_camera: Entity,
 
+    /// 전역 조명 데이터
+    directional_light: DirectionLight,
+
     /// 플레이어 움직임 방향
     move_direction: MoveDirection,
     /// 사용자 입력 상태 플래그 변수
@@ -70,6 +77,8 @@ pub struct InGameDominationModeScene {
     /// 공격을 받아 체력이 깎인 플레이어를 저장
     damage_logs: Vec<DamageLog>,
 
+    // ----- Shadow Pass -----
+    shadow_resource: Option<ShadowMapResource>,
     // -----  Composite Pass -----
     composite_resource: Option<CompositeResource>,
 }
@@ -92,10 +101,20 @@ impl InGameDominationModeScene {
             players,
             objects: HashMap::default(),
             main_camera: Entity::DANGLING,
+            directional_light: DirectionLight {
+                direction: glam::Quat::from_euler(
+                    glam::EulerRot::XYZ,
+                    50f32.to_radians(),
+                    -30f32.to_radians(),
+                    0.0,
+                ),
+                color: [1.0, 1.0, 1.0],
+            },
             move_direction: MoveDirection::default(),
             controller_input_flags: GameInputBits::default(),
             skybox_resource,
             damage_logs: Vec::default(),
+            shadow_resource: None,
             composite_resource: None,
         }
     }
@@ -127,6 +146,7 @@ impl InGameDominationModeScene {
         // 삼인칭 카메라 데이터와 카메라 쉐이더 리소스 컴포넌트를 추가합니다.
         builder.add(ThirdPersonCamera::new(character_kind));
         builder.add(Arc::new(CameraResource::uninit(Some("main"), device)));
+        builder.add(Frustum::from_mat4(glam::Mat4::IDENTITY));
 
         // 생성된 메인 카메라 엔터티를 저장합니다.
         self.main_camera = self.world.spawn(builder.build());
@@ -240,6 +260,36 @@ impl InGameDominationModeScene {
         }
 
         prepare_camera_resource(&self.world, &camera_entities, device, queue);
+    }
+
+    /// 그림자 쉐이더 리소스를 갱신합니다.
+    fn prepare_shadow_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        // 메인 카메라의 위치를 가져옵니다.
+        let transform = self
+            .world
+            .query_one_mut::<&WorldTransform>(self.main_camera)
+            .expect("invalid entity or invalid entity component");
+        let camera_pos = transform.get_translation();
+
+        // 전역 조명의 방향을 가져옵니다.
+        let light_dir = self.directional_light.get_look_vector();
+
+        // 그림자 쉐이더 리소스의 변환 행렬을 계산합니다.
+        let eye = camera_pos - light_dir * 10.0;
+        let view = glam::Mat4::look_at_lh(eye.into(), camera_pos.into(), glam::Vec3::Y);
+        let proj = glam::Mat4::orthographic_lh(-10.0, 10.0, -10.0, 10.0, -10.0, 50.0);
+
+        // 전역 조명을 갱신합니다.
+        GlobalLightUniform::get_or_uninit(device).update(
+            device,
+            queue,
+            GlobalLightDataLayout {
+                light_space: (proj * view).to_cols_array(),
+                direction_w: light_dir.to_array(),
+                color: self.directional_light.color,
+                ..Default::default()
+            },
+        );
     }
 
     /// Skybox 쉐이더 리소스를 갱신합니다.
@@ -1006,6 +1056,14 @@ impl GameScene for InGameDominationModeScene {
         window: &Window,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
+        // Shadow Pass 쉐이더 리소스를 생성합니다.
+        self.shadow_resource = Some(ShadowMapResource::new(
+            Some("Directional Light"),
+            app.render_device(),
+            1024,
+            1024,
+            wgpu::TextureFormat::Depth32Float,
+        ));
         // Composite Pass 쉐이더 리소스를 생성합니다.
         self.composite_resource = Some(CompositeResource::uninit(window, app.render_device()));
 
@@ -1375,6 +1433,9 @@ impl GameScene for InGameDominationModeScene {
         // 메인 카메라의 쉐이더 리소스를 갱신합니다.
         self.prepare_main_camera_resource(app.render_device(), app.render_queue());
 
+        // 그림자 쉐이더 리소스를 갱신합니다.
+        self.prepare_shadow_resource(app.render_device(), app.render_queue());
+
         // 지형의 계층 구조를 갱신합니다.
         self.update_stage_hierarchy();
         // 지형 메쉬의 쉐이더 리소스를 갱신합니다.
@@ -1395,13 +1456,13 @@ impl GameScene for InGameDominationModeScene {
         depth_buffer_view: &wgpu::TextureView,
         app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
-        //! 검은색 화면에 오른쪽 하단에 상태를 출력합니다.
-        //!
         let device = app.render_device();
         let queue = app.render_queue();
 
-        // 캐릭터 엔터티 목록을 가져옵니다.
+        // 캐릭터 엔터티 목록을 가져와 분류합니다.
         let character_entities = self.get_character_entities();
+        let (character_set, character_halo_set) =
+            categorize_character_resource(&self.world, &character_entities);
 
         // 카메라 쉐이더 리소스를 가져옵니다.
         let mut query = self
@@ -1410,12 +1471,46 @@ impl GameScene for InGameDominationModeScene {
             .expect("invalid entity");
         let camera_resource = query.get().expect("invalid entity component");
 
+        // Shadow Pass 쉐이더 리소스를 가져옵니다.
+        let shadow_resource = self
+            .shadow_resource
+            .as_ref()
+            .expect("the shader resource must exist.");
+
         // Composite Pass 쉐이더 리소스를 가져옵니다.
         let composite_resource = self
             .composite_resource
             .as_ref()
             .expect("the shader resource must exist.");
 
+        encoder.push_debug_group("shadow pass");
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(Shadow)"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &shadow_resource.texture,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            bake_character_shadow(
+                &character_set,
+                &camera_resource,
+                device,
+                wgpu::TextureFormat::Depth32Float,
+                &mut rpass,
+            );
+        }
+        encoder.pop_debug_group();
+
+        encoder.push_debug_group("opaque pass");
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(OpaquePass)"),
@@ -1440,8 +1535,16 @@ impl GameScene for InGameDominationModeScene {
             });
 
             draw_character(
-                &self.world,
-                &character_entities,
+                &character_set,
+                camera_resource,
+                device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                &mut rpass,
+            );
+
+            draw_character_halo(
+                &character_halo_set,
                 camera_resource,
                 device,
                 SWAPCHAIN_FORMAT,
@@ -1461,6 +1564,7 @@ impl GameScene for InGameDominationModeScene {
             draw_stage_area(
                 &self.world,
                 &camera_resource,
+                &shadow_resource,
                 &device,
                 SWAPCHAIN_FORMAT,
                 DEPTH_FORMAT,
@@ -1484,7 +1588,9 @@ impl GameScene for InGameDominationModeScene {
                 &mut rpass,
             );
         }
+        encoder.pop_debug_group();
 
+        encoder.push_debug_group("transparent pass");
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(TransparentPass)"),
@@ -1536,7 +1642,9 @@ impl GameScene for InGameDominationModeScene {
                 &mut rpass,
             );
         }
+        encoder.pop_debug_group();
 
+        encoder.push_debug_group("composite pass");
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(CompositePass)"),
@@ -1562,6 +1670,7 @@ impl GameScene for InGameDominationModeScene {
 
             composite_resource.process(device, SWAPCHAIN_FORMAT, DEPTH_FORMAT, &mut rpass);
         }
+        encoder.pop_debug_group();
 
         Ok(())
     }

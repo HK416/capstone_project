@@ -40,8 +40,9 @@ struct CameraDataLayout {
 
 /// 전역 조명 데이터 레이아웃입니다.
 struct GlobalLightDataLayout {
-    color: vec4<f32>, 
-    direction_w: vec3<f32>, 
+    proj_view: mat4x4<f32>, 
+    direction_w: vec3<f32>,
+    color: vec3<f32>, 
 };
 
 /// 지역 조명 데이터 레이아웃입니다.
@@ -80,8 +81,8 @@ struct MaterialDataLayout {
 @group(0) @binding(0)
 var<uniform> u_camera: CameraDataLayout;
 
-// @group(0) @binding(1)
-// var<uniform> u_global_light: GlobalLightDataLayout;
+@group(0) @binding(1)
+var<uniform> u_global_light: GlobalLightDataLayout;
 
 // @group(0) @binding(2)
 // var<uniform> u_local_lights: LocalLightSetLayout;
@@ -161,6 +162,27 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
     out.texcoord = input.texcoord;
 
     return out;
+}
+
+/// 그림자를 생성할 때 사용되는 버텍스 쉐이더
+@vertex
+fn vs_bake(
+    @location(0) position: vec3<f32>,
+    @location(1) bone_index: vec4<u32>, 
+    @location(2) bone_weight: vec4<f32>, 
+) -> @builtin(position) vec4<f32> {
+    let bone_transform_0 = u_bone_trans[bone_index[0]] * u_bindposes[bone_index[0]];
+    let bone_transform_1 = u_bone_trans[bone_index[1]] * u_bindposes[bone_index[1]];
+    let bone_transform_2 = u_bone_trans[bone_index[2]] * u_bindposes[bone_index[2]];
+    let bone_transform_3 = u_bone_trans[bone_index[3]] * u_bindposes[bone_index[3]];
+
+    let final_matrix = bone_weight[0] * bone_transform_0 +
+                   bone_weight[1] * bone_transform_1 +
+                   bone_weight[2] * bone_transform_2 +
+                   bone_weight[3] * bone_transform_3;
+
+    let position_w = (final_matrix * vec4<f32>(position, 1.0)).xyz;
+    return u_global_light.proj_view * vec4<f32>(position_w, 1.0);
 }
 
 

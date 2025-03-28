@@ -13,7 +13,7 @@ use mod_network::{
     protocol::InitStagePacket,
 };
 use mod_parallelism::collections::Queue;
-use mod_render::{GraphicsPipelinePool, TexturePool, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use mod_render::TexturePool;
 use rayon::ThreadPool;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
@@ -25,12 +25,6 @@ use crate::{
     },
     component::{load_bullet_model, load_character_model},
     config::{Locale, NUM_LOCALE},
-    render::{
-        create_bullet_render_pipeline, create_character_halo_render_pipeline,
-        create_character_render_pipeline, create_fx_damage_render_pipeline,
-        create_skybox_render_pipeline, create_stage_area_render_pipeline, BULLET_PIPELINE_NAME,
-        CHARACTER_HALO_PIPELINE_ID, CHARACTER_PIPELINE_ID, STAGE_AREA_PIPELINE_NAME,
-    },
     scenes::BASE_WIDTH,
 };
 
@@ -392,85 +386,6 @@ impl InGameLoadScene {
         });
         self.num_remaining_tasks += 1;
     }
-
-    /// 그래픽스 파이프라인을 생성합니다.
-    fn create_graphics_pipelines(&mut self, thread_pool: &ThreadPool, device: &Arc<wgpu::Device>) {
-        let task_result_cloned = self.task_results.clone();
-        let device_cloned = device.clone();
-        thread_pool.spawn(move || {
-            // 캐릭터 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_ID, move || {
-                create_character_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(()));
-        });
-        self.num_remaining_tasks += 1;
-
-        let task_result_cloned = self.task_results.clone();
-        let device_cloned = device.clone();
-        thread_pool.spawn(move || {
-            // 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_ID, move || {
-                create_character_halo_render_pipeline(
-                    &device_cloned,
-                    DEPTH_FORMAT,
-                    SWAPCHAIN_FORMAT,
-                )
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(()));
-        });
-        self.num_remaining_tasks += 1;
-
-        let task_result_cloned = self.task_results.clone();
-        let device_cloned = device.clone();
-        thread_pool.spawn(move || {
-            // 총알 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(BULLET_PIPELINE_NAME, move || {
-                create_bullet_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(()));
-        });
-        self.num_remaining_tasks += 1;
-
-        let task_result_cloned = self.task_results.clone();
-        let device_cloned = device.clone();
-        thread_pool.spawn(move || {
-            // 지형 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(STAGE_AREA_PIPELINE_NAME, move || {
-                create_stage_area_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(()));
-        });
-        self.num_remaining_tasks += 1;
-
-        let task_result_cloned = self.task_results.clone();
-        let device_cloned = device.clone();
-        thread_pool.spawn(move || {
-            // Skybox 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(SKYBOX_URI, move || {
-                create_skybox_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(()));
-        });
-        self.num_remaining_tasks += 1;
-
-        let task_result_cloned = self.task_results.clone();
-        let device_cloned = device.clone();
-        thread_pool.spawn(move || {
-            // 데미지 파티클 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(DAMAGE_FONT_URI, move || {
-                create_fx_damage_render_pipeline(&device_cloned, DEPTH_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(()));
-        });
-        self.num_remaining_tasks += 1;
-    }
 }
 
 impl GameScene for InGameLoadScene {
@@ -509,7 +424,6 @@ impl GameScene for InGameLoadScene {
             app.render_device(),
             app.render_queue(),
         );
-        self.create_graphics_pipelines(app.io_threads(), app.render_device());
         Ok(())
     }
 

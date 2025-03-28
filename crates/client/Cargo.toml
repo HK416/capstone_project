@@ -41,6 +41,7 @@ image = { version = "0.25", features = ["dds", "png"], default-features = false 
 mod-app = { path = "../mod-app" }
 mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
+mod-physics = { path = "../mod-physics" }
 mod-render = { path = "../mod-render" }
 
 
