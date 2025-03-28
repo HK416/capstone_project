@@ -2,6 +2,7 @@ use std::{
     fmt,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
+    collections::HashMap,
 };
 
 use mod_network::{
@@ -15,7 +16,7 @@ use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
-use tokio::time::{Duration, Instant};
+use tokio::time::{Duration, Instant, sleep};
 
 use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
@@ -45,17 +46,27 @@ pub struct GameWorldInGameState {
 
     /// 플레이어 데미지 로그입니다.
     damage_logs: Queue<DamageLog>,
+
+    /// 팀별 스폰 위치 저장
+    spawn_positions: HashMap<u32, glam::Vec3A>,
 }
 
 impl GameWorldInGameState {
     /// 새로운 게임 월드 상태를 생성합니다.
     pub fn new(stage_kind: StageKind) -> Self {
+        let mut spawn_positions = HashMap::new();
+
+        // 임시시 스폰 위치 설정 (팀 ID를 기반으로)
+        spawn_positions.insert(1, glam::vec3a(0.0, 0.0, 0.0)); // 팀 1
+        spawn_positions.insert(2, glam::vec3a(50.0, 0.0, 50.0)); // 팀 2
+
         Self {
             is_running: true,
             previous_time_pt: Instant::now(),
             counter: 0,
             stage_kind,
             damage_logs: Queue::new(),
+            spawn_positions,
         }
     }
 
@@ -70,6 +81,13 @@ impl GameWorldInGameState {
 
         ObjectId::new((time_bit << 16) | counter_bit)
     }
+
+    /// 팀별 스폰 위치를 가져오는 함수
+    pub fn get_spawn_position(&self, team_id: u32) -> glam::Vec3A {
+        *self.spawn_positions.get(&team_id).unwrap_or(&glam::vec3a(0.0, 0.0, 0.0))
+    }
+
+    
 
     /// 플레이어 상태 타이머를 갱신합니다.
     fn update_player_state_timer(&self, world: &GameWorld, elapsed_time_sec: f32) {
@@ -318,6 +336,9 @@ impl GameWorldInGameState {
                     health_point.0 = (health_point.0 - final_dmg).max(0);
                     println!("  - hp: {:?}(-{})", health_point.0, final_dmg);
 
+                    // 체력이 0이면 Dead 상태로 전환
+                       
+
                     self.damage_logs.push(DamageLog {
                         user_id: player.account().uid,
                         damage: HealthPoint(final_dmg),
@@ -410,6 +431,15 @@ impl GameWorldInGameState {
 }
 
 impl GameWorldState for GameWorldInGameState {
+    fn on_enter(&mut self, world: &Arc<GameWorld>) {
+        for mut player in world.players.iter_mut() {
+            let team_id = player.team() as u32; // Team을 u32로 변환
+            if let Some(spawn_position) = self.spawn_positions.get(&team_id) {
+                *player.translation_mut() = *spawn_position; // 올바른 위치 설정 방법 사용
+            }
+        }
+    }
+
     fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
         match event {
             GameWorldEvent::AddBullet { shooter_id, delay } => {

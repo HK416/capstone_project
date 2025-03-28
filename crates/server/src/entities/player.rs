@@ -385,6 +385,16 @@ impl PlayerObject {
                 PlayerObject::maintain_velocity,
                 PlayerObject::maintain_velocity,
             ],
+            // `ActionState::Dead *임시*`
+            [
+                PlayerObject::update_velocity_when_idle,
+                PlayerObject::update_velocity_when_walking,
+                PlayerObject::update_velocity_when_move_to_end,
+                PlayerObject::maintain_velocity,
+                PlayerObject::maintain_velocity,
+                PlayerObject::maintain_velocity,
+                PlayerObject::maintain_velocity,
+            ],            
         ];
 
         let i = self.action_state as usize;
@@ -475,6 +485,7 @@ impl PlayerObject {
             PlayerObject::update_action_state_when_aim_at,
             PlayerObject::update_action_state_when_aim_off,
             PlayerObject::update_action_state_when_attack,
+            PlayerObject::update_action_state_when_attack, // *임시*
         ];
 
         let i = self.action_state as usize;
@@ -737,6 +748,7 @@ impl PlayerObject {
             PlayerObject::update_action_state_timer_when_aim_at,
             PlayerObject::update_action_state_timer_when_aim_off,
             PlayerObject::update_action_state_timer_when_attack,
+            PlayerObject::update_action_state_timer_when_attack, // *임시*
         ];
 
         let i = self.action_state as usize;
@@ -871,6 +883,16 @@ impl PlayerObject {
                 PlayerObject::update_movement_state_when_moving_landing,
             ],
             // `ActionState::Attack`
+            [
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_walking,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
+            ],
+            // `ActionState::Dead *임시*`
             [
                 PlayerObject::update_movement_state_when_idle,
                 PlayerObject::update_movement_state_when_walking,
@@ -1039,6 +1061,16 @@ impl PlayerObject {
                 (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
                 (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
             ],
+            // (`MovementState::Idle`, `ActionState::Dead`) *임시*
+            [
+                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -1120,6 +1152,16 @@ impl PlayerObject {
                 (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
                 (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
             ],
+            // (`MovementState::Moving`, `ActionState::Dead`) *임시*
+            [
+                (MovementState::Idle, reset_timer),      // `MovementState::Idle`
+                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -1191,6 +1233,16 @@ impl PlayerObject {
                 (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
             ],
             // (`MovementState::MoveToEnd`, `ActionState::Attack`)
+            [
+                (MovementState::Idle, reset_timer),   // `MovementState::Idle`
+                (MovementState::Moving, reset_timer), // `MovementState::Moving`
+                (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
+                (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
+                (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::MoveToEnd`, `ActionState::Dead`) *임시*
             [
                 (MovementState::Idle, reset_timer),   // `MovementState::Idle`
                 (MovementState::Moving, reset_timer), // `MovementState::Moving`
@@ -1397,6 +1449,16 @@ impl PlayerObject {
                 PlayerObject::update_movement_state_timer_when_landing,
             ],
             // `ActionState::Attack`
+            [
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_walking,
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_in_place_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+                PlayerObject::update_movement_state_timer_when_moving_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+            ],
+            // `ActionState::Dead` *임시*
             [
                 PlayerObject::update_movement_state_timer_when_idle,
                 PlayerObject::update_movement_state_timer_when_walking,
