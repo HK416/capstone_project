@@ -422,8 +422,8 @@
         {
             "model" : "City_Building_10",
             "scale" : { "x": 1, "y": 1, "z": 1 },
-            "rotation" : { "x": 0, "y": 0.9063078, "z": 0, "w": 0.4226183 },
-            "translation" : { "x": -42, "y": 0.25, "z": 1 }
+            "rotation" : { "x": 0, "y": 0.0, "z": 0, "w": 1.0 },
+            "translation" : { "x": -43.63, "y": 0.2, "z": -12.39 }
         },
         {
             "model" : "City_Building_15",
@@ -582,7 +582,7 @@
             "translation" : { "x": 13.9, "y": 0.25, "z": 14 }
         },
         {
-            "model" : "City_Building_15",
+            "model" : "City_Building_04",
             "scale" : { "x": 1, "y": 1, "z": 1 },
             "rotation" : { "x": 0, "y": -0.7071068, "z": 0, "w": 0.7071068 },
             "translation" : { "x": 18.6, "y": 0.25, "z": 11.4 }
