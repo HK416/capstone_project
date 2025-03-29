@@ -176,7 +176,8 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
         idx.push((i + 1.0, j - 1.0));
     }
 
-    let (area, height) = idx.iter()
+    let (area, height) = idx
+        .iter()
         .filter(|(i, j)| *i >= 0.0 && *i < n as f32 && *j >= 0.0 && *j < m as f32)
         .filter_map(|(i, j)| stage.area[*i as usize][*j as usize].as_ref())
         .map(|area| (area, &area.height))

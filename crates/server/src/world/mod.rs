@@ -3,9 +3,12 @@ mod pool;
 mod state;
 
 use std::{
-    collections::VecDeque, fmt, sync::{
-        atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering}, Arc
-    }
+    collections::VecDeque,
+    fmt,
+    sync::{
+        Arc,
+        atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering},
+    },
 };
 
 use ahash::RandomState;

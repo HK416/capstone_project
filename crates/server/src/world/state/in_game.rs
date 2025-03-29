@@ -85,10 +85,10 @@ impl GameWorldInGameState {
         for mut player in world.players.iter_mut() {
             // 플레이어 위치를 가져옵니다.
             let translation = player.translation();
-            
+
             // 플레이어 속도를 갱신합니다.
             player.update_velocity();
-            
+
             // 플레이어의 이동 속도를 가져옵니다.
             let mut velocity = player.velocity();
 
@@ -96,13 +96,13 @@ impl GameWorldInGameState {
             if !player.is_grounded {
                 velocity += GRAVITY * elapsed_time_sec;
             }
-            
+
             // 이동 시도 (이동 전 위치 저장)
             let mut new_p = translation + velocity * elapsed_time_sec;
 
             // 충돌처리 시작
             player.is_grounded = false;
-            
+
             let mut player_capsule = player.collider();
             player_capsule.center = new_p.into();
             let player_aabb = BoundingBox::from(&player_capsule);
@@ -121,9 +121,10 @@ impl GameWorldInGameState {
                     }
                     // 아니라면 미끄러지도록 처리
                     else {
-                        let slide = velocity - collision_info.normal * velocity.dot(collision_info.normal);
+                        let slide =
+                            velocity - collision_info.normal * velocity.dot(collision_info.normal);
                         // +y방향으로 튀어오르지 않게 한다.
-                        let vy = if slide.y < velocity.y { 
+                        let vy = if slide.y < velocity.y {
                             slide.y
                         } else {
                             velocity.y
@@ -152,7 +153,7 @@ impl GameWorldInGameState {
                     player.is_grounded = true;
                 }
             }
-            
+
             if player.is_grounded {
                 match player.movement_state() {
                     MovementState::InPlaceLanding => {
@@ -203,7 +204,11 @@ impl GameWorldInGameState {
     /// 게임 세상에서 총알 오브젝트를 제거합니다.
     fn remove_bullet(&self, world: &GameWorld, object_id: ObjectId) {
         match world.bullets.remove(&object_id) {
-            Some(_) => log::info!("Bullet({}) is removed from the GameWorld({})", &object_id, &world.id()),
+            Some(_) => log::info!(
+                "Bullet({}) is removed from the GameWorld({})",
+                &object_id,
+                &world.id()
+            ),
             None => log::warn!(
                 "the Bullet({}) could not be found in GameWorld({})!",
                 &object_id,
@@ -373,11 +378,23 @@ impl GameWorldInGameState {
                 )
             })
             .collect();
+
+        // 플레이어가 비어있는 경우 패킷 전송을 생략합니다.
+        if players.is_empty() {
+            return;
+        }
+
         let bullets: Vec<_> = world
             .bullets
             .iter()
             .map(|bullet| bullet.as_bullet())
             .collect();
+
+        // 패킷을 생성하고 전송합니다.
+        let packet = PullStagePacket::new(players, bullets);
+        for session in world.sessions.iter() {
+            session.key().tcp_write(packet.as_raw());
+        }
 
         // 패킷을 생성하고 전송합니다.
         let capacity = UdpDamageLogPacket::capacity();
@@ -399,12 +416,6 @@ impl GameWorldInGameState {
             } else {
                 break;
             }
-        }
-
-        // 패킷을 생성하고 전송합니다.
-        let packet = PullStagePacket::new(players, bullets);
-        for session in world.sessions.iter() {
-            session.key().tcp_write(packet.as_raw());
         }
     }
 }
