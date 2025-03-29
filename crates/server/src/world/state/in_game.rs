@@ -21,7 +21,7 @@ use tokio::time::{Duration, Instant, sleep};
 use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
     formula::movement_formulas as formulas,
-    world::{GameWorld, GameWorldEvent},
+    world::{GameWorld, GameWorldEvent, PlayerObject},
 };
 
 use super::GameWorldState;
@@ -57,8 +57,8 @@ impl GameWorldInGameState {
         let mut spawn_positions = HashMap::new();
 
         // 임시시 스폰 위치 설정 (팀 ID를 기반으로)
-        spawn_positions.insert(1, glam::vec3a(0.0, 0.0, 0.0)); // 팀 1
-        spawn_positions.insert(2, glam::vec3a(50.0, 0.0, 50.0)); // 팀 2
+        spawn_positions.insert(0, glam::vec3a(0.0, 0.0, 0.0)); // 팀 1
+        spawn_positions.insert(1, glam::vec3a(50.0, 0.0, 50.0)); // 팀 2
 
         Self {
             is_running: true,
@@ -257,7 +257,7 @@ impl GameWorldInGameState {
             let mut nearest_player_id = None;
 
             for player in world.players.iter() {
-                if *player.key() == bullet.shooter_id {
+                if *player.key() == bullet.shooter_id || player.health_point().0 == 0 {
                     continue;
                 }
 
@@ -268,9 +268,9 @@ impl GameWorldInGameState {
                     .check_dynamic_collision_details(&bullet.velocity, &player_collider)
                 {
                     if info.distance <= move_distance {
-                        println!("Bullet find player (player id: {:?})", player.account().uid);
+                        println!("Bullet find player (player id: {})", player.account().uid);
                         println!("  - distance: {}", info.distance);
-                        println!("  - surface normal: {:?}", info.normal);
+                        println!("  - surface normal: {}", info.normal);
                         if info.distance < nearest_distance {
                             nearest_distance = info.distance;
                             nearest_player_id = Some(*player.key());
@@ -285,7 +285,7 @@ impl GameWorldInGameState {
                     // 피격 처리(회피하더라도 일단 총알은 제거)
                     bullet.remaining_distance = 0.0;
 
-                    println!("Player {:?} hit by bullet", id);
+                    println!("Player({}) hit by bullet", id);
                     let mut player = world.players.get_mut(&id).unwrap();
                     let char_info = player.character_attributes();
 
@@ -333,11 +333,13 @@ impl GameWorldInGameState {
                         formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u16;
 
                     let health_point = player.health_point_mut();
-                    health_point.0 = (health_point.0 - final_dmg).max(0);
-                    println!("  - hp: {:?}(-{})", health_point.0, final_dmg);
+                    health_point.0 = health_point.0.saturating_sub(final_dmg);
+                    println!("  - hp: {}(-{})", health_point.0, final_dmg);
 
-                    // 체력이 0이면 Dead 상태로 전환
-                       
+                    if health_point.0 == 0 {
+                        println!("Player({}) is dead", player.account().uid);
+                        player.death();
+                    }
 
                     self.damage_logs.push(DamageLog {
                         user_id: player.account().uid,
@@ -347,17 +349,14 @@ impl GameWorldInGameState {
 
                 // 충돌하지 않았다면
                 None => {
+                    // 총알 위치 이동
+                    bullet.translation = translation + direction;
                     // 누적 이동거리 증가
                     bullet.remaining_distance -= move_distance;
-
-                    // println!("range: {}, moved: {}", bullet.blob.range, bullet.moved_distance);
 
                     // 총알 사거리를 넘어가면 총알 제거
                     if bullet.remaining_distance <= 0.0 {
                         println!("Bullet range over");
-                    } else {
-                        // 총알 위치 이동
-                        bullet.translation = translation + direction;
                     }
                 }
             }
@@ -428,15 +427,20 @@ impl GameWorldInGameState {
             session.key().tcp_write(packet.as_raw());
         }
     }
+
+    fn set_player_to_spawn_position(&self, player: &mut PlayerObject) {
+        let team_id = player.team() as u32; // Team을 u32로 변환
+        if let Some(spawn_position) = self.spawn_positions.get(&team_id) {
+            *player.translation_mut() = *spawn_position; // 올바른 위치 설정 방법 사용
+            player.update_collider();
+        }
+    }
 }
 
 impl GameWorldState for GameWorldInGameState {
     fn on_enter(&mut self, world: &Arc<GameWorld>) {
         for mut player in world.players.iter_mut() {
-            let team_id = player.team() as u32; // Team을 u32로 변환
-            if let Some(spawn_position) = self.spawn_positions.get(&team_id) {
-                *player.translation_mut() = *spawn_position; // 올바른 위치 설정 방법 사용
-            }
+            self.set_player_to_spawn_position(&mut player);
         }
     }
 
@@ -447,6 +451,14 @@ impl GameWorldState for GameWorldInGameState {
             }
             GameWorldEvent::RemoveBullet(object_id) => {
                 self.remove_bullet(world, object_id);
+            }
+            GameWorldEvent::RespawnPlayer { uid } => {
+                if let Some(mut player) = world.players.get_mut(&uid) {
+                    self.set_player_to_spawn_position(&mut player);
+                    player.reset_state();
+                } else {
+                    log::warn!("failed to respawn player (uid: {})", uid);
+                }
             }
             _ => {
                 log::warn!(

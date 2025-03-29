@@ -16,6 +16,8 @@ const PLAYER_RADIUS: f32 = 0.25;
 const PLAYER_HEIGHT: f32 = 1.0;
 /// 최대 입력 지속 시간
 const MAX_INPUT_DURATION: f32 = 0.25;
+/// 플레이어 리스폰 대기 시간
+const RESPAWN_DELAY: f32 = 2.0;
 
 /// 서버에서 관리하는 플레이어 오브젝트 데이터
 #[derive(Debug, Clone)]
@@ -113,6 +115,26 @@ impl PlayerObject {
         }
     }
 
+    /// 리스폰시 호출하여 플레이어 오브젝트의 상태를 초기화합니다.
+    pub fn reset_state(&mut self) {
+        // self.health_point = HealthPoint(get_character_attributes(self.character_kind).health_point as u16);
+        // 테스트용으로 체력을 낮게 설정
+        self.health_point = HealthPoint(50);
+        self.fired_per_attack = 0;
+        self.remaining_bullets = 1;
+        // self.translation = glam::Vec3A::ZERO;    // 월드에서 스폰위치로 초기화
+        self.rotation = glam::Quat::IDENTITY;
+        self.action_state = ActionState::Idle;
+        self.prev_action_state = ActionState::Idle;
+        self.action_state_timer = ActionStateTimer::default();
+        self.movement_state = MovementState::Idle;
+        self.movement_state_timer = MovementStateTimer::default();
+        self.view_state = ViewState::default();
+        self.view_state_timer = ViewStateTimer::default();
+        self.input_timer = 0.0;
+        self.view_rotation = LatLon::default();
+    }
+
     /// 플레이어 오브젝트의 사용자 정보를 가져옵니다.
     pub fn account(&self) -> &UserAccount {
         &self.account
@@ -163,6 +185,9 @@ impl PlayerObject {
     pub fn with_character_kind(&mut self, character_kind: CharacterKind) -> &mut Self {
         self.character_kind = character_kind;
         self.attributes = get_character_attributes(character_kind);
+        // self.health_point = HealthPoint(self.attributes.health_point as u16);
+        // 테스트용으로 체력을 낮게 설정
+        self.health_point = HealthPoint(50);
         self
     }
 
@@ -258,6 +283,14 @@ impl PlayerObject {
     /// 플레이어 오브젝트의 충돌체(캡슐)의 위치를 갱신합니다.
     pub fn update_collider(&mut self) {
         self.collider.center = self.translation.into();
+    }
+
+    /// 플레이어를 사망 상태로 설정합니다.
+    pub fn death(&mut self) {
+        self.action_state = ActionState::Dead;
+        self.movement_state = MovementState::Idle;
+        self.action_state_timer.reset();
+        self.movement_state_timer.reset();
     }
 
     /// 현재 플레이어 오브젝트의 데이터로 총알 오브젝트를 생성합니다.
@@ -465,6 +498,9 @@ impl PlayerObject {
 
     /// 플레이어 오브젝트의 상태를 갱신합니다.
     pub fn update_state(&mut self, input_flags: GameInputBits) {
+        if self.health_point.0 == 0 {
+            return;
+        }
         self.update_action_state(input_flags);
         self.update_movement_state(input_flags);
     }
@@ -748,7 +784,7 @@ impl PlayerObject {
             PlayerObject::update_action_state_timer_when_aim_at,
             PlayerObject::update_action_state_timer_when_aim_off,
             PlayerObject::update_action_state_timer_when_attack,
-            PlayerObject::update_action_state_timer_when_attack, // *임시*
+            PlayerObject::update_action_state_timer_when_dead,
         ];
 
         let i = self.action_state as usize;
@@ -835,6 +871,25 @@ impl PlayerObject {
             self.prev_action_state = ActionState::Attack;
             self.action_state_timer.0 = diff_t;
             self.fired_per_attack = 0;
+        }
+    }
+
+    /// `ActionState::Dead`일 때 `ActionStateTimer`를 갱신합니다.  
+    fn update_action_state_timer_when_dead(
+        &mut self,
+        world: &GameWorld,
+        elapsed_time_sec: f32,
+    ) {
+        // 타이머를 갱신합니다.
+        self.action_state_timer.0 += elapsed_time_sec;
+
+        // RESPAWN_DELAY만큼 대기 후 플레이어를 리스폰합니다.
+        let diff_t = self.action_state_timer.0 - RESPAWN_DELAY;
+        if diff_t >= 0.0 {
+            self.prev_action_state = ActionState::Idle;
+            self.action_state = ActionState::Idle;
+            self.action_state_timer.0 = diff_t;
+            world.push_event(GameWorldEvent::RespawnPlayer { uid: self.account.uid });
         }
     }
 
