@@ -28,7 +28,12 @@ pub fn prepare_camera_resource(
             scope.spawn(move |_| {
                 // 엔터티에서 카메라 리소스와 월드 변환 행렬, 투영 변환 행렬을 가져옵니다.
                 let mut query = world
-                    .query_one::<(&Arc<CameraResource>, &WorldTransform, &Projection, &mut Frustum)>(entity)
+                    .query_one::<(
+                        &Arc<CameraResource>,
+                        &WorldTransform,
+                        &Projection,
+                        &mut Frustum,
+                    )>(entity)
                     .expect("invalid entity");
                 let (camera_resource, world_transform, projection, frustum) =
                     query.get().expect("invalid entity component");

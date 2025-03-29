@@ -10,9 +10,7 @@ use std::ops::{Deref, DerefMut};
 
 use hecs::{Entity, QueryOneError, ViewBorrow, World};
 
-pub use self::{
-    bullet::*, camera::*, character::*, control::*, light::*, stage::*, transform::*,
-};
+pub use self::{bullet::*, camera::*, character::*, control::*, light::*, stage::*, transform::*};
 
 /// ## Parent Entity
 #[repr(transparent)]

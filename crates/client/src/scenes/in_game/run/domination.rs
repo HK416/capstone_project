@@ -36,10 +36,10 @@ use crate::{
     },
     config::{Locale, UserConfig},
     render::{
-        clear_render_target_with_skybox, draw_bullet, draw_damage_particle,
-        draw_stage_area, draw_stage_props, get_damage_font, prepare_camera_resource,
-        prepare_mesh_resource, shadow::ShadowMapResource, spawn_damage_fx, CompositeResource,
-        Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
+        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
+        draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
+        shadow::ShadowMapResource, spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout,
+        FxDamageResource, LifeTime,
     },
     SERVER_TCP_ADDR,
 };
@@ -277,9 +277,9 @@ impl InGameDominationModeScene {
 
         // 그림자 쉐이더 리소스의 변환 행렬을 계산합니다.
         let center = camera_pos + camera_dir * 5.0;
-        let eye = center - light_dir * 10.0;
+        let eye = center - light_dir * 25.0;
         let view = glam::Mat4::look_at_lh(eye.into(), center.into(), glam::Vec3::Y);
-        let proj = glam::Mat4::orthographic_lh(-5.0, 5.0, -5.0, 5.0, 0.0, 50.0);
+        let proj = glam::Mat4::orthographic_lh(-7.5, 7.5, -7.5, 7.5, -10.0, 50.0);
 
         // 전역 조명을 갱신합니다.
         GlobalLightUniform::get_or_uninit(device).update(

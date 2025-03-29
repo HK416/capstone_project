@@ -168,5 +168,10 @@ fn calculate_shadow(light_space_position: vec4<f32>) -> f32 {
     var proj_coords = light_space_position.xy / light_space_position.w;
     proj_coords = proj_coords * vec2<f32>(0.5, -0.5) + 0.5;
 
+    if (proj_coords.x < 0.0 || proj_coords.x > 1.0 
+    || proj_coords.y < 0.0 || proj_coords.y > 1.0) {
+        return 1.0;
+    }
+
     return textureSampleCompareLevel(t_shadow, s_shadow, proj_coords, curr_depth);
 }
