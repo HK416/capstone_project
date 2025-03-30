@@ -317,6 +317,7 @@ impl PlayerObject {
         BulletObject {
             object_id,
             shooter_id: self.account.uid,
+            shooter_team: self.team(),
             bullet_kind: self.character_kind.into(),
             translation,
             rotation,

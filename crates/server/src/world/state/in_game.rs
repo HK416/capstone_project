@@ -262,7 +262,10 @@ impl GameWorldInGameState {
             let mut nearest_player_id = None;
 
             for player in world.players.iter() {
-                if *player.key() == bullet.shooter_id || player.health_point().0 == 0 {
+                if *player.key() == bullet.shooter_id 
+                    || player.health_point().0 == 0
+                    || player.team() == bullet.shooter_team
+                {
                     continue;
                 }
 

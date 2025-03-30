@@ -1,4 +1,4 @@
-use mod_network::components::{Bullet, BulletKind, ObjectId, UserId};
+use mod_network::components::{Bullet, BulletKind, ObjectId, Team, UserId};
 
 /// 서버에서 관리하는 총알 데이터
 #[derive(Debug, Clone)]
@@ -7,6 +7,8 @@ pub struct BulletObject {
     pub object_id: ObjectId,
     /// 총알을 발사한 사용자 식별자
     pub shooter_id: UserId,
+    /// 총알을 발사한 사용자의 팀
+    pub shooter_team: Team,
     /// 총알의 종류
     pub bullet_kind: BulletKind,
     /// 총알의 월드 공간 위치
