@@ -479,7 +479,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_camera,              // ActionState::Dead *임시*
+            set_character_direction_to_none,                // ActionState::Death
         ],
         // `MovementState::Moving`
         [
@@ -488,7 +488,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_camera,              // ActionState::Dead *임시*
+            set_character_direction_to_none,                // ActionState::Death
         ],
         // `MovementState::MoveToEnd`
         [
@@ -497,7 +497,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_camera,              // ActionState::Dead *임시*
+            set_character_direction_to_none,                // ActionState::Death
         ],
         // `MovementState::InPlaceJumping`
         [
@@ -506,7 +506,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_camera,              // ActionState::Dead *임시*
+            set_character_direction_to_none,                // ActionState::Death
         ],
         // `MovementState::InPlaceLanding`
         [
@@ -515,7 +515,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_camera,              // ActionState::Dead *임시*
+            set_character_direction_to_none,                // ActionState::Death
         ],
         // `MovementState::MovingJumping`
         [
@@ -524,7 +524,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_camera,              // ActionState::Dead *임시*
+            set_character_direction_to_none,                // ActionState::Death
         ],
         // `MovementState::MovingLanding`
         [
@@ -533,7 +533,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_camera,              // ActionState::Dead *임시*
+            set_character_direction_to_none,                // ActionState::Death
         ],
     ];
 
@@ -846,7 +846,10 @@ pub fn update_third_person_camera(
     ];
 
     let i = character_kind as usize;
-    let j = view_state as usize;
+    let j = match action_state {
+        _ => view_state as usize,
+    };
+
     FUNC_TABLE[i][j](
         third_person_camera,
         action_state,

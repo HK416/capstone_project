@@ -71,6 +71,8 @@ pub const ATTACK_START_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Start";
 pub const ATTACK_ING_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Ing";
 /// 모든 캐릭터 모델의 AttackEnd 애니메이션 접미사입니다.
 pub const ATTACK_END_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_End";
+/// 모든 캐릭터 모델의 Vital_Death 애니메이션 접미사입니다.
+pub const VITAL_DEATH_ANIMATION_SUFFIX: &'static str = "_Vital_Death";
 // /// 모든 캐릭터 모델의 Reload 애니메이션 접미사입니다.
 // pub const RELOAD_ANIMATION_SUFFIX: &'static str = "_Normal_Reload";
 // /// 모든 캐릭터 모델의 Ex스킬 애니메이션 접미사입니다.

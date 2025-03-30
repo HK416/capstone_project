@@ -17,7 +17,7 @@ const PLAYER_HEIGHT: f32 = 1.0;
 /// 최대 입력 지속 시간
 const MAX_INPUT_DURATION: f32 = 0.25;
 /// 플레이어 리스폰 대기 시간
-const RESPAWN_DELAY: f32 = 2.0;
+const RESPAWN_DELAY: f32 = 10.0;
 
 /// 서버에서 관리하는 플레이어 오브젝트 데이터
 #[derive(Debug, Clone)]
