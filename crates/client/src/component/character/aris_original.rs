@@ -664,6 +664,18 @@ pub fn animate_character(
             animate_character_when_attack_move_jumping, // `MovementState::MovingJumping`
             animate_character_when_attack_move_landing, // `MovementState::MovingLanding`
         ],
+        // `ActionState::Dead  *임시*`
+        [
+            animate_character_when_attacking,           // `MovementState::Idle`
+            animate_character_when_attack_move,         // `MovementState::Moving`
+            animate_character_when_attacking,           // `MovementState::MoveToEnd`
+            animate_character_when_attack_jumping,      // `MovementState::InPlaceJumping`
+            animate_character_when_attack_landing,      // `MovementState::InPlaceLanding`
+            animate_character_when_attack_move_jumping, // `MovementState::MovingJumping`
+            animate_character_when_attack_move_landing, // `MovementState::MovingLanding`
+        ],
+
+
     ];
 
     // 캐릭터 모델 애니메이션 집합을 가져옵니다.

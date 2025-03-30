@@ -36,4 +36,7 @@ pub enum GameWorldEvent {
     AddBullet { shooter_id: UserId, delay: f32 },
     /// 총알 오브젝트를 제거합니다.
     RemoveBullet(ObjectId),
+
+    /// 플레이어 리스폰 요청
+    RespawnPlayer { uid: UserId },
 }

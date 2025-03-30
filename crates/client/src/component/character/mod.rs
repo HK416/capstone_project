@@ -479,6 +479,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
+            set_character_direction_to_camera,              // ActionState::Dead *임시*
         ],
         // `MovementState::Moving`
         [
@@ -487,6 +488,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
+            set_character_direction_to_camera,              // ActionState::Dead *임시*
         ],
         // `MovementState::MoveToEnd`
         [
@@ -495,6 +497,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
+            set_character_direction_to_camera,              // ActionState::Dead *임시*
         ],
         // `MovementState::InPlaceJumping`
         [
@@ -503,6 +506,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
+            set_character_direction_to_camera,              // ActionState::Dead *임시*
         ],
         // `MovementState::InPlaceLanding`
         [
@@ -511,6 +515,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
+            set_character_direction_to_camera,              // ActionState::Dead *임시*
         ],
         // `MovementState::MovingJumping`
         [
@@ -519,6 +524,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
+            set_character_direction_to_camera,              // ActionState::Dead *임시*
         ],
         // `MovementState::MovingLanding`
         [
@@ -527,6 +533,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
+            set_character_direction_to_camera,              // ActionState::Dead *임시*
         ],
     ];
 
