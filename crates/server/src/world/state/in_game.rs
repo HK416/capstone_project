@@ -374,7 +374,7 @@ impl GameWorldInGameState {
         let players: Vec<_> = world
             .players
             .iter_mut()
-            .map(|mut player| {
+            .map(|player| {
                 PlayPhasePlayer::new(
                     player.account().clone(),
                     player.character_kind(),

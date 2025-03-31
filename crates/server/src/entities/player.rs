@@ -320,9 +320,13 @@ impl PlayerObject {
         let rotate = glam::Mat4::from_rotation_y(self.view_rotation.lon);
 
         // 총구가 향하는 방향을 계산합니다.
-        let mut direction =
-            glam::Vec3A::from(self.attributes.get_muzzle_direction(t)).normalize_or(glam::Vec3A::Z);
-        direction = rotate.transform_vector3a(direction);
+        let mut direction = glam::Vec3A::Z;
+        direction = glam::Mat4::from_rotation_y(self.view_rotation.lon)
+            .transform_vector3a(direction)
+            .normalize_or(glam::Vec3A::Z);
+        let right = glam::Vec3A::Y.cross(direction);
+        direction = glam::Mat4::from_axis_angle(right.into(), self.view_rotation.lat)
+            .transform_vector3a(direction);
 
         // 총알의 위치를 계산합니다.
         let translation = self.translation

@@ -25,6 +25,7 @@ use winit::{
 };
 
 use crate::{
+    asset::NOTOSANS_REGULAR,
     component::{
         animate_character, bake_character_shadow, categorize_character_resource, cleanup,
         draw_character, draw_character_halo, set_weapon_position, spawn_player_character,
@@ -41,6 +42,7 @@ use crate::{
         shadow::ShadowMapResource, spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout,
         FxDamageResource, LifeTime,
     },
+    scenes::BASE_WIDTH,
     SERVER_TCP_ADDR,
 };
 
@@ -1672,6 +1674,48 @@ impl GameScene for InGameDominationModeScene {
             composite_resource.process(device, SWAPCHAIN_FORMAT, DEPTH_FORMAT, &mut rpass);
         }
         encoder.pop_debug_group();
+
+        Ok(())
+    }
+
+    fn ui_callback(
+        &mut self,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let (width, _height): (f32, f32) = window.inner_size().into();
+        let scale_factor = window.scale_factor() as f32;
+        let scale = width / scale_factor / BASE_WIDTH;
+
+        // 폰트 속성
+        let head_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+
+        // 십자선 원
+        let reticle_pos = (640.0 * scale, 360.0 * scale);
+        let reticle_radius = 4.0 * scale;
+        let reticle_color = egui::Color32::from_black_alpha(128);
+        let reticle = egui::Shape::circle_filled(reticle_pos.into(), reticle_radius, reticle_color);
+
+        // 프레임 레이트 텍스트
+        let fps = app.timer().frame_rate();
+        let text = format!("{}FPS", fps);
+        let font_id = egui::FontId::new(32.0 * scale, head_font_family.clone());
+        let frame_rate_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE)
+            .background_color(egui::Color32::from_black_alpha(96));
+
+        egui::Area::new(egui::Id::new("Reticle_Layout"))
+            .anchor(egui::Align2::CENTER_CENTER, (0.0, 0.0))
+            .show(app.egui_ctx(), |ui| {
+                ui.painter().add(reticle);
+            });
+
+        egui::Area::new(egui::Id::new("FrameRate_Layout"))
+            .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
+            .show(app.egui_ctx(), |ui| {
+                ui.label(frame_rate_text);
+            });
 
         Ok(())
     }
