@@ -33,10 +33,15 @@ winit = { workspace = true }
 # License: MIT
 ddsfile = "0.5"
 
+# Imaging library. Provides basic image processing and encoders/decoders for common image formats.
+# License: MIT OR Apache-2.0
+image = { version = "0.25", features = ["dds", "png"], default-features = false }
+
 # 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }
 mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
+mod-physics = { path = "../mod-physics" }
 mod-render = { path = "../mod-render" }
 
 

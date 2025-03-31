@@ -2,12 +2,7 @@ use std::sync::Arc;
 
 use mod_render::{GraphicsPipelinePool, SkyboxResource};
 
-/// Skybox 텍스처 상대경로입니다.
-pub const WORKSPACE: &'static str = "stage";
-/// Skybox 텍스처 이름입니다.
-pub const TEXTURE_NAME: &'static str = "Sky";
-/// Skybox 그래픽스 파이프라인의 이름입니다.
-pub const SKYBOX_PIPELINE_NAME: &'static str = "Skybox";
+use crate::asset::SKYBOX_URI;
 
 /// 쉐이더 모듈을 생성합니다.
 fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
@@ -105,7 +100,7 @@ pub fn clear_render_target_with_skybox<'a>(
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
     // Skybox 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-    let pipeline = GraphicsPipelinePool::get_or_init(SKYBOX_PIPELINE_NAME, || {
+    let pipeline = GraphicsPipelinePool::get_or_init(SKYBOX_URI, || {
         create_skybox_render_pipeline(device, depth_stencil_format, render_target_format)
     });
     rpass.set_pipeline(&pipeline);

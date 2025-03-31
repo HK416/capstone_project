@@ -205,6 +205,12 @@
                     "directories" : {}
                 }
             }
+        },
+        "ui" : {
+            "files" : [
+                "BG_Main_Lobby.png"
+            ],
+            "directories" : {}
         }
     }
 }

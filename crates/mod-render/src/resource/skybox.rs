@@ -42,7 +42,7 @@ impl SkyboxUniform {
 }
 
 impl SkyboxUniform {
-    /// 초기화 되지 않은 새로운 Skybox 유니폼 버퍼를 생성합니다.
+    /// 초기화 되지 않은 새로운 유니폼 버퍼를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self(Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label,
@@ -52,7 +52,7 @@ impl SkyboxUniform {
         })))
     }
 
-    /// 카메라 유니폼 버퍼의 내용을 갱신합니다.
+    /// 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub fn update(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, data: SkyboxDataLayout) {
         let capturable = self.0.clone();
@@ -72,12 +72,9 @@ impl SkyboxUniform {
                     log::warn!("failed to update uniform buffer! (REASON:{})", e)
                 }
             });
-
-        // let index = queue.submit([]);
-        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
-    /// 카메라 유니폼 버퍼의 내용을 갱신합니다.
+    /// 유니폼 버퍼의 내용을 갱신합니다.
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub unsafe fn update_from_bytes(
         &self,
@@ -100,9 +97,6 @@ impl SkyboxUniform {
                     log::warn!("failed to update uniform buffer! (REASON:{})", e)
                 }
             });
-
-        // let index = queue.submit([]);
-        // device.poll(wgpu::MaintainBase::WaitForSubmissionIndex(index));
     }
 
     /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.

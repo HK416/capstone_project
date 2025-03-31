@@ -8,19 +8,30 @@ use mod_app::{
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::CharacterKind;
+use mod_network::{
+    components::{CharacterKind, JoinFailedReason, LoginToken, UserId, UserInfo, WorldId},
+    protocol::{
+        CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, Packet, PacketType, RawPacket,
+    },
+};
 use mod_render::{ScreenDescriptor, UiRenderer};
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_REGULAR, NOTOSANS_BOLD, USER_CONFIG},
+    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG},
     config::UserConfig,
+    SERVER_TCP_ADDR,
 };
 
 pub use {self::enter::*, self::in_game::*};
 
 /// ## Testbed Title Scene
 pub struct TestbedTitleScene {
+    /// 사용자 식별자
+    user_id: UserId,
+    /// 로그인 토큰
+    token: LoginToken,
+
     /// 선택된 전체 화면 여부
     is_fullscreen: bool,
     /// 선택된 윈도우 창 크기
@@ -42,7 +53,17 @@ pub struct TestbedTitleScene {
 impl TestbedTitleScene {
     /// 새로운 `TestbedTitleScene`을 생성합니다.
     pub fn new() -> Self {
+        let config = UserConfig::get();
+        let user_id = config.info.uid;
+        let token = config.token;
+        drop(config);
+
+        assert_ne!(user_id, UserId::NULL, "invalid user identifier");
+        assert_ne!(token, LoginToken::NULL, "invalid login token");
+
         Self {
+            user_id,
+            token,
             is_fullscreen: false,
             window_size: WindowSize::MAX,
             character_kind: CharacterKind::default(),
@@ -89,7 +110,7 @@ impl TestbedTitleScene {
         let save_button_text = egui::RichText::new("설정 저장")
             .color(egui::Color32::WHITE)
             .font(main_font_id.clone());
-        let join_button_text = egui::RichText::new("게임 월드 입장")
+        let join_button_text = egui::RichText::new("커스텀 게임 입장")
             .color(egui::Color32::WHITE)
             .font(main_font_id.clone());
         let client_id_text = egui::RichText::new(format!("사용자: {}", name))
@@ -182,9 +203,20 @@ impl TestbedTitleScene {
                     ui.separator();
                     ui.label(client_id_text);
                     ui.horizontal(|ui| {
-                        if ui.button(join_button_text).clicked() {
-                            self.next_scene_transition_request = true;
-                        }
+                        ui.add_enabled_ui(!self.next_scene_transition_request, |ui| {
+                            if ui.button(join_button_text).clicked() {
+                                self.next_scene_transition_request = true;
+                                // 커스텀 게임 입장 요청 패킷을 전송합니다.
+                                let packet = CustomGameJoinRequestPacket::new(
+                                    WorldId::NULL,
+                                    self.user_id,
+                                    self.token,
+                                );
+                                let net_manager = app.net_manager();
+                                let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                                socket.push_packet(packet.as_raw());
+                            }
+                        });
                     });
                 });
             });
@@ -205,6 +237,38 @@ impl GameScene for TestbedTitleScene {
         Ok(())
     }
 
+    fn on_received_packet(
+        &mut self,
+        packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::CustomGameJoinSuccess => {
+                self.next_scene_transition_request = false;
+                println!("슝")
+            }
+            PacketType::CustomGameJoinFailed => {
+                self.next_scene_transition_request = false;
+                let packet = CustomGameJoinFailedPacket::from_raw(packet);
+                match packet.reason {
+                    JoinFailedReason::NotFound => println!("커스텀 방이 없음"),
+                    JoinFailedReason::FullCapacity => println!("인원이 가득 참"),
+                    JoinFailedReason::InProgress => println!("이미 게임이 진행 중"),
+                    JoinFailedReason::Banned => println!("차단됨"),
+                };
+            }
+            _ => {
+                log::warn!(
+                    "packet ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type
+                );
+            }
+        }
+
+        Ok(())
+    }
+
     fn on_update(
         &mut self,
         _elapsed_time_sec: f32,
@@ -222,13 +286,6 @@ impl GameScene for TestbedTitleScene {
             proxy
                 .send_event(AppEvent::ResizeRequest(self.window_size))
                 .unwrap();
-        }
-
-        if self.next_scene_transition_request {
-            let next_scene = EnterStageScene::new(self.character_kind);
-            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
-            let event = AppEvent::SetGameSceneFlow(scene_flow);
-            proxy.send_event(event).unwrap();
         }
 
         if self.configuration_save_request {
@@ -309,27 +366,29 @@ impl GameScene for TestbedTitleScene {
         });
 
         {
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("RenderPass(TestbadTitleScene)"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    view: render_target_view,
-                    resolve_target: None,
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_buffer_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Discard,
+            let mut rpass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("RenderPass(UI(TestbadTitleScene))"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: render_target_view,
+                        resolve_target: None,
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: depth_buffer_view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Discard,
+                        }),
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                })
+                .forget_lifetime();
 
             egui_renderer.render(
                 &mut rpass,

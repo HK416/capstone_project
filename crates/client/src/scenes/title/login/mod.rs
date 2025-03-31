@@ -1,4 +1,4 @@
-mod connect;
+mod modal;
 mod title;
 
-pub use self::{connect::*, title::*};
+pub use self::{modal::*, title::*};

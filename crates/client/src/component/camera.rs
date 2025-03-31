@@ -17,8 +17,8 @@ pub struct ThirdPersonCamera {
 
 impl ThirdPersonCamera {
     /// 캐릭터가 바라보는 방향으로 삼인칭 카메라를 생성합니다.
-    pub fn new(character_kind: CharacterKind) -> Self {
-        create_third_person_camera_of_character(character_kind)
+    pub fn new(character_kind: CharacterKind, rotation: LatLon) -> Self {
+        create_third_person_camera_of_character(character_kind, rotation)
     }
 
     /// 삼인칭 카메라가 바라보는 방향 회전시킵니다.
@@ -81,13 +81,15 @@ impl Projection {
 /// - 주어진 카메라 엔터티는 로컬 변환 행렬(`ToParentTrans`), 월드 변환 행렬(`WorldTransform`),
 /// 삼인칭 카메라 요소(`ThirdPersonCamera`)를 갖고 있어야 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 ///
-pub fn update_third_person_camera_hierarchy(
+pub fn update_third_person_camera_hierarchy<P>(
     world: &mut World,
     camera_entity: Entity,
-    target_position: glam::Vec4,
-) {
+    target_position: P,
+) where
+    P: Into<glam::Vec3>,
+{
     // 부모 변환 행렬을 생성합니다.
-    let parent_transform = glam::Mat4::from_translation(target_position.xyz());
+    let parent_transform = glam::Mat4::from_translation(target_position.into());
 
     // 카메라 엔터티의 로컬 변환 행렬을 갱신합니다.
     let (local_transform, third_person_camera) = world

@@ -1,3 +1,5 @@
+mod event;
+mod pool;
 mod state;
 
 use std::{
@@ -5,41 +7,40 @@ use std::{
     io::ErrorKind,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicBool, Ordering as MemOrdering},
         Arc,
+        atomic::{AtomicBool, Ordering as MemOrdering},
     },
 };
 
-use mod_network::{
-    components::{LoginToken, UserInfo},
-    protocol::{PacketParser, RawPacket},
-};
+use mod_network::protocol::{PacketParser, RawPacket};
 use mod_parallelism::collections::Queue;
 use state::SessionStateManager;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
     },
 };
+
+pub use self::{event::*, pool::*, state::*};
 
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
     /// 클라이언트 소켓 주소
     addr: SocketAddr,
-    /// 세션의 사용자 데이터
-    info: UserInfo,
-    /// 사용자 로그인 토큰
-    token: LoginToken,
 
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
     /// UDP 패킷 데이터 전송 대기열
+    #[allow(dead_code)]
     udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
     /// 수신된 패킷 데이터 대기열
     received_packets: Queue<RawPacket>,
+
+    /// 세션 이벤트 대기열입니다.
+    events: Queue<SessionEvents>,
 
     /// 세션의 실행 상태
     running: AtomicBool,
@@ -47,26 +48,15 @@ pub struct Session {
 
 impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
-    pub fn new(
-        addr: SocketAddr,
-        user: UserInfo,
-        token: LoginToken,
-        udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
-    ) -> Self {
+    pub fn new(addr: SocketAddr, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) -> Self {
         Self {
             addr,
-            info: user,
-            token,
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
+            events: Queue::new(),
             running: AtomicBool::new(true),
         }
-    }
-
-    /// 세션의 사용자 정보를 반환합니다.
-    pub fn user(&self) -> &UserInfo {
-        &self.info
     }
 
     /// 클라이언트 세션이 동작중인지 여부를 반환합니다.
@@ -93,27 +83,32 @@ impl Session {
     /// 주어진 `RawPacket`의 크기는 1KB 미만이어야합니다.
     /// 그렇지 않는 경우 [`panic!`]을 호출합니다.
     ///
+    #[allow(dead_code)]
     pub fn udp_write(&self, packet: RawPacket) {
         assert!(
             packet.as_bytes().len() < 1024,
-            "the size of the UDP packet to be transmitted from {} is greather than or equal to 1KB.", 
+            "the size of the UDP packet to be transmitted from {} is greather than or equal to 1KB.",
             &self
         );
         self.udp_sender.push((self.addr, packet));
     }
 
-    /// 수신된 패킷 데이터를 세션에 추가합니다.
-    ///
+    /// 수신된 패킷 데이터를 세션에 추가합니다.  
     /// 추가된 패킷 데이터는 바로 처리되지 않습니다.
-    ///
     pub fn push_received_packet(&self, packet: RawPacket) {
         self.received_packets.push(packet);
+    }
+
+    /// 세션 이벤트를 대기열에 추가합니다.  
+    /// 추가된 이벤트는 바로 처리되지 않습니다.
+    pub fn push_event(&self, event: SessionEvents) {
+        self.events.push(event);
     }
 }
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session(Uid:{})", &self.info.uid)
+        write!(f, "Session(Addr:{})", &self.addr)
     }
 }
 
@@ -121,25 +116,25 @@ impl cmp::Eq for Session {}
 
 impl cmp::PartialEq for Session {
     fn eq(&self, other: &Self) -> bool {
-        self.info.eq(&other.info)
+        self.addr.eq(&other.addr)
     }
 }
 
 impl cmp::Ord for Session {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.info.cmp(&other.info)
+        self.addr.cmp(&other.addr)
     }
 }
 
 impl cmp::PartialOrd for Session {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.info.partial_cmp(&other.info)
+        self.addr.partial_cmp(&other.addr)
     }
 }
 
 impl hash::Hash for Session {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.info.hash(state)
+        self.addr.hash(state)
     }
 }
 

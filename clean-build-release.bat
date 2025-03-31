@@ -12,6 +12,7 @@ echo "빌드 디렉토리를 정리합니다."
 cargo clean
 
 echo "프로젝트를 빌드합니다."
+set RUSTFLAGS=-Awarnings
 cargo build --release
 
 set target="\"%cd%\target\release\server.exe\""

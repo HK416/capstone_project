@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use mod_render::{CameraResource, MaterialResource, MeshResource};
 
-pub const CHARACTER_PIPELINE_NAME: &'static str = "Character";
-pub const CHARACTER_HALO_PIPELINE_NAME: &'static str = "CharacterHalo";
+pub const CHARACTER_PIPELINE_ID: &'static str = "Character";
+pub const CHARACTER_HALO_PIPELINE_ID: &'static str = "CharacterHalo";
+pub const CHARACTER_SHADOW_PIPELINE_ID: &'static str = "Shadow(Character)";
 
 /// 캐릭터 쉐이더 모듈을 생성합니다.
 fn create_character_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
@@ -41,6 +42,18 @@ fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
             CameraResource::bind_group_layout(device),
             MeshResource::bind_group_layout(device),
             MaterialResource::bind_group_layout(device),
+        ],
+        push_constant_ranges: &[],
+    })
+}
+
+/// 그림자 파이프라인 레이아웃을 생성합니다.
+fn create_shadow_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
+    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("PipelineLayout(Character(Shadow))"),
+        bind_group_layouts: &[
+            CameraResource::bind_group_layout(device),
+            MeshResource::bind_group_layout(device),
         ],
         push_constant_ranges: &[],
     })
@@ -219,6 +232,83 @@ pub fn create_character_halo_render_pipeline(
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
+        multiview: None,
+        cache: None,
+    });
+
+    Arc::new(pipeline)
+}
+
+/// 그림자를 생성하는 그래픽스 파이프라인을 생성합니다.
+pub fn create_character_shadow_render_pipeline(
+    device: &wgpu::Device,
+    shadow_format: wgpu::TextureFormat,
+) -> Arc<wgpu::RenderPipeline> {
+    let module = create_character_shader_module(device);
+    let layout = create_shadow_pipeline_layout(device);
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(&format!("RenderPipeline({})", CHARACTER_SHADOW_PIPELINE_ID)),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: Some("vs_bake"),
+            buffers: &[
+                // 0번 입력 속성: 위치
+                wgpu::VertexBufferLayout {
+                    array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x3,
+                    }],
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                },
+                // 1번 입력 속성: 뼈 번호
+                wgpu::VertexBufferLayout {
+                    array_stride: core::mem::size_of::<[u32; 4]>() as wgpu::BufferAddress,
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 1,
+                        format: wgpu::VertexFormat::Uint32x4,
+                    }],
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                },
+                // 2번 입력 속성: 뼈 가중치
+                wgpu::VertexBufferLayout {
+                    array_stride: core::mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                    attributes: &[wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 2,
+                        format: wgpu::VertexFormat::Float32x4,
+                    }],
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                },
+            ],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        primitive: wgpu::PrimitiveState {
+            cull_mode: Some(wgpu::Face::Back),
+            front_face: wgpu::FrontFace::Ccw,
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            unclipped_depth: device
+                .features()
+                .contains(wgpu::Features::DEPTH_CLIP_CONTROL),
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            depth_compare: wgpu::CompareFunction::LessEqual,
+            depth_write_enabled: true,
+            format: shadow_format,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState {
+                constant: 2,
+                slope_scale: 2.0,
+                clamp: 0.0,
+            },
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        fragment: None,
         multiview: None,
         cache: None,
     });

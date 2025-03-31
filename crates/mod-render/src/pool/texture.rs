@@ -145,6 +145,24 @@ impl TexturePool {
 }
 
 impl TexturePool {
+    /// 주어진 Uri에 해당하는 텍스처 객체를 풀 객체에 등록합니다.  
+    /// 이미 해당 Uri 텍스처가 존재하는 경우 기존의 텍스처를 반환합니다.
+    pub fn register(uri: String, texture: Arc<wgpu::Texture>) -> Option<Arc<wgpu::Texture>> {
+        get_pool().insert(uri, texture)
+    }
+
+    /// 주어진 Uri에 해당하는 텍스처 객체를 풀 객체에서 제거합니다.
+    /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn unregister(uri: &str) -> Option<Arc<wgpu::Texture>> {
+        get_pool().remove(uri)
+    }
+
+    /// 주어진 Uri에 해당하는 텍스처 객체를 풀 객체에서 가져옵니다.
+    /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn get(uri: &str) -> Option<Arc<wgpu::Texture>> {
+        get_pool().get(uri).cloned()
+    }
+
     /// 이름에 해당하는 텍스처 객체를 가져옵니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 새로운 텍스처 객체를 생성합니다.
     pub fn get_or_init<F, E>(name: &str, func: F) -> Result<Arc<wgpu::Texture>, E>
@@ -166,12 +184,6 @@ impl TexturePool {
     /// 이름에 해당하는 텍스처 객체가 풀 객체에 존재할 경우 `true`를 반환합니다.
     pub fn contains(name: &str) -> bool {
         get_pool().contains_key(name)
-    }
-
-    /// 이름에 해당하는 텍스처 객체를 풀 객체에서 제거합니다.  
-    /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove(name: &str) -> Option<Arc<wgpu::Texture>> {
-        get_pool().remove(name)
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 객체를 제거합니다.

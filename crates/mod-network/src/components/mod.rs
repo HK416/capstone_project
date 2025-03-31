@@ -1,17 +1,13 @@
-mod bullet;
-mod character;
-mod control;
-mod identifier;
-mod model;
-mod player;
-mod stage;
+mod core;
+mod game;
+mod input;
+mod rendering;
 mod system;
 
-use serde::{Deserialize, Serialize};
+#[allow(ambiguous_glob_reexports)]
+pub use self::{core::*, game::*, input::*, rendering::*, system::*};
 
-pub use self::{
-    bullet::*, character::*, control::*, identifier::*, model::*, player::*, stage::*, system::*,
-};
+use serde::{Deserialize, Serialize};
 
 /// 자료형을 Big-endian 바이트 배열로 변환하거나, Big-endian 바이트 배열로부터 자료형을 생성하는 함수 인터페이스를 제공합니다.
 pub trait BigEndian {
@@ -20,7 +16,7 @@ pub trait BigEndian {
     where
         Self: Sized,
     {
-        core::mem::size_of::<Self>()
+        std::mem::size_of::<Self>()
     }
 
     /// Big-endian 바이트 배열로부터 자료형을 생성합니다.

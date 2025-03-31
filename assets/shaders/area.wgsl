@@ -1,3 +1,6 @@
+/// 지역 조명의 최대 개수입니다.
+const MAX_LOCAL_LIGHTS = 32;
+
 /// 정점 입력 속성입니다.
 struct InputAttributes {
     @location(0) position: vec3<f32>,
@@ -11,7 +14,8 @@ struct InputAttributes {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>, 
     @location(0) position_w: vec3<f32>,
-    @location(1) texcoord: vec2<f32>, 
+    @location(1) normal_w: vec3<f32>,
+    @location(2) texcoord: vec2<f32>, 
 };
 
 /// 프래그먼트 쉐이더 출력 데이터입니다.
@@ -26,6 +30,28 @@ struct CameraDataLayout {
     direction_w: vec3<f32>, 
 };
 
+/// 전역 조명 데이터 레이아웃입니다.
+struct GlobalLightDataLayout {
+    proj_view: mat4x4<f32>, 
+    direction_w: vec3<f32>,
+    color: vec3<f32>, 
+};
+
+/// 지역 조명 데이터 레이아웃입니다.
+struct LocalLightDataLayout {
+    color: vec4<f32>, 
+    position_w: vec3<f32>, 
+    range_w: f32, 
+    direction_w: vec3<f32>, 
+    angle: f32, 
+};
+
+/// 지역 조명 집합 레이아웃입니다.
+struct LocalLightSetLayout {
+    lights: array<LocalLightDataLayout, MAX_LOCAL_LIGHTS>, 
+    num_lights: u32, 
+};
+
 /// 재질 데이터 레이아웃입니다.
 struct MaterialDataLayout {
     glossiness: f32, 
@@ -36,8 +62,15 @@ struct MaterialDataLayout {
     strength: f32,
 };
 
+
 @group(0) @binding(0)
 var<uniform> u_camera: CameraDataLayout;
+
+@group(0) @binding(1)
+var<uniform> u_global_light: GlobalLightDataLayout;
+
+// @group(0) @binding(2)
+// var<uniform> u_local_lights: LocalLightSetLayout;
 
 @group(1) @binding(0)
 var<uniform> u_trans: mat4x4<f32>;
@@ -81,20 +114,64 @@ var s_albedo: sampler;
 // @group(2) @binding(12)
 // var s_occlusion: sampler;
 
+@group(3) @binding(0)
+var t_shadow: texture_depth_2d;
+
+@group(3) @binding(1)
+var s_shadow: sampler_comparison;
+
 /// 버텍스 쉐이더
 @vertex
 fn vs_main(input: InputAttributes) -> VertexOutput {
+    let position_w = (u_trans * vec4<f32>(input.position, 1.0)).xyz;
+    let normal_w = (u_trans * vec4<f32>(input.normal, 0.0)).xyz;
+
     var out: VertexOutput;
-    out.position_w = (u_trans * vec4<f32>(input.position, 1.0)).xyz;
-    out.clip_position = u_camera.proj_view * vec4<f32>(out.position_w, 1.0);
+    out.position_w = position_w;
+    out.normal_w = normal_w;
+    out.clip_position = u_camera.proj_view * vec4<f32>(position_w, 1.0);
     out.texcoord = input.texcoord;
     return out;
+}
+
+/// 그림자를 생성할 때 사용되는 버텍스 쉐이더
+@vertex
+fn vs_bake(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
+    let position_w = (u_trans * vec4<f32>(position, 1.0)).xyz;
+    return u_global_light.proj_view * vec4<f32>(position_w, 1.0);
 }
 
 /// 프래그먼트 쉐이더
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
+    // 텍스터 색상을 가져옵니다.
+    var albedo = textureSample(t_albedo, s_albedo, input.texcoord);
+
+    // 전역 조명 그림자를 계산합니다.
+    var color = vec3<f32>(0.3);
+    let shadow = calculate_shadow(u_global_light.proj_view * vec4<f32>(input.position_w, 1.0));
+    let light_dir = -u_global_light.direction_w;
+    color = min(color + shadow * u_global_light.color.xyz, vec3<f32>(1.0));
+
     var out: RenderTarget;
-    out.color = textureSample(t_albedo, s_albedo, input.texcoord);
+    out.color = albedo * vec4<f32>(color, 1.0);
     return out;
+}
+
+/// 그림자를 계산합니다.
+fn calculate_shadow(light_space_position: vec4<f32>) -> f32 {
+    if (light_space_position.w <= 0.0) {
+        return 1.0;
+    }
+    
+    let curr_depth = light_space_position.z / light_space_position.w;
+    var proj_coords = light_space_position.xy / light_space_position.w;
+    proj_coords = proj_coords * vec2<f32>(0.5, -0.5) + 0.5;
+
+    if (proj_coords.x < 0.0 || proj_coords.x > 1.0 
+    || proj_coords.y < 0.0 || proj_coords.y > 1.0) {
+        return 1.0;
+    }
+
+    return textureSampleCompareLevel(t_shadow, s_shadow, proj_coords, curr_depth);
 }

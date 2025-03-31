@@ -10,17 +10,24 @@ use bytemuck::{Pod, Zeroable};
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct GlobalLightDataLayout {
-    pub color: [f32; 4],
+    /// 전역 조명 공간 변환 행렬입니다.
+    pub light_space: [f32; 16],
+    /// 전역 조명의 월드 공간 방향입니다.
     pub direction_w: [f32; 3],
     pub _padding0: [u8; 4],
+    /// 전역 조명의 색깔입니다.
+    pub color: [f32; 3],
+    pub _padding1: [u8; 4],
 }
 
 impl Default for GlobalLightDataLayout {
     fn default() -> Self {
         Self {
-            color: [0.0; 4],
+            light_space: [0.0; 16],
             direction_w: [0.0; 3],
             _padding0: [0; 4],
+            color: [0.0; 3],
+            _padding1: [0; 4],
         }
     }
 }

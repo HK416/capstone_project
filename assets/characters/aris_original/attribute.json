@@ -36,7 +36,7 @@
     "normal_idle_duration": 2.8,
     "normal_attack_start_duration": 0.667,
     "normal_attack_end_duration": 0.667,
-    "normal_attack_ing_duration": 2.667,
+    "normal_attack_ing_duration": 2.667, 
     "normal_attack_timing": [1.0],
     "normal_attack_count": 1,
     "health_point": 2142,

@@ -14,7 +14,7 @@ pub const STAGE_PROP_PIPELINE_NAME: &'static str = "StageProp";
 fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
     let desc = wgpu::include_wgsl!(concat!(
         env!("CARGO_WORKSPACE_DIR"),
-        "/assets/shaders/area.wgsl"
+        "/assets/shaders/prop.wgsl"
     ));
 
     if cfg!(feature = "enable-shader-validation") {
@@ -136,6 +136,15 @@ pub fn draw_stage_props<'a>(
     depth_stencil_format: wgpu::TextureFormat,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
+    // 스테이지 지역 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
+    let pipeline = GraphicsPipelinePool::get_or_init(STAGE_PROP_PIPELINE_NAME, || {
+        create_stage_prop_render_pipeline(device, depth_stencil_format, render_target_format)
+    });
+    rpass.set_pipeline(&pipeline);
+
+    // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
+    rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
+
     type Query<'a> = (
         &'a Arc<Mesh>,
         &'a Arc<MeshResource>,
@@ -143,15 +152,6 @@ pub fn draw_stage_props<'a>(
     );
     let mut query = world.query::<With<Query, &StageProp>>();
     for (_, (mesh, mesh_resource, materials)) in query.iter() {
-        // 스테이지 지역 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-        let pipeline = GraphicsPipelinePool::get_or_init(STAGE_PROP_PIPELINE_NAME, || {
-            create_stage_prop_render_pipeline(device, depth_stencil_format, render_target_format)
-        });
-        rpass.set_pipeline(&pipeline);
-
-        // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
-        rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
-
         // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
         rpass.set_bind_group(1, &mesh_resource.bind_group, &[]);
 
