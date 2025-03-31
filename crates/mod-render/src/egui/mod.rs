@@ -11,7 +11,7 @@ use std::{
 };
 
 use ahash::HashMap;
-use egui::epaint::{self, PaintCallbackInfo, Primitive, Vertex, emath::NumExt};
+use egui::epaint::{self, emath::NumExt, PaintCallbackInfo, Primitive, Vertex};
 
 use wgpu::util::DeviceExt as _;
 

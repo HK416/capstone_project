@@ -122,8 +122,6 @@ impl PlayerObject {
         self.health_point = HealthPoint(50);
         self.fired_per_attack = 0;
         self.remaining_bullets = 1;
-        // self.translation = glam::Vec3A::ZERO;    // 월드에서 스폰위치로 초기화
-        self.rotation = glam::Quat::IDENTITY;
         self.action_state = ActionState::Idle;
         self.prev_action_state = ActionState::Idle;
         self.action_state_timer = ActionStateTimer::default();
@@ -132,7 +130,6 @@ impl PlayerObject {
         self.view_state = ViewState::default();
         self.view_state_timer = ViewStateTimer::default();
         self.input_timer = 0.0;
-        self.view_rotation = LatLon::default();
     }
 
     /// 플레이어 오브젝트의 사용자 정보를 가져옵니다.
@@ -206,6 +203,15 @@ impl PlayerObject {
         &mut self.health_point
     }
 
+    /// 플레이엉 오브젝트의 위치를 설정합니다.
+    pub fn with_translation<T>(&mut self, translation: T) -> &mut Self
+    where
+        T: Into<glam::Vec3A>,
+    {
+        self.translation = translation.into();
+        self
+    }
+
     /// 플레이어 오브젝트의 위치를 가져옵니다.
     pub fn translation(&self) -> glam::Vec3A {
         self.translation
@@ -219,6 +225,15 @@ impl PlayerObject {
     /// 플레이어 오브젝트 방향을 가져옵니다.
     pub fn rotation(&self) -> glam::Quat {
         self.rotation
+    }
+
+    /// 플레이어 오브젝트의 방향을 설정합니다.
+    pub fn with_rotation<T>(&mut self, rotation: T) -> &mut Self
+    where
+        T: Into<glam::Quat>,
+    {
+        self.rotation = rotation.into();
+        self
     }
 
     /// 플레이어 오브젝트의 방향을 설정합니다.
@@ -261,6 +276,12 @@ impl PlayerObject {
     /// 플레이어 카메라 움직임 상태 타이머를 가져옵니다.
     pub fn view_state_timer(&self) -> ViewStateTimer {
         self.view_state_timer
+    }
+
+    /// 플레이어 카메라가 캐릭터를 중심으로 회전한 각도를 설정합니다.
+    pub fn with_view_rotation(&mut self, rotation: LatLon) -> &mut Self {
+        self.view_rotation = rotation;
+        self
     }
 
     /// 플레이어 카메라가 캐릭터를 중심으로 회전한 각도를 가져옵니다.
@@ -428,7 +449,7 @@ impl PlayerObject {
                 PlayerObject::maintain_velocity,
                 PlayerObject::maintain_velocity,
                 PlayerObject::maintain_velocity,
-            ],            
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -876,11 +897,7 @@ impl PlayerObject {
     }
 
     /// `ActionState::Dead`일 때 `ActionStateTimer`를 갱신합니다.  
-    fn update_action_state_timer_when_dead(
-        &mut self,
-        world: &GameWorld,
-        elapsed_time_sec: f32,
-    ) {
+    fn update_action_state_timer_when_dead(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
         // 타이머를 갱신합니다.
         self.action_state_timer.0 += elapsed_time_sec;
 
@@ -890,7 +907,9 @@ impl PlayerObject {
             self.prev_action_state = ActionState::Idle;
             self.action_state = ActionState::Idle;
             self.action_state_timer.0 = diff_t;
-            world.push_event(GameWorldEvent::RespawnPlayer { uid: self.account.uid });
+            world.push_event(GameWorldEvent::RespawnPlayer {
+                uid: self.account.uid,
+            });
         }
     }
 

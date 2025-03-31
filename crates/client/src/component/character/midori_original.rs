@@ -673,11 +673,11 @@ pub fn animate_character(
         ],
         // `ActionState::Death`
         [
-            animate_character_when_death,           // `MovementState::Idle`
-            animate_character_when_death,         // `MovementState::Moving`
-            animate_character_when_death,           // `MovementState::MoveToEnd`
-            animate_character_when_death,      // `MovementState::InPlaceJumping`
-            animate_character_when_death,      // `MovementState::InPlaceLanding`
+            animate_character_when_death, // `MovementState::Idle`
+            animate_character_when_death, // `MovementState::Moving`
+            animate_character_when_death, // `MovementState::MoveToEnd`
+            animate_character_when_death, // `MovementState::InPlaceJumping`
+            animate_character_when_death, // `MovementState::InPlaceLanding`
             animate_character_when_death, // `MovementState::MovingJumping`
             animate_character_when_death, // `MovementState::MovingLanding`
         ],

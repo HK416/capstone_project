@@ -2,12 +2,13 @@ use std::{
     fmt,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
-    collections::HashMap,
 };
 
+use ahash::HashMap;
 use mod_network::{
     components::{
-        DamageLog, HealthPoint, MovementState, ObjectId, PlayPhasePlayer, StageKind, UserId,
+        DamageLog, HealthPoint, LatLon, MAX_IN_GAME_PLAYERS, MovementState, ObjectId,
+        PlayPhasePlayer, StageKind, UserId,
     },
     protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -16,12 +17,12 @@ use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
-use tokio::time::{Duration, Instant, sleep};
+use tokio::time::{Duration, Instant};
 
 use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
     formula::movement_formulas as formulas,
-    world::{GameWorld, GameWorldEvent, PlayerObject},
+    world::{GameWorld, GameWorldEvent},
 };
 
 use super::GameWorldState;
@@ -47,19 +48,16 @@ pub struct GameWorldInGameState {
     /// 플레이어 데미지 로그입니다.
     damage_logs: Queue<DamageLog>,
 
-    /// 팀별 스폰 위치 저장
-    spawn_positions: HashMap<u32, glam::Vec3A>,
+    /// 플레이어 스폰 위치 저장
+    spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
 }
 
 impl GameWorldInGameState {
     /// 새로운 게임 월드 상태를 생성합니다.
-    pub fn new(stage_kind: StageKind) -> Self {
-        let mut spawn_positions = HashMap::new();
-
-        // 임시시 스폰 위치 설정 (팀 ID를 기반으로)
-        spawn_positions.insert(0, glam::vec3a(0.0, 0.0, 0.0)); // 팀 1
-        spawn_positions.insert(1, glam::vec3a(50.0, 0.0, 50.0)); // 팀 2
-
+    pub fn new(
+        stage_kind: StageKind,
+        spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+    ) -> Self {
         Self {
             is_running: true,
             previous_time_pt: Instant::now(),
@@ -81,13 +79,6 @@ impl GameWorldInGameState {
 
         ObjectId::new((time_bit << 16) | counter_bit)
     }
-
-    /// 팀별 스폰 위치를 가져오는 함수
-    pub fn get_spawn_position(&self, team_id: u32) -> glam::Vec3A {
-        *self.spawn_positions.get(&team_id).unwrap_or(&glam::vec3a(0.0, 0.0, 0.0))
-    }
-
-    
 
     /// 플레이어 상태 타이머를 갱신합니다.
     fn update_player_state_timer(&self, world: &GameWorld, elapsed_time_sec: f32) {
@@ -262,7 +253,7 @@ impl GameWorldInGameState {
             let mut nearest_player_id = None;
 
             for player in world.players.iter() {
-                if *player.key() == bullet.shooter_id 
+                if *player.key() == bullet.shooter_id
                     || player.health_point().0 == 0
                     || player.team() == bullet.shooter_team
                 {
@@ -382,8 +373,8 @@ impl GameWorldInGameState {
     fn broadcast(&self, world: &GameWorld) {
         let players: Vec<_> = world
             .players
-            .iter()
-            .map(|player| {
+            .iter_mut()
+            .map(|mut player| {
                 PlayPhasePlayer::new(
                     player.account().clone(),
                     player.character_kind(),
@@ -441,23 +432,9 @@ impl GameWorldInGameState {
             }
         }
     }
-
-    fn set_player_to_spawn_position(&self, player: &mut PlayerObject) {
-        let team_id = player.team() as u32; // Team을 u32로 변환
-        if let Some(spawn_position) = self.spawn_positions.get(&team_id) {
-            *player.translation_mut() = *spawn_position; // 올바른 위치 설정 방법 사용
-            player.update_collider();
-        }
-    }
 }
 
 impl GameWorldState for GameWorldInGameState {
-    fn on_enter(&mut self, world: &Arc<GameWorld>) {
-        for mut player in world.players.iter_mut() {
-            self.set_player_to_spawn_position(&mut player);
-        }
-    }
-
     fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
         match event {
             GameWorldEvent::AddBullet { shooter_id, delay } => {
@@ -468,8 +445,18 @@ impl GameWorldState for GameWorldInGameState {
             }
             GameWorldEvent::RespawnPlayer { uid } => {
                 if let Some(mut player) = world.players.get_mut(&uid) {
-                    self.set_player_to_spawn_position(&mut player);
-                    player.reset_state();
+                    let user_id = player.account().uid;
+                    if let Some(&(position, direction, view_rotation)) =
+                        self.spawn_positions.get(&user_id)
+                    {
+                        player.reset_state();
+                        player
+                            .with_translation(position)
+                            .with_rotation(direction)
+                            .with_view_rotation(view_rotation);
+                    } else {
+                        log::warn!("could not find player spawn position! (UID:{user_id})");
+                    }
                 } else {
                     log::warn!("failed to respawn player (uid: {})", uid);
                 }

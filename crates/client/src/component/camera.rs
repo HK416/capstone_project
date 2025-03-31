@@ -17,8 +17,8 @@ pub struct ThirdPersonCamera {
 
 impl ThirdPersonCamera {
     /// 캐릭터가 바라보는 방향으로 삼인칭 카메라를 생성합니다.
-    pub fn new(character_kind: CharacterKind) -> Self {
-        create_third_person_camera_of_character(character_kind)
+    pub fn new(character_kind: CharacterKind, rotation: LatLon) -> Self {
+        create_third_person_camera_of_character(character_kind, rotation)
     }
 
     /// 삼인칭 카메라가 바라보는 방향 회전시킵니다.

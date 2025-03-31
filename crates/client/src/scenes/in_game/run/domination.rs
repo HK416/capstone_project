@@ -123,10 +123,9 @@ impl InGameDominationModeScene {
     fn create_main_camera(&mut self, window: &Window, device: &wgpu::Device) {
         // 플레이어 캐릭터 종류를 가져옵니다.
         let entity = self.get_player_entity();
-        let character_kind = self
+        let (&character_kind, &view_rotation) = self
             .world
-            .query_one_mut::<&CharacterKind>(entity)
-            .cloned()
+            .query_one_mut::<(&CharacterKind, &LatLon)>(entity)
             .expect("invalid entity or invalid entity component");
 
         // 애플리케이션 창의 가로와 세로 크기를 가져옵니다.
@@ -144,7 +143,7 @@ impl InGameDominationModeScene {
         ));
 
         // 삼인칭 카메라 데이터와 카메라 쉐이더 리소스 컴포넌트를 추가합니다.
-        builder.add(ThirdPersonCamera::new(character_kind));
+        builder.add(ThirdPersonCamera::new(character_kind, view_rotation));
         builder.add(Arc::new(CameraResource::uninit(Some("main"), device)));
         builder.add(Frustum::from_mat4(glam::Mat4::IDENTITY));
 

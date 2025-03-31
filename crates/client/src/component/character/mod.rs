@@ -488,7 +488,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_none,                // ActionState::Death
+            set_character_direction_to_none,     // ActionState::Death
         ],
         // `MovementState::MoveToEnd`
         [
@@ -524,7 +524,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_none,                // ActionState::Death
+            set_character_direction_to_none,     // ActionState::Death
         ],
         // `MovementState::MovingLanding`
         [
@@ -533,7 +533,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_none,                // ActionState::Death
+            set_character_direction_to_none,     // ActionState::Death
         ],
     ];
 
@@ -782,7 +782,10 @@ pub fn set_weapon_position(
 }
 
 /// 캐릭터의 삼인칭 카메라를 생성합니다.
-pub fn create_third_person_camera_of_character(character_kind: CharacterKind) -> ThirdPersonCamera {
+pub fn create_third_person_camera_of_character(
+    character_kind: CharacterKind,
+    rotation: LatLon,
+) -> ThirdPersonCamera {
     const CAMERA_FOV_Y: [f32; NUM_CHARACTERS] = [
         aris_original::CAMERA_IDLE_FOV_Y,
         momoi_original::CAMERA_IDLE_FOV_Y,
@@ -799,7 +802,7 @@ pub fn create_third_person_camera_of_character(character_kind: CharacterKind) ->
     let i = character_kind as usize;
     ThirdPersonCamera {
         fov_y: CAMERA_FOV_Y[i],
-        rotation: LatLon::default(),
+        rotation,
         position: CAMERA_POSITION[i],
     }
 }

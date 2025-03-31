@@ -45,7 +45,8 @@ pub struct PlayPhasePlayer {
 }
 
 impl PlayPhasePlayer {
-    /// 새로운 플레이어 데이터를 생성합니다.
+    /// 새로운 플레이어 데이터를 생성합니다.  
+    /// `force`가 `true`인 경우 클라이언트는 데이터를 덮어씌웁니다.
     pub fn new(
         account: UserAccount,
         character_kind: CharacterKind,

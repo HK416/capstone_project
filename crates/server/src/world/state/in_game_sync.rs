@@ -1,7 +1,8 @@
 use std::{fmt, sync::Arc};
 
+use ahash::HashMap;
 use mod_network::{
-    components::{PlayPhasePlayer, StageKind, UserId},
+    components::{LatLon, PlayPhasePlayer, StageKind, Team, UserId},
     protocol::{InitStagePacket, Packet},
 };
 
@@ -18,6 +19,9 @@ pub struct GameWorldInGameSyncState {
 
     /// 게임 스테이지 종류
     stage_kind: StageKind,
+
+    /// 플레이어 스폰 위치 저장
+    spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
 }
 
 impl GameWorldInGameSyncState {
@@ -26,6 +30,7 @@ impl GameWorldInGameSyncState {
         Self {
             is_running: true,
             stage_kind,
+            spawn_positions: HashMap::default(),
         }
     }
 
@@ -55,7 +60,10 @@ impl GameWorldInGameSyncState {
         if all_player_loaded {
             self.is_running = false;
 
-            let next_state = Box::new(GameWorldInGameState::new(self.stage_kind));
+            let next_state = Box::new(GameWorldInGameState::new(
+                self.stage_kind,
+                self.spawn_positions.clone(),
+            ));
             let control_flow = GameWorldStateFlow::Change(next_state);
             let event = GameWorldEvent::SetControlFlow(control_flow);
             world.push_event(event);
@@ -71,10 +79,57 @@ impl GameWorldInGameSyncState {
 
 impl GameWorldState for GameWorldInGameSyncState {
     fn on_enter(&mut self, world: &Arc<GameWorld>) {
+        let mut red_team_spawn_pos = vec![
+            glam::vec3a(-37.0, 0.0, -33.0),
+            glam::vec3a(-33.0, 0.0, -33.0),
+            glam::vec3a(-28.5, 0.0, -33.0),
+            glam::vec3a(-31.5, 0.0, -33.0),
+            glam::vec3a(-30.0, 0.0, -33.0),
+        ];
+        let mut blue_team_spawn_pos = vec![
+            glam::vec3a(37.0, 0.0, 33.0),
+            glam::vec3a(33.0, 0.0, 33.0),
+            glam::vec3a(28.5, 0.0, 33.0),
+            glam::vec3a(31.5, 0.0, 33.0),
+            glam::vec3a(30.0, 0.0, 33.0),
+        ];
+
         for mut player in world.players.iter_mut() {
             // 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
             player.with_bool_flag(false);
-            // TODO : 팀에 따라 적절한 스폰 위치에 스폰될 수 있도록 플레이어 위치와 방향을 초기화합니다.
+
+            // 팀에 따라 적절한 스폰 위치에 스폰될 수 있도록 플레이어 위치와 방향을 초기화합니다.
+            let team = player.team();
+            let user_id = player.account().uid;
+            let (position, direction, view_rotation) = match team {
+                Team::Red => (
+                    red_team_spawn_pos
+                        .pop()
+                        .unwrap_or(glam::vec3a(-30.0, 0.0, -33.0)),
+                    glam::quat(0.0, 0.0, 0.0, 1.0),
+                    LatLon {
+                        lon: 0f32.to_radians(),
+                        lat: 10f32.to_radians(),
+                    },
+                ),
+                Team::Blue => (
+                    blue_team_spawn_pos
+                        .pop()
+                        .unwrap_or(glam::vec3a(30.0, 0.0, 33.0)),
+                    glam::quat(0.0, 1.0, 0.0, 0.0),
+                    LatLon {
+                        lon: 180f32.to_radians(),
+                        lat: 10f32.to_radians(),
+                    },
+                ),
+            };
+
+            self.spawn_positions
+                .insert(user_id, (position, direction, view_rotation));
+            player
+                .with_translation(position)
+                .with_rotation(direction)
+                .with_view_rotation(view_rotation);
         }
 
         // 각 세션에 스테이지 초기화 패킷을 전송합니다.
