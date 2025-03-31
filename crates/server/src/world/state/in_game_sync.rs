@@ -130,6 +130,7 @@ impl GameWorldState for GameWorldInGameSyncState {
                 .with_translation(position)
                 .with_rotation(direction)
                 .with_view_rotation(view_rotation);
+            player.reset_state();
         }
 
         // 각 세션에 스테이지 초기화 패킷을 전송합니다.

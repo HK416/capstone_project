@@ -117,9 +117,10 @@ impl PlayerObject {
 
     /// 리스폰시 호출하여 플레이어 오브젝트의 상태를 초기화합니다.
     pub fn reset_state(&mut self) {
-        // self.health_point = HealthPoint(get_character_attributes(self.character_kind).health_point as u16);
+        self.health_point =
+            HealthPoint(get_character_attributes(self.character_kind).health_point as u16);
         // 테스트용으로 체력을 낮게 설정
-        self.health_point = HealthPoint(50);
+        // self.health_point = HealthPoint(50);
         self.fired_per_attack = 0;
         self.remaining_bullets = 1;
         self.action_state = ActionState::Idle;
