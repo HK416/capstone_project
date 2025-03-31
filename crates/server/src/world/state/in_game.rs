@@ -7,7 +7,7 @@ use std::{
 use ahash::HashMap;
 use mod_network::{
     components::{
-        DamageLog, HealthPoint, LatLon, MAX_IN_GAME_PLAYERS, MovementState, ObjectId,
+        DamageLog, HealthPoint, LatLon, MovementState, ObjectId,
         PlayPhasePlayer, StageKind, UserId,
     },
     protocol::{Packet, PullStagePacket, UdpDamageLogPacket},

@@ -165,13 +165,7 @@ impl Application {
             timer: GameTimer::start(),
             accum_time: 0.0,
             egui_ctx: egui::Context::default(),
-            egui_renderer: RefCell::new(UiRenderer::new(
-                &device,
-                SWAPCHAIN_FORMAT,
-                None,
-                1,
-                false,
-            )),
+            egui_renderer: RefCell::new(UiRenderer::new(&device, SWAPCHAIN_FORMAT, None, 1, false)),
             instance,
             adapter,
             device,
@@ -216,14 +210,16 @@ impl Application {
         }
         let egui_full_output = egui_ctx.end_pass();
 
-        let egui_primitive = 
+        let egui_primitive =
             egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let mut commands = egui_renderer.update_buffers(
-            &self.device, 
-            &self.queue, 
-            &mut encoder, 
-            &egui_primitive, 
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &egui_primitive,
             &screen_descriptor,
         );
         for (id, image_delta) in &egui_full_output.textures_delta.set {
@@ -253,11 +249,13 @@ impl Application {
 
         // 현재 게임 장면에 그리기 콜백 함수를 호출합니다.
         // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         for i in begin..scene_stack.len() {
             scene_stack[i].on_draw(
                 window,
-                &mut encoder, 
+                &mut encoder,
                 &render_target_view,
                 depth_buffer_view,
                 self,
@@ -268,7 +266,7 @@ impl Application {
         {
             let mut rpass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("RenderPass(UI)"), 
+                    label: Some("RenderPass(UI)"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Load,
@@ -279,14 +277,11 @@ impl Application {
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
-                    occlusion_query_set: None
-                }).forget_lifetime();
+                    occlusion_query_set: None,
+                })
+                .forget_lifetime();
 
-            egui_renderer.render(
-                &mut rpass, 
-                &egui_primitive, 
-                &screen_descriptor
-            );
+            egui_renderer.render(&mut rpass, &egui_primitive, &screen_descriptor);
         }
 
         // 그리기 명령을 제출합니다.
@@ -624,9 +619,9 @@ impl ApplicationHandler<AppEvent> for Application {
                 let depth_buffer_view = app_window.depth_buffer_view.borrow();
                 self.draw(
                     &app_window.window,
-                    &self.egui_ctx, 
-                    egui_raw_input, 
-                    &mut egui_renderer, 
+                    &self.egui_ctx,
+                    egui_raw_input,
+                    &mut egui_renderer,
                     &app_window.surface,
                     &depth_buffer_view,
                     &mut scene_stack,

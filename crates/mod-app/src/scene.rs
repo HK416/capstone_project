@@ -233,8 +233,8 @@ pub trait GameScene: Debug + Send {
     /// UI 콜백 함수입니다.
     fn ui_callback(
         &mut self,
-        window: &Window, 
-        app: &dyn AppHandle
+        window: &Window,
+        app: &dyn AppHandle,
     ) -> Result<(), Box<dyn Error + Send>> {
         Ok(())
     }

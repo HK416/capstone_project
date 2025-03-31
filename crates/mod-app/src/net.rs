@@ -21,10 +21,7 @@ use crate::etc::AppEvent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IpAddress {
     Tcp(SocketAddr),
-    Udp {
-        port: u16,
-        remote: SocketAddr,
-    },
+    Udp { port: u16, remote: SocketAddr },
 }
 
 impl IpAddress {
@@ -41,7 +38,7 @@ impl IpAddress {
 #[derive(Debug)]
 enum Socket {
     Tcp(TcpStream, SocketAddr),
-    Udp(UdpSocket, SocketAddr)
+    Udp(UdpSocket, SocketAddr),
 }
 
 impl Socket {
@@ -51,11 +48,8 @@ impl Socket {
             Socket::Tcp(stream, addr) => {
                 let mut reader = BufReader::new(stream);
                 reader.read(buf).map(|n| (n, *addr))
-            },
-            Socket::Udp(socket, _) => {
-                socket.recv_from(buf)
-            }, 
-            
+            }
+            Socket::Udp(socket, _) => socket.recv_from(buf),
         }
     }
 
@@ -65,10 +59,8 @@ impl Socket {
             Socket::Tcp(stream, _) => {
                 let mut writer = BufWriter::new(stream);
                 writer.write(buf)
-            },
-            Socket::Udp(socket, addr) => {
-                socket.send_to(buf, addr)
-            },
+            }
+            Socket::Udp(socket, addr) => socket.send_to(buf, addr),
         }
     }
 }
@@ -138,17 +130,19 @@ impl NetManager {
 
                 let status_cloned = status.clone();
                 let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-                std::thread::spawn(|| tcp_packet_receive_loop(event_loop_proxy_cloned, status_cloned));
+                std::thread::spawn(|| {
+                    tcp_packet_receive_loop(event_loop_proxy_cloned, status_cloned)
+                });
 
                 let status_cloned = status.clone();
                 let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
                 std::thread::spawn(|| tcp_packet_send_loop(event_loop_proxy_cloned, status_cloned));
-                
+
                 let status_cloned = status.clone();
                 self.0.sockets.insert(address.clone(), status);
-        
+
                 Ok(status_cloned)
-            },
+            }
             IpAddress::Udp { port, remote } => {
                 // UDP 소켓을 생성합니다.
                 let socket = if cfg!(feature = "dev") {
@@ -161,18 +155,20 @@ impl NetManager {
                     socket: Socket::Udp(socket, *remote),
                     cvar: Condvar::new(),
                     queue: Mutex::new(VecDeque::new()),
-                    is_connected: AtomicBool::new(true)
+                    is_connected: AtomicBool::new(true),
                 });
 
                 let status_cloned = status.clone();
                 let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-                std::thread::spawn(|| udp_packet_receive_loop(event_loop_proxy_cloned, status_cloned));
+                std::thread::spawn(|| {
+                    udp_packet_receive_loop(event_loop_proxy_cloned, status_cloned)
+                });
 
                 let status_cloned = status.clone();
                 self.0.sockets.insert(address.clone(), status);
-        
+
                 Ok(status_cloned)
-            },
+            }
         }
     }
 
@@ -193,7 +189,10 @@ impl NetManager {
 }
 
 /// TCP 패킷을 보내는 루프 함수입니다.
-fn tcp_packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc<SocketStatus>) {
+fn tcp_packet_send_loop(
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
+    status: Arc<SocketStatus>,
+) {
     loop {
         let mut queue = status.queue.lock();
         if status.is_connected() {
@@ -241,8 +240,8 @@ fn tcp_packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status:
 
 /// TCP 패킷을 받는 루프 함수입니다.
 fn tcp_packet_receive_loop(
-    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
-    status: Arc<SocketStatus>
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
+    status: Arc<SocketStatus>,
 ) {
     // 받은 패킷을 구문 분석하는 구문 분석기입니다.
     // 구문 분석한 패킷은 EventLoopProxy를 통해 애플리케이션 이벤트 루프로 전송됩니다.
@@ -272,7 +271,7 @@ fn tcp_packet_receive_loop(
                 if addr == *status.address.target_addr() {
                     parser.push(&buffer[..n])
                 }
-            },
+            }
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 continue;
             }
@@ -300,7 +299,7 @@ fn tcp_packet_receive_loop(
 
 /// UDP 패킷을 수신하는 루프 함수입니다.
 fn udp_packet_receive_loop(
-    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
     status: Arc<SocketStatus>,
 ) {
     // UDP 패킷의 크기는 1KB를 넘지 않습니다.
@@ -332,19 +331,17 @@ fn udp_packet_receive_loop(
                     // (UDP로 보낸 패킷 데이터는 중요하지 않고, 1KB보다 작은 데이터이기 때문)
                     //
                     match RawPacket::try_from_bytes(received_data) {
-                        Ok(packet) => {
-                            unsafe { 
-                                event_loop_proxy
-                                    .send_event(AppEvent::PacketReceived(packet))
-                                    .unwrap_unchecked();
-                            }
+                        Ok(packet) => unsafe {
+                            event_loop_proxy
+                                .send_event(AppEvent::PacketReceived(packet))
+                                .unwrap_unchecked();
                         },
                         Err(e) => {
                             log::warn!("failed to parse packet from {addr}: {e}");
                         }
                     }
                 }
-            },
+            }
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 continue;
             }
@@ -363,7 +360,10 @@ fn udp_packet_receive_loop(
 
 #[cfg(feature = "dev")]
 mod util {
-    use std::{io, net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket}};
+    use std::{
+        io,
+        net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket},
+    };
 
     use socket2::{Domain, SockAddr, Socket, Type};
 
@@ -380,7 +380,7 @@ mod util {
         // 소켓 주소 재사용 옵션
         let local_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port);
         socket.bind(&SockAddr::from(local_addr))?;
-        
+
         Ok(socket.into())
-    } 
+    }
 }
