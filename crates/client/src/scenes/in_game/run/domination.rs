@@ -22,7 +22,7 @@ use mod_network::{
 use mod_physics::object3d::Frustum;
 use mod_render::{
     CameraResource, GlobalLightDataLayout, GlobalLightUniform, SamplerPool, SkyboxDataLayout,
-    SkyboxResource, TextureViewPool, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
+    SkyboxResource, TexturePool, TextureViewPool, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use winit::{
     event::{Modifiers, MouseButton},
@@ -31,7 +31,7 @@ use winit::{
 };
 
 use crate::{
-    asset::{AssetError, NOTOSANS_REGULAR},
+    asset::{AssetError, NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI},
     component::{
         animate_character, bake_character_shadow, categorize_character_resource, cleanup,
         draw_character, draw_character_halo, set_weapon_position, spawn_player_character,
@@ -85,10 +85,13 @@ pub struct InGameDominationModeScene {
     /// 공격을 받아 체력이 깎인 플레이어를 저장
     damage_logs: Vec<DamageLog>,
 
-    // ----- Shadow Pass -----
+    /// ----- Shadow Pass -----
     shadow_resource: Option<ShadowMapResource>,
-    // -----  Composite Pass -----
+    /// -----  Composite Pass -----
     composite_resource: Option<CompositeResource>,
+
+    /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
+    ui_game_layout_texture: egui::load::SizedTexture,
 }
 
 impl InGameDominationModeScene {
@@ -124,6 +127,44 @@ impl InGameDominationModeScene {
             damage_logs: Vec::default(),
             shadow_resource: None,
             composite_resource: None,
+            ui_game_layout_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+        }
+    }
+
+    /// UI에 사용되는 텍스처를 등록합니다.
+    fn register_ui_game_layout_texture(&mut self, _window: &Window, app: &dyn AppHandle) {
+        // 게임 인터페이스 레이아웃 텍스처를 가져옵니다.
+        let texture = TexturePool::get(UI_GAME_LAYOUT_URI)
+            .expect("UI_Game_Layout texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture =
+            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let mut egui_renderer = app.egui_renderer_mut();
+        let texture_id = egui_renderer.register_native_texture(
+            app.render_device(),
+            &texture,
+            wgpu::FilterMode::Linear,
+        );
+
+        self.ui_game_layout_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// UI에 사용되는 텍스처 등록을 해제합니다.
+    fn unregister_ui_game_layout_texture(&mut self, app: &dyn AppHandle) {
+        let mut egui_renderer = app.egui_renderer_mut();
+        egui_renderer.free_texture(&self.ui_game_layout_texture.id);
+        if let Some(texture) = TexturePool::unregister(UI_GAME_LAYOUT_URI) {
+            TextureViewPool::remove(&texture);
         }
     }
 
@@ -1062,8 +1103,14 @@ impl GameScene for InGameDominationModeScene {
         // Composite Pass 쉐이더 리소스를 생성합니다.
         self.composite_resource = Some(CompositeResource::uninit(window, app.render_device()));
 
+        self.register_ui_game_layout_texture(window, app);
+
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
+    }
+
+    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
+        self.unregister_ui_game_layout_texture(app);
     }
 
     #[allow(unused_variables)]
@@ -1653,7 +1700,7 @@ impl GameScene for InGameDominationModeScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
 
@@ -1675,11 +1722,57 @@ impl GameScene for InGameDominationModeScene {
             .color(egui::Color32::WHITE)
             .background_color(egui::Color32::from_black_alpha(96));
 
+        // 체력 인터페이스 레이아웃 이미지
+        // let image_width = 280.0 * scale;
+        // let image_height = 94.0 * scale;
+        let src_front = egui::load::SizedTexture {
+            size: egui::vec2(104.0, 256.0),
+            id: self.ui_game_layout_texture.id,
+        };
+        let pos_front = egui::Rect::from_min_max(
+            egui::pos2(30.0 * scale, 596.0 * scale),
+            egui::pos2(66.0 * scale, 690.0 * scale),
+        );
+        let uv_front = egui::Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.59375, 1.0));
+
+        let src_middle = egui::load::SizedTexture {
+            size: egui::vec2(48.0, 256.0),
+            id: self.ui_game_layout_texture.id,
+        };
+        let pos_middle = egui::Rect::from_min_max(
+            egui::pos2(66.0 * scale, 596.0 * scale),
+            egui::pos2(274.0 * scale, 690.0 * scale),
+        );
+        let uv_middle =
+            egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
+
+        let src_back = egui::load::SizedTexture {
+            size: egui::vec2(104.0, 256.0),
+            id: self.ui_game_layout_texture.id,
+        };
+        let pos_back = egui::Rect::from_min_max(
+            egui::pos2(274.0 * scale, 596.0 * scale),
+            egui::pos2(310.0 * scale, 690.0 * scale),
+        );
+        let uv_back = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
+
         egui::Area::new(egui::Id::new("Reticle_Layout"))
             .anchor(egui::Align2::CENTER_CENTER, (0.0, 0.0))
             .show(app.egui_ctx(), |ui| {
                 ui.painter().add(reticle);
             });
+
+        egui::Area::new(egui::Id::new("Health_Layout")).show(app.egui_ctx(), |ui| {
+            egui::Image::new(src_front)
+                .uv(uv_front)
+                .paint_at(ui, pos_front);
+            egui::Image::new(src_middle)
+                .uv(uv_middle)
+                .paint_at(ui, pos_middle);
+            egui::Image::new(src_back)
+                .uv(uv_back)
+                .paint_at(ui, pos_back);
+        });
 
         egui::Area::new(egui::Id::new("FrameRate_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))

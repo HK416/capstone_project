@@ -76,6 +76,9 @@ pub const BG_MAIN_LOBBY_URI: &'static str = "ui/BG_Main_Lobby.png";
 /// 데미지 폰트 텍스처의 `Uri`입니다.
 pub const DAMAGE_FONT_URI: &'static str = "font/D_Font_Normal.dds";
 
+/// 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
+pub const UI_GAME_LAYOUT_URI: &'static str = "ui/UI_Game_Layout.png";
+
 /// 스카이박스 텍스처의 `Uri`입니다.
 pub const SKYBOX_URI: &'static str = "stage/Sky.dds";
 

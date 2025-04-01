@@ -2,6 +2,7 @@ use std::{error::Error, io::Cursor, sync::Arc};
 
 use ahash::{HashMap, HashSet};
 use ddsfile::Dds;
+use image::{ImageFormat, ImageReader};
 use mod_app::{
     app::AppHandle,
     asset::AssetManager,
@@ -22,7 +23,7 @@ use winit::window::Window;
 use crate::{
     asset::{
         AssetError, ModelHierarchyPool, StageModel, DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI,
-        STAGE_URIS, STAGE_WORKSPACES,
+        STAGE_URIS, STAGE_WORKSPACES, UI_GAME_LAYOUT_URI,
     },
     component::{load_bullet_model, load_character_model},
     config::{Locale, NUM_LOCALE},
@@ -256,6 +257,76 @@ impl InGameLoadScene {
         self.num_remaining_tasks += 1;
     }
 
+    /// `UI_Game_Layout` 텍스처를 생성합니다.
+    fn create_ui_game_layout_texture(
+        &mut self,
+        thread_pool: &ThreadPool,
+        asset_manager: &AssetManager,
+        device: &Arc<wgpu::Device>,
+        queue: &Arc<wgpu::Queue>,
+    ) {
+        let task_results = self.task_results.clone();
+        let asset_manager = asset_manager.clone();
+        let device = device.clone();
+        let queue = queue.clone();
+        thread_pool.spawn(move || {
+            // `UI_Game_Layout` 텍스처를 로드합니다.
+            let result = asset_manager.get_or_init(UI_GAME_LAYOUT_URI);
+            let bytes = match result {
+                Ok(asset) => asset.as_bytes().to_vec(),
+                Err(e) => {
+                    log::error!("failed to load assets! (Uri:{UI_GAME_LAYOUT_URI}, REASON:{e})");
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            };
+
+            // 캐시를 지웁니다.
+            asset_manager.remove(UI_GAME_LAYOUT_URI);
+
+            // 텍스처를 로드합니다.
+            let reader = Cursor::new(bytes);
+            let mut reader = ImageReader::new(reader);
+            reader.set_format(ImageFormat::Png);
+            let image = match reader.decode() {
+                Ok(image) => image,
+                Err(e) => {
+                    log::error!("failed to load texture! (URI:{UI_GAME_LAYOUT_URI}, REASON:{e})");
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            };
+
+            // 텍스터를 생성합니다.
+            let texture = Arc::new(device.create_texture_with_data(
+                &queue,
+                &wgpu::TextureDescriptor {
+                    label: Some(&format!("Texture({})", UI_GAME_LAYOUT_URI)),
+                    size: wgpu::Extent3d {
+                        width: image.width(),
+                        height: image.height(),
+                        depth_or_array_layers: 1,
+                    },
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::default(),
+                &image.to_rgba8(),
+            ));
+
+            // 텍스터를 등록합니다.
+            TexturePool::register(UI_GAME_LAYOUT_URI.into(), texture.clone());
+
+            // 결과를 전송합니다.
+            task_results.push(Ok(()));
+        });
+        self.num_remaining_tasks += 1;
+    }
+
     /// 스카이박스 텍스처를 생성합니다.
     fn create_skybox_texture(
         &mut self,
@@ -408,6 +479,12 @@ impl GameScene for InGameLoadScene {
             app.render_queue(),
         );
         self.load_stage_models(
+            app.io_threads(),
+            app.asset_manager(),
+            app.render_device(),
+            app.render_queue(),
+        );
+        self.create_ui_game_layout_texture(
             app.io_threads(),
             app.asset_manager(),
             app.render_device(),
