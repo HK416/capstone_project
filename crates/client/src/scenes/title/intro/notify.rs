@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -71,22 +69,12 @@ impl GameIntroNotifyScene {
 }
 
 impl GameScene for GameIntroNotifyScene {
-    fn on_enter(
-        &mut self,
-        window: &Window,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, window: &Window, _app: &dyn AppHandle) {
         // 애플리케이션 창을 표시합니다.
         window.set_visible(true);
-        Ok(())
     }
 
-    fn on_update(
-        &mut self,
-        elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 게임 장면 경과 시간을 갱신합니다.
         self.elapsed_time_sec += elapsed_time_sec;
 
@@ -98,8 +86,6 @@ impl GameScene for GameIntroNotifyScene {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-
-        Ok(())
     }
 
     fn on_draw(
@@ -109,10 +95,10 @@ impl GameScene for GameIntroNotifyScene {
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         {
             let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))),
+                label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(self.get_background_color()),
@@ -126,15 +112,9 @@ impl GameScene for GameIntroNotifyScene {
                 occlusion_query_set: None,
             });
         }
-
-        Ok(())
     }
 
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -180,7 +160,5 @@ impl GameScene for GameIntroNotifyScene {
                     ui.label(sub_text);
                 });
             });
-
-        Ok(())
     }
 }

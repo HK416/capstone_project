@@ -1,8 +1,14 @@
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 
 use ahash::{HashMap, HashSet};
 use hecs::{Entity, EntityBuilder, With, Without, World};
-use mod_app::{app::AppHandle, asset::AssetManager, net::NetManager, scene::GameScene};
+use mod_app::{
+    app::AppHandle,
+    asset::AssetManager,
+    etc::AppEvent,
+    net::{NetManager, NetworkError},
+    scene::{GameScene, GameSceneFlow},
+};
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, DamageLog, GameInputBits,
@@ -25,7 +31,7 @@ use winit::{
 };
 
 use crate::{
-    asset::NOTOSANS_REGULAR,
+    asset::{AssetError, NOTOSANS_REGULAR},
     component::{
         animate_character, bake_character_shadow, categorize_character_resource, cleanup,
         draw_character, draw_character_halo, set_weapon_position, spawn_player_character,
@@ -35,14 +41,14 @@ use crate::{
         Child, DirectionLight, MoveDirection, Parent, Projection, Sibling, SkinningAnimation,
         StageArea, StageProp, ThirdPersonCamera, ToParentTrans, WorldTransform,
     },
-    config::{Locale, UserConfig},
+    config::{Locale, UserConfig, NUM_LOCALE},
     render::{
         clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
         draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
         shadow::ShadowMapResource, spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout,
         FxDamageResource, LifeTime,
     },
-    scenes::BASE_WIDTH,
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
 
@@ -454,14 +460,14 @@ impl InGameDominationModeScene {
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         const WIDTH: f32 = 0.05;
         const HEIGHT: f32 = 0.1;
         const ORIGIN: glam::Vec3A = glam::vec3a(-0.1, 0.25, -0.75);
 
         // 데미지 폰트 텍스처를 가져옵니다.
-        let texture = get_damage_font(asset_manager, device, queue)
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        let texture =
+            get_damage_font(asset_manager, device, queue).expect("font texture must exist!");
         let t_font =
             TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
         let s_font = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
@@ -507,8 +513,6 @@ impl InGameDominationModeScene {
         }
 
         queue.submit([]);
-
-        Ok(())
     }
 
     /// 데미지 파티클을 갱신합니다.
@@ -783,22 +787,18 @@ impl InGameDominationModeScene {
     }
 
     /// 서버 데이터를 게임 월드에 반영합니다.
-    fn pull_game_world(
-        &mut self,
-        packet: PullStagePacket,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn pull_game_world(&mut self, packet: PullStagePacket, app: &dyn AppHandle) {
         // 현재 게임 월드에 존재하는 플레이어의 식별자를 수집합니다.
         let mut identifiers: HashSet<UserId> = self.players.keys().cloned().collect();
         // 게임 월드에 존재하는 플레이어를 갱신합니다.
         let new = self.update_player_from_packet(&packet.players, &mut identifiers);
         // 새로운 플레이어를 게임 월드에 추가합니다.
-        self.add_player_from_packet(
+        let result = self.add_player_from_packet(
             new,
             app.asset_manager(),
             app.render_device(),
             app.render_queue(),
-        )?;
+        );
         self.remove_player_from_packet(identifiers.into_iter());
 
         // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
@@ -806,16 +806,14 @@ impl InGameDominationModeScene {
         // 게임 월드에 존재하는 총알을 갱신합니다.
         let new = self.update_bullet_from_packet(&packet.bullets, &mut identifiers);
         // 새로운 총알을 게임 월드에 추가합니다.
-        self.add_bullet_from_packet(
+        let result = self.add_bullet_from_packet(
             new,
             app.asset_manager(),
             app.render_device(),
             app.render_queue(),
-        )?;
+        );
         // 제거된 오브젝트를 게임월드에서 제거합니다.
         self.remove_object_from_packet(identifiers.into_iter());
-
-        Ok(())
     }
 
     /// 서버에서 보낸 플레이어 데이터로 갱신합니다.
@@ -984,13 +982,12 @@ impl InGameDominationModeScene {
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) -> Result<(), AssetError> {
         // 새로운 플레이어를 추가합니다.
         for player in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
             let (root_entity, batch_commands) =
-                spawn_player_character(&player, asset_manager, device, queue, &self.world)
-                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+                spawn_player_character(&player, asset_manager, device, queue, &self.world)?;
 
             // 명령어를 실행합니다.
             for (entity, mut builder) in batch_commands {
@@ -1021,13 +1018,12 @@ impl InGameDominationModeScene {
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) -> Result<(), AssetError> {
         // 새로운 플레이어를 추가합니다.
         for bullet in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
             let (root_entity, batch_commands) =
-                spwan_bullet(bullet, asset_manager, device, queue, &self.world)
-                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+                spwan_bullet(bullet, asset_manager, device, queue, &self.world)?;
 
             // 명령어를 실행합니다.
             for (entity, mut builder) in batch_commands {
@@ -1054,11 +1050,7 @@ impl InGameDominationModeScene {
 }
 
 impl GameScene for InGameDominationModeScene {
-    fn on_enter(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
         // Shadow Pass 쉐이더 리소스를 생성합니다.
         self.shadow_resource = Some(ShadowMapResource::new(
             Some("Directional Light"),
@@ -1072,8 +1064,6 @@ impl GameScene for InGameDominationModeScene {
 
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
-
-        Ok(())
     }
 
     #[allow(unused_variables)]
@@ -1085,7 +1075,7 @@ impl GameScene for InGameDominationModeScene {
         repeat: bool,
         window: &Window,
         app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         if !repeat {
             let config = UserConfig::get();
             let flags = config
@@ -1094,8 +1084,6 @@ impl GameScene for InGameDominationModeScene {
                 .unwrap_or(GameInputBits::empty());
             self.controller_input_flags |= flags;
         }
-
-        Ok(())
     }
 
     #[allow(unused_variables)]
@@ -1107,7 +1095,7 @@ impl GameScene for InGameDominationModeScene {
         repeat: bool,
         window: &Window,
         app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         // 사용자 입력 상태를 갱신합니다.
         if !repeat {
             let config = UserConfig::get();
@@ -1117,7 +1105,6 @@ impl GameScene for InGameDominationModeScene {
                 .unwrap_or(GameInputBits::empty());
             self.controller_input_flags &= !flags;
         }
-        Ok(())
     }
 
     #[allow(unused_variables)]
@@ -1128,14 +1115,13 @@ impl GameScene for InGameDominationModeScene {
         button: MouseButton,
         window: &Window,
         app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         let config = UserConfig::get();
         let flags = config
             .get_mouse_input(&button)
             .map(|input| input.into_bits())
             .unwrap_or(GameInputBits::empty());
         self.controller_input_flags |= flags;
-        Ok(())
     }
 
     #[allow(unused_variables)]
@@ -1146,14 +1132,13 @@ impl GameScene for InGameDominationModeScene {
         button: MouseButton,
         window: &Window,
         app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         let config = UserConfig::get();
         let flags = config
             .get_mouse_input(&button)
             .map(|input| input.into_bits())
             .unwrap_or(GameInputBits::empty());
         self.controller_input_flags &= !flags;
-        Ok(())
     }
 
     #[allow(unused_variables)]
@@ -1165,22 +1150,40 @@ impl GameScene for InGameDominationModeScene {
         dy: f32,
         window: &Window,
         app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         // 메인 카메라를 회전시킵니다.
         self.rotate_main_camera(dx, dy);
-
-        Ok(())
     }
 
-    fn on_received_packet(
-        &mut self,
-        packet: RawPacket,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
         match packet.packet_type() {
             PacketType::PullStage => {
                 let packet = PullStagePacket::from_raw(packet);
-                self.pull_game_world(packet, app)?;
+                self.pull_game_world(packet, app);
             }
             PacketType::UdpDamageLog => {
                 let packet = UdpDamageLogPacket::from_raw(packet);
@@ -1189,49 +1192,30 @@ impl GameScene for InGameDominationModeScene {
             }
             _ => panic!("invalid packet"),
         };
-
-        Ok(())
     }
 
     #[allow(unused_variables)]
-    fn on_pre_update(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_pre_update(&mut self, window: &Window, app: &dyn AppHandle) {
         // 플레이어 움직임 방향을 갱신합니다.
         self.update_player_move_direction();
         // 플레이어 카메라 상태를 갱신합니다.
         self.update_player_view_state();
 
         // 데미지 파티클을 생성합니다.
-        self.spawn_damage_particles(app.asset_manager(), app.render_device(), app.render_queue())?;
-
-        Ok(())
+        self.spawn_damage_particles(app.asset_manager(), app.render_device(), app.render_queue());
     }
 
     #[allow(unused_variables)]
-    fn on_update(
-        &mut self,
-        elapsed_time_sec: f32,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_update(&mut self, elapsed_time_sec: f32, window: &Window, app: &dyn AppHandle) {
         // 플레이어 카메라 상태 지속 시간을 갱신합니다.
         self.update_player_view_state_timer(elapsed_time_sec);
 
         // 데미지 파티클을 갱신합니다.
         self.update_damage_particles(elapsed_time_sec);
-
-        Ok(())
     }
 
     #[allow(unused_variables)]
-    fn on_post_update(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_post_update(&mut self, window: &Window, app: &dyn AppHandle) {
         // 플레이어 움직임 방향을 갱신합니다.
         self.update_player_move_direction();
         // 플레이어 카메라 상태를 갱신합니다.
@@ -1241,15 +1225,9 @@ impl GameScene for InGameDominationModeScene {
 
         // 플레이어 데이터를 서버에 전송합니다.
         self.push_player_data(app.net_manager());
-
-        Ok(())
     }
 
-    fn on_prepare_draw(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
         // 캐릭터 엔터티들을 가져옵니다.
         let characters_entities = self.get_character_entities();
         // 캐릭터 애니메이션을 재생합니다.
@@ -1446,8 +1424,6 @@ impl GameScene for InGameDominationModeScene {
 
         // Skybox 쉐이더 리소스를 갱신합니다.
         self.prepare_skybox_resource(app.render_device(), app.render_queue());
-
-        Ok(())
     }
 
     #[allow(unused_variables)]
@@ -1458,7 +1434,7 @@ impl GameScene for InGameDominationModeScene {
         render_target_view: &wgpu::TextureView,
         depth_buffer_view: &wgpu::TextureView,
         app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         let device = app.render_device();
         let queue = app.render_queue();
 
@@ -1674,15 +1650,9 @@ impl GameScene for InGameDominationModeScene {
             composite_resource.process(device, SWAPCHAIN_FORMAT, DEPTH_FORMAT, &mut rpass);
         }
         encoder.pop_debug_group();
-
-        Ok(())
     }
 
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -1716,7 +1686,5 @@ impl GameScene for InGameDominationModeScene {
             .show(app.egui_ctx(), |ui| {
                 ui.label(frame_rate_text);
             });
-
-        Ok(())
     }
 }

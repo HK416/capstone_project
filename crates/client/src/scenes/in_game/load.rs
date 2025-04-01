@@ -6,6 +6,7 @@ use mod_app::{
     app::AppHandle,
     asset::AssetManager,
     etc::AppEvent,
+    net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
@@ -25,13 +26,17 @@ use crate::{
     },
     component::{load_bullet_model, load_character_model},
     config::{Locale, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
 use super::InGameBuildScene;
 
 /// 애플리케이션 표시 언어에 따른 로드 텍스트
 const LOAD_TEXTS: [&'static str; NUM_LOCALE] = ["Now Loading"];
+/// 애플리케이션 표시 언어에 따른 오류 타이틀 텍스트
+const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["오류"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["게임 리소스를 로드하는데 실패했습니다!"];
 
 /// 게임 월드에 필요한 에셋을 로드하는 장면입니다.
 pub struct InGameLoadScene {
@@ -389,11 +394,7 @@ impl InGameLoadScene {
 }
 
 impl GameScene for InGameLoadScene {
-    fn on_enter(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         self.load_character_models(
             app.io_threads(),
             app.asset_manager(),
@@ -424,19 +425,57 @@ impl GameScene for InGameLoadScene {
             app.render_device(),
             app.render_queue(),
         );
-        Ok(())
     }
 
-    fn on_update(
-        &mut self,
-        _elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_results.pop() {
-            self.num_remaining_tasks -= 1;
-            result?;
+            match result {
+                Ok(()) => {
+                    self.num_remaining_tasks -= 1;
+                    log::info!(
+                        "task success (number of tasks remaining:{})",
+                        self.num_remaining_tasks
+                    );
+                }
+                Err(_) => {
+                    // 다음 게임 장면으로 전환합니다.
+                    let i = self.locale as usize;
+                    let next_scene = FatalErrorSceneLayer::new(
+                        self.locale,
+                        ERR_TITLE_TEXTS[i],
+                        ERR_MSG_TEXTS[i],
+                    );
+                    let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+                    let event = AppEvent::SetGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
+            };
         }
 
         // 모든 작업이 끝난 경우 다음 장면으로 전환합니다.
@@ -453,8 +492,6 @@ impl GameScene for InGameLoadScene {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-
-        Ok(())
     }
 
     fn on_draw(
@@ -464,10 +501,10 @@ impl GameScene for InGameLoadScene {
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         {
             let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(InGameLoadScene))),
+                label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: render_target_view,
                     resolve_target: None,
@@ -481,14 +518,9 @@ impl GameScene for InGameLoadScene {
                 occlusion_query_set: None,
             });
         }
-        Ok(())
     }
 
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -511,7 +543,5 @@ impl GameScene for InGameLoadScene {
                     ui.label(load_text)
                 });
             });
-
-        Ok(())
     }
 }

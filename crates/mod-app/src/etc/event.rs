@@ -1,8 +1,6 @@
-use std::io;
-
 use mod_network::protocol::RawPacket;
 
-use crate::{net::IpAddress, scene::GameSceneFlow};
+use crate::{error::Alert, net::NetworkError, scene::GameSceneFlow};
 
 use super::WindowSize;
 
@@ -18,12 +16,12 @@ pub enum AppEvent {
     /// 애플리케이션 창을 전체화면으로 변경합니다.
     FullScreenRequest(bool),
 
-    /// 서버 연결이 끊어졌을 때 전달되는 이벤트입니다.
-    ClosedSocket(IpAddress),
+    /// 시스템 API를 사용해 오류 메시지 Dialog를 화면에 출력합니다.
+    Alert(Alert),
+
+    /// 네트워크 오류가 발생했을 때 전달되는 이벤트입니다.
+    NetworkError(NetworkError),
 
     /// 패킷을 수신했을 때 전달되는 이벤트입니다.
     PacketReceived(RawPacket),
-
-    /// 입/출력 오류가 발생했을 떄 전달되는 이벤트입니다.
-    IOError(io::Error),
 }

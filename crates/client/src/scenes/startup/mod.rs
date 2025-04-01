@@ -7,6 +7,7 @@ use image::{ImageFormat, ImageReader};
 use mod_app::{
     app::AppHandle,
     asset::AssetManager,
+    error::Alert,
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
@@ -315,7 +316,7 @@ impl GameStartupScene {
     fn setup_custom_fonts(&mut self, ctx: &egui::Context) {
         let mut fonts = egui::FontDefinitions::default();
 
-        // `NEXON Lv2 Gothic` 폰트를 추가합니다.
+        // `Notosans` 폰트를 추가합니다.
         let font = self
             .font_asset_data
             .remove(NOTOSANS_REGULAR)
@@ -329,7 +330,7 @@ impl GameStartupScene {
             vec![NOTOSANS_REGULAR.into()],
         );
 
-        // `NEXON Lv2 Gothic Bold` 폰트를 추가합니다.
+        // `Notosans Bold` 폰트를 추가합니다.
         let font = self
             .font_asset_data
             .remove(NOTOSANS_BOLD)
@@ -369,11 +370,7 @@ impl GameStartupScene {
 }
 
 impl GameScene for GameStartupScene {
-    fn on_enter(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         let device = app.render_device();
         let queue = app.render_queue();
         let thread_pool = app.io_threads();
@@ -425,35 +422,40 @@ impl GameScene for GameStartupScene {
             BG_LOGIN_TITLE_5_DATA,
         );
         self.load_user_config(asset_manager.get_root_dir());
-        Ok(())
     }
 
-    fn on_exit(
-        &mut self,
-        window: Option<&Window>,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_exit(&mut self, window: Option<&Window>, app: &dyn AppHandle) {
         self.setup_custom_fonts(app.egui_ctx());
         if let Some(window) = window {
             self.change_window_config(window, app.event_loop_proxy());
         }
-        Ok(())
     }
 
-    fn on_update(
-        &mut self,
-        _elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_results.pop() {
-            self.num_remaining_tasks -= 1;
-            match result? {
-                TaskResult::Font { uri, bytes } => {
-                    self.font_asset_data.insert(uri, bytes);
+            match result {
+                Ok(task) => {
+                    self.num_remaining_tasks -= 1;
+                    log::info!(
+                        "task success (number of tasks remaining: {})",
+                        self.num_remaining_tasks
+                    );
+                    match task {
+                        TaskResult::Font { uri, bytes } => {
+                            self.font_asset_data.insert(uri, bytes);
+                        }
+                        _ => {}
+                    };
                 }
-                _ => {}
+                Err(_) => {
+                    let title = "Initialize failed".into();
+                    let message = "Failed to initialize game data.".into();
+                    let alert = Alert { title, message };
+                    let event = AppEvent::Alert(alert);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
             }
         }
 
@@ -471,8 +473,6 @@ impl GameScene for GameStartupScene {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-
-        Ok(())
     }
 
     fn on_draw(
@@ -482,12 +482,10 @@ impl GameScene for GameStartupScene {
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        // 게임을 초기화 하는 동안 검정색 화면을 출력합니다.
-        //
+    ) {
         {
             let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(GameStartupScene))),
+                label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -501,7 +499,5 @@ impl GameScene for GameStartupScene {
                 occlusion_query_set: None,
             });
         }
-
-        Ok(())
     }
 }

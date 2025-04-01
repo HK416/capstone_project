@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -43,11 +41,7 @@ impl GameIntroLogoScene {
 }
 
 impl GameScene for GameIntroLogoScene {
-    fn on_enter(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         // 게임 로고 텍스처를 가져옵니다.
         let texture =
             TexturePool::get(GAME_LOGO_URI).expect("Game_Logo texture must be preloaded!");
@@ -70,28 +64,15 @@ impl GameScene for GameIntroLogoScene {
             id: texture_id,
             size: texture_size,
         };
-
-        Ok(())
     }
 
-    fn on_exit(
-        &mut self,
-        _window: Option<&Window>,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
         // 등록된 텍스처를 해제합니다.
         let mut egui_renderer = app.egui_renderer_mut();
         egui_renderer.free_texture(&self.game_logo_texture_id.id);
-
-        Ok(())
     }
 
-    fn on_update(
-        &mut self,
-        elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 게임 장면 경과 시간을 갱신합니다.
         self.elapsed_time_sec += elapsed_time_sec;
 
@@ -103,7 +84,6 @@ impl GameScene for GameIntroLogoScene {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-        Ok(())
     }
 
     fn on_draw(
@@ -113,10 +93,10 @@ impl GameScene for GameIntroLogoScene {
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         {
             let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))),
+                label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
@@ -130,14 +110,9 @@ impl GameScene for GameIntroLogoScene {
                 occlusion_query_set: None,
             });
         }
-        Ok(())
     }
 
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
 
@@ -162,7 +137,5 @@ impl GameScene for GameIntroLogoScene {
             .show(app.egui_ctx(), |ui| {
                 egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
             });
-
-        Ok(())
     }
 }

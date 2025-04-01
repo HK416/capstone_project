@@ -1,8 +1,7 @@
-use std::error::Error;
-
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
+    net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_render::{TexturePool, TextureViewPool};
@@ -18,7 +17,7 @@ use crate::{
         BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_URI, NOTOSANS_BOLD,
     },
     config::{Locale, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
 use super::GameLoginModalScene;
@@ -75,11 +74,7 @@ impl GameLoginTitleScene {
 }
 
 impl GameScene for GameLoginTitleScene {
-    fn on_enter(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         for uri in BG_TEXTURE_URI {
             // 로그인 배경화면 텍스처를 가져옵니다.
             let texture =
@@ -104,23 +99,39 @@ impl GameScene for GameLoginTitleScene {
                 size: texture_size,
             });
         }
-
-        Ok(())
     }
 
-    fn on_exit(
-        &mut self,
-        _window: Option<&Window>,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_exit(&mut self, _window: Option<&Window>, _app: &dyn AppHandle) {
         // 텍스처 풀 객체에서 로그인 타이틀 텍스처를 제거합니다.
         for uri in BG_TEXTURE_URI {
             if let Some(texture) = TexturePool::unregister(uri) {
                 TextureViewPool::remove(&texture);
             }
         }
+    }
 
-        Ok(())
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn on_mouse_btn_pressed(
@@ -130,9 +141,8 @@ impl GameScene for GameLoginTitleScene {
         _button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         self.is_pressed = true;
-        Ok(())
     }
 
     fn on_keyboard_pressed(
@@ -143,17 +153,11 @@ impl GameScene for GameLoginTitleScene {
         _repeat: bool,
         _window: &Window,
         _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         self.is_pressed = true;
-        Ok(())
     }
 
-    fn on_update(
-        &mut self,
-        elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 게임 장면 경과 시간을 갱신합니다.
         self.elapsed_time_sec = (self.elapsed_time_sec + elapsed_time_sec) % MAX_SCENE_DURATION;
 
@@ -165,25 +169,9 @@ impl GameScene for GameLoginTitleScene {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-        Ok(())
     }
 
-    fn on_draw(
-        &self,
-        _window: &Window,
-        _encoder: &mut wgpu::CommandEncoder,
-        _render_target_view: &wgpu::TextureView,
-        _depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        Ok(())
-    }
-
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -231,6 +219,5 @@ impl GameScene for GameLoginTitleScene {
             .show(app.egui_ctx(), |ui| {
                 egui::Image::new(source).paint_at(ui, rect);
             });
-        Ok(())
     }
 }
