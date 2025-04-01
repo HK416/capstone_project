@@ -187,6 +187,7 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
     let hh = 0.5 * stage.area_size.y;
     let translation = area.inv_transform.transform_point3a(translation);
     if translation.x < -hw || translation.x > hw || translation.z < -hh || translation.z > hh {
+        println!("끼야아악");
         return None;
     }
 
@@ -208,26 +209,15 @@ pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
     let m = stage.num_depth;
     let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
     let z = (z + 0.5 * stage.size.y) / stage.area_size.y;
-    let i = x.floor();
-    let j = z.floor();
-    let mut idx = vec![(i, j)];
-    // 정수이면
-    if x == i {
-        // i+1도 검사
-        idx.push((i + 1.0, j));
-    }
-    if z == j {
-        // j+1도 검사
-        idx.push((i, j + 1.0));
-    }
-    if x == i && z == j {
-        // i+1, j+1도 검사
-        idx.push((i + 1.0, j + 1.0));
-    }
+    let i = x.floor() as usize;
+    let j = z.floor() as usize;
 
-    idx.iter()
-        .filter(|(i, j)| *i >= 0.0 && *i < n as f32 && *j >= 0.0 && *j < m as f32)
-        .any(|(i, j)| stage.area[*i as usize][*j as usize].is_some())
+    if x < 0.0 && i < n && z < 0.0 && j < m {
+        stage.area[i][j].is_some()
+    }
+    else {
+        false
+    }
 }
 
 pub fn get_nearest_valid_position(kind: StageKind, x: f32, z: f32) -> (f32, f32) {
