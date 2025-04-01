@@ -1765,12 +1765,15 @@ impl GameScene for InGameDominationModeScene {
         egui::Area::new(egui::Id::new("Health_Layout")).show(app.egui_ctx(), |ui| {
             egui::Image::new(src_front)
                 .uv(uv_front)
+                .tint(egui::Color32::from_black_alpha(192))
                 .paint_at(ui, pos_front);
             egui::Image::new(src_middle)
                 .uv(uv_middle)
+                .tint(egui::Color32::from_black_alpha(192))
                 .paint_at(ui, pos_middle);
             egui::Image::new(src_back)
                 .uv(uv_back)
+                .tint(egui::Color32::from_black_alpha(192))
                 .paint_at(ui, pos_back);
         });
 
