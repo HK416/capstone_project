@@ -1700,31 +1700,43 @@ impl GameScene for InGameDominationModeScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, height): (f32, f32) = window.inner_size().into();
+        let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
 
         // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
 
         // 십자선 원
         let reticle_pos = (640.0 * scale, 360.0 * scale);
         let reticle_radius = 4.0 * scale;
-        let reticle_color = egui::Color32::from_black_alpha(128);
+        let reticle_color = egui::Color32::from_white_alpha(192);
         let reticle = egui::Shape::circle_filled(reticle_pos.into(), reticle_radius, reticle_color);
 
         // 프레임 레이트 텍스트
         let fps = app.timer().frame_rate();
         let text = format!("{}FPS", fps);
-        let font_id = egui::FontId::new(32.0 * scale, head_font_family.clone());
+        let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
         let frame_rate_text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::WHITE)
             .background_color(egui::Color32::from_black_alpha(96));
 
-        // 체력 인터페이스 레이아웃 이미지
-        // let image_width = 280.0 * scale;
-        // let image_height = 94.0 * scale;
+        // 체력 텍스트
+        let entity = self.get_player_entity();
+        let health_point = self
+            .world
+            .query_one_mut::<&HealthPoint>(entity)
+            .cloned()
+            .expect("invalid entity or invalid entity component");
+
+        let text = format!("{}", health_point.0.min(9999));
+        let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
+        let health_point_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE);
+
+        // 체력 인터페이스 레이아웃 이미지 (기준 가로: 280, 세로: 94)
         let src_front = egui::load::SizedTexture {
             size: egui::vec2(104.0, 256.0),
             id: self.ui_game_layout_texture.id,
@@ -1756,13 +1768,20 @@ impl GameScene for InGameDominationModeScene {
         );
         let uv_back = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
 
+        // 체력 인터페이스 데코레이션 (기준 가로: 220 세로: 2)
+        let deco_pos = egui::Rect::from_min_max(
+            egui::pos2(75.0 * scale, 678.0 * scale),
+            egui::pos2(285.0 * scale, 680.0 * scale),
+        );
+        let deco_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
+
         egui::Area::new(egui::Id::new("Reticle_Layout"))
             .anchor(egui::Align2::CENTER_CENTER, (0.0, 0.0))
             .show(app.egui_ctx(), |ui| {
                 ui.painter().add(reticle);
             });
 
-        egui::Area::new(egui::Id::new("Health_Layout")).show(app.egui_ctx(), |ui| {
+        egui::Area::new(egui::Id::new("Health_BG_Layout")).show(app.egui_ctx(), |ui| {
             egui::Image::new(src_front)
                 .uv(uv_front)
                 .tint(egui::Color32::from_black_alpha(192))
@@ -1775,7 +1794,18 @@ impl GameScene for InGameDominationModeScene {
                 .uv(uv_back)
                 .tint(egui::Color32::from_black_alpha(192))
                 .paint_at(ui, pos_back);
+
+            egui::Image::new(self.ui_game_layout_texture)
+                .uv(deco_uv)
+                .paint_at(ui, deco_pos);
         });
+
+        egui::Area::new(egui::Id::new("Health_Num_Layout"))
+            .anchor(egui::Align2::LEFT_BOTTOM, (230.0 * scale, -38.0 * scale))
+            .show(app.egui_ctx(), |ui| {
+                ui.set_width(128.0 * scale);
+                ui.label(health_point_text).interact(egui::Sense::empty())
+            });
 
         egui::Area::new(egui::Id::new("FrameRate_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
