@@ -214,8 +214,7 @@ pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
 
     if x < 0.0 && i < n && z < 0.0 && j < m {
         stage.area[i][j].is_some()
-    }
-    else {
+    } else {
         false
     }
 }

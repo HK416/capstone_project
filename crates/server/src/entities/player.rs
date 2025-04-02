@@ -1,7 +1,10 @@
+use std::num::NonZeroU16;
+
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameInputBits, HealthPoint,
-    LatLon, MAX_JUMP_DURATION, MovementState, MovementStateTimer, NUM_ACTION_STATES,
-    NUM_MOVEMENT_STATES, ObjectId, Permission, Team, UserAccount, ViewState, ViewStateTimer,
+    LatLon, MAX_JUMP_DURATION, MaxHealthPoint, MovementState, MovementStateTimer,
+    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Permission, Team, UserAccount, ViewState,
+    ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
 
@@ -192,6 +195,16 @@ impl PlayerObject {
     /// 플레이어 오브젝트의 캐릭터 속성을 가져옵니다.
     pub fn character_attributes(&self) -> &'static CharacterAttributes {
         self.attributes
+    }
+
+    /// 플레이어의 오브젝트 최대 체력을 가져옵니다.
+    pub fn max_health_point(&self) -> MaxHealthPoint {
+        // Safe: 캐릭터 속성 데이터 로드시 0이 아닌지 확인함.
+        unsafe {
+            MaxHealthPoint::new(NonZeroU16::new_unchecked(
+                self.attributes.health_point as u16,
+            ))
+        }
     }
 
     /// 플레이어 오브젝트 체력을 가져옵니다.

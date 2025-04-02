@@ -143,6 +143,7 @@ impl GameWorldState for GameWorldInGameSyncState {
                     PlayPhasePlayer::new(
                         player.account().clone(),
                         player.character_kind(),
+                        player.max_health_point(),
                         player.health_point(),
                         player.translation().to_array(),
                         player.rotation().to_array(),

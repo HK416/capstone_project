@@ -7,8 +7,7 @@ use std::{
 use ahash::HashMap;
 use mod_network::{
     components::{
-        DamageLog, HealthPoint, LatLon, MovementState, ObjectId,
-        PlayPhasePlayer, StageKind, UserId,
+        DamageLog, HealthPoint, LatLon, MovementState, ObjectId, PlayPhasePlayer, StageKind, UserId,
     },
     protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -378,6 +377,7 @@ impl GameWorldInGameState {
                 PlayPhasePlayer::new(
                     player.account().clone(),
                     player.character_kind(),
+                    player.max_health_point(),
                     player.health_point(),
                     player.translation().to_array(),
                     player.rotation().to_array(),

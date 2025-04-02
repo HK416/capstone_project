@@ -1800,8 +1800,10 @@ impl GameScene for InGameDominationModeScene {
                 .paint_at(ui, deco_pos);
         });
 
-        egui::Area::new(egui::Id::new("Health_Num_Layout"))
-            .anchor(egui::Align2::LEFT_BOTTOM, (230.0 * scale, -38.0 * scale))
+        egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(app.egui_ctx(), |ui| {});
+
+        egui::Area::new(egui::Id::new("Health_Number_Layout"))
+            .anchor(egui::Align2::LEFT_BOTTOM, (70.0 * scale, -38.0 * scale))
             .show(app.egui_ctx(), |ui| {
                 ui.set_width(128.0 * scale);
                 ui.label(health_point_text).interact(egui::Sense::empty())
