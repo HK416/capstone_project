@@ -481,8 +481,8 @@ impl GameWorldState for GameWorldInGameState {
         self.broadcast(world);
     }
 
-    fn yield_now(&self) {
-        std::thread::sleep(Duration::from_millis(1));
+    fn yield_now(&self) -> Duration {
+        Duration::from_millis(1)
     }
 }
 

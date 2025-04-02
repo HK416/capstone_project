@@ -207,6 +207,7 @@ impl GameStartupScene {
             // 남은 에셋 데이터를 제거합니다.
             asset_manager.remove(NOTOSANS_REGULAR);
             // 결과를 전송합니다.
+            log::debug!("task finished (TYPE: Load Font)");
             task_results.push(result);
         });
 
@@ -235,6 +236,7 @@ impl GameStartupScene {
             // 남은 에셋 데이터를 제거합니다.
             asset_manager.remove(NOTOSANS_BOLD);
             // 결과를 전송합니다.
+            log::debug!("task finished (TYPE: Load Font Texture)");
             task_results.push(result);
         });
 

@@ -229,7 +229,7 @@ fn init_log_system() -> WorkerGuard {
     tracing_subscriber::fmt()
         .with_ansi(false)
         .with_writer(non_blocking)
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::TRACE)
         .init();
 
     guard

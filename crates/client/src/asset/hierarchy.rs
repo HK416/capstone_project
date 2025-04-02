@@ -110,22 +110,27 @@ fn load_model_root(
     queue: &wgpu::Queue,
 ) -> Result<Arc<Root>, AssetError> {
     let path = format!("{}/{}.hierarchy", workspace, name);
+    log::debug!("load model asset (PATH:{})", &path);
     let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
         log::error!("{} (PATH:{})", &e, &path);
         AssetError::from(e)
     })?;
+    
+    log::debug!("parse model asset (PATH:{})", &path);
     let reader = Cursor::new(cached_asset.as_bytes());
     let blob: ModelHierarchyData = serde_json::de::from_reader(reader).map_err(|e| {
         log::error!("{} (PATH:{})", &e, &path);
         AssetError::from(e)
     })?;
-    asset_manager.remove(path);
 
     let node = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
     let root = Arc::new(Root {
         node,
         num_nodes: blob.num_nodes as usize,
     });
+    
+    log::debug!("cleanup model asset cache (PATH:{})", &path);
+    asset_manager.remove(path);
 
     Ok(root)
 }
@@ -136,11 +141,11 @@ fn load_model_node_recursive(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    mut blob: HierarchyNode,
+    blob: HierarchyNode,
 ) -> Result<Node, AssetError> {
     let name = blob.name.clone();
     let transform = blob.transform.into_mat4();
-    let (skinning, mesh) = match blob.mesh.take() {
+    let (skinning, mesh) = match blob.mesh.as_ref() {
         Some(filename) => {
             let path = format!("{}/{}.mesh", workspace, &filename);
             let cached = asset_manager.get_or_init(&path).map_err(|e| {
@@ -152,7 +157,6 @@ fn load_model_node_recursive(
                     log::error!("{} (PATH:{})", &e, &path);
                     AssetError::from(e)
                 })?;
-            asset_manager.remove(path);
 
             match blob.skinning.take() {
                 Some(SkinningData {
@@ -177,7 +181,7 @@ fn load_model_node_recursive(
     };
 
     let mut materials = Vec::with_capacity(blob.materials.len());
-    for filename in blob.materials {
+    for filename in blob.materials.iter() {
         let path = format!("{}/{}.material", &workspace, &filename);
         let cached = asset_manager.get_or_init(&path).map_err(|e| {
             log::error!("{} (PATH:{})", &e, &path);
@@ -187,7 +191,6 @@ fn load_model_node_recursive(
             log::error!("{} (PATH:{})", &e, &path);
             AssetError::from(e)
         })?;
-        asset_manager.remove(path);
 
         materials.push(create_material(
             workspace,
@@ -207,6 +210,16 @@ fn load_model_node_recursive(
             queue,
             blob,
         )?);
+    }
+
+    // 캐싱된 에셋을 정리합니다.
+    if let Some(filename) = blob.mesh.as_ref() {
+        let path = format!("{}/{}.mesh", workspace, &filename);
+        asset_manager.remove(path);
+    }
+    for filename in blob.materials.iter() {
+        let path = format!("{}/{}.material", &workspace, &filename);
+        asset_manager.remove(path);
     }
 
     Ok(Node {

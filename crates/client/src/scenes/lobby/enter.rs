@@ -92,9 +92,6 @@ impl MainLobbyEnterScene {
                 }
             };
 
-            // 캐싱된 에셋을 제거합니다.
-            asset_manager.remove(BG_MAIN_LOBBY_URI);
-
             // 텍스처를 생성합니다.
             let texture = device.create_texture_with_data(
                 &queue,
@@ -119,7 +116,11 @@ impl MainLobbyEnterScene {
             // 텍스처 풀 객체에 등록합니다.
             TexturePool::register(BG_MAIN_LOBBY_URI.into(), texture.into());
 
+            // 캐싱된 에셋을 제거합니다.
+            asset_manager.remove(BG_MAIN_LOBBY_URI);
+
             // 결과를 전송합니다.
+            log::debug!("task finished (TYPE: Load Background Texture)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;

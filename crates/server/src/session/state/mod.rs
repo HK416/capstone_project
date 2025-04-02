@@ -120,22 +120,31 @@ impl<'a> SessionStateManager<'a> {
     /// 모든 세션 상태를 제거합니다.
     fn clear(&mut self) {
         while let Some(mut state) = self.states.pop_back() {
+            log::info!("Session({}), exit SessionState({:?})", &self.session, &state);
             state.on_exit(&self.session);
         }
     }
 
     /// 새로운 세션 상태로 교체합니다.
-    fn change(&mut self, state: Box<dyn SessionState>) {
-        self.pop();
-        self.push(state);
+    fn change(&mut self, mut state: Box<dyn SessionState>) {
+        if let Some(mut state) = self.states.pop_back() {
+            log::info!("Session({}), exit SessionState({:?})", &self.session, &state);
+            state.on_exit(&self.session);
+        }
+
+        log::info!("Session({}), enter SessionState({:?})", &self.session, &state);
+        state.on_enter(&self.session);
+        self.states.push_back(state);
     }
 
     /// 새로운 세션 상태를 추가합니다.
     fn push(&mut self, mut state: Box<dyn SessionState>) {
         if let Some(curr_state) = self.states.back_mut() {
+            log::info!("Session({}), pause SessionState({:?})", &self.session, &curr_state);
             curr_state.on_pause(self.session);
         }
 
+        log::info!("Session({}), enter SessionState({:?})", &self.session, &state);
         state.on_enter(&self.session);
         self.states.push_back(state);
     }
@@ -143,10 +152,12 @@ impl<'a> SessionStateManager<'a> {
     /// 현재 세션 상태를 제거합니다.
     fn pop(&mut self) {
         if let Some(mut state) = self.states.pop_back() {
+            log::info!("Session({}), exit SessionState({:?})", &self.session, &state);
             state.on_exit(&self.session);
         }
 
         if let Some(curr_state) = self.states.back_mut() {
+            log::info!("Session({}), resume SessionState({:?})", &self.session, &curr_state);
             curr_state.on_resume(self.session);
         }
     }

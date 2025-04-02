@@ -106,6 +106,7 @@ impl InGameLoadScene {
                 // 캐릭터 모델을 로드합니다.
                 let result = load_character_model(&asset_manager, character_kind, &device, &queue)
                     .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+                log::debug!("task finished (TYPE: Load Character Model)");
                 // 결과를 전송합니다.
                 task_results.push(result);
             });
@@ -140,6 +141,7 @@ impl InGameLoadScene {
                 // 총알 모델을 로드합니다.
                 let result = load_bullet_model(&asset_manager, bullet_kind, &device, &queue)
                     .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+                log::debug!("task finished (TYPE: Load Bullet Model)");
                 // 결과를 전송합니다.
                 task_results.push(result);
             });
@@ -177,9 +179,6 @@ impl InGameLoadScene {
                     return;
                 }
             };
-
-            // 캐싱된 에셋을 제거합니다.
-            asset_manager.remove(STAGE_URIS[i]);
 
             // 데이터를 구문분석합니다.
             let layout: StageLayoutData = match serde_json::from_slice(&data) {
@@ -251,7 +250,11 @@ impl InGameLoadScene {
                 });
             }
 
+            // 캐싱된 에셋을 제거합니다.
+            asset_manager.remove(STAGE_URIS[i]);
+
             // 결과를 전송합니다.
+            log::debug!("task finished (TYPE: Load Stage Model)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -280,9 +283,6 @@ impl InGameLoadScene {
                     return;
                 }
             };
-
-            // 캐시를 지웁니다.
-            asset_manager.remove(UI_GAME_LAYOUT_URI);
 
             // 텍스처를 로드합니다.
             let reader = Cursor::new(bytes);
@@ -321,7 +321,11 @@ impl InGameLoadScene {
             // 텍스터를 등록합니다.
             TexturePool::register(UI_GAME_LAYOUT_URI.into(), texture.clone());
 
+            // 캐시를 지웁니다.
+            asset_manager.remove(UI_GAME_LAYOUT_URI);
+
             // 결과를 전송합니다.
+            log::debug!("task finished (TYPE: Load Ui Texture)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -350,9 +354,6 @@ impl InGameLoadScene {
                     return;
                 }
             };
-
-            // 캐시를 지웁니다.
-            asset_manager.remove(SKYBOX_URI);
 
             // 텍스처를 로드합니다.
             let reader = Cursor::new(bytes);
@@ -389,7 +390,11 @@ impl InGameLoadScene {
             // 텍스터를 등록합니다.
             TexturePool::register(SKYBOX_URI.into(), texture.clone());
 
+            // 캐시를 지웁니다.
+            asset_manager.remove(SKYBOX_URI);
+            
             // 결과를 전송합니다.
+            log::debug!("task finished (TYPE: Load Skybox Texture)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -418,9 +423,6 @@ impl InGameLoadScene {
                     return;
                 }
             };
-
-            // 캐시를 지웁니다.
-            asset_manager.remove(DAMAGE_FONT_URI);
 
             // 텍스처를 로드합니다.
             let reader = Cursor::new(bytes);
@@ -457,7 +459,11 @@ impl InGameLoadScene {
             // 텍스터를 등록합니다.
             TexturePool::register(DAMAGE_FONT_URI.into(), texture.clone());
 
+            // 캐시를 지웁니다.
+            asset_manager.remove(DAMAGE_FONT_URI);
+            
             // 결과를 전송합니다.
+            log::debug!("task finished (TYPE: Load Font Texture)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -534,9 +540,10 @@ impl GameScene for InGameLoadScene {
             match result {
                 Ok(()) => {
                     self.num_remaining_tasks -= 1;
-                    log::info!(
-                        "task success (number of tasks remaining:{})",
-                        self.num_remaining_tasks
+                    log::debug!(
+                        "task success (number of tasks remaining:{}, queue:{})",
+                        self.num_remaining_tasks, 
+                        self.task_results.len()
                     );
                 }
                 Err(_) => {
