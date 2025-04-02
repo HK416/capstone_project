@@ -12,8 +12,8 @@ use mod_app::{
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, BulletKind, CharacterKind, DamageLog, GameInputBits,
-        HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer, ObjectId,
-        PlayPhasePlayer, UserId, ViewState, ViewStateTimer,
+        HealthPoint, LatLon, LoginToken, MaxHealthPoint, MovementState, MovementStateTimer,
+        ObjectId, PlayPhasePlayer, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -867,7 +867,7 @@ impl InGameDominationModeScene {
         identifiers: &mut HashSet<UserId>,
     ) -> Vec<&'a PlayPhasePlayer> {
         // 컴포넌트 뷰를 준비합니다.
-        let mut health_point_view = self.world.view::<&mut HealthPoint>();
+        let mut health_point_view = self.world.view::<(&mut MaxHealthPoint, &mut HealthPoint)>();
         let mut action_state_view = self
             .world
             .view::<(&mut ActionState, &mut ActionStateTimer)>();
@@ -889,9 +889,10 @@ impl InGameDominationModeScene {
                 let entity = self.get_player_entity();
 
                 // 플레이어 체력을 갱신합니다.
-                let hp = health_point_view
+                let (max_hp, hp) = health_point_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
+                *max_hp = player.max_health_point;
                 *hp = player.health_point;
 
                 // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
@@ -930,9 +931,10 @@ impl InGameDominationModeScene {
                     .expect("no such entity");
 
                 // 플레이어 체력을 갱신합니다.
-                let hp = health_point_view
+                let (max_hp, hp) = health_point_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
+                *max_hp = player.max_health_point;
                 *hp = player.health_point;
 
                 // 행동 상태, 행동 상태 지속 시간을 갱신합니다.
@@ -1724,21 +1726,28 @@ impl GameScene for InGameDominationModeScene {
 
         // 체력 텍스트
         let entity = self.get_player_entity();
-        let health_point = self
+        let (&max_hp, &hp) = self
             .world
-            .query_one_mut::<&HealthPoint>(entity)
-            .cloned()
+            .query_one_mut::<(&MaxHealthPoint, &HealthPoint)>(entity)
             .expect("invalid entity or invalid entity component");
+        let percent = (hp.0 as f32 / max_hp.0.get() as f32).min(1.0);
 
-        let text = format!("{}", health_point.0.min(9999));
+        let text = format!("{}", hp.0.min(9999));
         let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
         let health_point_text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::WHITE);
 
-        // 체력 인터페이스 레이아웃 이미지 (기준 가로: 280, 세로: 94)
+        // 체력 인터페이스 레이아웃 이미지
+        // - 기준 가로 크기: 280
+        // - 기준 세로 크기: 94
+        // - 기준 시작 위치: (30, 596)
+        // - 기준 종료 위치: (310, 690)
+        //
+        let tex_width = self.ui_game_layout_texture.size.x;
+        let tex_height = self.ui_game_layout_texture.size.y;
         let src_front = egui::load::SizedTexture {
-            size: egui::vec2(104.0, 256.0),
+            size: egui::vec2(tex_width * 0.40625, tex_height),
             id: self.ui_game_layout_texture.id,
         };
         let pos_front = egui::Rect::from_min_max(
@@ -1748,7 +1757,7 @@ impl GameScene for InGameDominationModeScene {
         let uv_front = egui::Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.59375, 1.0));
 
         let src_middle = egui::load::SizedTexture {
-            size: egui::vec2(48.0, 256.0),
+            size: egui::vec2(tex_width * 0.1875, tex_height),
             id: self.ui_game_layout_texture.id,
         };
         let pos_middle = egui::Rect::from_min_max(
@@ -1759,7 +1768,7 @@ impl GameScene for InGameDominationModeScene {
             egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
 
         let src_back = egui::load::SizedTexture {
-            size: egui::vec2(104.0, 256.0),
+            size: egui::vec2(tex_width * 0.40625, tex_height),
             id: self.ui_game_layout_texture.id,
         };
         let pos_back = egui::Rect::from_min_max(
@@ -1768,7 +1777,11 @@ impl GameScene for InGameDominationModeScene {
         );
         let uv_back = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
 
-        // 체력 인터페이스 데코레이션 (기준 가로: 220 세로: 2)
+        // 체력 인터페이스 데코레이션
+        // - 기준 가로 크기: 210
+        // - 기준 세로 크기: 2
+        // - 기준 시작 위치: (75, 678)
+        // - 기준 종료 위치: (285, 680)
         let deco_pos = egui::Rect::from_min_max(
             egui::pos2(75.0 * scale, 678.0 * scale),
             egui::pos2(285.0 * scale, 680.0 * scale),
@@ -1800,7 +1813,62 @@ impl GameScene for InGameDominationModeScene {
                 .paint_at(ui, deco_pos);
         });
 
-        egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(app.egui_ctx(), |ui| {});
+        egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(app.egui_ctx(), |ui| {
+            // 기준 가로 크기: 39.6
+            // 기준 세로 크기: 52
+            // 기준 간격 가로 크기: 3
+            // 기준 시작 위치: (55, 612)
+            // 기준 종료 위치: (280, 647.5)
+            // 기준 범위: 225
+            let pivot_x = 55.0 * scale;
+            let range_x = 225.0 * percent * scale;
+            let maximum = 225.0 * scale;
+            let mut beg_x = pivot_x;
+            let mut end_x: f32;
+            let mut rect: egui::Rect;
+
+            while beg_x < pivot_x + range_x {
+                end_x = beg_x + 35.5 * scale;
+                let x = if end_x > pivot_x + range_x {
+                    rect = egui::Rect::from_min_max(
+                        egui::pos2(beg_x, 612.0 * scale),
+                        egui::pos2(end_x, 647.5 * scale),
+                    );
+                    let shape =
+                        egui::Shape::rect_filled(rect, 1.5 * scale, egui::Color32::DARK_GRAY);
+                    ui.painter().add(shape);
+
+                    pivot_x + range_x
+                } else {
+                    end_x
+                };
+
+                let fill_color = match beg_x < pivot_x + maximum * 0.3 {
+                    true => egui::Color32::LIGHT_RED,
+                    false => egui::Color32::WHITE,
+                };
+                rect = egui::Rect::from_min_max(
+                    egui::pos2(beg_x, 612.0 * scale),
+                    egui::pos2(x, 647.5 * scale),
+                );
+                let shape = egui::Shape::rect_filled(rect, 1.5 * scale, fill_color);
+                ui.painter().add(shape);
+
+                beg_x = end_x + 2.4 * scale;
+            }
+
+            while beg_x < pivot_x + maximum {
+                end_x = beg_x + 36.25 * scale;
+                rect = egui::Rect::from_min_max(
+                    egui::pos2(beg_x, 612.0 * scale),
+                    egui::pos2(end_x, 647.5 * scale),
+                );
+                let shape = egui::Shape::rect_filled(rect, 1.5 * scale, egui::Color32::DARK_GRAY);
+                ui.painter().add(shape);
+
+                beg_x = end_x + 1.5 * scale;
+            }
+        });
 
         egui::Area::new(egui::Id::new("Health_Number_Layout"))
             .anchor(egui::Align2::LEFT_BOTTOM, (70.0 * scale, -38.0 * scale))

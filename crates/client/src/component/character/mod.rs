@@ -151,6 +151,7 @@ pub fn spawn_player_character(
         glam::Vec3::from_array(player.translation),
     ));
     let world_transform = WorldTransform::default();
+    let max_health_point = player.max_health_point;
     let health_point = player.health_point;
     let action_state = player.action_state();
     let movement_state = player.movement_state();
@@ -161,13 +162,20 @@ pub fn spawn_player_character(
     let view_rotation = player.view_rotation;
 
     // 컴포넌트를 추가합니다.
-    builder.add(character_kind);
-    builder.add(local_transform);
-    builder.add(world_transform);
-    builder.add(health_point);
-    builder.add_bundle((action_state, action_state_timer));
-    builder.add_bundle((movement_state, movement_state_timer));
-    builder.add_bundle((view_state, view_state_timer, view_rotation));
+    builder.add_bundle((
+        character_kind,
+        local_transform,
+        world_transform,
+        max_health_point,
+        health_point,
+        action_state,
+        action_state_timer,
+        movement_state,
+        movement_state_timer,
+        view_state,
+        view_state_timer,
+        view_rotation,
+    ));
 
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
     let i = character_kind as usize;
