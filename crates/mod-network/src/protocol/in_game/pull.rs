@@ -9,6 +9,7 @@ use crate::{
 pub struct PullStagePacket {
     pub players: Vec<PlayPhasePlayer>,
     pub bullets: Vec<Bullet>,
+    pub remaining_time_sec: f32, // 남은 시간 추가
 }
 
 impl PullStagePacket {
@@ -23,7 +24,7 @@ impl PullStagePacket {
             "There are more people participaing in the game than the capacity!"
         );
 
-        Self { players, bullets }
+        Self { players, bullets,remaining_time_sec, }
     }
 }
 
@@ -36,7 +37,8 @@ impl Packet for PullStagePacket {
         let data_size = u8::byte_size()
             + PlayPhasePlayer::byte_size() * self.players.len()
             + u16::byte_size()
-            + Bullet::byte_size() * self.bullets.len();
+            + Bullet::byte_size() * self.bullets.len()
+            + f32::byte_size();  // 남은 시간 추가
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -48,6 +50,7 @@ impl Packet for PullStagePacket {
         for bullet in self.bullets.iter() {
             data.extend_from_slice(&bullet.to_big_endian_bytes());
         }
+        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes()); // 남은 시간 추가
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -105,8 +108,9 @@ impl Packet for PullStagePacket {
             bullets.push(Bullet::try_from_big_endian_bytes(data)?);
             num_bullets -= 1;
         }
+        let remaining_time_sec = f32::from_big_endian_bytes(&bytes[offset..offset + f32::byte_size()]);
 
-        Some(Self { players, bullets })
+        Some(Self { players, bullets, remaining_time_sec, })
     }
 }
 

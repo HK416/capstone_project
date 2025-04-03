@@ -38,6 +38,10 @@ pub struct GameWorldInGameState {
     is_running: bool,
     /// 이전 측정 시각
     previous_time_pt: Instant,
+
+    /// 남은 게임 시간 (초)
+    remaining_time_sec: f32,
+
     /// 오브젝트 식별자를 생성하기 위한 카운터입니다.
     counter: u32,
 
@@ -56,10 +60,12 @@ impl GameWorldInGameState {
     pub fn new(
         stage_kind: StageKind,
         spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+        game_duration_sec: f32,  // 게임 총 시간
     ) -> Self {
         Self {
             is_running: true,
             previous_time_pt: Instant::now(),
+            remaining_time_sec: game_duration_sec, // 초기화
             counter: 0,
             stage_kind,
             damage_logs: Queue::new(),
@@ -232,7 +238,12 @@ impl GameWorldInGameState {
             .saturating_duration_since(self.previous_time_pt)
             .as_secs_f32();
         self.previous_time_pt = current_time_pt;
-
+        
+        // 남은 시간 업데이트
+        if self.remaining_time_sec > 0.0 {
+            self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+        }
+        
         self.update_player_state_timer(world, elapsed_time_sec);
         self.update_player_position(world, elapsed_time_sec);
 
@@ -393,7 +404,6 @@ impl GameWorldInGameState {
             })
             .collect();
 
-        // 플레이어가 비어있는 경우 패킷 전송을 생략합니다.
         if players.is_empty() {
             return;
         }
@@ -404,7 +414,7 @@ impl GameWorldInGameState {
             .map(|bullet| bullet.as_bullet())
             .collect();
 
-        // 패킷을 생성하고 전송합니다.
+        // 패킷 생성 및 전송 (남은 시간 추가)
         let packet = PullStagePacket::new(players, bullets);
         for session in world.sessions.iter() {
             session.key().tcp_write(packet.as_raw());
