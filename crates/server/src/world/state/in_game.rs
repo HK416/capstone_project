@@ -415,7 +415,8 @@ impl GameWorldInGameState {
             .collect();
 
         // 패킷 생성 및 전송 (남은 시간 추가)
-        let packet = PullStagePacket::new(players, bullets);
+        let remaining_time_sec = self.remaining_time_sec; // Copy the value
+        let packet = PullStagePacket::new(players, bullets, self.remaining_time_sec);
         for session in world.sessions.iter() {
             session.key().tcp_write(packet.as_raw());
         }

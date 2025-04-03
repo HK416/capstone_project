@@ -9,7 +9,7 @@ use crate::{
 pub struct PullStagePacket {
     pub players: Vec<PlayPhasePlayer>,
     pub bullets: Vec<Bullet>,
-    pub remaining_time_sec: f32, // 남은 시간 추가
+    pub remaining_time_sec: f32,
 }
 
 impl PullStagePacket {
@@ -18,13 +18,13 @@ impl PullStagePacket {
     /// # Panics
     /// 주어진 `players`가 `MAX_IN_GAME_PLAYER`를 초과할 경우 `panic!`을 호출합니다.
     ///
-    pub fn new(players: Vec<PlayPhasePlayer>, bullets: Vec<Bullet>) -> Self {
+    pub fn new(players: Vec<PlayPhasePlayer>, bullets: Vec<Bullet>, remaining_time_sec: f32) -> Self {
         assert!(
             0 < players.len() && players.len() <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
 
-        Self { players, bullets,remaining_time_sec, }
+        Self { players, bullets, remaining_time_sec }
     }
 }
 
@@ -147,8 +147,9 @@ mod tests {
                 lon: 0.0154123,
             },
         );
+        let remaining_time_sec = 60.0;
 
-        let origin = PullStagePacket::new(vec![player_0], vec![]);
+        let origin = PullStagePacket::new(vec![player_0], vec![], remaining_time_sec);
         let raw = origin.as_raw();
         let other = PullStagePacket::from_raw(raw);
 
