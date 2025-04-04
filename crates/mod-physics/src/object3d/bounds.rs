@@ -29,7 +29,7 @@ impl BoundingBox {
         self.extents
     }
 
-    // 월드 공간에서 OBB의 정점 가져오기
+    /// 월드 공간에서 OBB의 정점 가져오기
     pub fn get_vertices(&self) -> [glam::Vec3A; 8] {
         let center = glam::Vec3A::from(self.center);
         let extents = glam::Vec3A::from(self.extents);
@@ -45,6 +45,14 @@ impl BoundingBox {
         ];
 
         vertices.map(|v| center + v)
+    }
+
+    pub fn check_point_collision(&self, point: &glam::Vec3) -> bool {
+        let min = self.center - self.extents;
+        let max = self.center + self.extents;
+        min.x <= point.x && point.x <= max.x 
+            && min.y <= point.y && point.y <= max.y 
+            && min.z <= point.z && point.z <= max.z
     }
 }
 
@@ -82,7 +90,7 @@ impl OrientedBoundingBox {
     }
 
 
-    // OBB의 지역 축 가져오기 (회전 행렬의 열)
+    /// OBB의 지역 축 가져오기 (회전 행렬의 열)
     pub fn get_axes(&self) -> [glam::Vec3A; 3] {
         [
             glam::Vec3A::from(self.rotation.x_axis),
@@ -91,7 +99,7 @@ impl OrientedBoundingBox {
         ]
     }
 
-    // 월드 공간에서 OBB의 정점 가져오기
+    /// 월드 공간에서 OBB의 정점 가져오기
     pub fn get_vertices(&self) -> [glam::Vec3A; 8] {
         let center = glam::Vec3A::from(self.center);
         let extents = glam::Vec3A::from(self.extents);
@@ -107,6 +115,13 @@ impl OrientedBoundingBox {
         ];
 
         vertices.map(|v| center + self.rotation * v)
+    }
+
+    pub fn check_point_collision(&self, point: &glam::Vec3) -> bool {
+        let inverse_rotation = self.rotation.inverse();
+        let local_point = inverse_rotation * *point;
+        let aabb = BoundingBox::new(self.center, self.extents);
+        aabb.check_point_collision(&local_point)
     }
 }
 

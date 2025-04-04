@@ -1,5 +1,5 @@
 use crate::{
-    components::{BigEndian, Bullet, PlayPhasePlayer, TryFromBigEndian, MAX_IN_GAME_PLAYERS},
+    components::{BigEndian, Bullet, CapturePoint, PlayPhasePlayer, Team, TryFromBigEndian, MAX_IN_GAME_PLAYERS},
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -9,6 +9,7 @@ use crate::{
 pub struct PullStagePacket {
     pub players: Vec<PlayPhasePlayer>,
     pub bullets: Vec<Bullet>,
+    pub capture_point: CapturePoint,
 }
 
 impl PullStagePacket {
@@ -17,13 +18,21 @@ impl PullStagePacket {
     /// # Panics
     /// 주어진 `players`가 `MAX_IN_GAME_PLAYER`를 초과할 경우 `panic!`을 호출합니다.
     ///
-    pub fn new(players: Vec<PlayPhasePlayer>, bullets: Vec<Bullet>) -> Self {
+    pub fn new(
+        players: Vec<PlayPhasePlayer>, 
+        bullets: Vec<Bullet>, 
+        capture_point: CapturePoint
+    ) -> Self {
         assert!(
             0 < players.len() && players.len() <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
 
-        Self { players, bullets }
+        Self { 
+            players, 
+            bullets,
+            capture_point,
+        }
     }
 }
 
@@ -33,10 +42,14 @@ impl Packet for PullStagePacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = u8::byte_size()
+        let mut data_size = u8::byte_size()
             + PlayPhasePlayer::byte_size() * self.players.len()
             + u16::byte_size()
-            + Bullet::byte_size() * self.bullets.len();
+            + Bullet::byte_size() * self.bullets.len()
+            + CapturePoint::byte_size();
+        if self.capture_point.capture_team.is_none() {
+            data_size -= size_of::<Team>();
+        }
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -48,6 +61,7 @@ impl Packet for PullStagePacket {
         for bullet in self.bullets.iter() {
             data.extend_from_slice(&bullet.to_big_endian_bytes());
         }
+        data.extend_from_slice(&self.capture_point.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -106,7 +120,13 @@ impl Packet for PullStagePacket {
             num_bullets -= 1;
         }
 
-        Some(Self { players, bullets })
+        // 점령지 데이터를 가져옵니다.
+        offset = offset + size;
+        size = CapturePoint::byte_size();
+        data = &bytes[offset..offset + size];
+        let capture_point = CapturePoint::try_from_big_endian_bytes(data)?;
+
+        Some(Self { players, bullets, capture_point })
     }
 }
 
@@ -143,8 +163,9 @@ mod tests {
                 lon: 0.0154123,
             },
         );
+        let capture_point = CapturePoint::default();
 
-        let origin = PullStagePacket::new(vec![player_0], vec![]);
+        let origin = PullStagePacket::new(vec![player_0], vec![], capture_point);
         let raw = origin.as_raw();
         let other = PullStagePacket::from_raw(raw);
 

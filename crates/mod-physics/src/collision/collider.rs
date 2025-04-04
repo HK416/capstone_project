@@ -81,6 +81,16 @@ impl Collider {
             Collider::Sphere(s) => s.check_static_collision(other),
         }
     }
+
+    pub fn check_point_collision(&self, point: &glam::Vec3A) -> bool {
+        match self {
+            Collider::Aabb(b) => b.check_point_collision(&glam::Vec3::from(*point)),
+            Collider::Obb(b) => b.check_point_collision(&glam::Vec3::from(*point)),
+            Collider::Capsule(c) => c.check_point_collision(&glam::Vec3::from(*point)),
+            Collider::OrientedCapsule(c) => c.check_point_collision(point),
+            Collider::Sphere(s) => s.check_point_collision(point),
+        }
+    }
 }
 
 

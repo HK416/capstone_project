@@ -20,7 +20,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
-    entities::{BulletObject, PlayerObject}, 
+    entities::{BulletObject, CapturePointObject, PlayerObject}, 
     formula::movement_formulas as formulas, 
     world::{GameWorld, GameWorldEvent}
 };
@@ -51,14 +51,16 @@ pub struct GameWorldInGameState {
     /// 플레이어 스폰 위치 저장
     spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
 
-    /// 점령도. 100이 되어야 점령 점수를 얻을 수 있습니다.
-    capture_progress: f32,
-    /// 팀별 점령 점수. 점령도가 100일때 초당 1점씩 증가합니다.
-    capture_score: [f32; 2],
-    /// 점령중인 팀
-    capture_team: Option<Team>,
-    /// 점령지 충돌체
-    capture_point_collider: Sphere, 
+    // /// 점령도. 100이 되어야 점령 점수를 얻을 수 있습니다.
+    // capture_progress: f32,
+    // /// 팀별 점령 점수. 점령도가 100일때 초당 1점씩 증가합니다.
+    // capture_score: [f32; 2],
+    // /// 점령중인 팀
+    // capture_team: Option<Team>,
+    // /// 점령지 충돌체
+    // capture_point_collider: Sphere, 
+    /// 점령지 오브젝트
+    capture_point: CapturePointObject,
 }
 
 impl GameWorldInGameState {
@@ -77,13 +79,12 @@ impl GameWorldInGameState {
             stage_kind,
             damage_logs: Queue::new(),
             spawn_positions,
-            capture_progress: 0.0,
-            capture_score: [0.0; 2],
-            capture_team: None,
-            capture_point_collider: Sphere {
-                center: glam::Vec3::ZERO,
-                radius: 7.5,
-            },
+            capture_point: CapturePointObject::new(
+                Collider::Sphere(Sphere {
+                    center: glam::Vec3::ZERO,
+                    radius: 7.5,
+                }),
+            )
         }
     }
 
@@ -398,7 +399,7 @@ impl GameWorldInGameState {
         let in_capture_point = world.players.iter()
             .filter(|player| player.health_point().0 > 0)
             .filter(|player| {
-                self.capture_point_collider.check_point_collision(&player.translation())
+                self.capture_point.collider().check_point_collision(&player.translation())
             })
             .map(|player| player.team());
         for team in in_capture_point {
@@ -425,16 +426,18 @@ impl GameWorldInGameState {
     fn update_capture_point(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
         let (new_capture_team, capturing_count) = self.get_new_capture_team(world);
 
+        let capture_point = self.capture_point.capture_point_mut();
+
         // 아무도 없으면
         if capturing_count == 0 {
             // 현재 점령완료한 팀의 점령시간 증가
-            if let Some(team) = self.capture_team {
-                if self.capture_progress == 100.0 {
-                    self.capture_score[team as usize] += elapsed_time_sec;
-                    if self.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
-                        self.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
+            if let Some(team) = capture_point.capture_team {
+                if capture_point.capture_progress == 100.0 {
+                    capture_point.capture_score[team as usize] += elapsed_time_sec;
+                    if capture_point.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
+                        capture_point.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
                         world.push_event(GameWorldEvent::GameOver {
-                            winner: self.capture_team,
+                            winner: capture_point.capture_team,
                         });
                     }
                 }
@@ -450,33 +453,33 @@ impl GameWorldInGameState {
         // 한 팀만 있는 경우
 
         // 점령팀 및 점령도 갱신
-        if new_capture_team != self.capture_team {
+        if new_capture_team != capture_point.capture_team {
             // 인원수에 비례해서 점령도 증가
-            self.capture_progress -= 10.0 * capturing_count as f32 * elapsed_time_sec;
-            if self.capture_progress <= 0.0 {
-                self.capture_team = new_capture_team;
-                self.capture_progress = self.capture_progress.abs();
+            capture_point.capture_progress -= 10.0 * capturing_count as f32 * elapsed_time_sec;
+            if capture_point.capture_progress <= 0.0 {
+                capture_point.capture_team = new_capture_team;
+                capture_point.capture_progress = capture_point.capture_progress.abs();
             }
         } else {
-            if self.capture_progress == 100.0 {
+            if capture_point.capture_progress == 100.0 {
                 let team = new_capture_team.unwrap();
-                self.capture_score[team as usize] += elapsed_time_sec;
-                if self.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
-                    self.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
+                capture_point.capture_score[team as usize] += elapsed_time_sec;
+                if capture_point.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
+                    capture_point.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
                     world.push_event(GameWorldEvent::GameOver {
-                        winner: self.capture_team,
+                        winner: capture_point.capture_team,
                     });
                 }
             } else {
-                self.capture_progress += 10.0 * capturing_count as f32 * elapsed_time_sec;
-                self.capture_progress = self.capture_progress.min(100.0);
+                capture_point.capture_progress += 10.0 * capturing_count as f32 * elapsed_time_sec;
+                capture_point.capture_progress = capture_point.capture_progress.min(100.0);
             }
         }
 
-        println!("capture team: {:?}({:.1}%)", self.capture_team, self.capture_progress);
+        println!("capture team: {:?}({:.1}%)", capture_point.capture_team, capture_point.capture_progress);
         println!("capture score: RED[{:.1}%] : BLUE[{:.1}%]", 
-            self.capture_score[Team::Red as usize] / Self::MAX_CAPTURE_SCORE * 100.0, 
-            self.capture_score[Team::Blue as usize] / Self::MAX_CAPTURE_SCORE * 100.0);
+            capture_point.capture_score[Team::Red as usize] / Self::MAX_CAPTURE_SCORE * 100.0, 
+            capture_point.capture_score[Team::Blue as usize] / Self::MAX_CAPTURE_SCORE * 100.0);
     }
 
     /// 게임 월드를 갱신합니다.
@@ -535,8 +538,10 @@ impl GameWorldInGameState {
             .map(|bullet| bullet.as_bullet())
             .collect();
 
+        let capture_point = self.capture_point.capture_point().clone();
+
         // 패킷을 생성하고 전송합니다.
-        let packet = PullStagePacket::new(players, bullets);
+        let packet = PullStagePacket::new(players, bullets, capture_point);
         for session in world.sessions.iter() {
             session.key().tcp_write(packet.as_raw());
         }
@@ -593,7 +598,7 @@ impl GameWorldState for GameWorldInGameState {
                 }
             }
             GameWorldEvent::GameOver { winner } => {
-                println!("{:?} win!", self.capture_team.unwrap());
+                println!("{:?} win!", self.capture_point.capture_team().unwrap());
                 log::info!("game over - winner: {:?}", winner);
                 // self.is_running = false;
             }
