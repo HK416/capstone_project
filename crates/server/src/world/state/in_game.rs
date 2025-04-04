@@ -443,9 +443,10 @@ impl GameWorldInGameState {
         } else {
             if self.capture_progress == 100.0 {
                 self.capture_time += elapsed_time_sec;
-                if self.capture_time >= 100.0 {
-                    println!("{:?} win!", self.capture_team.unwrap());
-                    // TODO: 종료 이벤트
+                if self.capture_time >= 60.0 {
+                    world.push_event(GameWorldEvent::GameOver {
+                        winner: self.capture_team.unwrap(),
+                    });
                 }
             } else {
                 self.capture_progress += 10.0 * capturing_count as f32 * elapsed_time_sec;
@@ -453,9 +454,9 @@ impl GameWorldInGameState {
             }
         }
 
-        // println!("capture team: {:?}", self.capture_team);
-        // println!("capture progress: {}", self.capture_progress);
-        // println!("capture time: {}", self.capture_time);
+        println!("capture team: {:?}", self.capture_team);
+        println!("capture progress: {}", self.capture_progress);
+        println!("capture time: {}", self.capture_time);
     }
 
     /// 게임 월드를 갱신합니다.
@@ -570,6 +571,11 @@ impl GameWorldState for GameWorldInGameState {
                 } else {
                     log::warn!("failed to respawn player (uid: {})", uid);
                 }
+            }
+            GameWorldEvent::GameOver { winner } => {
+                println!("{:?} win!", self.capture_team.unwrap());
+                log::info!("game over - winner: {:?}", winner);
+                // self.is_running = false;
             }
             _ => {
                 log::warn!(
