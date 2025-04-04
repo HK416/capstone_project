@@ -51,6 +51,8 @@ pub struct GameWorldInGameState {
     /// 플레이어 스폰 위치 저장
     spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
 
+    /// 점령도
+    capture_progress: f32,
     /// 점령중인 시간
     capture_time: f32,
     /// 점령중인 팀
@@ -72,6 +74,7 @@ impl GameWorldInGameState {
             stage_kind,
             damage_logs: Queue::new(),
             spawn_positions,
+            capture_progress: 0.0,
             capture_time: 0.0,
             capture_team: None,
             capture_point_collider: Sphere {
@@ -383,13 +386,76 @@ impl GameWorldInGameState {
 
     /// 점령지의 상태를 갱신합니다.
     fn update_capture_point(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
+        let mut new_capture_team = None;
+        let mut capturing_count = 0;
+
         // 점령지 안에 있는 플레이어의 팀 확인
+        let in_capture_point = world.players.iter()
+            .filter(|player| player.health_point().0 > 0)
+            .filter(|player| {
+                self.capture_point_collider.check_point_collision(&player.translation())
+            })
+            .map(|player| player.team());
+        for team in in_capture_point {
+            match new_capture_team {
+                Some(capturing_team) => {
+                    if team == capturing_team {
+                        capturing_count += 1;
+                    } else {
+                        new_capture_team = None;
+                        break;
+                    }
+                }
+                None => {
+                    new_capture_team = Some(team);
+                    capturing_count += 1;
+                }
+            }
+        }
 
-        // 현재 점령중인 팀과 비교하여 점령팀 갱신
+        // 아무도 없으면
+        if capturing_count == 0 {
+            // 점령완료한 팀의 점령시간 증가
+            if let Some(_) = self.capture_team {
+                if self.capture_progress == 100.0 {
+                    self.capture_time += elapsed_time_sec;
+                }
+            }
+            return;
+        }
 
-        // 한쪽팀만 있고 현재 점령중인 팀과 다른 경우 점령 시작
+        // 두 팀 모두 있는 경우
+        if new_capture_team.is_none() {
+            return;
+        }
 
-        // 점령시간이 100초가 되면 게임 종료(-100이면 RED팀 승리, +100이면 BLUE팀 승리)
+        // 한 팀만 있는 경우
+
+        // 점령팀이 바뀌었다면 점령시간 초기화, 점령팀 갱신
+        if new_capture_team != self.capture_team {
+            // 인원수에 비례해서 점령도 증가
+            self.capture_progress -= 10.0 * capturing_count as f32 * elapsed_time_sec;
+            if self.capture_progress <= 0.0 {
+                self.capture_team = new_capture_team;
+                self.capture_progress = self.capture_progress.abs();
+                self.capture_time = 0.0;
+            }
+        } else {
+            if self.capture_progress == 100.0 {
+                self.capture_time += elapsed_time_sec;
+                if self.capture_time >= 100.0 {
+                    println!("{:?} win!", self.capture_team.unwrap());
+                    // TODO: 종료 이벤트
+                }
+            } else {
+                self.capture_progress += 10.0 * capturing_count as f32 * elapsed_time_sec;
+                self.capture_progress = self.capture_progress.min(100.0);
+            }
+        }
+
+        // println!("capture team: {:?}", self.capture_team);
+        // println!("capture progress: {}", self.capture_progress);
+        // println!("capture time: {}", self.capture_time);
     }
 
     /// 게임 월드를 갱신합니다.
@@ -400,7 +466,7 @@ impl GameWorldInGameState {
             .as_secs_f32();
         self.previous_time_pt = current_time_pt;
 
-        println!("\rfps: {:.2} (elapsed time: {})", 1.0 / elapsed_time_sec, elapsed_time_sec);
+        // println!("fps: {:.2} (elapsed time: {})", 1.0 / elapsed_time_sec, elapsed_time_sec);
 
         self.update_player_state_timer(world, elapsed_time_sec);
         self.update_player_position(world, elapsed_time_sec);
