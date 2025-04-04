@@ -426,60 +426,16 @@ impl GameWorldInGameState {
     fn update_capture_point(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
         let (new_capture_team, capturing_count) = self.get_new_capture_team(world);
 
-        let capture_point = self.capture_point.capture_point_mut();
-
-        // 아무도 없으면
-        if capturing_count == 0 {
-            // 현재 점령완료한 팀의 점령시간 증가
-            if let Some(team) = capture_point.capture_team {
-                if capture_point.capture_progress == 100.0 {
-                    capture_point.capture_score[team as usize] += elapsed_time_sec;
-                    if capture_point.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
-                        capture_point.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
-                        world.push_event(GameWorldEvent::GameOver {
-                            winner: capture_point.capture_team,
-                        });
-                    }
-                }
-            }
-            return;
+        // 점령 수행
+        let winner = self.capture_point.capture(new_capture_team, elapsed_time_sec, capturing_count);
+        if winner.is_some() {
+            world.push_event(GameWorldEvent::GameOver { winner });
         }
 
-        // 두 팀 모두 있는 경우
-        if new_capture_team.is_none() {
-            return;
-        }
-
-        // 한 팀만 있는 경우
-
-        // 점령팀 및 점령도 갱신
-        if new_capture_team != capture_point.capture_team {
-            // 인원수에 비례해서 점령도 증가
-            capture_point.capture_progress -= 10.0 * capturing_count as f32 * elapsed_time_sec;
-            if capture_point.capture_progress <= 0.0 {
-                capture_point.capture_team = new_capture_team;
-                capture_point.capture_progress = capture_point.capture_progress.abs();
-            }
-        } else {
-            if capture_point.capture_progress == 100.0 {
-                let team = new_capture_team.unwrap();
-                capture_point.capture_score[team as usize] += elapsed_time_sec;
-                if capture_point.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
-                    capture_point.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
-                    world.push_event(GameWorldEvent::GameOver {
-                        winner: capture_point.capture_team,
-                    });
-                }
-            } else {
-                capture_point.capture_progress += 10.0 * capturing_count as f32 * elapsed_time_sec;
-                capture_point.capture_progress = capture_point.capture_progress.min(100.0);
-            }
-        }
-
-        println!("capture team: {:?}({:.1}%)", capture_point.capture_team, capture_point.capture_progress);
+        println!("capture team: {:?}({:.1}%)", self.capture_point.capture_team(), self.capture_point.capture_progress());
         println!("capture score: RED[{:.1}%] : BLUE[{:.1}%]", 
-            capture_point.capture_score[Team::Red as usize] / Self::MAX_CAPTURE_SCORE * 100.0, 
-            capture_point.capture_score[Team::Blue as usize] / Self::MAX_CAPTURE_SCORE * 100.0);
+            self.capture_point.capture_score()[Team::Red as usize] / Self::MAX_CAPTURE_SCORE * 100.0, 
+            self.capture_point.capture_score()[Team::Blue as usize] / Self::MAX_CAPTURE_SCORE * 100.0);
     }
 
     /// 게임 월드를 갱신합니다.
