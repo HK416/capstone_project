@@ -35,4 +35,11 @@ impl BulletObject {
             remaining_distance: self.remaining_distance,
         }
     }
+
+    pub fn move_velocity(&mut self, velocity: glam::Vec3A) {
+        // 총알 위치 이동
+        self.translation += velocity;
+        // 누적 이동거리 증가
+        self.remaining_distance -= velocity.length();
+    }
 }
