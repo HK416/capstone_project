@@ -40,6 +40,6 @@ pub enum GameWorldEvent {
     /// 플레이어 리스폰 요청
     RespawnPlayer { uid: UserId },
 
-    /// 게임 종료
-    GameOver { winner: Team },
+    /// 게임 종료(None이면 무승부)
+    GameOver { winner: Option<Team> },
 }
