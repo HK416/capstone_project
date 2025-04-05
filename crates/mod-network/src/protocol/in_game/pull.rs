@@ -1,5 +1,8 @@
 use crate::{
-    components::{BigEndian, Bullet, CapturePoint, PlayPhasePlayer, Team, TryFromBigEndian, MAX_IN_GAME_PLAYERS},
+    components::{
+        BigEndian, Bullet, CapturePoint, PlayPhasePlayer, Team, TryFromBigEndian,
+        MAX_IN_GAME_PLAYERS,
+    },
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -19,17 +22,17 @@ impl PullStagePacket {
     /// 주어진 `players`가 `MAX_IN_GAME_PLAYER`를 초과할 경우 `panic!`을 호출합니다.
     ///
     pub fn new(
-        players: Vec<PlayPhasePlayer>, 
-        bullets: Vec<Bullet>, 
-        capture_point: CapturePoint
+        players: Vec<PlayPhasePlayer>,
+        bullets: Vec<Bullet>,
+        capture_point: CapturePoint,
     ) -> Self {
         assert!(
             0 < players.len() && players.len() <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
 
-        Self { 
-            players, 
+        Self {
+            players,
             bullets,
             capture_point,
         }
@@ -42,14 +45,11 @@ impl Packet for PullStagePacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let mut data_size = u8::byte_size()
+        let data_size = u8::byte_size()
             + PlayPhasePlayer::byte_size() * self.players.len()
             + u16::byte_size()
             + Bullet::byte_size() * self.bullets.len()
             + CapturePoint::byte_size();
-        if self.capture_point.capture_team.is_none() {
-            data_size -= size_of::<Team>();
-        }
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -126,7 +126,11 @@ impl Packet for PullStagePacket {
         data = &bytes[offset..offset + size];
         let capture_point = CapturePoint::try_from_big_endian_bytes(data)?;
 
-        Some(Self { players, bullets, capture_point })
+        Some(Self {
+            players,
+            bullets,
+            capture_point,
+        })
     }
 }
 
