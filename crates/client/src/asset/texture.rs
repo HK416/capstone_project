@@ -2,6 +2,7 @@ use std::{
     fs::OpenOptions,
     hash::{Hash, Hasher},
     io::Read,
+    path::Path,
     sync::{Arc, OnceLock},
 };
 
@@ -153,11 +154,12 @@ impl TextureDataPool {
     /// 파일로부터 [TextureData]를 생성합니다.
     fn load_from_file<Dir, Uri>(workspace: Dir, uri: Uri) -> Result<TextureData, AssetError>
     where
-        Dir: AsRef<str>,
+        Dir: AsRef<Path>,
         Uri: AsRef<str>,
     {
-        let path = format!("{}/{}.texD", workspace.as_ref(), uri.as_ref());
-        log::info!("open texture data asset (PATH:{})", &path);
+        let mut path = workspace.as_ref().to_path_buf();
+        path.push(format!("{}.texD", uri.as_ref()));
+        log::info!("open texture data asset (PATH:{})", path.display());
         let mut file = OpenOptions::new()
             .read(true)
             .write(false)
@@ -165,31 +167,31 @@ impl TextureDataPool {
             .map_err(|e| {
                 log::error!(
                     "failed to open texture data asset (PATH:{}, REASON:{})",
-                    &path,
+                    path.display(),
                     &e
                 );
                 AssetError::IOError(e)
             })?;
 
-        log::info!("read texture data asset (PATH:{})", &path);
+        log::info!("read texture data asset (PATH:{})", path.display());
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).map_err(|e| {
             log::error!(
                 "failed to read texture data asset (PATH:{}, REASON:{})",
-                &path,
+                path.display(),
                 &e
             );
             AssetError::IOError(e)
         })?;
 
-        log::info!("close texture data asset (PATH:{})", &path);
+        log::info!("close texture data asset (PATH:{})", path.display());
         drop(file);
 
-        log::info!("decode texture data asset (PATH:{})", &path);
+        log::info!("decode texture data asset (PATH:{})", path.display());
         serde_json::from_slice(&buf).map_err(|e| {
             log::error!(
                 "failed to decode texture data asset (PATH:{}, REASON:{})",
-                &path,
+                path.display(),
                 &e
             );
             AssetError::ParsingFailed(e)
@@ -200,7 +202,7 @@ impl TextureDataPool {
     /// 해당 Uri에 등록된 텍스처가 없는 경우 텍스처를 새로 생성합니다.
     pub fn get_or_init<Dir, Uri>(workspace: Dir, uri: Uri) -> Result<Arc<TextureData>, AssetError>
     where
-        Dir: AsRef<str>,
+        Dir: AsRef<Path>,
         Uri: AsRef<str>,
     {
         // 풀 객체를 가져옵니다.
@@ -275,7 +277,7 @@ impl TexturePool {
     /// 파일로부터 [TextureData]를 생성합니다.
     fn load_from_file<Dir>(workspace: Dir, data: &TextureData) -> Result<Vec<u8>, AssetError>
     where
-        Dir: AsRef<str>,
+        Dir: AsRef<Path>,
     {
         // let path = format!("{}/{}.texP", workspace.as_ref(), &data.uri);
         // log::info!("open texture pixel asset (PATH:{})", &path);
@@ -309,8 +311,9 @@ impl TexturePool {
         // Ok(buf)
 
         use ddsfile::Dds;
-        let path = format!("{}/{}.dds", workspace.as_ref(), &data.uri);
-        log::info!("open texture pixel asset (PATH:{})", &path);
+        let mut path = workspace.as_ref().to_path_buf();
+        path.push(format!("{}.dds", &data.uri));
+        log::info!("open texture pixel asset (PATH:{})", path.display());
         let mut file = OpenOptions::new()
             .read(true)
             .write(false)
@@ -318,24 +321,24 @@ impl TexturePool {
             .map_err(|e| {
                 log::error!(
                     "failed to open texture pixel asset (PATH:{}, REASON:{})",
-                    &path,
+                    path.display(),
                     &e
                 );
                 AssetError::IOError(e)
             })?;
 
-        log::info!("read texture pixel asset (PATH:{})", &path);
+        log::info!("read texture pixel asset (PATH:{})", path.display());
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).map_err(|e| {
             log::error!(
                 "failed to read texture pixel asset (PATH:{}, REASON:{})",
-                &path,
+                path.display(),
                 &e
             );
             AssetError::IOError(e)
         })?;
 
-        log::info!("close texture pixel asset (PATH:{})", &path);
+        log::info!("close texture pixel asset (PATH:{})", path.display());
         drop(file);
 
         let dds = Dds::read(std::io::Cursor::new(buf)).unwrap();
@@ -525,7 +528,7 @@ impl TexturePool {
         data: &TextureData,
     ) -> Result<Arc<wgpu::Texture>, AssetError>
     where
-        Dir: AsRef<str>,
+        Dir: AsRef<Path>,
     {
         // 풀 객체를 가져옵니다.
         let mut pool = Self::instance();

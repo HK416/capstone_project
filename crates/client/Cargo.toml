@@ -37,6 +37,20 @@ ddsfile = "0.5"
 # License: MIT OR Apache-2.0
 image = { version = "0.25", features = ["dds", "png"], default-features = false }
 
+chrono = "0.4"
+
+# Application-level tracing for Rust.
+# License: MIT
+tracing = "0.1"
+
+# Utilities for implementing and composing `tracing` subscribers.
+# License: MIT
+tracing-subscriber = "0.3"
+
+# Provides utilities for file appenders and making non-blocking writers.
+# License: MIT
+tracing-appender = "0.2"
+
 # 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }
 mod-network = { path = "../mod-network" }

@@ -1,5 +1,6 @@
 use std::{
     io::Cursor,
+    path::Path,
     sync::{Arc, OnceLock},
 };
 
@@ -381,19 +382,12 @@ fn create_material(
         desc.layout.parallax = blob.parallax.unwrap_or(0.0);
         desc.layout.strength = blob.strength.unwrap_or(0.0);
 
-        let workspace = format!(
-            "{}/{}",
-            asset_manager.get_root_dir().to_string_lossy(),
-            workspace
-        );
+        let mut path = asset_manager.get_root_dir().to_path_buf();
+        path.push(workspace);
+        println!("{}", workspace);
         if let Some(texture_blob) = blob.albedo_map {
-            let (view, sampler) = get_or_init_texture(
-                &workspace,
-                texture_blob.name,
-                device,
-                encoder,
-                staging_buffers,
-            )?;
+            let (view, sampler) =
+                get_or_init_texture(path, texture_blob.name, device, encoder, staging_buffers)?;
             desc.with_albedo_texture(view, sampler);
         } else if let Some(color) = blob.albedo {
             desc.with_albedo_color(color.into());
@@ -472,7 +466,7 @@ fn get_or_init_texture<Dir, Uri>(
     staging_buffers: &mut Vec<wgpu::Buffer>,
 ) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError>
 where
-    Dir: AsRef<str>,
+    Dir: AsRef<Path>,
     Uri: AsRef<str>,
 {
     // 텍스처 데이터를 가져옵니다.
