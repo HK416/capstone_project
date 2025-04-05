@@ -24,6 +24,8 @@ pub fn load_bullet_model(
     bullet_kind: BulletKind,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
 ) -> Result<(), AssetError> {
     const MODELS: [(&'static str, &'static str); NUM_BULLETS] = [
         (common::WORKSPACE, common::MODEL_NAME),
@@ -34,7 +36,15 @@ pub fn load_bullet_model(
     let (workspace, model_name) = MODELS[i];
 
     // 총알 모델을 로드합니다.
-    ModelHierarchyPool::get_or_init(model_name, workspace, asset_manager, device, queue)?;
+    ModelHierarchyPool::get_or_init(
+        model_name,
+        workspace,
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+    )?;
 
     Ok(())
 }
@@ -53,12 +63,16 @@ pub fn spwan_bullet(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     world: &World,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     type SpawnFn = fn(
         &AssetManager,
         &wgpu::Device,
         &wgpu::Queue,
+        &mut wgpu::CommandEncoder,
+        &mut Vec<wgpu::Buffer>,
         &World,
         Entity,
     ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError>;
@@ -85,8 +99,15 @@ pub fn spwan_bullet(
     // 총알 종류에 따른 총알 모델을 구성하는 엔터티를 생성합니다.
     let i = bullet_kind as usize;
     let parent = entity;
-    let (model_root_entity, mut batch_commands) =
-        FUNC_TABLE[i](asset_manager, device, queue, world, parent)?;
+    let (model_root_entity, mut batch_commands) = FUNC_TABLE[i](
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+        world,
+        parent,
+    )?;
 
     // 총알 모델 루트 노드를 추가합니다.
     builder.add(Child(model_root_entity));

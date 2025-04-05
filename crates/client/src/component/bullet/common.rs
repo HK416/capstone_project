@@ -34,11 +34,20 @@ pub fn spawn_common_bullet_model(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     world: &World,
     parent: Entity,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
-    let root =
-        ModelHierarchyPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager, device, queue)?;
+    let root = ModelHierarchyPool::get_or_init(
+        MODEL_NAME,
+        WORKSPACE,
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+    )?;
 
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
     let entity = spawn_common_bullet_model_recursive(

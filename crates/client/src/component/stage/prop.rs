@@ -30,6 +30,8 @@ pub fn spawn_stage_prop(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     world: &World,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     // 엔터티를 하나 할당받습니다.
@@ -50,8 +52,17 @@ pub fn spawn_stage_prop(
 
     // 소품 모델을 구성하는 엔터티를 생성합니다.
 
-    let (model_root_entity, mut batch_commands) =
-        spawn_stage_prop_model(name, workspace, asset_manager, device, queue, world, entity)?;
+    let (model_root_entity, mut batch_commands) = spawn_stage_prop_model(
+        name,
+        workspace,
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+        world,
+        entity,
+    )?;
 
     // 자식 엔터티를 추가합니다.
     builder.add(Child(model_root_entity));
@@ -130,10 +141,20 @@ fn spawn_stage_prop_model(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     world: &World,
     parent: Entity,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
-    let root = ModelHierarchyPool::get_or_init(name, workspace, asset_manager, device, queue)?;
+    let root = ModelHierarchyPool::get_or_init(
+        name,
+        workspace,
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+    )?;
 
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
     let entity = spawn_stage_prop_model_recursion(

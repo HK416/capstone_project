@@ -1026,11 +1026,21 @@ impl InGameDominationModeScene {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(), AssetError> {
+        let mut staging_buffers = Vec::new();
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
         // 새로운 플레이어를 추가합니다.
         for player in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
-            let (root_entity, batch_commands) =
-                spawn_player_character(&player, asset_manager, device, queue, &self.world)?;
+            let (root_entity, batch_commands) = spawn_player_character(
+                &player,
+                asset_manager,
+                device,
+                queue,
+                &mut encoder,
+                &mut staging_buffers,
+                &self.world,
+            )?;
 
             // 명령어를 실행합니다.
             for (entity, mut builder) in batch_commands {
@@ -1062,11 +1072,21 @@ impl InGameDominationModeScene {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(), AssetError> {
+        let mut staging_buffers = Vec::new();
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
         // 새로운 플레이어를 추가합니다.
         for bullet in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
-            let (root_entity, batch_commands) =
-                spwan_bullet(bullet, asset_manager, device, queue, &self.world)?;
+            let (root_entity, batch_commands) = spwan_bullet(
+                bullet,
+                asset_manager,
+                device,
+                queue,
+                &mut encoder,
+                &mut staging_buffers,
+                &self.world,
+            )?;
 
             // 명령어를 실행합니다.
             for (entity, mut builder) in batch_commands {

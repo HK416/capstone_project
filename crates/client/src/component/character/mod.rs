@@ -77,6 +77,8 @@ pub fn load_character_model(
     character_kind: CharacterKind,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
 ) -> Result<(), AssetError> {
     const MODELS: [(&'static str, &'static str); NUM_CHARACTERS] = [
         (aris_original::WORKSPACE, aris_original::MODEL_NAME),
@@ -92,7 +94,15 @@ pub fn load_character_model(
     MotionPool::get_or_init(model_name, workspace, asset_manager)?;
 
     // 캐릭터 모델 계층 구조를 로드합니다.
-    ModelHierarchyPool::get_or_init(model_name, workspace, asset_manager, device, queue)?;
+    ModelHierarchyPool::get_or_init(
+        model_name,
+        workspace,
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+    )?;
 
     Ok(())
 }
@@ -122,6 +132,8 @@ pub fn spawn_player_character(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     world: &World,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     type CharacterFunc =
@@ -129,6 +141,8 @@ pub fn spawn_player_character(
             &AssetManager,
             &wgpu::Device,
             &wgpu::Queue,
+            &mut wgpu::CommandEncoder,
+            &mut Vec<wgpu::Buffer>,
             &World,
             Entity,
         )
@@ -180,8 +194,15 @@ pub fn spawn_player_character(
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
     let i = character_kind as usize;
     let parent = entity;
-    let (model_root_entity, skinning_animation, mut batch_commands) =
-        CHARACTER_FN[i](asset_manager, device, queue, world, parent)?;
+    let (model_root_entity, skinning_animation, mut batch_commands) = CHARACTER_FN[i](
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+        world,
+        parent,
+    )?;
 
     // 캐릭터 모델 루트 노드와 스키닝 애니메이션 컴포넌트를 추가합니다.
     builder.add(Child(model_root_entity));

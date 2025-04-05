@@ -51,6 +51,8 @@ pub struct InGameLoadScene {
     /// 초기화 패킷
     packet: Option<InitStagePacket>,
 
+    /// 그래픽스 명령어 작업
+    commands: Arc<Queue<(Vec<wgpu::Buffer>, wgpu::CommandBuffer)>>,
     /// 작업 결과를 저장합니다.
     task_results: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
     /// 남은 작업의 수
@@ -73,6 +75,7 @@ impl InGameLoadScene {
             user_id,
             token,
             packet: Some(packet),
+            commands: Arc::new(Queue::new()),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
             stage_models: Arc::new(Queue::new()),
@@ -97,16 +100,32 @@ impl InGameLoadScene {
             .map(|player| player.character_kind)
             .collect();
         for character_kind in character_kinds {
+            let commands = self.commands.clone();
             let task_results = self.task_results.clone();
             let asset_manager = asset_manager.clone();
             let device = device.clone();
             let queue = queue.clone();
 
             thread_pool.spawn(move || {
+                // 스레드의 커맨드 버퍼를 생성합니다.
+                let mut staging_buffers = Vec::new();
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
                 // 캐릭터 모델을 로드합니다.
-                let result = load_character_model(&asset_manager, character_kind, &device, &queue)
-                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+                let result = load_character_model(
+                    &asset_manager,
+                    character_kind,
+                    &device,
+                    &queue,
+                    &mut encoder,
+                    &mut staging_buffers,
+                )
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
                 log::debug!("task finished (TYPE: Load Character Model)");
+
+                // 커맨드 버퍼를 전송합니다.
+                commands.push((staging_buffers, encoder.finish()));
                 // 결과를 전송합니다.
                 task_results.push(result);
             });
@@ -132,16 +151,32 @@ impl InGameLoadScene {
             .map(|player| player.character_kind.into())
             .collect();
         for bullet_kind in bullet_kinds {
+            let commands = self.commands.clone();
             let task_results = self.task_results.clone();
             let asset_manager = asset_manager.clone();
             let device = device.clone();
             let queue = queue.clone();
 
             thread_pool.spawn(move || {
+                // 스레드의 커맨드 버퍼를 생성합니다.
+                let mut staging_buffers = Vec::new();
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
                 // 총알 모델을 로드합니다.
-                let result = load_bullet_model(&asset_manager, bullet_kind, &device, &queue)
-                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+                let result = load_bullet_model(
+                    &asset_manager,
+                    bullet_kind,
+                    &device,
+                    &queue,
+                    &mut encoder,
+                    &mut staging_buffers,
+                )
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
                 log::debug!("task finished (TYPE: Load Bullet Model)");
+
+                // 커맨드 버퍼를 전송합니다.
+                commands.push((staging_buffers, encoder.finish()));
                 // 결과를 전송합니다.
                 task_results.push(result);
             });
@@ -164,11 +199,17 @@ impl InGameLoadScene {
         let i = init_stage_packet.stage_kind() as usize;
 
         let stage_models = self.stage_models.clone();
+        let commands = self.commands.clone();
         let task_results = self.task_results.clone();
         let asset_manager = asset_manager.clone();
         let device = device.clone();
         let queue = queue.clone();
         thread_pool.spawn(move || {
+            // 스레드의 커맨드 버퍼를 생성합니다.
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
             // 지형 데이터를 로드합니다.
             let result = asset_manager.get_or_init(STAGE_URIS[i]);
             let data = match result {
@@ -202,6 +243,8 @@ impl InGameLoadScene {
                     &asset_manager,
                     &device,
                     &queue,
+                    &mut encoder,
+                    &mut staging_buffers,
                 );
 
                 match result {
@@ -252,6 +295,9 @@ impl InGameLoadScene {
 
             // 캐싱된 에셋을 제거합니다.
             asset_manager.remove(STAGE_URIS[i]);
+
+            // 커맨드 버퍼를 전송합니다.
+            commands.push((staging_buffers, encoder.finish()));
 
             // 결과를 전송합니다.
             log::debug!("task finished (TYPE: Load Stage Model)");
@@ -392,7 +438,7 @@ impl InGameLoadScene {
 
             // 캐시를 지웁니다.
             asset_manager.remove(SKYBOX_URI);
-            
+
             // 결과를 전송합니다.
             log::debug!("task finished (TYPE: Load Skybox Texture)");
             task_results.push(Ok(()));
@@ -461,7 +507,7 @@ impl InGameLoadScene {
 
             // 캐시를 지웁니다.
             asset_manager.remove(DAMAGE_FONT_URI);
-            
+
             // 결과를 전송합니다.
             log::debug!("task finished (TYPE: Load Font Texture)");
             task_results.push(Ok(()));
@@ -534,6 +580,19 @@ impl GameScene for InGameLoadScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
+    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
+        // 커맨드 버퍼를 수집합니다.
+        let mut commands = Vec::new();
+        let mut staging_buffers: Vec<wgpu::Buffer> = Vec::new();
+        while let Some((mut buffers, command)) = self.commands.pop() {
+            commands.push(command);
+            staging_buffers.append(&mut buffers);
+        }
+
+        app.render_queue().submit(commands);
+        drop(staging_buffers);
+    }
+
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_results.pop() {
@@ -542,7 +601,7 @@ impl GameScene for InGameLoadScene {
                     self.num_remaining_tasks -= 1;
                     log::debug!(
                         "task success (number of tasks remaining:{}, queue:{})",
-                        self.num_remaining_tasks, 
+                        self.num_remaining_tasks,
                         self.task_results.len()
                     );
                 }

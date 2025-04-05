@@ -114,6 +114,9 @@ impl InGameBuildScene {
             let task_result_ref = task_result.clone();
             let player_entities_ref = player_entities.clone();
             let batch_commands_ref = batch_commands.clone();
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
             rayon::scope(move |scope| {
                 let players = init_stage_packet.players;
                 let task_result_cloned = task_result_ref.clone();
@@ -126,6 +129,8 @@ impl InGameBuildScene {
                             &asset_manager,
                             device_ref,
                             queue_ref,
+                            &mut encoder,
+                            &mut staging_buffers,
                             world_ref,
                         );
                         match result {

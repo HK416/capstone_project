@@ -4,19 +4,17 @@ use std::{
 };
 
 use ahash::HashMap;
-use ddsfile::Dds;
 use mod_app::asset::AssetManager;
 use mod_network::components::{
-    HierarchyNode, MaterialData, MeshData, ModelHierarchyData, SkinningData, TextureData,
+    HierarchyNode, MaterialData, MeshData, ModelHierarchyData, SkinningData,
 };
 use mod_render::{
     Attributes, Indices, MaterialDescriptor, MaterialPool, MaterialResource, Mesh, MeshPool,
-    SamplerPool, TexturePool, TextureViewPool, Vertices, MAX_BONES,
+    Vertices, MAX_BONES,
 };
 use parking_lot::{FairMutex, FairMutexGuard};
-use wgpu::util::DeviceExt as _;
 
-use super::AssetError;
+use super::{AssetError, SamplerPool, TextureDataPool, TexturePool, TextureViewPool};
 
 type PoolType = HashMap<String, Arc<Root>>;
 
@@ -47,12 +45,22 @@ impl ModelHierarchyPool {
         asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
     ) -> Result<Arc<Root>, AssetError> {
         let mut pool = get_pool();
         match pool.get(name).cloned() {
             Some(root) => Ok(root),
             None => {
-                let root = load_model_root(name, workspace, asset_manager, device, queue)?;
+                let root = load_model_root(
+                    name,
+                    workspace,
+                    asset_manager,
+                    device,
+                    queue,
+                    encoder,
+                    staging_buffers,
+                )?;
                 pool.insert(name.to_string(), root.clone());
                 Ok(root)
             }
@@ -108,6 +116,8 @@ fn load_model_root(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
 ) -> Result<Arc<Root>, AssetError> {
     let path = format!("{}/{}.hierarchy", workspace, name);
     log::debug!("load model asset (PATH:{})", &path);
@@ -115,7 +125,7 @@ fn load_model_root(
         log::error!("{} (PATH:{})", &e, &path);
         AssetError::from(e)
     })?;
-    
+
     log::debug!("parse model asset (PATH:{})", &path);
     let reader = Cursor::new(cached_asset.as_bytes());
     let blob: ModelHierarchyData = serde_json::de::from_reader(reader).map_err(|e| {
@@ -123,12 +133,20 @@ fn load_model_root(
         AssetError::from(e)
     })?;
 
-    let node = load_model_node_recursive(workspace, asset_manager, device, queue, blob.root)?;
+    let node = load_model_node_recursive(
+        workspace,
+        asset_manager,
+        device,
+        queue,
+        encoder,
+        staging_buffers,
+        blob.root,
+    )?;
     let root = Arc::new(Root {
         node,
         num_nodes: blob.num_nodes as usize,
     });
-    
+
     log::debug!("cleanup model asset cache (PATH:{})", &path);
     asset_manager.remove(path);
 
@@ -141,6 +159,8 @@ fn load_model_node_recursive(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     blob: HierarchyNode,
 ) -> Result<Node, AssetError> {
     let name = blob.name.clone();
@@ -197,6 +217,8 @@ fn load_model_node_recursive(
             asset_manager,
             device,
             queue,
+            encoder,
+            staging_buffers,
             blob,
         )?);
     }
@@ -208,6 +230,8 @@ fn load_model_node_recursive(
             asset_manager,
             device,
             queue,
+            encoder,
+            staging_buffers,
             blob,
         )?);
     }
@@ -344,6 +368,8 @@ fn create_material(
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     blob: MaterialData,
 ) -> Result<Arc<MaterialResource>, AssetError> {
     MaterialPool::get_or_init(&blob.name.clone(), move || {
@@ -355,45 +381,80 @@ fn create_material(
         desc.layout.parallax = blob.parallax.unwrap_or(0.0);
         desc.layout.strength = blob.strength.unwrap_or(0.0);
 
+        let workspace = format!(
+            "{}/{}",
+            asset_manager.get_root_dir().to_string_lossy(),
+            workspace
+        );
         if let Some(texture_blob) = blob.albedo_map {
-            let (view, sampler) =
-                load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
+            let (view, sampler) = get_or_init_texture(
+                &workspace,
+                texture_blob.name,
+                device,
+                encoder,
+                staging_buffers,
+            )?;
             desc.with_albedo_texture(view, sampler);
         } else if let Some(color) = blob.albedo {
             desc.with_albedo_color(color.into());
         }
 
         if let Some(texture_blob) = blob.specular_map {
-            let (view, sampler) =
-                load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
+            let (view, sampler) = get_or_init_texture(
+                &workspace,
+                texture_blob.name,
+                device,
+                encoder,
+                staging_buffers,
+            )?;
             desc.with_specular_texture(view, sampler);
         } else if let Some(color) = blob.specular {
             desc.with_specular_color(color.into());
         }
 
         if let Some(texture_blob) = blob.emissive_map {
-            let (view, sampler) =
-                load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
+            let (view, sampler) = get_or_init_texture(
+                &workspace,
+                texture_blob.name,
+                device,
+                encoder,
+                staging_buffers,
+            )?;
             desc.with_emissive_texture(view, sampler);
         } else if let Some(color) = blob.emissive {
             desc.with_emissive_color(color.into());
         }
 
         if let Some(texture_blob) = blob.normal_map {
-            let (view, sampler) =
-                load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
+            let (view, sampler) = get_or_init_texture(
+                &workspace,
+                texture_blob.name,
+                device,
+                encoder,
+                staging_buffers,
+            )?;
             desc.with_normal_texture(view, sampler);
         }
 
         if let Some(texture_blob) = blob.height_map {
-            let (view, sampler) =
-                load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
+            let (view, sampler) = get_or_init_texture(
+                &workspace,
+                texture_blob.name,
+                device,
+                encoder,
+                staging_buffers,
+            )?;
             desc.with_height_texture(view, sampler);
         }
 
         if let Some(texture_blob) = blob.occlusion_map {
-            let (view, sampler) =
-                load_dds_texture(&workspace, asset_manager, device, queue, texture_blob)?;
+            let (view, sampler) = get_or_init_texture(
+                &workspace,
+                texture_blob.name,
+                device,
+                encoder,
+                staging_buffers,
+            )?;
             desc.with_occlusion_texture(view, sampler);
         }
 
@@ -402,71 +463,43 @@ fn create_material(
     })
 }
 
-/// 텍스처를 생성합니다. 풀 객체에 텍스처가 없는 경우 풀 객체에 추가합니다.
-fn load_dds_texture(
-    workspace: &str,
-    asset_manager: &AssetManager,
+/// 이미 생성된 텍스처를 가져오거나, 텍스처를 파일로부터 생성합니다.
+fn get_or_init_texture<Dir, Uri>(
+    workspace: Dir,
+    uri: Uri,
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    blob: TextureData,
-) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError> {
-    let texture = TexturePool::get_or_init(
-        &blob.name.clone(),
-        move || -> Result<Arc<wgpu::Texture>, AssetError> {
-            let path = format!("{}/{}.dds", workspace, &blob.name);
-            let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
-                log::error!("{} (PATH:{})", &e, &path);
-                AssetError::from(e)
-            })?;
-
-            let dds =
-                Dds::read(Cursor::new(cached_asset.as_bytes())).map_err(|e| AssetError::from(e))?;
-
-            let texture = device.create_texture_with_data(
-                queue,
-                &wgpu::TextureDescriptor {
-                    label: Some(&format!("Texture({})", &blob.name)),
-                    size: wgpu::Extent3d {
-                        width: dds.get_width(),
-                        height: dds.get_height(),
-                        depth_or_array_layers: dds.get_num_array_layers(),
-                    },
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Bc7RgbaUnorm,
-                    mip_level_count: dds.get_num_mipmap_levels(),
-                    sample_count: 1,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                },
-                wgpu::util::TextureDataOrder::LayerMajor,
-                &dds.data,
-            );
-
-            asset_manager.remove(path);
-            Ok(Arc::new(texture))
-        },
-    )?;
-
-    let texture_view = TextureViewPool::get_or_init(
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError>
+where
+    Dir: AsRef<str>,
+    Uri: AsRef<str>,
+{
+    // 텍스처 데이터를 가져옵니다.
+    let data = TextureDataPool::get_or_init(workspace.as_ref(), uri.as_ref())?;
+    // 텍스처를 가져옵니다.
+    let texture = TexturePool::get_or_init(workspace, device, encoder, staging_buffers, &data)?;
+    // 텍스처 뷰를 가져옵니다.
+    let view = TextureViewPool::get_or_init(
         &texture,
         &wgpu::TextureViewDescriptor {
-            dimension: Some(blob.dimension.into()),
+            dimension: Some(data.dimension.into()),
             ..Default::default()
         },
     );
-
+    // 텍스처 샘플러를 가져옵니다.
     let sampler = SamplerPool::get_or_init(
         device,
         &wgpu::SamplerDescriptor {
-            address_mode_u: blob.address_u.into(),
-            address_mode_v: blob.address_v.into(),
-            address_mode_w: blob.address_w.into(),
-            mag_filter: blob.filter_mode.into(),
-            min_filter: blob.filter_mode.into(),
-            mipmap_filter: blob.filter_mode.into(),
+            address_mode_u: data.address_u.into(),
+            address_mode_v: data.address_v.into(),
+            address_mode_w: data.address_w.into(),
+            mag_filter: data.filter_mode.into(),
+            min_filter: data.filter_mode.into(),
+            mipmap_filter: data.filter_mode.into(),
             ..Default::default()
         },
     );
 
-    Ok((texture_view, sampler))
+    Ok((view, sampler))
 }
