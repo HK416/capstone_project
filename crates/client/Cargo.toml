@@ -13,6 +13,7 @@ build = "build.rs"
 ahash = { workspace = true }
 bitflags = { workspace = true }
 bytemuck = { workspace = true }
+chrono = { workspace = true }
 constcat = { workspace = true }
 dashmap = { workspace = true }
 egui = { workspace = true }
@@ -26,6 +27,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 static_assertions = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
 
@@ -37,32 +41,12 @@ ddsfile = "0.5"
 # License: MIT OR Apache-2.0
 image = { version = "0.25", features = ["dds", "png"], default-features = false }
 
-chrono = "0.4"
-
-# Application-level tracing for Rust.
-# License: MIT
-tracing = "0.1"
-
-# Utilities for implementing and composing `tracing` subscribers.
-# License: MIT
-tracing-subscriber = "0.3"
-
-# Provides utilities for file appenders and making non-blocking writers.
-# License: MIT
-tracing-appender = "0.2"
-
 # 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }
 mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-physics = { path = "../mod-physics" }
 mod-render = { path = "../mod-render" }
-
-
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-# A logging implementation for `log` which is configured via an environment variable.
-# License: MIT OR Apache-2.0
-env_logger = "0.11"
 
 
 

@@ -12,7 +12,8 @@ use std::{
 };
 
 use mod_app::net::IpAddress;
-use tracing::Level;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::EnvFilter;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 
 pub const SERVER_IP: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
@@ -38,11 +39,6 @@ fn main() {
     use scenes::GameStartupScene;
 
     // 로그 시스템을 초기화 합니다.
-    // env_logger::builder()
-    //     .filter_module("wgpu_core", log::LevelFilter::Warn)
-    //     .filter_module("wgpu_hal", log::LevelFilter::Warn)
-    //     .filter_module("naga", log::LevelFilter::Warn)
-    //     .init();
     let _guard = init_log_system();
     log::info!("클라이언트 애플리케이션 실행...");
 
@@ -59,15 +55,27 @@ fn main() {
 /// 반환되는 `WorkerGuard`를 유지해야 로그가 정상적으로 저장됩니다.
 ///
 fn init_log_system() -> WorkerGuard {
+    // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
+    let mut dir = get_current_path().to_path_buf();
+    dir.push("logs");
+
     // 로그 시스템을 생성합니다.
-    let formatted = chrono::Local::now().format("%Y_%m_%d_%H_%M_%S").to_string();
+    let formatted = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let file_name = format!("log-{}", formatted);
-    let file_appender = rolling::never(get_current_path(), file_name);
+    let file_appender = rolling::never(dir, file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
+    // 로그에 남길 오류 수준을 설정합니다.
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::DEBUG.into())
+        .from_env_lossy();
+
+    // 로그 시스템을 초기화합니다.
     tracing_subscriber::fmt()
+        .with_env_filter(filter)    
         .with_ansi(false)
         .with_writer(non_blocking)
+        .with_thread_names(true)
         .init();
 
     guard

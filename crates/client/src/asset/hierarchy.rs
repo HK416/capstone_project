@@ -384,7 +384,6 @@ fn create_material(
 
         let mut path = asset_manager.get_root_dir().to_path_buf();
         path.push(workspace);
-        println!("{}", workspace);
         if let Some(texture_blob) = blob.albedo_map {
             let (view, sampler) =
                 get_or_init_texture(path, texture_blob.name, device, encoder, staging_buffers)?;
