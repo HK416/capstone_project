@@ -15,15 +15,15 @@ use mod_network::{
     protocol::InitStagePacket,
 };
 use mod_parallelism::collections::Queue;
-use mod_render::TexturePool;
 use rayon::ThreadPool;
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        AssetError, ModelHierarchyPool, StageModel, DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI,
-        STAGE_URIS, STAGE_WORKSPACES, UI_GAME_LAYOUT_URI,
+        AssetError, MeshPool, ModelHierarchyPool, SamplerPool, StageModel, TextureDataPool,
+        TexturePool, TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI, STAGE_URIS,
+        STAGE_WORKSPACES, UI_GAME_LAYOUT_URI,
     },
     component::{load_bullet_model, load_character_model},
     config::{Locale, NUM_LOCALE},
@@ -60,6 +60,17 @@ pub struct InGameLoadScene {
 
     /// 로드된 에셋 데이터입니다.
     stage_models: Arc<Queue<StageModel>>,
+
+    /// 텍스처 데이터 풀 객체입니다.
+    texture_data_pool: TextureDataPool,
+    /// 텍스처 풀 객체입니다.
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체입니다.
+    texture_view_pool: TextureViewPool,
+    /// 텍스처 샘플러 풀 객체입니다.
+    sampler_pool: SamplerPool,
+    /// 메쉬 풀 객체입니다.
+    mesh_pool: MeshPool,
 }
 
 impl InGameLoadScene {
@@ -79,6 +90,11 @@ impl InGameLoadScene {
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
             stage_models: Arc::new(Queue::new()),
+            texture_data_pool: TextureDataPool::new(),
+            texture_pool: TexturePool::new(),
+            texture_view_pool: TextureViewPool::new(),
+            sampler_pool: SamplerPool::new(),
+            mesh_pool: MeshPool::new(),
         }
     }
 
@@ -102,6 +118,11 @@ impl InGameLoadScene {
         for character_kind in character_kinds {
             let commands = self.commands.clone();
             let task_results = self.task_results.clone();
+            let texture_data_pool = self.texture_data_pool.clone();
+            let texture_pool = self.texture_pool.clone();
+            let texture_view_pool = self.texture_view_pool.clone();
+            let sampler_pool = self.sampler_pool.clone();
+            let mesh_pool = self.mesh_pool.clone();
             let asset_manager = asset_manager.clone();
             let device = device.clone();
             let queue = queue.clone();
@@ -114,6 +135,11 @@ impl InGameLoadScene {
 
                 // 캐릭터 모델을 로드합니다.
                 let result = load_character_model(
+                    &texture_data_pool,
+                    &texture_pool,
+                    &texture_view_pool,
+                    &sampler_pool,
+                    &mesh_pool,
                     &asset_manager,
                     character_kind,
                     &device,
@@ -153,6 +179,11 @@ impl InGameLoadScene {
         for bullet_kind in bullet_kinds {
             let commands = self.commands.clone();
             let task_results = self.task_results.clone();
+            let texture_data_pool = self.texture_data_pool.clone();
+            let texture_pool = self.texture_pool.clone();
+            let texture_view_pool = self.texture_view_pool.clone();
+            let sampler_pool = self.sampler_pool.clone();
+            let mesh_pool = self.mesh_pool.clone();
             let asset_manager = asset_manager.clone();
             let device = device.clone();
             let queue = queue.clone();
@@ -165,6 +196,11 @@ impl InGameLoadScene {
 
                 // 총알 모델을 로드합니다.
                 let result = load_bullet_model(
+                    &texture_data_pool,
+                    &texture_pool,
+                    &texture_view_pool,
+                    &sampler_pool,
+                    &mesh_pool,
                     &asset_manager,
                     bullet_kind,
                     &device,
@@ -201,6 +237,11 @@ impl InGameLoadScene {
         let stage_models = self.stage_models.clone();
         let commands = self.commands.clone();
         let task_results = self.task_results.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        let mesh_pool = self.mesh_pool.clone();
         let asset_manager = asset_manager.clone();
         let device = device.clone();
         let queue = queue.clone();
@@ -238,6 +279,11 @@ impl InGameLoadScene {
             let mut models = HashMap::default();
             for model_name in layout.models.iter() {
                 let result = ModelHierarchyPool::get_or_init(
+                    &texture_data_pool,
+                    &texture_pool,
+                    &texture_view_pool,
+                    &sampler_pool,
+                    &mesh_pool,
                     &model_name,
                     STAGE_WORKSPACES[i],
                     &asset_manager,
@@ -315,6 +361,7 @@ impl InGameLoadScene {
         queue: &Arc<wgpu::Queue>,
     ) {
         let task_results = self.task_results.clone();
+        let texture_pool = self.texture_pool.clone();
         let asset_manager = asset_manager.clone();
         let device = device.clone();
         let queue = queue.clone();
@@ -365,7 +412,7 @@ impl InGameLoadScene {
             ));
 
             // 텍스터를 등록합니다.
-            TexturePool::register(UI_GAME_LAYOUT_URI.into(), texture.clone());
+            texture_pool.insert(UI_GAME_LAYOUT_URI, texture);
 
             // 캐시를 지웁니다.
             asset_manager.remove(UI_GAME_LAYOUT_URI);
@@ -386,6 +433,7 @@ impl InGameLoadScene {
         queue: &Arc<wgpu::Queue>,
     ) {
         let task_results = self.task_results.clone();
+        let texture_pool = self.texture_pool.clone();
         let asset_manager = asset_manager.clone();
         let device = device.clone();
         let queue = queue.clone();
@@ -434,7 +482,7 @@ impl InGameLoadScene {
             ));
 
             // 텍스터를 등록합니다.
-            TexturePool::register(SKYBOX_URI.into(), texture.clone());
+            texture_pool.insert(SKYBOX_URI, texture);
 
             // 캐시를 지웁니다.
             asset_manager.remove(SKYBOX_URI);
@@ -455,6 +503,7 @@ impl InGameLoadScene {
         queue: &Arc<wgpu::Queue>,
     ) {
         let task_results = self.task_results.clone();
+        let texture_pool = self.texture_pool.clone();
         let asset_manager = asset_manager.clone();
         let device = device.clone();
         let queue = queue.clone();
@@ -503,7 +552,7 @@ impl InGameLoadScene {
             ));
 
             // 텍스터를 등록합니다.
-            TexturePool::register(DAMAGE_FONT_URI.into(), texture.clone());
+            texture_pool.insert(DAMAGE_FONT_URI, texture);
 
             // 캐시를 지웁니다.
             asset_manager.remove(DAMAGE_FONT_URI);
@@ -629,6 +678,11 @@ impl GameScene for InGameLoadScene {
                 self.token,
                 self.packet.take(),
                 self.stage_models.clone(),
+                self.texture_data_pool.clone(),
+                self.texture_pool.clone(),
+                self.texture_view_pool.clone(),
+                self.sampler_pool.clone(),
+                self.mesh_pool.clone(),
             ));
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);

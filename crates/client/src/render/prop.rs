@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
 use hecs::{With, World};
-use mod_render::{
-    AttributeKind, CameraResource, GraphicsPipelinePool, MaterialResource, Mesh, MeshResource,
-};
+use mod_render::{CameraResource, GraphicsPipelinePool, MaterialResource};
 
-use crate::component::StageProp;
+use crate::component::{AttributeKind, Mesh, MeshResource, StageProp};
 
 /// 스테이지 소품 렌더링 파이프라인 이름입니다.
 pub const STAGE_PROP_PIPELINE_NAME: &'static str = "StageProp";
@@ -147,13 +145,13 @@ pub fn draw_stage_props<'a>(
 
     type Query<'a> = (
         &'a Arc<Mesh>,
-        &'a Arc<MeshResource>,
+        &'a MeshResource,
         &'a Vec<Arc<MaterialResource>>,
     );
     let mut query = world.query::<With<Query, &StageProp>>();
     for (_, (mesh, mesh_resource, materials)) in query.iter() {
         // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
-        rpass.set_bind_group(1, &mesh_resource.bind_group, &[]);
+        rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
 
         // 메쉬의 정점 속성을 바인드합니다.
         rpass.set_vertex_buffer(0, mesh.vertex(..));

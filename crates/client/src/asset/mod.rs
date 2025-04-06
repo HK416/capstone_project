@@ -1,4 +1,5 @@
 mod hierarchy;
+mod mesh;
 mod motion;
 mod stage;
 mod texture;
@@ -7,7 +8,7 @@ use std::io;
 
 use mod_network::components::NUM_STAGES;
 
-pub use self::{hierarchy::*, motion::*, stage::*, texture::*};
+pub use self::{hierarchy::*, mesh::*, motion::*, stage::*, texture::*};
 
 /// 사용자 구성 파일의 상대 경로입니다.
 pub const USER_CONFIG: &'static str = "user_config";
@@ -91,6 +92,9 @@ pub const STAGE_URIS: [&'static str; NUM_STAGES] = ["stage/city/map.json"];
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]
 pub enum AssetError {
+    #[error("invalid data")]
+    InvalidData,
+
     /// dds 포맷의 텍스처를 읽는데 실패한 경우 발생하는 오류입니다.
     #[error("failed to read texture for the following reason:{0}")]
     TextureError(#[from] ddsfile::Error),

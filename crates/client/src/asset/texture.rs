@@ -1,9 +1,11 @@
+//! 텍스처 에셋과 관련된 코드를 관리합니다.
+//!
 use std::{
     fs::OpenOptions,
     hash::{Hash, Hasher},
     io::Read,
     path::Path,
-    sync::{Arc, OnceLock},
+    sync::Arc,
 };
 
 use ahash::{AHasher, HashMap, RandomState};
@@ -130,7 +132,8 @@ pub struct TextureData {
 }
 
 /// 생성된 텍스처 데이터 객체를 관리하는 풀 객체입니다.
-pub struct TextureDataPool;
+#[derive(Debug, Clone)]
+pub struct TextureDataPool(Arc<FairMutex<TextureDataPoolType>>);
 
 /// 텍스처 데이터 풀 객체의 타입입니다.
 pub type TextureDataPoolType = HashMap<String, Arc<TextureData>>;
@@ -139,16 +142,21 @@ pub type TextureDataPoolType = HashMap<String, Arc<TextureData>>;
 pub const TEXTURE_DATA_POOL_CAPACITY: usize = 128;
 
 impl TextureDataPool {
-    /// 풀 객체를 가져옵니다.
-    pub fn instance() -> FairMutexGuard<'static, TextureDataPoolType> {
-        static POOL: OnceLock<FairMutex<TextureDataPoolType>> = OnceLock::new();
-        POOL.get_or_init(|| {
-            FairMutex::new(HashMap::with_capacity_and_hasher(
-                TEXTURE_DATA_POOL_CAPACITY,
-                RandomState::new(),
-            ))
-        })
-        .lock()
+    /// 새로운 풀 객체를 생성합니다.
+    pub fn new() -> Self {
+        Self(Arc::new(FairMutex::new(HashMap::with_capacity_and_hasher(
+            TEXTURE_DATA_POOL_CAPACITY,
+            RandomState::new(),
+        ))))
+    }
+
+    /// 풀 객체의 `lock`을 획득합니다.
+    ///
+    /// # Warning
+    /// `FairMutexGuard`가 지속되는 동안 풀 객체의 다른 함수를 호출하면 데드락이 발생합니다.
+    ///
+    pub fn lock(&self) -> FairMutexGuard<'_, TextureDataPoolType> {
+        self.0.lock()
     }
 
     /// 파일로부터 [TextureData]를 생성합니다.
@@ -159,7 +167,8 @@ impl TextureDataPool {
     {
         let mut path = workspace.as_ref().to_path_buf();
         path.push(format!("{}.texD", uri.as_ref()));
-        log::info!("open texture data asset (PATH:{})", path.display());
+
+        log::debug!("open texture data asset (PATH:{})", path.display());
         let mut file = OpenOptions::new()
             .read(true)
             .write(false)
@@ -173,7 +182,7 @@ impl TextureDataPool {
                 AssetError::IOError(e)
             })?;
 
-        log::info!("read texture data asset (PATH:{})", path.display());
+        log::debug!("read texture data asset (PATH:{})", path.display());
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).map_err(|e| {
             log::error!(
@@ -184,10 +193,10 @@ impl TextureDataPool {
             AssetError::IOError(e)
         })?;
 
-        log::info!("close texture data asset (PATH:{})", path.display());
+        log::debug!("close texture data asset (PATH:{})", path.display());
         drop(file);
 
-        log::info!("decode texture data asset (PATH:{})", path.display());
+        log::debug!("decode texture data asset (PATH:{})", path.display());
         serde_json::from_slice(&buf).map_err(|e| {
             log::error!(
                 "failed to decode texture data asset (PATH:{}, REASON:{})",
@@ -200,13 +209,17 @@ impl TextureDataPool {
 
     /// 텍스처 데이터 풀 객체에 등록된 텍스처를 가져옵니다.  
     /// 해당 Uri에 등록된 텍스처가 없는 경우 텍스처를 새로 생성합니다.
-    pub fn get_or_init<Dir, Uri>(workspace: Dir, uri: Uri) -> Result<Arc<TextureData>, AssetError>
+    pub fn get_or_init<Dir, Uri>(
+        &self,
+        workspace: Dir,
+        uri: Uri,
+    ) -> Result<Arc<TextureData>, AssetError>
     where
         Dir: AsRef<Path>,
         Uri: AsRef<str>,
     {
         // 풀 객체를 가져옵니다.
-        let mut pool = Self::instance();
+        let mut pool = self.lock();
 
         if let Some(texture) = pool.get(uri.as_ref()).cloned() {
             return Ok(texture);
@@ -222,25 +235,25 @@ impl TextureDataPool {
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn get<Uri>(uri: Uri) -> Option<Arc<TextureData>>
+    pub fn get<Uri>(&self, uri: Uri) -> Option<Arc<TextureData>>
     where
         Uri: AsRef<str>,
     {
-        Self::instance().get(uri.as_ref()).cloned()
+        self.lock().get(uri.as_ref()).cloned()
     }
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove<Uri>(uri: Uri) -> Option<Arc<TextureData>>
+    pub fn remove<Uri>(&self, uri: Uri) -> Option<Arc<TextureData>>
     where
         Uri: AsRef<str>,
     {
-        Self::instance().remove(uri.as_ref()).map(|item| item)
+        self.lock().remove(uri.as_ref()).map(|item| item)
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 뷰 객체를 제거합니다.
-    pub fn clear() {
-        Self::instance().clear()
+    pub fn clear(&self) {
+        self.lock().clear()
     }
 }
 
@@ -253,7 +266,8 @@ pub struct MipLevelCopyLayout {
 }
 
 /// 생성된 텍스처 객체를 관리하는 풀 객체입니다.
-pub struct TexturePool;
+#[derive(Debug, Clone)]
+pub struct TexturePool(Arc<FairMutex<TexturePoolType>>);
 
 /// 텍스처 풀 객체의 타입입니다.
 pub type TexturePoolType = HashMap<String, Arc<wgpu::Texture>>;
@@ -262,16 +276,21 @@ pub type TexturePoolType = HashMap<String, Arc<wgpu::Texture>>;
 pub const TEXTURE_POOL_CAPACITY: usize = 128;
 
 impl TexturePool {
-    /// 풀 객체를 가져옵니다.
-    pub fn instance() -> FairMutexGuard<'static, TexturePoolType> {
-        static POOL: OnceLock<FairMutex<TexturePoolType>> = OnceLock::new();
-        POOL.get_or_init(|| {
-            FairMutex::new(HashMap::with_capacity_and_hasher(
-                TEXTURE_POOL_CAPACITY,
-                RandomState::new(),
-            ))
-        })
-        .lock()
+    /// 새로운 풀 객체를 생성합니다.
+    pub fn new() -> Self {
+        Self(Arc::new(FairMutex::new(HashMap::with_capacity_and_hasher(
+            TEXTURE_POOL_CAPACITY,
+            RandomState::new(),
+        ))))
+    }
+
+    /// 풀 객체의 `lock`을 획득합니다.
+    ///
+    /// # Warning
+    /// `FairMutexGuard`가 지속되는 동안 풀 객체의 다른 함수를 호출하면 데드락이 발생합니다.
+    ///
+    pub fn lock(&self) -> FairMutexGuard<'_, TexturePoolType> {
+        self.0.lock()
     }
 
     /// 파일로부터 [TextureData]를 생성합니다.
@@ -279,41 +298,11 @@ impl TexturePool {
     where
         Dir: AsRef<Path>,
     {
-        // let path = format!("{}/{}.texP", workspace.as_ref(), &data.uri);
-        // log::info!("open texture pixel asset (PATH:{})", &path);
-        // let mut file = OpenOptions::new()
-        //     .read(true)
-        //     .write(false)
-        //     .open(&path)
-        //     .map_err(|e| {
-        //         log::error!(
-        //             "failed to open texture pixel asset (PATH:{}, REASON:{})",
-        //             &path,
-        //             &e
-        //         );
-        //         AssetError::IOError(e)
-        //     })?;
-
-        // log::info!("read texture pixel asset (PATH:{})", &path);
-        // let mut buf = Vec::new();
-        // file.read_to_end(&mut buf).map_err(|e| {
-        //     log::error!(
-        //         "failed to read texture pixel asset (PATH:{}, REASON:{})",
-        //         &path,
-        //         &e
-        //     );
-        //     AssetError::IOError(e)
-        // })?;
-
-        // log::info!("close texture pixel asset (PATH:{})", &path);
-        // drop(file);
-
-        // Ok(buf)
-
         use ddsfile::Dds;
         let mut path = workspace.as_ref().to_path_buf();
         path.push(format!("{}.dds", &data.uri));
-        log::info!("open texture pixel asset (PATH:{})", path.display());
+
+        log::debug!("open texture pixel asset (PATH:{})", path.display());
         let mut file = OpenOptions::new()
             .read(true)
             .write(false)
@@ -327,7 +316,7 @@ impl TexturePool {
                 AssetError::IOError(e)
             })?;
 
-        log::info!("read texture pixel asset (PATH:{})", path.display());
+        log::debug!("read texture pixel asset (PATH:{})", path.display());
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).map_err(|e| {
             log::error!(
@@ -338,7 +327,7 @@ impl TexturePool {
             AssetError::IOError(e)
         })?;
 
-        log::info!("close texture pixel asset (PATH:{})", path.display());
+        log::debug!("close texture pixel asset (PATH:{})", path.display());
         drop(file);
 
         let dds = Dds::read(std::io::Cursor::new(buf)).unwrap();
@@ -446,7 +435,7 @@ impl TexturePool {
         );
 
         // 스테이징 버퍼를 생성합니다.
-        log::info!("create staging buffer (URI:{})", &data.uri);
+        log::debug!("create staging buffer (URI:{})", &data.uri);
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&format!("Staging(Texture({}))", &data.uri)),
             contents: &padded_bytes,
@@ -454,7 +443,7 @@ impl TexturePool {
         });
 
         // 텍스처를 생성합니다.
-        log::info!("create texture (URI:{})", &data.uri);
+        log::debug!("create texture (URI:{})", &data.uri);
         let texture = Arc::new(device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&format!("Texture({})", &data.uri)),
             dimension: data.dimension.into(),
@@ -521,6 +510,7 @@ impl TexturePool {
     /// 텍스처 풀 객체에 등록된 텍스처를 가져옵니다.  
     /// 해당 Uri에 등록된 텍스처가 없는 경우 텍스처를 새로 생성합니다.
     pub fn get_or_init<Dir>(
+        &self,
         workspace: Dir,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
@@ -531,7 +521,7 @@ impl TexturePool {
         Dir: AsRef<Path>,
     {
         // 풀 객체를 가져옵니다.
-        let mut pool = Self::instance();
+        let mut pool = self.lock();
 
         if let Some(texture) = pool.get(&data.uri).cloned() {
             return Ok(texture);
@@ -548,39 +538,40 @@ impl TexturePool {
 
     /// 텍스처 풀 객체에 텍스처를 등록합니다.  
     /// 이미 Uri에 해당하는 텍스처가 존재할 경우 기존의 텍스처를 반환합니다.
-    pub fn insert<Uri>(uri: Uri, texture: Arc<wgpu::Texture>) -> Option<Arc<wgpu::Texture>>
+    pub fn insert<Uri>(&self, uri: Uri, texture: Arc<wgpu::Texture>) -> Option<Arc<wgpu::Texture>>
     where
         Uri: AsRef<str>,
     {
-        Self::instance().insert(uri.as_ref().into(), texture)
+        self.lock().insert(uri.as_ref().into(), texture)
     }
 
-    /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
+    /// Uri에 해당하는 텍스처 객체를 가져옵니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn get<Uri>(uri: Uri) -> Option<Arc<wgpu::Texture>>
+    pub fn get<Uri>(&self, uri: Uri) -> Option<Arc<wgpu::Texture>>
     where
         Uri: AsRef<str>,
     {
-        Self::instance().get(uri.as_ref()).cloned()
+        self.lock().get(uri.as_ref()).cloned()
     }
 
-    /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
-    /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove<Uri>(uri: Uri) -> Option<Arc<wgpu::Texture>>
+    /// Uri에 해당하는 텍스처 객체들를 풀 객체에서 제거합니다.  
+    /// 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn remove<Uri>(&self, uri: Uri) -> Option<Arc<wgpu::Texture>>
     where
         Uri: AsRef<str>,
     {
-        Self::instance().remove(uri.as_ref()).map(|item| item)
+        self.lock().remove(uri.as_ref()).map(|item| item)
     }
 
-    /// 풀 객체에 존재하는 모든 텍스처 뷰 객체를 제거합니다.
-    pub fn clear() {
-        Self::instance().clear()
+    /// 풀 객체에 존재하는 모든 텍스처 객체를 제거합니다.
+    pub fn clear(&self) {
+        self.lock().clear()
     }
 }
 
 /// 생성된 텍스처 뷰 객체를 관리하는 풀 객체입니다.
-pub struct TextureViewPool;
+#[derive(Debug, Clone)]
+pub struct TextureViewPool(Arc<FairMutex<TextureViewPoolType>>);
 
 /// 텍스처 뷰 풀 객체의 타입입니다.
 pub type TextureViewPoolType = HashMap<Arc<wgpu::Texture>, HashMap<u64, Arc<wgpu::TextureView>>>;
@@ -589,16 +580,21 @@ pub type TextureViewPoolType = HashMap<Arc<wgpu::Texture>, HashMap<u64, Arc<wgpu
 pub const TEXTURE_VIEW_POOL_CAPACITY: usize = 128;
 
 impl TextureViewPool {
-    /// 풀 객체를 가져옵니다.
-    pub fn instance() -> FairMutexGuard<'static, TextureViewPoolType> {
-        static POOL: OnceLock<FairMutex<TextureViewPoolType>> = OnceLock::new();
-        POOL.get_or_init(|| {
-            FairMutex::new(HashMap::with_capacity_and_hasher(
-                TEXTURE_VIEW_POOL_CAPACITY,
-                RandomState::new(),
-            ))
-        })
-        .lock()
+    /// 새로운 풀 객체를 생성합니다.
+    pub fn new() -> Self {
+        Self(Arc::new(FairMutex::new(HashMap::with_capacity_and_hasher(
+            TEXTURE_VIEW_POOL_CAPACITY,
+            RandomState::new(),
+        ))))
+    }
+
+    /// 풀 객체의 `lock`을 획득합니다.
+    ///
+    /// # Warning
+    /// `FairMutexGuard`가 지속되는 동안 풀 객체의 다른 함수를 호출하면 데드락이 발생합니다.
+    ///
+    pub fn lock(&self) -> FairMutexGuard<'_, TextureViewPoolType> {
+        self.0.lock()
     }
 
     /// [wgpu::TextureViewDescriptor]의 해시 값을 가져옵니다.
@@ -617,11 +613,12 @@ impl TextureViewPool {
     /// 텍스처 객체와 설명자에 해당하는 텍스처 뷰 객체를 가져옵니다.  
     /// 해당 텍스처 뷰 객체가 풀 객체에 존재하지 않는 경우 새로운 텍스처 뷰 객체를 생성합니다.
     pub fn get_or_init(
+        &self,
         texture: &Arc<wgpu::Texture>,
         desc: &wgpu::TextureViewDescriptor,
     ) -> Arc<wgpu::TextureView> {
         let key = Self::get_hash(desc);
-        let mut pool = Self::instance();
+        let mut pool = self.lock();
         match pool.get(texture).cloned() {
             Some(mut map) => match map.get(&key).cloned() {
                 Some(view) => view,
@@ -643,20 +640,21 @@ impl TextureViewPool {
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove(texture: &Arc<wgpu::Texture>) -> Option<Vec<Arc<wgpu::TextureView>>> {
-        Self::instance()
+    pub fn remove(&self, texture: &Arc<wgpu::Texture>) -> Option<Vec<Arc<wgpu::TextureView>>> {
+        self.lock()
             .remove(texture)
             .map(|pool| pool.into_values().collect())
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 뷰 객체를 제거합니다.
-    pub fn clear() {
-        Self::instance().clear()
+    pub fn clear(&self) {
+        self.lock().clear()
     }
 }
 
 /// 생성된 텍스처 샘플러 객체를 관리하는 풀 객체입니다.  
-pub struct SamplerPool;
+#[derive(Debug, Clone)]
+pub struct SamplerPool(Arc<FairMutex<SamplerPoolType>>);
 
 /// 텍스처 샘플러 풀 객체의 타입입니다.
 type SamplerPoolType = HashMap<u64, Arc<wgpu::Sampler>>;
@@ -665,16 +663,21 @@ type SamplerPoolType = HashMap<u64, Arc<wgpu::Sampler>>;
 pub const SAMPLER_POOL_CAPACITY: usize = 16;
 
 impl SamplerPool {
-    /// 풀 객체를 가져옵니다.
-    pub fn instance() -> FairMutexGuard<'static, SamplerPoolType> {
-        static POOL: OnceLock<FairMutex<SamplerPoolType>> = OnceLock::new();
-        POOL.get_or_init(|| {
-            FairMutex::new(HashMap::with_capacity_and_hasher(
-                SAMPLER_POOL_CAPACITY,
-                RandomState::new(),
-            ))
-        })
-        .lock()
+    /// 새로운 풀 객체를 생성합니다.
+    pub fn new() -> Self {
+        Self(Arc::new(FairMutex::new(HashMap::with_capacity_and_hasher(
+            SAMPLER_POOL_CAPACITY,
+            RandomState::new(),
+        ))))
+    }
+
+    /// 풀 객체의 `lock`을 획득합니다.
+    ///
+    /// # Warning
+    /// `FairMutexGuard`가 지속되는 동안 풀 객체의 다른 함수를 호출하면 데드락이 발생합니다.
+    ///
+    pub fn lock(&self) -> FairMutexGuard<'_, SamplerPoolType> {
+        self.0.lock()
     }
 
     /// [wgpu::SamplerDescriptor]의 해시 값을 가져옵니다.
@@ -695,11 +698,12 @@ impl SamplerPool {
     /// 설명자에 해당하는 텍스처 샘플러 객체를 가져옵니다.  
     /// 해당 텍스처 샘플러 객체가 풀 객체에 존재하지 않는 경우 새로운 텍스처 샘플러 객체를 생성합니다.
     pub fn get_or_init(
+        &self,
         device: &wgpu::Device,
         desc: &wgpu::SamplerDescriptor,
     ) -> Arc<wgpu::Sampler> {
         let key = Self::get_hash(desc);
-        let mut pool = Self::instance();
+        let mut pool = self.lock();
         match pool.get(&key).cloned() {
             Some(sampler) => sampler,
             None => {
@@ -712,12 +716,12 @@ impl SamplerPool {
 
     /// 설명자에 해당하는 텍스처 샘플러 객체를 풀 객체에서 제거합니다.  
     /// 해당 텍스처 샘플러 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove(desc: &wgpu::SamplerDescriptor) -> Option<Arc<wgpu::Sampler>> {
-        Self::instance().remove(&Self::get_hash(desc))
+    pub fn remove(&self, desc: &wgpu::SamplerDescriptor) -> Option<Arc<wgpu::Sampler>> {
+        self.lock().remove(&Self::get_hash(desc))
     }
 
     /// 풀 객체에 존재하는 모든 텍스처 샘플러 객체를 제거합니다.
-    pub fn clear() {
-        Self::instance().clear()
+    pub fn clear(&self) {
+        self.lock().clear()
     }
 }

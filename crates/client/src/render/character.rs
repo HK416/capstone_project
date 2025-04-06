@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use mod_render::{CameraResource, MaterialResource, MeshResource};
+use mod_render::{CameraResource, MaterialResource};
+
+use crate::component::{MeshResource, SkinnedMeshResource};
 
 pub const CHARACTER_PIPELINE_ID: &'static str = "Character";
 pub const CHARACTER_HALO_PIPELINE_ID: &'static str = "CharacterHalo";
@@ -35,9 +37,22 @@ fn create_character_halo_shader_module(device: &wgpu::Device) -> wgpu::ShaderMod
 }
 
 /// 파이프라인 레이아웃을 생성합니다.
-fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
+fn create_character_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("PipelineLayout(Character)"),
+        bind_group_layouts: &[
+            CameraResource::bind_group_layout(device),
+            SkinnedMeshResource::bind_group_layout(device),
+            MaterialResource::bind_group_layout(device),
+        ],
+        push_constant_ranges: &[],
+    })
+}
+
+/// 파이프라인 레이아웃을 생성합니다.
+fn create_character_halo_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
+    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("PipelineLayout(CharacterHalo)"),
         bind_group_layouts: &[
             CameraResource::bind_group_layout(device),
             MeshResource::bind_group_layout(device),
@@ -53,7 +68,7 @@ fn create_shadow_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout 
         label: Some("PipelineLayout(Character(Shadow))"),
         bind_group_layouts: &[
             CameraResource::bind_group_layout(device),
-            MeshResource::bind_group_layout(device),
+            SkinnedMeshResource::bind_group_layout(device),
         ],
         push_constant_ranges: &[],
     })
@@ -66,7 +81,7 @@ pub fn create_character_render_pipeline(
     render_target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
     let module = create_character_shader_module(device);
-    let layout = create_pipeline_layout(device);
+    let layout = create_character_pipeline_layout(device);
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("RenderPipeline(Character)"),
         layout: Some(&layout),
@@ -176,7 +191,7 @@ pub fn create_character_halo_render_pipeline(
     render_target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
     let module = create_character_halo_shader_module(device);
-    let layout = create_pipeline_layout(device);
+    let layout = create_character_halo_pipeline_layout(device);
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("RenderPipeline(CharacterHalo)"),
         layout: Some(&layout),

@@ -10,13 +10,17 @@ use mod_network::components::{
     MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES,
     NUM_MOVEMENT_STATES, NUM_VIEW_STATES,
 };
-use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
+use mod_render::MaterialResource;
 
 use crate::{
-    asset::{AssetError, ModelHierarchyPool, Motion, MotionPool, Node},
+    asset::{
+        AssetError, MeshPool, ModelHierarchyPool, Motion, MotionPool, Node, SamplerPool,
+        TextureDataPool, TexturePool, TextureViewPool,
+    },
     component::{
-        BoneCollection, Child, Parent, Sibling, SkinningAnimation, ThirdPersonCamera,
-        ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
+        BoneCollection, BoneTransformUniform, Child, MeshResource, Parent, Sibling,
+        SkinnedMeshResource, SkinningAnimation, ThirdPersonCamera, ToParentTrans, TransformUniform,
+        WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
         ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX,
         MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX,
         MOVING_ANIMATION_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
@@ -213,6 +217,11 @@ const VITAL_DEATH_ANIMATION: &'static str = concat!(MODEL_NAME, VITAL_DEATH_ANIM
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 pub fn spawn_character_model(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -222,6 +231,11 @@ pub fn spawn_character_model(
     parent: Entity,
 ) -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root = ModelHierarchyPool::get_or_init(
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
+        mesh_pool,
         MODEL_NAME,
         WORKSPACE,
         asset_manager,
@@ -239,6 +253,8 @@ pub fn spawn_character_model(
         world,
         device,
         queue,
+        encoder,
+        staging_buffers,
         &mut meshes,
         &mut entities,
         &mut animation_mixing_bones,
@@ -331,6 +347,8 @@ fn spawn_character_model_recursive(
     world: &World,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     meshes: &mut HashMap<String, Entity>,
     entities: &mut HashMap<String, Entity>,
     animation_mixing_bones: &mut HashSet<Entity>,
@@ -369,6 +387,8 @@ fn spawn_character_model_recursive(
             world,
             device,
             queue,
+            encoder,
+            staging_buffers,
             meshes,
             entities,
             animation_mixing_bones,
@@ -394,6 +414,8 @@ fn spawn_character_model_recursive(
             world,
             device,
             queue,
+            encoder,
+            staging_buffers,
             meshes,
             entities,
             animation_mixing_bones,
@@ -410,23 +432,19 @@ fn spawn_character_model_recursive(
 
     // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
     if let Some(mesh) = current.mesh.clone() {
-        // 메쉬 쉐이더 리소스를 생성합니다.
-        let mesh_name = mesh.name().to_string();
-        let mesh_resource = Arc::new(MeshResource::uninit(Some(&mesh_name), device));
-
-        // 스키닝 데이터가 존재하는 경우 스키닝 데이터를 추가합니다.
-        if let Some(skinning) = &current.skinning {
-            // 메쉬 쉐이더 리소스의 스키닝 데이터를 초기화합니다.
-            let data = SkinningDataLayout {
-                quality: skinning.quality,
-                num_bones: skinning.num_bones,
-                ..Default::default()
-            };
-            mesh_resource.skinning_uniform.update(device, queue, data);
-
-            // 메쉬 쉐이더 리소스의 바인드 포즈 데이터를 초기화합니다.
-            let data = skinning.bindposes.clone();
-            mesh_resource.bindpose_uniform.update(device, queue, data);
+        let uri = mesh.uri();
+        if let Some(skinning) = current.skinning.clone() {
+            let skinning_uniform = skinning.skinning_uniform.clone();
+            let bindpose_uniform = skinning.bindpose_uniform.clone();
+            let bone_trans_uniform =
+                BoneTransformUniform::uninit(Some(&format!("BoneTrans({})", &uri)), device);
+            let mesh_resource = SkinnedMeshResource::new(
+                Some(uri),
+                device,
+                &skinning_uniform,
+                &bindpose_uniform,
+                &bone_trans_uniform,
+            );
 
             // 스키닝된 메쉬를 구성하는 뼈 엔터티 집합을 생성합니다.
             let collection = BoneCollection {
@@ -441,20 +459,25 @@ fn spawn_character_model_recursive(
                     .collect(),
             };
 
-            // 뼈 엔터티 집합 컴포넌트를 추가합니다.
-            builder.add(collection);
-        }
-
-        if mesh.name().contains("Halo") {
-            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::YuukaOriginalHalo));
+            builder.add_bundle((bone_trans_uniform, mesh_resource, collection));
         } else {
-            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterKind::YuukaOriginal));
+            let uri = mesh.uri();
+            let transform_uniform =
+                TransformUniform::uninit(Some(&format!("Transform({})", uri)), device);
+            let mesh_resource = MeshResource::new(Some(uri), device, &transform_uniform);
+            builder.add_bundle((transform_uniform, mesh_resource));
         }
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
-        meshes.insert(mesh_name, entity);
+        meshes.insert(uri.into(), entity);
+
+        if mesh.uri().contains("Halo") {
+            // 메쉬, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, CharacterHaloKind::YuukaOriginalHalo));
+        } else {
+            // 메쉬, 캐릭터 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, CharacterKind::YuukaOriginal));
+        }
     }
 
     // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.

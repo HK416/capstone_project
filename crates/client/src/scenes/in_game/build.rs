@@ -20,11 +20,14 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
-use mod_render::{SamplerPool, SkyboxResource, TexturePool, TextureViewPool};
+use mod_render::SkyboxResource;
 use winit::window::Window;
 
 use crate::{
-    asset::{StageModel, NOTOSANS_BOLD, SKYBOX_URI},
+    asset::{
+        MeshPool, SamplerPool, StageModel, TextureDataPool, TexturePool, TextureViewPool,
+        NOTOSANS_BOLD, SKYBOX_URI,
+    },
     component::{spawn_player_character, spawn_stage_area_from_root, spawn_stage_prop_from_root},
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
@@ -60,6 +63,17 @@ pub struct InGameBuildScene {
     task_result: Arc<Queue<Result<Box<dyn GameScene>, Box<dyn Error + Send>>>>,
     /// 작업이 완료된 여부
     load_finish: bool,
+
+    /// 텍스처 데이터 풀 객체입니다.
+    texture_data_pool: TextureDataPool,
+    /// 텍스처 풀 객체입니다.
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체입니다.
+    texture_view_pool: TextureViewPool,
+    /// 텍스처 샘플러 풀 객체입니다.
+    sampler_pool: SamplerPool,
+    /// 메쉬 풀 객체입니다.
+    mesh_pool: MeshPool,
 }
 
 impl InGameBuildScene {
@@ -74,6 +88,11 @@ impl InGameBuildScene {
         token: LoginToken,
         packet: Option<InitStagePacket>,
         stage_models: Arc<Queue<StageModel>>,
+        texture_data_pool: TextureDataPool,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
+        sampler_pool: SamplerPool,
+        mesh_pool: MeshPool,
     ) -> Self {
         assert!(packet.is_some(), "packet must exist!");
         Self {
@@ -84,6 +103,11 @@ impl InGameBuildScene {
             stage_models,
             task_result: Arc::new(Queue::new()),
             load_finish: false,
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
+            mesh_pool,
         }
     }
 
@@ -96,6 +120,11 @@ impl InGameBuildScene {
     ) {
         let init_stage_packet = self.packet.take().expect("packet must exits!");
         let task_result = self.task_result.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        let mesh_pool = self.mesh_pool.clone();
         let stage_models = self.stage_models.clone();
         let asset_manager = asset_manager.clone();
         let device = device.clone();
@@ -114,6 +143,13 @@ impl InGameBuildScene {
             let task_result_ref = task_result.clone();
             let player_entities_ref = player_entities.clone();
             let batch_commands_ref = batch_commands.clone();
+
+            let texture_data_pool_ref = &texture_data_pool;
+            let texture_pool_ref = &texture_pool;
+            let texture_view_pool_ref = &texture_view_pool;
+            let sampler_pool_ref = &sampler_pool;
+            let mesh_pool_ref = &mesh_pool;
+
             let mut staging_buffers = Vec::new();
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -125,6 +161,11 @@ impl InGameBuildScene {
                 scope.spawn(move |_| {
                     for player in players {
                         let result = spawn_player_character(
+                            texture_data_pool_ref,
+                            texture_pool_ref,
+                            texture_view_pool_ref,
+                            sampler_pool_ref,
+                            mesh_pool_ref,
                             &player,
                             &asset_manager,
                             device_ref,
@@ -195,15 +236,17 @@ impl InGameBuildScene {
             }
 
             // 스카이박스 쉐이더 리소스를 생성합니다.
-            let t_skybox = TexturePool::get(SKYBOX_URI).expect("texture must be pre-registered!");
-            let t_skybox = TextureViewPool::get_or_init(
+            let t_skybox = texture_pool
+                .get(SKYBOX_URI)
+                .expect("texture must be pre-registered!");
+            let t_skybox = texture_view_pool.get_or_init(
                 &t_skybox,
                 &wgpu::TextureViewDescriptor {
                     dimension: Some(wgpu::TextureViewDimension::Cube),
                     ..Default::default()
                 },
             );
-            let s_skybox = SamplerPool::get_or_init(&device, &wgpu::SamplerDescriptor::default());
+            let s_skybox = sampler_pool.get_or_init(&device, &wgpu::SamplerDescriptor::default());
             let skybox_resource =
                 SkyboxResource::uninit(Some("Skyxox"), &device, &t_skybox, &s_skybox);
 
@@ -212,6 +255,11 @@ impl InGameBuildScene {
                 locale,
                 user_id,
                 token,
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
+                mesh_pool,
                 world,
                 players,
                 skybox_resource.into(),

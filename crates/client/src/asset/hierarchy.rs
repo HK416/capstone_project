@@ -6,16 +6,15 @@ use std::{
 
 use ahash::HashMap;
 use mod_app::asset::AssetManager;
-use mod_network::components::{
-    HierarchyNode, MaterialData, MeshData, ModelHierarchyData, SkinningData,
-};
-use mod_render::{
-    Attributes, Indices, MaterialDescriptor, MaterialPool, MaterialResource, Mesh, MeshPool,
-    Vertices, MAX_BONES,
-};
+use mod_network::components::{HierarchyNode, MaterialData, ModelHierarchyData};
+use mod_render::{MaterialDescriptor, MaterialPool, MaterialResource};
 use parking_lot::{FairMutex, FairMutexGuard};
 
-use super::{AssetError, SamplerPool, TextureDataPool, TexturePool, TextureViewPool};
+use crate::component::Mesh;
+
+use super::{
+    AssetError, MeshPool, SamplerPool, Skinning, TextureDataPool, TexturePool, TextureViewPool,
+};
 
 type PoolType = HashMap<String, Arc<Root>>;
 
@@ -41,6 +40,11 @@ impl ModelHierarchyPool {
     /// 모델 계층 구조 데이터를 로드하는 도중 오류가 발생한 경우 `Error`를 반환합니다.
     ///
     pub fn get_or_init(
+        texture_data_pool: &TextureDataPool,
+        texture_pool: &TexturePool,
+        texture_view_pool: &TextureViewPool,
+        sampler_pool: &SamplerPool,
+        mesh_pool: &MeshPool,
         name: &str,
         workspace: &str,
         asset_manager: &AssetManager,
@@ -54,6 +58,11 @@ impl ModelHierarchyPool {
             Some(root) => Ok(root),
             None => {
                 let root = load_model_root(
+                    texture_data_pool,
+                    texture_pool,
+                    texture_view_pool,
+                    sampler_pool,
+                    mesh_pool,
                     name,
                     workspace,
                     asset_manager,
@@ -95,23 +104,18 @@ pub struct Node {
     pub name: String,
     pub transform: glam::Mat4,
     pub mesh: Option<Arc<Mesh>>,
-    pub skinning: Option<Skinning>,
+    pub skinning: Option<Arc<Skinning>>,
     pub materials: Vec<Arc<MaterialResource>>,
     pub children: Vec<Node>,
 }
 
-/// ## Skinned Mesh Data
-#[derive(Debug, Clone)]
-pub struct Skinning {
-    pub quality: u32,
-    pub num_bones: u32,
-    pub root_bone: String,
-    pub bones: Vec<String>,
-    pub bindposes: Vec<[f32; 16]>,
-}
-
 /// 모델의 노드 데이터를 로드합니다.
 fn load_model_root(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     name: &str,
     workspace: &str,
     asset_manager: &AssetManager,
@@ -135,6 +139,11 @@ fn load_model_root(
     })?;
 
     let node = load_model_node_recursive(
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
+        mesh_pool,
         workspace,
         asset_manager,
         device,
@@ -156,6 +165,11 @@ fn load_model_root(
 
 /// 모델을 구성하는 노드의 계층구조를 구성합니다.
 fn load_model_node_recursive(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     workspace: &str,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
@@ -166,37 +180,14 @@ fn load_model_node_recursive(
 ) -> Result<Node, AssetError> {
     let name = blob.name.clone();
     let transform = blob.transform.into_mat4();
-    let (skinning, mesh) = match blob.mesh.as_ref() {
-        Some(filename) => {
-            let path = format!("{}/{}.mesh", workspace, &filename);
-            let cached = asset_manager.get_or_init(&path).map_err(|e| {
-                log::error!("{} (PATH:{})", &e, &path);
-                AssetError::from(e)
-            })?;
-            let mut blob: MeshData =
-                serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
-                    log::error!("{} (PATH:{})", &e, &path);
-                    AssetError::from(e)
-                })?;
+    let (mesh, skinning) = match blob.mesh.as_ref() {
+        Some(mesh_uri) => {
+            let mut path = asset_manager.get_root_dir().to_path_buf();
+            path.push(workspace);
 
-            match blob.skinning.take() {
-                Some(SkinningData {
-                    quality,
-                    root_bone,
-                    bones,
-                    bindposes,
-                }) => (
-                    Some(Skinning {
-                        quality: quality.min(4),
-                        num_bones: bones.len().min(MAX_BONES) as u32,
-                        root_bone,
-                        bones,
-                        bindposes: bindposes.into_iter().map(|m| m.into()).collect(),
-                    }),
-                    Some(create_mesh(device, queue, blob)),
-                ),
-                None => (None, Some(create_mesh(device, queue, blob))),
-            }
+            let (mesh, skinning) =
+                mesh_pool.get_or_init(path, mesh_uri, device, encoder, staging_buffers)?;
+            (Some(mesh), skinning)
         }
         None => (None, None),
     };
@@ -214,6 +205,10 @@ fn load_model_node_recursive(
         })?;
 
         materials.push(create_material(
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
             workspace,
             asset_manager,
             device,
@@ -227,6 +222,11 @@ fn load_model_node_recursive(
     let mut children = Vec::with_capacity(blob.children.len());
     for blob in blob.children {
         children.push(load_model_node_recursive(
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
+            mesh_pool,
             workspace,
             asset_manager,
             device,
@@ -238,10 +238,6 @@ fn load_model_node_recursive(
     }
 
     // 캐싱된 에셋을 정리합니다.
-    if let Some(filename) = blob.mesh.as_ref() {
-        let path = format!("{}/{}.mesh", workspace, &filename);
-        asset_manager.remove(path);
-    }
     for filename in blob.materials.iter() {
         let path = format!("{}/{}.material", &workspace, &filename);
         asset_manager.remove(path);
@@ -257,114 +253,12 @@ fn load_model_node_recursive(
     })
 }
 
-/// 메쉬를 생성합니다. 풀 객체에 메쉬가 없는 경우 풀 객체에 추가합니다.
-fn create_mesh(device: &wgpu::Device, queue: &wgpu::Queue, mut blob: MeshData) -> Arc<Mesh> {
-    MeshPool::get_or_init(&blob.name.clone(), move || {
-        let vertices: Vec<[f32; 3]> = blob.vertices.iter().cloned().map(|v| v.into()).collect();
-        let vertices = Vertices(vertices);
-        let mut mesh = Mesh::new(&blob.name, device, queue, vertices);
-        blob.vertices.clear();
-
-        if !blob.colors.is_empty() {
-            let attributes: Vec<[f32; 4]> = blob.colors.iter().cloned().map(|v| v.into()).collect();
-            let attributes = Attributes::Color(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.colors.clear();
-        }
-
-        if !blob.normals.is_empty() {
-            // 정점의 노멀 속성 추가
-            let attributes: Vec<[f32; 3]> =
-                blob.normals.iter().cloned().map(|v| v.into()).collect();
-            let attributes = Attributes::Normal(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.normals.clear();
-        }
-
-        if !blob.tangents.is_empty() {
-            // 정점의 탄젠트 공간 노멀 속성 추가
-            let attributes: Vec<[f32; 3]> =
-                blob.tangents.iter().cloned().map(|v| v.into()).collect();
-            let attributes = Attributes::Tangent(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.tangents.clear();
-        }
-
-        if !blob.texcoords0.is_empty() {
-            // 정점의 0번 텍스처 좌표 속성 추가
-            let attributes: Vec<[f32; 2]> =
-                blob.texcoords0.iter().cloned().map(|v| v.into()).collect();
-            let attributes = Attributes::Texcoord0(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.texcoords0.clear();
-        }
-
-        if !blob.texcoords1.is_empty() {
-            // 정점의 1번 텍스처 좌표 속성 추가
-            let attributes: Vec<[f32; 2]> =
-                blob.texcoords1.iter().cloned().map(|v| v.into()).collect();
-            let attributes = Attributes::Texcoord1(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.texcoords1.clear();
-        }
-
-        if !blob.texcoords2.is_empty() {
-            // 정점의 2번 텍스처 좌표 속성 추가
-            let attributes: Vec<[f32; 2]> =
-                blob.texcoords2.iter().cloned().map(|v| v.into()).collect();
-            let attributes = Attributes::Texcoord2(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.texcoords2.clear();
-        }
-
-        if !blob.texcoords3.is_empty() {
-            // 정점의 3번 텍스처 좌표 속성 추가
-            let attributes: Vec<[f32; 2]> =
-                blob.texcoords3.iter().cloned().map(|v| v.into()).collect();
-            let attributes = Attributes::Texcoord3(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.texcoords3.clear();
-        }
-
-        if !blob.bone_indices.is_empty() {
-            // 정점의 뼈 번호 속성 추가
-            let attributes: Vec<[u32; 4]> = blob
-                .bone_indices
-                .iter()
-                .cloned()
-                .map(|v| v.into())
-                .collect();
-            let attributes = Attributes::BoneIndex(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.bone_indices.clear();
-        }
-
-        if !blob.bone_weights.is_empty() {
-            // 정점의 뼈 가중치 속성 추가
-            let attributes: Vec<[f32; 4]> = blob
-                .bone_weights
-                .iter()
-                .cloned()
-                .map(|v| v.into())
-                .collect();
-            let attributes = Attributes::BoneWeight(attributes);
-            mesh.add_attribute(device, queue, attributes);
-            blob.bone_weights.clear();
-        }
-
-        for submesh in blob.submeshes.iter() {
-            // 하위 메쉬 집합을 추가합니다.
-            let indices = Indices::U32(submesh.clone());
-            mesh.add_submesh(device, queue, indices);
-        }
-        blob.submeshes.clear();
-
-        Arc::new(mesh)
-    })
-}
-
 /// 재질을 생성합니다. 풀 객체에 재질이 없는 경우 풀 객체에 추가합니다.
 fn create_material(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
     workspace: &str,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
@@ -385,8 +279,17 @@ fn create_material(
         let mut path = asset_manager.get_root_dir().to_path_buf();
         path.push(workspace);
         if let Some(texture_blob) = blob.albedo_map {
-            let (view, sampler) =
-                get_or_init_texture(path, texture_blob.name, device, encoder, staging_buffers)?;
+            let (view, sampler) = get_or_init_texture(
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
+                path,
+                texture_blob.name,
+                device,
+                encoder,
+                staging_buffers,
+            )?;
             desc.with_albedo_texture(view, sampler);
         } else if let Some(color) = blob.albedo {
             desc.with_albedo_color(color.into());
@@ -394,6 +297,10 @@ fn create_material(
 
         if let Some(texture_blob) = blob.specular_map {
             let (view, sampler) = get_or_init_texture(
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
                 &workspace,
                 texture_blob.name,
                 device,
@@ -407,6 +314,10 @@ fn create_material(
 
         if let Some(texture_blob) = blob.emissive_map {
             let (view, sampler) = get_or_init_texture(
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
                 &workspace,
                 texture_blob.name,
                 device,
@@ -420,6 +331,10 @@ fn create_material(
 
         if let Some(texture_blob) = blob.normal_map {
             let (view, sampler) = get_or_init_texture(
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
                 &workspace,
                 texture_blob.name,
                 device,
@@ -431,6 +346,10 @@ fn create_material(
 
         if let Some(texture_blob) = blob.height_map {
             let (view, sampler) = get_or_init_texture(
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
                 &workspace,
                 texture_blob.name,
                 device,
@@ -442,6 +361,10 @@ fn create_material(
 
         if let Some(texture_blob) = blob.occlusion_map {
             let (view, sampler) = get_or_init_texture(
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
                 &workspace,
                 texture_blob.name,
                 device,
@@ -458,6 +381,10 @@ fn create_material(
 
 /// 이미 생성된 텍스처를 가져오거나, 텍스처를 파일로부터 생성합니다.
 fn get_or_init_texture<Dir, Uri>(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
     workspace: Dir,
     uri: Uri,
     device: &wgpu::Device,
@@ -469,11 +396,11 @@ where
     Uri: AsRef<str>,
 {
     // 텍스처 데이터를 가져옵니다.
-    let data = TextureDataPool::get_or_init(workspace.as_ref(), uri.as_ref())?;
+    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri.as_ref())?;
     // 텍스처를 가져옵니다.
-    let texture = TexturePool::get_or_init(workspace, device, encoder, staging_buffers, &data)?;
+    let texture = texture_pool.get_or_init(workspace, device, encoder, staging_buffers, &data)?;
     // 텍스처 뷰를 가져옵니다.
-    let view = TextureViewPool::get_or_init(
+    let view = texture_view_pool.get_or_init(
         &texture,
         &wgpu::TextureViewDescriptor {
             dimension: Some(data.dimension.into()),
@@ -481,7 +408,7 @@ where
         },
     );
     // 텍스처 샘플러를 가져옵니다.
-    let sampler = SamplerPool::get_or_init(
+    let sampler = sampler_pool.get_or_init(
         device,
         &wgpu::SamplerDescriptor {
             address_mode_u: data.address_u.into(),

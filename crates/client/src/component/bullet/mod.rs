@@ -6,7 +6,10 @@ use mod_app::asset::AssetManager;
 use mod_network::components::{Bullet, BulletKind};
 
 use crate::{
-    asset::{AssetError, ModelHierarchyPool},
+    asset::{
+        AssetError, MeshPool, ModelHierarchyPool, SamplerPool, TextureDataPool, TexturePool,
+        TextureViewPool,
+    },
     component::{Child, ToParentTrans, WorldTransform},
 };
 
@@ -20,6 +23,11 @@ pub struct BulletTag;
 
 /// 총알 모델을 풀 객체에 로드합니다.
 pub fn load_bullet_model(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     asset_manager: &AssetManager,
     bullet_kind: BulletKind,
     device: &wgpu::Device,
@@ -37,6 +45,11 @@ pub fn load_bullet_model(
 
     // 총알 모델을 로드합니다.
     ModelHierarchyPool::get_or_init(
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
+        mesh_pool,
         model_name,
         workspace,
         asset_manager,
@@ -59,6 +72,11 @@ pub fn load_bullet_model(
 /// - 총알 태그(`BulletTag`)
 ///
 pub fn spwan_bullet(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     bullet: &Bullet,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
@@ -68,6 +86,11 @@ pub fn spwan_bullet(
     world: &World,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     type SpawnFn = fn(
+        &TextureDataPool,
+        &TexturePool,
+        &TextureViewPool,
+        &SamplerPool,
+        &MeshPool,
         &AssetManager,
         &wgpu::Device,
         &wgpu::Queue,
@@ -100,6 +123,11 @@ pub fn spwan_bullet(
     let i = bullet_kind as usize;
     let parent = entity;
     let (model_root_entity, mut batch_commands) = FUNC_TABLE[i](
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
+        mesh_pool,
         asset_manager,
         device,
         queue,

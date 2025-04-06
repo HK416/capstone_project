@@ -3,11 +3,16 @@ use std::sync::Arc;
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::asset::AssetManager;
 use mod_network::components::BulletKind;
-use mod_render::{MaterialResource, MeshResource};
+use mod_render::MaterialResource;
 
 use crate::{
-    asset::{AssetError, ModelHierarchyPool, Node},
-    component::{Child, Parent, Sibling, ToParentTrans, WorldTransform},
+    asset::{
+        AssetError, MeshPool, ModelHierarchyPool, Node, SamplerPool, TextureDataPool, TexturePool,
+        TextureViewPool,
+    },
+    component::{
+        Child, MeshResource, Parent, Sibling, ToParentTrans, TransformUniform, WorldTransform,
+    },
 };
 
 pub const WORKSPACE: &'static str = "common";
@@ -31,6 +36,11 @@ pub const MODEL_NAME: &'static str = "Bullet_01_Warhead";
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 pub fn spawn_common_bullet_model(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     asset_manager: &AssetManager,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -40,6 +50,11 @@ pub fn spawn_common_bullet_model(
     parent: Entity,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root = ModelHierarchyPool::get_or_init(
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
+        mesh_pool,
         MODEL_NAME,
         WORKSPACE,
         asset_manager,
@@ -145,11 +160,12 @@ fn spawn_common_bullet_model_recursive(
     // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
     if let Some(mesh) = current.mesh.clone() {
         // 메쉬 쉐이더 리소스를 생성합니다.
-        let mesh_name = mesh.name().to_string();
-        let mesh_resource = Arc::new(MeshResource::uninit(Some(&mesh_name), device));
+        let uri = mesh.uri().to_string();
+        let transform_uniform = TransformUniform::uninit(Some(&uri), device);
+        let mesh_resource = MeshResource::new(Some(&uri), device, &transform_uniform);
 
-        // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-        builder.add_bundle((mesh, mesh_resource, BulletKind::Common));
+        // 메쉬, 메쉬 쉐이더 리소스, 등 컴포넌트를 추가합니다.
+        builder.add_bundle((mesh, transform_uniform, mesh_resource, BulletKind::Common));
     }
 
     // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.

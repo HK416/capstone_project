@@ -2,11 +2,16 @@ use std::sync::Arc;
 
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::asset::AssetManager;
-use mod_render::{MaterialResource, MeshResource};
+use mod_render::MaterialResource;
 
 use crate::{
-    asset::{AssetError, ModelHierarchyPool, Node, Root},
-    component::{Child, Parent, Sibling, ToParentTrans, WorldTransform},
+    asset::{
+        AssetError, MeshPool, ModelHierarchyPool, Node, Root, SamplerPool, TextureDataPool,
+        TexturePool, TextureViewPool,
+    },
+    component::{
+        Child, MeshResource, Parent, Sibling, ToParentTrans, TransformUniform, WorldTransform,
+    },
 };
 
 /// ## Stage Prop Tag
@@ -22,6 +27,11 @@ pub struct StageProp;
 /// - 월드 변환 행렬(`WorldTransform`)
 ///
 pub fn spawn_stage_prop(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     name: &str,
     workspace: &str,
     scale: glam::Vec3,
@@ -53,6 +63,11 @@ pub fn spawn_stage_prop(
     // 소품 모델을 구성하는 엔터티를 생성합니다.
 
     let (model_root_entity, mut batch_commands) = spawn_stage_prop_model(
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
+        mesh_pool,
         name,
         workspace,
         asset_manager,
@@ -136,6 +151,11 @@ pub fn spawn_stage_prop_from_root(
 /// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>`)
 ///
 fn spawn_stage_prop_model(
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
+    mesh_pool: &MeshPool,
     name: &str,
     workspace: &str,
     asset_manager: &AssetManager,
@@ -147,6 +167,11 @@ fn spawn_stage_prop_model(
     parent: Entity,
 ) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
     let root = ModelHierarchyPool::get_or_init(
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
+        mesh_pool,
         name,
         workspace,
         asset_manager,
@@ -284,12 +309,15 @@ fn spawn_stage_prop_model_recursion(
 
     // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
     if let Some(mesh) = current.mesh.clone() {
+        // 쉐이더 리소스에 사용되는 유니폼 버퍼를 생성합니다.
+        let uri = mesh.uri();
+        let transform_uniform = TransformUniform::uninit(Some(uri), device);
+
         // 메쉬 쉐이더 리소스를 생성합니다.
-        let mesh_name = mesh.name().to_string();
-        let mesh_resource = Arc::new(MeshResource::uninit(Some(&mesh_name), device));
+        let mesh_resource = MeshResource::new(Some(uri), device, &transform_uniform);
 
         // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-        builder.add_bundle((mesh, mesh_resource, StageProp));
+        builder.add_bundle((mesh, transform_uniform, mesh_resource, StageProp));
     }
 
     // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.

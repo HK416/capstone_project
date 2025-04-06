@@ -21,8 +21,8 @@ use mod_network::{
 };
 use mod_physics::object3d::Frustum;
 use mod_render::{
-    CameraResource, GlobalLightDataLayout, GlobalLightUniform, SamplerPool, SkyboxDataLayout,
-    SkyboxResource, TexturePool, TextureViewPool, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
+    CameraResource, GlobalLightDataLayout, GlobalLightUniform, SkyboxDataLayout, SkyboxResource,
+    DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use winit::{
     event::{Modifiers, MouseButton},
@@ -31,12 +31,15 @@ use winit::{
 };
 
 use crate::{
-    asset::{AssetError, NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI},
+    asset::{
+        AssetError, MeshPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool,
+        NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI,
+    },
     component::{
         animate_character, bake_character_shadow, categorize_character_resource, cleanup,
-        draw_character, draw_character_halo, set_weapon_position, spawn_player_character,
-        spwan_bullet, update_character_direction, update_entity_hierarchy,
-        update_third_person_camera, update_third_person_camera_hierarchy,
+        draw_character, draw_character_halo, prepare_mesh_resource, prepare_skinned_mesh_resource,
+        set_weapon_position, spawn_player_character, spwan_bullet, update_character_direction,
+        update_entity_hierarchy, update_third_person_camera, update_third_person_camera_hierarchy,
         update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection,
         Child, DirectionLight, MoveDirection, Parent, Projection, Sibling, SkinningAnimation,
         StageArea, StageProp, ThirdPersonCamera, ToParentTrans, WorldTransform,
@@ -44,9 +47,8 @@ use crate::{
     config::{Locale, UserConfig, NUM_LOCALE},
     render::{
         clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
-        draw_stage_props, get_damage_font, prepare_camera_resource, prepare_mesh_resource,
-        shadow::ShadowMapResource, spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout,
-        FxDamageResource, LifeTime,
+        draw_stage_props, get_damage_font, prepare_camera_resource, shadow::ShadowMapResource,
+        spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
     },
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
@@ -61,6 +63,17 @@ pub struct InGameDominationModeScene {
     user_id: UserId,
     /// 로그인 토큰
     token: LoginToken,
+
+    /// 텍스처 데이터 풀 객체입니다.
+    texture_data_pool: TextureDataPool,
+    /// 텍스처 풀 객체입니다.
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체입니다.
+    texture_view_pool: TextureViewPool,
+    /// 텍스처 샘플러 풀 객체입니다.
+    sampler_pool: SamplerPool,
+    /// 메쉬 풀 객체입니다.
+    mesh_pool: MeshPool,
 
     /// 게임 월드
     world: World,
@@ -100,6 +113,11 @@ impl InGameDominationModeScene {
         locale: Locale,
         user_id: UserId,
         token: LoginToken,
+        texture_data_pool: TextureDataPool,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
+        sampler_pool: SamplerPool,
+        mesh_pool: MeshPool,
         world: World,
         players: HashMap<UserId, Entity>,
         skybox_resource: Arc<SkyboxResource>,
@@ -108,6 +126,11 @@ impl InGameDominationModeScene {
             locale,
             user_id,
             token,
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
+            mesh_pool,
             world,
             players,
             objects: HashMap::default(),
@@ -137,13 +160,16 @@ impl InGameDominationModeScene {
     /// UI에 사용되는 텍스처를 등록합니다.
     fn register_ui_game_layout_texture(&mut self, _window: &Window, app: &dyn AppHandle) {
         // 게임 인터페이스 레이아웃 텍스처를 가져옵니다.
-        let texture = TexturePool::get(UI_GAME_LAYOUT_URI)
+        let texture = self
+            .texture_pool
+            .get(UI_GAME_LAYOUT_URI)
             .expect("UI_Game_Layout texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
         // 텍스처 뷰를 생성합니다.
-        let texture =
-            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
         let mut egui_renderer = app.egui_renderer_mut();
@@ -157,15 +183,6 @@ impl InGameDominationModeScene {
             id: texture_id,
             size: texture_size,
         };
-    }
-
-    /// UI에 사용되는 텍스처 등록을 해제합니다.
-    fn unregister_ui_game_layout_texture(&mut self, app: &dyn AppHandle) {
-        let mut egui_renderer = app.egui_renderer_mut();
-        egui_renderer.free_texture(&self.ui_game_layout_texture.id);
-        if let Some(texture) = TexturePool::unregister(UI_GAME_LAYOUT_URI) {
-            TextureViewPool::remove(&texture);
-        }
     }
 
     /// 메인 카메라를 생성합니다.
@@ -509,9 +526,12 @@ impl InGameDominationModeScene {
         // 데미지 폰트 텍스처를 가져옵니다.
         let texture =
             get_damage_font(asset_manager, device, queue).expect("font texture must exist!");
-        let t_font =
-            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-        let s_font = SamplerPool::get_or_init(device, &wgpu::SamplerDescriptor::default());
+        let t_font = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+        let s_font = self
+            .sampler_pool
+            .get_or_init(device, &wgpu::SamplerDescriptor::default());
 
         while let Some(log) = self.damage_logs.pop() {
             // 엔터티를 가져옵니다.
@@ -735,13 +755,8 @@ impl InGameDominationModeScene {
     /// # Note
     /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
     ///
-    fn prepare_character_mesh_resource(
-        &mut self,
-        entities: &[Entity],
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) {
-        prepare_mesh_resource(&self.world, entities, device, queue);
+    fn prepare_character_mesh_resource(&mut self, entities: &[Entity], device: &wgpu::Device) {
+        prepare_skinned_mesh_resource(&self.world, entities, device, 128);
     }
 
     /// 총알의 쉐이더 리소스를 갱신합니다.
@@ -749,13 +764,8 @@ impl InGameDominationModeScene {
     /// # Note
     /// 이 함수를 호출하기 전에 총알의 월드 변환 행렬이 갱신되어야 합니다.
     ///
-    fn prepare_bullet_mesh_resource(
-        &mut self,
-        entities: &[Entity],
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) {
-        prepare_mesh_resource(&self.world, entities, device, queue);
+    fn prepare_bullet_mesh_resource(&mut self, entities: &[Entity], device: &wgpu::Device) {
+        prepare_mesh_resource(&self.world, entities, device, 128);
     }
 
     /// 스테이지 엔터티의 계층 구조를 갱신합니다.
@@ -779,7 +789,7 @@ impl InGameDominationModeScene {
     /// # Note
     /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
     ///
-    fn prepare_stage_resource(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    fn prepare_stage_resource(&mut self, device: &wgpu::Device) {
         // 스테이지 지역 엔터티와 소품 엔터티를 수집합니다.
         let mut entities = Vec::new();
         let query = self.world.query_mut::<Without<&StageArea, &Parent>>();
@@ -789,7 +799,7 @@ impl InGameDominationModeScene {
         entities.extend(query.into_iter().map(|(entity, _)| entity));
 
         // 엔터티의 메쉬 리소스를 갱신합니다.
-        prepare_mesh_resource(&self.world, &entities, device, queue);
+        prepare_mesh_resource(&self.world, &entities, device, 32);
     }
 
     /// 게임 서버에 플레이어 데이터를 전송합니다.
@@ -1033,6 +1043,11 @@ impl InGameDominationModeScene {
         for player in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
             let (root_entity, batch_commands) = spawn_player_character(
+                &self.texture_data_pool,
+                &self.texture_pool,
+                &self.texture_view_pool,
+                &self.sampler_pool,
+                &self.mesh_pool,
                 &player,
                 asset_manager,
                 device,
@@ -1079,6 +1094,11 @@ impl InGameDominationModeScene {
         for bullet in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
             let (root_entity, batch_commands) = spwan_bullet(
+                &self.texture_data_pool,
+                &self.texture_pool,
+                &self.texture_view_pool,
+                &self.sampler_pool,
+                &self.mesh_pool,
                 bullet,
                 asset_manager,
                 device,
@@ -1129,10 +1149,6 @@ impl GameScene for InGameDominationModeScene {
 
         // 메인 카메라를 생성합니다.
         self.create_main_camera(window, app.render_device());
-    }
-
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
-        self.unregister_ui_game_layout_texture(app);
     }
 
     #[allow(unused_variables)]
@@ -1303,12 +1319,36 @@ impl GameScene for InGameDominationModeScene {
         self.animate_characters(&characters_entities, app.asset_manager());
         // 캐릭터 엔터티의 계층 구조를 갱신합니다.
         self.update_character_hierarchy(&characters_entities);
-        // 캐릭터 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
-        self.prepare_character_mesh_resource(
-            &characters_entities,
-            app.render_device(),
-            app.render_queue(),
-        );
+        // 캐릭터 쉐이더 리소스를 준비합니다.
+        self.prepare_character_mesh_resource(&characters_entities, app.render_device());
+
+        // 총알 엔터티들을 가져옵니다.
+        let bullet_entities = self.get_bullet_entities();
+        // 총알 엔터티의 계층 구조를 갱신합니다.
+        self.update_bullet_hierarchy(&bullet_entities);
+        // 총알 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
+        self.prepare_bullet_mesh_resource(&bullet_entities, app.render_device());
+
+        // 데미지 파티클 쉐이더 리소스를 갱신합니다.
+        self.prepare_damage_particle_resource(app.render_device(), app.render_queue());
+
+        // 메인 카메라의 위치 오프셋을 갱신합니다.
+        self.update_main_camera_offset();
+        // 메인 카메라의 계층 구조를 갱신합니다.
+        self.update_main_camera_hierarchy();
+        // 메인 카메라의 쉐이더 리소스를 갱신합니다.
+        self.prepare_main_camera_resource(app.render_device(), app.render_queue());
+
+        // 그림자 쉐이더 리소스를 갱신합니다.
+        self.prepare_shadow_resource(app.render_device(), app.render_queue());
+
+        // 지형의 계층 구조를 갱신합니다.
+        self.update_stage_hierarchy();
+        // 지형 메쉬의 쉐이더 리소스를 갱신합니다.
+        self.prepare_stage_resource(app.render_device());
+
+        // Skybox 쉐이더 리소스를 갱신합니다.
+        self.prepare_skybox_resource(app.render_device(), app.render_queue());
 
         #[cfg(feature = "print-transform")]
         {
@@ -1461,38 +1501,6 @@ impl GameScene for InGameDominationModeScene {
                 .expect("invalid entity or invalid entity component");
             log::debug!("Right Foot 로컬 변환 행렬: {}", transform.0);
         }
-
-        // 총알 엔터티들을 가져옵니다.
-        let bullet_entities = self.get_bullet_entities();
-        // 총알 엔터티의 계층 구조를 갱신합니다.
-        self.update_bullet_hierarchy(&bullet_entities);
-        // 총알 엔터티의 메쉬 쉐이더 리소스를 갱신합니다.
-        self.prepare_bullet_mesh_resource(
-            &bullet_entities,
-            app.render_device(),
-            app.render_queue(),
-        );
-
-        // 데미지 파티클 쉐이더 리소스를 갱신합니다.
-        self.prepare_damage_particle_resource(app.render_device(), app.render_queue());
-
-        // 메인 카메라의 위치 오프셋을 갱신합니다.
-        self.update_main_camera_offset();
-        // 메인 카메라의 계층 구조를 갱신합니다.
-        self.update_main_camera_hierarchy();
-        // 메인 카메라의 쉐이더 리소스를 갱신합니다.
-        self.prepare_main_camera_resource(app.render_device(), app.render_queue());
-
-        // 그림자 쉐이더 리소스를 갱신합니다.
-        self.prepare_shadow_resource(app.render_device(), app.render_queue());
-
-        // 지형의 계층 구조를 갱신합니다.
-        self.update_stage_hierarchy();
-        // 지형 메쉬의 쉐이더 리소스를 갱신합니다.
-        self.prepare_stage_resource(app.render_device(), app.render_queue());
-
-        // Skybox 쉐이더 리소스를 갱신합니다.
-        self.prepare_skybox_resource(app.render_device(), app.render_queue());
     }
 
     #[allow(unused_variables)]

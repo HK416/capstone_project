@@ -13,8 +13,8 @@ use std::{
 
 use mod_app::net::IpAddress;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::EnvFilter;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
+use tracing_subscriber::EnvFilter;
 
 pub const SERVER_IP: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
 pub const SERVER_TCP_ADDR: IpAddress = IpAddress::Tcp(SocketAddr::new(SERVER_IP, 7878));
@@ -72,7 +72,7 @@ fn init_log_system() -> WorkerGuard {
 
     // 로그 시스템을 초기화합니다.
     tracing_subscriber::fmt()
-        .with_env_filter(filter)    
+        .with_env_filter(filter)
         .with_ansi(false)
         .with_writer(non_blocking)
         .with_thread_names(true)

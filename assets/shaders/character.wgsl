@@ -88,16 +88,13 @@ var<uniform> u_global_light: GlobalLightDataLayout;
 // var<uniform> u_local_lights: LocalLightSetLayout;
 
 
-// @group(1) @binding(0)
-// var<uniform> u_trans: mat4x4<f32>;
-
-@group(1) @binding(1)
+@group(1) @binding(0)
 var<uniform> u_skinning: SkinningDataLayout;
 
-@group(1) @binding(2)
+@group(1) @binding(1)
 var<uniform> u_bindposes: array<mat4x4<f32>, MAX_BONES>;
 
-@group(1) @binding(3)
+@group(1) @binding(2)
 var<uniform> u_bone_trans: array<mat4x4<f32>, MAX_BONES>;
 
 
