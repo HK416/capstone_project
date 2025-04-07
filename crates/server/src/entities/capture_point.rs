@@ -24,14 +24,6 @@ impl CapturePointObject {
         &self.capture_point
     }
 
-    pub fn capture_progress(&self) -> &f32 {
-        &self.capture_point.capture_progress
-    }
-
-    pub fn capture_score(&self) -> &[f32; 2] {
-        &self.capture_point.capture_score
-    }
-
     pub fn capture_team(&self) -> &Option<Team> {
         &self.capture_point.capture_team
     }

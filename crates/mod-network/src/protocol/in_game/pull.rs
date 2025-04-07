@@ -1,6 +1,6 @@
 use crate::{
     components::{
-        BigEndian, Bullet, CapturePoint, PlayPhasePlayer, Team, TryFromBigEndian,
+        BigEndian, Bullet, CapturePoint, PlayPhasePlayer, TryFromBigEndian,
         MAX_IN_GAME_PLAYERS,
     },
     protocol::{Packet, PacketType, RawPacket},

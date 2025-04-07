@@ -25,6 +25,21 @@ impl BoundingBox {
         }
     }
 
+    /// 시작점과 끝점으로 AABB 생성
+    pub fn from_start_end(start: glam::Vec3, end: glam::Vec3) -> Self {
+        let center = (start + end) * 0.5;
+        let extents = (end - start) * 0.5;
+        Self::new(center, extents)
+    }
+    
+    /// x, y, z 방향으로 amount만큼 확장된 AABB 생성
+    pub fn expanded(&self, amount: f32) -> Self {
+        Self {
+            center: self.center,
+            extents: self.extents + amount,
+        }
+    }
+
     pub fn extents(&self) -> glam::Vec3 {
         self.extents
     }
@@ -74,6 +89,15 @@ impl OrientedBoundingBox {
             center,
             extents: extents.abs(), // extents는 음수가 될 수 없음
             rotation: rotation,
+        }
+    }
+
+    /// x, y, z 방향으로 amount만큼 확장된 OBB 생성
+    pub fn expanded(&self, amount: f32) -> Self {
+        Self {
+            center: self.center,
+            extents: self.extents + amount,
+            rotation: self.rotation,
         }
     }
 

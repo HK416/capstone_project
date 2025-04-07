@@ -51,22 +51,11 @@ pub struct GameWorldInGameState {
     /// 플레이어 스폰 위치 저장
     spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
 
-    // /// 점령도. 100이 되어야 점령 점수를 얻을 수 있습니다.
-    // capture_progress: f32,
-    // /// 팀별 점령 점수. 점령도가 100일때 초당 1점씩 증가합니다.
-    // capture_score: [f32; 2],
-    // /// 점령중인 팀
-    // capture_team: Option<Team>,
-    // /// 점령지 충돌체
-    // capture_point_collider: Sphere, 
     /// 점령지 오브젝트
     capture_point: CapturePointObject,
 }
 
 impl GameWorldInGameState {
-    /// 최대 점령점수. capture_score가 이 값에 도달하면 게임이 종료됩니다.
-    const MAX_CAPTURE_SCORE: f32 = 60.0;
-
     /// 새로운 게임 월드 상태를 생성합니다.
     pub fn new(
         stage_kind: StageKind,
@@ -246,22 +235,135 @@ impl GameWorldInGameState {
         };
     }
 
-    /// 총알과 충돌하는 플레이어를 확인합니다.
+    /// 0.1m 마다 바닥과의 충돌을 검사하여 바닥과의 충돌을 확인합니다.
+    fn check_bullet_ground_collision(
+        &self,
+        bullet_position: &glam::Vec3A,
+        bullet_radius: f32,
+        move_v_normalized: &glam::Vec3A,
+        move_distance: f32,
+    ) -> Option<f32> {
+        let mut nearest_distance = None;
+        let mut position = bullet_position.clone();
+        let mut moved = 0.0;
+        let v = move_v_normalized * 0.1;
+        while moved < move_distance {
+            if let Some(height) = get_stage_height(self.stage_kind, position.x, position.z) {
+                if position.y <= height + bullet_radius {
+                    nearest_distance = Some(moved);
+                    break;
+                }
+            }
+            position += v;
+            moved += 0.1;
+        }
+
+        nearest_distance
+    }
+
+    /// 총알과 충돌하는 건물과의 거리를 리턴합니다.
+    fn check_bullet_building_collision(
+        &self,
+        bullet_collider: &Sphere,
+        move_v: &glam::Vec3A,
+    ) -> Option<f32> {
+        let mut nearest_distance = f32::MAX;
+        let colliders = get_stage_colliders(self.stage_kind);
+        for collider in ColliderTreeIterator::new(colliders) {
+            // broadphase 검사 - 시작지점과 도착지점을 포함하는 AABB를 생성
+            let rad_box = glam::Vec3A::new(
+                bullet_collider.radius * move_v.x.signum(),
+                bullet_collider.radius * move_v.y.signum(),
+                bullet_collider.radius * move_v.z.signum(),
+            );
+            let center = glam::Vec3A::from(bullet_collider.center);
+            let start = center - rad_box;
+            let end = center + move_v + rad_box;
+            let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
+
+            if collider.check_aabb_collision(&swept_aabb) {
+                // narrowphase 검사 - 총알과 충돌체의 충돌 검사
+                let details = match collider {
+                    Collider::Aabb(aabb) => bullet_collider.check_dynamic_collision_details(move_v, aabb),
+                    Collider::Obb(obb) => bullet_collider.check_dynamic_collision_details(move_v, obb),
+                    Collider::Capsule(capsule) => bullet_collider.check_dynamic_collision_details(move_v, capsule),
+                    Collider::OrientedCapsule(obb) => bullet_collider.check_dynamic_collision_details(move_v, obb),
+                    Collider::Sphere(sphere) => bullet_collider.check_dynamic_collision_details(move_v, sphere),
+                };
+                if let Some(details) = details {
+                    // 충돌체와의 충돌이 발생한 경우, 총알의 남은 거리와 충돌체의 거리 비교
+                    let distance = details.distance;
+                    if distance < nearest_distance {
+                        nearest_distance = distance;
+                    }
+                }
+            }
+        }
+
+        if nearest_distance == f32::MAX {
+            None
+        } else {
+            Some(nearest_distance)
+        }
+    }
+
+    /// 총알과 충돌하는 플레이어를 확인합니다.  
+    /// 건물, 바닥 등과 충돌시에는 총알의 남은 거리를 0.0으로 설정하고 None을 리턴합니다.  
+    /// 움직일 벡터(move_v)는 0이 아니어야 합니다.  
     fn check_bullet_collision(
         &self, 
         world: &GameWorld, 
         bullet: &mut BulletObject, 
-        velocity: &glam::Vec3A,
+        move_v: &glam::Vec3A,
     ) -> Option<UserId> {
-        // bullet.velocity가 영벡터가 아니라고 가정
+        let mut nearest_distance = f32::MAX;
+        let mut move_v = move_v.clone();
+        let move_v_normalized = move_v.normalize();
+
+        // 지형 충돌 검사
+        if let Some(collision_distance) = self.check_bullet_ground_collision(
+            &bullet.translation,
+            bullet.radius,
+            &move_v_normalized,
+            move_v.length(),
+        ) {
+            nearest_distance = collision_distance;
+            move_v = move_v_normalized * nearest_distance;
+            bullet.remaining_distance = 0.0;
+            log::debug!(
+                "Bullet({}) hit ground (distance: {})",
+                bullet.object_id, nearest_distance
+            );
+        }
+
+        if nearest_distance == 0.0 {
+            return None;
+        }
+
+        // 건물 충돌 검사
         let bullet_collider = Sphere {
             center: bullet.translation.into(),
             radius: bullet.radius,
         };
+        if let Some(collision_distance) = self.check_bullet_building_collision(
+            &bullet_collider,
+            &move_v,
+        ) {
+            nearest_distance = collision_distance;
+            move_v = move_v_normalized * nearest_distance;
+            bullet.remaining_distance = 0.0;
+            log::debug!(
+                "Bullet({}) hit building (distance: {})",
+                bullet.object_id, nearest_distance
+            );
+        }
 
-        let mut nearest_distance = f32::MAX;
+        if nearest_distance == 0.0 {
+            return None;
+        }
+
+        // 플레이어 충돌 검사
         let mut nearest_player_id = None;
-
         for player in world.players.iter() {
             if *player.key() == bullet.shooter_id
                 || player.health_point().0 == 0
@@ -274,12 +376,12 @@ impl GameWorldInGameState {
 
             // 충돌 처리: 플레이어 - 총알
             if let Some(info) = bullet_collider
-                .check_dynamic_collision_details(velocity, &player_collider)
+                .check_dynamic_collision_details(&move_v, &player_collider)
             {
-                if info.distance <= velocity.length() {
-                    println!("Bullet find player (player id: {})", player.account().uid);
-                    println!("  - distance: {}", info.distance);
-                    println!("  - surface normal: {}", info.normal);
+                if info.distance <= move_v.length() {
+                    // println!("Bullet find player (player id: {})", player.account().uid);
+                    // println!("  - distance: {}", info.distance);
+                    // println!("  - surface normal: {}", info.normal);
                     if info.distance < nearest_distance {
                         nearest_distance = info.distance;
                         nearest_player_id = Some(*player.key());
@@ -298,6 +400,8 @@ impl GameWorldInGameState {
         shooter: &PlayerObject,
         player: &mut PlayerObject,
     ) {
+        // println!("Player({}) hit by bullet", player.account().uid);
+        
         // 관통되지 않도록 처리
         bullet.remaining_distance = 0.0;
 
@@ -336,7 +440,7 @@ impl GameWorldInGameState {
         let crit = shooter_info.critical_rate as f32; //발포자의 치명 수치여야 하는거아닌가?
         let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
         if crit_rate == 1.0 {
-            println!("  - critical!");
+            // println!("  - critical!");
         }
 
         // 최종 데미지 계산
@@ -345,12 +449,21 @@ impl GameWorldInGameState {
         let final_dmg =
             formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u16;
 
+        let uid = player.account().uid;
         let health_point = player.health_point_mut();
         health_point.0 = health_point.0.saturating_sub(final_dmg);
-        println!("  - hp: {}(-{})", health_point.0, final_dmg);
+        // println!("  - hp: {}(-{})", health_point.0, final_dmg);
+        log::info!(
+            "Player({}) hit by Bullet from Player({}) (damage: {})",
+            uid, shooter.account().uid, final_dmg
+        );
 
         if health_point.0 == 0 {
-            println!("Player({}) is dead", player.account().uid);
+            // println!("Player({}) is dead", player.account().uid);
+            log::info!(
+                "Player({}) is dead (shooter: {})",
+                player.account().uid, shooter.account().uid,
+            );
             player.death();
         }
 
@@ -368,7 +481,6 @@ impl GameWorldInGameState {
 
             match self.check_bullet_collision(world, &mut bullet, &velocity) {
                 Some(id) => {
-                    println!("Player({}) hit by bullet", id);
                     let shooter = world.players.get_mut(&bullet.shooter_id).unwrap();
                     let mut player = world.players.get_mut(&id).unwrap();
                     self.bullet_hit_player(&mut bullet, &shooter, &mut player);
@@ -382,7 +494,6 @@ impl GameWorldInGameState {
         // 살아남은 총알만 남김
         for bullet in world.bullets.iter() {
             if bullet.remaining_distance <= 0.0 {
-                println!("Bullet range over");
                 world.push_event(GameWorldEvent::RemoveBullet(*bullet.key()));
             }
         }
@@ -432,10 +543,10 @@ impl GameWorldInGameState {
             world.push_event(GameWorldEvent::GameOver { winner });
         }
 
-        println!("capture team: {:?}({:.1}%)", self.capture_point.capture_team(), self.capture_point.capture_progress());
-        println!("capture score: RED[{:.1}%] : BLUE[{:.1}%]", 
-            self.capture_point.capture_score()[Team::Red as usize] / Self::MAX_CAPTURE_SCORE * 100.0, 
-            self.capture_point.capture_score()[Team::Blue as usize] / Self::MAX_CAPTURE_SCORE * 100.0);
+        // println!("capture team: {:?}({:.1}%)", self.capture_point.capture_team(), self.capture_point.capture_progress());
+        // println!("capture score: RED[{:.1}%] : BLUE[{:.1}%]", 
+        //     self.capture_point.capture_score()[Team::Red as usize] / Self::MAX_CAPTURE_SCORE * 100.0, 
+        //     self.capture_point.capture_score()[Team::Blue as usize] / Self::MAX_CAPTURE_SCORE * 100.0);
     }
 
     /// 게임 월드를 갱신합니다.
