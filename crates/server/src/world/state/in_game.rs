@@ -39,6 +39,10 @@ pub struct GameWorldInGameState {
     is_running: bool,
     /// 이전 측정 시각
     previous_time_pt: Instant,
+
+    /// 남은 게임 시간 (초)
+    remaining_time_sec: f32,
+
     /// 오브젝트 식별자를 생성하기 위한 카운터입니다.
     counter: u32,
 
@@ -60,10 +64,12 @@ impl GameWorldInGameState {
     pub fn new(
         stage_kind: StageKind,
         spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+        game_duration_sec: f32,  // 게임 총 시간
     ) -> Self {
         Self {
             is_running: true,
             previous_time_pt: Instant::now(),
+            remaining_time_sec: game_duration_sec, // 초기화
             counter: 0,
             stage_kind,
             damage_logs: Queue::new(),
@@ -543,10 +549,11 @@ impl GameWorldInGameState {
             world.push_event(GameWorldEvent::GameOver { winner });
         }
 
-        // println!("capture team: {:?}({:.1}%)", self.capture_point.capture_team(), self.capture_point.capture_progress());
-        // println!("capture score: RED[{:.1}%] : BLUE[{:.1}%]", 
-        //     self.capture_point.capture_score()[Team::Red as usize] / Self::MAX_CAPTURE_SCORE * 100.0, 
-        //     self.capture_point.capture_score()[Team::Blue as usize] / Self::MAX_CAPTURE_SCORE * 100.0);
+        // println!("capture team: {:?}({:.1}%)\t score: RED[{:.1}%] : BLUE[{:.1}%]", 
+        //     self.capture_point.capture_team(), self.capture_point.capture_progress(),
+        //     self.capture_point.capture_score()[Team::Red as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0,
+        //     self.capture_point.capture_score()[Team::Blue as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0
+        // );
     }
 
     /// 게임 월드를 갱신합니다.
@@ -556,6 +563,15 @@ impl GameWorldInGameState {
             .saturating_duration_since(self.previous_time_pt)
             .as_secs_f32();
         self.previous_time_pt = current_time_pt;
+
+        // 남은 시간 업데이트
+        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+        if self.remaining_time_sec > 0.0 {
+            // println!("remaining time: {:.1}", self.remaining_time_sec);
+        } else {
+            println!("game over!");
+            world.push_event(GameWorldEvent::GameOver { winner: None });
+        }
 
         // println!("fps: {:.2} (elapsed time: {})", 1.0 / elapsed_time_sec, elapsed_time_sec);
 
@@ -594,7 +610,6 @@ impl GameWorldInGameState {
             })
             .collect();
 
-        // 플레이어가 비어있는 경우 패킷 전송을 생략합니다.
         if players.is_empty() {
             return;
         }
@@ -606,9 +621,10 @@ impl GameWorldInGameState {
             .collect();
 
         let capture_point = self.capture_point.capture_point().clone();
+        let remaining_time_sec = self.remaining_time_sec; // Copy the value
 
         // 패킷을 생성하고 전송합니다.
-        let packet = PullStagePacket::new(players, bullets, capture_point);
+        let packet = PullStagePacket::new(players, bullets, capture_point, remaining_time_sec);
         for session in world.sessions.iter() {
             session.key().tcp_write(packet.as_raw());
         }
@@ -665,7 +681,7 @@ impl GameWorldState for GameWorldInGameState {
                 }
             }
             GameWorldEvent::GameOver { winner } => {
-                println!("{:?} win!", self.capture_point.capture_team().unwrap());
+                println!("{:?} win!", winner);
                 log::info!("game over - winner: {:?}", winner);
                 // self.is_running = false;
             }

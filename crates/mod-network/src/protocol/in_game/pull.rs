@@ -13,6 +13,7 @@ pub struct PullStagePacket {
     pub players: Vec<PlayPhasePlayer>,
     pub bullets: Vec<Bullet>,
     pub capture_point: CapturePoint,
+    pub remaining_time_sec: f32,
 }
 
 impl PullStagePacket {
@@ -25,6 +26,7 @@ impl PullStagePacket {
         players: Vec<PlayPhasePlayer>,
         bullets: Vec<Bullet>,
         capture_point: CapturePoint,
+        remaining_time_sec: f32,
     ) -> Self {
         assert!(
             0 < players.len() && players.len() <= MAX_IN_GAME_PLAYERS,
@@ -35,6 +37,7 @@ impl PullStagePacket {
             players,
             bullets,
             capture_point,
+            remaining_time_sec,
         }
     }
 }
@@ -49,7 +52,8 @@ impl Packet for PullStagePacket {
             + PlayPhasePlayer::byte_size() * self.players.len()
             + u16::byte_size()
             + Bullet::byte_size() * self.bullets.len()
-            + CapturePoint::byte_size();
+            + CapturePoint::byte_size()
+            + f32::byte_size();  // 남은 시간 추가
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -62,6 +66,7 @@ impl Packet for PullStagePacket {
             data.extend_from_slice(&bullet.to_big_endian_bytes());
         }
         data.extend_from_slice(&self.capture_point.to_big_endian_bytes());
+        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes()); // 남은 시간 추가
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -125,11 +130,17 @@ impl Packet for PullStagePacket {
         size = CapturePoint::byte_size();
         data = &bytes[offset..offset + size];
         let capture_point = CapturePoint::try_from_big_endian_bytes(data)?;
+        
+        offset = offset + size;
+        size = f32::byte_size();
+        data = &bytes[offset..offset + size];
+        let remaining_time_sec = f32::from_big_endian_bytes(data);
 
         Some(Self {
             players,
             bullets,
             capture_point,
+            remaining_time_sec,
         })
     }
 }
@@ -168,8 +179,9 @@ mod tests {
             },
         );
         let capture_point = CapturePoint::default();
+        let remaining_time_sec = 60.0;
 
-        let origin = PullStagePacket::new(vec![player_0], vec![], capture_point);
+        let origin = PullStagePacket::new(vec![player_0], vec![], capture_point, remaining_time_sec);
         let raw = origin.as_raw();
         let other = PullStagePacket::from_raw(raw);
 

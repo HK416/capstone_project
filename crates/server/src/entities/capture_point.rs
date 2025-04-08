@@ -11,7 +11,7 @@ pub struct CapturePointObject {
 
 impl CapturePointObject {
     /// 최대 점령점수. capture_score가 이 값에 도달하면 게임이 종료됩니다.
-    const MAX_CAPTURE_SCORE: f32 = 60.0;
+    pub const MAX_CAPTURE_SCORE: f32 = 60.0;
 
     pub fn new(collider: Collider) -> Self {
         Self {
@@ -22,6 +22,14 @@ impl CapturePointObject {
 
     pub fn capture_point(&self) -> &CapturePoint {
         &self.capture_point
+    }
+
+    pub fn capture_progress(&self) -> f32 {
+        self.capture_point.capture_progress
+    }
+
+    pub fn capture_score(&self) -> &[f32; 2] {
+        &self.capture_point.capture_score
     }
 
     pub fn capture_team(&self) -> &Option<Team> {

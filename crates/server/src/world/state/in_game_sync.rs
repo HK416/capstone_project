@@ -63,6 +63,7 @@ impl GameWorldInGameSyncState {
             let next_state = Box::new(GameWorldInGameState::new(
                 self.stage_kind,
                 self.spawn_positions.clone(),
+                (5 * 60) as f32,    // 5분
             ));
             let control_flow = GameWorldStateFlow::Change(next_state);
             let event = GameWorldEvent::SetControlFlow(control_flow);
