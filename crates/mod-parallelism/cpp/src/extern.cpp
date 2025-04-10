@@ -1,6 +1,5 @@
 #include "ebr.h"
-
-extern thread_local int thread_id;
+#include "ebr_set.h"
 
 
 extern "C" {
@@ -9,8 +8,8 @@ extern "C" {
     }
     
     // 테스트용 Set
-    EbrLfSet* set_new() {
-        return new EbrLfSet { };
+    EbrLfSet* set_new(int max_threads) {
+        return new EbrLfSet { max_threads };
     }
     void set_delete(EbrLfSet* set) {
         delete set;
@@ -19,18 +18,28 @@ extern "C" {
     void set_clear(EbrLfSet* set) {
         set->clear();
     }
-    
-    void set_add(EbrLfSet* set, int x) {
-        set->add(x);
+    void set_reset_accessor_counter(EbrLfSet* set) {
+        set->reset_accessor_counter();
     }
-    void set_remove(EbrLfSet* set, int x) {
-        set->remove(x);
+    /// thread-safe하지 않은 contains
+    bool set_contains(EbrLfSet* set, int key) {
+        return set->contains(key);
     }
-    bool set_contains(EbrLfSet* set, int x) {
-        return set->contains(x);
+    EbrLfSet::Accessor* set_new_accessor(EbrLfSet* set) {
+        return set->new_accessor();
     }
 
-    void set_thread_local_id(int id) {
-        thread_id = id;
+    bool set_accessor_add(EbrLfSet::Accessor* accessor, int key) {
+        return accessor->add(key);
+    }
+    bool set_accessor_remove(EbrLfSet::Accessor* accessor, int key) {
+        return accessor->remove(key);
+    }
+    /// thread-safe한 contains
+    bool set_accessor_contains(EbrLfSet::Accessor* accessor, int key) {
+        return accessor->contains(key);
+    }
+    void set_accessor_delete(EbrLfSet::Accessor* accessor) {
+        delete accessor;
     }
 }

@@ -3,6 +3,7 @@
 
 
 #include <vector>
+#include <queue>
 #include <atomic>
 
 
@@ -30,7 +31,7 @@ public:
     int ebr_number;
 
 public:
-    LfNode(int v);
+    LfNode(const int& v);
 };
 
 
@@ -42,36 +43,43 @@ class Ebr {
 private:
     std::atomic_int epoch_counter;
     alignas(64) std::vector<AlignedAtomicInt> epoch_array;
+    std::vector<std::queue<LfNode*>> free_queue;
+    std::atomic_int accessor_counter;
+
+public:
+    class Accessor {
+    private:
+        Ebr* ebr;
+        int accessor_idx;
+
+    private:
+        Accessor(Ebr* ebr, int accessor_idx);
+
+    public:
+        void reuse(LfNode* node);
+        void start_epoch();
+        void end_epoch();
+
+        LfNode* get_node(const int& x);
+
+        friend class Ebr;
+    };
 
 public:
     Ebr(int max_threads);
     ~Ebr();
-    
+
 public:
     void clear();
-    void reuse(LfNode* node);
-    void start_epoch();
-    void end_epoch();
+    void reset_accessor_counter();
+    Accessor get_accessor();
 
-    LfNode* get_node(int x);
-};
-
-
-class EbrLfSet {
 private:
-    LfNode head;
-    LfNode tail;
-    alignas(64) Ebr ebr;
+    void reuse(int idx, LfNode* node);
+    void start_epoch(int idx);
+    void end_epoch(int idx);
 
-public:
-    EbrLfSet();
-
-public:
-    void clear();
-    void find(int x, LfNode*& prev, LfNode*& curr);
-    bool add(int x);
-    bool remove(int x);
-    bool contains(int x);
+    LfNode* get_node(int idx, const int& x);
 };
 
 
