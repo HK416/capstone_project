@@ -1,6 +1,7 @@
+#![allow(dead_code)]
 //! 메쉬와 관련된 코드를 관리합니다.
 //!
-#![allow(dead_code)]
+
 mod attribute;
 mod index;
 mod resource;

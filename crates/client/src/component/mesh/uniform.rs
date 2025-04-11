@@ -1,5 +1,6 @@
 //! 메쉬의 유니폼 버퍼와 관련된 코드를 관리합니다.
 //!
+
 use std::{num::NonZeroU64, ops::RangeBounds, sync::Arc};
 
 use bytemuck::{Pod, Zeroable};
@@ -32,10 +33,13 @@ impl TransformUniform {
         .union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::VERTEX,
+            visibility,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -45,7 +49,18 @@ impl TransformUniform {
         }
     }
 
-    /// 초기화되지 않은 유니폼 버퍼를 생성합니다.
+    /// 새로운 유니폼 버퍼를 생성합니다.
+    pub fn new(label: Option<&str>, device: &wgpu::Device, data: TransformDataLayout) -> Self {
+        Self(Arc::new(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
+                contents: bytemuck::bytes_of(&data),
+                usage: Self::USAGES,
+            },
+        )))
+    }
+
+    /// 초기화되지 않은 새로운 유니폼 버퍼를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self(Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
@@ -161,10 +176,13 @@ impl SkinningUniform {
         wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::VERTEX,
+            visibility,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -243,10 +261,13 @@ impl BindposeUniform {
         wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::VERTEX,
+            visibility,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -339,10 +360,13 @@ impl BoneTransformUniform {
         .union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::VERTEX,
+            visibility,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -352,7 +376,36 @@ impl BoneTransformUniform {
         }
     }
 
-    /// 초기화되지 않은 유니폼 버퍼를 생성합니다.
+    /// 새로운 유니폼 버퍼를 생성합니다.
+    ///
+    /// # Panics
+    /// 주어진 뼈 변환 행렬의 개수가 `MAX_BONES`보다 클 경우 [`panic!`]을 호출합니다.
+    ///
+    pub fn new(label: Option<&str>, device: &wgpu::Device, data: Vec<[f32; 16]>) -> Self {
+        assert!(
+            data.len() <= MAX_BONES,
+            "the number of given bone transform is larger than the {}",
+            MAX_BONES
+        );
+
+        const SIZE: usize = core::mem::size_of::<[f32; 16]>() * MAX_BONES;
+        let mut contents = vec![0u8; SIZE];
+        let data: &[u8] = bytemuck::cast_slice(&data);
+        let count = data.len();
+        let src = data.as_ptr();
+        let dst = contents.as_mut_ptr();
+        unsafe { core::ptr::copy_nonoverlapping(src, dst, count) };
+
+        Self(Arc::new(device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
+                contents: &contents,
+                usage: Self::USAGES,
+            },
+        )))
+    }
+
+    /// 초기화되지 않은 새로운 유니폼 버퍼를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self(Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
@@ -376,7 +429,7 @@ impl BoneTransformUniform {
         data: Vec<[f32; 16]>,
     ) {
         assert!(
-            data.len() <= Self::SIZE as usize,
+            data.len() <= MAX_BONES,
             "the number of given bone transform is larger than the {}",
             MAX_BONES
         );
@@ -416,7 +469,7 @@ impl BoneTransformUniform {
         data: Vec<[f32; 16]>,
     ) {
         assert!(
-            data.len() <= Self::SIZE as usize,
+            data.len() <= MAX_BONES,
             "the number of given bone transform is larger than the {}",
             MAX_BONES
         );

@@ -4,7 +4,6 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_render::{TexturePool, TextureViewPool};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -13,8 +12,9 @@ use winit::{
 
 use crate::{
     asset::{
-        BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI,
-        BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_URI, NOTOSANS_BOLD,
+        TexturePool, TextureViewPool, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_URI,
+        BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_URI,
+        NOTOSANS_BOLD,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
@@ -51,16 +51,27 @@ pub struct GameLoginTitleScene {
 
     /// 게임 배경화면 텍스처의 텍스처 식별자입니다.
     bg_texture_ids: Vec<egui::load::SizedTexture>,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
 }
 
 impl GameLoginTitleScene {
     /// 새로운 `GameLoginTitleScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(
+        locale: Locale,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
+    ) -> Self {
         Self {
             locale,
             elapsed_time_sec: 0.0,
             is_pressed: false,
             bg_texture_ids: Vec::with_capacity(6),
+            texture_pool,
+            texture_view_pool,
         }
     }
 
@@ -77,13 +88,16 @@ impl GameScene for GameLoginTitleScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         for uri in BG_TEXTURE_URI {
             // 로그인 배경화면 텍스처를 가져옵니다.
-            let texture =
-                TexturePool::unregister(uri).expect("BG_Login_Title_* texture must be preloaded!");
+            let texture = self
+                .texture_pool
+                .remove(uri)
+                .expect("BG_Login_Title_* texture must be preloaded!");
             let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
             // 로그인 배경화면 텍스처의 텍스처 뷰를 생성합니다.
-            let texture =
-                TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+            let texture = self
+                .texture_view_pool
+                .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
             // egui 렌더러에 텍스처를 등록합니다.
             let mut egui_renderer = app.egui_renderer_mut();
@@ -98,15 +112,6 @@ impl GameScene for GameLoginTitleScene {
                 id: texture_id,
                 size: texture_size,
             });
-        }
-    }
-
-    fn on_exit(&mut self, _window: Option<&Window>, _app: &dyn AppHandle) {
-        // 텍스처 풀 객체에서 로그인 타이틀 텍스처를 제거합니다.
-        for uri in BG_TEXTURE_URI {
-            if let Some(texture) = TexturePool::unregister(uri) {
-                TextureViewPool::remove(&texture);
-            }
         }
     }
 

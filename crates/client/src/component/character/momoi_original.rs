@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use ahash::{HashMap, HashSet};
 use constcat::concat;
@@ -10,17 +10,19 @@ use mod_network::components::{
     MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES,
     NUM_MOVEMENT_STATES, NUM_VIEW_STATES,
 };
-use mod_render::MaterialResource;
 
 use crate::{
     asset::{
-        AssetError, MeshPool, ModelHierarchyPool, Motion, MotionPool, Node, SamplerPool,
-        TextureDataPool, TexturePool, TextureViewPool,
+        ModelNode, ModelRoot, Motion, MotionPool, SamplerPool, TextureDataPool, TexturePool,
+        TextureViewPool,
     },
     component::{
-        BoneCollection, BoneTransformUniform, Child, MeshResource, Parent, Sibling,
-        SkinnedMeshResource, SkinningAnimation, ThirdPersonCamera, ToParentTrans, TransformUniform,
-        WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
+        BoneCollection, BoneTransformUniform, CharacterMaterialDataLayout,
+        CharacterMaterialResource, CharacterMaterialUniform, Child, EyeMouthMaterialDataLayout,
+        EyeMouthMaterialResource, EyeMouthMaterialUniform, HaloMaterialDataLayout,
+        HaloMaterialResource, HaloMaterialUniform, MaterialData, MaterialUniform, MeshResource,
+        Parent, Sibling, SkinnedMeshResource, SkinningAnimation, ThirdPersonCamera, ToParentTrans,
+        TransformUniform, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
         ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX,
         MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX,
         MOVING_ANIMATION_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
@@ -202,59 +204,49 @@ const VITAL_DEATH_ANIMATION: &'static str = concat!(MODEL_NAME, VITAL_DEATH_ANIM
 /// - 자식 엔터티(`Child`)
 /// - 형제 엔터티(`Sibling`)
 /// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
+/// - 스키닝된 메쉬 쉐이더 리소스(`SkinnedMeshResource`)
+/// - 뼈 변환 해열 유니폼 버버(`BoneTransUniform`)
 /// - 뼈 엔터티 집합(`BoneCollection`)
+/// - 재질 쉐이더 리소스(`Vec<MaterialResource>)`
+/// - 재질 쉐이더 유니폼 버퍼(`Vec<MaterialUniform>`)
 /// - 캐릭터 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
 ///
 /// # Panics
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 pub fn spawn_character_model(
+    label: Option<&str>,
     texture_data_pool: &TextureDataPool,
     texture_pool: &TexturePool,
     texture_view_pool: &TextureViewPool,
     sampler_pool: &SamplerPool,
-    mesh_pool: &MeshPool,
-    asset_manager: &AssetManager,
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError> {
-    let root = ModelHierarchyPool::get_or_init(
-        texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
-        mesh_pool,
-        MODEL_NAME,
-        WORKSPACE,
-        asset_manager,
-        device,
-        queue,
-        encoder,
-        staging_buffers,
-    )?;
-
+    root: &ModelRoot,
+) -> (Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>) {
     let mut meshes = HashMap::default();
     let mut entities = HashMap::default();
     let mut animation_mixing_bones = HashSet::default();
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
     let entity = spawn_character_model_recursive(
-        world,
+        label,
+        texture_data_pool,
+        texture_pool,
+        texture_view_pool,
+        sampler_pool,
         device,
-        queue,
         encoder,
         staging_buffers,
         &mut meshes,
         &mut entities,
-        &mut animation_mixing_bones,
         false,
+        &mut animation_mixing_bones,
         &mut batch_commands,
+        world,
         parent,
         &root.node,
         &[],
@@ -313,10 +305,9 @@ pub fn spawn_character_model(
             .expect("no such entity"),
         meshes,
         animation_mixing_bones,
-        ..Default::default()
     };
 
-    Ok((entity, skinning_animation, batch_commands))
+    (entity, skinning_animation, batch_commands)
 }
 
 /// 캐릭터 모델을 구성하는 엔터티를 생성하는 재귀함수입니다.
@@ -330,114 +321,120 @@ pub fn spawn_character_model(
 /// - 자식 엔터티(`Child`)
 /// - 형제 엔터티(`Sibling`)
 /// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
+/// - 스키닝된 메쉬 쉐이더 리소스(`SkinnedMeshResource`)
+/// - 뼈 변환 해열 유니폼 버버(`BoneTransUniform`)
 /// - 뼈 엔터티 집합(`BoneCollection`)
+/// - 재질 쉐이더 리소스(`Vec<MaterialResource>)`
+/// - 재질 쉐이더 유니폼 버퍼(`Vec<MaterialUniform>`)
 /// - 캐릭터 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
 ///
 /// # Panics
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 fn spawn_character_model_recursive(
-    world: &World,
+    label: Option<&str>,
+    texture_data_pool: &TextureDataPool,
+    texture_pool: &TexturePool,
+    texture_view_pool: &TextureViewPool,
+    sampler_pool: &SamplerPool,
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
     meshes: &mut HashMap<String, Entity>,
     entities: &mut HashMap<String, Entity>,
-    animation_mixing_bones: &mut HashSet<Entity>,
     contains_mixing_bones: bool,
+    animation_mixing_bones: &mut HashSet<Entity>,
     batch_commands: &mut Vec<(Entity, EntityBuilder)>,
+    world: &World,
     parent: Entity,
-    current: &Node,
-    siblings: &[Node],
+    node: &ModelNode,
+    siblings: &[ModelNode],
 ) -> Entity {
     // 엔터티를 하나 할당받습니다.
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
 
     // 엔터티 목록에 현재 엔터티를 추가합니다.
-    let node_name = current.name.clone();
-    entities.insert(node_name, entity);
+    entities.insert(node.name.clone(), entity);
 
     // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
-    builder.add(Parent(parent));
-    builder.add(ToParentTrans(current.transform));
-    builder.add(WorldTransform::default());
+    builder.add_bundle((
+        Parent(parent),
+        ToParentTrans(node.transform),
+        WorldTransform::default(),
+    ));
 
     // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.
-    if let Some(child) = current.children.first() {
+    if let Some(child_node) = node.children.first() {
         /// 노드가 애니메이션 믹싱에 사용되는 뼈 집합에 포함되는지 여부를 반환합니다.
         fn contains_set(name: &str) -> bool {
             name == MODEL_BONE_L_THIGH || name == MODEL_BONE_R_THIGH || name.contains("skirt")
         }
 
-        // 자식 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let node_name = current.name.clone();
-        let contains_mixing_bones = contains_mixing_bones || contains_set(&node_name);
-
-        // 자식 엔터티를 생성합니다.
-        let entity = spawn_character_model_recursive(
-            world,
+        let contains_mixing_bones = contains_mixing_bones || contains_set(&node.name);
+        let child = spawn_character_model_recursive(
+            label,
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
             device,
-            queue,
             encoder,
             staging_buffers,
             meshes,
             entities,
-            animation_mixing_bones,
             contains_mixing_bones,
+            animation_mixing_bones,
             batch_commands,
+            world,
             entity,
-            child,
-            &current.children[1..],
+            child_node,
+            &node.children[1..],
         );
 
         // 자식 컴포넌트를 추가합니다.
-        builder.add(Child(entity));
+        builder.add(Child(child));
     }
 
     // 형제 노드가 존재하는 경우 형제 엔터티를 추가합니다.
-    if let Some(sibling) = siblings.first() {
-        // 형제 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let current = sibling;
-        let siblings = &siblings[1..];
-
-        // 형제 엔터티를 생성합니다.
-        let entity = spawn_character_model_recursive(
-            world,
+    if let Some(sibling_node) = siblings.first() {
+        let sibling = spawn_character_model_recursive(
+            label,
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
             device,
-            queue,
             encoder,
             staging_buffers,
             meshes,
             entities,
-            animation_mixing_bones,
             contains_mixing_bones,
+            animation_mixing_bones,
             batch_commands,
+            world,
             parent,
-            current,
-            siblings,
+            sibling_node,
+            &siblings[1..],
         );
 
         // 형제 엔터티 컴포넌트를 추가합니다.
-        builder.add(Sibling(entity));
+        builder.add(Sibling(sibling));
     }
 
     // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
-    if let Some(mesh) = current.mesh.clone() {
-        let uri = mesh.uri();
-        if let Some(skinning) = current.skinning.clone() {
-            let skinning_uniform = skinning.skinning_uniform.clone();
+    if let Some(mesh) = node.mesh.clone() {
+        if let Some(skinning) = node.skinning.clone() {
+            // 스키닝된 메쉬 쉐이더 리소스를 생성합니다.
             let bindpose_uniform = skinning.bindpose_uniform.clone();
-            let bone_trans_uniform =
-                BoneTransformUniform::uninit(Some(&format!("BoneTrans({})", &uri)), device);
-            let mesh_resource = SkinnedMeshResource::new(
-                Some(uri),
+            let bone_trans_uniform = BoneTransformUniform::uninit(
+                Some(&format!("BoneTransform({})", label.unwrap_or("Unknown"))),
                 device,
-                &skinning_uniform,
+            );
+            let mesh_resource = SkinnedMeshResource::new(
+                label,
+                device,
                 &bindpose_uniform,
                 &bone_trans_uniform,
             );
@@ -457,29 +454,200 @@ fn spawn_character_model_recursive(
 
             builder.add_bundle((bone_trans_uniform, mesh_resource, collection));
         } else {
-            let uri = mesh.uri();
-            let transform_uniform =
-                TransformUniform::uninit(Some(&format!("Transform({})", uri)), device);
-            let mesh_resource = MeshResource::new(Some(uri), device, &transform_uniform);
+            // 메쉬 쉐이더 리소스를 생성합니다.
+            let transform_uniform = TransformUniform::uninit(
+                Some(&format!("Transform({})", label.unwrap_or("Unknown"))),
+                device,
+            );
+            let mesh_resource = MeshResource::new(label, device, &transform_uniform);
             builder.add_bundle((transform_uniform, mesh_resource));
         }
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
-        meshes.insert(uri.into(), entity);
+        meshes.insert(mesh.uri().into(), entity);
 
         if mesh.uri().contains("Halo") {
             // 메쉬, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, CharacterHaloKind::MomoiOriginalHalo));
+            builder.add_bundle((mesh, CharacterHaloKind::ArisOriginalHalo));
         } else {
             // 메쉬, 캐릭터 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, CharacterKind::MomoiOriginal));
+            builder.add_bundle((mesh, CharacterKind::ArisOriginal));
         }
     }
 
     // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.
-    if !current.materials.is_empty() {
-        let materials: Vec<Arc<MaterialResource>> = current.materials.iter().cloned().collect();
-        builder.add(materials);
+    if !node.materials.is_empty() {
+        let (uniforms, materials): (Vec<_>, Vec<_>) = node
+            .materials
+            .iter()
+            .map(|data| {
+                match data.deref() {
+                    MaterialData::Character(data) => {
+                        // 캐릭터 유니폼 버퍼를 생성합니다.
+                        let character_uniform = CharacterMaterialUniform::new(
+                            Some(&format!("Character({})", label.unwrap_or("Unknown"))),
+                            device,
+                            CharacterMaterialDataLayout {
+                                glossiness: data.glossiness,
+                                smoothness: data.smoothness,
+                                metallic: data.metallic,
+                                ..Default::default()
+                            },
+                        );
+
+                        // 캐릭터 텍스처를 가져옵니다.
+                        let texture_data = texture_data_pool
+                            .get(&data.albedo_map)
+                            .expect("the texture data must exist!");
+                        let texture = texture_pool
+                            .get(&data.albedo_map)
+                            .expect("the texture must exist!");
+                        let main_color_view = texture_view_pool.get_or_init(
+                            &texture,
+                            &wgpu::TextureViewDescriptor {
+                                dimension: Some(texture_data.dimension.into()),
+                                ..Default::default()
+                            },
+                        );
+                        let main_color_sampler = sampler_pool.get_or_init(
+                            device,
+                            &wgpu::SamplerDescriptor {
+                                address_mode_u: texture_data.address_u.into(),
+                                address_mode_v: texture_data.address_v.into(),
+                                address_mode_w: texture_data.address_w.into(),
+                                mag_filter: texture_data.filter_mode.into(),
+                                min_filter: texture_data.filter_mode.into(),
+                                mipmap_filter: texture_data.filter_mode.into(),
+                                ..Default::default()
+                            },
+                        );
+
+                        let material_resource = CharacterMaterialResource::new(
+                            label,
+                            device,
+                            &character_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                        );
+
+                        (
+                            MaterialUniform::Character(character_uniform),
+                            material_resource,
+                        )
+                    }
+                    MaterialData::CharacterEyeMouth(data) => {
+                        // 캐릭터 유니폼 버퍼를 생성합니다.
+                        let character_uniform = EyeMouthMaterialUniform::new(
+                            Some(&format!("EyeMouth({})", label.unwrap_or("Unknown"))),
+                            device,
+                            EyeMouthMaterialDataLayout {
+                                glossiness: data.glossiness,
+                                smoothness: data.smoothness,
+                                metallic: data.metallic,
+                                ..Default::default()
+                            },
+                        );
+
+                        // 캐릭터 텍스처를 가져옵니다.
+                        let texture_data = texture_data_pool
+                            .get(&data.albedo_map)
+                            .expect("the texture data must exist!");
+                        let texture = texture_pool
+                            .get(&data.albedo_map)
+                            .expect("the texture must exist!");
+                        let main_color_view = texture_view_pool.get_or_init(
+                            &texture,
+                            &wgpu::TextureViewDescriptor {
+                                dimension: Some(texture_data.dimension.into()),
+                                ..Default::default()
+                            },
+                        );
+                        let main_color_sampler = sampler_pool.get_or_init(
+                            device,
+                            &wgpu::SamplerDescriptor {
+                                address_mode_u: texture_data.address_u.into(),
+                                address_mode_v: texture_data.address_v.into(),
+                                address_mode_w: texture_data.address_w.into(),
+                                mag_filter: texture_data.filter_mode.into(),
+                                min_filter: texture_data.filter_mode.into(),
+                                mipmap_filter: texture_data.filter_mode.into(),
+                                ..Default::default()
+                            },
+                        );
+
+                        let material_resource = EyeMouthMaterialResource::new(
+                            label,
+                            device,
+                            &character_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                        );
+
+                        (
+                            MaterialUniform::CharacterEyeMouth(character_uniform),
+                            material_resource,
+                        )
+                    }
+                    MaterialData::CharacterHalo(data) => {
+                        // 캐릭터 유니폼 버퍼를 생성합니다.
+                        let character_uniform = HaloMaterialUniform::new(
+                            Some(&format!("CharacterHalo({})", label.unwrap_or("Unknown"))),
+                            device,
+                            HaloMaterialDataLayout {
+                                glossiness: data.glossiness,
+                                smoothness: data.smoothness,
+                                metallic: data.metallic,
+                                emissive: data.emissive.into(),
+                                ..Default::default()
+                            },
+                        );
+
+                        // 캐릭터 텍스처를 가져옵니다.
+                        let texture_data = texture_data_pool
+                            .get(&data.main_color)
+                            .expect("the texture data must exist!");
+                        let texture = texture_pool
+                            .get(&data.main_color)
+                            .expect("the texture must exist!");
+                        let main_color_view = texture_view_pool.get_or_init(
+                            &texture,
+                            &wgpu::TextureViewDescriptor {
+                                dimension: Some(texture_data.dimension.into()),
+                                ..Default::default()
+                            },
+                        );
+                        let main_color_sampler = sampler_pool.get_or_init(
+                            device,
+                            &wgpu::SamplerDescriptor {
+                                address_mode_u: texture_data.address_u.into(),
+                                address_mode_v: texture_data.address_v.into(),
+                                address_mode_w: texture_data.address_w.into(),
+                                mag_filter: texture_data.filter_mode.into(),
+                                min_filter: texture_data.filter_mode.into(),
+                                mipmap_filter: texture_data.filter_mode.into(),
+                                ..Default::default()
+                            },
+                        );
+
+                        let material_resource = HaloMaterialResource::new(
+                            label,
+                            device,
+                            &character_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                        );
+
+                        (
+                            MaterialUniform::CharacterHalo(character_uniform),
+                            material_resource,
+                        )
+                    }
+                    _ => panic!("invalid material data!"),
+                }
+            })
+            .unzip();
+
+        builder.add_bundle((uniforms, materials));
     }
 
     {
@@ -489,8 +657,7 @@ fn spawn_character_model_recursive(
         }
 
         // 뼈 집합에 포함되는 경우 엔터티를 추가합니다.
-        let node_name = current.name.clone();
-        if contains_mixing_bones || contains_set(&node_name) {
+        if contains_mixing_bones || contains_set(&node.name) {
             animation_mixing_bones.insert(entity);
         }
     }

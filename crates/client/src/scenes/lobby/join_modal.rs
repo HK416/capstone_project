@@ -14,7 +14,7 @@ use mod_network::{
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
     scenes::{CustomGameRoomScene, FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
@@ -56,17 +56,30 @@ pub struct MainLobbyJoinModalScene {
 
     /// 입력된 번호 데이터입니다.
     input_number: String,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
 }
 
 impl MainLobbyJoinModalScene {
     /// 새로운 `MainLobbyJoinModalScene`을 생성합니다.
-    pub fn new(locale: Locale, user_id: UserId, token: LoginToken) -> Self {
+    pub fn new(
+        locale: Locale,
+        user_id: UserId,
+        token: LoginToken,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
+    ) -> Self {
         Self {
             locale,
             user_id,
             token,
             input_enabled: true,
             input_number: String::with_capacity(16),
+            texture_pool,
+            texture_view_pool,
         }
     }
 }
@@ -133,6 +146,8 @@ impl GameScene for MainLobbyJoinModalScene {
                     self.locale,
                     self.user_id,
                     self.token,
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
                     packet.world_id,
                     packet.players,
                 ));

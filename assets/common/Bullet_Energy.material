@@ -1,0 +1,1 @@
+{ "EnergyBullet": { "uri": "Bullet_Energy", "glossiness": 0.5, "smoothness": 0.2, "metallic": 0, "emissive": { "x": 0.5330075, "y": 3.56161, "z": 4.883966, "w": 1 }, "main_color": { "x": 0.361635, "y": 0.8875314, "z": 1, "w": 1 }, "sub_color": { "x": 0.361635, "y": 0.8875314, "z": 1, "w": 1 } } }

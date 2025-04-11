@@ -102,3 +102,20 @@ impl Default for WorldTransform {
         Self(glam::Mat4::IDENTITY)
     }
 }
+
+/// ## Projection Transform Matrix
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Projection(pub glam::Mat4);
+
+impl Projection {
+    /// 새로운 원근 투영 변환 행렬을 생성합니다.
+    pub fn perspective(fov_y_radians: f32, aspect_ratio: f32, z_near: f32, z_far: f32) -> Self {
+        Self(glam::Mat4::perspective_lh(
+            fov_y_radians,
+            aspect_ratio,
+            z_near,
+            z_far,
+        ))
+    }
+}

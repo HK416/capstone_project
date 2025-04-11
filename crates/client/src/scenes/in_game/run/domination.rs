@@ -20,10 +20,7 @@ use mod_network::{
     },
 };
 use mod_physics::object3d::Frustum;
-use mod_render::{
-    CameraResource, GlobalLightDataLayout, GlobalLightUniform, SkyboxDataLayout, SkyboxResource,
-    DEPTH_FORMAT, SWAPCHAIN_FORMAT,
-};
+use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT,};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -32,24 +29,19 @@ use winit::{
 
 use crate::{
     asset::{
-        AssetError, MeshPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool,
-        NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI,
+        ModelPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_REGULAR,
+        UI_GAME_LAYOUT_URI,
     },
     component::{
-        animate_character, bake_character_shadow, categorize_character_resource, cleanup,
-        draw_character, draw_character_halo, prepare_mesh_resource, prepare_skinned_mesh_resource,
-        set_weapon_position, spawn_player_character, spwan_bullet, update_character_direction,
-        update_entity_hierarchy, update_third_person_camera, update_third_person_camera_hierarchy,
-        update_view_state_by_controller_input_flags, update_view_state_timer, BoneCollection,
-        Child, DirectionLight, MoveDirection, Parent, Projection, Sibling, SkinningAnimation,
-        StageArea, StageProp, ThirdPersonCamera, ToParentTrans, WorldTransform,
+        animate_character, draw_stage, prepare_mesh_resource,
+        prepare_skinned_mesh_resource, set_weapon_position, spawn_player_character, spwan_bullet,
+        update_character_direction, update_entity_hierarchy, update_third_person_camera,
+        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
+        update_view_state_timer, BoneCollection, Child, MoveDirection, Parent,
+        Projection, Sibling, SkinningAnimation, StageTag, ThirdPersonCamera, ToParentTrans,
+        WorldTransform,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
-    render::{
-        clear_render_target_with_skybox, draw_bullet, draw_damage_particle, draw_stage_area,
-        draw_stage_props, get_damage_font, prepare_camera_resource, shadow::ShadowMapResource,
-        spawn_damage_fx, CompositeResource, Damage, FxDamageDataLayout, FxDamageResource, LifeTime,
-    },
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
@@ -64,6 +56,8 @@ pub struct InGameDominationModeScene {
     /// 로그인 토큰
     token: LoginToken,
 
+    /// 모델 풀 객체입니다.
+    model_pool: ModelPool,
     /// 텍스처 데이터 풀 객체입니다.
     texture_data_pool: TextureDataPool,
     /// 텍스처 풀 객체입니다.
@@ -72,8 +66,6 @@ pub struct InGameDominationModeScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
-    /// 메쉬 풀 객체입니다.
-    mesh_pool: MeshPool,
 
     /// 게임 월드
     world: World,
@@ -113,11 +105,11 @@ impl InGameDominationModeScene {
         locale: Locale,
         user_id: UserId,
         token: LoginToken,
+        model_pool: ModelPool,
         texture_data_pool: TextureDataPool,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
-        mesh_pool: MeshPool,
         world: World,
         players: HashMap<UserId, Entity>,
         skybox_resource: Arc<SkyboxResource>,
@@ -126,11 +118,11 @@ impl InGameDominationModeScene {
             locale,
             user_id,
             token,
+            model_pool,
             texture_data_pool,
             texture_pool,
             texture_view_pool,
             sampler_pool,
-            mesh_pool,
             world,
             players,
             objects: HashMap::default(),
@@ -756,7 +748,7 @@ impl InGameDominationModeScene {
     /// 이 함수를 호출하기 전에 월드 변환 행렬이 갱신되어야합니다.
     ///
     fn prepare_character_mesh_resource(&mut self, entities: &[Entity], device: &wgpu::Device) {
-        prepare_skinned_mesh_resource(&self.world, entities, device, 128);
+        prepare_skinned_mesh_resource(&self.world, entities, device, 32);
     }
 
     /// 총알의 쉐이더 리소스를 갱신합니다.
@@ -765,18 +757,18 @@ impl InGameDominationModeScene {
     /// 이 함수를 호출하기 전에 총알의 월드 변환 행렬이 갱신되어야 합니다.
     ///
     fn prepare_bullet_mesh_resource(&mut self, entities: &[Entity], device: &wgpu::Device) {
-        prepare_mesh_resource(&self.world, entities, device, 128);
+        prepare_mesh_resource(&self.world, entities, device, 32);
     }
 
     /// 스테이지 엔터티의 계층 구조를 갱신합니다.
     fn update_stage_hierarchy(&mut self) {
         // 스테이지 지역 엔터티와 소품 엔터티를 수집합니다.
-        let mut entities = Vec::new();
-        let query = self.world.query_mut::<Without<&StageArea, &Parent>>();
-        entities.extend(query.into_iter().map(|(entity, _)| entity));
-
-        let query = self.world.query_mut::<Without<&StageProp, &Parent>>();
-        entities.extend(query.into_iter().map(|(entity, _)| entity));
+        let entities: Vec<_> = self
+            .world
+            .query_mut::<Without<&StageTag, &Parent>>()
+            .into_iter()
+            .map(|(entity, _)| entity)
+            .collect();
 
         // 엔터티의 계층 구조를 갱신합니다.
         for entity in entities {
@@ -791,12 +783,12 @@ impl InGameDominationModeScene {
     ///
     fn prepare_stage_resource(&mut self, device: &wgpu::Device) {
         // 스테이지 지역 엔터티와 소품 엔터티를 수집합니다.
-        let mut entities = Vec::new();
-        let query = self.world.query_mut::<Without<&StageArea, &Parent>>();
-        entities.extend(query.into_iter().map(|(entity, _)| entity));
-
-        let query = self.world.query_mut::<Without<&StageProp, &Parent>>();
-        entities.extend(query.into_iter().map(|(entity, _)| entity));
+        let entities: Vec<_> = self
+            .world
+            .query_mut::<Without<&StageTag, &Parent>>()
+            .into_iter()
+            .map(|(entity, _)| entity)
+            .collect();
 
         // 엔터티의 메쉬 리소스를 갱신합니다.
         prepare_mesh_resource(&self.world, &entities, device, 32);
@@ -844,12 +836,7 @@ impl InGameDominationModeScene {
         // 게임 월드에 존재하는 플레이어를 갱신합니다.
         let new = self.update_player_from_packet(&packet.players, &mut identifiers);
         // 새로운 플레이어를 게임 월드에 추가합니다.
-        let result = self.add_player_from_packet(
-            new,
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
+        self.add_player_from_packet(new, app.render_device(), app.render_queue());
         self.remove_player_from_packet(identifiers.into_iter());
 
         // 현재 게임 월드에 존재하는 오브젝트의 식별자를 수집합니다.
@@ -857,12 +844,7 @@ impl InGameDominationModeScene {
         // 게임 월드에 존재하는 총알을 갱신합니다.
         let new = self.update_bullet_from_packet(&packet.bullets, &mut identifiers);
         // 새로운 총알을 게임 월드에 추가합니다.
-        let result = self.add_bullet_from_packet(
-            new,
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
+        self.add_bullet_from_packet(new, app.render_device(), app.render_queue());
         // 제거된 오브젝트를 게임월드에서 제거합니다.
         self.remove_object_from_packet(identifiers.into_iter());
     }
@@ -1032,10 +1014,9 @@ impl InGameDominationModeScene {
     fn add_player_from_packet<'a>(
         &mut self,
         new: Vec<&'a PlayPhasePlayer>,
-        asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(), AssetError> {
+    ) {
         let mut staging_buffers = Vec::new();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
@@ -1043,19 +1024,17 @@ impl InGameDominationModeScene {
         for player in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
             let (root_entity, batch_commands) = spawn_player_character(
+                &self.world,
+                &self.model_pool,
                 &self.texture_data_pool,
                 &self.texture_pool,
                 &self.texture_view_pool,
                 &self.sampler_pool,
-                &self.mesh_pool,
-                &player,
-                asset_manager,
+                player,
                 device,
-                queue,
                 &mut encoder,
                 &mut staging_buffers,
-                &self.world,
-            )?;
+            );
 
             // 명령어를 실행합니다.
             for (entity, mut builder) in batch_commands {
@@ -1068,7 +1047,8 @@ impl InGameDominationModeScene {
             self.players.insert(player.account.uid, root_entity);
         }
 
-        Ok(())
+        queue.submit([encoder.finish()]);
+        drop(staging_buffers);
     }
 
     /// 제거된 플레이어를 게임 월드에서 제거합니다.
@@ -1083,10 +1063,9 @@ impl InGameDominationModeScene {
     fn add_bullet_from_packet<'a>(
         &mut self,
         new: Vec<&'a Bullet>,
-        asset_manager: &AssetManager,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(), AssetError> {
+    ) {
         let mut staging_buffers = Vec::new();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
@@ -1094,19 +1073,15 @@ impl InGameDominationModeScene {
         for bullet in new {
             // 새로운 플레이어 계층 구조를 생성합니다.
             let (root_entity, batch_commands) = spwan_bullet(
-                &self.texture_data_pool,
-                &self.texture_pool,
+                &self.world,
+                &self.model_pool,
                 &self.texture_view_pool,
                 &self.sampler_pool,
-                &self.mesh_pool,
                 bullet,
-                asset_manager,
                 device,
-                queue,
                 &mut encoder,
                 &mut staging_buffers,
-                &self.world,
-            )?;
+            );
 
             // 명령어를 실행합니다.
             for (entity, mut builder) in batch_commands {
@@ -1119,7 +1094,8 @@ impl InGameDominationModeScene {
             self.objects.insert(bullet.object_id, root_entity);
         }
 
-        Ok(())
+        queue.submit([encoder.finish()]);
+        drop(staging_buffers);
     }
 
     /// 제거된 엔터티를 오프젝트에서 제거합니다.
@@ -1617,19 +1593,10 @@ impl GameScene for InGameDominationModeScene {
                 &mut rpass,
             );
 
-            draw_stage_area(
+            draw_stage(
                 &self.world,
                 &camera_resource,
                 &shadow_resource,
-                &device,
-                SWAPCHAIN_FORMAT,
-                DEPTH_FORMAT,
-                &mut rpass,
-            );
-
-            draw_stage_props(
-                &self.world,
-                &camera_resource,
                 &device,
                 SWAPCHAIN_FORMAT,
                 DEPTH_FORMAT,

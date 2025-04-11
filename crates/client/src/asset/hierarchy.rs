@@ -1,425 +1,352 @@
-use std::{
-    io::Cursor,
-    path::Path,
-    sync::{Arc, OnceLock},
-};
+use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path, sync::Arc};
 
-use ahash::HashMap;
-use mod_app::asset::AssetManager;
-use mod_network::components::{HierarchyNode, MaterialData, ModelHierarchyData};
-use mod_render::{MaterialDescriptor, MaterialPool, MaterialResource};
+use ahash::{HashMap, RandomState};
+use mod_network::components::Matrix;
 use parking_lot::{FairMutex, FairMutexGuard};
+use serde::{Deserialize, Serialize};
 
-use crate::component::Mesh;
+use crate::component::{MaterialData, MaterialDataPool, Mesh};
 
 use super::{
     AssetError, MeshPool, SamplerPool, Skinning, TextureDataPool, TexturePool, TextureViewPool,
 };
 
-type PoolType = HashMap<String, Arc<Root>>;
-
-/// 로드된 모델의 노드 데이터를 관리하는 풀 객체입니다.
-static POOL: OnceLock<FairMutex<PoolType>> = OnceLock::new();
-
-/// 노드 데이터를 관리하는 풀 객체를 가져옵니다.
-fn get_pool() -> FairMutexGuard<'static, PoolType> {
-    POOL.get_or_init(|| FairMutex::new(HashMap::default()))
-        .lock()
+/// 모델의 계층 구조 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ModelData {
+    pub root: ModelNodeData,
+    pub num_nodes: u32,
 }
 
-/// ## Model Hierarchy Pool
-/// 로드된 모델의 계층 구조 데이터를 관리하는 풀 객체입니다.  
-/// 실제 풀 객체는 static 변수로 선언되어 있으며, `ModelHierarchyPool`은 풀 객체에 접근할 수 있는 인터페이스를 제공합니다.
-pub struct ModelHierarchyPool;
-
-impl ModelHierarchyPool {
-    /// 모델 계층 구조 데이터를 로드합니다.  
-    /// 이 함수는 항상 파일에서 모델 계층 구조 데이터를 읽어 저장합니다.
-    ///
-    /// # Errors
-    /// 모델 계층 구조 데이터를 로드하는 도중 오류가 발생한 경우 `Error`를 반환합니다.
-    ///
-    pub fn get_or_init(
-        texture_data_pool: &TextureDataPool,
-        texture_pool: &TexturePool,
-        texture_view_pool: &TextureViewPool,
-        sampler_pool: &SamplerPool,
-        mesh_pool: &MeshPool,
-        name: &str,
-        workspace: &str,
-        asset_manager: &AssetManager,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-    ) -> Result<Arc<Root>, AssetError> {
-        let mut pool = get_pool();
-        match pool.get(name).cloned() {
-            Some(root) => Ok(root),
-            None => {
-                let root = load_model_root(
-                    texture_data_pool,
-                    texture_pool,
-                    texture_view_pool,
-                    sampler_pool,
-                    mesh_pool,
-                    name,
-                    workspace,
-                    asset_manager,
-                    device,
-                    queue,
-                    encoder,
-                    staging_buffers,
-                )?;
-                pool.insert(name.to_string(), root.clone());
-                Ok(root)
-            }
-        }
-    }
-
-    /// 풀 객체에 해당 모델 계층 데이터를 제거합니다.  
-    /// 풀 객체에 해당 모델 계층 데이터가 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
-    #[allow(dead_code)]
-    pub fn remove(name: &str) -> Option<Arc<Root>> {
-        get_pool().remove(name)
-    }
-
-    /// 풀 객체에 있는 모든 모델 계층 데이터를 제거합니다.
-    #[allow(dead_code)]
-    pub fn clear() {
-        get_pool().clear()
-    }
+/// 모델의 계층 구조를 구성하는 노드 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ModelNodeData {
+    pub name: String,
+    pub transform: Matrix,
+    pub mesh: Option<String>,
+    pub materials: Vec<String>,
+    pub children: Vec<ModelNodeData>,
 }
 
-/// ## Model Root Node
+/// 루트 모델 노드입니다.
 #[derive(Debug, Clone)]
-pub struct Root {
-    pub node: Node,
+pub struct ModelRoot {
+    pub node: ModelNode,
     pub num_nodes: usize,
 }
 
-/// ## Model Node
+/// 모델 노드입니다.
 #[derive(Debug, Clone)]
-pub struct Node {
+pub struct ModelNode {
     pub name: String,
     pub transform: glam::Mat4,
     pub mesh: Option<Arc<Mesh>>,
     pub skinning: Option<Arc<Skinning>>,
-    pub materials: Vec<Arc<MaterialResource>>,
-    pub children: Vec<Node>,
+    pub materials: Vec<Arc<MaterialData>>,
+    pub children: Vec<ModelNode>,
 }
 
-/// 모델의 노드 데이터를 로드합니다.
-fn load_model_root(
-    texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
-    mesh_pool: &MeshPool,
-    name: &str,
-    workspace: &str,
-    asset_manager: &AssetManager,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    encoder: &mut wgpu::CommandEncoder,
-    staging_buffers: &mut Vec<wgpu::Buffer>,
-) -> Result<Arc<Root>, AssetError> {
-    let path = format!("{}/{}.hierarchy", workspace, name);
-    log::debug!("load model asset (PATH:{})", &path);
-    let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
-        log::error!("{} (PATH:{})", &e, &path);
-        AssetError::from(e)
-    })?;
+/// 로드된 모델 데이터를 관리하는 풀 객체입니다.
+#[derive(Debug, Clone)]
+pub struct ModelPool(Arc<FairMutex<ModelPoolType>>);
 
-    log::debug!("parse model asset (PATH:{})", &path);
-    let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: ModelHierarchyData = serde_json::de::from_reader(reader).map_err(|e| {
-        log::error!("{} (PATH:{})", &e, &path);
-        AssetError::from(e)
-    })?;
+/// 모델 데이터 풀 객체의 타입입니다.
+pub type ModelPoolType = HashMap<String, Arc<ModelRoot>>;
 
-    let node = load_model_node_recursive(
-        texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
-        mesh_pool,
-        workspace,
-        asset_manager,
-        device,
-        queue,
-        encoder,
-        staging_buffers,
-        blob.root,
-    )?;
-    let root = Arc::new(Root {
-        node,
-        num_nodes: blob.num_nodes as usize,
-    });
+/// 모델 데이터 풀 객체의 용량입니다.
+pub const MODEL_POOL_CAPACITY: usize = 64;
 
-    log::debug!("cleanup model asset cache (PATH:{})", &path);
-    asset_manager.remove(path);
-
-    Ok(root)
-}
-
-/// 모델을 구성하는 노드의 계층구조를 구성합니다.
-fn load_model_node_recursive(
-    texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
-    mesh_pool: &MeshPool,
-    workspace: &str,
-    asset_manager: &AssetManager,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    encoder: &mut wgpu::CommandEncoder,
-    staging_buffers: &mut Vec<wgpu::Buffer>,
-    blob: HierarchyNode,
-) -> Result<Node, AssetError> {
-    let name = blob.name.clone();
-    let transform = blob.transform.into_mat4();
-    let (mesh, skinning) = match blob.mesh.as_ref() {
-        Some(mesh_uri) => {
-            let mut path = asset_manager.get_root_dir().to_path_buf();
-            path.push(workspace);
-
-            let (mesh, skinning) =
-                mesh_pool.get_or_init(path, mesh_uri, device, encoder, staging_buffers)?;
-            (Some(mesh), skinning)
-        }
-        None => (None, None),
-    };
-
-    let mut materials = Vec::with_capacity(blob.materials.len());
-    for filename in blob.materials.iter() {
-        let path = format!("{}/{}.material", &workspace, &filename);
-        let cached = asset_manager.get_or_init(&path).map_err(|e| {
-            log::error!("{} (PATH:{})", &e, &path);
-            AssetError::from(e)
-        })?;
-        let blob: MaterialData = serde_json::de::from_slice(cached.as_bytes()).map_err(|e| {
-            log::error!("{} (PATH:{})", &e, &path);
-            AssetError::from(e)
-        })?;
-
-        materials.push(create_material(
-            texture_data_pool,
-            texture_pool,
-            texture_view_pool,
-            sampler_pool,
-            workspace,
-            asset_manager,
-            device,
-            queue,
-            encoder,
-            staging_buffers,
-            blob,
-        )?);
+impl ModelPool {
+    /// 새로운 풀 객체를 생성합니다.
+    pub fn new() -> Self {
+        Self(Arc::new(FairMutex::new(HashMap::with_capacity_and_hasher(
+            MODEL_POOL_CAPACITY,
+            RandomState::new(),
+        ))))
     }
 
-    let mut children = Vec::with_capacity(blob.children.len());
-    for blob in blob.children {
-        children.push(load_model_node_recursive(
-            texture_data_pool,
-            texture_pool,
-            texture_view_pool,
-            sampler_pool,
+    /// 풀 객체의 `lock`을 획득합니다.
+    ///
+    /// # Warning
+    /// `FairMutexGuard`가 지속되는 동안 풀 객체의 다른 함수를 호출하면 데드락이 발생합니다.
+    ///
+    pub fn lock(&self) -> FairMutexGuard<'_, ModelPoolType> {
+        self.0.lock()
+    }
+
+    /// 파일로부터 [ModelData]를 생성합니다.
+    fn load_from_file<Dir, Uri>(workspace: Dir, uri: Uri) -> Result<ModelData, AssetError>
+    where
+        Dir: AsRef<Path>,
+        Uri: AsRef<str>,
+    {
+        let mut path = workspace.as_ref().to_path_buf();
+        path.push(format!("{}.hierarchy", uri.as_ref()));
+
+        log::debug!("open model data asset (PATH:{})", path.display());
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .open(&path)
+            .map_err(|e| {
+                log::error!(
+                    "failed to open model data asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                AssetError::IOError(e)
+            })?;
+
+        log::debug!("read model data asset (PATH:{})", path.display());
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).map_err(|e| {
+            log::error!(
+                "failed to read model data asset (PATH:{}, REASON:{})",
+                path.display(),
+                &e
+            );
+            AssetError::IOError(e)
+        })?;
+
+        log::debug!("close model data asset (PATH:{})", path.display());
+        drop(file);
+
+        log::debug!("decode model data asset (PATH:{})", path.display());
+        serde_json::from_slice(&buf).map_err(|e| {
+            log::error!(
+                "failed to decode model data asset (PATH:{}, REASON:{})",
+                path.display(),
+                &e
+            );
+            AssetError::ParsingFailed(e)
+        })
+    }
+
+    /// [ModelData]로 부터 [ModelRoot]를 생성합니다.
+    fn create_model_root<Dir>(
+        mesh_pool: &MeshPool,
+        material_data_pool: &MaterialDataPool,
+        texture_data_pool: &TextureDataPool,
+        texture_pool: &TexturePool,
+        texture_view_pool: &TextureViewPool,
+        sampler_pool: &SamplerPool,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+        workspace: Dir,
+        data: ModelData,
+    ) -> Result<Arc<ModelRoot>, AssetError>
+    where
+        Dir: AsRef<Path>,
+    {
+        let node = Self::create_model_node(
             mesh_pool,
-            workspace,
-            asset_manager,
+            material_data_pool,
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
             device,
-            queue,
             encoder,
             staging_buffers,
-            blob,
-        )?);
+            workspace,
+            &data.root,
+        )?;
+
+        Ok(Arc::new(ModelRoot {
+            node,
+            num_nodes: data.num_nodes as usize,
+        }))
     }
 
-    // 캐싱된 에셋을 정리합니다.
-    for filename in blob.materials.iter() {
-        let path = format!("{}/{}.material", &workspace, &filename);
-        asset_manager.remove(path);
+    /// [ModelNodeData]로 부터 [ModelNode]를 생성합니다.
+    fn create_model_node<Dir>(
+        mesh_pool: &MeshPool,
+        material_data_pool: &MaterialDataPool,
+        texture_data_pool: &TextureDataPool,
+        texture_pool: &TexturePool,
+        texture_view_pool: &TextureViewPool,
+        sampler_pool: &SamplerPool,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+        workspace: Dir,
+        data: &ModelNodeData,
+    ) -> Result<ModelNode, AssetError>
+    where
+        Dir: AsRef<Path>,
+    {
+        // 노드의 기본 정보를 수집합니다.
+        let name = data.name.clone();
+        let transform = data.transform.into_mat4();
+
+        // 노드에 연결된 메쉬 데이터를 가져옵니다.
+        let (mesh, skinning) = match &data.mesh {
+            Some(mesh_uri) => {
+                let (mesh, skinning) = mesh_pool.get_or_init(
+                    workspace.as_ref(),
+                    mesh_uri,
+                    device,
+                    encoder,
+                    staging_buffers,
+                )?;
+                (Some(mesh), skinning)
+            }
+            None => (None, None),
+        };
+
+        // 노드에 연결된 재질 데이터를 가져옵니다.
+        let mut materials = Vec::with_capacity(data.materials.len());
+        for material_uri in data.materials.iter() {
+            let data = material_data_pool.get_or_init(workspace.as_ref(), material_uri)?;
+            match data.deref() {
+                MaterialData::Character(data) => {
+                    let uri = &data.albedo_map;
+                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
+                    let _texture = texture_pool.get_or_init(
+                        workspace.as_ref(),
+                        device,
+                        encoder,
+                        staging_buffers,
+                        &data,
+                    )?;
+                }
+                MaterialData::CharacterEyeMouth(data) => {
+                    let uri = &data.albedo_map;
+                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
+                    let _texture = texture_pool.get_or_init(
+                        workspace.as_ref(),
+                        device,
+                        encoder,
+                        staging_buffers,
+                        &data,
+                    )?;
+                }
+                MaterialData::CharacterHalo(data) => {
+                    let uri = &data.main_color;
+                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
+                    let _texture = texture_pool.get_or_init(
+                        workspace.as_ref(),
+                        device,
+                        encoder,
+                        staging_buffers,
+                        &data,
+                    )?;
+                }
+                MaterialData::Stage(data) => {
+                    let uri = &data.main_color;
+                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
+                    let _texture = texture_pool.get_or_init(
+                        workspace.as_ref(),
+                        device,
+                        encoder,
+                        staging_buffers,
+                        &data,
+                    )?;
+                }
+                _ => {}
+            }
+            materials.push(data);
+        }
+
+        // 노드에 연결된 자식 데이터를 가져옵니다.
+        let mut children = Vec::with_capacity(data.children.len());
+        for data in data.children.iter() {
+            let node = Self::create_model_node(
+                mesh_pool,
+                material_data_pool,
+                texture_data_pool,
+                texture_pool,
+                texture_view_pool,
+                sampler_pool,
+                device,
+                encoder,
+                staging_buffers,
+                workspace.as_ref(),
+                data,
+            )?;
+
+            children.push(node);
+        }
+
+        Ok(ModelNode {
+            name,
+            transform,
+            mesh,
+            skinning,
+            materials,
+            children,
+        })
     }
 
-    Ok(Node {
-        name,
-        transform,
-        mesh,
-        skinning,
-        materials,
-        children,
-    })
-}
+    /// 루트 모델 노드 풀 객체에 등록된 루트 모델 노드를 가져옵니다.  
+    /// 해당 Uri에 등록된 루트 모델 노드가 없는 경우 루트 모델 노드를 새로 생성합니다.
+    pub fn get_or_init<Dir, Uri>(
+        &self,
+        mesh_pool: &MeshPool,
+        material_data_pool: &MaterialDataPool,
+        texture_data_pool: &TextureDataPool,
+        texture_pool: &TexturePool,
+        texture_view_pool: &TextureViewPool,
+        sampler_pool: &SamplerPool,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+        workspace: Dir,
+        uri: Uri,
+    ) -> Result<Arc<ModelRoot>, AssetError>
+    where
+        Dir: AsRef<Path>,
+        Uri: AsRef<str>,
+    {
+        // 풀 객체를 가져옵니다.
+        let mut pool = self.lock();
 
-/// 재질을 생성합니다. 풀 객체에 재질이 없는 경우 풀 객체에 추가합니다.
-fn create_material(
-    texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
-    workspace: &str,
-    asset_manager: &AssetManager,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    encoder: &mut wgpu::CommandEncoder,
-    staging_buffers: &mut Vec<wgpu::Buffer>,
-    blob: MaterialData,
-) -> Result<Arc<MaterialResource>, AssetError> {
-    MaterialPool::get_or_init(&blob.name.clone(), move || {
-        let mut desc = MaterialDescriptor::new(&blob.name);
-        desc.layout.glossiness = blob.glossiness.unwrap_or(0.5);
-        desc.layout.smoothness = blob.smoothness.unwrap_or(0.5);
-        desc.layout.metallic = blob.metallic.unwrap_or(0.2);
-        desc.layout.bump_scale = blob.bump_scale.unwrap_or(0.0);
-        desc.layout.parallax = blob.parallax.unwrap_or(0.0);
-        desc.layout.strength = blob.strength.unwrap_or(0.0);
-
-        let mut path = asset_manager.get_root_dir().to_path_buf();
-        path.push(workspace);
-        if let Some(texture_blob) = blob.albedo_map {
-            let (view, sampler) = get_or_init_texture(
-                texture_data_pool,
-                texture_pool,
-                texture_view_pool,
-                sampler_pool,
-                path,
-                texture_blob.name,
-                device,
-                encoder,
-                staging_buffers,
-            )?;
-            desc.with_albedo_texture(view, sampler);
-        } else if let Some(color) = blob.albedo {
-            desc.with_albedo_color(color.into());
+        if let Some(texture) = pool.get(uri.as_ref()).cloned() {
+            return Ok(texture);
         }
 
-        if let Some(texture_blob) = blob.specular_map {
-            let (view, sampler) = get_or_init_texture(
-                texture_data_pool,
-                texture_pool,
-                texture_view_pool,
-                sampler_pool,
-                &workspace,
-                texture_blob.name,
-                device,
-                encoder,
-                staging_buffers,
-            )?;
-            desc.with_specular_texture(view, sampler);
-        } else if let Some(color) = blob.specular {
-            desc.with_specular_color(color.into());
-        }
+        // 텍스처 데이터를 생성합니다.
+        let data = Self::load_from_file(workspace.as_ref(), uri.as_ref())?;
+        let data = Self::create_model_root(
+            mesh_pool,
+            material_data_pool,
+            texture_data_pool,
+            texture_pool,
+            texture_view_pool,
+            sampler_pool,
+            device,
+            encoder,
+            staging_buffers,
+            workspace,
+            data,
+        )?;
 
-        if let Some(texture_blob) = blob.emissive_map {
-            let (view, sampler) = get_or_init_texture(
-                texture_data_pool,
-                texture_pool,
-                texture_view_pool,
-                sampler_pool,
-                &workspace,
-                texture_blob.name,
-                device,
-                encoder,
-                staging_buffers,
-            )?;
-            desc.with_emissive_texture(view, sampler);
-        } else if let Some(color) = blob.emissive {
-            desc.with_emissive_color(color.into());
-        }
+        // 생성된 텍스처를 풀 객체에 등록합니다.
+        pool.insert(uri.as_ref().into(), data.clone());
+        Ok(data)
+    }
 
-        if let Some(texture_blob) = blob.normal_map {
-            let (view, sampler) = get_or_init_texture(
-                texture_data_pool,
-                texture_pool,
-                texture_view_pool,
-                sampler_pool,
-                &workspace,
-                texture_blob.name,
-                device,
-                encoder,
-                staging_buffers,
-            )?;
-            desc.with_normal_texture(view, sampler);
-        }
+    /// Uri에 해당하는 루트 모델 노드를 풀 객체에서 가져옵니다.
+    /// 루트 모델 노드가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn get<Uri>(&self, uri: Uri) -> Option<Arc<ModelRoot>>
+    where
+        Uri: AsRef<str>,
+    {
+        self.lock().get(uri.as_ref()).cloned()
+    }
 
-        if let Some(texture_blob) = blob.height_map {
-            let (view, sampler) = get_or_init_texture(
-                texture_data_pool,
-                texture_pool,
-                texture_view_pool,
-                sampler_pool,
-                &workspace,
-                texture_blob.name,
-                device,
-                encoder,
-                staging_buffers,
-            )?;
-            desc.with_height_texture(view, sampler);
-        }
+    /// Uri에 해당하는 루트 모델 노드를 풀 객체에서 제거합니다.  
+    /// 루트 모델 노드가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn remove<Uri>(&self, uri: Uri) -> Option<Arc<ModelRoot>>
+    where
+        Uri: AsRef<str>,
+    {
+        self.lock().remove(uri.as_ref()).map(|item| item)
+    }
 
-        if let Some(texture_blob) = blob.occlusion_map {
-            let (view, sampler) = get_or_init_texture(
-                texture_data_pool,
-                texture_pool,
-                texture_view_pool,
-                sampler_pool,
-                &workspace,
-                texture_blob.name,
-                device,
-                encoder,
-                staging_buffers,
-            )?;
-            desc.with_occlusion_texture(view, sampler);
-        }
-
-        let resource = MaterialResource::new(device, queue, &desc);
-        Ok(Arc::new(resource))
-    })
-}
-
-/// 이미 생성된 텍스처를 가져오거나, 텍스처를 파일로부터 생성합니다.
-fn get_or_init_texture<Dir, Uri>(
-    texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
-    workspace: Dir,
-    uri: Uri,
-    device: &wgpu::Device,
-    encoder: &mut wgpu::CommandEncoder,
-    staging_buffers: &mut Vec<wgpu::Buffer>,
-) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError>
-where
-    Dir: AsRef<Path>,
-    Uri: AsRef<str>,
-{
-    // 텍스처 데이터를 가져옵니다.
-    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri.as_ref())?;
-    // 텍스처를 가져옵니다.
-    let texture = texture_pool.get_or_init(workspace, device, encoder, staging_buffers, &data)?;
-    // 텍스처 뷰를 가져옵니다.
-    let view = texture_view_pool.get_or_init(
-        &texture,
-        &wgpu::TextureViewDescriptor {
-            dimension: Some(data.dimension.into()),
-            ..Default::default()
-        },
-    );
-    // 텍스처 샘플러를 가져옵니다.
-    let sampler = sampler_pool.get_or_init(
-        device,
-        &wgpu::SamplerDescriptor {
-            address_mode_u: data.address_u.into(),
-            address_mode_v: data.address_v.into(),
-            address_mode_w: data.address_w.into(),
-            mag_filter: data.filter_mode.into(),
-            min_filter: data.filter_mode.into(),
-            mipmap_filter: data.filter_mode.into(),
-            ..Default::default()
-        },
-    );
-
-    Ok((view, sampler))
+    /// 풀 객체에 존재하는 모든 텍스처 뷰 객체를 제거합니다.
+    pub fn clear(&self) {
+        self.lock().clear()
+    }
 }

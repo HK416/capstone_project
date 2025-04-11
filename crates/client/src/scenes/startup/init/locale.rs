@@ -6,7 +6,7 @@ use mod_app::{
 use winit::window::Window;
 
 use crate::{
-    asset::NOTOSANS_REGULAR,
+    asset::{TexturePool, NOTOSANS_REGULAR},
     config::{Locale, UserConfig},
     scenes::BASE_WIDTH,
 };
@@ -20,14 +20,18 @@ pub struct InitLocaleScene {
     locale: Locale,
     /// 언어가 선택된 여부
     selected: bool,
+
+    // 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl InitLocaleScene {
     /// 새로운 `InitLocaleScene`을 생성합니다.
-    pub fn new() -> Self {
+    pub fn new(texture_pool: TexturePool) -> Self {
         Self {
             locale: Locale::default(),
             selected: false,
+            texture_pool,
         }
     }
 }
@@ -47,8 +51,8 @@ impl GameScene for InitLocaleScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.selected {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(InitWindowScene::new());
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = InitWindowScene::new(self.texture_pool.clone());
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
@@ -118,20 +122,22 @@ impl GameScene for InitLocaleScene {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(app.egui_ctx(), |ui| {
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    // if ui.add(eng_btn).clicked() && !self.selected {
-                    //     self.locale = Locale::ENG;
-                    //     self.button_pressed = true;
-                    // }
+                    ui.add_enabled_ui(!self.selected, |ui| {
+                        // if ui.add(eng_btn).clicked() && !self.selected {
+                        //     self.locale = Locale::ENG;
+                        //     self.button_pressed = true;
+                        // }
 
-                    // if ui.add(jpn_btn).clicked() && !self.selected {
-                    //     self.locale = Locale::JPN;
-                    //     self.button_pressed = true;
-                    // }
+                        // if ui.add(jpn_btn).clicked() && !self.selected {
+                        //     self.locale = Locale::JPN;
+                        //     self.button_pressed = true;
+                        // }
 
-                    if ui.add(kor_btn).clicked() && !self.selected {
-                        self.locale = Locale::KOR;
-                        self.selected = true;
-                    }
+                        if ui.add(kor_btn).clicked() {
+                            self.locale = Locale::KOR;
+                            self.selected = true;
+                        }
+                    });
                 });
             });
     }

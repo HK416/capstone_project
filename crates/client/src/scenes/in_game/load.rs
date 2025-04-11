@@ -1,6 +1,11 @@
-use std::{error::Error, io::Cursor, sync::Arc};
+use std::{
+    error::Error,
+    io::Cursor,
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
 
-use ahash::{HashMap, HashSet};
+use ahash::HashSet;
 use ddsfile::Dds;
 use image::{ImageFormat, ImageReader};
 use mod_app::{
@@ -11,7 +16,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{BulletKind, Float3, LoginToken, StageLayoutData, UserId},
+    components::{BulletKind, LoginToken, StageLayoutData, UserId},
     protocol::InitStagePacket,
 };
 use mod_parallelism::collections::Queue;
@@ -21,11 +26,11 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        AssetError, MeshPool, ModelHierarchyPool, SamplerPool, StageModel, TextureDataPool,
-        TexturePool, TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI, STAGE_URIS,
-        STAGE_WORKSPACES, UI_GAME_LAYOUT_URI,
+        MeshPool, ModelPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool,
+        BULLET_URIS, BULLET_WORKSPACE, CHARACTER_URIS, CHARACTER_WORKSPACES, DAMAGE_FONT_URI,
+        NOTOSANS_BOLD, SKYBOX_URI, STAGE_URI, STAGE_WORKSPACES, UI_GAME_LAYOUT_URI,
     },
-    component::{load_bullet_model, load_character_model},
+    component::{load_stage_layout_from_file, MaterialDataPool},
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
@@ -59,8 +64,14 @@ pub struct InGameLoadScene {
     num_remaining_tasks: usize,
 
     /// 로드된 에셋 데이터입니다.
-    stage_models: Arc<Queue<StageModel>>,
+    stage_layout_data: Arc<OnceLock<StageLayoutData>>,
 
+    /// 재질 데이터 풀 객체입니다.
+    material_data_pool: MaterialDataPool,
+    /// 메쉬 풀 객체입니다.
+    mesh_pool: MeshPool,
+    /// 모델 풀 객체입니다.
+    model_pool: ModelPool,
     /// 텍스처 데이터 풀 객체입니다.
     texture_data_pool: TextureDataPool,
     /// 텍스처 풀 객체입니다.
@@ -69,8 +80,6 @@ pub struct InGameLoadScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
-    /// 메쉬 풀 객체입니다.
-    mesh_pool: MeshPool,
 }
 
 impl InGameLoadScene {
@@ -89,43 +98,47 @@ impl InGameLoadScene {
             commands: Arc::new(Queue::new()),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
-            stage_models: Arc::new(Queue::new()),
+            stage_layout_data: Arc::new(OnceLock::new()),
+            material_data_pool: MaterialDataPool::new(),
+            mesh_pool: MeshPool::new(),
+            model_pool: ModelPool::new(),
             texture_data_pool: TextureDataPool::new(),
             texture_pool: TexturePool::new(),
             texture_view_pool: TextureViewPool::new(),
             sampler_pool: SamplerPool::new(),
-            mesh_pool: MeshPool::new(),
         }
     }
 
     /// 사용되는 캐릭터 모델을 로드합니다.
     fn load_character_models(
         &mut self,
+        workspace: &PathBuf,
         thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
         device: &Arc<wgpu::Device>,
-        queue: &Arc<wgpu::Queue>,
     ) {
         let init_stage_packet = self
             .packet
             .as_ref()
             .expect("the InitStagePacket must exist!");
-        let character_kinds: Vec<_> = init_stage_packet
+        let character_kinds: HashSet<_> = init_stage_packet
             .players
             .iter()
             .map(|player| player.character_kind)
             .collect();
-        for character_kind in character_kinds {
+
+        for kind in character_kinds {
             let commands = self.commands.clone();
             let task_results = self.task_results.clone();
+            let material_data_pool = self.material_data_pool.clone();
+            let mesh_pool = self.mesh_pool.clone();
+            let model_pool = self.model_pool.clone();
             let texture_data_pool = self.texture_data_pool.clone();
             let texture_pool = self.texture_pool.clone();
             let texture_view_pool = self.texture_view_pool.clone();
             let sampler_pool = self.sampler_pool.clone();
-            let mesh_pool = self.mesh_pool.clone();
-            let asset_manager = asset_manager.clone();
             let device = device.clone();
-            let queue = queue.clone();
+            let mut workspace = workspace.clone();
+            workspace.push(CHARACTER_WORKSPACES[kind as usize]);
 
             thread_pool.spawn(move || {
                 // 스레드의 커맨드 버퍼를 생성합니다.
@@ -133,21 +146,23 @@ impl InGameLoadScene {
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                // 캐릭터 모델을 로드합니다.
-                let result = load_character_model(
-                    &texture_data_pool,
-                    &texture_pool,
-                    &texture_view_pool,
-                    &sampler_pool,
-                    &mesh_pool,
-                    &asset_manager,
-                    character_kind,
-                    &device,
-                    &queue,
-                    &mut encoder,
-                    &mut staging_buffers,
-                )
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+                // 캐릭터 모델 데이터를 로드합니다.
+                let result = model_pool
+                    .get_or_init(
+                        &mesh_pool,
+                        &material_data_pool,
+                        &texture_data_pool,
+                        &texture_pool,
+                        &texture_view_pool,
+                        &sampler_pool,
+                        &device,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        workspace,
+                        CHARACTER_URIS[kind as usize],
+                    )
+                    .map(|_| ())
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
                 log::debug!("task finished (TYPE: Load Character Model)");
 
                 // 커맨드 버퍼를 전송합니다.
@@ -162,10 +177,9 @@ impl InGameLoadScene {
     /// 사용되는 총알 모델을 로드합니다.
     fn load_bullet_models(
         &mut self,
+        workspace: &PathBuf,
         thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
         device: &Arc<wgpu::Device>,
-        queue: &Arc<wgpu::Queue>,
     ) {
         let init_stage_packet = self
             .packet
@@ -176,17 +190,21 @@ impl InGameLoadScene {
             .iter()
             .map(|player| player.character_kind.into())
             .collect();
-        for bullet_kind in bullet_kinds {
+
+        for kind in bullet_kinds {
             let commands = self.commands.clone();
             let task_results = self.task_results.clone();
+            let material_data_pool = self.material_data_pool.clone();
+            let model_pool = self.model_pool.clone();
+            let mesh_pool = self.mesh_pool.clone();
             let texture_data_pool = self.texture_data_pool.clone();
             let texture_pool = self.texture_pool.clone();
             let texture_view_pool = self.texture_view_pool.clone();
             let sampler_pool = self.sampler_pool.clone();
-            let mesh_pool = self.mesh_pool.clone();
-            let asset_manager = asset_manager.clone();
             let device = device.clone();
-            let queue = queue.clone();
+
+            let mut workspace = workspace.clone();
+            workspace.push(BULLET_WORKSPACE);
 
             thread_pool.spawn(move || {
                 // 스레드의 커맨드 버퍼를 생성합니다.
@@ -195,20 +213,22 @@ impl InGameLoadScene {
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
                 // 총알 모델을 로드합니다.
-                let result = load_bullet_model(
-                    &texture_data_pool,
-                    &texture_pool,
-                    &texture_view_pool,
-                    &sampler_pool,
-                    &mesh_pool,
-                    &asset_manager,
-                    bullet_kind,
-                    &device,
-                    &queue,
-                    &mut encoder,
-                    &mut staging_buffers,
-                )
-                .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+                let result = model_pool
+                    .get_or_init(
+                        &mesh_pool,
+                        &material_data_pool,
+                        &texture_data_pool,
+                        &texture_pool,
+                        &texture_view_pool,
+                        &sampler_pool,
+                        &device,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        workspace,
+                        BULLET_URIS[kind as usize],
+                    )
+                    .map(|_| ())
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
                 log::debug!("task finished (TYPE: Load Bullet Model)");
 
                 // 커맨드 버퍼를 전송합니다.
@@ -223,10 +243,9 @@ impl InGameLoadScene {
     /// 지역 모델들을 로드합니다.
     fn load_stage_models(
         &mut self,
+        workspace: &PathBuf,
         thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
         device: &Arc<wgpu::Device>,
-        queue: &Arc<wgpu::Queue>,
     ) {
         let init_stage_packet = self
             .packet
@@ -234,119 +253,69 @@ impl InGameLoadScene {
             .expect("the InitStagePacket must exist!");
         let i = init_stage_packet.stage_kind() as usize;
 
-        let stage_models = self.stage_models.clone();
+        let mut workspace = workspace.clone();
+        workspace.push(STAGE_WORKSPACES[i]);
+
         let commands = self.commands.clone();
         let task_results = self.task_results.clone();
+        let stage_layout_data = self.stage_layout_data.clone();
+        let material_data_pool = self.material_data_pool.clone();
+        let mesh_pool = self.mesh_pool.clone();
+        let model_pool = self.model_pool.clone();
         let texture_data_pool = self.texture_data_pool.clone();
         let texture_pool = self.texture_pool.clone();
         let texture_view_pool = self.texture_view_pool.clone();
         let sampler_pool = self.sampler_pool.clone();
-        let mesh_pool = self.mesh_pool.clone();
-        let asset_manager = asset_manager.clone();
         let device = device.clone();
-        let queue = queue.clone();
-        thread_pool.spawn(move || {
-            // 스레드의 커맨드 버퍼를 생성합니다.
-            let mut staging_buffers = Vec::new();
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+        thread_pool.spawn(move || {
             // 지형 데이터를 로드합니다.
-            let result = asset_manager.get_or_init(STAGE_URIS[i]);
-            let data = match result {
-                Ok(asset) => asset.as_bytes().to_vec(),
+            let result = load_stage_layout_from_file(&workspace, STAGE_URI);
+            let layout = match result {
+                Ok(layout) => layout,
                 Err(e) => {
-                    log::error!("failed to load asset! (URI:{}, REASON:{e})", STAGE_URIS[i]);
                     task_results.push(Err(Box::new(e)));
                     return;
                 }
             };
 
-            // 데이터를 구문분석합니다.
-            let layout: StageLayoutData = match serde_json::from_slice(&data) {
-                Ok(layout) => layout,
-                Err(e) => {
-                    log::error!(
-                        "failed to parse stage layout! (URI:{}, REASON:{e})",
-                        STAGE_URIS[i]
-                    );
-                    task_results.push(Err(Box::new(AssetError::from(e))));
-                    return;
-                }
-            };
+            // 스레드의 커맨드 버퍼를 생성합니다.
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-            // 지형 데이터를 구성하는 모델을 로드합니다.
-            let mut models = HashMap::default();
-            for model_name in layout.models.iter() {
-                let result = ModelHierarchyPool::get_or_init(
+            for uri in layout.models.iter() {
+                // 지형 데이터를 구성하는 모델을 로드합니다.
+                let result = model_pool.get_or_init(
+                    &mesh_pool,
+                    &material_data_pool,
                     &texture_data_pool,
                     &texture_pool,
                     &texture_view_pool,
                     &sampler_pool,
-                    &mesh_pool,
-                    &model_name,
-                    STAGE_WORKSPACES[i],
-                    &asset_manager,
                     &device,
-                    &queue,
                     &mut encoder,
                     &mut staging_buffers,
+                    &workspace,
+                    uri,
                 );
 
-                match result {
-                    Ok(root) => models.insert(model_name.clone(), root),
-                    Err(e) => {
-                        log::error!("failed to load asset! (REASON:{})", e);
-                        task_results.push(Err(Box::new(e)));
-                        return;
-                    }
-                };
+                // 결과를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
             }
 
-            for area in layout.area.iter() {
-                let model_root = match models.get(&area.model) {
-                    Some(root) => root.clone(),
-                    None => panic!("stage model not found! (MODEL:{})", &area.model),
-                };
-
-                stage_models.push(StageModel {
-                    is_terrain: true,
-                    model_root,
-                    scale: Float3 {
-                        x: 1.0,
-                        y: 1.0,
-                        z: 1.0,
-                    },
-                    rotation: area.rotation,
-                    translation: area.translation,
-                });
-            }
-
-            for prop in layout.props.iter() {
-                let model_root = match models.get(&prop.model) {
-                    Some(root) => root.clone(),
-                    None => {
-                        panic!("stage model not found! (MODEL:{})", &prop.model);
-                    }
-                };
-
-                stage_models.push(StageModel {
-                    is_terrain: false,
-                    model_root,
-                    scale: prop.scale,
-                    rotation: prop.rotation,
-                    translation: prop.translation,
-                });
-            }
-
-            // 캐싱된 에셋을 제거합니다.
-            asset_manager.remove(STAGE_URIS[i]);
+            // 스테이지 모델 데이터를 저장합니다.
+            stage_layout_data
+                .set(layout)
+                .expect("the stage layout data already exist!");
 
             // 커맨드 버퍼를 전송합니다.
-            commands.push((staging_buffers, encoder.finish()));
-
-            // 결과를 전송합니다.
             log::debug!("task finished (TYPE: Load Stage Model)");
+            commands.push((staging_buffers, encoder.finish()));
+            // 결과를 전송합니다.
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -567,24 +536,11 @@ impl InGameLoadScene {
 
 impl GameScene for InGameLoadScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
-        self.load_character_models(
-            app.io_threads(),
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
-        self.load_bullet_models(
-            app.io_threads(),
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
-        self.load_stage_models(
-            app.io_threads(),
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
+        let workspace = app.asset_manager().get_root_dir().to_path_buf();
+
+        self.load_character_models(&workspace, app.io_threads(), app.render_device());
+        self.load_bullet_models(&workspace, app.io_threads(), app.render_device());
+        self.load_stage_models(&workspace, app.io_threads(), app.render_device());
         self.create_ui_game_layout_texture(
             app.io_threads(),
             app.asset_manager(),
@@ -677,12 +633,12 @@ impl GameScene for InGameLoadScene {
                 self.user_id,
                 self.token,
                 self.packet.take(),
-                self.stage_models.clone(),
+                self.stage_layout_data.clone(),
+                self.model_pool.clone(),
                 self.texture_data_pool.clone(),
                 self.texture_pool.clone(),
                 self.texture_view_pool.clone(),
                 self.sampler_pool.clone(),
-                self.mesh_pool.clone(),
             ));
             let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);

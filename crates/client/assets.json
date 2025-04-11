@@ -134,10 +134,10 @@
                 "Bullet_01_Shell.mesh",
                 "Bullet_01_Warhead.hierarchy",
                 "Bullet_01_Warhead.mesh",
-                "Bullet_02_Aris_Original.hierarchy",
-                "Bullet_02_Aris_Original.mesh",
-                "M_Bullet_01_(Instance).material",
-                "M_Bullet_02_(Instance).material"
+                "Bullet_02_EnergyBoll.hierarchy",
+                "Bullet_02_EnergyBoll.mesh",
+                "Bullet_Common.material",
+                "Bullet_Energy.material"
             ],
             "directories" : {}
         },

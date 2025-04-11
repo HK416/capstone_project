@@ -2,7 +2,6 @@
 mod asset;
 mod component;
 mod config;
-mod render;
 mod scenes;
 
 use std::{

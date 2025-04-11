@@ -14,11 +14,10 @@ use mod_network::{
         GamePlayStopPacket, InitStagePacket, Packet, PacketType, RawPacket,
     },
 };
-use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
 
 use crate::{
-    asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
     scenes::FatalErrorSceneLayer,
     SERVER_TCP_ADDR,
@@ -54,6 +53,11 @@ pub struct CharacterFormationScene {
     select_character: Option<CharacterKind>,
     /// 캐릭터 선택 여부
     is_selected: bool,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
 }
 
 impl CharacterFormationScene {
@@ -62,6 +66,8 @@ impl CharacterFormationScene {
         locale: Locale,
         user_id: UserId,
         token: LoginToken,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
         remaining_time_sec: f32,
         players: Vec<FormationPhasePlayer>,
     ) -> Self {
@@ -77,6 +83,8 @@ impl CharacterFormationScene {
             },
             select_character: None,
             is_selected: false,
+            texture_pool,
+            texture_view_pool,
         }
     }
 }
@@ -84,13 +92,16 @@ impl CharacterFormationScene {
 impl GameScene for CharacterFormationScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         // 메인 로비 배경화면 텍스처를 가져옵니다.
-        let texture =
-            TexturePool::get(BG_MAIN_LOBBY_URI).expect("BG_Main_Lobby texture must be preloaded!");
+        let texture = self
+            .texture_pool
+            .get(BG_MAIN_LOBBY_URI)
+            .expect("BG_Main_Lobby texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
         // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
-        let texture =
-            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
         let mut egui_renderer = app.egui_renderer_mut();

@@ -1,39 +1,40 @@
 mod init;
 
-use std::{error::Error, io::Cursor, path::PathBuf, sync::Arc};
+use std::{
+    error::Error,
+    fs::OpenOptions,
+    io::{Cursor, Read},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use ahash::HashMap;
 use image::{ImageFormat, ImageReader};
 use mod_app::{
     app::AppHandle,
-    asset::AssetManager,
     error::Alert,
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
-use mod_render::{GraphicsPipelinePool, TexturePool, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use rayon::ThreadPool;
-use wgpu::util::DeviceExt;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     asset::{
-        BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI,
-        BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
-        BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
-        DAMAGE_FONT_URI, GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR,
-        SKYBOX_URI, USER_CONFIG,
+        TexturePool, BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA,
+        BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA,
+        BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA,
+        BG_LOGIN_TITLE_5_URI, GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        USER_CONFIG,
+    },
+    component::{
+        BulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline,
+        CharacterRenderPipeline, DamageFontRenderPipeline, EnergyBulletRenderPipeline,
+        SkyboxRenderPipeline, StageRenderPipeline,
     },
     config::UserConfig,
-    render::{
-        create_bullet_render_pipeline, create_character_halo_render_pipeline,
-        create_character_render_pipeline, create_character_shadow_render_pipeline,
-        create_fx_damage_render_pipeline, create_skybox_render_pipeline,
-        create_stage_area_render_pipeline, create_stage_area_shadow_render_pipeline,
-        BULLET_PIPELINE_NAME, CHARACTER_HALO_PIPELINE_ID, CHARACTER_PIPELINE_ID,
-        CHARACTER_SHADOW_PIPELINE_ID, STAGE_PIPELINE_ID, STAGE_SHADOW_PIPELINE_ID,
-    },
 };
 
 pub use self::init::*;
@@ -43,8 +44,14 @@ use super::GameIntroNotifyScene;
 /// 작업 결과 목록입니다.
 #[derive(Debug)]
 enum TaskResult {
-    Font { uri: String, bytes: Vec<u8> },
-    Texture,
+    Font {
+        uri: String,
+        bytes: Vec<u8>,
+    },
+    Texture {
+        command: wgpu::CommandBuffer,
+        staging_buffers: Vec<wgpu::Buffer>,
+    },
     Pipeline,
 }
 
@@ -60,6 +67,9 @@ pub struct GameStartupScene {
     task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
     /// 로드된 폰트 에셋 데이터 집합
     font_asset_data: HashMap<String, Vec<u8>>,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl GameStartupScene {
@@ -70,145 +80,131 @@ impl GameStartupScene {
             num_remaining_tasks: 0,
             task_results: Arc::new(Queue::new()),
             font_asset_data: HashMap::default(),
+            texture_pool: TexturePool::new(),
         }
     }
 
-    /// 그래픽스 파이프라인을 생성합니다.
-    fn load_graphics_pipelines(&mut self, thread_pool: &ThreadPool, device: &Arc<wgpu::Device>) {
-        let task_result_cloned = self.task_results.clone();
+    /// 렌더링 파이프라인을 초기화합니다.
+    fn init_render_pipeline(&mut self, thread_pool: &ThreadPool, device: &Arc<wgpu::Device>) {
+        // 일반 총알을 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 캐릭터 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_ID, move || {
-                create_character_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            BulletRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
 
-        let task_result_cloned = self.task_results.clone();
+        // 에너지 볼 형태의 총알을 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 캐릭터 헤일로 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_ID, move || {
-                create_character_halo_render_pipeline(
-                    &device_cloned,
-                    DEPTH_FORMAT,
-                    SWAPCHAIN_FORMAT,
-                )
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            EnergyBulletRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
 
-        let task_result_cloned = self.task_results.clone();
+        // 캐릭터를 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 캐릭터의 그림자 맵을 생성하는 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(CHARACTER_SHADOW_PIPELINE_ID, move || {
-                create_character_shadow_render_pipeline(
-                    &device_cloned,
-                    wgpu::TextureFormat::Depth32Float,
-                )
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            CharacterRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
 
-        let task_result_cloned = self.task_results.clone();
+        // 캐릭터 눈과 입을 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 총알 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(BULLET_PIPELINE_NAME, move || {
-                create_bullet_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            EyeMouthRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
 
-        let task_result_cloned = self.task_results.clone();
+        // 캐릭터 헤일로를 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 지형 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(STAGE_PIPELINE_ID, move || {
-                create_stage_area_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            HaloRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
 
-        let task_result_cloned = self.task_results.clone();
+        // 데미지 폰트를 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 지형 그림자 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(STAGE_SHADOW_PIPELINE_ID, move || {
-                create_stage_area_shadow_render_pipeline(
-                    &device_cloned,
-                    wgpu::TextureFormat::Depth32Float,
-                )
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            DamageFontRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
 
-        let task_result_cloned = self.task_results.clone();
+        // 스카이 박스를 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // Skybox 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(SKYBOX_URI, move || {
-                create_skybox_render_pipeline(&device_cloned, DEPTH_FORMAT, SWAPCHAIN_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            SkyboxRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
 
-        let task_result_cloned = self.task_results.clone();
+        // 지형을 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 데미지 파티클 렌더링 파이프라인을 생성합니다.
-            GraphicsPipelinePool::get_or_init(DAMAGE_FONT_URI, move || {
-                create_fx_damage_render_pipeline(&device_cloned, DEPTH_FORMAT)
-            });
-            // 결과를 전송합니다.
-            task_result_cloned.push(Ok(TaskResult::Pipeline));
+            StageRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
     }
 
     /// `NotoSans-Regular` 폰트를 로드합니다.
-    fn load_notosans_regular_font(
-        &mut self,
-        thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
-    ) {
+    fn load_notosans_regular_font<Dir>(&mut self, thread_pool: &ThreadPool, root_dir: Dir)
+    where
+        Dir: Into<PathBuf>,
+    {
+        let mut path: PathBuf = root_dir.into();
+        path.push(format!("font/{}", NOTOSANS_REGULAR));
+
         // 스레드 풀에서 에셋을 로드합니다.
-        let asset_manager = asset_manager.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 에셋 데이터를 로드합니다.
-            let result = asset_manager
-                .load(NOTOSANS_REGULAR)
-                .map(|asset| TaskResult::Font {
-                    uri: NOTOSANS_REGULAR.into(),
-                    bytes: asset.as_bytes().to_vec(),
-                })
-                .map_err(|e| {
-                    log::error!("failed to load asset! (REASON:{e})");
-                    Box::new(e) as Box<dyn Error + Send>
-                });
+            log::debug!("open font asset (PATH:{})", path.display());
+            let result = OpenOptions::new().read(true).write(false).open(&path);
+            let mut file = match result {
+                Ok(file) => file,
+                Err(e) => {
+                    log::error!(
+                        "failed to open font asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            };
 
-            // 남은 에셋 데이터를 제거합니다.
-            asset_manager.remove(NOTOSANS_REGULAR);
+            log::debug!("read font asset (PATH:{})", path.display());
+            let mut buf = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buf) {
+                log::error!(
+                    "failed to read font asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                task_results.push(Err(Box::new(e)));
+                return;
+            }
+
+            log::debug!("close font asset (PATH:{})", path.display());
+            drop(file);
+
             // 결과를 전송합니다.
-            log::debug!("task finished (TYPE: Load Font)");
-            task_results.push(result);
+            task_results.push(Ok(TaskResult::Font {
+                uri: NOTOSANS_REGULAR.into(),
+                bytes: buf,
+            }));
         });
 
         // 남은 작업의 수를 증가시킵니다.
@@ -216,28 +212,51 @@ impl GameStartupScene {
     }
 
     /// `NotoSans-Bold` 폰트를 로드합니다.
-    fn load_notosans_blod_font(&mut self, thread_pool: &ThreadPool, asset_manager: &AssetManager) {
+    fn load_notosans_blod_font<Dir>(&mut self, thread_pool: &ThreadPool, root_dir: Dir)
+    where
+        Dir: Into<PathBuf>,
+    {
+        let mut path: PathBuf = root_dir.into();
+        path.push(format!("font/{}", NOTOSANS_REGULAR));
+
         // 스레드 풀에서 에셋을 로드합니다.
-        let asset_manager = asset_manager.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            // 에셋 데이터를 로드합니다.
-            let result = asset_manager
-                .load(NOTOSANS_BOLD)
-                .map(|asset| TaskResult::Font {
-                    uri: NOTOSANS_BOLD.into(),
-                    bytes: asset.as_bytes().to_vec(),
-                })
-                .map_err(|e| {
-                    log::error!("failed to load asset! (REASON:{e})");
-                    Box::new(e) as Box<dyn Error + Send>
-                });
+            log::debug!("open font asset (PATH:{})", path.display());
+            let result = OpenOptions::new().read(true).write(false).open(&path);
+            let mut file = match result {
+                Ok(file) => file,
+                Err(e) => {
+                    log::error!(
+                        "failed to open font asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            };
 
-            // 남은 에셋 데이터를 제거합니다.
-            asset_manager.remove(NOTOSANS_BOLD);
+            log::debug!("read font asset (PATH:{})", path.display());
+            let mut buf = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buf) {
+                log::error!(
+                    "failed to read font asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                task_results.push(Err(Box::new(e)));
+                return;
+            }
+
+            log::debug!("close font asset (PATH:{})", path.display());
+            drop(file);
+
             // 결과를 전송합니다.
-            log::debug!("task finished (TYPE: Load Font Texture)");
-            task_results.push(result);
+            task_results.push(Ok(TaskResult::Font {
+                uri: NOTOSANS_BOLD.into(),
+                bytes: buf,
+            }));
         });
 
         // 남은 작업의 수를 증가시킵니다.
@@ -249,13 +268,12 @@ impl GameStartupScene {
         &mut self,
         thread_pool: &ThreadPool,
         device: &Arc<wgpu::Device>,
-        queue: &Arc<wgpu::Queue>,
         uri: &'static str,
         bytes: &'static [u8],
     ) {
+        let texture_pool = self.texture_pool.clone();
         let task_results = self.task_results.clone();
         let device = device.clone();
-        let queue = queue.clone();
         thread_pool.spawn(move || {
             // 텍스처 데이터를 디코딩합니다.
             let pixels = Cursor::new(bytes);
@@ -271,32 +289,34 @@ impl GameStartupScene {
                 }
             };
 
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
             // 텍스처를 생성합니다.
-            let texture = device.create_texture_with_data(
-                &queue,
-                &wgpu::TextureDescriptor {
-                    label: Some(&format!("Texture({})", &uri)),
-                    size: wgpu::Extent3d {
-                        width: image.width(),
-                        height: image.height(),
-                        depth_or_array_layers: 1,
-                    },
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    dimension: wgpu::TextureDimension::D2,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                },
-                wgpu::util::TextureDataOrder::default(),
-                &image.to_rgba8(),
+            let texture = TexturePool::create_texture(
+                &format!("Texture({})", &uri),
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                image.width(),
+                image.height(),
+                1,
+                wgpu::TextureDimension::D2,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                1,
+                1,
+                image.to_rgba8().to_vec(),
             );
 
             // 텍스처 풀 객체에 등록합니다.
-            TexturePool::register(uri.into(), texture.into());
+            texture_pool.insert(uri, texture.into());
 
             // 결과를 전송합니다.
-            task_results.push(Ok(TaskResult::Texture));
+            task_results.push(Ok(TaskResult::Texture {
+                command: encoder.finish(),
+                staging_buffers,
+            }));
         });
         self.num_remaining_tasks += 1;
     }
@@ -374,56 +394,49 @@ impl GameStartupScene {
 impl GameScene for GameStartupScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         let device = app.render_device();
-        let queue = app.render_queue();
         let thread_pool = app.io_threads();
-        let asset_manager = app.asset_manager();
-        self.load_graphics_pipelines(thread_pool, device);
-        self.load_notosans_regular_font(thread_pool, asset_manager);
-        self.load_notosans_blod_font(thread_pool, asset_manager);
-        self.regist_texture(thread_pool, device, queue, GAME_LOGO_URI, GAME_LOGO_DATA);
+        let root_dir = app.asset_manager().get_root_dir();
+        self.init_render_pipeline(thread_pool, device);
+        self.load_notosans_regular_font(thread_pool, root_dir);
+        self.load_notosans_blod_font(thread_pool, root_dir);
+        self.regist_texture(thread_pool, device, GAME_LOGO_URI, GAME_LOGO_DATA);
         self.regist_texture(
             thread_pool,
             device,
-            queue,
             BG_LOGIN_TITLE_0_URI,
             BG_LOGIN_TITLE_0_DATA,
         );
         self.regist_texture(
             thread_pool,
             device,
-            queue,
             BG_LOGIN_TITLE_1_URI,
             BG_LOGIN_TITLE_1_DATA,
         );
         self.regist_texture(
             thread_pool,
             device,
-            queue,
             BG_LOGIN_TITLE_2_URI,
             BG_LOGIN_TITLE_2_DATA,
         );
         self.regist_texture(
             thread_pool,
             device,
-            queue,
             BG_LOGIN_TITLE_3_URI,
             BG_LOGIN_TITLE_3_DATA,
         );
         self.regist_texture(
             thread_pool,
             device,
-            queue,
             BG_LOGIN_TITLE_4_URI,
             BG_LOGIN_TITLE_4_DATA,
         );
         self.regist_texture(
             thread_pool,
             device,
-            queue,
             BG_LOGIN_TITLE_5_URI,
             BG_LOGIN_TITLE_5_DATA,
         );
-        self.load_user_config(asset_manager.get_root_dir());
+        self.load_user_config(root_dir);
     }
 
     fn on_exit(&mut self, window: Option<&Window>, app: &dyn AppHandle) {
@@ -443,9 +456,17 @@ impl GameScene for GameStartupScene {
                         "task success (number of tasks remaining: {})",
                         self.num_remaining_tasks
                     );
+
                     match task {
                         TaskResult::Font { uri, bytes } => {
                             self.font_asset_data.insert(uri, bytes);
+                        }
+                        TaskResult::Texture {
+                            command,
+                            staging_buffers,
+                        } => {
+                            app.render_queue().submit(Some(command));
+                            drop(staging_buffers);
                         }
                         _ => {}
                     };
@@ -464,10 +485,13 @@ impl GameScene for GameStartupScene {
         // 모든 작업이 완료된 경우 다음 게임 장면으로 전환합니다.
         if self.num_remaining_tasks == 0 {
             let next_scene: Box<dyn GameScene> = match self.needs_initial_setup {
-                true => Box::new(InitLocaleScene::new()),
+                true => Box::new(InitLocaleScene::new(self.texture_pool.clone())),
                 false => {
                     let config = UserConfig::get();
-                    Box::new(GameIntroNotifyScene::new(config.locale))
+                    Box::new(GameIntroNotifyScene::new(
+                        config.locale,
+                        self.texture_pool.clone(),
+                    ))
                 }
             };
             let scene_flow = GameSceneFlow::Change(next_scene);

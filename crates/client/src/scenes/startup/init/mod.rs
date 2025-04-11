@@ -16,7 +16,7 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_REGULAR, USER_CONFIG},
+    asset::{TexturePool, NOTOSANS_REGULAR, USER_CONFIG},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::GameIntroNotifyScene,
 };
@@ -33,15 +33,19 @@ pub struct InitFinishScene {
     locale: Locale,
     /// 저장의 완료 여부
     completed: Arc<AtomicBool>,
+
+    // 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl InitFinishScene {
     /// 새로운 `InitFinishScene`을 생성합니다.
-    pub fn new() -> Self {
+    pub fn new(texture_pool: TexturePool) -> Self {
         let config = UserConfig::get();
         Self {
             locale: config.locale,
             completed: Arc::new(AtomicBool::new(false)),
+            texture_pool,
         }
     }
 
@@ -67,8 +71,8 @@ impl GameScene for InitFinishScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.completed.load(MemOrdering::Acquire) {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(GameIntroNotifyScene::new(self.locale));
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = GameIntroNotifyScene::new(self.locale, self.texture_pool.clone());
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
