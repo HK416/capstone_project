@@ -19,7 +19,7 @@ impl DamageFontRenderPipeline {
                 env!("CARGO_WORKSPACE_DIR"),
                 "/assets/shaders/damage_font.wgsl"
             ));
-    
+
             if cfg!(feature = "enable-shader-validation") {
                 device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::checked())
             } else {
@@ -62,25 +62,21 @@ impl DamageFontRenderPipeline {
                                 wgpu::VertexBufferLayout {
                                     array_stride: core::mem::size_of::<[f32; 3]>()
                                         as wgpu::BufferAddress,
-                                    attributes: &[
-                                        wgpu::VertexAttribute {
-                                            offset: 0,
-                                            shader_location: 0,
-                                            format: wgpu::VertexFormat::Float32x3,
-                                        }
-                                    ],
+                                    attributes: &[wgpu::VertexAttribute {
+                                        offset: 0,
+                                        shader_location: 0,
+                                        format: wgpu::VertexFormat::Float32x3,
+                                    }],
                                     step_mode: wgpu::VertexStepMode::Vertex,
                                 },
                                 wgpu::VertexBufferLayout {
                                     array_stride: core::mem::size_of::<[f32; 2]>()
                                         as wgpu::BufferAddress,
-                                    attributes: &[
-                                        wgpu::VertexAttribute {
-                                            offset: 0,
-                                            shader_location: 1,
-                                            format: wgpu::VertexFormat::Float32x2,
-                                        }
-                                    ],
+                                    attributes: &[wgpu::VertexAttribute {
+                                        offset: 0,
+                                        shader_location: 1,
+                                        format: wgpu::VertexFormat::Float32x2,
+                                    }],
                                     step_mode: wgpu::VertexStepMode::Vertex,
                                 },
                             ],

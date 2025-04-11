@@ -3,7 +3,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::component::{EnergyBulletMaterialResource, CameraResource, MeshResource};
+use crate::component::{CameraResource, EnergyBulletMaterialResource, MeshResource};
 
 /// 에너지 볼 형태의 총알을 그리는 그래픽스 파이프라인입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +17,7 @@ impl EnergyBulletRenderPipeline {
                 env!("CARGO_WORKSPACE_DIR"),
                 "/assets/shaders/energy_bullet.wgsl",
             ));
-    
+
             if cfg!(feature = "enable-shader-validation") {
                 device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::checked())
             } else {
@@ -107,7 +107,7 @@ impl EnergyBulletRenderPipeline {
                                     blend: None,
                                     format: render_target_format,
                                     write_mask: wgpu::ColorWrites::ALL,
-                                }), 
+                                }),
                                 Some(wgpu::ColorTargetState {
                                     blend: None,
                                     format: render_target_format,

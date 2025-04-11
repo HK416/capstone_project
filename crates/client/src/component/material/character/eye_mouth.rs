@@ -20,7 +20,7 @@ pub struct EyeMouthMaterialData {
     pub glossiness: f32,
     pub smoothness: f32,
     pub metallic: f32,
-    pub albedo_map: String,
+    pub main_color: String,
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
@@ -59,7 +59,10 @@ impl EyeMouthMaterialUniform {
         .union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(visibility: wgpu::ShaderStages, binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
             visibility,
@@ -175,7 +178,10 @@ impl EyeMouthMaterialResource {
                 label: Some("BindGroupLayout(CharacterEyeMouthMaterialResource)"),
                 entries: &[
                     // 0번 바인딩: 캐릭터 재질 데이터 유니폼 버퍼
-                    EyeMouthMaterialUniform::bind_group_layout_entry(wgpu::ShaderStages::FRAGMENT, 0),
+                    EyeMouthMaterialUniform::bind_group_layout_entry(
+                        wgpu::ShaderStages::FRAGMENT,
+                        0,
+                    ),
                     // 1번 바인딩: 메인 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,

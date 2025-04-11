@@ -18,7 +18,10 @@ impl DamageFontResource {
                 label: Some("BindGroupLayout(DamageFont)"),
                 entries: &[
                     // 0번 바인딩: 데미지 폰트 유니폼 버퍼
-                    DamageFontUniform::bind_group_layout_entry(wgpu::ShaderStages::VERTEX_FRAGMENT, 0),
+                    DamageFontUniform::bind_group_layout_entry(
+                        wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        0,
+                    ),
                     // 1번 바인딩: 데미지 폰트 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,

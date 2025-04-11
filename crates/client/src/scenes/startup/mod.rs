@@ -30,8 +30,8 @@ use crate::{
         USER_CONFIG,
     },
     component::{
-        BulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline,
-        CharacterRenderPipeline, DamageFontRenderPipeline, EnergyBulletRenderPipeline,
+        BulletRenderPipeline, CharacterRenderPipeline, DamageFontRenderPipeline,
+        EnergyBulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline,
         SkyboxRenderPipeline, StageRenderPipeline,
     },
     config::UserConfig,
@@ -217,7 +217,7 @@ impl GameStartupScene {
         Dir: Into<PathBuf>,
     {
         let mut path: PathBuf = root_dir.into();
-        path.push(format!("font/{}", NOTOSANS_REGULAR));
+        path.push(format!("font/{}", NOTOSANS_BOLD));
 
         // 스레드 풀에서 에셋을 로드합니다.
         let task_results = self.task_results.clone();

@@ -31,7 +31,7 @@ struct HaloMaterialDataLayout {
     glossiness: f32,
     smoothness: f32,
     metallic: f32,
-    emissive: vec3<f32>,
+    emissive: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -68,7 +68,7 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
     
     out.color = textureSample(t_main_color, s_main_color, input.texcoord);
-    out.bloom = vec4<f32>(u_material.emissive, 1.0);
+    out.bloom = u_material.emissive;
 
     return out;
 }

@@ -1,5 +1,5 @@
 //! 조명 데이터 유니폼 버퍼와 관련된 코드를 관리합니다.
-//! 
+//!
 
 use std::{num::NonZeroU64, ops::RangeBounds, sync::Arc};
 

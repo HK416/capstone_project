@@ -269,6 +269,7 @@ impl InGameBuildScene {
                 &skybox_sampler,
             );
 
+            println!("!");
             // 다음 장면을 생성합니다.
             // let next_scene = InGameDominationModeScene::new(
             //     locale,

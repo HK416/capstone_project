@@ -57,7 +57,10 @@ impl BulletMaterialUniform {
         .union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(visibility: wgpu::ShaderStages, binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
             visibility,

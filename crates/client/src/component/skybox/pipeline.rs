@@ -17,7 +17,7 @@ impl SkyboxRenderPipeline {
                 env!("CARGO_WORKSPACE_DIR"),
                 "/assets/shaders/skybox.wgsl",
             ));
-    
+
             if cfg!(feature = "enable-shader-validation") {
                 device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::checked())
             } else {

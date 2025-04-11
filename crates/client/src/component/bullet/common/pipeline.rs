@@ -1,7 +1,10 @@
 //! 일반 총알과 관련된 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
 //!
 
-use std::{collections::HashMap, sync::{Arc, OnceLock}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
 use crate::component::{BulletMaterialResource, CameraResource, MeshResource, MAX_LIGHTS};
 
@@ -17,7 +20,7 @@ impl BulletRenderPipeline {
                 env!("CARGO_WORKSPACE_DIR"),
                 "/assets/shaders/bullet.wgsl",
             ));
-    
+
             if cfg!(feature = "enable-shader-validation") {
                 device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::checked())
             } else {
@@ -50,9 +53,7 @@ impl BulletRenderPipeline {
             .get_or_init(|| {
                 let module = Self::create_shader_module(device);
                 let layout = Self::create_pipeline_layout(device);
-                let constants = HashMap::from_iter([
-                    ("max_lights".into(), MAX_LIGHTS as f64),
-                ]);
+                let constants = HashMap::from_iter([("max_lights".into(), MAX_LIGHTS as f64)]);
                 Arc::new(
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                         label: Some("RenderPipeline(Bullet)"),
@@ -85,7 +86,7 @@ impl BulletRenderPipeline {
                                 },
                             ],
                             compilation_options: wgpu::PipelineCompilationOptions {
-                                constants: &constants, 
+                                constants: &constants,
                                 ..Default::default()
                             },
                         },

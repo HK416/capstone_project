@@ -25,7 +25,7 @@ pub struct CharacterMaterialData {
     pub glossiness: f32,
     pub smoothness: f32,
     pub metallic: f32,
-    pub albedo_map: String,
+    pub main_color: String,
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.

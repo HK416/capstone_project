@@ -25,21 +25,17 @@ impl CameraResource {
     }
 
     /// 새로운 쉐이더 리소스를 생성합니다.
-    pub fn new(
-        label: Option<&str>,
-        device: &wgpu::Device,
-        camera_uniform: &CameraUniform,
-    ) -> Self {
-        Self(Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
-            layout: Self::bind_group_layout(device),
-            entries: &[
-                wgpu::BindGroupEntry {
+    pub fn new(label: Option<&str>, device: &wgpu::Device, camera_uniform: &CameraUniform) -> Self {
+        Self(Arc::new(device.create_bind_group(
+            &wgpu::BindGroupDescriptor {
+                label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
+                layout: Self::bind_group_layout(device),
+                entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: camera_uniform.as_entire_binding(),
-                },
-            ],
-        })))
+                }],
+            },
+        )))
     }
 
     /// [wgpu::BindGroup]을 반환합니다.

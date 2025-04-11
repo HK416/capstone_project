@@ -1,1 +1,1 @@
-{ "CharacterBody": { "uri": "Aris_Original_Hair", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "emissive": 0, "albedo_map": "Aris_Original_Hair" } }
+{ "Character": { "uri": "Aris_Original_Hair", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Aris_Original_Hair" } }

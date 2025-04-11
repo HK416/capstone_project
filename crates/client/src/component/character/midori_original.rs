@@ -434,12 +434,8 @@ fn spawn_character_model_recursive(
                 Some(&format!("BoneTransform({})", label.unwrap_or("Unknown"))),
                 device,
             );
-            let mesh_resource = SkinnedMeshResource::new(
-                label,
-                device,
-                &bindpose_uniform,
-                &bone_trans_uniform,
-            );
+            let mesh_resource =
+                SkinnedMeshResource::new(label, device, &bindpose_uniform, &bone_trans_uniform);
 
             // 스키닝된 메쉬를 구성하는 뼈 엔터티 집합을 생성합니다.
             let collection = BoneCollection {
@@ -499,10 +495,10 @@ fn spawn_character_model_recursive(
 
                         // 캐릭터 텍스처를 가져옵니다.
                         let texture_data = texture_data_pool
-                            .get(&data.albedo_map)
+                            .get(&data.main_color)
                             .expect("the texture data must exist!");
                         let texture = texture_pool
-                            .get(&data.albedo_map)
+                            .get(&data.main_color)
                             .expect("the texture must exist!");
                         let main_color_view = texture_view_pool.get_or_init(
                             &texture,
@@ -552,10 +548,10 @@ fn spawn_character_model_recursive(
 
                         // 캐릭터 텍스처를 가져옵니다.
                         let texture_data = texture_data_pool
-                            .get(&data.albedo_map)
+                            .get(&data.main_color)
                             .expect("the texture data must exist!");
                         let texture = texture_pool
-                            .get(&data.albedo_map)
+                            .get(&data.main_color)
                             .expect("the texture must exist!");
                         let main_color_view = texture_view_pool.get_or_init(
                             &texture,

@@ -201,7 +201,7 @@ impl ModelPool {
             let data = material_data_pool.get_or_init(workspace.as_ref(), material_uri)?;
             match data.deref() {
                 MaterialData::Character(data) => {
-                    let uri = &data.albedo_map;
+                    let uri = &data.main_color;
                     let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
                     let _texture = texture_pool.get_or_init(
                         workspace.as_ref(),
@@ -212,7 +212,7 @@ impl ModelPool {
                     )?;
                 }
                 MaterialData::CharacterEyeMouth(data) => {
-                    let uri = &data.albedo_map;
+                    let uri = &data.main_color;
                     let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
                     let _texture = texture_pool.get_or_init(
                         workspace.as_ref(),

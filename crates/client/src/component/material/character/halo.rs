@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use mod_network::components::Float3;
+use mod_network::components::Float4;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
@@ -21,7 +21,7 @@ pub struct HaloMaterialData {
     pub glossiness: f32,
     pub smoothness: f32,
     pub metallic: f32,
-    pub emissive: Float3,
+    pub emissive: Float4,
     pub main_color: String,
 }
 
@@ -32,8 +32,7 @@ pub struct HaloMaterialDataLayout {
     pub smoothness: f32,
     pub metallic: f32,
     pub _padding0: [u8; 4],
-    pub emissive: [f32; 3],
-    pub _padding1: [u8; 4],
+    pub emissive: [f32; 4],
 }
 
 impl Default for HaloMaterialDataLayout {
@@ -43,8 +42,7 @@ impl Default for HaloMaterialDataLayout {
             smoothness: 0.0,
             metallic: 0.0,
             _padding0: [0; 4],
-            emissive: [0.0; 3],
-            _padding1: [0; 4],
+            emissive: [0.0; 4],
         }
     }
 }

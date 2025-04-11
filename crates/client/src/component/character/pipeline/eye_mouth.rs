@@ -1,9 +1,14 @@
 //! 캐릭터의 눈과 입을 그리는 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
-//! 
+//!
 
-use std::{collections::HashMap, sync::{Arc, OnceLock}};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
-use crate::component::{CameraResource, EyeMouthMaterialResource, SkinnedMeshResource, MAX_BONES, MAX_LIGHTS};
+use crate::component::{
+    CameraResource, EyeMouthMaterialResource, SkinnedMeshResource, MAX_BONES, MAX_LIGHTS,
+};
 
 /// 캐릭터의 눈과 입을 그리는 렌더링 파이프라인입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,10 +19,10 @@ impl EyeMouthRenderPipeline {
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
         unsafe {
             let desc = wgpu::include_wgsl!(concat!(
-                env!("CARGO_WORKSPACE_DIR"), 
+                env!("CARGO_WORKSPACE_DIR"),
                 "/assets/shaders/character_eye_mouth.wgsl"
             ));
-    
+
             if cfg!(feature = "enable-shader-validation") {
                 device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::checked())
             } else {
@@ -29,7 +34,7 @@ impl EyeMouthRenderPipeline {
     /// [wgpu::PipelineLayout]을 반환합니다.
     fn get_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("PipelineLayout(EyeMouth)"), 
+            label: Some("PipelineLayout(EyeMouth)"),
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device),
                 SkinnedMeshResource::bind_group_layout(device),
@@ -41,7 +46,7 @@ impl EyeMouthRenderPipeline {
 
     /// 렌더링 파이프라인을 가져옵니다.
     pub fn get(
-        device: &wgpu::Device, 
+        device: &wgpu::Device,
         render_target_format: wgpu::TextureFormat,
         depth_stencil_format: wgpu::TextureFormat,
     ) -> Self {
@@ -56,11 +61,11 @@ impl EyeMouthRenderPipeline {
                 ]);
                 Arc::new(
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                        label: Some("RenderPipeline(EyeMouth)"), 
-                        layout: Some(&layout), 
+                        label: Some("RenderPipeline(EyeMouth)"),
+                        layout: Some(&layout),
                         vertex: wgpu::VertexState {
-                            module: &module, 
-                            entry_point: Some("vs_main"), 
+                            module: &module,
+                            entry_point: Some("vs_main"),
                             buffers: &[
                                 // 0번 입력 속성: 위치
                                 wgpu::VertexBufferLayout {
@@ -150,7 +155,7 @@ impl EyeMouthRenderPipeline {
                         }),
                         multiview: None,
                         cache: None,
-                    })
+                    }),
                 )
             })
             .clone();

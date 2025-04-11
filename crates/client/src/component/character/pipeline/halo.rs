@@ -1,5 +1,5 @@
 //! 캐릭터의 헤일로를 그리는 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
-//! 
+//!
 
 use std::sync::{Arc, OnceLock};
 
@@ -14,10 +14,10 @@ impl HaloRenderPipeline {
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
         unsafe {
             let desc = wgpu::include_wgsl!(concat!(
-                env!("CARGO_WORKSPACE_DIR"), 
+                env!("CARGO_WORKSPACE_DIR"),
                 "/assets/shaders/character_halo.wgsl"
             ));
-    
+
             if cfg!(feature = "enable-shader-validation") {
                 device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::checked())
             } else {
@@ -29,7 +29,7 @@ impl HaloRenderPipeline {
     /// [wgpu::PipelineLayout]을 반환합니다.
     fn get_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("PipelineLayout(Halo)"), 
+            label: Some("PipelineLayout(Halo)"),
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device),
                 MeshResource::bind_group_layout(device),
@@ -41,7 +41,7 @@ impl HaloRenderPipeline {
 
     /// 렌더링 파이프라인을 가져옵니다.
     pub fn get(
-        device: &wgpu::Device, 
+        device: &wgpu::Device,
         render_target_format: wgpu::TextureFormat,
         depth_stencil_format: wgpu::TextureFormat,
     ) -> Self {
@@ -52,11 +52,11 @@ impl HaloRenderPipeline {
                 let layout = Self::get_pipeline_layout(device);
                 Arc::new(
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                        label: Some("RenderPipeline(Halo)"), 
-                        layout: Some(&layout), 
+                        label: Some("RenderPipeline(Halo)"),
+                        layout: Some(&layout),
                         vertex: wgpu::VertexState {
-                            module: &module, 
-                            entry_point: Some("vs_main"), 
+                            module: &module,
+                            entry_point: Some("vs_main"),
                             buffers: &[
                                 // 0번 입력 속성: 위치
                                 wgpu::VertexBufferLayout {
@@ -107,7 +107,7 @@ impl HaloRenderPipeline {
                                     blend: None,
                                     format: render_target_format,
                                     write_mask: wgpu::ColorWrites::ALL,
-                                }), 
+                                }),
                                 Some(wgpu::ColorTargetState {
                                     blend: None,
                                     format: render_target_format,
@@ -117,7 +117,7 @@ impl HaloRenderPipeline {
                         }),
                         multiview: None,
                         cache: None,
-                    })
+                    }),
                 )
             })
             .clone();

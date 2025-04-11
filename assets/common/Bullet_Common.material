@@ -1,1 +1,1 @@
-{ "Bullet": { "uri": "Bullet_Common", "glossiness": 0.65, "smoothness": 0.2, "metallic": 0.75, "emissive": 0, "main_color": { "x": 0.8235294, "y": 0.7058823, "z": 0.5490196, "w": 1 } } }
+{ "Bullet": { "uri": "Bullet_Common", "glossiness": 0.65, "smoothness": 0.2, "metallic": 0.75, "main_color": { "x": 0.8235294, "y": 0.7058823, "z": 0.5490196, "w": 1 } } }

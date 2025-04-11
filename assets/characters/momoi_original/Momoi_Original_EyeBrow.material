@@ -1,1 +1,1 @@
-{ "CharacterBody": { "uri": "Momoi_Original_EyeBrow", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "emissive": 0, "albedo_map": "Momoi_Original_Face" } }
+{ "Character": { "uri": "Momoi_Original_EyeBrow", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Momoi_Original_Face" } }
