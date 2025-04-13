@@ -9,8 +9,8 @@ use ahash::{HashMap, HashSet};
 use lazy_static::lazy_static;
 use mod_app::etc::WindowSize;
 use mod_network::components::{GameInput, LoginToken, UserAccount, NUM_GAME_INPUTS};
-use parking_lot::{Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
+use spin::{Mutex, MutexGuard};
 use winit::{
     event::MouseButton,
     keyboard::{KeyCode, KeyLocation},

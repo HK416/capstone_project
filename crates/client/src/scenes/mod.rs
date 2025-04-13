@@ -121,11 +121,11 @@ impl fmt::Debug for InGameBuildScene {
     }
 }
 
-// impl fmt::Debug for InGameDominationModeScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameDominationModeScene))
-//     }
-// }
+impl fmt::Debug for InGameDominationModeScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameDominationModeScene))
+    }
+}
 
 impl fmt::Debug for FatalErrorSceneLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

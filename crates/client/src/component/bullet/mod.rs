@@ -22,7 +22,7 @@ pub use self::{common::*, energy::*};
 /// - 로컬 변환 행렬(`ToParentTrans`)
 /// - 월드 변환 행렬(`WorldTransform`)
 ///
-pub fn spwan_bullet(
+pub fn spawn_bullet(
     world: &World,
     model_pool: &ModelPool,
     texture_view_pool: &TextureViewPool,

@@ -5,14 +5,7 @@ mod momoi_original;
 mod pipeline;
 mod yuuka_original;
 
-use std::{
-    collections::{hash_map::Iter, VecDeque},
-    sync::Arc,
-};
-
-use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
-use mod_app::asset::AssetManager;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, GameInputBits, LatLon, MovementState,
     MovementStateTimer, PlayPhasePlayer, ViewState, ViewStateTimer, NUM_ACTION_STATES,
@@ -21,15 +14,15 @@ use mod_network::components::{
 
 use crate::{
     asset::{
-        ModelPool, ModelRoot, SamplerPool, TextureDataPool, TexturePool, TextureViewPool,
-        CHARACTER_URIS,
+        ModelPool, ModelRoot, MotionPool, SamplerPool, TextureDataPool, TexturePool,
+        TextureViewPool, CHARACTER_URIS,
     },
     component::{Child, Sibling, ToParentTrans, WorldTransform},
 };
 
 pub use self::{animation::*, pipeline::*};
 
-use super::{MaterialResource, Mesh, MoveDirection, SkinnedMeshResource, ThirdPersonCamera};
+use super::{MoveDirection, ThirdPersonCamera};
 
 /// 캐릭터의 수
 const NUM_CHARACTERS: usize = 4;
@@ -181,37 +174,6 @@ pub fn spawn_player_character(
     batch_commands.push((entity, builder));
 
     (entity, batch_commands)
-}
-
-/// 캐릭터의 쉐이더 리소스 집합입니다.
-#[derive(Debug)]
-pub struct ResourceSet(HashMap<Arc<Mesh>, VecDeque<(SkinnedMeshResource, Vec<MaterialResource>)>>);
-
-impl ResourceSet {
-    /// 새로운 요소를 추가합니다.
-    pub fn push(
-        &mut self,
-        mesh: Arc<Mesh>,
-        mesh_resource: SkinnedMeshResource,
-        material_resource: Vec<MaterialResource>,
-    ) {
-        self.0
-            .entry(mesh)
-            .or_default()
-            .push_back((mesh_resource, material_resource));
-    }
-
-    pub fn iter(
-        &self,
-    ) -> Iter<'_, Arc<Mesh>, VecDeque<(SkinnedMeshResource, Vec<MaterialResource>)>> {
-        self.0.iter()
-    }
-}
-
-impl Default for ResourceSet {
-    fn default() -> Self {
-        Self(HashMap::default())
-    }
 }
 
 /// 플레이어 캐릭터의 방향을 갱신합니다.
@@ -462,7 +424,7 @@ pub fn update_view_state_timer(
 }
 
 pub fn animate_character(
-    asset_manager: &AssetManager,
+    motion_pool: &MotionPool,
     character_kind: CharacterKind,
     view_rotation: LatLon,
     action_state: ActionState,
@@ -474,7 +436,7 @@ pub fn animate_character(
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
     type Func = fn(
-        &AssetManager,
+        &MotionPool,
         LatLon,
         ActionState,
         ActionStateTimer,
@@ -493,7 +455,7 @@ pub fn animate_character(
 
     let i = character_kind as usize;
     FUNC_TABLE[i](
-        asset_manager,
+        motion_pool,
         view_rotation,
         action_state,
         action_state_timer,

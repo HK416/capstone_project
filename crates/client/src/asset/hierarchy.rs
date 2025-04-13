@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+//! 모델 계층 구조 데이터 에셋과 관련된 코드를 관리합니다.
+//!
+
 use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path, sync::Arc};
 
 use ahash::{HashMap, RandomState};

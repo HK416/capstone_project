@@ -4,7 +4,6 @@ use ahash::{HashMap, HashSet};
 use constcat::concat;
 use glam::FloatExt;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
-use mod_app::asset::AssetManager;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, GameInputBits, LatLon, MovementState,
     MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES,
@@ -14,7 +13,7 @@ use mod_network::components::{
 use crate::{
     asset::{
         ModelNode, ModelRoot, Motion, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool,
+        TextureViewPool, CHARACTER_URIS,
     },
     component::{
         BoneCollection, BoneTransformUniform, CharacterMaterialDataLayout,
@@ -173,8 +172,6 @@ const R_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
     glam::vec4(-0.1460184, 0.000000004768371, 0.0, 1.0),
 );
 
-/// 캐릭터 모델 에셋의 상대 경로입니다.
-pub const WORKSPACE: &'static str = "characters/midori_original";
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Midori_Original";
 
@@ -797,7 +794,7 @@ fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: 
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 pub fn animate_character(
-    asset_manager: &AssetManager,
+    motion_pool: &MotionPool,
     view_rotation: LatLon,
     action_state: ActionState,
     action_state_timer: ActionStateTimer,
@@ -880,7 +877,9 @@ pub fn animate_character(
     ];
 
     // 캐릭터 모델 애니메이션 집합을 가져옵니다.
-    let motions = MotionPool::get_or_init(MODEL_NAME, &WORKSPACE, asset_manager)
+    let i = CharacterKind::MidoriOriginal as usize;
+    let motions = motion_pool
+        .get(CHARACTER_URIS[i])
         .expect("no such character motion");
 
     let i = action_state as usize;

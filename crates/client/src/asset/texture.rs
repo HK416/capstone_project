@@ -1,5 +1,7 @@
+#![allow(dead_code)]
 //! 텍스처 에셋과 관련된 코드를 관리합니다.
 //!
+
 use std::{
     fs::OpenOptions,
     hash::{Hash, Hasher},

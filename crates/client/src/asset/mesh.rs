@@ -1,5 +1,7 @@
+#![allow(dead_code)]
 //! 메쉬 에셋과 관련된 코드를 관리합니다.
 //!
+
 use std::{fs::OpenOptions, io::Read, path::Path, sync::Arc};
 
 use ahash::{HashMap, RandomState};
@@ -7,10 +9,7 @@ use mod_network::components::{Float2, Float3, Float4, Matrix, Uint4};
 use parking_lot::{FairMutex, FairMutexGuard};
 use serde::{Deserialize, Serialize};
 
-use crate::component::{
-    Attributes, BindposeUniform, Indices, Mesh, SkinningDataLayout, SkinningUniform, Vertices,
-    MAX_BONES,
-};
+use crate::component::{Attributes, BindposeUniform, Indices, Mesh, Vertices};
 
 use super::AssetError;
 
@@ -44,8 +43,6 @@ pub struct SkinningData {
 /// 모델 메쉬의 스키닝 애니메이션 데이터입니다.
 #[derive(Debug)]
 pub struct Skinning {
-    /// 스키닝 데이터 유니폼 버퍼입니다.
-    pub skinning_uniform: SkinningUniform,
     /// 바인드 포즈 뼈 변환 행렬 유니폼 버퍼입니다.
     pub bindpose_uniform: BindposeUniform,
     /// 최상위 뼈 노드의 이름입니다.
@@ -240,19 +237,6 @@ impl MeshPool {
         }
 
         let skinning = data.skinning.map(|skinning_data| {
-            // 스키닝 데이터 유니폼 버퍼를 생성합니다.
-            let skinning_uniform = SkinningUniform::new(
-                Some(&format!("Skinning({})", &data.name)),
-                device,
-                encoder,
-                staging_buffers,
-                SkinningDataLayout {
-                    quality: skinning_data.quality.min(4),
-                    num_bones: skinning_data.bones.len().min(MAX_BONES) as u32,
-                    ..Default::default()
-                },
-            );
-
             // 바인드 포즈 뼈 변환 행렬 유니폼 버퍼를 생성합니다.
             let bindpose_uniform = BindposeUniform::new(
                 Some(&format!("Bindpose({})", &data.name)),
@@ -268,7 +252,6 @@ impl MeshPool {
 
             Arc::new(Skinning {
                 bindpose_uniform,
-                skinning_uniform,
                 root_bone: skinning_data.root_bone,
                 bones: skinning_data.bones,
             })
