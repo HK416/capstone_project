@@ -11,7 +11,7 @@ use mod_network::{
 use crate::{
     session::{Session, SessionEvents},
     token::UserTokenMap,
-    world::GameWorldPool,
+    world::{GameWorld, GameWorldPool},
 };
 
 use super::{SessionState, SessionStateFlow, room::SessionRoomState};
@@ -62,29 +62,7 @@ impl SessionLobbyState {
     fn create_custom_game(&mut self, session: &Arc<Session>, _packet: CustomGameJoinRequestPacket) {
         // 새로운 커스텀 게임 대기실을 생성합니다.
         if let Some(world) = GameWorldPool::create_custom(&self.account, session) {
-            // 플레이어 정보를 수집합니다.
-            let players = world
-                .iter_players()
-                .map(|item| {
-                    RecruitPhasePlayer::new(
-                        item.account().clone(),
-                        item.team(),
-                        item.bool_flag(),
-                        item.permission(),
-                    )
-                })
-                .collect();
-
-            // 패킷을 생성합니다.
-            let packet = CustomGameJoinSuccessPacket::new(world.id(), players);
-            // 패킷을 전송합니다.
-            session.tcp_write(packet.as_raw());
-
-            // 다음 세션 상태로 전환합니다.
-            let next_state = Box::new(SessionRoomState::new(self.account, &world));
-            let control_flow = SessionStateFlow::Push(next_state);
-            let event = SessionEvents::SetControlFlow(control_flow);
-            session.push_event(event);
+            self.join_custom_game(session, &world);
         } else {
         }
     }
@@ -101,29 +79,7 @@ impl SessionLobbyState {
                 // 커스텀 게임 대기실에 참가를 시도합니다.
                 match world.try_join(self.account, session) {
                     Ok(()) => {
-                        // 플레이어 정보를 수집합니다.
-                        let players = world
-                            .iter_players()
-                            .map(|item| {
-                                RecruitPhasePlayer::new(
-                                    item.account().clone(),
-                                    item.team(),
-                                    item.bool_flag(),
-                                    item.permission(),
-                                )
-                            })
-                            .collect();
-
-                        // 패킷을 생성합니다.
-                        let packet = CustomGameJoinSuccessPacket::new(world.id(), players);
-                        // 패킷을 전송합니다.
-                        session.tcp_write(packet.as_raw());
-
-                        // 다음 세션 상태로 전환합니다.
-                        let next_state = Box::new(SessionRoomState::new(self.account, &world));
-                        let control_flow = SessionStateFlow::Push(next_state);
-                        let event = SessionEvents::SetControlFlow(control_flow);
-                        session.push_event(event);
+                        self.join_custom_game(session, &world);
                     }
                     Err(reason) => {
                         // 패킷을 생성합니다.
@@ -141,6 +97,33 @@ impl SessionLobbyState {
                 session.tcp_write(packet.as_raw());
             }
         };
+    }
+
+    /// 생성된 커스텀 게임 대기실에 참가합니다.  
+    fn join_custom_game(&mut self, session: &Arc<Session>, world: &Arc<GameWorld>) {
+        // 플레이어 정보를 수집합니다.
+        let players = world
+            .iter_players()
+            .map(|item| {
+                RecruitPhasePlayer::new(
+                    item.account().clone(),
+                    item.team(),
+                    item.bool_flag(),
+                    item.permission(),
+                )
+            })
+            .collect();
+
+        // 패킷을 생성합니다.
+        let packet = CustomGameJoinSuccessPacket::new(world.id(), players);
+        // 패킷을 전송합니다.
+        session.tcp_write(packet.as_raw());
+
+        // 다음 세션 상태로 전환합니다.
+        let next_state = Box::new(SessionRoomState::new(self.account, &world));
+        let control_flow = SessionStateFlow::Push(next_state);
+        let event = SessionEvents::SetControlFlow(control_flow);
+        session.push_event(event);
     }
 }
 

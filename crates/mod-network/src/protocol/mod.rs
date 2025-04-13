@@ -48,6 +48,7 @@ pub enum PacketType {
     PullStage = 50,
     PushStatus = 51,
     PushSync = 52,
+    GameOver = 53,
 
     UdpDamageLog = 128,
 }
@@ -96,6 +97,7 @@ impl TryFromBigEndian for PacketType {
             50 => Some(PacketType::PullStage),
             51 => Some(PacketType::PushStatus),
             52 => Some(PacketType::PushSync),
+            53 => Some(PacketType::GameOver),
             128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(

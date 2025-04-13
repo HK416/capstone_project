@@ -8,9 +8,13 @@ use mod_network::{
     protocol::{Packet, PacketType, PushStatusPacket, RawPacket},
 };
 
-use crate::{session::Session, token::UserTokenMap, world::GameWorld};
+use crate::{
+    session::{Session, SessionEvents}, 
+    token::UserTokenMap, 
+    world::GameWorld
+};
 
-use super::SessionState;
+use super::{SessionState, SessionStateFlow};
 
 pub struct SessionInGameState {
     /// 세션 상태 실행 여부
@@ -78,6 +82,34 @@ impl SessionInGameState {
 }
 
 impl SessionState for SessionInGameState {
+    fn handle_event(&mut self, event: SessionEvents, session: &Arc<Session>) {
+        match event {
+            SessionEvents::ExitInGame => {
+                // 로비로 돌아갑니다.
+                self.is_running = false;
+
+                for _ in 0..2 {
+                    let control_flow = SessionStateFlow::Pop;
+                    let event = SessionEvents::SetControlFlow(control_flow);
+                    session.push_event(event);
+                }
+
+                // Reset하면 LobbyState가 drop돼서 토큰이 사라짐
+                // let next_state = Box::new(SessionRoomState::new(self.account, &self.world.upgrade().unwrap()));
+                // let control_flow = SessionStateFlow::Reset(next_state);
+                // let event = SessionEvents::SetControlFlow(control_flow);
+                // session.push_event(event);
+            }
+            _ => {
+                log::warn!(
+                    "ignored >> unused session event (EVENT:{:?} STATE:{:?})",
+                    &event,
+                    &self
+                );
+            }
+        }
+    }
+
     fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
             // 세션 상태가 실행 중이 아닌 경우 스킵합니다
