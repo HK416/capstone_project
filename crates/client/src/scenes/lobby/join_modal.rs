@@ -95,7 +95,7 @@ impl GameScene for MainLobbyJoinModalScene {
         let title = ERR_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
                 ERR_MSG_TEXTS[i]
             }
             NetworkError::IO(_) => {

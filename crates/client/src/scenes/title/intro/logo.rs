@@ -103,7 +103,7 @@ impl GameScene for GameIntroLogoScene {
     }
 
     fn on_draw(
-        &self,
+        &mut self,
         _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,

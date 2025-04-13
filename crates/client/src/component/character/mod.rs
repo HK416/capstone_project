@@ -13,10 +13,7 @@ use mod_network::components::{
 };
 
 use crate::{
-    asset::{
-        ModelPool, ModelRoot, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, CHARACTER_URIS,
-    },
+    asset::{ModelPool, ModelRoot, MotionPool, TextureDataPool, CHARACTER_URIS},
     component::{Child, Sibling, ToParentTrans, WorldTransform},
 };
 
@@ -81,9 +78,6 @@ pub fn spawn_player_character(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
     player: &PlayPhasePlayer,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
@@ -92,9 +86,6 @@ pub fn spawn_player_character(
     type Func = fn(
         Option<&str>,
         &TextureDataPool,
-        &TexturePool,
-        &TextureViewPool,
-        &SamplerPool,
         &wgpu::Device,
         &mut wgpu::CommandEncoder,
         &mut Vec<wgpu::Buffer>,
@@ -156,9 +147,6 @@ pub fn spawn_player_character(
     let (child, skinning_animation, mut batch_commands) = FUNC_TABLE[i](
         Some(&format!("Player({})", player.account.uid)),
         texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
         device,
         encoder,
         staging_buffers,

@@ -8,7 +8,7 @@ use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::{Bullet, NUM_BULLETS};
 
 use crate::{
-    asset::{ModelPool, ModelRoot, SamplerPool, TextureViewPool, BULLET_URIS},
+    asset::{ModelPool, ModelRoot, TextureDataPool, BULLET_URIS},
     component::{Child, ToParentTrans, WorldTransform},
 };
 
@@ -25,8 +25,7 @@ pub use self::{common::*, energy::*};
 pub fn spawn_bullet(
     world: &World,
     model_pool: &ModelPool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
+    texture_data_pool: &TextureDataPool,
     bullet: &Bullet,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
@@ -34,8 +33,7 @@ pub fn spawn_bullet(
 ) -> (Entity, Vec<(Entity, EntityBuilder)>) {
     type Func = fn(
         Option<&str>,
-        &TextureViewPool,
-        &SamplerPool,
+        &TextureDataPool,
         &wgpu::Device,
         &mut wgpu::CommandEncoder,
         &mut Vec<wgpu::Buffer>,
@@ -69,8 +67,7 @@ pub fn spawn_bullet(
     // 총알 종류에 따른 총알 모델을 구성하는 엔터티를 생성합니다.
     let (child, mut batch_commands) = FUNC_TABLE[i](
         Some(&format!("Bullet({})", bullet.object_id)),
-        texture_view_pool,
-        sampler_pool,
+        texture_data_pool,
         device,
         encoder,
         staging_buffers,

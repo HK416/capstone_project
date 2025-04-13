@@ -11,10 +11,7 @@ use mod_network::components::{
 };
 
 use crate::{
-    asset::{
-        ModelNode, ModelRoot, Motion, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, CHARACTER_URIS,
-    },
+    asset::{ModelNode, ModelRoot, Motion, MotionPool, TextureDataPool, CHARACTER_URIS},
     component::{
         BoneCollection, BoneTransformUniform, CharacterMaterialDataLayout,
         CharacterMaterialResource, CharacterMaterialUniform, Child, EyeMouthMaterialDataLayout,
@@ -214,9 +211,6 @@ const VITAL_DEATH_ANIMATION: &'static str = concat!(MODEL_NAME, VITAL_DEATH_ANIM
 pub fn spawn_character_model(
     label: Option<&str>,
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -233,9 +227,6 @@ pub fn spawn_character_model(
     let entity = spawn_character_model_recursive(
         label,
         texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
         device,
         encoder,
         staging_buffers,
@@ -333,9 +324,6 @@ pub fn spawn_character_model(
 fn spawn_character_model_recursive(
     label: Option<&str>,
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -375,9 +363,6 @@ fn spawn_character_model_recursive(
         let child = spawn_character_model_recursive(
             label,
             texture_data_pool,
-            texture_pool,
-            texture_view_pool,
-            sampler_pool,
             device,
             encoder,
             staging_buffers,
@@ -401,9 +386,6 @@ fn spawn_character_model_recursive(
         let sibling = spawn_character_model_recursive(
             label,
             texture_data_pool,
-            texture_pool,
-            texture_view_pool,
-            sampler_pool,
             device,
             encoder,
             staging_buffers,
@@ -493,32 +475,10 @@ fn spawn_character_model_recursive(
                             },
                         );
 
-                        // 캐릭터 텍스처를 가져옵니다.
-                        let texture_data = texture_data_pool
+                        // 캐릭터 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
-                        let texture = texture_pool
-                            .get(&data.main_color)
-                            .expect("the texture must exist!");
-                        let main_color_view = texture_view_pool.get_or_init(
-                            &texture,
-                            &wgpu::TextureViewDescriptor {
-                                dimension: Some(texture_data.dimension.into()),
-                                ..Default::default()
-                            },
-                        );
-                        let main_color_sampler = sampler_pool.get_or_init(
-                            device,
-                            &wgpu::SamplerDescriptor {
-                                address_mode_u: texture_data.address_u.into(),
-                                address_mode_v: texture_data.address_v.into(),
-                                address_mode_w: texture_data.address_w.into(),
-                                mag_filter: texture_data.filter_mode.into(),
-                                min_filter: texture_data.filter_mode.into(),
-                                mipmap_filter: texture_data.filter_mode.into(),
-                                ..Default::default()
-                            },
-                        );
 
                         let material_resource = CharacterMaterialResource::new(
                             label,
@@ -546,32 +506,10 @@ fn spawn_character_model_recursive(
                             },
                         );
 
-                        // 캐릭터 텍스처를 가져옵니다.
-                        let texture_data = texture_data_pool
+                        // 캐릭터 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
-                        let texture = texture_pool
-                            .get(&data.main_color)
-                            .expect("the texture must exist!");
-                        let main_color_view = texture_view_pool.get_or_init(
-                            &texture,
-                            &wgpu::TextureViewDescriptor {
-                                dimension: Some(texture_data.dimension.into()),
-                                ..Default::default()
-                            },
-                        );
-                        let main_color_sampler = sampler_pool.get_or_init(
-                            device,
-                            &wgpu::SamplerDescriptor {
-                                address_mode_u: texture_data.address_u.into(),
-                                address_mode_v: texture_data.address_v.into(),
-                                address_mode_w: texture_data.address_w.into(),
-                                mag_filter: texture_data.filter_mode.into(),
-                                min_filter: texture_data.filter_mode.into(),
-                                mipmap_filter: texture_data.filter_mode.into(),
-                                ..Default::default()
-                            },
-                        );
 
                         let material_resource = EyeMouthMaterialResource::new(
                             label,
@@ -600,32 +538,10 @@ fn spawn_character_model_recursive(
                             },
                         );
 
-                        // 캐릭터 텍스처를 가져옵니다.
-                        let texture_data = texture_data_pool
+                        // 캐릭터 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
-                        let texture = texture_pool
-                            .get(&data.main_color)
-                            .expect("the texture must exist!");
-                        let main_color_view = texture_view_pool.get_or_init(
-                            &texture,
-                            &wgpu::TextureViewDescriptor {
-                                dimension: Some(texture_data.dimension.into()),
-                                ..Default::default()
-                            },
-                        );
-                        let main_color_sampler = sampler_pool.get_or_init(
-                            device,
-                            &wgpu::SamplerDescriptor {
-                                address_mode_u: texture_data.address_u.into(),
-                                address_mode_v: texture_data.address_v.into(),
-                                address_mode_w: texture_data.address_w.into(),
-                                mag_filter: texture_data.filter_mode.into(),
-                                min_filter: texture_data.filter_mode.into(),
-                                mipmap_filter: texture_data.filter_mode.into(),
-                                ..Default::default()
-                            },
-                        );
 
                         let material_resource = HaloMaterialResource::new(
                             label,

@@ -15,7 +15,10 @@ use mod_network::components::Float3;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-use crate::{asset::AssetError, component::MaterialResource};
+use crate::{
+    asset::AssetError,
+    component::{MaterialKind, MaterialResource},
+};
 
 /// 총알 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
@@ -253,15 +256,16 @@ impl BulletMaterialResource {
         device: &wgpu::Device,
         bullet_uniform: &BulletMaterialUniform,
     ) -> MaterialResource {
-        MaterialResource(Arc::new(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
+        MaterialResource {
+            kind: MaterialKind::Bullet,
+            bind_group: Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
                 layout: Self::bind_group_layout(device),
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: bullet_uniform.as_entire_binding(),
                 }],
-            },
-        )))
+            })),
+        }
     }
 }

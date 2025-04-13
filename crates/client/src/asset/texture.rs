@@ -138,7 +138,7 @@ pub struct TextureData {
 pub struct TextureDataPool(Arc<FairMutex<TextureDataPoolType>>);
 
 /// 텍스처 데이터 풀 객체의 타입입니다.
-pub type TextureDataPoolType = HashMap<String, Arc<TextureData>>;
+pub type TextureDataPoolType = HashMap<String, (Arc<wgpu::TextureView>, Arc<wgpu::Sampler>)>;
 
 /// 텍스처 데이터 풀 객체의 용량입니다.
 pub const TEXTURE_DATA_POOL_CAPACITY: usize = 128;
@@ -215,7 +215,13 @@ impl TextureDataPool {
         &self,
         workspace: Dir,
         uri: Uri,
-    ) -> Result<Arc<TextureData>, AssetError>
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+        texture_pool: &TexturePool,
+        texture_view_pool: &TextureViewPool,
+        sampler_pool: &SamplerPool,
+    ) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError>
     where
         Dir: AsRef<Path>,
         Uri: AsRef<str>,
@@ -223,21 +229,48 @@ impl TextureDataPool {
         // 풀 객체를 가져옵니다.
         let mut pool = self.lock();
 
-        if let Some(texture) = pool.get(uri.as_ref()).cloned() {
-            return Ok(texture);
+        if let Some(pair) = pool.get(uri.as_ref()).cloned() {
+            return Ok(pair);
         }
 
         // 텍스처 데이터를 생성합니다.
-        let data = Arc::new(Self::load_from_file(workspace, uri)?);
+        let data = Self::load_from_file(workspace.as_ref(), uri.as_ref())?;
+        let texture = texture_pool.get_or_init(
+            workspace.as_ref(),
+            device,
+            encoder,
+            staging_buffers,
+            &data,
+        )?;
+        let texture_view = texture_view_pool.get_or_init(
+            &texture,
+            &wgpu::TextureViewDescriptor {
+                dimension: Some(data.dimension.into()),
+                ..Default::default()
+            },
+        );
+        let sampler = sampler_pool.get_or_init(
+            device,
+            &wgpu::SamplerDescriptor {
+                address_mode_u: data.address_u.into(),
+                address_mode_v: data.address_v.into(),
+                address_mode_w: data.address_w.into(),
+                mag_filter: data.filter_mode.into(),
+                min_filter: data.filter_mode.into(),
+                mipmap_filter: data.filter_mode.into(),
+                ..Default::default()
+            },
+        );
 
         // 생성된 텍스처를 풀 객체에 등록합니다.
-        pool.insert(data.uri.clone(), data.clone());
-        Ok(data)
+        pool.insert(data.uri.clone(), (texture_view.clone(), sampler.clone()));
+
+        Ok((texture_view, sampler))
     }
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn get<Uri>(&self, uri: Uri) -> Option<Arc<TextureData>>
+    pub fn get<Uri>(&self, uri: Uri) -> Option<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>)>
     where
         Uri: AsRef<str>,
     {
@@ -246,7 +279,7 @@ impl TextureDataPool {
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove<Uri>(&self, uri: Uri) -> Option<Arc<TextureData>>
+    pub fn remove<Uri>(&self, uri: Uri) -> Option<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>)>
     where
         Uri: AsRef<str>,
     {

@@ -1,18 +1,15 @@
 //! 캐릭터의 눈과 입을 그리는 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
 //!
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
-use crate::component::{
-    CameraResource, EyeMouthMaterialResource, SkinnedMeshResource, MAX_BONES, MAX_LIGHTS,
-};
+use crate::component::{CameraResource, EyeMouthMaterialResource, SkinnedMeshResource};
 
 /// 캐릭터의 눈과 입을 그리는 렌더링 파이프라인입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EyeMouthRenderPipeline(Arc<wgpu::RenderPipeline>);
+pub struct EyeMouthRenderPipeline;
+
+/// 캐릭터의 눈과 입을 그리는 그래픽스 파이프라인 인스턴스입니다.
+static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
 
 impl EyeMouthRenderPipeline {
     /// [wgpu::ShaderModule]을 반환합니다.
@@ -44,21 +41,22 @@ impl EyeMouthRenderPipeline {
         })
     }
 
-    /// 렌더링 파이프라인을 가져옵니다.
-    pub fn get(
+    /// 렌더링 파이프라인을 가져옵니다.  
+    /// 렌더링 파이프라인이 초기화되지 않은 상태일 경우 `None`을 반환합니다.
+    pub fn get() -> Option<Arc<wgpu::RenderPipeline>> {
+        PIPELINE.get().cloned()
+    }
+
+    /// 렌더링 파이프라인을 가져오거나 초기화합니다.
+    pub fn get_or_init(
         device: &wgpu::Device,
         render_target_format: wgpu::TextureFormat,
         depth_stencil_format: wgpu::TextureFormat,
-    ) -> Self {
-        static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
-        let pipeline = PIPELINE
+    ) -> Arc<wgpu::RenderPipeline> {
+        PIPELINE
             .get_or_init(|| {
                 let module = Self::create_shader_module(device);
                 let layout = Self::get_pipeline_layout(device);
-                let constants = HashMap::from_iter([
-                    ("max_lights".into(), MAX_LIGHTS as f64),
-                    ("max_bones".into(), MAX_BONES as f64),
-                ]);
                 Arc::new(
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                         label: Some("RenderPipeline(EyeMouth)"),
@@ -124,7 +122,6 @@ impl EyeMouthRenderPipeline {
                                 },
                             ],
                             compilation_options: wgpu::PipelineCompilationOptions {
-                                constants: &constants,
                                 ..Default::default()
                             },
                         },
@@ -158,8 +155,6 @@ impl EyeMouthRenderPipeline {
                     }),
                 )
             })
-            .clone();
-
-        Self(pipeline)
+            .clone()
     }
 }

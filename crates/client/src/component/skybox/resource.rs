@@ -71,4 +71,9 @@ impl SkyboxResource {
 
         Self(bind_group)
     }
+
+    /// [wgpu::BindGroup]을 반환합니다.
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        &self.0
+    }
 }

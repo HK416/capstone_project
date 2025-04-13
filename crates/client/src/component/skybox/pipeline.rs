@@ -6,8 +6,10 @@ use std::sync::{Arc, OnceLock};
 use super::SkyboxResource;
 
 /// 스카이박스를 그리는 렌더링 파이프라인입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SkyboxRenderPipeline(Arc<wgpu::RenderPipeline>);
+pub struct SkyboxRenderPipeline;
+
+/// 스카이박스를 그리는 그래픽스 파이프라인 인스턴스입니다.
+static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
 
 impl SkyboxRenderPipeline {
     /// [wgpu::ShaderModule]을 반환합니다.
@@ -35,14 +37,19 @@ impl SkyboxRenderPipeline {
         })
     }
 
-    /// 렌더링 파이프라인을 가져옵니다.
-    pub fn get(
+    /// 렌더링 파이프라인을 가져옵니다.  
+    /// 렌더링 파이프라인이 초기화 되지 않은 경우 `None`을 반환합니다.
+    pub fn get() -> Option<Arc<wgpu::RenderPipeline>> {
+        PIPELINE.get().cloned()
+    }
+
+    /// 렌더링 파이프라인을 가져오거나 초기화합니다.
+    pub fn get_or_init(
         device: &wgpu::Device,
         render_target_format: wgpu::TextureFormat,
         depth_stencil_format: wgpu::TextureFormat,
-    ) -> Self {
-        static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
-        let pipeline = PIPELINE
+    ) -> Arc<wgpu::RenderPipeline> {
+        PIPELINE
             .get_or_init(|| {
                 let module = Self::create_shader_module(device);
                 let layout = Self::create_pipeline_layout(device);
@@ -98,8 +105,6 @@ impl SkyboxRenderPipeline {
                     }),
                 )
             })
-            .clone();
-
-        Self(pipeline)
+            .clone()
     }
 }

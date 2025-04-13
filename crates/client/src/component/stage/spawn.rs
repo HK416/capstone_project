@@ -6,10 +6,7 @@ use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::{StageAreaData, StageLayoutData, StagePropData};
 
 use crate::{
-    asset::{
-        AssetError, ModelNode, ModelPool, ModelRoot, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool,
-    },
+    asset::{AssetError, ModelNode, ModelPool, ModelRoot, TextureDataPool},
     component::{
         Child, MaterialData, MaterialUniform, MeshResource, Parent, Sibling,
         StageMaterialDataLayout, StageMaterialResource, StageMaterialUniform, StageTag,
@@ -80,9 +77,6 @@ pub fn spawn_stage_area(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
     data: &StageAreaData,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
@@ -111,9 +105,6 @@ pub fn spawn_stage_area(
     // 스테이지 모델을 구성하는 엔터티를 생성합니다.
     let (child, mut batch_commands) = spawn_stage_model(
         texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
         device,
         encoder,
         staging_buffers,
@@ -142,9 +133,6 @@ pub fn spawn_stage_prop(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
     data: &StagePropData,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
@@ -173,9 +161,6 @@ pub fn spawn_stage_prop(
     // 스테이지 모델을 구성하는 엔터티를 생성합니다.
     let (child, mut batch_commands) = spawn_stage_model(
         texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
         device,
         encoder,
         staging_buffers,
@@ -211,9 +196,6 @@ pub fn spawn_stage_prop(
 ///
 fn spawn_stage_model(
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -224,9 +206,6 @@ fn spawn_stage_model(
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
     let entity = spawn_stage_model_recursive(
         texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
         device,
         encoder,
         staging_buffers,
@@ -258,9 +237,6 @@ fn spawn_stage_model(
 ///
 fn spawn_stage_model_recursive(
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -286,9 +262,6 @@ fn spawn_stage_model_recursive(
         // 자식 엔터티를 생성합니다.
         let child = spawn_stage_model_recursive(
             texture_data_pool,
-            texture_pool,
-            texture_view_pool,
-            sampler_pool,
             device,
             encoder,
             staging_buffers,
@@ -308,9 +281,6 @@ fn spawn_stage_model_recursive(
         // 형제 엔터티를 생성합니다.
         let sibling = spawn_stage_model_recursive(
             texture_data_pool,
-            texture_pool,
-            texture_view_pool,
-            sampler_pool,
             device,
             encoder,
             staging_buffers,
@@ -355,32 +325,10 @@ fn spawn_stage_model_recursive(
                             },
                         );
 
-                        // 스테이지 텍스처를 가져옵니다.
-                        let texture_data = texture_data_pool
+                        // 스테이지 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
-                        let texture = texture_pool
-                            .get(&data.main_color)
-                            .expect("the texture must exist!");
-                        let main_color_view = texture_view_pool.get_or_init(
-                            &texture,
-                            &wgpu::TextureViewDescriptor {
-                                dimension: Some(texture_data.dimension.into()),
-                                ..Default::default()
-                            },
-                        );
-                        let main_color_sampler = sampler_pool.get_or_init(
-                            device,
-                            &wgpu::SamplerDescriptor {
-                                address_mode_u: texture_data.address_u.into(),
-                                address_mode_v: texture_data.address_v.into(),
-                                address_mode_w: texture_data.address_w.into(),
-                                mag_filter: texture_data.filter_mode.into(),
-                                min_filter: texture_data.filter_mode.into(),
-                                mipmap_filter: texture_data.filter_mode.into(),
-                                ..Default::default()
-                            },
-                        );
 
                         let material_resource = StageMaterialResource::new(
                             None,

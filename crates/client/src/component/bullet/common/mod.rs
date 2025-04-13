@@ -9,7 +9,7 @@ use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::BulletKind;
 
 use crate::{
-    asset::{ModelNode, ModelRoot, SamplerPool, TextureViewPool},
+    asset::{ModelNode, ModelRoot, TextureDataPool},
     component::{
         BulletMaterialDataLayout, BulletMaterialResource, BulletMaterialUniform, Child,
         MaterialData, MaterialUniform, MeshResource, Parent, Sibling, ToParentTrans,
@@ -37,8 +37,7 @@ pub use self::pipeline::*;
 ///
 pub fn spawn_common_bullet_model(
     label: Option<&str>,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
+    texture_data_pool: &TextureDataPool,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -49,8 +48,7 @@ pub fn spawn_common_bullet_model(
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
     let entity = spawn_common_bullet_model_recursive(
         label,
-        texture_view_pool,
-        sampler_pool,
+        texture_data_pool,
         device,
         encoder,
         staging_buffers,
@@ -82,8 +80,7 @@ pub fn spawn_common_bullet_model(
 ///
 fn spawn_common_bullet_model_recursive(
     label: Option<&str>,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
+    texture_data_pool: &TextureDataPool,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -109,8 +106,7 @@ fn spawn_common_bullet_model_recursive(
         // 자식 엔터티를 생성합니다.
         let child = spawn_common_bullet_model_recursive(
             label,
-            texture_view_pool,
-            sampler_pool,
+            texture_data_pool,
             device,
             encoder,
             staging_buffers,
@@ -130,8 +126,7 @@ fn spawn_common_bullet_model_recursive(
         // 형제 엔터티를 생성합니다.
         let sibling = spawn_common_bullet_model_recursive(
             label,
-            texture_view_pool,
-            sampler_pool,
+            texture_data_pool,
             device,
             encoder,
             staging_buffers,

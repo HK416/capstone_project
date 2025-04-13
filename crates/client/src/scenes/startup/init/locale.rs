@@ -60,7 +60,7 @@ impl GameScene for InitLocaleScene {
     }
 
     fn on_draw(
-        &self,
+        &mut self,
         _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,

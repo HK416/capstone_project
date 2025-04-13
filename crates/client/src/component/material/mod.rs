@@ -15,6 +15,18 @@ use crate::asset::AssetError;
 
 pub use self::{bullet::*, character::*, stage::*};
 
+/// 재질의 종류입니다.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MaterialKind {
+    Bullet,
+    EnergyBullet,
+    Character,
+    CharacterEyeMouth,
+    CharacterHalo,
+    Stage,
+}
+
 /// 재질 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum MaterialData {
@@ -194,11 +206,19 @@ impl MaterialUniform {
 
 /// 재질 쉐이더 리소스입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MaterialResource(pub(crate) Arc<wgpu::BindGroup>);
+pub struct MaterialResource {
+    kind: MaterialKind,
+    bind_group: Arc<wgpu::BindGroup>,
+}
 
 impl MaterialResource {
+    /// [MaterialKind]를 반환합니다.
+    pub fn kind(&self) -> MaterialKind {
+        self.kind
+    }
+
     /// [wgpu::BindGroup]을 반환합니다.
     pub fn bind_group(&self) -> &wgpu::BindGroup {
-        &self.0
+        &self.bind_group
     }
 }

@@ -117,7 +117,7 @@ impl GameScene for GameIntroConnectScene {
         let title = ERR_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
                 ERR_MSG_TEXTS[i]
             }
             NetworkError::IO(_) => {
@@ -133,32 +133,6 @@ impl GameScene for GameIntroConnectScene {
         let event = AppEvent::SetGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
-    }
-
-    fn on_draw(
-        &self,
-        _window: &Window,
-        encoder: &mut wgpu::CommandEncoder,
-        render_target_view: &wgpu::TextureView,
-        _depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
-    ) {
-        {
-            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({:?})", &self)),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    view: render_target_view,
-                    resolve_target: None,
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {

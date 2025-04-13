@@ -90,7 +90,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            BulletRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            BulletRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -99,7 +99,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            EnergyBulletRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            EnergyBulletRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -108,7 +108,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            CharacterRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            CharacterRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -117,7 +117,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            EyeMouthRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            EyeMouthRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -126,7 +126,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            HaloRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            HaloRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -144,7 +144,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            SkyboxRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            SkyboxRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -153,7 +153,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            StageRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            StageRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -502,7 +502,7 @@ impl GameScene for GameStartupScene {
     }
 
     fn on_draw(
-        &self,
+        &mut self,
         _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,

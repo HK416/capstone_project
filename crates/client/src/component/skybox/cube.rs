@@ -2,9 +2,9 @@
 //!
 
 /// 정점의 개수입니다.
-const NUM_VERTICES: usize = 36;
+pub const NUM_CUBE_VERTICES: usize = 36;
 /// 정점 위치 데이터입니다.
-const POSITIONS: [[f32; 3]; NUM_VERTICES] = [
+pub const CUBE_POSITIONS: [[f32; 3]; NUM_CUBE_VERTICES] = [
     [-1.0, 1.0, -1.0],
     [-1.0, -1.0, -1.0],
     [1.0, -1.0, -1.0],

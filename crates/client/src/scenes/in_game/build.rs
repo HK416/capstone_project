@@ -6,8 +6,6 @@ use std::{
     },
 };
 
-use ahash::HashMap;
-use hecs::{Entity, EntityBuilder, World};
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -22,13 +20,7 @@ use mod_parallelism::collections::Queue;
 use winit::window::Window;
 
 use crate::{
-    asset::{
-        ModelPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD,
-        SKYBOX_URI,
-    },
-    component::{
-        spawn_player_character, spawn_stage_area, spawn_stage_prop, SkyboxResource, SkyboxUniform,
-    },
+    asset::{ModelPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD},
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
@@ -115,179 +107,8 @@ impl InGameBuildScene {
     }
 
     /// 다음 게임 장면을 생성합니다.
-    fn build_next_scene(&mut self, device: &Arc<wgpu::Device>) {
-        let init_stage_packet = self.packet.take().expect("packet must exits!");
-        let command_buffers = self.command_buffers.clone();
-        let task_result = self.task_result.clone();
-        let model_pool = self.model_pool.clone();
-        let texture_data_pool = self.texture_data_pool.clone();
-        let texture_pool = self.texture_pool.clone();
-        let texture_view_pool = self.texture_view_pool.clone();
-        let sampler_pool = self.sampler_pool.clone();
-        let stage_layout_data = self.stage_layout_data.clone();
-        let device = device.clone();
-        let token = self.token;
-        let user_id = self.user_id;
-        let locale = self.locale;
-
-        rayon::spawn(move || {
-            let mut world = World::default();
-            let player_entities: Arc<Queue<(UserId, Entity)>> = Arc::new(Queue::new());
-            let batch_commands: Arc<Queue<Vec<(Entity, EntityBuilder)>>> = Arc::new(Queue::new());
-            let stage_layout_data_ref = &stage_layout_data;
-
-            let device_ref = &device;
-            let world_ref = &world;
-            let command_buffers_ref = &command_buffers;
-            let player_entities_ref = &player_entities;
-            let batch_commands_ref = &batch_commands;
-
-            let model_pool_ref = &model_pool;
-            let texture_data_pool_ref = &texture_data_pool;
-            let texture_pool_ref = &texture_pool;
-            let texture_view_pool_ref = &texture_view_pool;
-            let sampler_pool_ref = &sampler_pool;
-
-            rayon::scope(move |scope| {
-                let players = init_stage_packet.players;
-                let player_entities_cloned = player_entities_ref.clone();
-                let batch_commands_cloned = batch_commands_ref.clone();
-                scope.spawn(move |_| {
-                    let mut staging_buffers = Vec::new();
-                    let mut encoder = device_ref
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-                    for player in players {
-                        let (root, commands) = spawn_player_character(
-                            world_ref,
-                            model_pool_ref,
-                            texture_data_pool_ref,
-                            texture_pool_ref,
-                            texture_view_pool_ref,
-                            sampler_pool_ref,
-                            &player,
-                            device_ref,
-                            &mut encoder,
-                            &mut staging_buffers,
-                        );
-                        player_entities_cloned.push((player.account.uid, root));
-                        batch_commands_cloned.push(commands);
-                    }
-
-                    command_buffers_ref.push((encoder.finish(), staging_buffers));
-                });
-
-                scope.spawn(move |_| {
-                    let mut staging_buffers = Vec::new();
-                    let mut encoder = device_ref
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-                    let layout = stage_layout_data_ref
-                        .get()
-                        .expect("the stage layout data must exist!");
-                    for data in layout.area.iter() {
-                        let (_, commands) = spawn_stage_area(
-                            world_ref,
-                            model_pool_ref,
-                            texture_data_pool_ref,
-                            texture_pool_ref,
-                            texture_view_pool_ref,
-                            sampler_pool_ref,
-                            data,
-                            device_ref,
-                            &mut encoder,
-                            &mut staging_buffers,
-                        );
-                        batch_commands_ref.push(commands);
-                    }
-
-                    command_buffers_ref.push((encoder.finish(), staging_buffers));
-                });
-
-                scope.spawn(move |_| {
-                    let mut staging_buffers = Vec::new();
-                    let mut encoder = device_ref
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-                    let layout = stage_layout_data_ref
-                        .get()
-                        .expect("the stage layout data must exist!");
-                    for data in layout.props.iter() {
-                        let (_, commands) = spawn_stage_prop(
-                            world_ref,
-                            model_pool_ref,
-                            texture_data_pool_ref,
-                            texture_pool_ref,
-                            texture_view_pool_ref,
-                            sampler_pool_ref,
-                            data,
-                            device_ref,
-                            &mut encoder,
-                            &mut staging_buffers,
-                        );
-                        batch_commands_ref.push(commands);
-                    }
-
-                    command_buffers_ref.push((encoder.finish(), staging_buffers));
-                });
-            });
-
-            // 엔터티 생성 명령어를 실행합니다.
-            while let Some(commands) = batch_commands.pop() {
-                for (entity, mut builder) in commands {
-                    world
-                        .insert(entity, builder.build())
-                        .expect("no such entity!");
-                }
-            }
-
-            // 플레이어 엔터티 집합을 생성합니다.
-            let mut players = HashMap::default();
-            while let Some((user_id, player)) = player_entities.pop() {
-                players.insert(user_id, player);
-            }
-
-            // 스카이박스 쉐이더 리소스를 생성합니다.
-            let skybox_texture = texture_pool
-                .get(SKYBOX_URI)
-                .expect("texture must be pre-registered!");
-            let skybox_texture = texture_view_pool.get_or_init(
-                &skybox_texture,
-                &wgpu::TextureViewDescriptor {
-                    dimension: Some(wgpu::TextureViewDimension::Cube),
-                    ..Default::default()
-                },
-            );
-            let skybox_sampler =
-                sampler_pool.get_or_init(&device, &wgpu::SamplerDescriptor::default());
-            let skybox_uniform = SkyboxUniform::uninit(Some("Skybox"), &device);
-            let skybox_resource = SkyboxResource::new(
-                Some("Skybox"),
-                &device,
-                &skybox_uniform,
-                &skybox_texture,
-                &skybox_sampler,
-            );
-
-            println!("!");
-            // 다음 장면을 생성합니다.
-            // let next_scene = InGameDominationModeScene::new(
-            //     locale,
-            //     user_id,
-            //     token,
-            //     model_pool,
-            //     texture_data_pool,
-            //     texture_pool,
-            //     texture_view_pool,
-            //     sampler_pool,
-            //     world,
-            //     players,
-            //     skybox_resource.into(),
-            // );
-
-            // // 결과를 전송합니다.
-            // task_result.push(Ok(Box::new(next_scene)));
-        });
+    fn build_next_scene(&mut self, _device: &Arc<wgpu::Device>) {
+        todo!()
     }
 }
 
@@ -314,7 +135,7 @@ impl GameScene for InGameBuildScene {
         let title = ERR_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
                 ERR_MSG_TEXTS[i]
             }
             NetworkError::IO(_) => {
@@ -397,7 +218,7 @@ impl GameScene for InGameBuildScene {
     }
 
     fn on_draw(
-        &self,
+        &mut self,
         _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,

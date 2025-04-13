@@ -12,7 +12,7 @@ use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-use super::MaterialResource;
+use super::{MaterialKind, MaterialResource};
 
 /// 지형 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
@@ -203,8 +203,9 @@ impl StageMaterialResource {
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
-        MaterialResource(Arc::new(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
+        MaterialResource {
+            kind: MaterialKind::Stage,
+            bind_group: Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
                 layout: Self::bind_group_layout(device),
                 entries: &[
@@ -221,7 +222,7 @@ impl StageMaterialResource {
                         resource: wgpu::BindingResource::Sampler(main_color_sampler),
                     },
                 ],
-            },
-        )))
+            })),
+        }
     }
 }

@@ -205,47 +205,55 @@ impl ModelPool {
             let data = material_data_pool.get_or_init(workspace.as_ref(), material_uri)?;
             match data.deref() {
                 MaterialData::Character(data) => {
-                    let uri = &data.main_color;
-                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
-                    let _texture = texture_pool.get_or_init(
+                    // 메인 컬러 텍스처를 로드합니다.
+                    texture_data_pool.get_or_init(
                         workspace.as_ref(),
+                        &data.main_color,
                         device,
                         encoder,
                         staging_buffers,
-                        &data,
+                        texture_pool,
+                        texture_view_pool,
+                        sampler_pool,
                     )?;
                 }
                 MaterialData::CharacterEyeMouth(data) => {
-                    let uri = &data.main_color;
-                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
-                    let _texture = texture_pool.get_or_init(
+                    // 메인 컬러 텍스처를 로드합니다.
+                    texture_data_pool.get_or_init(
                         workspace.as_ref(),
+                        &data.main_color,
                         device,
                         encoder,
                         staging_buffers,
-                        &data,
+                        texture_pool,
+                        texture_view_pool,
+                        sampler_pool,
                     )?;
                 }
                 MaterialData::CharacterHalo(data) => {
-                    let uri = &data.main_color;
-                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
-                    let _texture = texture_pool.get_or_init(
+                    // 메인 컬러 텍스처를 로드합니다.
+                    texture_data_pool.get_or_init(
                         workspace.as_ref(),
+                        &data.main_color,
                         device,
                         encoder,
                         staging_buffers,
-                        &data,
+                        texture_pool,
+                        texture_view_pool,
+                        sampler_pool,
                     )?;
                 }
                 MaterialData::Stage(data) => {
-                    let uri = &data.main_color;
-                    let data = texture_data_pool.get_or_init(workspace.as_ref(), uri)?;
-                    let _texture = texture_pool.get_or_init(
+                    // 메인 컬러 텍스처를 로드합니다.
+                    texture_data_pool.get_or_init(
                         workspace.as_ref(),
+                        &data.main_color,
                         device,
                         encoder,
                         staging_buffers,
-                        &data,
+                        texture_pool,
+                        texture_view_pool,
+                        sampler_pool,
                     )?;
                 }
                 _ => {}

@@ -192,7 +192,7 @@ pub trait GameScene: Debug + Send {
 
     /// 애플리케이션이 게임 장면을 그릴 때 호출하는 콜백 함수입니다.
     fn on_draw(
-        &self,
+        &mut self,
         window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,

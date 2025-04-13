@@ -1,16 +1,15 @@
 //! 일반 총알과 관련된 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
 //!
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
-use crate::component::{BulletMaterialResource, CameraResource, MeshResource, MAX_LIGHTS};
+use crate::component::{BulletMaterialResource, CameraResource, MeshResource};
 
 /// 일반 총알을 그리는 그래픽스 파이프라인입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BulletRenderPipeline(Arc<wgpu::RenderPipeline>);
+pub struct BulletRenderPipeline;
+
+/// 일반 총알을 그리는 그래픽스 파이프라인 인스턴스입니다.
+static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
 
 impl BulletRenderPipeline {
     /// [wgpu::ShaderModule]을 반환합니다.
@@ -42,18 +41,22 @@ impl BulletRenderPipeline {
         })
     }
 
-    /// 렌더링 파이프라인을 가져옵니다.
-    pub fn get(
+    /// 렌더링 파이프라인을 가져옵니다.  
+    /// 렌더링 파이프라인이 초기화되지 않은 상태일 경우 `None`을 반환합니다.
+    pub fn get() -> Option<Arc<wgpu::RenderPipeline>> {
+        PIPELINE.get().cloned()
+    }
+
+    /// 렌더링 파이프라인을 가져오거나 초기화합니다.
+    pub fn get_or_init(
         device: &wgpu::Device,
         render_target_format: wgpu::TextureFormat,
         depth_stencil_format: wgpu::TextureFormat,
-    ) -> Self {
-        static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
-        let pipeline = PIPELINE
+    ) -> Arc<wgpu::RenderPipeline> {
+        PIPELINE
             .get_or_init(|| {
                 let module = Self::create_shader_module(device);
                 let layout = Self::create_pipeline_layout(device);
-                let constants = HashMap::from_iter([("max_lights".into(), MAX_LIGHTS as f64)]);
                 Arc::new(
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                         label: Some("RenderPipeline(Bullet)"),
@@ -86,7 +89,6 @@ impl BulletRenderPipeline {
                                 },
                             ],
                             compilation_options: wgpu::PipelineCompilationOptions {
-                                constants: &constants,
                                 ..Default::default()
                             },
                         },
@@ -120,8 +122,6 @@ impl BulletRenderPipeline {
                     }),
                 )
             })
-            .clone();
-
-        Self(pipeline)
+            .clone()
     }
 }

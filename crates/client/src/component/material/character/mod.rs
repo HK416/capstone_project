@@ -16,7 +16,7 @@ use wgpu::util::DeviceExt;
 
 pub use self::{eye_mouth::*, halo::*};
 
-use super::MaterialResource;
+use super::{MaterialKind, MaterialResource};
 
 /// 캐릭터 몸체 재질 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -218,8 +218,9 @@ impl CharacterMaterialResource {
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
-        MaterialResource(Arc::new(device.create_bind_group(
-            &wgpu::BindGroupDescriptor {
+        MaterialResource {
+            kind: MaterialKind::Character,
+            bind_group: Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
                 layout: Self::bind_group_layout(device),
                 entries: &[
@@ -236,7 +237,7 @@ impl CharacterMaterialResource {
                         resource: wgpu::BindingResource::Sampler(main_color_sampler),
                     },
                 ],
-            },
-        )))
+            })),
+        }
     }
 }
