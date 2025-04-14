@@ -18,8 +18,8 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool,
-        NOTOSANS_BOLD, SKYBOX_URI,
+        MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
+        TextureViewPool, NOTOSANS_BOLD, SKYBOX_URI,
     },
     component::{spawn_player_character, spawn_stage_area, spawn_stage_prop, Skybox},
     config::{Locale, NUM_LOCALE},
@@ -59,6 +59,8 @@ pub struct InGameBuildScene {
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
 
+    /// 메쉬 풀 객체입니다.
+    mesh_pool: MeshPool,
     /// 모델 풀 객체입니다.
     model_pool: ModelPool,
     /// 애니메이션 데이터 풀 객체입니다.
@@ -85,6 +87,7 @@ impl InGameBuildScene {
         token: LoginToken,
         packet: Option<InitStagePacket>,
         stage_layout_data: Arc<OnceLock<StageLayoutData>>,
+        mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
         texture_data_pool: TextureDataPool,
@@ -103,6 +106,7 @@ impl InGameBuildScene {
             load_finished: false,
             next_scene: Arc::new(SpinMutex::new(None)),
             elapsed_time_sec: 0.0,
+            mesh_pool,
             model_pool,
             motion_pool,
             texture_data_pool,
@@ -114,13 +118,17 @@ impl InGameBuildScene {
 
     /// 다음 게임 장면을 생성합니다.
     fn build_next_scene(&mut self, device: &Arc<wgpu::Device>) {
+        let device = device.clone();
+
         let locale = self.locale;
         let user_id = self.user_id;
         let token = self.token;
-        let device = device.clone();
+
         let commands = self.commands.clone();
         let packet = self.packet.take().expect("the packet must exist!");
         let stage_layout_data = self.stage_layout_data.clone();
+
+        let mesh_pool = self.mesh_pool.clone();
         let model_pool = self.model_pool.clone();
         let motion_pool = self.motion_pool.clone();
         let texture_pool = self.texture_pool.clone();
@@ -311,11 +319,13 @@ impl InGameBuildScene {
                 skybox,
                 players,
                 stages,
+                mesh_pool,
                 model_pool,
                 motion_pool,
                 texture_pool,
                 texture_data_pool,
                 texture_view_pool,
+                sampler_pool,
             );
             *result.lock() = Some(Box::new(next_scene));
         });

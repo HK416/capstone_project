@@ -38,7 +38,7 @@ var<uniform> u_camera: CameraDataLayout;
 var<uniform> u_font: DamageFontDataLayout;
 
 @group(1) @binding(1)
-var t_font: texture_2d_array<f32>;
+var t_font: texture_2d<f32>;
 
 @group(1) @binding(2)
 var s_font: sampler;
@@ -49,9 +49,11 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
     var out: VertexOutput;
 
     let position_w = (u_font.trans * vec4<f32>(input.position, 1.0)).xyz;
+    let u = 0.2 * (f32(u_font.number) % 5.0) + 0.2 * input.texcoord.x;
+    let v = 0.5 * floor(f32(u_font.number) / 5.0) + 0.5 * input.texcoord.y;
 
     out.clip_position = u_camera.proj_view * vec4<f32>(position_w, 1.0);
-    out.texcoord = input.texcoord;
+    out.texcoord = vec2<f32>(u, v);
     
     return out;
 }
@@ -59,8 +61,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 // 데미지 폰트를 그리는 프래그먼트 쉐이더입니다.
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
-    let number = clamp(u_font.number, 0u, 9u);
-    let color = textureSample(t_font, s_font, input.texcoord, number);
+    let color = textureSample(t_font, s_font, input.texcoord);
     if (color.a < 0.5) {
         discard;
     }

@@ -30,7 +30,7 @@ use crate::{
         DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI, STAGE_URI, STAGE_WORKSPACES,
         UI_GAME_LAYOUT_URI,
     },
-    component::{load_stage_layout_from_file, MaterialDataPool},
+    component::{load_stage_layout_from_file, Attributes, MaterialDataPool, Mesh, Vertices},
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
@@ -633,6 +633,61 @@ impl InGameLoadScene {
         });
         self.num_remaining_tasks += 1;
     }
+
+    /// 데미지 파티클 메쉬를 생성합니다.
+    fn create_damage_particle_mesh(
+        &mut self,
+        thread_pool: &ThreadPool,
+        device: &Arc<wgpu::Device>,
+    ) {
+        let commands = self.commands.clone();
+        let task_results = self.task_results.clone();
+        let mesh_pool = self.mesh_pool.clone();
+        let device = device.clone();
+
+        thread_pool.spawn(move || {
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            // 데미지 파티클 메쉬를 생성합니다.
+            let positions = Vertices(vec![
+                [-0.025, -0.05, 0.0],
+                [-0.025, 0.05, 0.0],
+                [0.025, -0.05, 0.0],
+                [0.025, 0.05, 0.0],
+                [0.025, -0.05, 0.0],
+                [-0.025, 0.05, 0.0],
+            ]);
+            let texcoords = Attributes::Texcoord0(vec![
+                [0.0, 1.0],
+                [0.0, 0.0],
+                [1.0, 1.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+                [0.0, 0.0],
+            ]);
+
+            let mut mesh = Mesh::new(
+                DAMAGE_FONT_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                positions,
+            );
+            mesh.with_attribute(&device, &mut encoder, &mut staging_buffers, texcoords);
+
+            // 풀 객체에 메쉬를 등록합니다.
+            mesh_pool.insert(DAMAGE_FONT_URI, Arc::new(mesh), None);
+
+            // 커맨드 버퍼를 전송합니다.
+            commands.push((staging_buffers, encoder.finish()));
+
+            // 결과를 전송합니다.
+            task_results.push(Ok(()));
+        });
+        self.num_remaining_tasks += 1;
+    }
 }
 
 impl GameScene for InGameLoadScene {
@@ -648,6 +703,7 @@ impl GameScene for InGameLoadScene {
         self.create_ui_game_layout_texture(&workspace, thread_pool, device);
         self.create_skybox_texture(&workspace, thread_pool, device);
         self.create_damage_font(&workspace, thread_pool, device);
+        self.create_damage_particle_mesh(thread_pool, device);
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -723,6 +779,7 @@ impl GameScene for InGameLoadScene {
                 self.token,
                 self.packet.take(),
                 self.stage_layout_data.clone(),
+                self.mesh_pool.clone(),
                 self.model_pool.clone(),
                 self.motion_pool.clone(),
                 self.texture_data_pool.clone(),

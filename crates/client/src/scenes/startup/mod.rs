@@ -135,7 +135,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            DamageFontRenderPipeline::get(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            DamageFontRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
