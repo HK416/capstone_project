@@ -100,7 +100,7 @@ pub fn spawn_stage_area(
     let world_transform = WorldTransform::default();
 
     // 컴포넌트를 추가합니다.
-    builder.add_bundle((local_transform, world_transform, StageTag));
+    builder.add_bundle((local_transform, world_transform));
 
     // 스테이지 모델을 구성하는 엔터티를 생성합니다.
     let (child, mut batch_commands) = spawn_stage_model(
@@ -149,7 +149,8 @@ pub fn spawn_stage_prop(
     let mut builder = EntityBuilder::new();
 
     // 컴포넌트 데이터를 준비합니다.
-    let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
+    let local_transform = ToParentTrans(glam::Mat4::from_scale_rotation_translation(
+        data.scale.into(),
         data.rotation.into(),
         data.translation.into(),
     ));

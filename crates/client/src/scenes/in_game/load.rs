@@ -1,6 +1,7 @@
 use std::{
     error::Error,
-    io::Cursor,
+    fs::OpenOptions,
+    io::{Cursor, Read},
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
@@ -10,7 +11,6 @@ use ddsfile::Dds;
 use image::{ImageFormat, ImageReader};
 use mod_app::{
     app::AppHandle,
-    asset::AssetManager,
     etc::AppEvent,
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
@@ -21,14 +21,14 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use rayon::ThreadPool;
-use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        MeshPool, ModelPool, SamplerPool, TextureDataPool, TexturePool, TextureViewPool,
-        BULLET_URIS, BULLET_WORKSPACE, CHARACTER_URIS, CHARACTER_WORKSPACES, DAMAGE_FONT_URI,
-        NOTOSANS_BOLD, SKYBOX_URI, STAGE_URI, STAGE_WORKSPACES, UI_GAME_LAYOUT_URI,
+        MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
+        TextureViewPool, BULLET_URIS, BULLET_WORKSPACE, CHARACTER_URIS, CHARACTER_WORKSPACES,
+        DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI, STAGE_URI, STAGE_WORKSPACES,
+        UI_GAME_LAYOUT_URI,
     },
     component::{load_stage_layout_from_file, MaterialDataPool},
     config::{Locale, NUM_LOCALE},
@@ -72,6 +72,8 @@ pub struct InGameLoadScene {
     mesh_pool: MeshPool,
     /// 모델 풀 객체입니다.
     model_pool: ModelPool,
+    /// 애니메이션 데이터 풀 객체입니다.
+    motion_pool: MotionPool,
     /// 텍스처 데이터 풀 객체입니다.
     texture_data_pool: TextureDataPool,
     /// 텍스처 풀 객체입니다.
@@ -102,6 +104,7 @@ impl InGameLoadScene {
             material_data_pool: MaterialDataPool::new(),
             mesh_pool: MeshPool::new(),
             model_pool: ModelPool::new(),
+            motion_pool: MotionPool::new(),
             texture_data_pool: TextureDataPool::new(),
             texture_pool: TexturePool::new(),
             texture_view_pool: TextureViewPool::new(),
@@ -137,6 +140,7 @@ impl InGameLoadScene {
             let texture_view_pool = self.texture_view_pool.clone();
             let sampler_pool = self.sampler_pool.clone();
             let device = device.clone();
+
             let mut workspace = workspace.clone();
             workspace.push(CHARACTER_WORKSPACES[kind as usize]);
 
@@ -158,15 +162,47 @@ impl InGameLoadScene {
                         &device,
                         &mut encoder,
                         &mut staging_buffers,
-                        workspace,
+                        &workspace,
                         CHARACTER_URIS[kind as usize],
                     )
                     .map(|_| ())
                     .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
-                log::debug!("task finished (TYPE: Load Character Model)");
 
                 // 커맨드 버퍼를 전송합니다.
                 commands.push((staging_buffers, encoder.finish()));
+                // 결과를 전송합니다.
+                task_results.push(result);
+            });
+            self.num_remaining_tasks += 1;
+        }
+    }
+
+    /// 캐릭터 애니메이션 데이터를 로드합니다.
+    fn load_character_motions(&mut self, workspace: &PathBuf, thread_pool: &ThreadPool) {
+        let init_stage_packet = self
+            .packet
+            .as_ref()
+            .expect("the InitStagePacket must exist!");
+        let character_kinds: HashSet<_> = init_stage_packet
+            .players
+            .iter()
+            .map(|player| player.character_kind)
+            .collect();
+
+        for kind in character_kinds {
+            let task_results = self.task_results.clone();
+            let motion_pool = self.motion_pool.clone();
+
+            let mut workspace = workspace.clone();
+            workspace.push(CHARACTER_WORKSPACES[kind as usize]);
+
+            thread_pool.spawn(move || {
+                // 캐릭터 애니메이션 데이터를 로드합니다.
+                let result = motion_pool
+                    .get_or_init(workspace, CHARACTER_URIS[kind as usize])
+                    .map(|_| ())
+                    .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
+
                 // 결과를 전송합니다.
                 task_results.push(result);
             });
@@ -229,7 +265,6 @@ impl InGameLoadScene {
                     )
                     .map(|_| ())
                     .map_err(|e| Box::new(e) as Box<dyn Error + Send>);
-                log::debug!("task finished (TYPE: Load Bullet Model)");
 
                 // 커맨드 버퍼를 전송합니다.
                 commands.push((staging_buffers, encoder.finish()));
@@ -313,7 +348,6 @@ impl InGameLoadScene {
                 .expect("the stage layout data already exist!");
 
             // 커맨드 버퍼를 전송합니다.
-            log::debug!("task finished (TYPE: Load Stage Model)");
             commands.push((staging_buffers, encoder.finish()));
             // 결과를 전송합니다.
             task_results.push(Ok(()));
@@ -324,70 +358,93 @@ impl InGameLoadScene {
     /// `UI_Game_Layout` 텍스처를 생성합니다.
     fn create_ui_game_layout_texture(
         &mut self,
+        workspace: &PathBuf,
         thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
         device: &Arc<wgpu::Device>,
-        queue: &Arc<wgpu::Queue>,
     ) {
+        let commands = self.commands.clone();
         let task_results = self.task_results.clone();
         let texture_pool = self.texture_pool.clone();
-        let asset_manager = asset_manager.clone();
         let device = device.clone();
-        let queue = queue.clone();
+
+        let mut path = workspace.clone();
+        path.push(format!("ui/{}.png", UI_GAME_LAYOUT_URI));
+
         thread_pool.spawn(move || {
-            // `UI_Game_Layout` 텍스처를 로드합니다.
-            let result = asset_manager.get_or_init(UI_GAME_LAYOUT_URI);
-            let bytes = match result {
-                Ok(asset) => asset.as_bytes().to_vec(),
+            log::debug!("open texture asset (PATH:{})", path.display());
+            let result = OpenOptions::new().read(true).write(false).open(&path);
+            let mut file = match result {
+                Ok(file) => file,
                 Err(e) => {
-                    log::error!("failed to load assets! (Uri:{UI_GAME_LAYOUT_URI}, REASON:{e})");
+                    log::error!(
+                        "failed to texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
                     task_results.push(Err(Box::new(e)));
                     return;
                 }
             };
 
-            // 텍스처를 로드합니다.
-            let reader = Cursor::new(bytes);
-            let mut reader = ImageReader::new(reader);
+            log::debug!("read texture asset (PATH:{})", path.display());
+            let mut buf = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buf) {
+                log::error!(
+                    "failed to read texture asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                task_results.push(Err(Box::new(e)));
+                return;
+            }
+
+            log::debug!("close texture asset (PATH:{})", path.display());
+            drop(file);
+
+            log::debug!("decode texture asset (PATH:{})", path.display());
+            let mut reader = ImageReader::new(Cursor::new(buf));
             reader.set_format(ImageFormat::Png);
+
             let image = match reader.decode() {
                 Ok(image) => image,
                 Err(e) => {
-                    log::error!("failed to load texture! (URI:{UI_GAME_LAYOUT_URI}, REASON:{e})");
+                    log::error!(
+                        "failed to decode texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
                     task_results.push(Err(Box::new(e)));
                     return;
                 }
             };
 
             // 텍스터를 생성합니다.
-            let texture = Arc::new(device.create_texture_with_data(
-                &queue,
-                &wgpu::TextureDescriptor {
-                    label: Some(&format!("Texture({})", UI_GAME_LAYOUT_URI)),
-                    size: wgpu::Extent3d {
-                        width: image.width(),
-                        height: image.height(),
-                        depth_or_array_layers: 1,
-                    },
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                },
-                wgpu::util::TextureDataOrder::default(),
-                &image.to_rgba8(),
-            ));
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            let texture = TexturePool::create_texture(
+                UI_GAME_LAYOUT_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                image.width(),
+                image.height(),
+                1,
+                wgpu::TextureDimension::D2,
+                wgpu::TextureFormat::Rgba8Unorm,
+                1,
+                1,
+                image.to_rgba8().to_vec(),
+            );
 
             // 텍스터를 등록합니다.
             texture_pool.insert(UI_GAME_LAYOUT_URI, texture);
 
-            // 캐시를 지웁니다.
-            asset_manager.remove(UI_GAME_LAYOUT_URI);
+            // 커맨드 버퍼를 전송합니다.
+            commands.push((staging_buffers, encoder.finish()));
 
             // 결과를 전송합니다.
-            log::debug!("task finished (TYPE: Load Ui Texture)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -396,68 +453,90 @@ impl InGameLoadScene {
     /// 스카이박스 텍스처를 생성합니다.
     fn create_skybox_texture(
         &mut self,
+        workspace: &PathBuf,
         thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
         device: &Arc<wgpu::Device>,
-        queue: &Arc<wgpu::Queue>,
     ) {
+        let commands = self.commands.clone();
         let task_results = self.task_results.clone();
         let texture_pool = self.texture_pool.clone();
-        let asset_manager = asset_manager.clone();
         let device = device.clone();
-        let queue = queue.clone();
+
+        let mut path = workspace.clone();
+        path.push(format!("stage/{}.dds", SKYBOX_URI));
+
         thread_pool.spawn(move || {
-            // 스카이박스 텍스처를 로드합니다.
-            let result = asset_manager.get_or_init(SKYBOX_URI);
-            let bytes = match result {
-                Ok(asset) => asset.as_bytes().to_vec(),
+            log::debug!("open texture asset (PATH:{})", path.display());
+            let result = OpenOptions::new().read(true).write(false).open(&path);
+            let mut file = match result {
+                Ok(file) => file,
                 Err(e) => {
-                    log::error!("failed to load assets! (Uri:{SKYBOX_URI}, REASON:{e})");
+                    log::error!(
+                        "failed to texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
                     task_results.push(Err(Box::new(e)));
                     return;
                 }
             };
 
-            // 텍스처를 로드합니다.
-            let reader = Cursor::new(bytes);
-            let dds = match Dds::read(reader) {
+            log::debug!("read texture asset (PATH:{})", path.display());
+            let mut buf = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buf) {
+                log::error!(
+                    "failed to read texture asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                task_results.push(Err(Box::new(e)));
+                return;
+            }
+
+            log::debug!("close texture asset (PATH:{})", path.display());
+            drop(file);
+
+            log::debug!("decode texture asset (PATH:{})", path.display());
+            let dds = match Dds::read(Cursor::new(buf)) {
                 Ok(dds) => dds,
                 Err(e) => {
-                    log::error!("failed to load texture! (URI:{SKYBOX_URI}, REASON:{e})");
+                    log::error!(
+                        "failed to decode texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
                     task_results.push(Err(Box::new(e)));
                     return;
                 }
             };
 
-            // 텍스터를 생성합니다.
-            let texture = Arc::new(device.create_texture_with_data(
-                &queue,
-                &wgpu::TextureDescriptor {
-                    label: Some(&format!("Texture({})", SKYBOX_URI)),
-                    size: wgpu::Extent3d {
-                        width: dds.get_width(),
-                        height: dds.get_height(),
-                        depth_or_array_layers: 6,
-                    },
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Bc7RgbaUnorm,
-                    mip_level_count: dds.get_num_mipmap_levels(),
-                    sample_count: 1,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                },
-                wgpu::util::TextureDataOrder::default(),
-                &dds.data,
-            ));
+            // 텍스처를 생성합니다.
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-            // 텍스터를 등록합니다.
+            let texture = TexturePool::create_texture(
+                SKYBOX_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                dds.get_width(),
+                dds.get_height(),
+                6,
+                wgpu::TextureDimension::D2,
+                wgpu::TextureFormat::Bc7RgbaUnorm,
+                dds.get_num_mipmap_levels(),
+                1,
+                dds.data,
+            );
+
+            // 텍스처를 등록합니다.
             texture_pool.insert(SKYBOX_URI, texture);
 
-            // 캐시를 지웁니다.
-            asset_manager.remove(SKYBOX_URI);
+            // 커맨드 버퍼를 전송합니다.
+            commands.push((staging_buffers, encoder.finish()));
 
             // 결과를 전송합니다.
-            log::debug!("task finished (TYPE: Load Skybox Texture)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -466,68 +545,90 @@ impl InGameLoadScene {
     /// 데미지 폰트 텍스처를 생성합니다.
     fn create_damage_font(
         &mut self,
+        workspace: &PathBuf,
         thread_pool: &ThreadPool,
-        asset_manager: &AssetManager,
         device: &Arc<wgpu::Device>,
-        queue: &Arc<wgpu::Queue>,
     ) {
+        let commands = self.commands.clone();
         let task_results = self.task_results.clone();
         let texture_pool = self.texture_pool.clone();
-        let asset_manager = asset_manager.clone();
         let device = device.clone();
-        let queue = queue.clone();
+
+        let mut path = workspace.clone();
+        path.push(format!("font/{}.dds", DAMAGE_FONT_URI));
+
         thread_pool.spawn(move || {
-            // 데미지 폰트 텍스처를 로드합니다.
-            let result = asset_manager.get_or_init(DAMAGE_FONT_URI);
-            let bytes = match result {
-                Ok(asset) => asset.as_bytes().to_vec(),
+            log::debug!("open texture asset (PATH:{})", path.display());
+            let result = OpenOptions::new().read(true).write(false).open(&path);
+            let mut file = match result {
+                Ok(file) => file,
                 Err(e) => {
-                    log::error!("failed to load assets! (Uri:{DAMAGE_FONT_URI}, REASON:{e})");
+                    log::error!(
+                        "failed to texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
                     task_results.push(Err(Box::new(e)));
                     return;
                 }
             };
 
-            // 텍스처를 로드합니다.
-            let reader = Cursor::new(bytes);
-            let dds = match Dds::read(reader) {
+            log::debug!("read texture asset (PATH:{})", path.display());
+            let mut buf = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buf) {
+                log::error!(
+                    "failed to read texture asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                task_results.push(Err(Box::new(e)));
+                return;
+            }
+
+            log::debug!("close texture asset (PATH:{})", path.display());
+            drop(file);
+
+            log::debug!("decode texture asset (PATH:{})", path.display());
+            let dds = match Dds::read(Cursor::new(buf)) {
                 Ok(dds) => dds,
                 Err(e) => {
-                    log::error!("failed to load texture! (URI:{DAMAGE_FONT_URI}, REASON:{e})");
+                    log::error!(
+                        "failed to decode texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
                     task_results.push(Err(Box::new(e)));
                     return;
                 }
             };
 
             // 텍스터를 생성합니다.
-            let texture = Arc::new(device.create_texture_with_data(
-                &queue,
-                &wgpu::TextureDescriptor {
-                    label: Some(&format!("Texture({})", SKYBOX_URI)),
-                    size: wgpu::Extent3d {
-                        width: dds.get_width(),
-                        height: dds.get_height(),
-                        depth_or_array_layers: 1,
-                    },
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Bc7RgbaUnorm,
-                    mip_level_count: dds.get_num_mipmap_levels(),
-                    sample_count: 1,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                },
-                wgpu::util::TextureDataOrder::default(),
-                &dds.data,
-            ));
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            let texture = TexturePool::create_texture(
+                DAMAGE_FONT_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                dds.get_width(),
+                dds.get_height(),
+                1,
+                wgpu::TextureDimension::D2,
+                wgpu::TextureFormat::Bc7RgbaUnorm,
+                1,
+                1,
+                dds.data,
+            );
 
             // 텍스터를 등록합니다.
             texture_pool.insert(DAMAGE_FONT_URI, texture);
 
-            // 캐시를 지웁니다.
-            asset_manager.remove(DAMAGE_FONT_URI);
+            // 커맨드 버퍼를 전송합니다.
+            commands.push((staging_buffers, encoder.finish()));
 
             // 결과를 전송합니다.
-            log::debug!("task finished (TYPE: Load Font Texture)");
             task_results.push(Ok(()));
         });
         self.num_remaining_tasks += 1;
@@ -537,28 +638,16 @@ impl InGameLoadScene {
 impl GameScene for InGameLoadScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         let workspace = app.asset_manager().get_root_dir().to_path_buf();
+        let thread_pool = app.io_threads();
+        let device = app.render_device();
 
-        self.load_character_models(&workspace, app.io_threads(), app.render_device());
-        self.load_bullet_models(&workspace, app.io_threads(), app.render_device());
-        self.load_stage_models(&workspace, app.io_threads(), app.render_device());
-        self.create_ui_game_layout_texture(
-            app.io_threads(),
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
-        self.create_skybox_texture(
-            app.io_threads(),
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
-        self.create_damage_font(
-            app.io_threads(),
-            app.asset_manager(),
-            app.render_device(),
-            app.render_queue(),
-        );
+        self.load_character_motions(&workspace, thread_pool);
+        self.load_character_models(&workspace, thread_pool, device);
+        self.load_bullet_models(&workspace, thread_pool, device);
+        self.load_stage_models(&workspace, thread_pool, device);
+        self.create_ui_game_layout_texture(&workspace, thread_pool, device);
+        self.create_skybox_texture(&workspace, thread_pool, device);
+        self.create_damage_font(&workspace, thread_pool, device);
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -635,6 +724,7 @@ impl GameScene for InGameLoadScene {
                 self.packet.take(),
                 self.stage_layout_data.clone(),
                 self.model_pool.clone(),
+                self.motion_pool.clone(),
                 self.texture_data_pool.clone(),
                 self.texture_pool.clone(),
                 self.texture_view_pool.clone(),

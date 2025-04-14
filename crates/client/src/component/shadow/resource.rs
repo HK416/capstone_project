@@ -92,7 +92,10 @@ impl ShadowResource {
     ) -> Self {
         let shadow_texture =
             Self::create_shadow_texture(width, height, depth_or_array_layers, device, format);
-        let texture_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let texture_view = shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
         let shadow_texture_sampler = Self::create_shadow_sampler(device);
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("BindGroup(Shadow)"),

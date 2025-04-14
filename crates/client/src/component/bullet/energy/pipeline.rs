@@ -115,11 +115,11 @@ impl EnergyBulletRenderPipeline {
                                     format: render_target_format,
                                     write_mask: wgpu::ColorWrites::ALL,
                                 }),
-                                Some(wgpu::ColorTargetState {
-                                    blend: None,
-                                    format: render_target_format,
-                                    write_mask: wgpu::ColorWrites::ALL,
-                                }),
+                                // Some(wgpu::ColorTargetState {
+                                //     blend: None,
+                                //     format: render_target_format,
+                                //     write_mask: wgpu::ColorWrites::ALL,
+                                // }),
                             ],
                         }),
                         multiview: None,

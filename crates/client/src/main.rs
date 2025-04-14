@@ -24,6 +24,9 @@ pub const UDP_SOCKET_ADDR: IpAddress = IpAddress::Udp {
     remote: SocketAddr::new(SERVER_IP, 7878),
 };
 
+/// 서버에 트래픽이 몰리는 것을 방지하기 위한 패킷의 전송 딜레이 시간입니다.
+pub const PACKET_DELAY: f32 = 1.0 / 120.0;
+
 /// 64bit `Windows`, `macOS` 플랫폼의
 /// 애플리케이션 진입점입니다.
 ///

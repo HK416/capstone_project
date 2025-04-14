@@ -72,13 +72,13 @@ pub const BG_LOGIN_TITLE_5_DATA: &'static [u8; 3016216] = include_bytes!(concat!
 pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby.png";
 
 /// 데미지 폰트 텍스처의 `Uri`입니다.
-pub const DAMAGE_FONT_URI: &'static str = "font/D_Font_Normal.dds";
+pub const DAMAGE_FONT_URI: &'static str = "D_Font_Normal";
 
 /// 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
-pub const UI_GAME_LAYOUT_URI: &'static str = "ui/UI_Game_Layout.png";
+pub const UI_GAME_LAYOUT_URI: &'static str = "UI_Game_Layout";
 
 /// 스카이박스 텍스처의 `Uri`입니다.
-pub const SKYBOX_URI: &'static str = "stage/Sky.dds";
+pub const SKYBOX_URI: &'static str = "Sky";
 
 /// 캐릭터 모델의 작업 공간입니다.
 pub const CHARACTER_WORKSPACES: [&'static str; NUM_CHARACTERS] = [

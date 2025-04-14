@@ -295,6 +295,7 @@ impl TextureDataPool {
 #[derive(Debug, Clone)]
 pub struct MipLevelCopyLayout {
     pub mip_level: u32,
+    pub array_layer: u32,
     pub offset: u64,
     pub bytes_per_row: u32,
     pub rows_per_image: u32,
@@ -386,6 +387,7 @@ impl TexturePool {
     fn get_staging_buffer_data_with_padding(
         width: u32,
         height: u32,
+        depth_or_array_layers: u32,
         mip_level_count: u32,
         is_compressed: bool,
         unit_bytes: u32,
@@ -394,55 +396,90 @@ impl TexturePool {
         let mut padded_data = Vec::new();
         let mut layout_info = Vec::new();
 
-        // read_offset: 원본 데이터에서 읽어올 위치
-        // write_offset: staging 데이터 내에서의 현재 위치 (패딩 포함)
-        let mut read_offset = 0;
-        let mut write_offset = 0;
-
         // 압축 텍스처의 경우 블록 크기 (BC 포맷은 일반적으로 4x4)
         let block_dim = if is_compressed { 4 } else { 1 };
 
-        for mip_level in 0..mip_level_count {
-            let mip_width = std::cmp::max(1, width >> mip_level);
-            let mip_height = std::cmp::max(1, height >> mip_level);
+        // read_offset: 원본 데이터에서 읽어올 위치
+        #[allow(unused_assignments)]
+        let mut read_offset = 0;
+        // write_offset: staging 데이터 내에서의 현재 위치 (패딩 포함)
+        let mut write_offset = 0;
 
-            let (row_count, raw_bytes_per_row) = if is_compressed {
-                // 블록 개수: (width+3)/4, (height+3)/4
-                let block_width = (mip_width + block_dim - 1) / block_dim;
-                let block_height = (mip_height + block_dim - 1) / block_dim;
-                (block_height, block_width * unit_bytes)
-            } else {
-                (mip_height, mip_width * unit_bytes)
-            };
+        // 각 밉 레벨에 대해 모든 레이어를 처리
+        for array_layer in 0..depth_or_array_layers {
+            // 각 레이아마다 밉 레벨 오프세을 재설정
+            let mut layer_read_offset = 0;
 
-            // WebGPU 요구사항: bytes_per_row는 256바이트 정렬이어야 함
-            let padded_bytes_per_row = ((raw_bytes_per_row + 255) / 256) * 256;
+            // 현재 레이어 총 데이터 크기 계산
+            let mut layer_size = 0;
+            for mip_level in 0..mip_level_count {
+                let mip_width = std::cmp::max(1, width >> mip_level);
+                let mip_height = std::cmp::max(1, height >> mip_level);
 
-            layout_info.push(MipLevelCopyLayout {
-                mip_level,
-                offset: write_offset as u64,
-                bytes_per_row: padded_bytes_per_row as u32,
-                rows_per_image: row_count,
-            });
+                let (row_count, raw_bytes_per_row) = if is_compressed {
+                    // 블록 개수: (width+3)/4, (height+3)/4
+                    let block_width = (mip_width + block_dim - 1) / block_dim;
+                    let block_height = (mip_height + block_dim - 1) / block_dim;
+                    (block_height, block_width * unit_bytes)
+                } else {
+                    (mip_height, mip_width * unit_bytes)
+                };
 
-            for _ in 0..row_count {
-                let start = read_offset;
-                let end = start + raw_bytes_per_row;
-                if end as usize > bytes.len() {
-                    panic!(
-                        "original bytes too small for mip level {} at read offset {}..{}",
-                        mip_level, start, end
+                layer_size += raw_bytes_per_row * row_count;
+            }
+
+            // 현재 레이어의 시작 위치 계산
+            read_offset = array_layer * layer_size;
+
+            // 각 밉 레벨 및 레이어에 대해 처리
+            for mip_level in 0..mip_level_count {
+                let mip_width = std::cmp::max(1, width >> mip_level);
+                let mip_height = std::cmp::max(1, height >> mip_level);
+
+                let (row_count, raw_bytes_per_row) = if is_compressed {
+                    // 블록 개수: (width+3)/4, (height+3)/4
+                    let block_width = (mip_width + block_dim - 1) / block_dim;
+                    let block_height = (mip_height + block_dim - 1) / block_dim;
+                    (block_height, block_width * unit_bytes)
+                } else {
+                    (mip_height, mip_width * unit_bytes)
+                };
+
+                // WebGPU 요구사항: bytes_per_row는 256바이트 정렬이어야 함
+                let padded_bytes_per_row = ((raw_bytes_per_row + 255) / 256) * 256;
+
+                layout_info.push(MipLevelCopyLayout {
+                    mip_level,
+                    array_layer,
+                    offset: write_offset as u64,
+                    bytes_per_row: padded_bytes_per_row as u32,
+                    rows_per_image: row_count,
+                });
+
+                // 현재 밉 레벨의 데이터를 패딩과 함께 복사
+                let current_read_offset = read_offset + layer_read_offset;
+
+                for row in 0..row_count {
+                    let row_start = current_read_offset + row * raw_bytes_per_row;
+                    let row_end = row_start + raw_bytes_per_row;
+
+                    if row_end as usize > bytes.len() {
+                        panic!(
+                            "original bytes too small for layer {} mip level {} at read offset {}..{}",
+                            array_layer, mip_level, row_start, row_end
+                        );
+                    }
+
+                    padded_data.extend_from_slice(&bytes[row_start as usize..row_end as usize]);
+                    padded_data.extend(
+                        std::iter::repeat(0u8)
+                            .take((padded_bytes_per_row - raw_bytes_per_row) as usize),
                     );
+
+                    write_offset += padded_bytes_per_row;
                 }
-
-                padded_data.extend_from_slice(&bytes[start as usize..end as usize]);
-                padded_data.extend(
-                    std::iter::repeat(0u8)
-                        .take((padded_bytes_per_row - raw_bytes_per_row) as usize),
-                );
-
-                read_offset += raw_bytes_per_row;
-                write_offset += padded_bytes_per_row;
+                // 다음 밉 레벨을 위한 오프셋 업데이트
+                layer_read_offset += raw_bytes_per_row * row_count;
             }
         }
 
@@ -468,9 +505,10 @@ impl TexturePool {
         Uri: AsRef<str>,
     {
         let (is_compressed, unit_bytes) = Self::get_texture_format_info(format);
-        let (padded_bytes, mip_layouts) = Self::get_staging_buffer_data_with_padding(
+        let (padded_bytes, mip_layer_layouts) = Self::get_staging_buffer_data_with_padding(
             width,
             height,
+            depth_or_array_layers,
             mip_level_count,
             is_compressed,
             unit_bytes,
@@ -505,7 +543,7 @@ impl TexturePool {
         // 압축 텍스처는 블록 단위로 copy extent가 지정되어야 합니다.
         let block_dim = if is_compressed { 4 } else { 1 };
 
-        for layout in mip_layouts {
+        for layout in mip_layer_layouts {
             // 각 밉 레벨 실제 크기
             let mip_width = std::cmp::max(1, width >> layout.mip_level);
             let mip_height = std::cmp::max(1, height >> layout.mip_level);
@@ -535,7 +573,11 @@ impl TexturePool {
                 wgpu::TexelCopyTextureInfo {
                     texture: &texture,
                     mip_level: layout.mip_level,
-                    origin: wgpu::Origin3d::ZERO,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layout.array_layer,
+                    },
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::Extent3d {

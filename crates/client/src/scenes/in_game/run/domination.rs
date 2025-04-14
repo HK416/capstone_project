@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use ahash::{HashMap, HashSet};
-use hecs::{Entity, ViewBorrow, World};
-use mod_app::{app::AppHandle, net::NetManager, scene::GameScene};
+use hecs::{Entity, EntityBuilder, ViewBorrow, World};
+use mod_app::{app::AppHandle, etc::AppEvent, net::{NetManager, NetworkError}, scene::{GameScene, GameSceneFlow}};
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, CharacterKind, GameInputBits, HealthPoint, LatLon,
@@ -13,7 +13,7 @@ use mod_network::{
 };
 use mod_physics::object3d::Frustum;
 use winit::{
-    event::Modifiers,
+    event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
     window::Window,
 };
@@ -35,8 +35,8 @@ use crate::{
         ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransformUniform,
         WeightedBlendedOITResource, WorldTransform, NUM_CUBE_VERTICES,
     },
-    config::{Locale, UserConfig},
-    scenes::BASE_WIDTH,
+    config::{Locale, UserConfig, NUM_LOCALE},
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
 
@@ -70,9 +70,7 @@ pub struct InGameDominationModeScene {
     /// 오브젝트 엔터티 집합입니다.
     bullets: HashMap<ObjectId, Entity>,
     /// 지형 엔터티 집합입니다.
-    stages: HashMap<ObjectId, Entity>,
-    /// 조명 엔터티 집합입니다.
-    lights: HashMap<ObjectId, Entity>,
+    stages: Vec<Entity>,
 
     /// 플레이어 움직임 방향입니다.
     move_direction: MoveDirection,
@@ -115,11 +113,8 @@ impl InGameDominationModeScene {
         token: LoginToken,
         world: World,
         skybox: Skybox,
-        main_camera: Entity,
         players: HashMap<UserId, Entity>,
-        bullets: HashMap<ObjectId, Entity>,
-        stages: HashMap<ObjectId, Entity>,
-        lights: HashMap<ObjectId, Entity>,
+        stages: Vec<Entity>,
         model_pool: ModelPool,
         motion_pool: MotionPool,
         texture_pool: TexturePool,
@@ -136,11 +131,10 @@ impl InGameDominationModeScene {
             elapsed_time_sec: 0.0,
             skybox,
             world,
-            main_camera,
+            main_camera: Entity::DANGLING,
             players,
-            bullets,
+            bullets: HashMap::default(),
             stages,
-            lights,
             move_direction: MoveDirection::default(),
             controller_input_flags: GameInputBits::default(),
             shadow_resource: None,
@@ -157,6 +151,35 @@ impl InGameDominationModeScene {
             texture_data_pool,
             texture_view_pool,
         }
+    }
+
+    /// 메인 카메라를 생성합니다.
+    fn create_main_camera(&mut self, device: &wgpu::Device) {
+        // 플레이어 캐릭터 종류를 가져옵니다.
+        let entity = self.get_player_entity();
+        let (&character_kind, &view_rotation) = self
+            .world
+            .query_one_mut::<(&CharacterKind, &LatLon)>(entity)
+            .expect("invalid entity or invalid entity component");
+
+        let third_person_camera = ThirdPersonCamera::new(character_kind, view_rotation);
+        let camera_uniform = CameraUniform::uninit(Some("Main"), device);
+        let camera_resource = CameraResource::new(Some("Main"), device, &camera_uniform);
+
+        // 로컬 변환 행렬, 월드 변환 행렬, 투영 변환 행렬 컴포넌트를 추가합니다.
+        let mut builder = EntityBuilder::new();
+        builder.add_bundle((
+            ToParentTrans::default(),
+            WorldTransform::default(),
+            Projection::perspective(75f32.to_radians(), 16.0 / 9.0, 0.01, 500.0),
+            third_person_camera,
+            camera_uniform,
+            camera_resource,
+            Frustum::from_mat4(glam::Mat4::IDENTITY),
+        ));
+
+        // 생성된 메인 카메라 엔터티를 저장합니다.
+        self.main_camera = self.world.spawn(builder.build());
     }
 
     /// UI 배경에 사용되는 텍스처를 Ui렌더러에 등록합니다.
@@ -266,7 +289,7 @@ impl InGameDominationModeScene {
     }
 
     /// 플레이어 카메라 상태를 갱신합니다.
-    fn pre_update_view_state(&mut self) {
+    fn update_view_state(&mut self) {
         // 캐릭터 종류, 카메라 상태, 카메라 상태 타이머 요소를 가져옵니다.
         type Query<'a> = (&'a CharacterKind, &'a mut ViewState, &'a mut ViewStateTimer);
         let entity = self.get_player_entity();
@@ -284,8 +307,8 @@ impl InGameDominationModeScene {
         );
     }
 
-    /// 플레이어 카메라 상태를 갱신합니다.
-    fn update_view_state(&mut self, elapsed_time_sec: f32) {
+    /// 플레이어 카메라 상태 타이머를 갱신합니다.
+    fn update_view_state_timer(&mut self, elapsed_time_sec: f32) {
         // 캐릭터 종류, 카메라 상태, 카메라 상태 타이머 요소를 가져옵니다.
         type Query<'a> = (&'a CharacterKind, &'a mut ViewState, &'a mut ViewStateTimer);
         let entity = self.get_player_entity();
@@ -622,7 +645,7 @@ impl InGameDominationModeScene {
 
     /// 지형 엔터티의 계층 구조를 갱신합니다.
     fn update_stage(&mut self) {
-        for entity in self.stages.values().cloned() {
+        for entity in self.stages.iter().cloned() {
             update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
         }
     }
@@ -645,8 +668,8 @@ impl MeshFilter {
     }
 }
 
-type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), (MeshFilter, Vec<usize>)>;
-type OpaqueMap = HashMap<(Arc<Mesh>, MaterialKind), (MeshFilter, Vec<(usize, MaterialResource)>)>;
+type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter)>>;
+type OpaqueMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter, MaterialResource)>>;
 type MeshRenderer<'a> = (
     &'a Arc<Mesh>,
     &'a MeshResource,
@@ -791,16 +814,15 @@ impl InGameDominationModeScene {
             // 렌더 집합에 추가합니다.
             for (index, material) in materials.iter().enumerate() {
                 let key = (mesh.clone(), material.kind());
-                if let Some((_, resources)) = opaque_map.get_mut(&key) {
-                    resources.push((index, material.clone()));
+                let value = (
+                    index,
+                    MeshFilter::Mesh(mesh_resource.clone()),
+                    material.clone(),
+                );
+                if let Some(resources) = opaque_map.get_mut(&key) {
+                    resources.push(value);
                 } else {
-                    opaque_map.insert(
-                        key,
-                        (
-                            MeshFilter::Mesh(mesh_resource.clone()),
-                            vec![(index, material.clone())],
-                        ),
-                    );
+                    opaque_map.insert(key, vec![value]);
                 }
             }
 
@@ -810,11 +832,11 @@ impl InGameDominationModeScene {
                     || material.kind() == MaterialKind::CharacterEyeMouth
                 {
                     let key = (mesh.clone(), material.kind());
-                    if let Some((_, resources)) = shadow_map.get_mut(&key) {
-                        resources.push(index);
+                    let value = (index, MeshFilter::Mesh(mesh_resource.clone()));
+                    if let Some(resources) = shadow_map.get_mut(&key) {
+                        resources.push(value);
                     } else {
-                        shadow_map
-                            .insert(key, (MeshFilter::Mesh(mesh_resource.clone()), vec![index]));
+                        shadow_map.insert(key, vec![value]);
                     }
                 }
             }
@@ -840,16 +862,15 @@ impl InGameDominationModeScene {
             // 렌더 집합에 추가합니다.
             for (index, material) in materials.iter().enumerate() {
                 let key = (mesh.clone(), material.kind());
-                if let Some((_, resources)) = opaque_map.get_mut(&key) {
-                    resources.push((index, material.clone()));
+                let value = (
+                    index,
+                    MeshFilter::SkinnedMesh(mesh_resource.clone()),
+                    material.clone(),
+                );
+                if let Some(resources) = opaque_map.get_mut(&key) {
+                    resources.push(value);
                 } else {
-                    opaque_map.insert(
-                        key,
-                        (
-                            MeshFilter::SkinnedMesh(mesh_resource.clone()),
-                            vec![(index, material.clone())],
-                        ),
-                    );
+                    opaque_map.insert(key, vec![value]);
                 }
             }
 
@@ -859,13 +880,11 @@ impl InGameDominationModeScene {
                     || material.kind() == MaterialKind::CharacterEyeMouth
                 {
                     let key = (mesh.clone(), material.kind());
-                    if let Some((_, resources)) = shadow_map.get_mut(&key) {
-                        resources.push(index);
+                    let value = (index, MeshFilter::SkinnedMesh(mesh_resource.clone()));
+                    if let Some(resources) = shadow_map.get_mut(&key) {
+                        resources.push(value);
                     } else {
-                        shadow_map.insert(
-                            key,
-                            (MeshFilter::SkinnedMesh(mesh_resource.clone()), vec![index]),
-                        );
+                        shadow_map.insert(key, vec![value]);
                     }
                 }
             }
@@ -947,16 +966,15 @@ impl InGameDominationModeScene {
             // 렌더 집합에 추가합니다.
             for (index, material) in materials.iter().enumerate() {
                 let key = (mesh.clone(), material.kind());
-                if let Some((_, resources)) = opaque_map.get_mut(&key) {
-                    resources.push((index, material.clone()));
+                let value = (
+                    index,
+                    MeshFilter::Mesh(mesh_resource.clone()),
+                    material.clone(),
+                );
+                if let Some(resources) = opaque_map.get_mut(&key) {
+                    resources.push(value);
                 } else {
-                    opaque_map.insert(
-                        key,
-                        (
-                            MeshFilter::Mesh(mesh_resource.clone()),
-                            vec![(index, material.clone())],
-                        ),
-                    );
+                    opaque_map.insert(key, vec![value]);
                 }
             }
 
@@ -964,11 +982,11 @@ impl InGameDominationModeScene {
             for (index, material) in materials.iter().enumerate() {
                 if material.kind() == MaterialKind::Bullet {
                     let key = (mesh.clone(), material.kind());
-                    if let Some((_, resources)) = shadow_map.get_mut(&key) {
-                        resources.push(index);
+                    let value = (index, MeshFilter::Mesh(mesh_resource.clone()));
+                    if let Some(resources) = shadow_map.get_mut(&key) {
+                        resources.push(value);
                     } else {
-                        shadow_map
-                            .insert(key, (MeshFilter::Mesh(mesh_resource.clone()), vec![index]));
+                        shadow_map.insert(key, vec![value]);
                     }
                 }
             }
@@ -994,16 +1012,15 @@ impl InGameDominationModeScene {
             // 렌더 집합에 추가합니다.
             for (index, material) in materials.iter().enumerate() {
                 let key = (mesh.clone(), material.kind());
-                if let Some((_, resources)) = opaque_map.get_mut(&key) {
-                    resources.push((index, material.clone()));
+                let value = (
+                    index,
+                    MeshFilter::SkinnedMesh(mesh_resource.clone()),
+                    material.clone(),
+                );
+                if let Some(resources) = opaque_map.get_mut(&key) {
+                    resources.push(value);
                 } else {
-                    opaque_map.insert(
-                        key,
-                        (
-                            MeshFilter::SkinnedMesh(mesh_resource.clone()),
-                            vec![(index, material.clone())],
-                        ),
-                    );
+                    opaque_map.insert(key, vec![value]);
                 }
             }
 
@@ -1011,13 +1028,11 @@ impl InGameDominationModeScene {
             for (index, material) in materials.iter().enumerate() {
                 if material.kind() == MaterialKind::Bullet {
                     let key = (mesh.clone(), material.kind());
-                    if let Some((_, resources)) = shadow_map.get_mut(&key) {
-                        resources.push(index);
+                    let value = (index, MeshFilter::SkinnedMesh(mesh_resource.clone()));
+                    if let Some(resources) = shadow_map.get_mut(&key) {
+                        resources.push(value);
                     } else {
-                        shadow_map.insert(
-                            key,
-                            (MeshFilter::SkinnedMesh(mesh_resource.clone()), vec![index]),
-                        );
+                        shadow_map.insert(key, vec![value]);
                     }
                 }
             }
@@ -1029,7 +1044,7 @@ impl InGameDominationModeScene {
     /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 지형 엔터티를 수집합니다.
     fn culling_stages(&self) -> Vec<Entity> {
         // FIXME: 현재는 모든 엔터티를 전부 렌더링함
-        self.stages.values().cloned().collect()
+        self.stages.iter().cloned().collect()
     }
 
     /// 지형의 쉐이더 리소스를 갱신합니다.
@@ -1099,16 +1114,15 @@ impl InGameDominationModeScene {
             // 렌더 집합에 추가합니다.
             for (index, material) in materials.iter().enumerate() {
                 let key = (mesh.clone(), material.kind());
-                if let Some((_, resources)) = opaque_map.get_mut(&key) {
-                    resources.push((index, material.clone()));
+                let value = (
+                    index,
+                    MeshFilter::Mesh(mesh_resource.clone()),
+                    material.clone(),
+                );
+                if let Some(resources) = opaque_map.get_mut(&key) {
+                    resources.push(value);
                 } else {
-                    opaque_map.insert(
-                        key,
-                        (
-                            MeshFilter::Mesh(mesh_resource.clone()),
-                            vec![(index, material.clone())],
-                        ),
-                    );
+                    opaque_map.insert(key, vec![value]);
                 }
             }
 
@@ -1116,11 +1130,11 @@ impl InGameDominationModeScene {
             for (index, material) in materials.iter().enumerate() {
                 if material.kind() == MaterialKind::Stage {
                     let key = (mesh.clone(), material.kind());
-                    if let Some((_, resources)) = shadow_map.get_mut(&key) {
-                        resources.push(index);
+                    let value = (index, MeshFilter::Mesh(mesh_resource.clone()));
+                    if let Some(resources) = shadow_map.get_mut(&key) {
+                        resources.push(value);
                     } else {
-                        shadow_map
-                            .insert(key, (MeshFilter::Mesh(mesh_resource.clone()), vec![index]));
+                        shadow_map.insert(key, vec![value]);
                     }
                 }
             }
@@ -1146,16 +1160,15 @@ impl InGameDominationModeScene {
             // 렌더 집합에 추가합니다.
             for (index, material) in materials.iter().enumerate() {
                 let key = (mesh.clone(), material.kind());
-                if let Some((_, resources)) = opaque_map.get_mut(&key) {
-                    resources.push((index, material.clone()));
+                let value = (
+                    index,
+                    MeshFilter::SkinnedMesh(mesh_resource.clone()),
+                    material.clone(),
+                );
+                if let Some(resources) = opaque_map.get_mut(&key) {
+                    resources.push(value);
                 } else {
-                    opaque_map.insert(
-                        key,
-                        (
-                            MeshFilter::SkinnedMesh(mesh_resource.clone()),
-                            vec![(index, material.clone())],
-                        ),
-                    );
+                    opaque_map.insert(key, vec![value]);
                 }
             }
 
@@ -1163,13 +1176,11 @@ impl InGameDominationModeScene {
             for (index, material) in materials.iter().enumerate() {
                 if material.kind() == MaterialKind::Stage {
                     let key = (mesh.clone(), material.kind());
-                    if let Some((_, resources)) = shadow_map.get_mut(&key) {
-                        resources.push(index);
+                    let value = (index, MeshFilter::SkinnedMesh(mesh_resource.clone()));
+                    if let Some(resources) = shadow_map.get_mut(&key) {
+                        resources.push(value);
                     } else {
-                        shadow_map.insert(
-                            key,
-                            (MeshFilter::SkinnedMesh(mesh_resource.clone()), vec![index]),
-                        );
+                        shadow_map.insert(key, vec![value]);
                     }
                 }
             }
@@ -1187,15 +1198,13 @@ impl InGameDominationModeScene {
     fn draw_character<'a>(
         mesh: &'a Mesh,
         pipeline: Arc<wgpu::RenderPipeline>,
-        mesh_resource: &'a MeshFilter,
         camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MaterialResource)],
+        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
         rpass.set_pipeline(&pipeline);
 
         rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-        rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
@@ -1203,9 +1212,10 @@ impl InGameDominationModeScene {
         rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
         rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
 
-        for (index, material) in material_resources {
+        for (index, mesh_resource, material) in material_resources {
             let index_buffer = mesh.submeshes().get(*index).unwrap();
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
@@ -1215,15 +1225,13 @@ impl InGameDominationModeScene {
     fn draw_character_eye_mouth<'a>(
         mesh: &'a Mesh,
         pipeline: Arc<wgpu::RenderPipeline>,
-        mesh_resource: &'a MeshFilter,
         camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MaterialResource)],
+        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
         rpass.set_pipeline(&pipeline);
 
         rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-        rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
@@ -1231,9 +1239,10 @@ impl InGameDominationModeScene {
         rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
         rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
 
-        for (index, material) in material_resources {
+        for (index, mesh_resource, material) in material_resources {
             let index_buffer = mesh.submeshes().get(*index).unwrap();
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
@@ -1243,22 +1252,21 @@ impl InGameDominationModeScene {
     fn draw_character_halo<'a>(
         mesh: &'a Mesh,
         pipeline: Arc<wgpu::RenderPipeline>,
-        mesh_resource: &'a MeshFilter,
         camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MaterialResource)],
+        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
         rpass.set_pipeline(&pipeline);
 
         rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-        rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
 
-        for (index, material) in material_resources {
+        for (index, mesh_resource, material) in material_resources {
             let index_buffer = &mesh.submeshes().get(*index).unwrap();
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
@@ -1268,22 +1276,21 @@ impl InGameDominationModeScene {
     fn draw_bullet<'a>(
         mesh: &'a Mesh,
         pipeline: Arc<wgpu::RenderPipeline>,
-        mesh_resource: &'a MeshFilter,
         camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MaterialResource)],
+        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
         rpass.set_pipeline(&pipeline);
 
         rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-        rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
 
-        for (index, material) in material_resources {
+        for (index, mesh_resource, material) in material_resources {
             let index_buffer = &mesh.submeshes().get(*index).unwrap();
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
@@ -1293,22 +1300,21 @@ impl InGameDominationModeScene {
     fn draw_energy_bullet<'a>(
         mesh: &'a Mesh,
         pipeline: Arc<wgpu::RenderPipeline>,
-        mesh_resource: &'a MeshFilter,
         camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MaterialResource)],
+        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
         rpass.set_pipeline(&pipeline);
 
         rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-        rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
 
-        for (index, material) in material_resources {
+        for (index, mesh_resource, material) in material_resources {
             let index_buffer = &mesh.submeshes().get(*index).unwrap();
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
@@ -1318,23 +1324,22 @@ impl InGameDominationModeScene {
     fn draw_stage<'a>(
         mesh: &'a Mesh,
         pipeline: Arc<wgpu::RenderPipeline>,
-        mesh_resource: &'a MeshFilter,
         camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MaterialResource)],
+        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
         rpass.set_pipeline(&pipeline);
 
         rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-        rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
         rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
 
-        for (index, material) in material_resources {
+        for (index, mesh_resource, material) in material_resources {
             let index_buffer = mesh.submeshes().get(*index).unwrap();
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
@@ -1362,6 +1367,7 @@ impl InGameDominationModeScene {
 impl GameScene for InGameDominationModeScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
         self.register_ui_bg_texture(app);
+        self.create_main_camera(app.render_device());
         self.create_shadow_resource(app.render_device());
         self.create_alpha_blend_resource(window, app.render_device());
         self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
@@ -1405,6 +1411,38 @@ impl GameScene for InGameDominationModeScene {
         }
     }
 
+    fn on_mouse_btn_pressed(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        button: MouseButton,
+        _window: &Window,
+        _app: &dyn AppHandle,
+    ) {
+        let config = UserConfig::get();
+        let flags = config
+            .get_mouse_input(&button)
+            .map(|input| input.into_bits())
+            .unwrap_or_default();
+        self.controller_input_flags |= flags;
+    }
+
+    fn on_mouse_btn_released(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        button: MouseButton,
+        _window: &Window,
+        _app: &dyn AppHandle,
+    ) {
+        let config = UserConfig::get();
+        let flags = config
+            .get_mouse_input(&button)
+            .map(|input| input.into_bits())
+            .unwrap_or_default();
+        self.controller_input_flags &= !flags;
+    }
+
     fn on_cursor_moved(
         &mut self,
         _x: f32,
@@ -1440,6 +1478,30 @@ impl GameScene for InGameDominationModeScene {
             .expect("invalid entity or invalid entity component");
         *view_rotation = rotation;
     }
+    
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
 
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
         match packet.packet_type() {
@@ -1452,17 +1514,14 @@ impl GameScene for InGameDominationModeScene {
         };
     }
 
-    fn on_pre_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        self.pre_update_view_state();
-    }
-
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _pp: &dyn AppHandle) {
         // 경과 시간을 갱신합니다.
         self.elapsed_time_sec += elapsed_time_sec;
 
+        self.update_view_state();
+        self.update_view_state_timer(elapsed_time_sec);
         self.update_move_direction();
         self.update_character_direction();
-        self.update_view_state(elapsed_time_sec);
     }
 
     fn on_post_update(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1470,9 +1529,9 @@ impl GameScene for InGameDominationModeScene {
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
-        self.update_camera();
         self.update_bullet();
         self.update_character();
+        self.update_camera();
 
         let device = app.render_device();
         let queue = app.render_queue();
@@ -1591,7 +1650,7 @@ impl GameScene for InGameDominationModeScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), (mesh_resource, materials)) in self.opaque_map.iter() {
+            for ((mesh, kind), resources) in self.opaque_map.iter() {
                 let func = match kind {
                     MaterialKind::Bullet => Self::draw_bullet,
                     MaterialKind::EnergyBullet => Self::draw_energy_bullet,
@@ -1610,14 +1669,7 @@ impl GameScene for InGameDominationModeScene {
                 }
                 .unwrap();
 
-                func(
-                    &mesh,
-                    pipeline,
-                    mesh_resource,
-                    &camera_resource,
-                    &materials,
-                    &mut rpass,
-                );
+                func(&mesh, pipeline, &camera_resource, &resources, &mut rpass);
             }
 
             Self::clear_render_target_with_skybox(
