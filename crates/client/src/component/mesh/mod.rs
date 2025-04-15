@@ -1,11 +1,9 @@
-#![allow(dead_code)]
 //! 메쉬와 관련된 코드를 관리합니다.
 //!
 
 mod attribute;
 mod index;
 mod resource;
-mod system;
 mod uniform;
 
 use std::{
@@ -15,7 +13,7 @@ use std::{
 
 use ahash::{HashMap, RandomState};
 
-pub use self::{attribute::*, index::*, resource::*, system::*, uniform::*};
+pub use self::{attribute::*, index::*, resource::*, uniform::*};
 
 /// 모델 메쉬 데이터입니다.
 #[derive(Debug, PartialEq, Eq)]

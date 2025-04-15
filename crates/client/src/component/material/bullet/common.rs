@@ -1,12 +1,10 @@
+#![allow(dead_code)]
 //! 일반적인 총알 재질과 관련된 코드를 관리합니다.
 //!
 
 use std::{
-    fs::OpenOptions,
-    io::Read,
     num::NonZeroU64,
     ops::RangeBounds,
-    path::Path,
     sync::{Arc, OnceLock},
 };
 
@@ -15,10 +13,7 @@ use mod_network::components::Float3;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-use crate::{
-    asset::AssetError,
-    component::{MaterialKind, MaterialResource},
-};
+use crate::component::{MaterialKind, MaterialResource};
 
 /// 총알 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
@@ -180,56 +175,6 @@ pub struct BulletMaterialData {
     pub smoothness: f32,
     pub metallic: f32,
     pub main_color: Float3,
-}
-
-impl BulletMaterialData {
-    /// 파일로부터 재질 데이터를 가져옵니다.
-    pub fn load_from_file<Dir, Uri>(workspace: Dir, uri: Uri) -> Result<Self, AssetError>
-    where
-        Dir: AsRef<Path>,
-        Uri: AsRef<str>,
-    {
-        let mut path = workspace.as_ref().to_path_buf();
-        path.push(format!("{}.material", uri.as_ref()));
-
-        log::debug!("open material data asset (PATH:{})", path.display());
-        let mut file = OpenOptions::new()
-            .read(true)
-            .write(false)
-            .open(&path)
-            .map_err(|e| {
-                log::error!(
-                    "failed to open material data asset (PATH:{}, REASON:{})",
-                    path.display(),
-                    &e
-                );
-                AssetError::IOError(e)
-            })?;
-
-        log::debug!("read material data asset (PATH:{})", path.display());
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf).map_err(|e| {
-            log::error!(
-                "failed to read material data asset (PATH:{}, REASON:{})",
-                path.display(),
-                &e
-            );
-            AssetError::IOError(e)
-        })?;
-
-        log::debug!("close material data asset (PATH:{})", path.display());
-        drop(file);
-
-        log::debug!("decode material data asset (PATH:{})", path.display());
-        serde_json::from_slice(&buf).map_err(|e| {
-            log::error!(
-                "failed to decode material data asset (PATH:{}, REASON:{})",
-                path.display(),
-                &e
-            );
-            AssetError::ParsingFailed(e)
-        })
-    }
 }
 
 /// 총알 재질 쉐이더 리소스입니다.
