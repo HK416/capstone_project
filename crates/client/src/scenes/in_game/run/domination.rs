@@ -22,7 +22,7 @@ use mod_physics::object3d::Frustum;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
-    window::Window,
+    window::{CursorGrabMode, Window},
 };
 
 use crate::{
@@ -48,6 +48,8 @@ use crate::{
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
+
+use super::InGamePauseLayer;
 
 /// 종합전술시험(점령전)을 진행하는 게임 장면입니다.
 pub struct InGameDominationModeScene {
@@ -1574,11 +1576,39 @@ impl InGameDominationModeScene {
 
 impl GameScene for InGameDominationModeScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
+        window.set_cursor_visible(false);
+        window
+            .set_cursor_grab(CursorGrabMode::Confined)
+            .or_else(|_e| window.set_cursor_grab(CursorGrabMode::Locked))
+            .unwrap();
+        window.set_cursor_hittest(true).unwrap();
+
         self.register_ui_bg_texture(app);
         self.create_main_camera(app.render_device());
         self.create_shadow_resource(app.render_device());
         self.create_alpha_blend_resource(window, app.render_device());
         self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
+    }
+
+    fn on_exit(&mut self, window: Option<&Window>, _app: &dyn AppHandle) {
+        if let Some(window) = window {
+            window.set_cursor_visible(true);
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        }
+    }
+
+    fn on_pause(&mut self, window: &Window, _app: &dyn AppHandle) {
+        window.set_cursor_visible(true);
+        window.set_cursor_grab(CursorGrabMode::None).unwrap();
+    }
+
+    fn on_resume(&mut self, window: &Window, _app: &dyn AppHandle) {
+        window.set_cursor_visible(false);
+        window
+            .set_cursor_grab(CursorGrabMode::Confined)
+            .or_else(|_e| window.set_cursor_grab(CursorGrabMode::Locked))
+            .unwrap();
+        window.set_cursor_hittest(true).unwrap();
     }
 
     fn on_keyboard_pressed(
@@ -1607,9 +1637,20 @@ impl GameScene for InGameDominationModeScene {
         _modifiers: Modifiers,
         repeat: bool,
         _window: &Window,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
     ) {
         if !repeat {
+            // 인게임 일시정지 장면으로 전환합니다.
+            if code == KeyCode::Escape {
+                // 이전 게임 장면으로 되돌아갑니다.
+                let scene = InGamePauseLayer::new(self.locale);
+                let scene_flow = GameSceneFlow::Push(Box::new(scene));
+                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+                return;
+            }
+
             let config = UserConfig::get();
             let flags = config
                 .get_keyboard_input(&(code, location))
@@ -1711,7 +1752,7 @@ impl GameScene for InGameDominationModeScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         match packet.packet_type() {
             PacketType::PullStage => {
                 let packet = PullStagePacket::from_raw(packet);
@@ -1723,6 +1764,8 @@ impl GameScene for InGameDominationModeScene {
             }
             _ => panic!("invalid packet"),
         };
+
+        None
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _pp: &dyn AppHandle) {

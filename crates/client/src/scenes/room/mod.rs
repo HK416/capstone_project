@@ -147,7 +147,7 @@ impl GameScene for CustomGameRoomScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::CustomGamePull => {
@@ -182,6 +182,8 @@ impl GameScene for CustomGameRoomScene {
                 );
             }
         };
+
+        None
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {

@@ -127,6 +127,12 @@ impl fmt::Debug for InGameDominationModeScene {
     }
 }
 
+impl fmt::Debug for InGamePauseLayer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGamePauseLayer))
+    }
+}
+
 impl fmt::Debug for FatalErrorSceneLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(FatalErrorSceneLayer))

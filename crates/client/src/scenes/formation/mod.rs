@@ -142,7 +142,7 @@ impl GameScene for CharacterFormationScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::FormationSelectResponse => {
@@ -198,6 +198,8 @@ impl GameScene for CharacterFormationScene {
                 );
             }
         }
+
+        None
     }
 
     fn on_draw(

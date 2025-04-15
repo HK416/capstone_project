@@ -373,7 +373,7 @@ impl GameScene for InGameBuildScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::PullStage => {
@@ -386,9 +386,14 @@ impl GameScene for InGameBuildScene {
                 }
             }
             _ => {
-                log::warn!("")
+                log::warn!(
+                    "ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type
+                );
             }
         }
+
+        None
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {

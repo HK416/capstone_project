@@ -17,7 +17,7 @@ use mod_app::{
 };
 use mod_network::{
     components::{BulletKind, LoginToken, StageLayoutData, UserId},
-    protocol::InitStagePacket,
+    protocol::{InitStagePacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use rayon::ThreadPool;
@@ -706,6 +706,19 @@ impl GameScene for InGameLoadScene {
         self.create_damage_particle_mesh(thread_pool, device);
     }
 
+    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
+        // 커맨드 버퍼를 수집합니다.
+        let mut commands = Vec::new();
+        let mut staging_buffers: Vec<wgpu::Buffer> = Vec::new();
+        while let Some((mut buffers, command)) = self.commands.pop() {
+            commands.push(command);
+            staging_buffers.append(&mut buffers);
+        }
+
+        app.render_queue().submit(commands);
+        drop(staging_buffers);
+    }
+
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
@@ -730,17 +743,12 @@ impl GameScene for InGameLoadScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
-        // 커맨드 버퍼를 수집합니다.
-        let mut commands = Vec::new();
-        let mut staging_buffers: Vec<wgpu::Buffer> = Vec::new();
-        while let Some((mut buffers, command)) = self.commands.pop() {
-            commands.push(command);
-            staging_buffers.append(&mut buffers);
-        }
-
-        app.render_queue().submit(commands);
-        drop(staging_buffers);
+    fn on_received_packet(
+        &mut self,
+        _packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
+        None
     }
 
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
