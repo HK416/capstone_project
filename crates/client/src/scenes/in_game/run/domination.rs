@@ -1862,11 +1862,53 @@ impl InGameDominationModeScene {
             egui::StrokeKind::Middle,
         );
 
+        // 점령도 게이지
+        let progress_guage = match self.capture_point.capture_team {
+            Some(team) => {
+                const GUAGE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 200, 120);
+                const GUAGE_BLUR_COLOR: egui::Color32 = egui::Color32::from_rgb(218, 247, 166);
+                let percent = self.capture_point.capture_progress.floor() / 100.0;
+                let width = 204.0 * scale * percent;
+                match team {
+                    Team::Blue => {
+                        let rect = egui::Rect::from_min_max(
+                            egui::pos2(380.0 * scale, 48.0 * scale),
+                            egui::pos2(380.0 * scale + width, 60.0 * scale),
+                        );
+                        Some(egui::epaint::RectShape::new(
+                            rect,
+                            16.0,
+                            GUAGE_COLOR,
+                            egui::Stroke::new(1.0 * scale, GUAGE_BLUR_COLOR),
+                            egui::StrokeKind::Middle,
+                        ))
+                    }
+                    Team::Red => {
+                        let rect = egui::Rect::from_min_max(
+                            egui::pos2(900.0 * scale - width, 48.0 * scale),
+                            egui::pos2(900.0 * scale, 60.0 * scale),
+                        );
+                        Some(egui::epaint::RectShape::new(
+                            rect,
+                            16.0,
+                            GUAGE_COLOR,
+                            egui::Stroke::new(1.0 * scale, GUAGE_BLUR_COLOR),
+                            egui::StrokeKind::Middle,
+                        ))
+                    }
+                }
+            }
+            None => None,
+        };
+
         egui::Area::new(egui::Id::new("Score_Gauge_Layout")).show(egui_ctx, |ui| {
             ui.painter().add(frame_bg);
             ui.painter().add(team_bg_deco);
             ui.painter().add(team_bg_shadow);
             ui.painter().add(team_bg);
+            if let Some(progress_guage) = progress_guage {
+                ui.painter().add(progress_guage);
+            }
             ui.painter().add(blue_guage_bg);
             ui.painter().add(blue_guage);
             ui.painter().add(red_guage_bg);
@@ -1912,6 +1954,7 @@ impl InGameDominationModeScene {
     }
 
     /// 커서 위치를 애플리케이션 창 중앙으로 초기화합니다.
+    #[allow(unused_variables)]
     fn reset_cursor_position_at_center(&self, window: &Window) {
         #[cfg(target_os = "windows")]
         {

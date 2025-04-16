@@ -1,5 +1,3 @@
-use winit::window::Window;
-
 #[cfg(target_os = "windows")]
 pub mod windows;
 
