@@ -1,5 +1,7 @@
+#![allow(dead_code)]
 //! 텍스처 에셋과 관련된 코드를 관리합니다.
 //!
+
 use std::{
     fs::OpenOptions,
     hash::{Hash, Hasher},
@@ -136,7 +138,7 @@ pub struct TextureData {
 pub struct TextureDataPool(Arc<FairMutex<TextureDataPoolType>>);
 
 /// 텍스처 데이터 풀 객체의 타입입니다.
-pub type TextureDataPoolType = HashMap<String, Arc<TextureData>>;
+pub type TextureDataPoolType = HashMap<String, (Arc<wgpu::TextureView>, Arc<wgpu::Sampler>)>;
 
 /// 텍스처 데이터 풀 객체의 용량입니다.
 pub const TEXTURE_DATA_POOL_CAPACITY: usize = 128;
@@ -213,7 +215,13 @@ impl TextureDataPool {
         &self,
         workspace: Dir,
         uri: Uri,
-    ) -> Result<Arc<TextureData>, AssetError>
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+        texture_pool: &TexturePool,
+        texture_view_pool: &TextureViewPool,
+        sampler_pool: &SamplerPool,
+    ) -> Result<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>), AssetError>
     where
         Dir: AsRef<Path>,
         Uri: AsRef<str>,
@@ -221,21 +229,48 @@ impl TextureDataPool {
         // 풀 객체를 가져옵니다.
         let mut pool = self.lock();
 
-        if let Some(texture) = pool.get(uri.as_ref()).cloned() {
-            return Ok(texture);
+        if let Some(pair) = pool.get(uri.as_ref()).cloned() {
+            return Ok(pair);
         }
 
         // 텍스처 데이터를 생성합니다.
-        let data = Arc::new(Self::load_from_file(workspace, uri)?);
+        let data = Self::load_from_file(workspace.as_ref(), uri.as_ref())?;
+        let texture = texture_pool.get_or_init(
+            workspace.as_ref(),
+            device,
+            encoder,
+            staging_buffers,
+            &data,
+        )?;
+        let texture_view = texture_view_pool.get_or_init(
+            &texture,
+            &wgpu::TextureViewDescriptor {
+                dimension: Some(data.dimension.into()),
+                ..Default::default()
+            },
+        );
+        let sampler = sampler_pool.get_or_init(
+            device,
+            &wgpu::SamplerDescriptor {
+                address_mode_u: data.address_u.into(),
+                address_mode_v: data.address_v.into(),
+                address_mode_w: data.address_w.into(),
+                mag_filter: data.filter_mode.into(),
+                min_filter: data.filter_mode.into(),
+                mipmap_filter: data.filter_mode.into(),
+                ..Default::default()
+            },
+        );
 
         // 생성된 텍스처를 풀 객체에 등록합니다.
-        pool.insert(data.uri.clone(), data.clone());
-        Ok(data)
+        pool.insert(data.uri.clone(), (texture_view.clone(), sampler.clone()));
+
+        Ok((texture_view, sampler))
     }
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn get<Uri>(&self, uri: Uri) -> Option<Arc<TextureData>>
+    pub fn get<Uri>(&self, uri: Uri) -> Option<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>)>
     where
         Uri: AsRef<str>,
     {
@@ -244,7 +279,7 @@ impl TextureDataPool {
 
     /// 텍스처 객체에 해당하는 텍스처 뷰 객체들을 풀 객체에서 제거합니다.  
     /// 해당 텍스처 객체가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
-    pub fn remove<Uri>(&self, uri: Uri) -> Option<Arc<TextureData>>
+    pub fn remove<Uri>(&self, uri: Uri) -> Option<(Arc<wgpu::TextureView>, Arc<wgpu::Sampler>)>
     where
         Uri: AsRef<str>,
     {
@@ -260,6 +295,7 @@ impl TextureDataPool {
 #[derive(Debug, Clone)]
 pub struct MipLevelCopyLayout {
     pub mip_level: u32,
+    pub array_layer: u32,
     pub offset: u64,
     pub bytes_per_row: u32,
     pub rows_per_image: u32,
@@ -293,7 +329,7 @@ impl TexturePool {
         self.0.lock()
     }
 
-    /// 파일로부터 [TextureData]를 생성합니다.
+    /// 파일로부터 텍스처 데이터를 가져옵니다.
     fn load_from_file<Dir>(workspace: Dir, data: &TextureData) -> Result<Vec<u8>, AssetError>
     where
         Dir: AsRef<Path>,
@@ -335,20 +371,23 @@ impl TexturePool {
     }
 
     /// 텍스처 포맷의 정보를 가져옵니다.
-    fn get_texture_format_info(format: TextureFormat) -> (bool, u32) {
+    fn get_texture_format_info(format: wgpu::TextureFormat) -> (bool, u32) {
         match format {
-            TextureFormat::Rgba8Unorm => (false, 4), // 비압축: 4 bytes / pixle
-            TextureFormat::Rgba8UnormSrgb => (false, 4), // 비압축: 4 bytes / pixle
-            TextureFormat::Bc4RUnorm => (true, 8),   // 압축: 8 bytes / 4x4 block
-            TextureFormat::Bc5RgUnorm => (true, 16), // 압축: 16 bytes / 4x4 block
-            TextureFormat::Bc7RgbaUnorm => (true, 16), // 압축: 16 bytes / 4x4 block
-            TextureFormat::Bc7RgbaUnormSrgb => (true, 16), // 압축: 16 bytes / 4x4 block
+            wgpu::TextureFormat::Rgba8Unorm => (false, 4), // 비압축: 4 bytes / pixle
+            wgpu::TextureFormat::Rgba8UnormSrgb => (false, 4), // 비압축: 4 bytes / pixle
+            wgpu::TextureFormat::Bc4RUnorm => (true, 8),   // 압축: 8 bytes / 4x4 block
+            wgpu::TextureFormat::Bc5RgUnorm => (true, 16), // 압축: 16 bytes / 4x4 block
+            wgpu::TextureFormat::Bc7RgbaUnorm => (true, 16), // 압축: 16 bytes / 4x4 block
+            wgpu::TextureFormat::Bc7RgbaUnormSrgb => (true, 16), // 압축: 16 bytes / 4x4 block
+            _ => panic!("unsupported format!"),
         }
     }
 
+    /// 패딩이 포함된 스테이징(업로드) 버퍼 데이터를 가져옵니다.
     fn get_staging_buffer_data_with_padding(
         width: u32,
         height: u32,
+        depth_or_array_layers: u32,
         mip_level_count: u32,
         is_compressed: bool,
         unit_bytes: u32,
@@ -357,55 +396,90 @@ impl TexturePool {
         let mut padded_data = Vec::new();
         let mut layout_info = Vec::new();
 
-        // read_offset: 원본 데이터에서 읽어올 위치
-        // write_offset: staging 데이터 내에서의 현재 위치 (패딩 포함)
-        let mut read_offset = 0;
-        let mut write_offset = 0;
-
         // 압축 텍스처의 경우 블록 크기 (BC 포맷은 일반적으로 4x4)
         let block_dim = if is_compressed { 4 } else { 1 };
 
-        for mip_level in 0..mip_level_count {
-            let mip_width = std::cmp::max(1, width >> mip_level);
-            let mip_height = std::cmp::max(1, height >> mip_level);
+        // read_offset: 원본 데이터에서 읽어올 위치
+        #[allow(unused_assignments)]
+        let mut read_offset = 0;
+        // write_offset: staging 데이터 내에서의 현재 위치 (패딩 포함)
+        let mut write_offset = 0;
 
-            let (row_count, raw_bytes_per_row) = if is_compressed {
-                // 블록 개수: (width+3)/4, (height+3)/4
-                let block_width = (mip_width + block_dim - 1) / block_dim;
-                let block_height = (mip_height + block_dim - 1) / block_dim;
-                (block_height, block_width * unit_bytes)
-            } else {
-                (mip_height, mip_width * unit_bytes)
-            };
+        // 각 밉 레벨에 대해 모든 레이어를 처리
+        for array_layer in 0..depth_or_array_layers {
+            // 각 레이아마다 밉 레벨 오프세을 재설정
+            let mut layer_read_offset = 0;
 
-            // WebGPU 요구사항: bytes_per_row는 256바이트 정렬이어야 함
-            let padded_bytes_per_row = ((raw_bytes_per_row + 255) / 256) * 256;
+            // 현재 레이어 총 데이터 크기 계산
+            let mut layer_size = 0;
+            for mip_level in 0..mip_level_count {
+                let mip_width = std::cmp::max(1, width >> mip_level);
+                let mip_height = std::cmp::max(1, height >> mip_level);
 
-            layout_info.push(MipLevelCopyLayout {
-                mip_level,
-                offset: write_offset as u64,
-                bytes_per_row: padded_bytes_per_row as u32,
-                rows_per_image: row_count,
-            });
+                let (row_count, raw_bytes_per_row) = if is_compressed {
+                    // 블록 개수: (width+3)/4, (height+3)/4
+                    let block_width = (mip_width + block_dim - 1) / block_dim;
+                    let block_height = (mip_height + block_dim - 1) / block_dim;
+                    (block_height, block_width * unit_bytes)
+                } else {
+                    (mip_height, mip_width * unit_bytes)
+                };
 
-            for _ in 0..row_count {
-                let start = read_offset;
-                let end = start + raw_bytes_per_row;
-                if end as usize > bytes.len() {
-                    panic!(
-                        "original bytes too small for mip level {} at read offset {}..{}",
-                        mip_level, start, end
+                layer_size += raw_bytes_per_row * row_count;
+            }
+
+            // 현재 레이어의 시작 위치 계산
+            read_offset = array_layer * layer_size;
+
+            // 각 밉 레벨 및 레이어에 대해 처리
+            for mip_level in 0..mip_level_count {
+                let mip_width = std::cmp::max(1, width >> mip_level);
+                let mip_height = std::cmp::max(1, height >> mip_level);
+
+                let (row_count, raw_bytes_per_row) = if is_compressed {
+                    // 블록 개수: (width+3)/4, (height+3)/4
+                    let block_width = (mip_width + block_dim - 1) / block_dim;
+                    let block_height = (mip_height + block_dim - 1) / block_dim;
+                    (block_height, block_width * unit_bytes)
+                } else {
+                    (mip_height, mip_width * unit_bytes)
+                };
+
+                // WebGPU 요구사항: bytes_per_row는 256바이트 정렬이어야 함
+                let padded_bytes_per_row = ((raw_bytes_per_row + 255) / 256) * 256;
+
+                layout_info.push(MipLevelCopyLayout {
+                    mip_level,
+                    array_layer,
+                    offset: write_offset as u64,
+                    bytes_per_row: padded_bytes_per_row as u32,
+                    rows_per_image: row_count,
+                });
+
+                // 현재 밉 레벨의 데이터를 패딩과 함께 복사
+                let current_read_offset = read_offset + layer_read_offset;
+
+                for row in 0..row_count {
+                    let row_start = current_read_offset + row * raw_bytes_per_row;
+                    let row_end = row_start + raw_bytes_per_row;
+
+                    if row_end as usize > bytes.len() {
+                        panic!(
+                            "original bytes too small for layer {} mip level {} at read offset {}..{}",
+                            array_layer, mip_level, row_start, row_end
+                        );
+                    }
+
+                    padded_data.extend_from_slice(&bytes[row_start as usize..row_end as usize]);
+                    padded_data.extend(
+                        std::iter::repeat(0u8)
+                            .take((padded_bytes_per_row - raw_bytes_per_row) as usize),
                     );
+
+                    write_offset += padded_bytes_per_row;
                 }
-
-                padded_data.extend_from_slice(&bytes[start as usize..end as usize]);
-                padded_data.extend(
-                    std::iter::repeat(0u8)
-                        .take((padded_bytes_per_row - raw_bytes_per_row) as usize),
-                );
-
-                read_offset += raw_bytes_per_row;
-                write_offset += padded_bytes_per_row;
+                // 다음 밉 레벨을 위한 오프셋 업데이트
+                layer_read_offset += raw_bytes_per_row * row_count;
             }
         }
 
@@ -413,21 +487,28 @@ impl TexturePool {
     }
 
     /// 주어진 데이터로 텍스처를 생성합니다.
-    fn create_texture(
+    pub fn create_texture<Uri>(
+        uri: Uri,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: &TextureData,
+        width: u32,
+        height: u32,
+        depth_or_array_layers: u32,
+        dimension: wgpu::TextureDimension,
+        format: wgpu::TextureFormat,
+        mip_level_count: u32,
+        sample_count: u32,
         bytes: Vec<u8>,
-    ) -> Arc<wgpu::Texture> {
-        let format = data.format;
-        let base_width = data.width;
-        let base_height = data.height;
-        let mip_level_count = data.mip_level_count;
+    ) -> Arc<wgpu::Texture>
+    where
+        Uri: AsRef<str>,
+    {
         let (is_compressed, unit_bytes) = Self::get_texture_format_info(format);
-        let (padded_bytes, mip_layouts) = Self::get_staging_buffer_data_with_padding(
-            base_width,
-            base_height,
+        let (padded_bytes, mip_layer_layouts) = Self::get_staging_buffer_data_with_padding(
+            width,
+            height,
+            depth_or_array_layers,
             mip_level_count,
             is_compressed,
             unit_bytes,
@@ -435,25 +516,25 @@ impl TexturePool {
         );
 
         // 스테이징 버퍼를 생성합니다.
-        log::debug!("create staging buffer (URI:{})", &data.uri);
+        log::debug!("create staging buffer (URI:{})", uri.as_ref());
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Staging(Texture({}))", &data.uri)),
+            label: Some(&format!("Staging(Texture({}))", uri.as_ref())),
             contents: &padded_bytes,
             usage: wgpu::BufferUsages::COPY_SRC,
         });
 
         // 텍스처를 생성합니다.
-        log::debug!("create texture (URI:{})", &data.uri);
+        log::debug!("create texture (URI:{})", uri.as_ref());
         let texture = Arc::new(device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&format!("Texture({})", &data.uri)),
-            dimension: data.dimension.into(),
-            format: data.format.into(),
-            mip_level_count: data.mip_level_count,
-            sample_count: data.sample_count,
+            label: Some(&format!("Texture({})", uri.as_ref())),
+            dimension,
+            format,
+            mip_level_count,
+            sample_count,
             size: wgpu::Extent3d {
-                width: data.width,
-                height: data.height,
-                depth_or_array_layers: data.depth_or_array_layers,
+                width,
+                height,
+                depth_or_array_layers,
             },
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
@@ -462,10 +543,10 @@ impl TexturePool {
         // 압축 텍스처는 블록 단위로 copy extent가 지정되어야 합니다.
         let block_dim = if is_compressed { 4 } else { 1 };
 
-        for layout in mip_layouts {
+        for layout in mip_layer_layouts {
             // 각 밉 레벨 실제 크기
-            let mip_width = std::cmp::max(1, base_width >> layout.mip_level);
-            let mip_height = std::cmp::max(1, base_height >> layout.mip_level);
+            let mip_width = std::cmp::max(1, width >> layout.mip_level);
+            let mip_height = std::cmp::max(1, height >> layout.mip_level);
 
             // 압축 텍스처의 경우, copy extent의 width, height는 블록 단위로 올림합니다.
             let copy_width = if is_compressed {
@@ -492,7 +573,11 @@ impl TexturePool {
                 wgpu::TexelCopyTextureInfo {
                     texture: &texture,
                     mip_level: layout.mip_level,
-                    origin: wgpu::Origin3d::ZERO,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layout.array_layer,
+                    },
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::Extent3d {
@@ -529,7 +614,20 @@ impl TexturePool {
 
         // 텍스처를 생성합니다.
         let bytes = Self::load_from_file(workspace, data)?;
-        let texture = Self::create_texture(device, encoder, staging_buffers, data, bytes);
+        let texture = Self::create_texture(
+            &data.uri,
+            device,
+            encoder,
+            staging_buffers,
+            data.width,
+            data.height,
+            data.depth_or_array_layers,
+            data.dimension.into(),
+            data.format.into(),
+            data.mip_level_count,
+            data.sample_count,
+            bytes,
+        );
 
         // 생성된 텍스처를 풀 객체에 등록합니다.
         pool.insert(data.uri.clone(), texture.clone());

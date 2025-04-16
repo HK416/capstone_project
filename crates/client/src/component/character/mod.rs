@@ -1,40 +1,25 @@
-pub mod animation;
+mod animation;
 mod aris_original;
 mod midori_original;
 mod momoi_original;
+mod pipeline;
 mod yuuka_original;
 
-use std::{
-    collections::{hash_map::Iter, VecDeque},
-    sync::Arc,
-};
-
-use ahash::HashMap;
-use hecs::{Entity, EntityBuilder, ViewBorrow, With, World};
-use mod_app::asset::AssetManager;
+use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, GameInputBits, LatLon, MovementState,
     MovementStateTimer, PlayPhasePlayer, ViewState, ViewStateTimer, NUM_ACTION_STATES,
     NUM_MOVEMENT_STATES,
 };
-use mod_render::{CameraResource, GraphicsPipelinePool, MaterialResource};
 
 use crate::{
-    asset::{
-        AssetError, MeshPool, ModelHierarchyPool, MotionPool, SamplerPool, TextureDataPool,
-        TexturePool, TextureViewPool,
-    },
+    asset::{ModelPool, ModelRoot, MotionPool, TextureDataPool, CHARACTER_URIS},
     component::{Child, Sibling, ToParentTrans, WorldTransform},
-    render::{
-        create_character_halo_render_pipeline, create_character_render_pipeline,
-        create_character_shadow_render_pipeline, CHARACTER_HALO_PIPELINE_ID, CHARACTER_PIPELINE_ID,
-        CHARACTER_SHADOW_PIPELINE_ID,
-    },
 };
 
-pub use self::animation::*;
+pub use self::{animation::*, pipeline::*};
 
-use super::{AttributeKind, Mesh, MoveDirection, SkinnedMeshResource, ThirdPersonCamera};
+use super::{MoveDirection, ThirdPersonCamera};
 
 /// 캐릭터의 수
 const NUM_CHARACTERS: usize = 4;
@@ -72,52 +57,6 @@ impl ToString for CharacterHaloKind {
     }
 }
 
-/// 플레이어 캐릭터 모델의 애니메이션과 계층 구조 데이터를 풀 객체에 로드합니다.
-pub fn load_character_model(
-    texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
-    mesh_pool: &MeshPool,
-    asset_manager: &AssetManager,
-    character_kind: CharacterKind,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    encoder: &mut wgpu::CommandEncoder,
-    staging_buffers: &mut Vec<wgpu::Buffer>,
-) -> Result<(), AssetError> {
-    const MODELS: [(&'static str, &'static str); NUM_CHARACTERS] = [
-        (aris_original::WORKSPACE, aris_original::MODEL_NAME),
-        (momoi_original::WORKSPACE, momoi_original::MODEL_NAME),
-        (midori_original::WORKSPACE, midori_original::MODEL_NAME),
-        (yuuka_original::WORKSPACE, yuuka_original::MODEL_NAME),
-    ];
-
-    let i = character_kind as usize;
-    let (workspace, model_name) = MODELS[i];
-
-    // 캐릭터 모델 애니메이션을 로드합니다.
-    MotionPool::get_or_init(model_name, workspace, asset_manager)?;
-
-    // 캐릭터 모델 계층 구조를 로드합니다.
-    ModelHierarchyPool::get_or_init(
-        texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
-        mesh_pool,
-        model_name,
-        workspace,
-        asset_manager,
-        device,
-        queue,
-        encoder,
-        staging_buffers,
-    )?;
-
-    Ok(())
-}
-
 /// 플레이어 캐릭터를 구성하는 엔터티를 생성합니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 가집니다
@@ -126,9 +65,6 @@ pub fn load_character_model(
 /// - 로컬 변환 행렬(`ToParentTrans`)
 /// - 월드 변환 행렬(`WorldTransform`)
 /// - 스키닝 애니메이션(`SkinningAnimation`)
-/// - 힘의 총량(`Force`)
-/// - 가속도(`Acceleration`)
-/// - 속도(`Velocity`)
 /// - 체력(`HealthPoint`)
 /// - 행동 상태(`ActionState`)
 /// - 행동 상태 지속 시간 타이머(`ActionStateTimer`)
@@ -139,41 +75,36 @@ pub fn load_character_model(
 /// - 시야 방향(`Latlon`)
 ///
 pub fn spawn_player_character(
+    world: &World,
+    model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    texture_pool: &TexturePool,
-    texture_view_pool: &TextureViewPool,
-    sampler_pool: &SamplerPool,
-    mesh_pool: &MeshPool,
     player: &PlayPhasePlayer,
-    asset_manager: &AssetManager,
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
-    world: &World,
-) -> Result<(Entity, Vec<(Entity, EntityBuilder)>), AssetError> {
-    type CharacterFunc =
-        fn(
-            &TextureDataPool,
-            &TexturePool,
-            &TextureViewPool,
-            &SamplerPool,
-            &MeshPool,
-            &AssetManager,
-            &wgpu::Device,
-            &wgpu::Queue,
-            &mut wgpu::CommandEncoder,
-            &mut Vec<wgpu::Buffer>,
-            &World,
-            Entity,
-        )
-            -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError>;
-    const CHARACTER_FN: [CharacterFunc; NUM_CHARACTERS] = [
+) -> (Entity, Vec<(Entity, EntityBuilder)>) {
+    type Func = fn(
+        Option<&str>,
+        &TextureDataPool,
+        &wgpu::Device,
+        &mut wgpu::CommandEncoder,
+        &mut Vec<wgpu::Buffer>,
+        &World,
+        Entity,
+        &ModelRoot,
+    ) -> (Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>);
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
         aris_original::spawn_character_model,
         momoi_original::spawn_character_model,
         midori_original::spawn_character_model,
         yuuka_original::spawn_character_model,
     ];
+
+    // 모델 풀 객체에서 캐릭터 모델 노드를 가져옵니다.
+    let i = player.character_kind as usize;
+    let root = model_pool
+        .get(CHARACTER_URIS[i])
+        .expect("the character model must exist!");
 
     // 엔터티를 하나 할당받습니다.
     let entity = world.reserve_entity();
@@ -181,6 +112,7 @@ pub fn spawn_player_character(
 
     // 컴포넌트 데이터를 준비합니다.
     let character_kind = player.character_kind;
+    let team = player.team();
     let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
         glam::Quat::from_array(player.rotation),
         glam::Vec3::from_array(player.translation),
@@ -199,6 +131,7 @@ pub fn spawn_player_character(
     // 컴포넌트를 추가합니다.
     builder.add_bundle((
         character_kind,
+        team,
         local_transform,
         world_transform,
         max_health_point,
@@ -213,299 +146,24 @@ pub fn spawn_player_character(
     ));
 
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
-    let i = character_kind as usize;
-    let parent = entity;
-    let (model_root_entity, skinning_animation, mut batch_commands) = CHARACTER_FN[i](
+    let (child, skinning_animation, mut batch_commands) = FUNC_TABLE[i](
+        Some(&format!("Player({})", player.account.uid)),
         texture_data_pool,
-        texture_pool,
-        texture_view_pool,
-        sampler_pool,
-        mesh_pool,
-        asset_manager,
         device,
-        queue,
         encoder,
         staging_buffers,
         world,
-        parent,
-    )?;
+        entity,
+        &root,
+    );
 
     // 캐릭터 모델 루트 노드와 스키닝 애니메이션 컴포넌트를 추가합니다.
-    builder.add(Child(model_root_entity));
-    builder.add(skinning_animation);
+    builder.add_bundle((Child(child), skinning_animation));
 
     // 엔터티 생성 명령어를 추가합니다.
     batch_commands.push((entity, builder));
 
-    Ok((entity, batch_commands))
-}
-
-/// 캐릭터의 쉐이더 리소스 집합입니다.
-#[derive(Debug)]
-pub struct ResourceSet(
-    HashMap<Arc<Mesh>, VecDeque<(SkinnedMeshResource, Vec<Arc<MaterialResource>>)>>,
-);
-
-impl ResourceSet {
-    /// 새로운 요소를 추가합니다.
-    pub fn push(
-        &mut self,
-        mesh: Arc<Mesh>,
-        mesh_resource: SkinnedMeshResource,
-        material_resource: Vec<Arc<MaterialResource>>,
-    ) {
-        self.0
-            .entry(mesh)
-            .or_default()
-            .push_back((mesh_resource, material_resource));
-    }
-
-    pub fn iter(
-        &self,
-    ) -> Iter<'_, Arc<Mesh>, VecDeque<(SkinnedMeshResource, Vec<Arc<MaterialResource>>)>> {
-        self.0.iter()
-    }
-}
-
-impl Default for ResourceSet {
-    fn default() -> Self {
-        Self(HashMap::default())
-    }
-}
-
-/// 캐릭터 모델을 그립니다.
-pub fn draw_character<'a>(
-    resource_set: &ResourceSet,
-    camera_resource: &'a CameraResource,
-    device: &wgpu::Device,
-    render_target_format: wgpu::TextureFormat,
-    depth_stencil_format: wgpu::TextureFormat,
-    rpass: &mut wgpu::RenderPass<'a>,
-) {
-    // 캐릭터 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_PIPELINE_ID, || {
-        create_character_render_pipeline(device, depth_stencil_format, render_target_format)
-    });
-    rpass.set_pipeline(&pipeline);
-
-    // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
-    rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
-
-    for (mesh, queue) in resource_set.iter() {
-        // 메쉬의 정점 속성을 바인드합니다.
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
-        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Tangent, ..).unwrap());
-        rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
-        rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
-        rpass.set_vertex_buffer(5, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
-
-        for (mesh_resource, material_resources) in queue.iter() {
-            // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-
-            for (index, submesh) in mesh.submeshes().iter().enumerate() {
-                // 메쉬의 인덱스 버퍼를 바인드합니다.
-                rpass.set_index_buffer(submesh.slice(..), submesh.format());
-
-                // 재질의 쉐이더 리소스를 바인드합니다.
-                rpass.set_bind_group(2, &material_resources[index].bind_group, &[]);
-
-                // 인덱스 버퍼를 사용하여 그립니다.
-                rpass.draw_indexed(0..submesh.count(), 0, 0..1);
-            }
-        }
-    }
-}
-
-/// 캐릭터 헤일로를 그립니다.
-pub fn draw_character_halo<'a>(
-    resource_set: &ResourceSet,
-    camera_resource: &'a CameraResource,
-    device: &wgpu::Device,
-    render_target_format: wgpu::TextureFormat,
-    depth_stencil_format: wgpu::TextureFormat,
-    rpass: &mut wgpu::RenderPass<'a>,
-) {
-    // 캐릭터 헤일로 모델 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_HALO_PIPELINE_ID, || {
-        create_character_halo_render_pipeline(device, depth_stencil_format, render_target_format)
-    });
-    rpass.set_pipeline(&pipeline);
-
-    // 카메라 쉐이더 리소스를 렌더 패스에 바인드합니다.
-    rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
-
-    for (mesh, queue) in resource_set.iter() {
-        // 메쉬의 정점 속성을 바인드합니다.
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
-
-        for (mesh_resource, material_resources) in queue.iter() {
-            // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-
-            for (index, submesh) in mesh.submeshes().iter().enumerate() {
-                // 메쉬의 인덱스 버퍼를 바인드합니다.
-                rpass.set_index_buffer(submesh.slice(..), submesh.format());
-
-                // 재질의 쉐이더 리소스를 바인드합니다.
-                rpass.set_bind_group(2, &material_resources[index].bind_group, &[]);
-
-                // 인덱스 버퍼를 사용하여 그립니다.
-                rpass.draw_indexed(0..submesh.count(), 0, 0..1);
-            }
-        }
-    }
-}
-
-/// 그림자를 생성합니다.
-pub fn bake_character_shadow<'a>(
-    resource_set: &ResourceSet,
-    camera_resource: &'a CameraResource,
-    device: &wgpu::Device,
-    shadow_format: wgpu::TextureFormat,
-    rpass: &mut wgpu::RenderPass<'a>,
-) {
-    // 캐릭터 그림자 렌더링 파이프라인을 가져와 렌더 패스에 바인드합니다.
-    let pipeline = GraphicsPipelinePool::get_or_init(CHARACTER_SHADOW_PIPELINE_ID, || {
-        create_character_shadow_render_pipeline(device, shadow_format)
-    });
-    rpass.set_pipeline(&pipeline);
-
-    // 그림자 쉐이더 리소스를 렌더 패스에 바인드합니다.
-    rpass.set_bind_group(0, &camera_resource.bind_group, &[]);
-
-    for (mesh, queue) in resource_set.iter() {
-        // 메쉬의 정점 속성을 바인드합니다.
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
-        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
-
-        for (mesh_resource, _) in queue.iter() {
-            // 메쉬 쉐이더 리소스를 렌더 패스에 바인드합니다.
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-
-            for submesh in mesh.submeshes().iter() {
-                // 메쉬의 인덱스 버퍼를 바인드합니다.
-                rpass.set_index_buffer(submesh.slice(..), submesh.format());
-
-                // 인덱스 버퍼를 사용하여 그립니다.
-                rpass.draw_indexed(0..submesh.count(), 0, 0..1);
-            }
-        }
-    }
-}
-
-/// 모델을 그릴 때 사용되는 쉐이더 리소스 자료형
-type DrawQuery<'a> = (
-    &'a Arc<Mesh>,
-    &'a SkinnedMeshResource,
-    &'a Vec<Arc<MaterialResource>>,
-);
-
-/// 주어진 엔터티의 쉐이더 리소스를 분류합니다.
-///
-/// 엔터티가 메쉬(`Arc<Mesh>`), 메쉬 쉐이더 리소스(`Arc<MeshResource>`), 머태리얼(`Vec<Arc<MaterialResource>>`)을
-/// 갖고 있지 않는 경우 해당 엔터티를 생략합니다.
-///
-/// # Panics
-/// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
-/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
-///
-pub fn categorize_character_resource(
-    world: &World,
-    entities: &[Entity],
-) -> (ResourceSet, ResourceSet) {
-    // 컴포넌트 뷰를 준비합니다.
-    let child_view = &world.view::<&Child>();
-    let sibling_view = &world.view::<&Sibling>();
-    let character_view = &world.view::<With<DrawQuery, &CharacterKind>>();
-    let character_halo_view = &world.view::<With<DrawQuery, &CharacterHaloKind>>();
-
-    // 결과를 저장할 집합 컨테이너를 준비합니다.
-    let mut character_set = ResourceSet::default();
-    let mut character_halo_set = ResourceSet::default();
-
-    // 엔터티 계층 구조를 순회합니다.
-    for &entity in entities {
-        categorize_character_resource_recursion(
-            child_view,
-            sibling_view,
-            character_view,
-            character_halo_view,
-            &mut character_set,
-            &mut character_halo_set,
-            entity,
-        );
-    }
-
-    (character_set, character_halo_set)
-}
-
-/// 주어진 엔터티의 쉐이더 리소스를 분류합니다.
-///
-/// 엔터티가 메쉬(`Arc<Mesh>`), 메쉬 쉐이더 리소스(`Arc<MeshResource>`), 머태리얼(`Vec<Arc<MaterialResource>>`)을
-/// 갖고 있지 않는 경우 해당 엔터티를 생략합니다.
-///
-/// # Panics
-/// - 주어진 엔터티는 유효해야합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
-/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
-///
-fn categorize_character_resource_recursion(
-    child_view: &ViewBorrow<'_, &Child>,
-    sibling_view: &ViewBorrow<'_, &Sibling>,
-    character_view: &ViewBorrow<'_, With<DrawQuery, &CharacterKind>>,
-    character_halo_view: &ViewBorrow<'_, With<DrawQuery, &CharacterHaloKind>>,
-    character_set: &mut ResourceSet,
-    character_halo_set: &mut ResourceSet,
-    entity: Entity,
-) {
-    // 형제 엔터티가 존재하는 경우 형제 엔터티의 계층 구조를 탐색합니다.
-    if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
-        categorize_character_resource_recursion(
-            child_view,
-            sibling_view,
-            character_view,
-            character_halo_view,
-            character_set,
-            character_halo_set,
-            *sibling_entity,
-        );
-    }
-
-    // 자식 엔터티가 존재하는 경우 자식 엔터티의 계층 구조를 탐색합니다.
-    if let Some(child_entity) = child_view.get(entity).cloned() {
-        categorize_character_resource_recursion(
-            child_view,
-            sibling_view,
-            character_view,
-            character_halo_view,
-            character_set,
-            character_halo_set,
-            *child_entity,
-        );
-    }
-
-    // 엔터티의 캐릭터 쉐이더 리소스 데이터를 가져옵니다.
-    let results = character_view.get(entity);
-    if let Some((mesh, mesh_resource, material_resource)) = results {
-        character_set.push(
-            mesh.clone(),
-            mesh_resource.clone(),
-            material_resource.clone(),
-        );
-    }
-
-    // 엔터티의 캐릭터 헤일로 쉐이더 리소스 데이터를 가져옵니다.
-    let results = character_halo_view.get(entity);
-    if let Some((mesh, mesh_resource, material_resource)) = results {
-        character_halo_set.push(
-            mesh.clone(),
-            mesh_resource.clone(),
-            material_resource.clone(),
-        );
-    }
+    (entity, batch_commands)
 }
 
 /// 플레이어 캐릭터의 방향을 갱신합니다.
@@ -756,7 +414,7 @@ pub fn update_view_state_timer(
 }
 
 pub fn animate_character(
-    asset_manager: &AssetManager,
+    motion_pool: &MotionPool,
     character_kind: CharacterKind,
     view_rotation: LatLon,
     action_state: ActionState,
@@ -768,7 +426,7 @@ pub fn animate_character(
     transform_view: &mut ViewBorrow<&mut ToParentTrans>,
 ) {
     type Func = fn(
-        &AssetManager,
+        &MotionPool,
         LatLon,
         ActionState,
         ActionStateTimer,
@@ -787,7 +445,7 @@ pub fn animate_character(
 
     let i = character_kind as usize;
     FUNC_TABLE[i](
-        asset_manager,
+        motion_pool,
         view_rotation,
         action_state,
         action_state_timer,

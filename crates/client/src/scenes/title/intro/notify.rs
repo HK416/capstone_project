@@ -6,7 +6,7 @@ use mod_app::{
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };
@@ -36,14 +36,18 @@ pub struct GameIntroNotifyScene {
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl GameIntroNotifyScene {
     /// 새로운 `GameIntroNotifyScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
         Self {
             locale,
             elapsed_time_sec: 0.0,
+            texture_pool,
         }
     }
 
@@ -80,8 +84,8 @@ impl GameScene for GameIntroNotifyScene {
 
         // 다음 게임 장면으로 전환합니다.
         if self.elapsed_time_sec >= SCENE_DURATION {
-            let next_scene = Box::new(GameIntroLogoScene::new(self.locale));
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = GameIntroLogoScene::new(self.locale, self.texture_pool.clone());
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
@@ -89,7 +93,7 @@ impl GameScene for GameIntroNotifyScene {
     }
 
     fn on_draw(
-        &self,
+        &mut self,
         _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,

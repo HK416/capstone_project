@@ -56,7 +56,7 @@ impl GameScene for GameLoginModalScene {
         let title = ERR_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
                 ERR_MSG_TEXTS[i]
             }
             NetworkError::IO(_) => {
@@ -74,7 +74,7 @@ impl GameScene for GameLoginModalScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::LoginFailed => {
@@ -108,6 +108,8 @@ impl GameScene for GameLoginModalScene {
                 );
             }
         }
+
+        None
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {

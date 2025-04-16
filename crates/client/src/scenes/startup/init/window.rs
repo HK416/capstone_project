@@ -6,7 +6,7 @@ use mod_app::{
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };
@@ -36,11 +36,14 @@ pub struct InitWindowScene {
     is_fullscreen: bool,
     /// 설정이 완료된 여부
     completed: bool,
+
+    // 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl InitWindowScene {
     /// 새로운 `InitWindowScene`을 생성합니다.
-    pub fn new() -> Self {
+    pub fn new(texture_pool: TexturePool) -> Self {
         let config = UserConfig::get();
         Self {
             locale: config.locale,
@@ -48,6 +51,7 @@ impl InitWindowScene {
             window_size: WindowSize::MAX,
             is_fullscreen: true,
             completed: false,
+            texture_pool,
         }
     }
 }
@@ -93,15 +97,15 @@ impl GameScene for InitWindowScene {
 
         if self.completed {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(InitFinishScene::new());
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = InitFinishScene::new(self.texture_pool.clone());
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             event_loop_proxy.send_event(event).unwrap();
         }
     }
 
     fn on_draw(
-        &self,
+        &mut self,
         _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
@@ -179,7 +183,7 @@ impl GameScene for InitWindowScene {
 
         // 콤보 박스
         let combobox_width = 320.0 * scale;
-        let combobox_height = combobox_width / 4.0;
+        let combobox_height = combobox_width * 0.5;
         let combobox = egui::ComboBox::from_label("")
             .selected_text(current_size)
             .width(combobox_width)
@@ -188,35 +192,41 @@ impl GameScene for InitWindowScene {
         egui::Area::new(egui::Id::new("Layout"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(app.egui_ctx(), |ui| {
-                ui.vertical_centered(|ui| {
+                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                    ui.set_width(960.0 * scale);
+                    ui.add_space(16.0 * scale);
                     ui.label(info_text);
                     ui.separator();
 
-                    egui::Grid::new("SubLayout").num_columns(2).show(ui, |ui| {
-                        ui.label(resolution_text);
+                    ui.add_space(16.0 * scale);
+                    ui.add_enabled_ui(!self.completed, |ui| {
+                        ui.columns(2, |cols| {
+                            let ui = &mut cols[0];
+                            ui.set_width(480.0 * scale);
+                            ui.set_height(64.0 * scale);
+                            ui.label(resolution_text);
+                            ui.label(fullscreen_text);
 
-                        ui.add_enabled_ui(!self.is_fullscreen, |ui| {
-                            combobox.show_ui(ui, |ui| {
-                                let mut max_window_size = Some(self.max_window_size);
-                                while let Some(window_size) = max_window_size {
-                                    ui.selectable_value(
-                                        &mut self.window_size,
-                                        window_size,
-                                        window_size.to_string(),
-                                    );
-                                    max_window_size = window_size.downgrade();
-                                }
+                            let ui = &mut cols[1];
+                            ui.set_width(480.0 * scale);
+                            ui.set_height(64.0 * scale);
+                            ui.add_enabled_ui(!self.is_fullscreen, |ui| {
+                                combobox.show_ui(ui, |ui| {
+                                    let mut max_window_size = Some(self.max_window_size);
+                                    while let Some(window_size) = max_window_size {
+                                        ui.selectable_value(
+                                            &mut self.window_size,
+                                            window_size,
+                                            window_size.to_string(),
+                                        );
+                                        max_window_size = window_size.downgrade();
+                                    }
+                                });
                             });
+                            ui.checkbox(&mut self.is_fullscreen, "");
                         });
-                        ui.end_row();
 
-                        ui.label(fullscreen_text);
-                        ui.checkbox(&mut self.is_fullscreen, "");
-                        ui.end_row();
-                    });
-
-                    ui.separator();
-                    ui.vertical_centered(|ui| {
+                        ui.add_space(16.0 * scale);
                         if ui.add(okay_btn).clicked() {
                             self.completed = true;
                         }

@@ -1,6 +1,6 @@
+#![allow(dead_code)]
 //! 정점 버퍼와 정점 속성 버퍼에 관련된 코드를 관리합니다.
 //!
-#![allow(dead_code)]
 
 use std::{fmt, ops::RangeBounds};
 

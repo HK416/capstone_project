@@ -4,11 +4,10 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
 
 use crate::{
-    asset::GAME_LOGO_URI,
+    asset::{TexturePool, TextureViewPool},
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, GameLoginTitleScene},
 };
@@ -22,58 +21,37 @@ pub struct GameIntroVerifyScene {
     /// 클라이언트 데이터가 유효한지 여부
     is_validate: bool,
 
-    /// 게임 로고 텍스처의 텍스처 식별자입니다.
-    game_logo_texture_id: egui::load::SizedTexture,
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
 }
 
 impl GameIntroVerifyScene {
     /// 새로운 `GameIntroVerifyScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(
+        locale: Locale,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
+    ) -> Self {
         Self {
             locale,
             is_validate: false,
-            game_logo_texture_id: egui::load::SizedTexture {
-                id: egui::TextureId::User(0),
-                size: egui::Vec2::ZERO,
-            },
+            texture_pool,
+            texture_view_pool,
         }
     }
 }
 
 impl GameScene for GameIntroVerifyScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn transparents(&self) -> bool {
+        true
+    }
+
+    fn on_enter(&mut self, _window: &Window, _app: &dyn AppHandle) {
         // TODO: 현재 클라이언트 데이터 무결성 검사를 실행하고 있지 않습니다.
         log::warn!("현재 클라이언트 데이터 무결성 검사를 실행하고 있지 않습니다.");
         self.is_validate = true;
-
-        // 게임 로고 텍스처를 가져옵니다.
-        let texture =
-            TexturePool::get(GAME_LOGO_URI).expect("Game_Logo texture must be preloaded!");
-        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-        // 게임 로고 텍스처의 텍스처 뷰를 생성합니다.
-        let texture =
-            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-        // egui 렌더러에 텍스처를 등록합니다.
-        let mut egui_renderer = app.egui_renderer_mut();
-        let texture_id = egui_renderer.register_native_texture(
-            app.render_device(),
-            &texture,
-            wgpu::FilterMode::Linear,
-        );
-
-        // 등록된 텍스처 정보를 저장합니다.
-        self.game_logo_texture_id = egui::load::SizedTexture {
-            id: texture_id,
-            size: texture_size,
-        };
-    }
-
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
-        // 등록된 텍스처를 해제합니다.
-        let mut egui_renderer = app.egui_renderer_mut();
-        egui_renderer.free_texture(&self.game_logo_texture_id.id);
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -82,7 +60,7 @@ impl GameScene for GameIntroVerifyScene {
         let title = ERR_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊겼습니다!"];
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
                 ERR_MSG_TEXTS[i]
             }
             NetworkError::IO(_) => {
@@ -103,65 +81,19 @@ impl GameScene for GameIntroVerifyScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 클라이언트가 유효한 경우 다음 게임 장면으로 전환합니다.
         if self.is_validate {
-            let next_scene = Box::new(GameLoginTitleScene::new(self.locale));
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = GameLoginTitleScene::new(
+                self.locale,
+                self.texture_pool.clone(),
+                self.texture_view_pool.clone(),
+            );
+            let scene_flow = GameSceneFlow::Reset(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
     }
 
-    fn on_draw(
-        &self,
-        _window: &Window,
-        encoder: &mut wgpu::CommandEncoder,
-        render_target_view: &wgpu::TextureView,
-        _depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
-    ) {
-        {
-            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({:?})", &self)),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    view: render_target_view,
-                    resolve_target: None,
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
-    }
-
-    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, height): (f32, f32) = window.inner_size().into();
-        let scale_factor = window.scale_factor() as f32;
-
-        let ratio = self.game_logo_texture_id.size.x / self.game_logo_texture_id.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width * 0.3;
-        let img_height = img_width / ratio;
-
-        let rect = egui::Rect {
-            min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
-            ),
-            max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
-            ),
-        };
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new())
-            .show(app.egui_ctx(), |ui| {
-                egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
-            });
+    fn ui_callback(&mut self, _window: &Window, _app: &dyn AppHandle) {
+        /* empty */
     }
 }

@@ -32,6 +32,13 @@ pub trait GameScene: Debug + Send {
         false
     }
 
+    /// 하위 게임 장면이 갱신될지 여부를 반환합니다.
+    ///
+    /// `true`를 반환할 경우 게임 장면을 갱신할 때 하위 게임 장면도 갱신됩니다.
+    fn should_update_subscene(&self) -> bool {
+        false
+    }
+
     /// 애플리케이션 창의 종료 버튼이 눌렸을 때 호출되는 콜백 함수입니다.  
     /// `true`를 반환할 경우 애플리케이션을 종료합니다.
     fn on_close_request(&mut self, app: &dyn AppHandle) -> bool {
@@ -152,8 +159,11 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션이 패킷을 수신받았을 때 호출되는 콜백 함수입니다.
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) {
-        /* empty */
+    ///
+    /// 현재 게임 장면이 패킷 처리를 완료한 경우 `None`를 반환해야합니다.
+    ///
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        Some(packet)
     }
 
     /// 게임 장면을 갱신 전에 호출되는 콜백 함수입니다.
@@ -169,7 +179,10 @@ pub trait GameScene: Debug + Send {
     /// 지정된 일정 시간만큼 게임 장면을 갱신할 때 호출되는 콜백 함수입니다.
     ///
     /// 이 함수는 한 게임 루프에서 여러 번 호출될 수 있으며,
-    /// 너무 많이 호출될 경우 `fixed_time_sec`이 지정한 시간임을 보장할 수 없습니다.
+    /// 대게 전달되는 `fixed_time_sec`은 `FIXED_TIME_SEC`보다 작거나 같습니다.  
+    ///
+    /// 그러나 시스템 성능이 좋지 않아 최대 호출 횟수를 초과한 경우
+    /// 전달되는 `fixed_time_sec`은 `FIXED_TIME_SEC` 보다 클 수 있습니다.
     ///
     fn on_fixed_update(&mut self, fixed_time_sec: f32, window: &Window, app: &dyn AppHandle) {
         /* empty */
@@ -192,7 +205,7 @@ pub trait GameScene: Debug + Send {
 
     /// 애플리케이션이 게임 장면을 그릴 때 호출하는 콜백 함수입니다.
     fn on_draw(
-        &self,
+        &mut self,
         window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,

@@ -3,6 +3,7 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_network::protocol::RawPacket;
 use winit::window::Window;
 
 use crate::{
@@ -47,6 +48,14 @@ impl FatalErrorSceneLayer {
 impl GameScene for FatalErrorSceneLayer {
     fn transparents(&self) -> bool {
         true
+    }
+
+    fn on_received_packet(
+        &mut self,
+        _packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
+        None
     }
 
     fn on_update(&mut self, _: f32, _: &Window, app: &dyn AppHandle) {

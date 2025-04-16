@@ -1,8 +1,9 @@
 //! 메쉬 쉐이더 리소스와 관련된 코드를 관리합니다.
 //!
+
 use std::sync::{Arc, OnceLock};
 
-use crate::component::{BindposeUniform, BoneTransformUniform, SkinningUniform, TransformUniform};
+use crate::component::{BindposeUniform, BoneTransformUniform, TransformUniform};
 
 /// 메쉬 쉐이더 리소스입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,7 +18,7 @@ impl MeshResource {
                 label: Some("BindGroupLayout(MeshResource)"),
                 entries: &[
                     // 0번 바인딩: 변환 행렬 유니폼 버퍼
-                    TransformUniform::bind_group_layout_entry(0),
+                    TransformUniform::bind_group_layout_entry(wgpu::ShaderStages::VERTEX, 0),
                 ],
             })
         })
@@ -59,12 +60,10 @@ impl SkinnedMeshResource {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("BindGroupLayout(SkinnedMeshResource)"),
                 entries: &[
-                    // 0번 바인딩: 스키닝 데이터 유니폼 버퍼
-                    SkinningUniform::bind_group_layout_entry(0),
-                    // 1번 바인딩: 바인드 포즈 유니폼 버퍼
-                    BindposeUniform::bind_group_layout_entry(1),
-                    // 2번 바인딩: 뼈 변환 행렬 유니폼 버퍼
-                    BoneTransformUniform::bind_group_layout_entry(2),
+                    // 0번 바인딩: 바인드 포즈 유니폼 버퍼
+                    BindposeUniform::bind_group_layout_entry(wgpu::ShaderStages::VERTEX, 0),
+                    // 1번 바인딩: 뼈 변환 행렬 유니폼 버퍼
+                    BoneTransformUniform::bind_group_layout_entry(wgpu::ShaderStages::VERTEX, 1),
                 ],
             })
         })
@@ -74,7 +73,6 @@ impl SkinnedMeshResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        skinning_uniform: &SkinningUniform,
         bindpose_uniform: &BindposeUniform,
         bone_trans_uniform: &BoneTransformUniform,
     ) -> Self {
@@ -85,14 +83,10 @@ impl SkinnedMeshResource {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: skinning_uniform.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
                         resource: bindpose_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
-                        binding: 2,
+                        binding: 1,
                         resource: bone_trans_uniform.as_entire_binding(),
                     },
                 ],

@@ -1,6 +1,7 @@
+#![allow(dead_code)]
 //! 인덱스 버퍼와 관련된 코드를 관리합니다.
 //!
-#![allow(dead_code)]
+
 use std::ops::RangeBounds;
 
 use wgpu::util::DeviceExt;

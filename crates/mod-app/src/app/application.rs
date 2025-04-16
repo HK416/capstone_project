@@ -83,9 +83,6 @@ pub struct Application {
     /// 업데이트 경과 시간을 측정하는 타이머입니다.
     timer: GameTimer,
 
-    /// 고정 시간 갱신에 사용되는 축적된 시간입니다.
-    accum_time: f32,
-
     /// `egui`의 컨텍스트입니다.
     egui_ctx: egui::Context,
 
@@ -163,7 +160,6 @@ impl Application {
             scene_flow: Some(GameSceneFlow::Reset(builder.start_scene)),
             scene_stack: RefCell::new(VecDeque::with_capacity(8)),
             timer: GameTimer::start(),
-            accum_time: 0.0,
             egui_ctx: egui::Context::default(),
             egui_renderer: RefCell::new(UiRenderer::new(&device, SWAPCHAIN_FORMAT, None, 1, false)),
             instance,
@@ -188,6 +184,7 @@ impl Application {
         let mut begin = scene_stack.len();
         for scene in scene_stack.iter().rev() {
             begin -= 1;
+
             if !scene.transparents() {
                 break;
             }
@@ -443,40 +440,41 @@ impl ApplicationHandler<AppEvent> for Application {
             }
         }
 
-        // 현재 게임 장면을 가져옵니다.
-        // 현재 게임 장면이 존재하지 않는 경우 애플리케이션을 종료합니다.
-        let curr_scene = match scene_stack.back_mut() {
-            Some(curr_scene) => curr_scene,
-            None => return event_loop.exit(),
-        };
+        // 게임 장면이 존재하지 않는 경우 애플리케이션을 종료합니다.
+        if scene_stack.is_empty() {
+            return event_loop.exit();
+        }
 
-        // 게임 장면 갱신 전에 콜백 함수를 호출합니다.
-        curr_scene.on_pre_update(window, self);
-
-        // 총 경과 시간을 갱신합니다.
+        // 총 경과 시간을 계산합니다.
         let elapsed_time_sec = self.timer.elapsed_time_sec();
-        self.accum_time += elapsed_time_sec;
 
-        // 변동 시간 갱신 함수를 호출합니다.
-        curr_scene.on_update(elapsed_time_sec, &window, self);
+        // 게임 장면을 갱신합니다.
+        let mut count: usize;
+        let mut total_time_sec;
+        for scene in scene_stack.iter_mut().rev() {
+            // 게임 장면 갱신 시작 콜백 함수를 호출합니다.
+            scene.on_pre_update(window, self);
 
-        // 고정 시간 갱신 함수를 호출합니다.
-        let mut count = 0;
-        while count < MAX_FIXED_UPDATE && FIXED_TIME_SEC <= self.accum_time {
-            curr_scene.on_fixed_update(FIXED_TIME_SEC, &window, self);
-            self.accum_time -= FIXED_TIME_SEC;
-            count += 1;
+            // 변동 시간 갱신 함수를 호출합니다.
+            scene.on_update(elapsed_time_sec, window, self);
+
+            // 고정 시간 갱신 함수를 호출합니다.
+            count = 0;
+            total_time_sec = elapsed_time_sec;
+            while count < MAX_FIXED_UPDATE && FIXED_TIME_SEC <= total_time_sec {
+                scene.on_fixed_update(FIXED_TIME_SEC, window, self);
+                total_time_sec -= FIXED_TIME_SEC;
+                count += 1;
+            }
+            scene.on_fixed_update(total_time_sec, window, self);
+
+            // 게임 장면 갱신 완료 콜백 함수를 호출합니다.
+            scene.on_post_update(window, self);
+
+            if !scene.should_update_subscene() {
+                break;
+            }
         }
-
-        // 최대 갱신 횟수를 초과할 경우 변동 시간 간격을 전달합니다.
-        if count >= MAX_FIXED_UPDATE {
-            log::warn!("성능 저하로 인해 고정 시간 갱신 횟수를 초과했습니다!");
-            curr_scene.on_fixed_update(self.accum_time, &window, self);
-            self.accum_time = 0.0;
-        }
-
-        // 게임 장면 갱신 후에 콜백 함수를 호출합니다.
-        curr_scene.on_post_update(window, self);
 
         // 애플리케이션 창을 갱신합니다.
         window.request_redraw();
@@ -760,15 +758,17 @@ impl ApplicationHandler<AppEvent> for Application {
             AppEvent::PacketReceived(packet) => {
                 // 현재 애플리케이션 장면을 가져옵니다.
                 let mut scene_stack = self.scene_stack.borrow_mut();
-                let curr_scene = match scene_stack.back_mut() {
-                    Some(scene) => scene,
-                    None => {
-                        log::warn!("packet ignored >> the current game scene is empty!");
-                        return;
-                    }
-                };
+                if scene_stack.is_empty() {
+                    log::warn!("packet ignored >> the current game scene is empty!");
+                    return;
+                }
 
-                curr_scene.on_received_packet(packet, self);
+                let mut temp = Some(packet);
+                for scene in scene_stack.iter_mut().rev() {
+                    if let Some(packet) = temp.take() {
+                        temp = scene.on_received_packet(packet, self);
+                    }
+                }
             }
         };
     }
