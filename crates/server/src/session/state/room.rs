@@ -147,10 +147,6 @@ impl SessionState for SessionRoomState {
                 PacketType::CustomGameReady => {
                     self.handle_custom_game_ready_packet(session, packet);
                 }
-                PacketType::PushStatus => {
-                    // 이전 게임 종료 후 바로 SessionRoomState로 오기 때문에 
-                    // 이미 종료된 게임의 패킷을 수신할 수 있음
-                }
                 _ => {
                     log::warn!(
                         "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

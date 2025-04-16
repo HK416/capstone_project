@@ -16,7 +16,7 @@ use mod_network::{
         ObjectId, PlayPhasePlayer, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
-        GameOverPacket, Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket
+        Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
     },
 };
 use mod_physics::object3d::Frustum;
@@ -1130,18 +1130,6 @@ impl InGameDominationModeScene {
             cleanup(&mut self.world, entity);
         }
     }
-
-    /// 게임 오버 패킷을 처리합니다.
-    fn handle_game_over_packet(&mut self, _packet: GameOverPacket, app: &dyn AppHandle) {
-        // 로비화면으로 돌아갑니다.
-        // TODO: 결과화면으로 전환해야합니다.
-        let event_loop_proxy = app.event_loop_proxy();
-        for _ in 0..3 {
-            let scene_flow = GameSceneFlow::Pop;
-            let event = AppEvent::SetGameSceneFlow(scene_flow);
-            event_loop_proxy.send_event(event).unwrap();
-        }
-    }
 }
 
 impl GameScene for InGameDominationModeScene {
@@ -1286,11 +1274,6 @@ impl GameScene for InGameDominationModeScene {
                 let packet = UdpDamageLogPacket::from_raw(packet);
                 // 데미지 로그에 추가합니다.
                 self.damage_logs.extend(packet.logs);
-            }
-            PacketType::GameOver => {
-                let packet = GameOverPacket::from_raw(packet);
-                // 게임 오버 패킷을 처리합니다.
-                self.handle_game_over_packet(packet, app);
             }
             _ => panic!("invalid packet"),
         };

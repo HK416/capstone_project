@@ -12,6 +12,4 @@ pub enum SessionEvents {
     EnterInGameSync,
     /// 인게임 상태에 진입합니다.
     EnterInGame,
-    /// 인게임 상태에서 빠져나옵니다.
-    ExitInGame,
 }

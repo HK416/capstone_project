@@ -9,7 +9,7 @@ use mod_network::{
     components::{
         DamageLog, HealthPoint, LatLon, MovementState, ObjectId, PlayPhasePlayer, StageKind, Team, UserId
     },
-    protocol::{GameOverPacket, Packet, PullStagePacket, UdpDamageLogPacket},
+    protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{
@@ -22,7 +22,6 @@ use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
     entities::{BulletObject, CapturePointObject, PlayerObject}, 
     formula::movement_formulas as formulas, 
-    session::SessionEvents,
     world::{GameWorld, GameWorldEvent}
 };
 
@@ -684,18 +683,7 @@ impl GameWorldState for GameWorldInGameState {
             GameWorldEvent::GameOver { winner } => {
                 println!("{:?} win!", winner);
                 log::info!("game over - winner: {:?}", winner);
-                
-                // 게임종료패킷 전송, 세션 상태 변경
-                for item in world.sessions.iter() {
-                    let session = item.key();
-                    let packet = GameOverPacket::new(winner);
-                    session.tcp_write(packet.as_raw());
-                    session.push_event(SessionEvents::ExitInGame);
-                }
-
-                self.is_running = false;
-
-                // 서버에서도 결과상태가 필요한지?
+                // self.is_running = false;
             }
             _ => {
                 log::warn!(
