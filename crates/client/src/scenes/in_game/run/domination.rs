@@ -1752,20 +1752,50 @@ impl InGameDominationModeScene {
 
     /// 남은 시간 배경 레이아웃이미지입니다.
     fn score_gauge_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        /// 팀의 색상입니다.
+        const TEAM_COLOR: [egui::Color32; 2] = [
+            egui::Color32::from_rgb(135, 206, 235), // 블루팀 색상
+            egui::Color32::from_rgb(255, 68, 51),   // 레드 팀 색상
+        ];
+
         // 전체 배경
         // - 가로 기준 길이: 520
         // - 세로 기준 길이: 12
         //
         let rect = egui::Rect::from_min_max(
-            egui::pos2(380.0 * scale, 64.0 * scale),
-            egui::pos2(900.0 * scale, 76.0 * scale),
+            egui::pos2(380.0 * scale, 48.0 * scale),
+            egui::pos2(900.0 * scale, 60.0 * scale),
         );
         let frame_bg = egui::epaint::RectShape::new(
             rect,
             16.0,
-            egui::Color32::from_white_alpha(192),
+            egui::Color32::WHITE,
             egui::Stroke::NONE,
             egui::StrokeKind::Middle,
+        );
+
+        // 플레이어 팀 데코
+        let team_bg_deco = egui::epaint::CircleShape::stroke(
+            egui::pos2(640.0 * scale, 54.0 * scale),
+            40.0 * scale,
+            egui::Stroke::new(3.0 * scale, egui::Color32::WHITE),
+        );
+        let team_bg_shadow = egui::epaint::CircleShape::filled(
+            egui::pos2(640.0 * scale, 54.0 * scale),
+            33.0 * scale,
+            egui::Color32::from_black_alpha(192),
+        );
+
+        // 플레이어 팀 배경
+        let team = self
+            .world
+            .query_one_mut::<&Team>(self.get_player_entity())
+            .cloned()
+            .expect("invalid entity or invalid entity component");
+        let team_bg = egui::epaint::CircleShape::filled(
+            egui::pos2(640.0 * scale, 54.0 * scale),
+            32.0 * scale,
+            TEAM_COLOR[team as usize],
         );
 
         // 블루 팀 게이지 배경
@@ -1773,8 +1803,8 @@ impl InGameDominationModeScene {
         // - 세로 기준 길이: 8
         //
         let rect = egui::Rect::from_min_max(
-            egui::pos2(382.0 * scale, 66.0 * scale),
-            egui::pos2(582.0 * scale, 74.0 * scale),
+            egui::pos2(382.0 * scale, 50.0 * scale),
+            egui::pos2(582.0 * scale, 58.0 * scale),
         );
         let blue_guage_bg = egui::epaint::RectShape::new(
             rect,
@@ -1789,8 +1819,8 @@ impl InGameDominationModeScene {
         // - 세로 기준 길이: 8
         //
         let rect = egui::Rect::from_min_max(
-            egui::pos2(698.0 * scale, 66.0 * scale),
-            egui::pos2(898.0 * scale, 74.0 * scale),
+            egui::pos2(698.0 * scale, 50.0 * scale),
+            egui::pos2(898.0 * scale, 58.0 * scale),
         );
         let red_guage_bg = egui::epaint::RectShape::new(
             rect,
@@ -1805,13 +1835,13 @@ impl InGameDominationModeScene {
         let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
         let width = 200.0 * scale * percent;
         let rect = egui::Rect::from_min_max(
-            egui::pos2(582.0 * scale - width, 66.0 * scale),
-            egui::pos2(582.0 * scale, 74.0 * scale),
+            egui::pos2(582.0 * scale - width, 50.0 * scale),
+            egui::pos2(582.0 * scale, 58.0 * scale),
         );
         let blue_guage = egui::epaint::RectShape::new(
             rect,
             16.0,
-            egui::Color32::from_rgb(135, 206, 235),
+            TEAM_COLOR[Team::Blue as usize],
             egui::Stroke::NONE,
             egui::StrokeKind::Middle,
         );
@@ -1821,19 +1851,22 @@ impl InGameDominationModeScene {
         let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
         let width = 200.0 * scale * percent;
         let rect = egui::Rect::from_min_max(
-            egui::pos2(698.0 * scale, 66.0 * scale),
-            egui::pos2(698.0 * scale + width, 74.0 * scale),
+            egui::pos2(698.0 * scale, 50.0 * scale),
+            egui::pos2(698.0 * scale + width, 58.0 * scale),
         );
         let red_guage = egui::epaint::RectShape::new(
             rect,
             16.0,
-            egui::Color32::from_rgb(255, 68, 51),
+            TEAM_COLOR[Team::Red as usize],
             egui::Stroke::NONE,
             egui::StrokeKind::Middle,
         );
 
         egui::Area::new(egui::Id::new("Score_Gauge_Layout")).show(egui_ctx, |ui| {
             ui.painter().add(frame_bg);
+            ui.painter().add(team_bg_deco);
+            ui.painter().add(team_bg_shadow);
+            ui.painter().add(team_bg);
             ui.painter().add(blue_guage_bg);
             ui.painter().add(blue_guage);
             ui.painter().add(red_guage_bg);

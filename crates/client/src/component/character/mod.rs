@@ -112,6 +112,7 @@ pub fn spawn_player_character(
 
     // 컴포넌트 데이터를 준비합니다.
     let character_kind = player.character_kind;
+    let team = player.team();
     let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
         glam::Quat::from_array(player.rotation),
         glam::Vec3::from_array(player.translation),
@@ -130,6 +131,7 @@ pub fn spawn_player_character(
     // 컴포넌트를 추가합니다.
     builder.add_bundle((
         character_kind,
+        team,
         local_transform,
         world_transform,
         max_health_point,
