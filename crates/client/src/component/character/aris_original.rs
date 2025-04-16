@@ -495,16 +495,17 @@ fn spawn_character_model_recursive(
                     }
                     MaterialData::CharacterEyeMouth(data) => {
                         // 캐릭터 유니폼 버퍼를 생성합니다.
+                        let data_layout = EyeMouthMaterialDataLayout {
+                            glossiness: data.glossiness,
+                            smoothness: data.smoothness,
+                            metallic: data.metallic,
+                            index: data.index,
+                            ..Default::default()
+                        };
                         let character_uniform = EyeMouthMaterialUniform::new(
                             Some(&format!("EyeMouth({})", label.unwrap_or("Unknown"))),
                             device,
-                            EyeMouthMaterialDataLayout {
-                                glossiness: data.glossiness,
-                                smoothness: data.smoothness,
-                                metallic: data.metallic,
-                                index: data.index,
-                                ..Default::default()
-                            },
+                            data_layout,
                         );
 
                         // 캐릭터 메인 컬러 텍스처를 가져옵니다.
@@ -527,7 +528,10 @@ fn spawn_character_model_recursive(
                         );
 
                         (
-                            MaterialUniform::CharacterEyeMouth(character_uniform),
+                            MaterialUniform::CharacterEyeMouth {
+                                data: data_layout,
+                                buffer: character_uniform,
+                            },
                             material_resource,
                         )
                     }

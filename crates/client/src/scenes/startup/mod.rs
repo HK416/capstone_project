@@ -30,9 +30,10 @@ use crate::{
         USER_CONFIG,
     },
     component::{
-        BulletRenderPipeline, CharacterRenderPipeline, DamageFontRenderPipeline,
-        EnergyBulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline,
-        SkyboxRenderPipeline, StageRenderPipeline,
+        BulletRenderPipeline, CaptureZoneRenderPipeline, CharacterRenderPipeline,
+        DamageFontRenderPipeline, EnergyBulletRenderPipeline, EyeMouthRenderPipeline,
+        HaloRenderPipeline, SkyboxRenderPipeline, StageRenderPipeline,
+        WeightedBlendedOITRenderPipeline,
     },
     config::UserConfig,
 };
@@ -154,6 +155,28 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             StageRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        // 점령 지역을 그리는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            CaptureZoneRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        // Weighted Blended OIT를 수행하는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            WeightedBlendedOITRenderPipeline::get_or_init(
+                &device_cloned,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+            );
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;

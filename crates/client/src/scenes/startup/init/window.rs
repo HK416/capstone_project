@@ -210,16 +210,18 @@ impl GameScene for InitWindowScene {
                             let ui = &mut cols[1];
                             ui.set_width(480.0 * scale);
                             ui.set_height(64.0 * scale);
-                            combobox.show_ui(ui, |ui| {
-                                let mut max_window_size = Some(self.max_window_size);
-                                while let Some(window_size) = max_window_size {
-                                    ui.selectable_value(
-                                        &mut self.window_size,
-                                        window_size,
-                                        window_size.to_string(),
-                                    );
-                                    max_window_size = window_size.downgrade();
-                                }
+                            ui.add_enabled_ui(!self.is_fullscreen, |ui| {
+                                combobox.show_ui(ui, |ui| {
+                                    let mut max_window_size = Some(self.max_window_size);
+                                    while let Some(window_size) = max_window_size {
+                                        ui.selectable_value(
+                                            &mut self.window_size,
+                                            window_size,
+                                            window_size.to_string(),
+                                        );
+                                        max_window_size = window_size.downgrade();
+                                    }
+                                });
                             });
                             ui.checkbox(&mut self.is_fullscreen, "");
                         });

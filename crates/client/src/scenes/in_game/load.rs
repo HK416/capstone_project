@@ -26,9 +26,9 @@ use winit::window::Window;
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, BULLET_URIS, BULLET_WORKSPACE, CHARACTER_URIS, CHARACTER_WORKSPACES,
-        DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI, STAGE_URI, STAGE_WORKSPACES,
-        UI_GAME_LAYOUT_URI,
+        TextureViewPool, BULLET_URIS, BULLET_WORKSPACE, CAPTURE_ZONE_URI, CHARACTER_URIS,
+        CHARACTER_WORKSPACES, DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI, STAGE_URI,
+        STAGE_WORKSPACES, UI_GAME_LAYOUT_URI,
     },
     component::{load_stage_layout_from_file, Attributes, MaterialDataPool, Mesh, Vertices},
     config::{Locale, NUM_LOCALE},
@@ -346,6 +346,61 @@ impl InGameLoadScene {
             stage_layout_data
                 .set(layout)
                 .expect("the stage layout data already exist!");
+
+            // 커맨드 버퍼를 전송합니다.
+            commands.push((staging_buffers, encoder.finish()));
+            // 결과를 전송합니다.
+            task_results.push(Ok(()));
+        });
+        self.num_remaining_tasks += 1;
+    }
+
+    fn load_capture_zone_model(
+        &mut self,
+        workspace: &PathBuf,
+        thread_pool: &ThreadPool,
+        device: &Arc<wgpu::Device>,
+    ) {
+        let mut workspace = workspace.clone();
+        workspace.push(STAGE_WORKSPACES[0]);
+
+        let commands = self.commands.clone();
+        let task_results = self.task_results.clone();
+        let material_data_pool = self.material_data_pool.clone();
+        let mesh_pool = self.mesh_pool.clone();
+        let model_pool = self.model_pool.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        let device = device.clone();
+
+        thread_pool.spawn(move || {
+            // 스레드의 커맨드 버퍼를 생성합니다.
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            // 지형 데이터를 구성하는 모델을 로드합니다.
+            let result = model_pool.get_or_init(
+                &mesh_pool,
+                &material_data_pool,
+                &texture_data_pool,
+                &texture_pool,
+                &texture_view_pool,
+                &sampler_pool,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                &workspace,
+                CAPTURE_ZONE_URI,
+            );
+
+            // 결과를 전송합니다.
+            if let Err(e) = result {
+                task_results.push(Err(Box::new(e)));
+                return;
+            }
 
             // 커맨드 버퍼를 전송합니다.
             commands.push((staging_buffers, encoder.finish()));
@@ -700,6 +755,7 @@ impl GameScene for InGameLoadScene {
         self.load_character_models(&workspace, thread_pool, device);
         self.load_bullet_models(&workspace, thread_pool, device);
         self.load_stage_models(&workspace, thread_pool, device);
+        self.load_capture_zone_model(&workspace, thread_pool, device);
         self.create_ui_game_layout_texture(&workspace, thread_pool, device);
         self.create_skybox_texture(&workspace, thread_pool, device);
         self.create_damage_font(&workspace, thread_pool, device);

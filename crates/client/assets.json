@@ -164,6 +164,9 @@
             "directories" : {
                 "city" : {
                     "files" : [
+                        "Capture_Zone.hierarchy",
+                        "Capture_Zone.material",
+                        "Capture_Zone.mesh",
                         "City_Building_01.hierarchy",
                         "City_Building_01.mesh",
                         "City_Building_02.hierarchy",

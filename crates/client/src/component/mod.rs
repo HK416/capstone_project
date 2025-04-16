@@ -1,5 +1,6 @@
 mod bullet;
 mod camera;
+mod capture_zone;
 mod character;
 mod control;
 mod damage_font;
@@ -14,6 +15,7 @@ mod transform;
 mod weighted_blended_oit;
 
 pub use self::{
-    bullet::*, camera::*, character::*, control::*, damage_font::*, hierarchy::*, light::*,
-    material::*, mesh::*, shadow::*, skybox::*, stage::*, transform::*, weighted_blended_oit::*,
+    bullet::*, camera::*, capture_zone::*, character::*, control::*, damage_font::*, hierarchy::*,
+    light::*, material::*, mesh::*, shadow::*, skybox::*, stage::*, transform::*,
+    weighted_blended_oit::*,
 };

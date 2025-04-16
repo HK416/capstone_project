@@ -26,6 +26,7 @@ pub enum MaterialKind {
     CharacterEyeMouth,
     CharacterHalo,
     Stage,
+    CaptureZone,
 }
 
 /// 재질 데이터입니다.
@@ -37,6 +38,7 @@ pub enum MaterialData {
     CharacterEyeMouth(EyeMouthMaterialData),
     CharacterHalo(HaloMaterialData),
     Stage(StageMaterialData),
+    CaptureZone(CaptureZoneMaterialData),
 }
 
 /// 생성된 재질 데이터를 관리하는 풀 객체입니다.
@@ -166,14 +168,21 @@ impl MaterialDataPool {
 }
 
 /// 재질 유니폼 버퍼입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum MaterialUniform {
     Bullet(BulletMaterialUniform),
     EnergyBullet(EnergyBulletMaterialUniform),
     Character(CharacterMaterialUniform),
-    CharacterEyeMouth(EyeMouthMaterialUniform),
+    CharacterEyeMouth {
+        data: EyeMouthMaterialDataLayout,
+        buffer: EyeMouthMaterialUniform,
+    },
     CharacterHalo(HaloMaterialUniform),
     Stage(StageMaterialUniform),
+    CaptureZone {
+        data: CaptureZoneMaterialDataLayout,
+        buffer: CaptureZoneMaterialUniform,
+    },
 }
 
 impl MaterialUniform {
@@ -186,9 +195,10 @@ impl MaterialUniform {
             MaterialUniform::Bullet(uniform) => uniform.slice(bounds),
             MaterialUniform::EnergyBullet(uniform) => uniform.slice(bounds),
             MaterialUniform::Character(uniform) => uniform.slice(bounds),
-            MaterialUniform::CharacterEyeMouth(uniform) => uniform.slice(bounds),
+            MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.slice(bounds),
             MaterialUniform::CharacterHalo(uniform) => uniform.slice(bounds),
             MaterialUniform::Stage(uniform) => uniform.slice(bounds),
+            MaterialUniform::CaptureZone { buffer, .. } => buffer.slice(bounds),
         }
     }
 
@@ -198,9 +208,10 @@ impl MaterialUniform {
             MaterialUniform::Bullet(uniform) => uniform.as_entire_binding(),
             MaterialUniform::EnergyBullet(uniform) => uniform.as_entire_binding(),
             MaterialUniform::Character(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::CharacterEyeMouth(uniform) => uniform.as_entire_binding(),
+            MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.as_entire_binding(),
             MaterialUniform::CharacterHalo(uniform) => uniform.as_entire_binding(),
             MaterialUniform::Stage(uniform) => uniform.as_entire_binding(),
+            MaterialUniform::CaptureZone { buffer, .. } => buffer.as_entire_binding(),
         }
     }
 }

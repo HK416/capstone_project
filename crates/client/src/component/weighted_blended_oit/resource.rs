@@ -3,9 +3,9 @@ use std::sync::OnceLock;
 /// Weighted Blended Order-Independent Transparency에 사용되는 쉐이더 리소스입니다.
 #[derive(Debug, PartialEq, Eq)]
 pub struct WeightedBlendedOITResource {
-    accum_render_target: wgpu::TextureView,
-    reveal_render_target: wgpu::TextureView,
-    bind_group: wgpu::BindGroup,
+    pub accum_render_target: wgpu::TextureView,
+    pub reveal_render_target: wgpu::TextureView,
+    pub bind_group: wgpu::BindGroup,
 }
 
 impl WeightedBlendedOITResource {

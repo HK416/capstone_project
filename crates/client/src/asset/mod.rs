@@ -107,6 +107,9 @@ pub const STAGE_WORKSPACES: [&'static str; NUM_STAGES] = ["stage/city"];
 /// 지형 데이터의 `Uri`입니다.
 pub const STAGE_URI: &'static str = "map";
 
+/// 점령 지역의 `Uri`입니다.
+pub const CAPTURE_ZONE_URI: &'static str = "Capture_Zone";
+
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]
 pub enum AssetError {

@@ -1,9 +1,3 @@
-#![allow(dead_code)]
-//! 지형 재질 쉐이더 리소스와 관련된 코드를 관리합니다.
-//!
-
-mod capture_zone;
-
 use std::{
     num::NonZeroU64,
     ops::RangeBounds,
@@ -11,42 +5,49 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use mod_network::components::Float4;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-pub use self::capture_zone::*;
+use crate::component::{MaterialKind, MaterialResource};
 
-use super::{MaterialKind, MaterialResource};
-
-/// 지형 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
-#[repr(C, align(16))]
-#[derive(Debug, Clone, Copy, Pod, Zeroable)]
-pub struct StageMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub _padding0: [u8; 4],
+/// 점령 지역 재질 데이터입니다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureZoneMaterialData {
+    pub uri: String,
+    pub color0: Float4,
+    pub color1: Float4,
 }
 
-impl Default for StageMaterialDataLayout {
+/// 점령 지역 재질 데이터 유니폼 버퍼 데이터 레이아웃입니다.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct CaptureZoneMaterialDataLayout {
+    pub color0: [f32; 4],
+    pub color1: [f32; 4],
+    pub timer: f32,
+    pub _padding: [u8; 12],
+}
+
+impl Default for CaptureZoneMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
-            metallic: 0.0,
-            _padding0: [0; 4],
+            color0: [0.0; 4],
+            color1: [0.0; 4],
+            timer: 0.0,
+            _padding: [0; 12],
         }
     }
 }
 
-/// 지형 재질 데이터 유니폼 버퍼입니다.
+/// 점령 지역 재질 데이터 유니폼 버퍼입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StageMaterialUniform(Arc<wgpu::Buffer>);
+pub struct CaptureZoneMaterialUniform(Arc<wgpu::Buffer>);
 
-impl StageMaterialUniform {
+impl CaptureZoneMaterialUniform {
     /// 유니폼 버퍼의 크기입니다.
     pub const SIZE: wgpu::BufferAddress =
-        core::mem::size_of::<StageMaterialDataLayout>() as wgpu::BufferAddress;
+        core::mem::size_of::<CaptureZoneMaterialDataLayout>() as wgpu::BufferAddress;
 
     /// 유니폼 버퍼의 [`wgpu::BufferUsages`]입니다.
     pub const USAGES: wgpu::BufferUsages =
@@ -67,7 +68,11 @@ impl StageMaterialUniform {
     }
 
     /// 새로운 유니폼 버퍼를 생성합니다.
-    pub fn new(label: Option<&str>, device: &wgpu::Device, data: StageMaterialDataLayout) -> Self {
+    pub fn new(
+        label: Option<&str>,
+        device: &wgpu::Device,
+        data: CaptureZoneMaterialDataLayout,
+    ) -> Self {
         // 유니폼 버퍼를 생성합니다.
         Self(Arc::new(device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -85,7 +90,7 @@ impl StageMaterialUniform {
         _device: &wgpu::Device,
         _encoder: &mut wgpu::CommandEncoder,
         _staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: StageMaterialDataLayout,
+        data: CaptureZoneMaterialDataLayout,
     ) {
         let capturable = self.0.clone();
         self.0
@@ -94,7 +99,7 @@ impl StageMaterialUniform {
                 Ok(_) => {
                     {
                         let mut view = capturable.slice(..).get_mapped_range_mut();
-                        let layout: &mut StageMaterialDataLayout =
+                        let layout: &mut CaptureZoneMaterialDataLayout =
                             bytemuck::from_bytes_mut(&mut view);
                         *layout = data;
                     }
@@ -117,7 +122,7 @@ impl StageMaterialUniform {
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: StageMaterialDataLayout,
+        data: CaptureZoneMaterialDataLayout,
     ) {
         // 스테이징 버퍼를 생성합니다.
         let contents = bytemuck::bytes_of(&data);
@@ -147,53 +152,25 @@ impl StageMaterialUniform {
     }
 }
 
-static_assertions::const_assert_ne!(StageMaterialUniform::SIZE, 0);
+static_assertions::const_assert_ne!(CaptureZoneMaterialUniform::SIZE, 0);
 static_assertions::const_assert_eq!(
-    StageMaterialUniform::SIZE as usize,
-    core::mem::size_of::<StageMaterialDataLayout>()
+    CaptureZoneMaterialUniform::SIZE as usize,
+    core::mem::size_of::<CaptureZoneMaterialDataLayout>()
 );
 
-/// 지형 재질 데이터입니다.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct StageMaterialData {
-    pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub main_color: String,
-}
+/// 점령 지역 재질 쉐이더 리소스입니다.
+pub struct CaptureZoneMaterialResource;
 
-/// 지형 재질 쉐이더 리소스입니다.
-pub struct StageMaterialResource;
-
-impl StageMaterialResource {
+impl CaptureZoneMaterialResource {
     /// [wgpu::BindGroupLayout]을 반환합니다.
     pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("BindGroupLayout(StageMaterialResource)"),
+                label: Some("BindGroupLayout(CaptureZoneMaterialResource)"),
                 entries: &[
-                    // 0번 바인딩: 캐릭터 재질 데이터 유니폼 버퍼
-                    StageMaterialUniform::bind_group_layout_entry(0),
-                    // 1번 바인딩: 메인 텍스처
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    // 2번 바인딩: 메인 텍스처 샘플러
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
+                    // 0번 바인딩: 점령 지역 재질 데이터 유니폼 버퍼
+                    CaptureZoneMaterialUniform::bind_group_layout_entry(0),
                 ],
             })
         })
@@ -203,29 +180,17 @@ impl StageMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        stage_uniform: &StageMaterialUniform,
-        main_color_view: &wgpu::TextureView,
-        main_color_sampler: &wgpu::Sampler,
+        capture_zone_uniform: &CaptureZoneMaterialUniform,
     ) -> MaterialResource {
         MaterialResource {
-            kind: MaterialKind::Stage,
+            kind: MaterialKind::CaptureZone,
             bind_group: Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
                 layout: Self::bind_group_layout(device),
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: stage_uniform.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(main_color_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(main_color_sampler),
-                    },
-                ],
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: capture_zone_uniform.as_entire_binding(),
+                }],
             })),
         }
     }
