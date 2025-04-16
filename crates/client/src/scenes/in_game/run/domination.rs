@@ -23,7 +23,7 @@ use mod_physics::object3d::Frustum;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
-    window::{CursorGrabMode, Window},
+    window::Window,
 };
 
 use crate::{
@@ -1876,15 +1876,58 @@ impl InGameDominationModeScene {
 }
 
 //--------------------------------------------------------------------------------------------
+// 시스템 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameDominationModeScene {
+    /// 마우스 커서를 활성화합니다.
+    fn enable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(false);
+        }
+
+        window.set_cursor_visible(true);
+    }
+
+    /// 마우스 커서를 비활성화합니다.
+    fn disable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(true);
+        }
+
+        window.set_cursor_visible(false);
+    }
+
+    /// 커서 위치를 애플리케이션 창 중앙으로 초기화합니다.
+    fn reset_cursor_position_at_center(&self, window: &Window) {
+        #[cfg(target_os = "windows")]
+        {
+            use winit::dpi::PhysicalPosition;
+            let (width, height): (u32, u32) = window.inner_size().into();
+            let position = PhysicalPosition::new(width / 2, height / 2);
+            window.set_cursor_position(position).unwrap();
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------------------
 
 impl GameScene for InGameDominationModeScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
-        window.set_cursor_visible(false);
-        window
-            .set_cursor_grab(CursorGrabMode::Confined)
-            .or_else(|_e| window.set_cursor_grab(CursorGrabMode::Locked))
-            .unwrap();
-        window.set_cursor_hittest(true).unwrap();
+        self.disable_cursor(window);
 
         self.register_ui_bg_texture(app);
         self.create_main_camera(app.render_device());
@@ -1895,23 +1938,16 @@ impl GameScene for InGameDominationModeScene {
 
     fn on_exit(&mut self, window: Option<&Window>, _app: &dyn AppHandle) {
         if let Some(window) = window {
-            window.set_cursor_visible(true);
-            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+            self.enable_cursor(window);
         }
     }
 
     fn on_pause(&mut self, window: &Window, _app: &dyn AppHandle) {
-        window.set_cursor_visible(true);
-        window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        self.enable_cursor(window);
     }
 
     fn on_resume(&mut self, window: &Window, _app: &dyn AppHandle) {
-        window.set_cursor_visible(false);
-        window
-            .set_cursor_grab(CursorGrabMode::Confined)
-            .or_else(|_e| window.set_cursor_grab(CursorGrabMode::Locked))
-            .unwrap();
-        window.set_cursor_hittest(true).unwrap();
+        self.disable_cursor(window);
     }
 
     fn on_keyboard_pressed(
@@ -2001,9 +2037,11 @@ impl GameScene for InGameDominationModeScene {
         _y: f32,
         mut dx: f32,
         mut dy: f32,
-        _window: &Window,
+        window: &Window,
         _app: &dyn AppHandle,
     ) {
+        self.reset_cursor_position_at_center(window);
+
         dx *= match self.flip_horizontal {
             true => -self.control_sensitivity,
             false => self.control_sensitivity,
