@@ -1,5 +1,8 @@
 use crate::components::{BigEndian, Team, TryFromBigEndian};
 
+/// 최대 점령점수. capture_score가 이 값에 도달하면 게임이 종료됩니다.
+pub const MAX_CAPTURE_SCORE: f32 = 60.0;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapturePoint {
     /// 점령도

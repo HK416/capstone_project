@@ -1,4 +1,4 @@
-use mod_network::components::{CapturePoint, Team};
+use mod_network::components::{CapturePoint, Team, MAX_CAPTURE_SCORE};
 use mod_physics::collision::Collider;
 
 
@@ -10,9 +10,6 @@ pub struct CapturePointObject {
 }
 
 impl CapturePointObject {
-    /// 최대 점령점수. capture_score가 이 값에 도달하면 게임이 종료됩니다.
-    pub const MAX_CAPTURE_SCORE: f32 = 60.0;
-
     pub fn new(collider: Collider) -> Self {
         Self {
             capture_point: CapturePoint::default(),
@@ -61,8 +58,8 @@ impl CapturePointObject {
             if self.capture_point.capture_progress == 100.0 {
                 let team = new_capture_team.unwrap();
                 self.capture_point.capture_score[team as usize] += elapsed_time_sec;
-                if self.capture_point.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
-                    self.capture_point.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
+                if self.capture_point.capture_score[team as usize] >= MAX_CAPTURE_SCORE {
+                    self.capture_point.capture_score[team as usize] = MAX_CAPTURE_SCORE;
                     return self.capture_point.capture_team;
                 }
             } else {
@@ -86,8 +83,8 @@ impl CapturePointObject {
         if let Some(team) = self.capture_point.capture_team {
             if self.capture_point.capture_progress == 100.0 {
                 self.capture_point.capture_score[team as usize] += elapsed_time_sec;
-                if self.capture_point.capture_score[team as usize] >= Self::MAX_CAPTURE_SCORE {
-                    self.capture_point.capture_score[team as usize] = Self::MAX_CAPTURE_SCORE;
+                if self.capture_point.capture_score[team as usize] >= MAX_CAPTURE_SCORE {
+                    self.capture_point.capture_score[team as usize] = MAX_CAPTURE_SCORE;
                     return Some(team);
                 }
             }

@@ -10,7 +10,7 @@ use mod_app::{
 };
 use mod_network::{
     components::{LoginToken, StageLayoutData, UserId},
-    protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
+    protocol::{InitStagePacket, Packet, PacketType, PullStagePacket, PushSyncPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use spin::mutex::SpinMutex;
@@ -54,7 +54,7 @@ pub struct InGameBuildScene {
     load_finished: bool,
     /// 다음 장면입니다.  
     /// 모든 작업이 완료되지 않았을 경우 `None`입니다.
-    next_scene: Arc<SpinMutex<Option<Box<dyn GameScene>>>>,
+    next_scene: Arc<SpinMutex<Option<Box<InGameDominationModeScene>>>>,
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
@@ -377,8 +377,11 @@ impl GameScene for InGameBuildScene {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::PullStage => {
+                let packet = PullStagePacket::from_raw(packet);
+
                 // 다음 게임 장면으로 전환합니다.
-                if let Some(next_scene) = self.next_scene.lock().take() {
+                if let Some(mut next_scene) = self.next_scene.lock().take() {
+                    next_scene.setup_progress(packet.capture_point, packet.remaining_time_sec);
                     let scene_flow = GameSceneFlow::Change(next_scene);
                     let event = AppEvent::SetGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();

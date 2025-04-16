@@ -10,9 +10,10 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, CharacterKind, DamageLog, GameInputBits,
-        HealthPoint, LatLon, LoginToken, MaxHealthPoint, MovementState, MovementStateTimer,
-        ObjectId, PlayPhasePlayer, UserId, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, Bullet, CapturePoint, CharacterKind, DamageLog,
+        GameInputBits, HealthPoint, LatLon, LoginToken, MaxHealthPoint, MovementState,
+        MovementStateTimer, ObjectId, PlayPhasePlayer, Team, UserId, ViewState, ViewStateTimer,
+        MAX_CAPTURE_SCORE,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -69,6 +70,11 @@ pub struct InGameDominationModeScene {
     /// 게임 장면의 경과 시간입니다.
     /// 패킷을 보낼 때 사용됩니다.
     elapsed_time_sec: f32,
+
+    /// 현재 게임 진행 상황입니다.
+    capture_point: CapturePoint,
+    /// 남은 게임 시간입니다.
+    remaining_time_sec: f32,
 
     /// 엔터티를 관리하는 월드 객체입니다.
     world: World,
@@ -149,6 +155,8 @@ impl InGameDominationModeScene {
             flip_horizontal: false,
             flip_vertical: false,
             elapsed_time_sec: 0.0,
+            capture_point: CapturePoint::default(),
+            remaining_time_sec: 0.0,
             skybox,
             world,
             main_camera: Entity::DANGLING,
@@ -174,6 +182,12 @@ impl InGameDominationModeScene {
             texture_view_pool,
             sampler_pool,
         }
+    }
+
+    /// 진행도를 설정합니다.
+    pub fn setup_progress(&mut self, capture_point: CapturePoint, remaining_time_sec: f32) {
+        self.capture_point = capture_point;
+        self.remaining_time_sec = remaining_time_sec;
     }
 
     /// 메인 카메라를 생성합니다.
@@ -471,13 +485,17 @@ impl InGameDominationModeScene {
     /// 서버의 게임 데이터를 반영합니다.
     fn pull_game_data(&mut self, packet: PullStagePacket, app: &dyn AppHandle) {
         let device = app.render_device();
+        let queue = app.render_queue();
         let mut staging_buffers = Vec::new();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+        self.capture_point = packet.capture_point;
+        self.remaining_time_sec = packet.remaining_time_sec;
 
         self.update_player_from_packet(&packet.players);
         self.update_bullet_from_packet(&packet.bullets, device, &mut encoder, &mut staging_buffers);
 
-        app.render_queue().submit(Some(encoder.finish()));
+        queue.submit(Some(encoder.finish()));
         drop(staging_buffers);
     }
 
@@ -1573,6 +1591,258 @@ impl InGameDominationModeScene {
 }
 
 //--------------------------------------------------------------------------------------------
+// 사용자 인터페이스와 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameDominationModeScene {
+    /// 체력 인터페이스 배경 레이아웃이미지입니다.
+    fn health_point_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 체력 인터페이스 레이아웃 이미지
+        // - 기준 가로 크기: 280
+        // - 기준 세로 크기: 94
+        // - 기준 시작 위치: (30, 596)
+        // - 기준 종료 위치: (310, 690)
+        //
+        let tex_width = self.ui_bg_texture.size.x;
+        let tex_height = self.ui_bg_texture.size.y;
+        let src_front = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: self.ui_bg_texture.id,
+        };
+        let pos_front = egui::Rect::from_min_max(
+            egui::pos2(30.0 * scale, 596.0 * scale),
+            egui::pos2(66.0 * scale, 690.0 * scale),
+        );
+        let uv_front = egui::Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.59375, 1.0));
+
+        let src_middle = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.1875, tex_height),
+            id: self.ui_bg_texture.id,
+        };
+        let pos_middle = egui::Rect::from_min_max(
+            egui::pos2(66.0 * scale, 596.0 * scale),
+            egui::pos2(274.0 * scale, 690.0 * scale),
+        );
+        let uv_middle =
+            egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
+
+        let src_back = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: self.ui_bg_texture.id,
+        };
+        let pos_back = egui::Rect::from_min_max(
+            egui::pos2(274.0 * scale, 596.0 * scale),
+            egui::pos2(310.0 * scale, 690.0 * scale),
+        );
+        let uv_back = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
+
+        // 체력 인터페이스 데코레이션
+        // - 기준 가로 크기: 210
+        // - 기준 세로 크기: 2
+        // - 기준 시작 위치: (75, 678)
+        // - 기준 종료 위치: (285, 680)
+        let deco_pos = egui::Rect::from_min_max(
+            egui::pos2(75.0 * scale, 678.0 * scale),
+            egui::pos2(285.0 * scale, 680.0 * scale),
+        );
+        let deco_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
+
+        egui::Area::new(egui::Id::new("Health_BG_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(src_front)
+                .uv(uv_front)
+                .tint(egui::Color32::from_black_alpha(192))
+                .paint_at(ui, pos_front);
+            egui::Image::new(src_middle)
+                .uv(uv_middle)
+                .tint(egui::Color32::from_black_alpha(192))
+                .paint_at(ui, pos_middle);
+            egui::Image::new(src_back)
+                .uv(uv_back)
+                .tint(egui::Color32::from_black_alpha(192))
+                .paint_at(ui, pos_back);
+
+            egui::Image::new(self.ui_bg_texture)
+                .uv(deco_uv)
+                .paint_at(ui, deco_pos);
+        });
+    }
+
+    /// 체력 게이지 인터페이스 레이아웃이미지입니다.
+    fn health_point_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 폰트 속성
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+
+        // 체력 텍스트
+        let entity = self.get_player_entity();
+        let (&max_hp, &hp) = self
+            .world
+            .query_one_mut::<(&MaxHealthPoint, &HealthPoint)>(entity)
+            .expect("invalid entity or invalid entity component");
+        let percent = (hp.0 as f32 / max_hp.0.get() as f32).min(1.0);
+
+        let text = format!("{}", hp.0.min(9999));
+        let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
+        let health_point_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE);
+
+        egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(egui_ctx, |ui| {
+            // 기준 가로 크기: 39.6
+            // 기준 세로 크기: 52
+            // 기준 간격 가로 크기: 3
+            // 기준 시작 위치: (55, 612)
+            // 기준 종료 위치: (280, 647.5)
+            // 기준 범위: 225
+            let pivot_x = 55.0 * scale;
+            let range_x = 225.0 * percent * scale;
+            let maximum = 225.0 * scale;
+            let mut beg_x = pivot_x;
+            let mut end_x: f32;
+            let mut rect: egui::Rect;
+
+            while beg_x < pivot_x + range_x {
+                end_x = beg_x + 35.5 * scale;
+                let x = if end_x > pivot_x + range_x {
+                    rect = egui::Rect::from_min_max(
+                        egui::pos2(beg_x, 612.0 * scale),
+                        egui::pos2(end_x, 647.5 * scale),
+                    );
+                    let shape =
+                        egui::Shape::rect_filled(rect, 1.5 * scale, egui::Color32::DARK_GRAY);
+                    ui.painter().add(shape);
+
+                    pivot_x + range_x
+                } else {
+                    end_x
+                };
+
+                let fill_color = match beg_x < pivot_x + maximum * 0.3 {
+                    true => egui::Color32::LIGHT_RED,
+                    false => egui::Color32::WHITE,
+                };
+                rect = egui::Rect::from_min_max(
+                    egui::pos2(beg_x, 612.0 * scale),
+                    egui::pos2(x, 647.5 * scale),
+                );
+                let shape = egui::Shape::rect_filled(rect, 1.5 * scale, fill_color);
+                ui.painter().add(shape);
+
+                beg_x = end_x + 2.4 * scale;
+            }
+
+            while beg_x < pivot_x + maximum {
+                end_x = beg_x + 36.25 * scale;
+                rect = egui::Rect::from_min_max(
+                    egui::pos2(beg_x, 612.0 * scale),
+                    egui::pos2(end_x, 647.5 * scale),
+                );
+                let shape = egui::Shape::rect_filled(rect, 1.5 * scale, egui::Color32::DARK_GRAY);
+                ui.painter().add(shape);
+
+                beg_x = end_x + 1.5 * scale;
+            }
+        });
+
+        egui::Area::new(egui::Id::new("Health_Number_Layout"))
+            .anchor(egui::Align2::LEFT_BOTTOM, (70.0 * scale, -38.0 * scale))
+            .show(egui_ctx, |ui| {
+                ui.set_width(128.0 * scale);
+                ui.label(health_point_text).interact(egui::Sense::empty())
+            });
+    }
+
+    /// 남은 시간 배경 레이아웃이미지입니다.
+    fn score_gauge_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 전체 배경
+        // - 가로 기준 길이: 520
+        // - 세로 기준 길이: 12
+        //
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(380.0 * scale, 64.0 * scale),
+            egui::pos2(900.0 * scale, 76.0 * scale),
+        );
+        let frame_bg = egui::epaint::RectShape::new(
+            rect,
+            16.0,
+            egui::Color32::from_white_alpha(192),
+            egui::Stroke::NONE,
+            egui::StrokeKind::Middle,
+        );
+
+        // 블루 팀 게이지 배경
+        // - 가로 기준 길이: 200
+        // - 세로 기준 길이: 8
+        //
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(382.0 * scale, 66.0 * scale),
+            egui::pos2(582.0 * scale, 74.0 * scale),
+        );
+        let blue_guage_bg = egui::epaint::RectShape::new(
+            rect,
+            16.0,
+            egui::Color32::DARK_GRAY,
+            egui::Stroke::NONE,
+            egui::StrokeKind::Middle,
+        );
+
+        // 레드 팀 게이지 배경
+        // - 가로 기준 길이: 200
+        // - 세로 기준 길이: 8
+        //
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(698.0 * scale, 66.0 * scale),
+            egui::pos2(898.0 * scale, 74.0 * scale),
+        );
+        let red_guage_bg = egui::epaint::RectShape::new(
+            rect,
+            16.0,
+            egui::Color32::DARK_GRAY,
+            egui::Stroke::NONE,
+            egui::StrokeKind::Middle,
+        );
+
+        // 블루 팀 게이지
+        let score = self.capture_point.capture_score[Team::Blue as usize];
+        let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
+        let width = 200.0 * scale * percent;
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(582.0 * scale - width, 66.0 * scale),
+            egui::pos2(582.0 * scale, 74.0 * scale),
+        );
+        let blue_guage = egui::epaint::RectShape::new(
+            rect,
+            16.0,
+            egui::Color32::from_rgb(135, 206, 235),
+            egui::Stroke::NONE,
+            egui::StrokeKind::Middle,
+        );
+
+        // 레드 팀 게이지
+        let score = self.capture_point.capture_score[Team::Red as usize];
+        let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
+        let width = 200.0 * scale * percent;
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(698.0 * scale, 66.0 * scale),
+            egui::pos2(698.0 * scale + width, 74.0 * scale),
+        );
+        let red_guage = egui::epaint::RectShape::new(
+            rect,
+            16.0,
+            egui::Color32::from_rgb(255, 68, 51),
+            egui::Stroke::NONE,
+            egui::StrokeKind::Middle,
+        );
+
+        egui::Area::new(egui::Id::new("Score_Gauge_Layout")).show(egui_ctx, |ui| {
+            ui.painter().add(frame_bg);
+            ui.painter().add(blue_guage_bg);
+            ui.painter().add(blue_guage);
+            ui.painter().add(red_guage_bg);
+            ui.painter().add(red_guage);
+        });
+    }
+}
+
+//--------------------------------------------------------------------------------------------
 
 impl GameScene for InGameDominationModeScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -1973,158 +2243,16 @@ impl GameScene for InGameDominationModeScene {
             .color(egui::Color32::WHITE)
             .background_color(egui::Color32::from_black_alpha(96));
 
-        // 체력 텍스트
-        let entity = self.get_player_entity();
-        let (&max_hp, &hp) = self
-            .world
-            .query_one_mut::<(&MaxHealthPoint, &HealthPoint)>(entity)
-            .expect("invalid entity or invalid entity component");
-        let percent = (hp.0 as f32 / max_hp.0.get() as f32).min(1.0);
-
-        let text = format!("{}", hp.0.min(9999));
-        let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
-        let health_point_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::WHITE);
-
-        // 체력 인터페이스 레이아웃 이미지
-        // - 기준 가로 크기: 280
-        // - 기준 세로 크기: 94
-        // - 기준 시작 위치: (30, 596)
-        // - 기준 종료 위치: (310, 690)
-        //
-        let tex_width = self.ui_bg_texture.size.x;
-        let tex_height = self.ui_bg_texture.size.y;
-        let src_front = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: self.ui_bg_texture.id,
-        };
-        let pos_front = egui::Rect::from_min_max(
-            egui::pos2(30.0 * scale, 596.0 * scale),
-            egui::pos2(66.0 * scale, 690.0 * scale),
-        );
-        let uv_front = egui::Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.59375, 1.0));
-
-        let src_middle = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.1875, tex_height),
-            id: self.ui_bg_texture.id,
-        };
-        let pos_middle = egui::Rect::from_min_max(
-            egui::pos2(66.0 * scale, 596.0 * scale),
-            egui::pos2(274.0 * scale, 690.0 * scale),
-        );
-        let uv_middle =
-            egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
-
-        let src_back = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: self.ui_bg_texture.id,
-        };
-        let pos_back = egui::Rect::from_min_max(
-            egui::pos2(274.0 * scale, 596.0 * scale),
-            egui::pos2(310.0 * scale, 690.0 * scale),
-        );
-        let uv_back = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
-
-        // 체력 인터페이스 데코레이션
-        // - 기준 가로 크기: 210
-        // - 기준 세로 크기: 2
-        // - 기준 시작 위치: (75, 678)
-        // - 기준 종료 위치: (285, 680)
-        let deco_pos = egui::Rect::from_min_max(
-            egui::pos2(75.0 * scale, 678.0 * scale),
-            egui::pos2(285.0 * scale, 680.0 * scale),
-        );
-        let deco_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
-
         egui::Area::new(egui::Id::new("Reticle_Layout"))
             .anchor(egui::Align2::CENTER_CENTER, (0.0, 0.0))
             .show(app.egui_ctx(), |ui| {
                 ui.painter().add(reticle);
             });
 
-        egui::Area::new(egui::Id::new("Health_BG_Layout")).show(app.egui_ctx(), |ui| {
-            egui::Image::new(src_front)
-                .uv(uv_front)
-                .tint(egui::Color32::from_black_alpha(192))
-                .paint_at(ui, pos_front);
-            egui::Image::new(src_middle)
-                .uv(uv_middle)
-                .tint(egui::Color32::from_black_alpha(192))
-                .paint_at(ui, pos_middle);
-            egui::Image::new(src_back)
-                .uv(uv_back)
-                .tint(egui::Color32::from_black_alpha(192))
-                .paint_at(ui, pos_back);
+        self.score_gauge_bg_layout(app.egui_ctx(), scale);
 
-            egui::Image::new(self.ui_bg_texture)
-                .uv(deco_uv)
-                .paint_at(ui, deco_pos);
-        });
-
-        egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(app.egui_ctx(), |ui| {
-            // 기준 가로 크기: 39.6
-            // 기준 세로 크기: 52
-            // 기준 간격 가로 크기: 3
-            // 기준 시작 위치: (55, 612)
-            // 기준 종료 위치: (280, 647.5)
-            // 기준 범위: 225
-            let pivot_x = 55.0 * scale;
-            let range_x = 225.0 * percent * scale;
-            let maximum = 225.0 * scale;
-            let mut beg_x = pivot_x;
-            let mut end_x: f32;
-            let mut rect: egui::Rect;
-
-            while beg_x < pivot_x + range_x {
-                end_x = beg_x + 35.5 * scale;
-                let x = if end_x > pivot_x + range_x {
-                    rect = egui::Rect::from_min_max(
-                        egui::pos2(beg_x, 612.0 * scale),
-                        egui::pos2(end_x, 647.5 * scale),
-                    );
-                    let shape =
-                        egui::Shape::rect_filled(rect, 1.5 * scale, egui::Color32::DARK_GRAY);
-                    ui.painter().add(shape);
-
-                    pivot_x + range_x
-                } else {
-                    end_x
-                };
-
-                let fill_color = match beg_x < pivot_x + maximum * 0.3 {
-                    true => egui::Color32::LIGHT_RED,
-                    false => egui::Color32::WHITE,
-                };
-                rect = egui::Rect::from_min_max(
-                    egui::pos2(beg_x, 612.0 * scale),
-                    egui::pos2(x, 647.5 * scale),
-                );
-                let shape = egui::Shape::rect_filled(rect, 1.5 * scale, fill_color);
-                ui.painter().add(shape);
-
-                beg_x = end_x + 2.4 * scale;
-            }
-
-            while beg_x < pivot_x + maximum {
-                end_x = beg_x + 36.25 * scale;
-                rect = egui::Rect::from_min_max(
-                    egui::pos2(beg_x, 612.0 * scale),
-                    egui::pos2(end_x, 647.5 * scale),
-                );
-                let shape = egui::Shape::rect_filled(rect, 1.5 * scale, egui::Color32::DARK_GRAY);
-                ui.painter().add(shape);
-
-                beg_x = end_x + 1.5 * scale;
-            }
-        });
-
-        egui::Area::new(egui::Id::new("Health_Number_Layout"))
-            .anchor(egui::Align2::LEFT_BOTTOM, (70.0 * scale, -38.0 * scale))
-            .show(app.egui_ctx(), |ui| {
-                ui.set_width(128.0 * scale);
-                ui.label(health_point_text).interact(egui::Sense::empty())
-            });
+        self.health_point_bg_layout(app.egui_ctx(), scale);
+        self.health_point_gauge_layout(app.egui_ctx(), scale);
 
         egui::Area::new(egui::Id::new("FrameRate_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
