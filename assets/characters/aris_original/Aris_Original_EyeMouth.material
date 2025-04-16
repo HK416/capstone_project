@@ -1,1 +1,1 @@
-{ "CharacterEyeMouth": { "uri": "Aris_Original_EyeMouth", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Aris_Original_EyeMouth" } }
+{ "CharacterEyeMouth": { "uri": "Aris_Original_EyeMouth", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "index": 25, "main_color": "Aris_Original_EyeMouth", "eye_mouth": "Character_Mouth" } }

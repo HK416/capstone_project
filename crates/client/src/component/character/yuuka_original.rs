@@ -502,6 +502,7 @@ fn spawn_character_model_recursive(
                                 glossiness: data.glossiness,
                                 smoothness: data.smoothness,
                                 metallic: data.metallic,
+                                index: data.index,
                                 ..Default::default()
                             },
                         );
@@ -510,6 +511,10 @@ fn spawn_character_model_recursive(
                         let (main_color_view, main_color_sampler) = texture_data_pool
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
+                        // 캐릭터 입 텍스처를 가져옵니다.
+                        let (eye_mouth_view, eye_mouth_sampler) = texture_data_pool
+                            .get(&data.eye_mouth)
+                            .expect("the texture data must exist!");
 
                         let material_resource = EyeMouthMaterialResource::new(
                             label,
@@ -517,6 +522,8 @@ fn spawn_character_model_recursive(
                             &character_uniform,
                             &main_color_view,
                             &main_color_sampler,
+                            &eye_mouth_view,
+                            &eye_mouth_sampler,
                         );
 
                         (

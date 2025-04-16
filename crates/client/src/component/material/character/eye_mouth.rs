@@ -21,7 +21,9 @@ pub struct EyeMouthMaterialData {
     pub glossiness: f32,
     pub smoothness: f32,
     pub metallic: f32,
+    pub index: u32,
     pub main_color: String,
+    pub eye_mouth: String,
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
@@ -31,7 +33,7 @@ pub struct EyeMouthMaterialDataLayout {
     pub glossiness: f32,
     pub smoothness: f32,
     pub metallic: f32,
-    pub _padding0: [u8; 4],
+    pub index: u32,
 }
 
 impl Default for EyeMouthMaterialDataLayout {
@@ -40,7 +42,7 @@ impl Default for EyeMouthMaterialDataLayout {
             glossiness: 0.0,
             smoothness: 0.0,
             metallic: 0.0,
-            _padding0: [0; 4],
+            index: 0,
         }
     }
 }
@@ -201,6 +203,24 @@ impl EyeMouthMaterialResource {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    // 3번 바인딩: 입 텍스처
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 4번 바인딩: 입 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             })
         })
@@ -213,6 +233,8 @@ impl EyeMouthMaterialResource {
         character_uniform: &EyeMouthMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
+        eye_mouth_view: &wgpu::TextureView,
+        eye_mouth_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
         MaterialResource {
             kind: MaterialKind::CharacterEyeMouth,
@@ -231,6 +253,14 @@ impl EyeMouthMaterialResource {
                     wgpu::BindGroupEntry {
                         binding: 2,
                         resource: wgpu::BindingResource::Sampler(main_color_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(eye_mouth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(eye_mouth_sampler),
                     },
                 ],
             })),

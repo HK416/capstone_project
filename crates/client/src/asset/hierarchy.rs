@@ -229,6 +229,17 @@ impl ModelPool {
                         texture_view_pool,
                         sampler_pool,
                     )?;
+                    // 입 텍스처를 로드합니다.
+                    texture_data_pool.get_or_init(
+                        workspace.as_ref(),
+                        &data.eye_mouth,
+                        device,
+                        encoder,
+                        staging_buffers,
+                        texture_pool,
+                        texture_view_pool,
+                        sampler_pool,
+                    )?;
                 }
                 MaterialData::CharacterHalo(data) => {
                     // 메인 컬러 텍스처를 로드합니다.

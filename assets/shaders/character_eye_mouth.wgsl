@@ -41,6 +41,7 @@ struct EyeMouthMaterialDataLayout {
     glossiness: f32,
     smoothness: f32,
     metallic: f32,
+    index: u32,
 };
 
 @group(0) @binding(0)
@@ -60,6 +61,12 @@ var t_main_color: texture_2d<f32>;
 
 @group(2) @binding(2)
 var s_main_color: sampler; 
+
+@group(2) @binding(3)
+var t_eye_mouth: texture_2d<f32>;
+
+@group(2) @binding(4)
+var s_eye_mouth: sampler;
 
 // 캐릭터를 그리는 버텍스 쉐이더입니다.
 @vertex
@@ -93,7 +100,33 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 // 캐릭터를 그리는 프래그먼트 쉐이더입니다.
 @fragment 
 fn fs_main(input: VertexOutput) -> RenderTarget {
+    let main_color = textureSample(t_main_color, s_main_color, input.texcoord);
+    let eye_mouth = get_eye_mouth_color(input.texcoord);
+    let color = main_color * eye_mouth;
+    if color.a < 0.5 {
+        discard;
+    }
+
     var out: RenderTarget;
-    out.color = textureSample(t_main_color, s_main_color, input.texcoord);
+    out.color = color;
     return out;
+}
+
+// 입 텍스처의 색상을 가져옵니다.
+fn get_eye_mouth_color(texcoord: vec2<f32>) -> vec4<f32> {
+    if (texcoord.x > 0.25 || texcoord.y < 0.75) {
+        return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    }
+
+    let row = u_material.index / 8;
+    let col = u_material.index % 8;
+
+    let u = texcoord.x / 0.25;            // u: 0 ~ 1
+    let v = (texcoord.y - 0.75) / 0.25;   // v: 0 ~ 1
+    let coord = vec2<f32>(
+        u * 0.125 + f32(col) * 0.125,
+        v * 0.125 + f32(row) * 0.125
+    );
+
+    return textureSample(t_eye_mouth, s_eye_mouth, coord);
 }
