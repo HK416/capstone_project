@@ -3,7 +3,7 @@ use std::{error::Error, sync::Arc};
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
-    net::NetManager,
+    net::{NetManager, NetworkError},
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
@@ -11,9 +11,9 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::NOTOSANS_REGULAR,
+    asset::{TexturePool, TextureViewPool, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
 
@@ -21,6 +21,10 @@ use super::GameIntroVerifyScene;
 
 /// 애플리케이션 표시 언어에 따른 게임 서버 연결 텍스트
 const CONNECT_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결 중"];
+/// 애플리케이션 표시 언어에 따른 게임 서버 연결 실패 타이틀 텍스트
+const CONNECT_ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+/// 애플리케이션 표시 언어에 따른 게임 서버 연결 실패 메시지 텍스트
+const CONNECT_ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결에 실패했습니다!"];
 
 pub struct GameIntroConnectScene {
     /// 애플리케이션 표시 언어
@@ -29,20 +33,24 @@ pub struct GameIntroConnectScene {
     /// 작업 결과를 저장
     task_result: Arc<Queue<Result<(), Box<dyn Error + Send>>>>,
 
-    /// 게임 로고 텍스처 식별자
-    game_logo_texture_id: egui::load::SizedTexture,
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
 }
 
 impl GameIntroConnectScene {
     /// 새로운 `GameIntroConnectScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(
+        locale: Locale,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
+    ) -> Self {
         Self {
             locale,
             task_result: Arc::new(Queue::new()),
-            game_logo_texture_id: egui::load::SizedTexture {
-                id: egui::TextureId::User(0),
-                size: egui::Vec2::ZERO,
-            },
+            texture_pool,
+            texture_view_pool,
         }
     }
 
@@ -64,54 +72,71 @@ impl GameIntroConnectScene {
 }
 
 impl GameScene for GameIntroConnectScene {
-    fn on_enter(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        self.try_connect_game_server(app.io_threads(), app.net_manager());
-        Ok(())
+    fn transparents(&self) -> bool {
+        true
     }
 
-    fn on_update(
-        &mut self,
-        _elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+        self.try_connect_game_server(app.io_threads(), app.net_manager());
+    }
+
+    fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_result.pop() {
             // 오류를 확인합니다.
-            result?;
+            let scene_flow = match result {
+                Ok(_) => {
+                    let next_scene = GameIntroVerifyScene::new(
+                        self.locale,
+                        self.texture_pool.clone(),
+                        self.texture_view_pool.clone(),
+                    );
+                    GameSceneFlow::Change(Box::new(next_scene))
+                }
+                Err(_) => {
+                    let i = self.locale as usize;
+                    let next_scene = FatalErrorSceneLayer::new(
+                        self.locale,
+                        CONNECT_ERR_TITLE_TEXTS[i],
+                        CONNECT_ERR_MSG_TEXTS[i],
+                    );
+                    GameSceneFlow::Push(Box::new(next_scene))
+                }
+            };
 
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(GameIntroVerifyScene::new(self.locale));
-            let scene_flow = GameSceneFlow::Change(next_scene);
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-
-        Ok(())
     }
 
-    fn on_draw(
-        &self,
-        _window: &Window,
-        _encoder: &mut wgpu::CommandEncoder,
-        _render_target_view: &wgpu::TextureView,
-        _depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        Ok(())
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        let (width, height): (f32, f32) = window.inner_size().into();
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+        let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
 
@@ -126,23 +151,6 @@ impl GameScene for GameIntroConnectScene {
             .font(main_font_id)
             .color(egui::Color32::BLACK);
 
-        // 게임 로고 속성
-        let ratio = self.game_logo_texture_id.size.x / self.game_logo_texture_id.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width * 0.3;
-        let img_height = img_width / ratio;
-        let rect = egui::Rect {
-            min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
-            ),
-            max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
-            ),
-        };
-
         egui::Area::new(egui::Id::new("Layout"))
             .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -18.0 * scale])
             .show(app.egui_ctx(), |ui| {
@@ -150,13 +158,5 @@ impl GameScene for GameIntroConnectScene {
                     ui.label(connect_text);
                 })
             });
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new())
-            .show(app.egui_ctx(), |ui| {
-                egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
-            });
-
-        Ok(())
     }
 }

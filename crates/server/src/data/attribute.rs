@@ -57,9 +57,14 @@ fn load_character_attribute(path: &str) -> CharacterAttributes {
         .map_err(|e| log::error!("failed to read file. (PATH:{}, REASON:{})", &path, &e))
         .expect("캐릭터 속성 데이터 파일 읽기에 실패했습니다!");
 
-    let attribute = serde_json::from_slice(&buf)
+    let attribute: CharacterAttributes = serde_json::from_slice(&buf)
         .map_err(|e| log::error!("failed to parse file. (PATH:{}, REASON:{})", &path, &e))
         .expect("캐릭터 속성 데이터 파일 구문 분석에 실패했습니다!");
+
+    assert_ne!(
+        attribute.health_point, 0,
+        "캐릭터의 최대 체력은 0이 될 수 없습니다!"
+    );
 
     attribute
 }

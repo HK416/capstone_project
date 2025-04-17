@@ -1,7 +1,10 @@
+use std::num::NonZeroU16;
+
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameInputBits, HealthPoint,
-    LatLon, MAX_JUMP_DURATION, MovementState, MovementStateTimer, NUM_ACTION_STATES,
-    NUM_MOVEMENT_STATES, ObjectId, Permission, Team, UserAccount, ViewState, ViewStateTimer,
+    LatLon, MAX_JUMP_DURATION, MaxHealthPoint, MovementState, MovementStateTimer,
+    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Permission, Team, UserAccount, ViewState,
+    ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
 
@@ -117,9 +120,10 @@ impl PlayerObject {
 
     /// 리스폰시 호출하여 플레이어 오브젝트의 상태를 초기화합니다.
     pub fn reset_state(&mut self) {
-        // self.health_point = HealthPoint(get_character_attributes(self.character_kind).health_point as u16);
+        self.health_point =
+            HealthPoint(get_character_attributes(self.character_kind).health_point as u16);
         // 테스트용으로 체력을 낮게 설정
-        self.health_point = HealthPoint(50);
+        // self.health_point = HealthPoint(50);
         self.fired_per_attack = 0;
         self.remaining_bullets = 1;
         self.action_state = ActionState::Idle;
@@ -191,6 +195,16 @@ impl PlayerObject {
     /// 플레이어 오브젝트의 캐릭터 속성을 가져옵니다.
     pub fn character_attributes(&self) -> &'static CharacterAttributes {
         self.attributes
+    }
+
+    /// 플레이어의 오브젝트 최대 체력을 가져옵니다.
+    pub fn max_health_point(&self) -> MaxHealthPoint {
+        // Safe: 캐릭터 속성 데이터 로드시 0이 아닌지 확인함.
+        unsafe {
+            MaxHealthPoint::new(NonZeroU16::new_unchecked(
+                self.attributes.health_point as u16,
+            ))
+        }
     }
 
     /// 플레이어 오브젝트 체력을 가져옵니다.
@@ -320,9 +334,13 @@ impl PlayerObject {
         let rotate = glam::Mat4::from_rotation_y(self.view_rotation.lon);
 
         // 총구가 향하는 방향을 계산합니다.
-        let mut direction =
-            glam::Vec3A::from(self.attributes.get_muzzle_direction(t)).normalize_or(glam::Vec3A::Z);
-        direction = rotate.transform_vector3a(direction);
+        let mut direction = glam::Vec3A::Z;
+        direction = glam::Mat4::from_rotation_y(self.view_rotation.lon)
+            .transform_vector3a(direction)
+            .normalize_or(glam::Vec3A::Z);
+        let right = glam::Vec3A::Y.cross(direction);
+        direction = glam::Mat4::from_axis_angle(right.into(), self.view_rotation.lat)
+            .transform_vector3a(direction);
 
         // 총알의 위치를 계산합니다.
         let translation = self.translation

@@ -1,156 +1,202 @@
-use std::{
-    io::Cursor,
-    sync::{Arc, OnceLock},
-};
+#![allow(dead_code)]
+//! 애니메이션 데이터 에셋과 관련된 코드를 관리합니다.
+//!
 
-use ahash::HashMap;
-use mod_app::asset::AssetManager;
+use std::{fs::OpenOptions, io::Read, path::Path, sync::Arc};
+
+use ahash::{HashMap, RandomState};
 use mod_network::components::Matrix;
 use parking_lot::{FairMutex, FairMutexGuard};
 use serde::{Deserialize, Serialize};
 
 use super::AssetError;
 
-type PoolType = HashMap<String, Arc<HashMap<String, Motion>>>;
-
 /// 로드된 애니메이션 데이터를 관리하는 풀 객체입니다.
-static POOL: OnceLock<FairMutex<PoolType>> = OnceLock::new();
+#[derive(Debug, Clone)]
+pub struct MotionPool(Arc<FairMutex<AnimationPoolType>>);
 
-/// 애니메이션 데이터를 관리하는 풀 객체를 가져옵니다.
-fn get_pool() -> FairMutexGuard<'static, PoolType> {
-    POOL.get_or_init(|| FairMutex::new(HashMap::default()))
-        .lock()
-}
+/// 애니메이션 풀 객체의 타입입니다.
+pub type AnimationPoolType = HashMap<String, Arc<HashMap<String, Motion>>>;
 
-/// ## Motion Pool
-/// 로드된 모델의 애니메이션 데이터를 관리하는 풀 객체입니다.  
-/// 실제 풀 객체는 static 변수로 선언되어 있으며, `MotionPool`은 풀 객체에 접근할 수 있는 인터페이스를 제공합니다.
-pub struct MotionPool;
+/// 애니메이션 풀 객체의 용량입니다.
+pub const ANIMATION_POOL_CAPACITY: usize = 128;
 
 impl MotionPool {
-    /// 모델의 애니메이션 데이터를 가져옵니다.  
-    /// 모델의 애니메이션 데이터가 풀 객체에 존재하지 않는 경우 파일에서 로드합니다.  
-    ///
-    /// # Errors
-    /// 애니메이션 데이터를 로드하는 도중 오류가 발생한 경우 `Error`를 반환합니다.
-    ///
-    pub fn get_or_init(
-        name: &str,
-        workspace: &str,
-        asset_manager: &AssetManager,
-    ) -> Result<Arc<HashMap<String, Motion>>, AssetError> {
-        let mut pool = get_pool();
-        match pool.get(name).cloned() {
-            Some(motion) => Ok(motion),
-            None => {
-                let motion = load_model_animation(name, workspace, asset_manager)?;
-                pool.insert(name.to_string(), motion.clone());
-                Ok(motion)
-            }
-        }
+    /// 새로운 풀 객체를 생성합니다.
+    pub fn new() -> Self {
+        Self(Arc::new(FairMutex::new(HashMap::with_capacity_and_hasher(
+            ANIMATION_POOL_CAPACITY,
+            RandomState::new(),
+        ))))
     }
 
-    /// 풀 객체에 존재하는 해당 애니메이션 데이터를 제거합니다.  
-    /// 풀 객체에 해당 애니메이션 데이터가 존재하지 않는 경우 아무 동작을 수행하지 않습니다.
-    #[allow(dead_code)]
-    pub fn remove(name: &str) -> Option<Arc<HashMap<String, Motion>>> {
-        get_pool().remove(name)
+    /// 풀 객체의 `lock`을 획득합니다.
+    ///
+    /// # Warning
+    /// `FairMutexGuard`가 지속되는 동안 풀 객체의 다른 함수를 호출하면 데드락이 발생합니다.
+    ///
+    pub fn lock(&self) -> FairMutexGuard<'_, AnimationPoolType> {
+        self.0.lock()
+    }
+
+    /// 파일로부터 [MotionData]를 생성합니다.
+    fn load_from_file<Dir, Uri>(workspace: Dir, uri: Uri) -> Result<Vec<MotionData>, AssetError>
+    where
+        Dir: AsRef<Path>,
+        Uri: AsRef<str>,
+    {
+        let mut path = workspace.as_ref().to_path_buf();
+        path.push(format!("{}.motion", uri.as_ref()));
+
+        log::debug!("open animation data asset (PATH:{})", path.display());
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .open(&path)
+            .map_err(|e| {
+                log::error!(
+                    "failed to open animation data asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                AssetError::IOError(e)
+            })?;
+
+        log::debug!("read animation data asset (PATH:{})", path.display());
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).map_err(|e| {
+            log::error!(
+                "failed to read animation data asset (PATH:{}, REASON:{})",
+                path.display(),
+                &e
+            );
+            AssetError::IOError(e)
+        })?;
+
+        log::debug!("close animation data asset (PATH:{})", path.display());
+        drop(file);
+
+        log::debug!("decode animation data asset (PATH:{})", path.display());
+        serde_json::from_slice(&buf).map_err(|e| {
+            log::error!(
+                "failed to decode animation data asset (PATH:{}, REASON:{})",
+                path.display(),
+                &e
+            );
+            AssetError::ParsingFailed(e)
+        })
+    }
+
+    /// 애니메이션 데이터 풀 객체에서 등록된 애니메이션을 가져옵니다.  
+    /// 해당 Uri에 등록된 애니메이션 데이터가 없는 경우 파일에서 읽어 생성합니다.
+    pub fn get_or_init<Dir, Uri>(
+        &self,
+        workspace: Dir,
+        uri: Uri,
+    ) -> Result<Arc<HashMap<String, Motion>>, AssetError>
+    where
+        Dir: AsRef<Path>,
+        Uri: AsRef<str>,
+    {
+        // 풀 객체를 가져옵니다.
+        let mut pool = self.lock();
+
+        if let Some(motion) = pool.get(uri.as_ref()).cloned() {
+            return Ok(motion);
+        }
+
+        // 애니메이션 데이터를 생성합니다.
+        let data = Self::load_from_file(workspace.as_ref(), uri.as_ref())?;
+        let motion: HashMap<String, Motion> = data
+            .into_iter()
+            .map(|data| {
+                (
+                    data.name,
+                    Motion {
+                        length: data.length,
+                        frame_rate: data.frame_rate,
+                        keyframes: data
+                            .keyframes
+                            .into_iter()
+                            .map(|keyframe| KeyFrame {
+                                root_matrix: keyframe.root_matrix.into(),
+                                meshes: keyframe
+                                    .meshes
+                                    .into_iter()
+                                    .map(|mesh| KeyFrameMesh {
+                                        name: mesh.name,
+                                        bone_trans: mesh
+                                            .bone_trans
+                                            .into_iter()
+                                            .map(|trans| trans.into())
+                                            .collect(),
+                                    })
+                                    .collect(),
+                            })
+                            .collect(),
+                    },
+                )
+            })
+            .collect();
+        let motion = Arc::new(motion);
+
+        // 생성된 애니메이션 데이터를 풀 객체에 등록합니다.
+        pool.insert(uri.as_ref().into(), motion.clone());
+        Ok(motion)
+    }
+
+    /// 주어진 Uri에에 해당하는 애니메이션 데이터를 가져옵니다.
+    /// 해당 애니메이션 데이터가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn get<Uri>(&self, uri: Uri) -> Option<Arc<HashMap<String, Motion>>>
+    where
+        Uri: AsRef<str>,
+    {
+        self.lock().get(uri.as_ref()).cloned()
+    }
+
+    /// Uri에 해당하는 애니메이션 데이터를 풀 객체에서 제거합니다.  
+    /// 애니메이션 데이터가 풀 객체에 존재하지 않는 경우 `None`을 반환합니다.
+    pub fn remove<Uri>(&self, uri: Uri) -> Option<Arc<HashMap<String, Motion>>>
+    where
+        Uri: AsRef<str>,
+    {
+        self.lock().remove(uri.as_ref()).map(|item| item)
     }
 
     /// 풀 객체에 존재하는 모든 애니메이션 데이터를 제거합니다.
-    #[allow(dead_code)]
-    pub fn clear() {
-        get_pool().clear()
+    pub fn clear(&self) {
+        self.lock().clear()
     }
 }
 
-/// 모델의 애니메이션 데이터를 로드합니다.
-fn load_model_animation(
-    name: &str,
-    workspace: &str,
-    asset_manager: &AssetManager,
-) -> Result<Arc<HashMap<String, Motion>>, AssetError> {
-    let path = format!("{}/{}.motion", workspace, name);
-    let cached_asset = asset_manager.get_or_init(&path).map_err(|e| {
-        log::error!("{} (PATH:{})", &e, &path);
-        AssetError::from(e)
-    })?;
-    let reader = Cursor::new(cached_asset.as_bytes());
-    let blob: Vec<MotionBlob> = serde_json::de::from_reader(reader).map_err(|e| {
-        log::error!("{} (PATH:{})", &e, &path);
-        AssetError::from(e)
-    })?;
-    let blob = blob
-        .into_iter()
-        .map(|blob| (blob.name.clone(), blob.into()))
-        .collect();
-
-    asset_manager.remove(path);
-    Ok(Arc::new(blob))
-}
-
-/// ## Animation Data
+/// 애니메이션 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MotionBlob {
+pub struct MotionData {
     pub name: String,
-    /// NOTE: 스키닝된 메쉬의 최상위 뼈 노드가 아닌 모델의 최상위 뼈 노드
-    /// 차후 제거 예정
-    pub root: String,
     pub length: f32,
     pub frame_rate: f32,
-    pub keyframes: Vec<KeyFrameBlob>,
+    pub keyframes: Vec<KeyFrameData>,
 }
 
-impl Into<Motion> for MotionBlob {
-    fn into(self) -> Motion {
-        Motion {
-            name: self.name,
-            length: self.length,
-            frame_rate: self.frame_rate,
-            keyframes: self
-                .keyframes
-                .into_iter()
-                .map(|keyframe| KeyFrame {
-                    time_point: keyframe.time_point,
-                    root_matrix: keyframe.root_matrix.into(),
-                    meshes: keyframe
-                        .meshes
-                        .into_iter()
-                        .map(|mesh| KeyFrameMesh {
-                            name: mesh.name,
-                            bone_trans: mesh
-                                .bone_trans
-                                .into_iter()
-                                .map(|trans| trans.into())
-                                .collect(),
-                        })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-}
-
-/// ## Animation Key Frame Data
+/// 애니메이션의 키 프레임 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct KeyFrameBlob {
+pub struct KeyFrameData {
     pub time_point: f32,
     /// NOTE: 스키닝된 메쉬의 최상위 뼈 노드가 아닌 모델의 최상위 뼈 노드 변환 행렬
     pub root_matrix: Matrix,
     pub meshes: Vec<KeyFrameMeshBlob>,
 }
 
-/// ## Animation Key Frame Skinned Mesh Data
+/// 애니메이션의 키 프레임 스키닝 메쉬 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KeyFrameMeshBlob {
     pub name: String,
     pub bone_trans: Vec<Matrix>,
 }
 
+/// 애니메이션 데이터입니다.
 #[derive(Debug, Clone)]
 pub struct Motion {
-    #[allow(dead_code)]
-    pub name: String,
     pub length: f32,
     pub frame_rate: f32,
     pub keyframes: Vec<KeyFrame>,
@@ -188,7 +234,6 @@ impl Motion {
             .collect();
 
         KeyFrame {
-            time_point,
             root_matrix,
             meshes,
         }
@@ -198,8 +243,6 @@ impl Motion {
 /// ## Animation Key Frame Data
 #[derive(Debug, Clone)]
 pub struct KeyFrame {
-    #[allow(dead_code)]
-    pub time_point: f32,
     /// NOTE: 스키닝된 메쉬의 최상위 뼈 노드가 아닌 모델의 최상위 뼈 노드 변환 행렬
     pub root_matrix: glam::Mat4,
     pub meshes: Vec<KeyFrameMesh>,

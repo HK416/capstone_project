@@ -78,7 +78,10 @@ impl AssetManager {
         absolute_path.push(relative_path.clone());
 
         // 파일 핸들을 생성하고, 파일을 엽니다.
-        let file = File::open(absolute_path)?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .open(absolute_path)?;
 
         // 파일 내용을 읽습니다.
         let mut reader = BufReader::new(file);

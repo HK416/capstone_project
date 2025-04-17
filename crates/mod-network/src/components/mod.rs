@@ -152,6 +152,22 @@ impl BigEndian for u128 {
     }
 }
 
+impl BigEndian for [f32; 2] {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        [
+            f32::from_big_endian_bytes(&bytes[0..4]),
+            f32::from_big_endian_bytes(&bytes[4..8]),
+        ]
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(8);
+        bytes.extend_from_slice(&self[0].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[1].to_big_endian_bytes());
+        bytes
+    }
+}
+
 impl BigEndian for [f32; 3] {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         [

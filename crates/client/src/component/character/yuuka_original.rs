@@ -1,22 +1,24 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use ahash::{HashMap, HashSet};
 use constcat::concat;
 use glam::FloatExt;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
-use mod_app::asset::AssetManager;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, GameInputBits, LatLon, MovementState,
     MovementStateTimer, ViewState, ViewStateTimer, MAX_JUMP_DURATION, NUM_ACTION_STATES,
     NUM_MOVEMENT_STATES, NUM_VIEW_STATES,
 };
-use mod_render::{MaterialResource, MeshResource, SkinningDataLayout};
 
 use crate::{
-    asset::{AssetError, ModelHierarchyPool, Motion, MotionPool, Node},
+    asset::{ModelNode, ModelRoot, Motion, MotionPool, TextureDataPool, CHARACTER_URIS},
     component::{
-        BoneCollection, Child, Parent, Sibling, SkinningAnimation, ThirdPersonCamera,
-        ToParentTrans, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
+        BoneCollection, BoneTransformUniform, CharacterMaterialDataLayout,
+        CharacterMaterialResource, CharacterMaterialUniform, Child, EyeMouthMaterialDataLayout,
+        EyeMouthMaterialResource, EyeMouthMaterialUniform, HaloMaterialDataLayout,
+        HaloMaterialResource, HaloMaterialUniform, MaterialData, MaterialUniform, MeshResource,
+        Parent, Sibling, SkinnedMeshResource, SkinningAnimation, ThirdPersonCamera, ToParentTrans,
+        TransformUniform, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
         ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX,
         MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX,
         MOVING_ANIMATION_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
@@ -170,8 +172,6 @@ const R_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
     glam::vec4(-0.1537036, -0.00000001549721, -0.00000001907349, 1.0),
 );
 
-/// 캐릭터 모델 에셋의 상대 경로입니다.
-pub const WORKSPACE: &'static str = "characters/yuuka_original";
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Yuuka_Original";
 
@@ -203,38 +203,43 @@ const VITAL_DEATH_ANIMATION: &'static str = concat!(MODEL_NAME, VITAL_DEATH_ANIM
 /// - 자식 엔터티(`Child`)
 /// - 형제 엔터티(`Sibling`)
 /// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
+/// - 스키닝된 메쉬 쉐이더 리소스(`SkinnedMeshResource`)
+/// - 뼈 변환 해열 유니폼 버버(`BoneTransUniform`)
 /// - 뼈 엔터티 집합(`BoneCollection`)
+/// - 재질 쉐이더 리소스(`Vec<MaterialResource>)`
+/// - 재질 쉐이더 유니폼 버퍼(`Vec<MaterialUniform>`)
 /// - 캐릭터 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
 ///
 /// # Panics
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 pub fn spawn_character_model(
-    asset_manager: &AssetManager,
+    label: Option<&str>,
+    texture_data_pool: &TextureDataPool,
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     world: &World,
     parent: Entity,
-) -> Result<(Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>), AssetError> {
-    let root =
-        ModelHierarchyPool::get_or_init(MODEL_NAME, WORKSPACE, asset_manager, device, queue)?;
-
+    root: &ModelRoot,
+) -> (Entity, SkinningAnimation, Vec<(Entity, EntityBuilder)>) {
     let mut meshes = HashMap::default();
     let mut entities = HashMap::default();
     let mut animation_mixing_bones = HashSet::default();
     let mut batch_commands = Vec::with_capacity(root.num_nodes);
     let entity = spawn_character_model_recursive(
-        world,
+        label,
+        texture_data_pool,
         device,
-        queue,
+        encoder,
+        staging_buffers,
         &mut meshes,
         &mut entities,
-        &mut animation_mixing_bones,
         false,
+        &mut animation_mixing_bones,
         &mut batch_commands,
+        world,
         parent,
         &root.node,
         &[],
@@ -295,7 +300,7 @@ pub fn spawn_character_model(
         animation_mixing_bones,
     };
 
-    Ok((entity, skinning_animation, batch_commands))
+    (entity, skinning_animation, batch_commands)
 }
 
 /// 캐릭터 모델을 구성하는 엔터티를 생성하는 재귀함수입니다.
@@ -309,115 +314,110 @@ pub fn spawn_character_model(
 /// - 자식 엔터티(`Child`)
 /// - 형제 엔터티(`Sibling`)
 /// - 모델 메쉬(`Arc<Mesh>`)
-/// - 메쉬 쉐이더 리소스(`Arc<MeshResource>`)
+/// - 스키닝된 메쉬 쉐이더 리소스(`SkinnedMeshResource`)
+/// - 뼈 변환 해열 유니폼 버버(`BoneTransUniform`)
 /// - 뼈 엔터티 집합(`BoneCollection`)
+/// - 재질 쉐이더 리소스(`Vec<MaterialResource>)`
+/// - 재질 쉐이더 유니폼 버퍼(`Vec<MaterialUniform>`)
 /// - 캐릭터 종류(`CharacterKind`)
-/// - 재질 쉐이더 리소스(`Vec<Arc<MaterialResource>>)`
 ///
 /// # Panics
 /// - 엔터티 목록에서 엔터티를 찾을 수 없는 경우 [`panic!`]을 호출합니다.
 /// - 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 fn spawn_character_model_recursive(
-    world: &World,
+    label: Option<&str>,
+    texture_data_pool: &TextureDataPool,
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
     meshes: &mut HashMap<String, Entity>,
     entities: &mut HashMap<String, Entity>,
-    animation_mixing_bones: &mut HashSet<Entity>,
     contains_mixing_bones: bool,
+    animation_mixing_bones: &mut HashSet<Entity>,
     batch_commands: &mut Vec<(Entity, EntityBuilder)>,
+    world: &World,
     parent: Entity,
-    current: &Node,
-    siblings: &[Node],
+    node: &ModelNode,
+    siblings: &[ModelNode],
 ) -> Entity {
     // 엔터티를 하나 할당받습니다.
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
 
     // 엔터티 목록에 현재 엔터티를 추가합니다.
-    let node_name = current.name.clone();
-    entities.insert(node_name, entity);
+    entities.insert(node.name.clone(), entity);
 
     // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
-    builder.add(Parent(parent));
-    builder.add(ToParentTrans(current.transform));
-    builder.add(WorldTransform::default());
+    builder.add_bundle((
+        Parent(parent),
+        ToParentTrans(node.transform),
+        WorldTransform::default(),
+    ));
 
     // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.
-    if let Some(child) = current.children.first() {
+    if let Some(child_node) = node.children.first() {
         /// 노드가 애니메이션 믹싱에 사용되는 뼈 집합에 포함되는지 여부를 반환합니다.
         fn contains_set(name: &str) -> bool {
             name == MODEL_BONE_L_THIGH || name == MODEL_BONE_R_THIGH || name.contains("skirt")
         }
 
-        // 자식 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let node_name = current.name.clone();
-        let contains_mixing_bones = contains_mixing_bones || contains_set(&node_name);
-
-        // 자식 엔터티를 생성합니다.
-        let entity = spawn_character_model_recursive(
-            world,
+        let contains_mixing_bones = contains_mixing_bones || contains_set(&node.name);
+        let child = spawn_character_model_recursive(
+            label,
+            texture_data_pool,
             device,
-            queue,
+            encoder,
+            staging_buffers,
             meshes,
             entities,
-            animation_mixing_bones,
             contains_mixing_bones,
+            animation_mixing_bones,
             batch_commands,
+            world,
             entity,
-            child,
-            &current.children[1..],
+            child_node,
+            &node.children[1..],
         );
 
         // 자식 컴포넌트를 추가합니다.
-        builder.add(Child(entity));
+        builder.add(Child(child));
     }
 
     // 형제 노드가 존재하는 경우 형제 엔터티를 추가합니다.
-    if let Some(sibling) = siblings.first() {
-        // 형제 엔터티를 생성하기 위한 매개변수를 준비합니다.
-        let current = sibling;
-        let siblings = &siblings[1..];
-
-        // 형제 엔터티를 생성합니다.
-        let entity = spawn_character_model_recursive(
-            world,
+    if let Some(sibling_node) = siblings.first() {
+        let sibling = spawn_character_model_recursive(
+            label,
+            texture_data_pool,
             device,
-            queue,
+            encoder,
+            staging_buffers,
             meshes,
             entities,
-            animation_mixing_bones,
             contains_mixing_bones,
+            animation_mixing_bones,
             batch_commands,
+            world,
             parent,
-            current,
-            siblings,
+            sibling_node,
+            &siblings[1..],
         );
 
         // 형제 엔터티 컴포넌트를 추가합니다.
-        builder.add(Sibling(entity));
+        builder.add(Sibling(sibling));
     }
 
     // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
-    if let Some(mesh) = current.mesh.clone() {
-        // 메쉬 쉐이더 리소스를 생성합니다.
-        let mesh_name = mesh.name().to_string();
-        let mesh_resource = Arc::new(MeshResource::uninit(Some(&mesh_name), device));
-
-        // 스키닝 데이터가 존재하는 경우 스키닝 데이터를 추가합니다.
-        if let Some(skinning) = &current.skinning {
-            // 메쉬 쉐이더 리소스의 스키닝 데이터를 초기화합니다.
-            let data = SkinningDataLayout {
-                quality: skinning.quality,
-                num_bones: skinning.num_bones,
-                ..Default::default()
-            };
-            mesh_resource.skinning_uniform.update(device, queue, data);
-
-            // 메쉬 쉐이더 리소스의 바인드 포즈 데이터를 초기화합니다.
-            let data = skinning.bindposes.clone();
-            mesh_resource.bindpose_uniform.update(device, queue, data);
+    if let Some(mesh) = node.mesh.clone() {
+        if let Some(skinning) = node.skinning.clone() {
+            // 스키닝된 메쉬 쉐이더 리소스를 생성합니다.
+            let bindpose_uniform = skinning.bindpose_uniform.clone();
+            let bone_trans_uniform = BoneTransformUniform::uninit(
+                Some(&format!("BoneTransform({})", label.unwrap_or("Unknown"))),
+                device,
+            );
+            let mesh_resource =
+                SkinnedMeshResource::new(label, device, &bindpose_uniform, &bone_trans_uniform);
 
             // 스키닝된 메쉬를 구성하는 뼈 엔터티 집합을 생성합니다.
             let collection = BoneCollection {
@@ -432,26 +432,147 @@ fn spawn_character_model_recursive(
                     .collect(),
             };
 
-            // 뼈 엔터티 집합 컴포넌트를 추가합니다.
-            builder.add(collection);
-        }
-
-        if mesh.name().contains("Halo") {
-            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterHaloKind::YuukaOriginalHalo));
+            builder.add_bundle((bone_trans_uniform, mesh_resource, collection));
         } else {
-            // 메쉬, 메쉬 쉐이더 리소스, 캐릭터 종류 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, mesh_resource, CharacterKind::YuukaOriginal));
+            // 메쉬 쉐이더 리소스를 생성합니다.
+            let transform_uniform = TransformUniform::uninit(
+                Some(&format!("Transform({})", label.unwrap_or("Unknown"))),
+                device,
+            );
+            let mesh_resource = MeshResource::new(label, device, &transform_uniform);
+            builder.add_bundle((transform_uniform, mesh_resource));
         }
 
         // 메쉬 집합에 현제 엔터티를 추가합니다.
-        meshes.insert(mesh_name, entity);
+        meshes.insert(mesh.uri().into(), entity);
+
+        if mesh.uri().contains("Halo") {
+            // 메쉬, 캐릭터 헤일로 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, CharacterHaloKind::ArisOriginalHalo));
+        } else {
+            // 메쉬, 캐릭터 종류 컴포넌트를 추가합니다.
+            builder.add_bundle((mesh, CharacterKind::ArisOriginal));
+        }
     }
 
     // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.
-    if !current.materials.is_empty() {
-        let materials: Vec<Arc<MaterialResource>> = current.materials.iter().cloned().collect();
-        builder.add(materials);
+    if !node.materials.is_empty() {
+        let (uniforms, materials): (Vec<_>, Vec<_>) = node
+            .materials
+            .iter()
+            .map(|data| {
+                match data.deref() {
+                    MaterialData::Character(data) => {
+                        // 캐릭터 유니폼 버퍼를 생성합니다.
+                        let character_uniform = CharacterMaterialUniform::new(
+                            Some(&format!("Character({})", label.unwrap_or("Unknown"))),
+                            device,
+                            CharacterMaterialDataLayout {
+                                glossiness: data.glossiness,
+                                smoothness: data.smoothness,
+                                metallic: data.metallic,
+                                ..Default::default()
+                            },
+                        );
+
+                        // 캐릭터 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
+                            .get(&data.main_color)
+                            .expect("the texture data must exist!");
+
+                        let material_resource = CharacterMaterialResource::new(
+                            label,
+                            device,
+                            &character_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                        );
+
+                        (
+                            MaterialUniform::Character(character_uniform),
+                            material_resource,
+                        )
+                    }
+                    MaterialData::CharacterEyeMouth(data) => {
+                        // 캐릭터 유니폼 버퍼를 생성합니다.
+                        let data_layout = EyeMouthMaterialDataLayout {
+                            glossiness: data.glossiness,
+                            smoothness: data.smoothness,
+                            metallic: data.metallic,
+                            index: data.index,
+                            ..Default::default()
+                        };
+                        let character_uniform = EyeMouthMaterialUniform::new(
+                            Some(&format!("EyeMouth({})", label.unwrap_or("Unknown"))),
+                            device,
+                            data_layout,
+                        );
+
+                        // 캐릭터 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
+                            .get(&data.main_color)
+                            .expect("the texture data must exist!");
+                        // 캐릭터 입 텍스처를 가져옵니다.
+                        let (eye_mouth_view, eye_mouth_sampler) = texture_data_pool
+                            .get(&data.eye_mouth)
+                            .expect("the texture data must exist!");
+
+                        let material_resource = EyeMouthMaterialResource::new(
+                            label,
+                            device,
+                            &character_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                            &eye_mouth_view,
+                            &eye_mouth_sampler,
+                        );
+
+                        (
+                            MaterialUniform::CharacterEyeMouth {
+                                data: data_layout,
+                                buffer: character_uniform,
+                            },
+                            material_resource,
+                        )
+                    }
+                    MaterialData::CharacterHalo(data) => {
+                        // 캐릭터 유니폼 버퍼를 생성합니다.
+                        let character_uniform = HaloMaterialUniform::new(
+                            Some(&format!("CharacterHalo({})", label.unwrap_or("Unknown"))),
+                            device,
+                            HaloMaterialDataLayout {
+                                glossiness: data.glossiness,
+                                smoothness: data.smoothness,
+                                metallic: data.metallic,
+                                emissive: data.emissive.into(),
+                                ..Default::default()
+                            },
+                        );
+
+                        // 캐릭터 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
+                            .get(&data.main_color)
+                            .expect("the texture data must exist!");
+
+                        let material_resource = HaloMaterialResource::new(
+                            label,
+                            device,
+                            &character_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                        );
+
+                        (
+                            MaterialUniform::CharacterHalo(character_uniform),
+                            material_resource,
+                        )
+                    }
+                    _ => panic!("invalid material data!"),
+                }
+            })
+            .unzip();
+
+        builder.add_bundle((uniforms, materials));
     }
 
     {
@@ -461,8 +582,7 @@ fn spawn_character_model_recursive(
         }
 
         // 뼈 집합에 포함되는 경우 엔터티를 추가합니다.
-        let node_name = current.name.clone();
-        if contains_mixing_bones || contains_set(&node_name) {
+        if contains_mixing_bones || contains_set(&node.name) {
             animation_mixing_bones.insert(entity);
         }
     }
@@ -604,7 +724,7 @@ fn update_timer_when_aiming_state(_: &mut ViewState, _: &mut ViewStateTimer, _: 
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
 pub fn animate_character(
-    asset_manager: &AssetManager,
+    motion_pool: &MotionPool,
     view_rotation: LatLon,
     action_state: ActionState,
     action_state_timer: ActionStateTimer,
@@ -687,7 +807,9 @@ pub fn animate_character(
     ];
 
     // 캐릭터 모델 애니메이션 집합을 가져옵니다.
-    let motions = MotionPool::get_or_init(MODEL_NAME, &WORKSPACE, asset_manager)
+    let i = CharacterKind::YuukaOriginal as usize;
+    let motions = motion_pool
+        .get(CHARACTER_URIS[i])
         .expect("no such character motion");
 
     let i = action_state as usize;

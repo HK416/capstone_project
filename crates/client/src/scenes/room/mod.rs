@@ -1,10 +1,9 @@
 //! 커스텀 게임 장면과 관련된 코드를 작성합니다.
 //!
-use std::error::Error;
-
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
+    net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
@@ -16,12 +15,12 @@ use mod_network::{
         Packet, PacketType, RawPacket,
     },
 };
-use mod_render::{TexturePool, TextureViewPool};
 use winit::window::Window;
 
 use crate::{
-    asset::{BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
+    scenes::FatalErrorSceneLayer,
     SERVER_TCP_ADDR,
 };
 
@@ -50,6 +49,11 @@ pub struct CustomGameRoomScene {
 
     /// 배경화면 텍스처의 식별자입니다.
     bg_texture_id: egui::load::SizedTexture,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
 }
 
 impl CustomGameRoomScene {
@@ -62,6 +66,8 @@ impl CustomGameRoomScene {
         locale: Locale,
         user_id: UserId,
         token: LoginToken,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
         world_id: WorldId,
         iter: I,
     ) -> Self
@@ -76,6 +82,8 @@ impl CustomGameRoomScene {
             locale,
             user_id,
             token,
+            texture_pool,
+            texture_view_pool,
             world_id,
             players: iter.into_iter().collect(),
             bg_texture_id: egui::load::SizedTexture {
@@ -87,19 +95,18 @@ impl CustomGameRoomScene {
 }
 
 impl GameScene for CustomGameRoomScene {
-    fn on_enter(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         // 메인 로비 배경화면 텍스처를 가져옵니다.
-        let texture =
-            TexturePool::get(BG_MAIN_LOBBY_URI).expect("BG_Main_Lobby texture must be preloaded!");
+        let texture = self
+            .texture_pool
+            .get(BG_MAIN_LOBBY_URI)
+            .expect("BG_Main_Lobby texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
         // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
-        let texture =
-            TextureViewPool::get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
         let mut egui_renderer = app.egui_renderer_mut();
@@ -114,15 +121,33 @@ impl GameScene for CustomGameRoomScene {
             id: texture_id,
             size: texture_size,
         };
-
-        Ok(())
     }
 
-    fn on_received_packet(
-        &mut self,
-        packet: RawPacket,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::CustomGamePull => {
@@ -137,6 +162,8 @@ impl GameScene for CustomGameRoomScene {
                     self.locale,
                     self.user_id,
                     self.token,
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
                     packet.remaining_time,
                     packet.players,
                 ));
@@ -149,45 +176,17 @@ impl GameScene for CustomGameRoomScene {
                 // TODO : 오류 메시지 네비게이션 모달 띄우기
             }
             _ => {
-                log::warn!("invalid packet received! (TYPE:{:?})", packet_type);
+                log::warn!(
+                    "ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type
+                );
             }
         };
 
-        Ok(())
+        None
     }
 
-    fn on_draw(
-        &self,
-        _window: &Window,
-        encoder: &mut wgpu::CommandEncoder,
-        render_target_view: &wgpu::TextureView,
-        _depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        {
-            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(CustomGameRoomScene))),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    view: render_target_view,
-                    resolve_target: None,
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-        }
-        Ok(())
-    }
-
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -359,7 +358,5 @@ impl GameScene for CustomGameRoomScene {
             .show(app.egui_ctx(), |ui| {
                 egui::Image::new(source).paint_at(ui, rect);
             });
-
-        Ok(())
     }
 }

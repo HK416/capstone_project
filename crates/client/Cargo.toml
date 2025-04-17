@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.5.0"
+version = "0.6.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -13,6 +13,7 @@ build = "build.rs"
 ahash = { workspace = true }
 bitflags = { workspace = true }
 bytemuck = { workspace = true }
+chrono = { workspace = true }
 constcat = { workspace = true }
 dashmap = { workspace = true }
 egui = { workspace = true }
@@ -24,8 +25,12 @@ parking_lot = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+spin = { workspace = true }
 static_assertions = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }
 
@@ -43,12 +48,6 @@ mod-network = { path = "../mod-network" }
 mod-parallelism = { path = "../mod-parallelism" }
 mod-physics = { path = "../mod-physics" }
 mod-render = { path = "../mod-render" }
-
-
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-# A logging implementation for `log` which is configured via an environment variable.
-# License: MIT OR Apache-2.0
-env_logger = "0.11"
 
 
 

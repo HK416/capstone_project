@@ -130,13 +130,20 @@ impl AppBuilder {
         use pollster::FutureExt;
         use winit::event_loop::{ControlFlow, EventLoop};
 
-        use crate::{app::command::parse_command_line_args, error::alert_error};
+        use crate::{
+            app::command::parse_command_line_args,
+            error::{show_error_msg, Alert},
+        };
 
         // 명령줄 인자를 구문 분석합니다.
         let builder = match parse_command_line_args(self) {
             Ok(builder) => builder,
             Err(e) => {
-                alert_error("Command parsing failed", e.to_string(), None);
+                log::error!("failed to parse command line arguments. (REASON:{e})");
+                let title = "Initialize failed".into();
+                let message = "Failed to parse command line arguments.".into();
+                let alert = Alert { title, message };
+                show_error_msg(alert, None);
                 std::process::exit(-1);
             }
         };
@@ -145,7 +152,11 @@ impl AppBuilder {
         let event_loop = match EventLoop::with_user_event().build() {
             Ok(event_loop) => event_loop,
             Err(e) => {
-                alert_error("Event loop creation failed", e.to_string(), None);
+                log::error!("failed to create event loop. (REASON:{e})");
+                let title = "Initialize failed".into();
+                let message = "Failed to create window event loop.".into();
+                let alert = Alert { title, message };
+                show_error_msg(alert, None);
                 std::process::exit(-1);
             }
         };
@@ -159,14 +170,22 @@ impl AppBuilder {
         let mut app = match future.block_on() {
             Ok(app) => app,
             Err(e) => {
-                alert_error("Application creation failed", e.to_string(), None);
+                log::error!("{e}");
+                let title = "Initialize failed".into();
+                let message = e.to_string();
+                let alert = Alert { title, message };
+                show_error_msg(alert, None);
                 std::process::exit(-1);
             }
         };
 
         // 애플리케이션을 실행합니다.
         if let Err(e) = event_loop.run_app(&mut app) {
-            alert_error("Application launching failed", e.to_string(), None);
+            log::error!("{e}");
+            let title = "Runtime error".into();
+            let message = e.to_string();
+            let alert = Alert { title, message };
+            show_error_msg(alert, None);
             std::process::exit(-1);
         }
     }

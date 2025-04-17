@@ -18,6 +18,8 @@ pub struct PlayPhasePlayer {
 
     /// 플레이어 캐릭터 종류
     pub character_kind: CharacterKind,
+    /// 플레이어 최대 체력
+    pub max_health_point: MaxHealthPoint,
     /// 플레이어 캐릭터 체력
     pub health_point: HealthPoint,
     /// 플레이어 캐릭터의 월드 공간 위치
@@ -50,6 +52,7 @@ impl PlayPhasePlayer {
     pub fn new(
         account: UserAccount,
         character_kind: CharacterKind,
+        max_health_point: MaxHealthPoint,
         health_point: HealthPoint,
         translation: [f32; 3],
         rotation: [f32; 4],
@@ -71,6 +74,7 @@ impl PlayPhasePlayer {
         Self {
             account,
             character_kind,
+            max_health_point,
             health_point,
             translation,
             rotation,
@@ -199,6 +203,7 @@ impl BigEndian for PlayPhasePlayer {
     fn byte_size() -> usize {
         UserAccount::byte_size()
             + CharacterKind::byte_size()
+            + MaxHealthPoint::byte_size()
             + HealthPoint::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 4]>::byte_size()
@@ -218,6 +223,7 @@ impl BigEndian for PlayPhasePlayer {
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.account.to_big_endian_bytes());
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.max_health_point.to_big_endian_bytes());
         bytes.extend_from_slice(&self.health_point.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
@@ -246,6 +252,7 @@ impl Default for PlayPhasePlayer {
         Self {
             account: UserAccount::default(),
             character_kind: CharacterKind::default(),
+            max_health_point: MaxHealthPoint::default(),
             health_point: HealthPoint::default(),
             translation: [0.0, 0.0, 0.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
@@ -279,6 +286,12 @@ impl TryFromBigEndian for PlayPhasePlayer {
         size = CharacterKind::byte_size();
         data = &bytes[offset..offset + size];
         let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
+
+        // 플레이어 캐릭터 최대 체력을 가져옵니다.
+        offset = offset + size;
+        size = HealthPoint::byte_size();
+        data = &bytes[offset..offset + size];
+        let max_health_point = MaxHealthPoint::try_from_big_endian_bytes(data)?;
 
         // 플레이어 캐릭터 체력을 가져옵니다.
         offset = offset + size;
@@ -331,6 +344,7 @@ impl TryFromBigEndian for PlayPhasePlayer {
         Some(Self {
             account,
             character_kind,
+            max_health_point,
             health_point,
             translation,
             rotation,
@@ -345,6 +359,8 @@ impl TryFromBigEndian for PlayPhasePlayer {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU16;
+
     use crate::components::{UserId, UserName};
 
     use super::*;
@@ -357,6 +373,7 @@ mod tests {
         let origin = PlayPhasePlayer::new(
             account,
             CharacterKind::MomoiOriginal,
+            MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
             HealthPoint(1324),
             [12.0, 34.123, 1.23423],
             [1.243214, 0.51251512, 0.1324131, 0.34151512],

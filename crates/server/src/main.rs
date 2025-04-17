@@ -156,6 +156,9 @@ fn main() {
     init_character_attributes();
     init_stage_attributes();
 
+    // 게임 월드 풀 객체를 초기화합니다.
+    GameWorldPool::init();
+
     let mut args = env::args();
     args.next();
 
@@ -219,17 +222,15 @@ fn init_log_system() -> WorkerGuard {
     let mut dir = get_current_path().to_path_buf();
     dir.push("logs");
 
-    // 게임 월드 풀 객체를 초기화합니다.
-    GameWorldPool::init();
-
     // 매 시간 마다 새 파일을 생성하는 로그 시스템을 생성합니다.
     let file_appender = rolling::hourly(dir, "service_log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::fmt()
         .with_ansi(false)
+        .with_thread_ids(true)
+        .with_thread_names(true)
         .with_writer(non_blocking)
-        .with_max_level(Level::INFO)
         .init();
 
     guard

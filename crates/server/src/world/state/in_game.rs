@@ -7,8 +7,7 @@ use std::{
 use ahash::HashMap;
 use mod_network::{
     components::{
-        DamageLog, HealthPoint, LatLon, MAX_IN_GAME_PLAYERS, MovementState, ObjectId,
-        PlayPhasePlayer, StageKind, UserId,
+        DamageLog, HealthPoint, LatLon, MovementState, ObjectId, PlayPhasePlayer, StageKind, Team, UserId
     },
     protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -21,8 +20,9 @@ use tokio::time::{Duration, Instant};
 
 use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
-    formula::movement_formulas as formulas,
-    world::{GameWorld, GameWorldEvent},
+    entities::{BulletObject, CapturePointObject, PlayerObject}, 
+    formula::movement_formulas as formulas, 
+    world::{GameWorld, GameWorldEvent}
 };
 
 use super::GameWorldState;
@@ -39,6 +39,10 @@ pub struct GameWorldInGameState {
     is_running: bool,
     /// 이전 측정 시각
     previous_time_pt: Instant,
+
+    /// 남은 게임 시간 (초)
+    remaining_time_sec: f32,
+
     /// 오브젝트 식별자를 생성하기 위한 카운터입니다.
     counter: u32,
 
@@ -50,6 +54,9 @@ pub struct GameWorldInGameState {
 
     /// 플레이어 스폰 위치 저장
     spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+
+    /// 점령지 오브젝트
+    capture_point: CapturePointObject,
 }
 
 impl GameWorldInGameState {
@@ -57,14 +64,22 @@ impl GameWorldInGameState {
     pub fn new(
         stage_kind: StageKind,
         spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+        game_duration_sec: f32,  // 게임 총 시간
     ) -> Self {
         Self {
             is_running: true,
             previous_time_pt: Instant::now(),
+            remaining_time_sec: game_duration_sec, // 초기화
             counter: 0,
             stage_kind,
             damage_logs: Queue::new(),
             spawn_positions,
+            capture_point: CapturePointObject::new(
+                Collider::Sphere(Sphere {
+                    center: glam::Vec3::ZERO,
+                    radius: 7.5,
+                }),
+            )
         }
     }
 
@@ -226,137 +241,258 @@ impl GameWorldInGameState {
         };
     }
 
-    /// 게임 월드를 갱신합니다.
-    fn update(&mut self, world: &GameWorld) {
-        let current_time_pt = Instant::now();
-        let elapsed_time_sec = current_time_pt
-            .saturating_duration_since(self.previous_time_pt)
-            .as_secs_f32();
-        self.previous_time_pt = current_time_pt;
-
-        self.update_player_state_timer(world, elapsed_time_sec);
-        self.update_player_position(world, elapsed_time_sec);
-
-        // 총알 이동
-        for mut bullet in world.bullets.iter_mut() {
-            let translation = bullet.translation;
-            let direction = bullet.velocity * elapsed_time_sec;
-            let move_distance = direction.length();
-
-            // bullet.velocity가 영벡터가 아니라고 가정
-            let bullet_collider = Sphere {
-                center: translation.into(),
-                radius: bullet.radius,
-            };
-
-            let mut nearest_distance = f32::MAX;
-            let mut nearest_player_id = None;
-
-            for player in world.players.iter() {
-                if *player.key() == bullet.shooter_id
-                    || player.health_point().0 == 0
-                    || player.team() == bullet.shooter_team
-                {
-                    continue;
+    /// 0.1m 마다 바닥과의 충돌을 검사하여 바닥과의 충돌을 확인합니다.
+    fn check_bullet_ground_collision(
+        &self,
+        bullet_position: &glam::Vec3A,
+        bullet_radius: f32,
+        move_v_normalized: &glam::Vec3A,
+        move_distance: f32,
+    ) -> Option<f32> {
+        let mut nearest_distance = None;
+        let mut position = bullet_position.clone();
+        let mut moved = 0.0;
+        let v = move_v_normalized * 0.1;
+        while moved < move_distance {
+            if let Some(height) = get_stage_height(self.stage_kind, position.x, position.z) {
+                if position.y <= height + bullet_radius {
+                    nearest_distance = Some(moved);
+                    break;
                 }
+            }
+            position += v;
+            moved += 0.1;
+        }
 
-                let player_collider = player.collider();
+        nearest_distance
+    }
 
-                // 충돌 처리: 플레이어 - 총알
-                if let Some(info) = bullet_collider
-                    .check_dynamic_collision_details(&bullet.velocity, &player_collider)
-                {
-                    if info.distance <= move_distance {
-                        println!("Bullet find player (player id: {})", player.account().uid);
-                        println!("  - distance: {}", info.distance);
-                        println!("  - surface normal: {}", info.normal);
-                        if info.distance < nearest_distance {
-                            nearest_distance = info.distance;
-                            nearest_player_id = Some(*player.key());
-                        }
+    /// 총알과 충돌하는 건물과의 거리를 리턴합니다.
+    fn check_bullet_building_collision(
+        &self,
+        bullet_collider: &Sphere,
+        move_v: &glam::Vec3A,
+    ) -> Option<f32> {
+        let mut nearest_distance = f32::MAX;
+        let colliders = get_stage_colliders(self.stage_kind);
+        for collider in ColliderTreeIterator::new(colliders) {
+            // broadphase 검사 - 시작지점과 도착지점을 포함하는 AABB를 생성
+            let rad_box = glam::Vec3A::new(
+                bullet_collider.radius * move_v.x.signum(),
+                bullet_collider.radius * move_v.y.signum(),
+                bullet_collider.radius * move_v.z.signum(),
+            );
+            let center = glam::Vec3A::from(bullet_collider.center);
+            let start = center - rad_box;
+            let end = center + move_v + rad_box;
+            let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
+
+            if collider.check_aabb_collision(&swept_aabb) {
+                // narrowphase 검사 - 총알과 충돌체의 충돌 검사
+                let details = match collider {
+                    Collider::Aabb(aabb) => bullet_collider.check_dynamic_collision_details(move_v, aabb),
+                    Collider::Obb(obb) => bullet_collider.check_dynamic_collision_details(move_v, obb),
+                    Collider::Capsule(capsule) => bullet_collider.check_dynamic_collision_details(move_v, capsule),
+                    Collider::OrientedCapsule(obb) => bullet_collider.check_dynamic_collision_details(move_v, obb),
+                    Collider::Sphere(sphere) => bullet_collider.check_dynamic_collision_details(move_v, sphere),
+                };
+                if let Some(details) = details {
+                    // 충돌체와의 충돌이 발생한 경우, 총알의 남은 거리와 충돌체의 거리 비교
+                    let distance = details.distance;
+                    if distance < nearest_distance {
+                        nearest_distance = distance;
                     }
                 }
             }
+        }
 
-            match nearest_player_id {
-                // 충돌했다면
-                Some(id) => {
-                    // 피격 처리(회피하더라도 일단 총알은 제거)
-                    bullet.remaining_distance = 0.0;
+        if nearest_distance == f32::MAX {
+            None
+        } else {
+            Some(nearest_distance)
+        }
+    }
 
-                    println!("Player({}) hit by bullet", id);
-                    let mut player = world.players.get_mut(&id).unwrap();
-                    let char_info = player.character_attributes();
+    /// 총알과 충돌하는 플레이어를 확인합니다.  
+    /// 건물, 바닥 등과 충돌시에는 총알의 남은 거리를 0.0으로 설정하고 None을 리턴합니다.  
+    /// 움직일 벡터(move_v)는 0이 아니어야 합니다.  
+    fn check_bullet_collision(
+        &self, 
+        world: &GameWorld, 
+        bullet: &mut BulletObject, 
+        move_v: &glam::Vec3A,
+    ) -> Option<UserId> {
+        let mut nearest_distance = f32::MAX;
+        let mut move_v = move_v.clone();
+        let move_v_normalized = move_v.normalize();
 
-                    //발포자 정보
-                    let shooter = world.players.get_mut(&bullet.shooter_id).unwrap();
-                    let shooter_info = shooter.character_attributes();
+        // 지형 충돌 검사
+        if let Some(collision_distance) = self.check_bullet_ground_collision(
+            &bullet.translation,
+            bullet.radius,
+            &move_v_normalized,
+            move_v.length(),
+        ) {
+            nearest_distance = collision_distance;
+            move_v = move_v_normalized * nearest_distance;
+            bullet.remaining_distance = 0.0;
+            log::debug!(
+                "Bullet({}) hit ground (distance: {})",
+                bullet.object_id, nearest_distance
+            );
+        }
 
-                    // 각 식에서의 상수값은 제안서에 있는 값으로 설정
+        if nearest_distance == 0.0 {
+            return None;
+        }
 
-                    // 1. 회피 계산
-                    // 2. 기본 데미지 계산
-                    // 3. 치명타 계산
-                    // 4. 최종 데미지 계산
+        // 건물 충돌 검사
+        let bullet_collider = Sphere {
+            center: bullet.translation.into(),
+            radius: bullet.radius,
+        };
+        if let Some(collision_distance) = self.check_bullet_building_collision(
+            &bullet_collider,
+            &move_v,
+        ) {
+            nearest_distance = collision_distance;
+            move_v = move_v_normalized * nearest_distance;
+            bullet.remaining_distance = 0.0;
+            log::debug!(
+                "Bullet({}) hit building (distance: {})",
+                bullet.object_id, nearest_distance
+            );
+        }
 
-                    // 회피 계산
-                    let accuracy = char_info.accuracy_stat as f32;
-                    let evasion = char_info.evasion_stat as f32;
-                    let hit_rate = formulas::cal_hit_rate(accuracy, evasion, 100.0);
-                    // if rand::random::<f64>() > hit_rate {
-                    //     println!("  - miss");
-                    //     continue;
-                    // }
+        if nearest_distance == 0.0 {
+            return None;
+        }
 
-                    // 데미지 계산
-                    let def = char_info.defense_power as f32;
+        // 플레이어 충돌 검사
+        let mut nearest_player_id = None;
+        for player in world.players.iter() {
+            if *player.key() == bullet.shooter_id
+                || player.health_point().0 == 0
+                || player.team() == bullet.shooter_team
+            {
+                continue;
+            }
 
-                    //기존: let atk = char_info.attack_power as f32;
-                    let atk = shooter_info.attack_power as f32; //발포자의 공격력 수치여야 하는거아닌가?
-                    let dur = shooter_info.normal_attack_ing_duration as f32;
-                    let cnt = shooter_info.normal_attack_count as f32;
-                    let dmg = formulas::default_damage(atk, def, 100.0, dur, cnt);
+            let player_collider = player.collider();
 
-                    // 치명타 계산
-                    //기존: let crit = char_info.critical_rate as f32;
-                    let crit = shooter_info.critical_rate as f32; //발포자의 치명 수치여야 하는거아닌가?
-                    let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
-                    if crit_rate == 1.0 {
-                        println!("  - critical!");
+            // 충돌 처리: 플레이어 - 총알
+            if let Some(info) = bullet_collider
+                .check_dynamic_collision_details(&move_v, &player_collider)
+            {
+                if info.distance <= move_v.length() {
+                    // println!("Bullet find player (player id: {})", player.account().uid);
+                    // println!("  - distance: {}", info.distance);
+                    // println!("  - surface normal: {}", info.normal);
+                    if info.distance < nearest_distance {
+                        nearest_distance = info.distance;
+                        nearest_player_id = Some(*player.key());
                     }
-
-                    // 최종 데미지 계산
-                    //기존: let crit_dam = char_info.critical_damage as f32;
-                    let crit_dam = shooter_info.critical_damage as f32; //발포자의 치명 수치여야 하는거아닌가?
-                    let final_dmg =
-                        formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u16;
-
-                    let health_point = player.health_point_mut();
-                    health_point.0 = health_point.0.saturating_sub(final_dmg);
-                    println!("  - hp: {}(-{})", health_point.0, final_dmg);
-
-                    if health_point.0 == 0 {
-                        println!("Player({}) is dead", player.account().uid);
-                        player.death();
-                    }
-
-                    self.damage_logs.push(DamageLog {
-                        user_id: player.account().uid,
-                        damage: HealthPoint(final_dmg),
-                    });
                 }
+            }
+        }
 
-                // 충돌하지 않았다면
+        nearest_player_id
+    }
+
+    /// 총알과 플레이어의 충돌처리를 수행합니다.
+    fn bullet_hit_player(
+        &self,
+        bullet: &mut BulletObject,
+        shooter: &PlayerObject,
+        player: &mut PlayerObject,
+    ) {
+        // println!("Player({}) hit by bullet", player.account().uid);
+        
+        // 관통되지 않도록 처리
+        bullet.remaining_distance = 0.0;
+
+        let char_info = player.character_attributes();
+
+        //발포자 정보
+        let shooter_info = shooter.character_attributes();
+
+        // 각 식에서의 상수값은 제안서에 있는 값으로 설정
+
+        // 1. 회피 계산
+        // 2. 기본 데미지 계산
+        // 3. 치명타 계산
+        // 4. 최종 데미지 계산
+
+        // 회피 계산
+        let accuracy = char_info.accuracy_stat as f32;
+        let evasion = char_info.evasion_stat as f32;
+        let hit_rate = formulas::cal_hit_rate(accuracy, evasion, 100.0);
+        // if rand::random::<f64>() > hit_rate {
+        //     println!("  - miss");
+        //     continue;
+        // }
+
+        // 데미지 계산
+        let def = char_info.defense_power as f32;
+
+        //기존: let atk = char_info.attack_power as f32;
+        let atk = shooter_info.attack_power as f32; //발포자의 공격력 수치여야 하는거아닌가?
+        let dur = shooter_info.normal_attack_ing_duration as f32;
+        let cnt = shooter_info.normal_attack_count as f32;
+        let dmg = formulas::default_damage(atk, def, 100.0, dur, cnt);
+
+        // 치명타 계산
+        //기존: let crit = char_info.critical_rate as f32;
+        let crit = shooter_info.critical_rate as f32; //발포자의 치명 수치여야 하는거아닌가?
+        let crit_rate = formulas::cal_crt_rate(rand::random::<f32>(), crit, 250.0);
+        if crit_rate == 1.0 {
+            // println!("  - critical!");
+        }
+
+        // 최종 데미지 계산
+        //기존: let crit_dam = char_info.critical_damage as f32;
+        let crit_dam = shooter_info.critical_damage as f32; //발포자의 치명 수치여야 하는거아닌가?
+        let final_dmg =
+            formulas::final_damage(dmg, hit_rate, crit_rate, crit_dam).ceil() as u16;
+
+        let uid = player.account().uid;
+        let health_point = player.health_point_mut();
+        health_point.0 = health_point.0.saturating_sub(final_dmg);
+        // println!("  - hp: {}(-{})", health_point.0, final_dmg);
+        log::info!(
+            "Player({}) hit by Bullet from Player({}) (damage: {})",
+            uid, shooter.account().uid, final_dmg
+        );
+
+        if health_point.0 == 0 {
+            // println!("Player({}) is dead", player.account().uid);
+            log::info!(
+                "Player({}) is dead (shooter: {})",
+                player.account().uid, shooter.account().uid,
+            );
+            player.death();
+        }
+
+        self.damage_logs.push(DamageLog {
+            user_id: player.account().uid,
+            damage: HealthPoint(final_dmg),
+        });
+    }
+
+    /// 총알 이동 및 충돌처리를 수행합니다.
+    fn update_bullet(&self, world: &GameWorld, elapsed_time_sec: f32) {
+        // 총알 이동
+        for mut bullet in world.bullets.iter_mut() {
+            let velocity = bullet.velocity * elapsed_time_sec;
+
+            match self.check_bullet_collision(world, &mut bullet, &velocity) {
+                Some(id) => {
+                    let shooter = world.players.get_mut(&bullet.shooter_id).unwrap();
+                    let mut player = world.players.get_mut(&id).unwrap();
+                    self.bullet_hit_player(&mut bullet, &shooter, &mut player);
+                }
                 None => {
-                    // 총알 위치 이동
-                    bullet.translation = translation + direction;
-                    // 누적 이동거리 증가
-                    bullet.remaining_distance -= move_distance;
-
-                    // 총알 사거리를 넘어가면 총알 제거
-                    if bullet.remaining_distance <= 0.0 {
-                        println!("Bullet range over");
-                    }
+                    bullet.move_velocity(velocity);
                 }
             }
         }
@@ -369,15 +505,96 @@ impl GameWorldInGameState {
         }
     }
 
+    /// 점령지 안에 존재하는 팀과 인원수를 리턴합니다.  
+    /// 점령지 안에 존재하는 팀이 없거나, 두 팀 모두 존재하는 경우 팀은 None입니다.  
+    /// 점령지 안에 두 팀이 모두 존재하는 경우 인원수는 0이 아닌 양의 정수입니다.  
+    fn get_new_capture_team(&self, world: &GameWorld) -> (Option<Team>, usize) {
+        let mut new_capture_team = None;
+        let mut capturing_count = 0;
+
+        // 점령지 안에 있는 플레이어의 팀 확인
+        let in_capture_point = world.players.iter()
+            .filter(|player| player.health_point().0 > 0)
+            .filter(|player| {
+                self.capture_point.collider().check_point_collision(&player.translation())
+            })
+            .map(|player| player.team());
+        for team in in_capture_point {
+            match new_capture_team {
+                Some(capturing_team) => {
+                    if team == capturing_team {
+                        capturing_count += 1;
+                    } else {
+                        new_capture_team = None;
+                        break;
+                    }
+                }
+                None => {
+                    new_capture_team = Some(team);
+                    capturing_count += 1;
+                }
+            }
+        }
+
+        (new_capture_team, capturing_count)
+    }
+
+    /// 점령지의 상태를 갱신합니다.
+    fn update_capture_point(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
+        let (new_capture_team, capturing_count) = self.get_new_capture_team(world);
+
+        // 점령 수행
+        let winner = self.capture_point.capture(new_capture_team, elapsed_time_sec, capturing_count);
+        if winner.is_some() {
+            world.push_event(GameWorldEvent::GameOver { winner });
+        }
+
+        // println!("capture team: {:?}({:.1}%)\t score: RED[{:.1}%] : BLUE[{:.1}%]", 
+        //     self.capture_point.capture_team(), self.capture_point.capture_progress(),
+        //     self.capture_point.capture_score()[Team::Red as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0,
+        //     self.capture_point.capture_score()[Team::Blue as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0
+        // );
+    }
+
+    /// 게임 월드를 갱신합니다.
+    fn update(&mut self, world: &GameWorld) {
+        let current_time_pt = Instant::now();
+        let elapsed_time_sec = current_time_pt
+            .saturating_duration_since(self.previous_time_pt)
+            .as_secs_f32();
+        self.previous_time_pt = current_time_pt;
+
+        // 남은 시간 업데이트
+        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+        if self.remaining_time_sec > 0.0 {
+            // println!("remaining time: {:.1}", self.remaining_time_sec);
+        } else {
+            println!("game over!");
+            world.push_event(GameWorldEvent::GameOver { winner: None });
+        }
+
+        // println!("fps: {:.2} (elapsed time: {})", 1.0 / elapsed_time_sec, elapsed_time_sec);
+
+        self.update_player_state_timer(world, elapsed_time_sec);
+        self.update_player_position(world, elapsed_time_sec);
+
+        // 총알 이동 및 충돌처리
+        self.update_bullet(world, elapsed_time_sec);
+
+        // 점령상태 갱신
+        self.update_capture_point(world, elapsed_time_sec);
+    }
+
     /// 모든 세션 데이터에 패킷을 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         let players: Vec<_> = world
             .players
             .iter_mut()
-            .map(|mut player| {
+            .map(|player| {
                 PlayPhasePlayer::new(
                     player.account().clone(),
                     player.character_kind(),
+                    player.max_health_point(),
                     player.health_point(),
                     player.translation().to_array(),
                     player.rotation().to_array(),
@@ -393,7 +610,6 @@ impl GameWorldInGameState {
             })
             .collect();
 
-        // 플레이어가 비어있는 경우 패킷 전송을 생략합니다.
         if players.is_empty() {
             return;
         }
@@ -404,8 +620,11 @@ impl GameWorldInGameState {
             .map(|bullet| bullet.as_bullet())
             .collect();
 
+        let capture_point = self.capture_point.capture_point().clone();
+        let remaining_time_sec = self.remaining_time_sec; // Copy the value
+
         // 패킷을 생성하고 전송합니다.
-        let packet = PullStagePacket::new(players, bullets);
+        let packet = PullStagePacket::new(players, bullets, capture_point, remaining_time_sec);
         for session in world.sessions.iter() {
             session.key().tcp_write(packet.as_raw());
         }
@@ -461,6 +680,11 @@ impl GameWorldState for GameWorldInGameState {
                     log::warn!("failed to respawn player (uid: {})", uid);
                 }
             }
+            GameWorldEvent::GameOver { winner } => {
+                println!("{:?} win!", winner);
+                log::info!("game over - winner: {:?}", winner);
+                // self.is_running = false;
+            }
             _ => {
                 log::warn!(
                     "ignored >> unused world event (EVENT:{:?} STATE:{:?})",
@@ -481,8 +705,8 @@ impl GameWorldState for GameWorldInGameState {
         self.broadcast(world);
     }
 
-    fn yield_now(&self) {
-        std::thread::sleep(Duration::from_millis(1));
+    fn yield_now(&self) -> Duration {
+        Duration::from_millis(1)
     }
 }
 

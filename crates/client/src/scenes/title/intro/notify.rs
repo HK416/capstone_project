@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -8,7 +6,7 @@ use mod_app::{
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };
@@ -38,14 +36,18 @@ pub struct GameIntroNotifyScene {
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl GameIntroNotifyScene {
     /// 새로운 `GameIntroNotifyScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
         Self {
             locale,
             elapsed_time_sec: 0.0,
+            texture_pool,
         }
     }
 
@@ -71,48 +73,36 @@ impl GameIntroNotifyScene {
 }
 
 impl GameScene for GameIntroNotifyScene {
-    fn on_enter(
-        &mut self,
-        window: &Window,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, window: &Window, _app: &dyn AppHandle) {
         // 애플리케이션 창을 표시합니다.
         window.set_visible(true);
-        Ok(())
     }
 
-    fn on_update(
-        &mut self,
-        elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 게임 장면 경과 시간을 갱신합니다.
         self.elapsed_time_sec += elapsed_time_sec;
 
         // 다음 게임 장면으로 전환합니다.
         if self.elapsed_time_sec >= SCENE_DURATION {
-            let next_scene = Box::new(GameIntroLogoScene::new(self.locale));
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = GameIntroLogoScene::new(self.locale, self.texture_pool.clone());
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-
-        Ok(())
     }
 
     fn on_draw(
-        &self,
+        &mut self,
         _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
         _depth_buffer_view: &wgpu::TextureView,
         _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    ) {
         {
             let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&format!("RenderPass({})", stringify!(GameIntroNotifyScene))),
+                label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(self.get_background_color()),
@@ -126,15 +116,9 @@ impl GameScene for GameIntroNotifyScene {
                 occlusion_query_set: None,
             });
         }
-
-        Ok(())
     }
 
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -180,7 +164,5 @@ impl GameScene for GameIntroNotifyScene {
                     ui.label(sub_text);
                 });
             });
-
-        Ok(())
     }
 }

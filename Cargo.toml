@@ -28,6 +28,10 @@ bitflags = "2.9"
 # License: Zlib OR Apache-2.0 OR MIT
 bytemuck = { version = "1.20", features = ["derive"] }
 
+# Date and time library for Rust
+# License: MIT OR Apache-2.0
+chrono = "0.4"
+
 # concat! with support for const variables and expressions
 # License: MIT OR Apache-2.0
 constcat = "0.6"
@@ -76,6 +80,18 @@ rand = "0.9"
 # License: MIT OR Apache-2.0
 rayon = "1.10"
 
+# Application-level tracing for Rust.
+# License: MIT
+tracing = "0.1"
+
+# Utilities for implementing and composing `tracing` subscribers.
+# License: MIT
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Provides utilities for file appenders and making non-blocking writers.
+# License: MIT
+tracing-appender = "0.2"
+
 # A generic serialization/deserialization framework
 # License: MIT or Apache-2.0
 serde = { version = "1.0", features = ["derive"] }
@@ -83,6 +99,10 @@ serde = { version = "1.0", features = ["derive"] }
 # A JSON serialization file format
 # License: MIT OR Apache-2.0
 serde_json = "1.0"
+
+# Spin-based synchronization primitives
+# License: MIT
+spin = "0.10"
 
 # Compile-time assertions to ensure that invariants are met.
 # License: MIT OR Apache-2.0

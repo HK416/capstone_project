@@ -1,5 +1,8 @@
 use crate::{
-    components::{BigEndian, Bullet, PlayPhasePlayer, TryFromBigEndian, MAX_IN_GAME_PLAYERS},
+    components::{
+        BigEndian, Bullet, CapturePoint, PlayPhasePlayer, TryFromBigEndian,
+        MAX_IN_GAME_PLAYERS,
+    },
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -9,6 +12,8 @@ use crate::{
 pub struct PullStagePacket {
     pub players: Vec<PlayPhasePlayer>,
     pub bullets: Vec<Bullet>,
+    pub capture_point: CapturePoint,
+    pub remaining_time_sec: f32,
 }
 
 impl PullStagePacket {
@@ -17,13 +22,23 @@ impl PullStagePacket {
     /// # Panics
     /// 주어진 `players`가 `MAX_IN_GAME_PLAYER`를 초과할 경우 `panic!`을 호출합니다.
     ///
-    pub fn new(players: Vec<PlayPhasePlayer>, bullets: Vec<Bullet>) -> Self {
+    pub fn new(
+        players: Vec<PlayPhasePlayer>,
+        bullets: Vec<Bullet>,
+        capture_point: CapturePoint,
+        remaining_time_sec: f32,
+    ) -> Self {
         assert!(
             0 < players.len() && players.len() <= MAX_IN_GAME_PLAYERS,
             "There are more people participaing in the game than the capacity!"
         );
 
-        Self { players, bullets }
+        Self {
+            players,
+            bullets,
+            capture_point,
+            remaining_time_sec,
+        }
     }
 }
 
@@ -36,7 +51,9 @@ impl Packet for PullStagePacket {
         let data_size = u8::byte_size()
             + PlayPhasePlayer::byte_size() * self.players.len()
             + u16::byte_size()
-            + Bullet::byte_size() * self.bullets.len();
+            + Bullet::byte_size() * self.bullets.len()
+            + CapturePoint::byte_size()
+            + f32::byte_size();  // 남은 시간 추가
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -48,6 +65,8 @@ impl Packet for PullStagePacket {
         for bullet in self.bullets.iter() {
             data.extend_from_slice(&bullet.to_big_endian_bytes());
         }
+        data.extend_from_slice(&self.capture_point.to_big_endian_bytes());
+        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes()); // 남은 시간 추가
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -106,15 +125,34 @@ impl Packet for PullStagePacket {
             num_bullets -= 1;
         }
 
-        Some(Self { players, bullets })
+        // 점령지 데이터를 가져옵니다.
+        offset = offset + size;
+        size = CapturePoint::byte_size();
+        data = &bytes[offset..offset + size];
+        let capture_point = CapturePoint::try_from_big_endian_bytes(data)?;
+        
+        offset = offset + size;
+        size = f32::byte_size();
+        data = &bytes[offset..offset + size];
+        let remaining_time_sec = f32::from_big_endian_bytes(data);
+
+        Some(Self {
+            players,
+            bullets,
+            capture_point,
+            remaining_time_sec,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU16;
+
     use crate::components::{
-        ActionState, ActionStateTimer, CharacterKind, HealthPoint, LatLon, MovementState,
-        MovementStateTimer, Team, UserAccount, UserId, UserName, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, CharacterKind, HealthPoint, LatLon, MaxHealthPoint,
+        MovementState, MovementStateTimer, Team, UserAccount, UserId, UserName, ViewState,
+        ViewStateTimer,
     };
 
     use super::*;
@@ -124,6 +162,7 @@ mod tests {
         let player_0 = PlayPhasePlayer::new(
             UserAccount::new(UserId::new(1412512), UserName::from_str("Aris")),
             CharacterKind::ArisOriginal,
+            MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
             HealthPoint::new(1413),
             [1.1512351, 2.4151616, 1.16561651],
             [1.5415151, 0.16551351, 0.9513515, 1.0515161],
@@ -139,8 +178,10 @@ mod tests {
                 lon: 0.0154123,
             },
         );
+        let capture_point = CapturePoint::default();
+        let remaining_time_sec = 60.0;
 
-        let origin = PullStagePacket::new(vec![player_0], vec![]);
+        let origin = PullStagePacket::new(vec![player_0], vec![], capture_point, remaining_time_sec);
         let raw = origin.as_raw();
         let other = PullStagePacket::from_raw(raw);
 

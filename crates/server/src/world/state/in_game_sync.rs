@@ -63,6 +63,7 @@ impl GameWorldInGameSyncState {
             let next_state = Box::new(GameWorldInGameState::new(
                 self.stage_kind,
                 self.spawn_positions.clone(),
+                (5 * 60) as f32,    // 5분
             ));
             let control_flow = GameWorldStateFlow::Change(next_state);
             let event = GameWorldEvent::SetControlFlow(control_flow);
@@ -130,6 +131,7 @@ impl GameWorldState for GameWorldInGameSyncState {
                 .with_translation(position)
                 .with_rotation(direction)
                 .with_view_rotation(view_rotation);
+            player.reset_state();
         }
 
         // 각 세션에 스테이지 초기화 패킷을 전송합니다.
@@ -142,6 +144,7 @@ impl GameWorldState for GameWorldInGameSyncState {
                     PlayPhasePlayer::new(
                         player.account().clone(),
                         player.character_kind(),
+                        player.max_health_point(),
                         player.health_point(),
                         player.translation().to_array(),
                         player.rotation().to_array(),

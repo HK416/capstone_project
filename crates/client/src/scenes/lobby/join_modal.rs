@@ -1,8 +1,7 @@
-use std::error::Error;
-
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
+    net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
@@ -15,9 +14,9 @@ use mod_network::{
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::{CustomGameRoomScene, BASE_WIDTH},
+    scenes::{CustomGameRoomScene, FatalErrorSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
 
@@ -57,17 +56,30 @@ pub struct MainLobbyJoinModalScene {
 
     /// 입력된 번호 데이터입니다.
     input_number: String,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
 }
 
 impl MainLobbyJoinModalScene {
     /// 새로운 `MainLobbyJoinModalScene`을 생성합니다.
-    pub fn new(locale: Locale, user_id: UserId, token: LoginToken) -> Self {
+    pub fn new(
+        locale: Locale,
+        user_id: UserId,
+        token: LoginToken,
+        texture_pool: TexturePool,
+        texture_view_pool: TextureViewPool,
+    ) -> Self {
         Self {
             locale,
             user_id,
             token,
             input_enabled: true,
             input_number: String::with_capacity(16),
+            texture_pool,
+            texture_view_pool,
         }
     }
 }
@@ -77,11 +89,31 @@ impl GameScene for MainLobbyJoinModalScene {
         true
     }
 
-    fn on_received_packet(
-        &mut self,
-        packet: RawPacket,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::CustomGameJoinFailed => {
@@ -114,6 +146,8 @@ impl GameScene for MainLobbyJoinModalScene {
                     self.locale,
                     self.user_id,
                     self.token,
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
                     packet.world_id,
                     packet.players,
                 ));
@@ -130,14 +164,11 @@ impl GameScene for MainLobbyJoinModalScene {
                 );
             }
         }
-        Ok(())
+
+        None
     }
 
-    fn ui_callback(
-        &mut self,
-        window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
@@ -248,7 +279,5 @@ impl GameScene for MainLobbyJoinModalScene {
                 socket.push_packet(packet.as_raw());
             }
         }
-
-        Ok(())
     }
 }

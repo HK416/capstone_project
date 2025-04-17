@@ -135,12 +135,6 @@ pub fn config_swapchain(
 
 pub mod egui;
 pub mod error;
-pub mod mesh;
-pub mod pool;
-pub mod resource;
 
 pub use self::egui::*;
 pub use self::error::*;
-pub use self::mesh::*;
-pub use self::pool::*;
-pub use self::resource::*;

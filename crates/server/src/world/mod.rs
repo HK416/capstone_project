@@ -318,7 +318,7 @@ async fn running_loop(world: Arc<GameWorld>) {
         curr_state.on_advanced(&world);
 
         // 다른 작업에 양도합니다.
-        curr_state.yield_now();
+        tokio::time::sleep(curr_state.yield_now()).await;
     }
 
     // 비활성화된 게임 월드를 회수합니다.
@@ -355,6 +355,7 @@ fn update_state(
 /// 모든 게임 월드 상태를 정리합니다.
 fn clear_state(stack: &mut VecDeque<Box<dyn GameWorldState>>, world: &Arc<GameWorld>) {
     while let Some(mut state) = stack.pop_back() {
+        log::info!("GamwWorld({:?}) exit GameWorldState({:?})", &world, &state);
         state.on_exit(world);
     }
 }
@@ -363,10 +364,16 @@ fn clear_state(stack: &mut VecDeque<Box<dyn GameWorldState>>, world: &Arc<GameWo
 fn change_state(
     stack: &mut VecDeque<Box<dyn GameWorldState>>,
     world: &Arc<GameWorld>,
-    new: Box<dyn GameWorldState>,
+    mut new: Box<dyn GameWorldState>,
 ) {
-    pop_state(stack, world);
-    push_state(stack, world, new);
+    if let Some(mut state) = stack.pop_back() {
+        log::info!("GamwWorld({:?}) exit GameWorldState({:?})", &world, &state);
+        state.on_exit(world);
+    }
+
+    log::info!("GamwWorld({:?}) enter GameWorldState({:?})", &world, &new);
+    new.on_enter(world);
+    stack.push_back(new);
 }
 
 /// 새로운 게임 월드 상태를 추가합니다.
@@ -376,9 +383,11 @@ fn push_state(
     mut new: Box<dyn GameWorldState>,
 ) {
     if let Some(curr_state) = stack.back_mut() {
+        log::info!("GamwWorld({:?}) pause GameWorldState({:?})", &world, &curr_state);
         curr_state.on_pause(world);
     }
 
+    log::info!("GamwWorld({:?}) enter GameWorldState({:?})", &world, &new);
     new.on_enter(world);
     stack.push_back(new);
 }
@@ -386,10 +395,12 @@ fn push_state(
 /// 현재 게임 월드 상태를 제거합니다.
 fn pop_state(stack: &mut VecDeque<Box<dyn GameWorldState>>, world: &Arc<GameWorld>) {
     if let Some(mut state) = stack.pop_back() {
+        log::info!("GamwWorld({:?}) exit GameWorldState({:?})", &world, &state);
         state.on_exit(world);
     }
 
     if let Some(curr_state) = stack.back_mut() {
+        log::info!("GamwWorld({:?}) resume GameWorldState({:?})", &world, &curr_state);
         curr_state.on_resume(world);
     }
 }

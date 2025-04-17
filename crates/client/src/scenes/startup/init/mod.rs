@@ -1,12 +1,9 @@
 mod locale;
 mod window;
 
-use std::{
-    error::Error,
-    sync::{
-        atomic::{AtomicBool, Ordering as MemOrdering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering as MemOrdering},
+    Arc,
 };
 
 use mod_app::{
@@ -19,7 +16,7 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::{NOTOSANS_REGULAR, USER_CONFIG},
+    asset::{TexturePool, NOTOSANS_REGULAR, USER_CONFIG},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::GameIntroNotifyScene,
 };
@@ -36,15 +33,19 @@ pub struct InitFinishScene {
     locale: Locale,
     /// 저장의 완료 여부
     completed: Arc<AtomicBool>,
+
+    // 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl InitFinishScene {
     /// 새로운 `InitFinishScene`을 생성합니다.
-    pub fn new() -> Self {
+    pub fn new(texture_pool: TexturePool) -> Self {
         let config = UserConfig::get();
         Self {
             locale: config.locale,
             completed: Arc::new(AtomicBool::new(false)),
+            texture_pool,
         }
     }
 
@@ -63,48 +64,48 @@ impl InitFinishScene {
 }
 
 impl GameScene for InitFinishScene {
-    fn on_enter(
-        &mut self,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         self.store_user_config(app.io_threads(), app.asset_manager());
-        Ok(())
     }
 
-    fn on_update(
-        &mut self,
-        _elapsed_time_sec: f32,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.completed.load(MemOrdering::Acquire) {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = Box::new(GameIntroNotifyScene::new(self.locale));
-            let scene_flow = GameSceneFlow::Change(next_scene);
+            let next_scene = GameIntroNotifyScene::new(self.locale, self.texture_pool.clone());
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::SetGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
-        Ok(())
     }
 
     fn on_draw(
-        &self,
-        _window: &Window,
-        _encoder: &mut wgpu::CommandEncoder,
-        _render_target_view: &wgpu::TextureView,
-        _depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        Ok(())
-    }
-
-    fn ui_callback(
         &mut self,
         _window: &Window,
-        app: &dyn AppHandle,
-    ) -> Result<(), Box<dyn Error + Send>> {
+        encoder: &mut wgpu::CommandEncoder,
+        render_target_view: &wgpu::TextureView,
+        _depth_buffer_view: &wgpu::TextureView,
+        _app: &dyn AppHandle,
+    ) {
+        {
+            let _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some(&format!("RenderPass({:?})", &self)),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    view: render_target_view,
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+    }
+
+    fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
         // 폰트 속성
         let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0, font_family);
@@ -116,12 +117,10 @@ impl GameScene for InitFinishScene {
             .font(font_id.clone())
             .color(font_color.clone());
 
-        egui::Area::new(egui::Id::new("Layout_0"))
+        egui::Area::new(egui::Id::new("Layout_Loading"))
             .anchor(egui::Align2::RIGHT_BOTTOM, [0.0, 0.0])
             .show(app.egui_ctx(), |ui| {
                 ui.label(loading_text);
             });
-
-        Ok(())
     }
 }

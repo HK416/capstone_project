@@ -2,12 +2,18 @@
 mod asset;
 mod component;
 mod config;
-mod render;
 mod scenes;
 
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv6Addr, SocketAddr},
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 use mod_app::net::IpAddress;
+use tracing::level_filters::LevelFilter;
+use tracing_appender::{non_blocking::WorkerGuard, rolling};
+use tracing_subscriber::EnvFilter;
 
 pub const SERVER_IP: IpAddr = IpAddr::V6(Ipv6Addr::LOCALHOST);
 pub const SERVER_TCP_ADDR: IpAddress = IpAddress::Tcp(SocketAddr::new(SERVER_IP, 7878));
@@ -17,6 +23,9 @@ pub const UDP_SOCKET_ADDR: IpAddress = IpAddress::Udp {
     port: 19261,
     remote: SocketAddr::new(SERVER_IP, 7878),
 };
+
+/// 서버에 트래픽이 몰리는 것을 방지하기 위한 패킷의 전송 딜레이 시간입니다.
+pub const PACKET_DELAY: f32 = 1.0 / 120.0;
 
 /// 64bit `Windows`, `macOS` 플랫폼의
 /// 애플리케이션 진입점입니다.
@@ -32,11 +41,7 @@ fn main() {
     use scenes::GameStartupScene;
 
     // 로그 시스템을 초기화 합니다.
-    env_logger::builder()
-        .filter_module("wgpu_core", log::LevelFilter::Warn)
-        .filter_module("wgpu_hal", log::LevelFilter::Warn)
-        .filter_module("naga", log::LevelFilter::Warn)
-        .init();
+    let _guard = init_log_system();
     log::info!("클라이언트 애플리케이션 실행...");
 
     AppBuilder::new(Box::new(GameStartupScene::new()))
@@ -44,4 +49,64 @@ fn main() {
         .with_fullscreen(false)
         .with_visible(false)
         .build_and_run()
+}
+
+/// 로그 시스템을 초기화 합니다.
+///
+/// # Note
+/// 반환되는 `WorkerGuard`를 유지해야 로그가 정상적으로 저장됩니다.
+///
+fn init_log_system() -> WorkerGuard {
+    // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
+    let mut dir = get_current_path().to_path_buf();
+    dir.push("logs");
+
+    // 로그 시스템을 생성합니다.
+    let formatted = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let file_name = format!("log-{}", formatted);
+    let file_appender = rolling::never(dir, file_name);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    // 로그에 남길 오류 수준을 설정합니다.
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::DEBUG.into())
+        .from_env_lossy();
+
+    // 로그 시스템을 초기화합니다.
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .with_thread_names(true)
+        .init();
+
+    guard
+}
+
+/// 프로그램의 디렉토리 경로를 가져옵니다.  
+/// 이 함수는 명령줄 인수를 통해 프로그램의 현재 경로를 가져옵니다.
+pub fn get_current_path() -> &'static Path {
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut args = std::env::args();
+        let argument = match args.next() {
+            Some(arg) => arg,
+            None => {
+                log::error!("command line arguments are empty!");
+                panic!("command line arguments are empty!");
+            }
+        };
+
+        let current_exe = PathBuf::from(argument);
+        let current_path = match current_exe.parent() {
+            Some(path) => path,
+            None => {
+                log::error!("the path to the executable file could not be found!");
+                panic!("the path to the executable file could not be found!")
+            }
+        }
+        .to_path_buf();
+
+        current_path
+    })
 }

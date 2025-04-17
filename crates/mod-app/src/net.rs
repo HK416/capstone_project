@@ -17,14 +17,22 @@ use winit::event_loop::EventLoopProxy;
 
 use crate::etc::AppEvent;
 
+/// 네트워크 오류 목록입니다.
+#[derive(Debug, thiserror::Error)]
+pub enum NetworkError {
+    /// 연결이 끊어졌을 때 발생하는 오류입니다.
+    #[error("network connection was lost. (ADDR:{0:?})")]
+    ClosedSocket(IpAddress),
+    /// 입출력 오류입니다.
+    #[error("socket I/O failed. (REASON:{0})")]
+    IO(io::Error),
+}
+
 /// Socket Address
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum IpAddress {
     Tcp(SocketAddr),
-    Udp {
-        port: u16,
-        remote: SocketAddr,
-    },
+    Udp { port: u16, remote: SocketAddr },
 }
 
 impl IpAddress {
@@ -41,7 +49,7 @@ impl IpAddress {
 #[derive(Debug)]
 enum Socket {
     Tcp(TcpStream, SocketAddr),
-    Udp(UdpSocket, SocketAddr)
+    Udp(UdpSocket, SocketAddr),
 }
 
 impl Socket {
@@ -51,11 +59,8 @@ impl Socket {
             Socket::Tcp(stream, addr) => {
                 let mut reader = BufReader::new(stream);
                 reader.read(buf).map(|n| (n, *addr))
-            },
-            Socket::Udp(socket, _) => {
-                socket.recv_from(buf)
-            }, 
-            
+            }
+            Socket::Udp(socket, _) => socket.recv_from(buf),
         }
     }
 
@@ -65,10 +70,8 @@ impl Socket {
             Socket::Tcp(stream, _) => {
                 let mut writer = BufWriter::new(stream);
                 writer.write(buf)
-            },
-            Socket::Udp(socket, addr) => {
-                socket.send_to(buf, addr)
-            },
+            }
+            Socket::Udp(socket, addr) => socket.send_to(buf, addr),
         }
     }
 }
@@ -128,6 +131,8 @@ impl NetManager {
             IpAddress::Tcp(addr) => {
                 // TCP 스트림을 생성합니다.
                 let stream = TcpStream::connect_timeout(addr, Duration::from_secs(5))?;
+                stream.set_nonblocking(true)?;
+
                 let status = Arc::new(SocketStatus {
                     address: address.clone(),
                     socket: Socket::Tcp(stream, *addr),
@@ -138,17 +143,19 @@ impl NetManager {
 
                 let status_cloned = status.clone();
                 let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-                std::thread::spawn(|| tcp_packet_receive_loop(event_loop_proxy_cloned, status_cloned));
+                std::thread::spawn(|| {
+                    tcp_packet_receive_loop(event_loop_proxy_cloned, status_cloned)
+                });
 
                 let status_cloned = status.clone();
                 let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
                 std::thread::spawn(|| tcp_packet_send_loop(event_loop_proxy_cloned, status_cloned));
-                
+
                 let status_cloned = status.clone();
                 self.0.sockets.insert(address.clone(), status);
-        
+
                 Ok(status_cloned)
-            },
+            }
             IpAddress::Udp { port, remote } => {
                 // UDP 소켓을 생성합니다.
                 let socket = if cfg!(feature = "dev") {
@@ -161,18 +168,20 @@ impl NetManager {
                     socket: Socket::Udp(socket, *remote),
                     cvar: Condvar::new(),
                     queue: Mutex::new(VecDeque::new()),
-                    is_connected: AtomicBool::new(true)
+                    is_connected: AtomicBool::new(true),
                 });
 
                 let status_cloned = status.clone();
                 let event_loop_proxy_cloned = self.0.event_loop_proxy.clone();
-                std::thread::spawn(|| udp_packet_receive_loop(event_loop_proxy_cloned, status_cloned));
+                std::thread::spawn(|| {
+                    udp_packet_receive_loop(event_loop_proxy_cloned, status_cloned)
+                });
 
                 let status_cloned = status.clone();
                 self.0.sockets.insert(address.clone(), status);
-        
+
                 Ok(status_cloned)
-            },
+            }
         }
     }
 
@@ -193,7 +202,10 @@ impl NetManager {
 }
 
 /// TCP 패킷을 보내는 루프 함수입니다.
-fn tcp_packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status: Arc<SocketStatus>) {
+fn tcp_packet_send_loop(
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
+    status: Arc<SocketStatus>,
+) {
     loop {
         let mut queue = status.queue.lock();
         if status.is_connected() {
@@ -211,27 +223,36 @@ fn tcp_packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status:
                 let result = status.socket.send_stream(&buffer);
                 match result {
                     Ok(0) => {
-                        // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
-                        unsafe {
-                            event_loop_proxy
-                                .send_event(AppEvent::ClosedSocket(status.address))
-                                .unwrap_unchecked()
-                        };
                         status.is_connected.store(false, MemOrdering::Release);
-                        break;
+                        let error = NetworkError::ClosedSocket(status.address);
+                        let event = AppEvent::NetworkError(error);
+                        event_loop_proxy.send_event(event).unwrap();
+                        return;
                     }
                     Ok(n) => buffer = &buffer[n..],
-                    Err(ref e) if e.kind() == ErrorKind::Interrupted => {
-                        continue;
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::ConnectionAborted => {
+                        status.is_connected.store(false, MemOrdering::Release);
+                        let error = NetworkError::ClosedSocket(status.address);
+                        let event = AppEvent::NetworkError(error);
+                        event_loop_proxy.send_event(event).unwrap();
+                        return;
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
+                        status.is_connected.store(false, MemOrdering::Release);
+                        let error = NetworkError::ClosedSocket(status.address);
+                        let event = AppEvent::NetworkError(error);
+                        event_loop_proxy.send_event(event).unwrap();
+                        return;
                     }
                     Err(e) => {
-                        // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
-                        unsafe {
-                            event_loop_proxy
-                                .send_event(AppEvent::IOError(e))
-                                .unwrap_unchecked()
-                        };
-                        break;
+                        status.is_connected.store(false, MemOrdering::Release);
+                        let error = NetworkError::IO(e);
+                        let event = AppEvent::NetworkError(error);
+                        event_loop_proxy.send_event(event).unwrap();
+                        return;
                     }
                 }
             }
@@ -241,8 +262,8 @@ fn tcp_packet_send_loop(event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, status:
 
 /// TCP 패킷을 받는 루프 함수입니다.
 fn tcp_packet_receive_loop(
-    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
-    status: Arc<SocketStatus>
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
+    status: Arc<SocketStatus>,
 ) {
     // 받은 패킷을 구문 분석하는 구문 분석기입니다.
     // 구문 분석한 패킷은 EventLoopProxy를 통해 애플리케이션 이벤트 루프로 전송됩니다.
@@ -258,32 +279,41 @@ fn tcp_packet_receive_loop(
         let result = status.socket.recv_stream(&mut buffer);
         match result {
             Ok((0, _)) => {
-                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
-                unsafe {
-                    event_loop_proxy
-                        .send_event(AppEvent::ClosedSocket(status.address))
-                        .unwrap_unchecked()
-                };
                 status.is_connected.store(false, MemOrdering::Release);
-                break;
+                let error = NetworkError::ClosedSocket(status.address);
+                let event = AppEvent::NetworkError(error);
+                event_loop_proxy.send_event(event).unwrap();
+                return;
             }
             Ok((n, addr)) => {
                 log::debug!("received tcp packet data (SIZE:{})", n);
                 if addr == *status.address.target_addr() {
                     parser.push(&buffer[..n])
                 }
-            },
-            Err(ref e) if e.kind() == ErrorKind::Interrupted => {
-                continue;
+            }
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(ref e) if e.kind() == ErrorKind::ConnectionAborted => {
+                status.is_connected.store(false, MemOrdering::Release);
+                let error = NetworkError::ClosedSocket(status.address);
+                let event = AppEvent::NetworkError(error);
+                event_loop_proxy.send_event(event).unwrap();
+                return;
+            }
+            Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
+                status.is_connected.store(false, MemOrdering::Release);
+                let error = NetworkError::ClosedSocket(status.address);
+                let event = AppEvent::NetworkError(error);
+                event_loop_proxy.send_event(event).unwrap();
+                return;
             }
             Err(e) => {
-                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
-                unsafe {
-                    event_loop_proxy
-                        .send_event(AppEvent::IOError(e))
-                        .unwrap_unchecked()
-                };
-                break;
+                status.is_connected.store(false, MemOrdering::Release);
+                let error = NetworkError::IO(e);
+                let event = AppEvent::NetworkError(error);
+                event_loop_proxy.send_event(event).unwrap();
+                return;
             }
         };
 
@@ -292,7 +322,8 @@ fn tcp_packet_receive_loop(
                 .send_event(AppEvent::PacketReceived(raw_packet))
                 .is_err()
             {
-                break; // 애플리케이션 이벤트 루프가 종료되었을 경우(애플리케이션의 종료) 루프 함수를 빠져나옵니다.
+                status.is_connected.store(false, MemOrdering::Release);
+                return; // 애플리케이션 이벤트 루프가 종료되었을 경우(애플리케이션의 종료) 루프 함수를 빠져나옵니다.
             }
         }
     }
@@ -300,7 +331,7 @@ fn tcp_packet_receive_loop(
 
 /// UDP 패킷을 수신하는 루프 함수입니다.
 fn udp_packet_receive_loop(
-    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>, 
+    event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
     status: Arc<SocketStatus>,
 ) {
     // UDP 패킷의 크기는 1KB를 넘지 않습니다.
@@ -314,14 +345,11 @@ fn udp_packet_receive_loop(
         let result = status.socket.recv_stream(&mut buffer);
         match result {
             Ok((0, _)) => {
-                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
-                unsafe {
-                    event_loop_proxy
-                        .send_event(AppEvent::ClosedSocket(status.address))
-                        .unwrap_unchecked()
-                };
                 status.is_connected.store(false, MemOrdering::Release);
-                break;
+                let error = NetworkError::ClosedSocket(status.address);
+                let event = AppEvent::NetworkError(error);
+                event_loop_proxy.send_event(event).unwrap();
+                return;
             }
             Ok((n, addr)) => {
                 log::debug!("received udp packet data (SIZE:{})", n);
@@ -333,29 +361,25 @@ fn udp_packet_receive_loop(
                     //
                     match RawPacket::try_from_bytes(received_data) {
                         Ok(packet) => {
-                            unsafe { 
-                                event_loop_proxy
-                                    .send_event(AppEvent::PacketReceived(packet))
-                                    .unwrap_unchecked();
-                            }
-                        },
+                            event_loop_proxy
+                                .send_event(AppEvent::PacketReceived(packet))
+                                .unwrap();
+                        }
                         Err(e) => {
-                            log::warn!("failed to parse packet from {addr}: {e}");
+                            log::warn!("packet ignored >> failed to parse packet from {addr}: {e}");
                         }
                     }
                 }
-            },
+            }
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                 continue;
             }
             Err(e) => {
-                // Safe: 이벤트 루프가 종료된 경우는 애플리케이션이 종료되었을 때 이다.
-                unsafe {
-                    event_loop_proxy
-                        .send_event(AppEvent::IOError(e))
-                        .unwrap_unchecked()
-                };
-                break;
+                status.is_connected.store(false, MemOrdering::Release);
+                let error = NetworkError::IO(e);
+                let event = AppEvent::NetworkError(error);
+                event_loop_proxy.send_event(event).unwrap();
+                return;
             }
         };
     }
@@ -363,7 +387,10 @@ fn udp_packet_receive_loop(
 
 #[cfg(feature = "dev")]
 mod util {
-    use std::{io, net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket}};
+    use std::{
+        io,
+        net::{IpAddr, Ipv6Addr, SocketAddr, UdpSocket},
+    };
 
     use socket2::{Domain, SockAddr, Socket, Type};
 
@@ -380,7 +407,7 @@ mod util {
         // 소켓 주소 재사용 옵션
         let local_addr = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port);
         socket.bind(&SockAddr::from(local_addr))?;
-        
+
         Ok(socket.into())
-    } 
+    }
 }
