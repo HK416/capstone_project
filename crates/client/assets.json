@@ -226,7 +226,8 @@
         "ui" : {
             "files" : [
                 "BG_Main_Lobby.png",
-                "UI_Game_Layout.png"
+                "UI_Game_Layout.png",
+                "UI_Timer_Icon.dds"
             ],
             "directories" : {}
         }

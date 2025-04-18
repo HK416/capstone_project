@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use ahash::{HashMap, HashSet};
+use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -20,6 +20,7 @@ use mod_network::{
     },
 };
 use mod_physics::object3d::Frustum;
+use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -29,7 +30,8 @@ use winit::{
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI,
+        TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI,
+        UI_TIMER_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -137,7 +139,7 @@ pub struct InGameDominationModeScene {
     alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
     /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
-    ui_bg_texture: egui::load::SizedTexture,
+    ui_textures: HashMap<String, egui::load::SizedTexture>,
 
     /// 그림자 렌더링 리소스 집합입니다.
     shadow_map: ShadowMap,
@@ -205,10 +207,7 @@ impl InGameDominationModeScene {
             controller_input_flags: GameInputBits::default(),
             shadow_resource: None,
             alpha_blend_resource: None,
-            ui_bg_texture: egui::load::SizedTexture {
-                id: egui::TextureId::User(0),
-                size: egui::Vec2::ZERO,
-            },
+            ui_textures: HashMap::with_capacity_and_hasher(16, RandomState::new()),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -258,8 +257,8 @@ impl InGameDominationModeScene {
     }
 
     /// UI 배경에 사용되는 텍스처를 Ui렌더러에 등록합니다.
-    fn register_ui_bg_texture(&mut self, app: &dyn AppHandle) {
-        // 게임 인터페이스 레이아웃 텍스처를 가져옵니다.
+    fn register_ui_bg_texture(&mut self, device: &wgpu::Device, egui_renderer: &mut UiRenderer) {
+        // `UI_Game_Layout` 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
             .get(UI_GAME_LAYOUT_URI)
@@ -272,17 +271,40 @@ impl InGameDominationModeScene {
             .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
-        let mut egui_renderer = app.egui_renderer_mut();
-        let texture_id = egui_renderer.register_native_texture(
-            app.render_device(),
-            &texture,
-            wgpu::FilterMode::Linear,
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            UI_GAME_LAYOUT_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
         );
 
-        self.ui_bg_texture = egui::load::SizedTexture {
-            id: texture_id,
-            size: texture_size,
-        };
+        // `UI_Timer_Icon` 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(UI_TIMER_ICON_URI)
+            .expect("UI_Timer_Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            UI_TIMER_ICON_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
     }
 
     /// 그림자 쉐이더 리소스를 생성합니다.
@@ -1692,11 +1714,17 @@ impl InGameDominationModeScene {
         // - 기준 시작 위치: (30, 596)
         // - 기준 종료 위치: (310, 690)
         //
-        let tex_width = self.ui_bg_texture.size.x;
-        let tex_height = self.ui_bg_texture.size.y;
+        let ui_game_layout = self
+            .ui_textures
+            .get(UI_GAME_LAYOUT_URI)
+            .cloned()
+            .expect("the UI_Game_Layout must exist!");
+
+        let tex_width = ui_game_layout.size.x;
+        let tex_height = ui_game_layout.size.y;
         let src_front = egui::load::SizedTexture {
             size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: self.ui_bg_texture.id,
+            id: ui_game_layout.id,
         };
         let pos_front = egui::Rect::from_min_max(
             egui::pos2(30.0 * scale, 596.0 * scale),
@@ -1706,7 +1734,7 @@ impl InGameDominationModeScene {
 
         let src_middle = egui::load::SizedTexture {
             size: egui::vec2(tex_width * 0.1875, tex_height),
-            id: self.ui_bg_texture.id,
+            id: ui_game_layout.id,
         };
         let pos_middle = egui::Rect::from_min_max(
             egui::pos2(66.0 * scale, 596.0 * scale),
@@ -1717,7 +1745,7 @@ impl InGameDominationModeScene {
 
         let src_back = egui::load::SizedTexture {
             size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: self.ui_bg_texture.id,
+            id: ui_game_layout.id,
         };
         let pos_back = egui::Rect::from_min_max(
             egui::pos2(274.0 * scale, 596.0 * scale),
@@ -1750,13 +1778,13 @@ impl InGameDominationModeScene {
                 .tint(egui::Color32::from_black_alpha(192))
                 .paint_at(ui, pos_back);
 
-            egui::Image::new(self.ui_bg_texture)
+            egui::Image::new(ui_game_layout)
                 .uv(deco_uv)
                 .paint_at(ui, deco_pos);
         });
     }
 
-    /// 체력 게이지 인터페이스 레이아웃이미지입니다.
+    /// 체력 게이지 인터페이스 레이아웃입니다.
     fn health_point_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
         // 폰트 속성
         let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
@@ -1840,12 +1868,12 @@ impl InGameDominationModeScene {
             });
     }
 
-    /// 남은 시간 배경 레이아웃이미지입니다.
-    fn score_gauge_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 팀 점수 게이지 인터페이스 레이아웃입니다.
+    fn score_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
         /// 팀의 색상입니다.
         const TEAM_COLOR: [egui::Color32; 2] = [
-            egui::Color32::from_rgb(135, 206, 235), // 블루팀 색상
-            egui::Color32::from_rgb(255, 68, 51),   // 레드 팀 색상
+            egui::Color32::from_rgb(0, 150, 255), // 블루팀 색상
+            egui::Color32::from_rgb(255, 68, 51), // 레드 팀 색상
         ];
 
         // 전체 배경
@@ -2005,6 +2033,99 @@ impl InGameDominationModeScene {
             ui.painter().add(red_guage);
         });
     }
+
+    /// 남은 시간 인터페이스 레이아웃입니다.
+    fn remaining_timer_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 체력 인터페이스 레이아웃 이미지
+        // - 기준 가로 크기: 144
+        // - 기준 세로 크기: 36
+        // - 기준 시작 위치: (1144, 12)
+        // - 기준 종료 위치: (1264, 42)
+        //
+        let ui_game_layout = self
+            .ui_textures
+            .get(UI_GAME_LAYOUT_URI)
+            .cloned()
+            .expect("the UI_Game_Layout must exist!");
+
+        let ui_timer_icon = self
+            .ui_textures
+            .get(UI_TIMER_ICON_URI)
+            .cloned()
+            .expect("the UI_Timer_Icon must exist!");
+
+        let tex_width = ui_game_layout.size.x;
+        let tex_height = ui_game_layout.size.y;
+        let src_front = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_front = egui::Rect::from_min_max(
+            egui::pos2(1120.0 * scale, 12.0 * scale),
+            egui::pos2(1153.0 * scale, 48.0 * scale),
+        );
+        let uv_front = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
+
+        let src_middle = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.1875, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_middle = egui::Rect::from_min_max(
+            egui::pos2(1153.0 * scale, 12.0 * scale),
+            egui::pos2(1231.0 * scale, 48.0 * scale),
+        );
+        let uv_middle =
+            egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.59375, 1.0));
+
+        let src_back = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_back = egui::Rect::from_min_max(
+            egui::pos2(1231.0 * scale, 12.0 * scale),
+            egui::pos2(1264.0 * scale, 48.0 * scale),
+        );
+        let uv_back = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
+
+        // 타이머 아이콘
+        let timer_icon_rect = egui::Rect::from_min_max(
+            egui::pos2(1140.0 * scale, 16.0 * scale),
+            egui::pos2(1168.0 * scale, 44.0 * scale),
+        );
+
+        // 남은 시간 폰트
+        let font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(18.0 * scale, font_family);
+        let minute = (self.remaining_time_sec / 60.0).floor();
+        let seconds = (self.remaining_time_sec % 60.0).floor();
+        let text = format!("{:0>2}:{:0>2}", minute, seconds);
+        let remaining_time_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE);
+        let text_area_rect = egui::Rect::from_min_max(
+            egui::pos2(1164.0 * scale, 14.0 * scale),
+            egui::pos2(1252.0 * scale, 46.0 * scale),
+        );
+
+        egui::Area::new(egui::Id::new("Timer_BG_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(src_front)
+                .uv(uv_front)
+                .tint(egui::Color32::from_black_alpha(192))
+                .paint_at(ui, pos_front);
+            egui::Image::new(src_middle)
+                .uv(uv_middle)
+                .tint(egui::Color32::from_black_alpha(192))
+                .paint_at(ui, pos_middle);
+            egui::Image::new(src_back)
+                .uv(uv_back)
+                .tint(egui::Color32::from_black_alpha(192))
+                .paint_at(ui, pos_back);
+
+            egui::Image::new(ui_timer_icon).paint_at(ui, timer_icon_rect);
+
+            ui.put(text_area_rect, egui::Label::new(remaining_time_text));
+        });
+    }
 }
 
 //--------------------------------------------------------------------------------------------
@@ -2062,10 +2183,12 @@ impl GameScene for InGameDominationModeScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
         self.disable_cursor(window);
 
-        self.register_ui_bg_texture(app);
-        self.create_main_camera(app.render_device());
-        self.create_shadow_resource(app.render_device());
-        self.create_alpha_blend_resource(window, app.render_device());
+        let device = app.render_device();
+        let mut egui_renderer = app.egui_renderer_mut();
+        self.register_ui_bg_texture(&device, &mut egui_renderer);
+        self.create_main_camera(&device);
+        self.create_shadow_resource(&device);
+        self.create_alpha_blend_resource(window, &device);
         self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
     }
 
@@ -2568,10 +2691,12 @@ impl GameScene for InGameDominationModeScene {
                 ui.painter().add(reticle);
             });
 
-        self.score_gauge_bg_layout(app.egui_ctx(), scale);
+        self.score_gauge_layout(app.egui_ctx(), scale);
 
         self.health_point_bg_layout(app.egui_ctx(), scale);
         self.health_point_gauge_layout(app.egui_ctx(), scale);
+
+        self.remaining_timer_layout(app.egui_ctx(), scale);
 
         egui::Area::new(egui::Id::new("FrameRate_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))

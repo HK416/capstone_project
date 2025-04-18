@@ -77,6 +77,9 @@ pub const DAMAGE_FONT_URI: &'static str = "D_Font_Normal";
 /// 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
 pub const UI_GAME_LAYOUT_URI: &'static str = "UI_Game_Layout";
 
+/// 인게임 타이머 아이콘 텍스처의 `Uri`입니다.
+pub const UI_TIMER_ICON_URI: &'static str = "UI_Timer_Icon";
+
 /// 스카이박스 텍스처의 `Uri`입니다.
 pub const SKYBOX_URI: &'static str = "Sky";
 
