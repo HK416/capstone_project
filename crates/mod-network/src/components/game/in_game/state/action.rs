@@ -1,7 +1,7 @@
 use crate::components::{BigEndian, TryFromBigEndian};
 
 /// ActionState의 상태 수 입니다.
-pub const NUM_ACTION_STATES: usize = 6;
+pub const NUM_ACTION_STATES: usize = 7;
 
 /// 플레이어 행동 상태 목록입니다.
 #[repr(u8)]
@@ -19,6 +19,8 @@ pub enum ActionState {
     Attack = 4,
     /// 사망 상태
     Dead = 5,
+    /// 재장전 상태
+    Reload = 6,
 }
 
 impl ActionState {
@@ -32,6 +34,7 @@ impl ActionState {
             3 => Some(ActionState::AimOff),
             4 => Some(ActionState::Attack),
             5 => Some(ActionState::Dead),
+            6 => Some(ActionState::Reload),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",

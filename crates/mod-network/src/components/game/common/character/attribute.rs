@@ -27,6 +27,8 @@ pub struct CharacterAttributes {
     pub walk_duration: f32,
     /// `ActionState::Idle` 애니메이션 시간 (단위: 초)
     pub normal_idle_duration: f32,
+    /// `ActionState::Reload` 애니메이션 시간 (단위: 초)
+    pub normal_reload_duration: f32,
     /// `ActionState::Aiming` 애니메이션 시간 (단위: 초)
     pub normal_attack_start_duration: f32,
     /// `ActionState::AimOff` 애니메이션 시간 (단위: 초)
@@ -37,6 +39,8 @@ pub struct CharacterAttributes {
     pub normal_attack_timing: Vec<f32>,
     /// 일반 공격 총알 발사 수
     pub normal_attack_count: u32,
+    /// 총알의 최대 개수
+    pub max_bullets: u32,
     pub health_point: u32,
     pub attack_power: u32,
     pub defense_power: u32,

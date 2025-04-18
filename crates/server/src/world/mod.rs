@@ -383,7 +383,11 @@ fn push_state(
     mut new: Box<dyn GameWorldState>,
 ) {
     if let Some(curr_state) = stack.back_mut() {
-        log::info!("GamwWorld({:?}) pause GameWorldState({:?})", &world, &curr_state);
+        log::info!(
+            "GamwWorld({:?}) pause GameWorldState({:?})",
+            &world,
+            &curr_state
+        );
         curr_state.on_pause(world);
     }
 
@@ -400,7 +404,11 @@ fn pop_state(stack: &mut VecDeque<Box<dyn GameWorldState>>, world: &Arc<GameWorl
     }
 
     if let Some(curr_state) = stack.back_mut() {
-        log::info!("GamwWorld({:?}) resume GameWorldState({:?})", &world, &curr_state);
+        log::info!(
+            "GamwWorld({:?}) resume GameWorldState({:?})",
+            &world,
+            &curr_state
+        );
         curr_state.on_resume(world);
     }
 }

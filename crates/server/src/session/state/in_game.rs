@@ -87,9 +87,7 @@ impl SessionState for SessionInGameState {
 
             let packet_type = packet.packet_type();
             match packet_type {
-                PacketType::PushSync => {
-                    /* empty */
-                },
+                PacketType::PushSync => { /* empty */ }
                 PacketType::PushStatus => {
                     self.handle_push_status_packet(session, packet);
                 }

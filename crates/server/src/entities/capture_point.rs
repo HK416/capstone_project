@@ -1,6 +1,5 @@
-use mod_network::components::{CapturePoint, Team, MAX_CAPTURE_SCORE};
+use mod_network::components::{CapturePoint, MAX_CAPTURE_SCORE, Team};
 use mod_physics::collision::Collider;
-
 
 pub struct CapturePointObject {
     /// 점령지 데이터
@@ -38,10 +37,10 @@ impl CapturePointObject {
     }
 
     pub fn capture(
-        &mut self, 
+        &mut self,
         new_capture_team: Option<Team>,
-        elapsed_time_sec: f32, 
-        capturing_count: usize
+        elapsed_time_sec: f32,
+        capturing_count: usize,
     ) -> Option<Team> {
         if new_capture_team.is_none() {
             // 아무도 없는 경우
@@ -63,8 +62,10 @@ impl CapturePointObject {
                     return self.capture_point.capture_team;
                 }
             } else {
-                self.capture_point.capture_progress += 10.0 * capturing_count as f32 * elapsed_time_sec;
-                self.capture_point.capture_progress = self.capture_point.capture_progress.min(100.0);
+                self.capture_point.capture_progress +=
+                    10.0 * capturing_count as f32 * elapsed_time_sec;
+                self.capture_point.capture_progress =
+                    self.capture_point.capture_progress.min(100.0);
             }
         } else {
             // 인원수에 비례해서 점령도 증가
