@@ -13,7 +13,6 @@ use mod_network::{addr::Addr, protocol::RawPacket};
 use mod_parallelism::collections::Queue;
 use session::{Session, SessionManager, handle_connection};
 use tokio::net::{TcpListener, UdpSocket};
-use tracing::Level;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 use world::GameWorldPool;
 

@@ -612,6 +612,7 @@ impl GameWorldInGameState {
                 PlayPhasePlayer::new(
                     player.account().clone(),
                     player.character_kind(),
+                    player.remaining_bullet(),
                     player.max_health_point(),
                     player.health_point(),
                     player.translation().to_array(),

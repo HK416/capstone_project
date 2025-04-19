@@ -3,8 +3,8 @@ use std::num::NonZeroU16;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameInputBits, HealthPoint,
     LatLon, MAX_JUMP_DURATION, MaxHealthPoint, MovementState, MovementStateTimer,
-    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Permission, Team, UserAccount, ViewState,
-    ViewStateTimer,
+    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Permission, RemainingBullet, Team,
+    UserAccount, ViewState, ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
 
@@ -120,12 +120,10 @@ impl PlayerObject {
 
     /// 리스폰시 호출하여 플레이어 오브젝트의 상태를 초기화합니다.
     pub fn reset_state(&mut self) {
-        self.health_point =
-            HealthPoint(get_character_attributes(self.character_kind).health_point as u16);
-        // 테스트용으로 체력을 낮게 설정
-        // self.health_point = HealthPoint(50);
+        self.attributes = get_character_attributes(self.character_kind);
+        self.health_point = HealthPoint(self.attributes.health_point as u16);
         self.fired_per_attack = 0;
-        self.remaining_bullets = 1;
+        self.remaining_bullets = self.attributes.max_bullets;
         self.action_state = ActionState::Idle;
         self.prev_action_state = ActionState::Idle;
         self.action_state_timer = ActionStateTimer::default();
@@ -215,6 +213,11 @@ impl PlayerObject {
     /// 플레이어 오브젝트의 체력을 가져옵니다.
     pub fn health_point_mut(&mut self) -> &mut HealthPoint {
         &mut self.health_point
+    }
+
+    /// 남은 총알의 개수를 반환합니다.
+    pub fn remaining_bullet(&self) -> RemainingBullet {
+        RemainingBullet::new(self.attributes.max_bullets, self.remaining_bullets)
     }
 
     /// 플레이엉 오브젝트의 위치를 설정합니다.

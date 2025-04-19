@@ -12,8 +12,8 @@ use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, CapturePoint, CharacterKind, DamageLog,
         GameInputBits, HealthPoint, LatLon, LoginToken, MaxHealthPoint, MovementState,
-        MovementStateTimer, ObjectId, PlayPhasePlayer, Team, UserId, ViewState, ViewStateTimer,
-        MAX_CAPTURE_SCORE,
+        MovementStateTimer, ObjectId, PlayPhasePlayer, RemainingBullet, Team, UserId, ViewState,
+        ViewStateTimer, MAX_CAPTURE_SCORE,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -2173,6 +2173,27 @@ impl InGameDominationModeScene {
             .cloned()
             .expect("the Weapon Icon must exist!");
 
+        // 남은 총알 텍스트
+        let entity = self.get_player_entity();
+        let remaining_bullet = self
+            .world
+            .query_one_mut::<&RemainingBullet>(entity)
+            .expect("invalid entity or invalid entity component");
+        let text = format!(
+            "{:0>2}/{:0>2}",
+            remaining_bullet.num_remaining_bullets(),
+            remaining_bullet.max_bullets()
+        );
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(18.0 * scale, family);
+        let remaining_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE);
+        let text_area = egui::Rect::from_min_max(
+            egui::pos2(1040.0 * scale, 650.0 * scale),
+            egui::pos2(1240.0 * scale, 670.0 * scale),
+        );
+
         // 인터페이스 배경
         let tex_width = ui_game_layout.size.x;
         let tex_height = ui_game_layout.size.y;
@@ -2232,6 +2253,8 @@ impl InGameDominationModeScene {
                 .paint_at(ui, pos_back);
 
             egui::Image::new(icon).paint_at(ui, icon_area);
+
+            ui.put(text_area, egui::Label::new(remaining_text));
         });
     }
 }

@@ -149,9 +149,7 @@ mod tests {
     use std::num::NonZeroU16;
 
     use crate::components::{
-        ActionState, ActionStateTimer, CharacterKind, HealthPoint, LatLon, MaxHealthPoint,
-        MovementState, MovementStateTimer, Team, UserAccount, UserId, UserName, ViewState,
-        ViewStateTimer,
+        ActionState, ActionStateTimer, CharacterKind, HealthPoint, LatLon, MaxHealthPoint, MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId, UserName, ViewState, ViewStateTimer
     };
 
     use super::*;
@@ -161,6 +159,7 @@ mod tests {
         let player_0 = PlayPhasePlayer::new(
             UserAccount::new(UserId::new(1412512), UserName::from_str("Aris")),
             CharacterKind::ArisOriginal,
+            RemainingBullet::new(10, 7),
             MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
             HealthPoint::new(1413),
             [1.1512351, 2.4151616, 1.16561651],

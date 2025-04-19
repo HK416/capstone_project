@@ -120,6 +120,7 @@ pub fn spawn_player_character(
     let world_transform = WorldTransform::default();
     let max_health_point = player.max_health_point;
     let health_point = player.health_point;
+    let remaining_bullet = player.remaining_bullet;
     let action_state = player.action_state();
     let movement_state = player.movement_state();
     let view_state = player.view_state();
@@ -136,6 +137,7 @@ pub fn spawn_player_character(
         world_transform,
         max_health_point,
         health_point,
+        remaining_bullet,
         action_state,
         action_state_timer,
         movement_state,
