@@ -227,7 +227,11 @@
             "files" : [
                 "BG_Main_Lobby.png",
                 "UI_Game_Layout.png",
-                "UI_Timer_Icon.dds"
+                "UI_Timer_Icon.dds",
+                "Weapon_Icon_Aris.dds",
+                "Weapon_Icon_Midori.dds",
+                "Weapon_Icon_Momoi.dds",
+                "Weapon_Icon_Yuuka.dds"
             ],
             "directories" : {}
         }

@@ -99,6 +99,17 @@ pub const CHARACTER_URIS: [&'static str; NUM_CHARACTERS] = [
     "yuuka_original",
 ];
 
+/// 무기 아이콘 `Uri`입니다.
+pub const WEAPON_ICON_URI: &'static str = "Weapon_Icon";
+
+/// 무기 아이콘의 `Uri`입니다.
+pub const WEAPON_ICON_URIS: [&'static str; NUM_CHARACTERS] = [
+    "Weapon_Icon_Aris",
+    "Weapon_Icon_Momoi",
+    "Weapon_Icon_Midori",
+    "Weapon_Icon_Yuuka",
+];
+
 /// 총알 모델의 작업 공간입니다.
 pub const BULLET_WORKSPACE: &'static str = "common";
 

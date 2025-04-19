@@ -31,7 +31,7 @@ use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
         TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI,
-        UI_TIMER_ICON_URI,
+        UI_TIMER_ICON_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -53,6 +53,8 @@ use crate::{
 };
 
 use super::InGamePauseLayer;
+
+const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
 
 enum MeshFilter {
     Mesh(MeshResource),
@@ -300,6 +302,30 @@ impl InGameDominationModeScene {
 
         self.ui_textures.insert(
             UI_TIMER_ICON_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+
+        // 플레이어 캐릭터 무기 아이콘 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(WEAPON_ICON_URI)
+            .expect("the Weapon Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            WEAPON_ICON_URI.into(),
             egui::load::SizedTexture {
                 id: texture_id,
                 size: texture_size,
@@ -1767,15 +1793,15 @@ impl InGameDominationModeScene {
         egui::Area::new(egui::Id::new("Health_BG_Layout")).show(egui_ctx, |ui| {
             egui::Image::new(src_front)
                 .uv(uv_front)
-                .tint(egui::Color32::from_black_alpha(192))
+                .tint(UI_BG_COLOR)
                 .paint_at(ui, pos_front);
             egui::Image::new(src_middle)
                 .uv(uv_middle)
-                .tint(egui::Color32::from_black_alpha(192))
+                .tint(UI_BG_COLOR)
                 .paint_at(ui, pos_middle);
             egui::Image::new(src_back)
                 .uv(uv_back)
-                .tint(egui::Color32::from_black_alpha(192))
+                .tint(UI_BG_COLOR)
                 .paint_at(ui, pos_back);
 
             egui::Image::new(ui_game_layout)
@@ -2036,7 +2062,7 @@ impl InGameDominationModeScene {
 
     /// 남은 시간 인터페이스 레이아웃입니다.
     fn remaining_timer_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
-        // 체력 인터페이스 레이아웃 이미지
+        // 남은 시간 인터페이스 레이아웃 이미지
         // - 기준 가로 크기: 144
         // - 기준 세로 크기: 36
         // - 기준 시작 위치: (1144, 12)
@@ -2110,20 +2136,102 @@ impl InGameDominationModeScene {
         egui::Area::new(egui::Id::new("Timer_BG_Layout")).show(egui_ctx, |ui| {
             egui::Image::new(src_front)
                 .uv(uv_front)
-                .tint(egui::Color32::from_black_alpha(192))
+                .tint(UI_BG_COLOR)
                 .paint_at(ui, pos_front);
             egui::Image::new(src_middle)
                 .uv(uv_middle)
-                .tint(egui::Color32::from_black_alpha(192))
+                .tint(UI_BG_COLOR)
                 .paint_at(ui, pos_middle);
             egui::Image::new(src_back)
                 .uv(uv_back)
-                .tint(egui::Color32::from_black_alpha(192))
+                .tint(UI_BG_COLOR)
                 .paint_at(ui, pos_back);
 
             egui::Image::new(ui_timer_icon).paint_at(ui, timer_icon_rect);
 
             ui.put(text_area_rect, egui::Label::new(remaining_time_text));
+        });
+    }
+
+    // 남은 총알 인터페이스 레이아웃입니다.
+    fn remaining_bullet_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 체력 인터페이스 레이아웃 이미지
+        // - 기준 가로 크기: 220
+        // - 기준 세로 크기: 110
+        // - 기준 시작 위치: (1030, 580)
+        // - 기준 종료 위치: (1250, 690)
+        //
+        let ui_game_layout = self
+            .ui_textures
+            .get(UI_GAME_LAYOUT_URI)
+            .cloned()
+            .expect("the UI_Game_Layout must exist!");
+
+        let icon = self
+            .ui_textures
+            .get(WEAPON_ICON_URI)
+            .cloned()
+            .expect("the Weapon Icon must exist!");
+
+        // 인터페이스 배경
+        let tex_width = ui_game_layout.size.x;
+        let tex_height = ui_game_layout.size.y;
+        let src_front = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_front = egui::Rect::from_min_max(
+            egui::pos2(1030.0 * scale, 580.0 * scale),
+            egui::pos2(1063.0 * scale, 690.0 * scale),
+        );
+        let uv_front = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
+
+        let src_middle = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.1875, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_middle = egui::Rect::from_min_max(
+            egui::pos2(1063.0 * scale, 580.0 * scale),
+            egui::pos2(1217.0 * scale, 690.0 * scale),
+        );
+        let uv_middle =
+            egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.59375, 1.0));
+
+        let src_back = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_back = egui::Rect::from_min_max(
+            egui::pos2(1217.0 * scale, 580.0 * scale),
+            egui::pos2(1250.0 * scale, 690.0 * scale),
+        );
+        let uv_back = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
+
+        // 무기 아이콘
+        // 가로 길이: 200
+        let ratio = icon.size.x / icon.size.y;
+        let icon_width = 200.0;
+        let icon_height = icon_width / ratio;
+        let icon_area = egui::Rect::from_min_max(
+            egui::pos2(1040.0 * scale, 590.0 * scale),
+            egui::pos2(1240.0 * scale, (590.0 + icon_height) * scale),
+        );
+
+        egui::Area::new(egui::Id::new("Bullet_BG_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(src_front)
+                .uv(uv_front)
+                .tint(UI_BG_COLOR)
+                .paint_at(ui, pos_front);
+            egui::Image::new(src_middle)
+                .uv(uv_middle)
+                .tint(UI_BG_COLOR)
+                .paint_at(ui, pos_middle);
+            egui::Image::new(src_back)
+                .uv(uv_back)
+                .tint(UI_BG_COLOR)
+                .paint_at(ui, pos_back);
+
+            egui::Image::new(icon).paint_at(ui, icon_area);
         });
     }
 }
@@ -2697,6 +2805,7 @@ impl GameScene for InGameDominationModeScene {
         self.health_point_gauge_layout(app.egui_ctx(), scale);
 
         self.remaining_timer_layout(app.egui_ctx(), scale);
+        self.remaining_bullet_layout(app.egui_ctx(), scale);
 
         egui::Area::new(egui::Id::new("FrameRate_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
