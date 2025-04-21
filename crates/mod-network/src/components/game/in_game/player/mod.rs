@@ -6,7 +6,7 @@ mod health;
 
 use crate::components::{
     ActionState, ActionStateTimer, BigEndian, CharacterKind, LatLon, MovementState,
-    MovementStateTimer, Team, TryFromBigEndian, UserAccount, ViewState, ViewStateTimer,
+    MovementStateTimer, SkillKind, Team, TryFromBigEndian, UserAccount, ViewState, ViewStateTimer,
 };
 
 pub use self::{attack::*, health::*};
@@ -31,6 +31,10 @@ pub struct PlayPhasePlayer {
     /// ※ 캐릭터가 움직이는 방향과 다를 수 있습니다.
     pub rotation: [f32; 4],
 
+    /// Ex스킬 코스트입니다.
+    pub ex_skill_cost: ExSkillCost,
+    /// 일반 스킬 쿨 타임입니다.
+    pub skill_cool_time: SkillKind,
     /// 여러 자료형의 데이터를 저장한 비트 필드입니다.  
     /// 아래 데이터가 포함됩니다.
     /// - Team (1bit): 플레이어가 속한 팀의 종류를 나타냄
@@ -61,6 +65,8 @@ impl PlayPhasePlayer {
         translation: [f32; 3],
         rotation: [f32; 4],
         team: Team,
+        ex_skill_cost: ExSkillCost,
+        skill_cool_time: SkillKind,
         action_state: ActionState,
         action_state_timer: ActionStateTimer,
         movement_state: MovementState,
@@ -78,11 +84,13 @@ impl PlayPhasePlayer {
         Self {
             account,
             character_kind,
-            remaining_bullet, 
+            remaining_bullet,
             max_health_point,
             health_point,
             translation,
             rotation,
+            ex_skill_cost,
+            skill_cool_time,
             bitfield,
             action_state_timer,
             movement_state_timer,
@@ -213,6 +221,8 @@ impl BigEndian for PlayPhasePlayer {
             + HealthPoint::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 4]>::byte_size()
+            + ExSkillCost::byte_size()
+            + SkillKind::byte_size()
             + u16::byte_size()
             + ActionStateTimer::byte_size()
             + MovementStateTimer::byte_size()
@@ -234,6 +244,8 @@ impl BigEndian for PlayPhasePlayer {
         bytes.extend_from_slice(&self.health_point.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.ex_skill_cost.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.skill_cool_time.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
@@ -264,6 +276,8 @@ impl Default for PlayPhasePlayer {
             health_point: HealthPoint::default(),
             translation: [0.0, 0.0, 0.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
+            ex_skill_cost: ExSkillCost::default(),
+            skill_cool_time: SkillKind::Passive,
             bitfield: 0x0000,
             action_state_timer: ActionStateTimer::default(),
             movement_state_timer: MovementStateTimer::default(),
@@ -325,6 +339,18 @@ impl TryFromBigEndian for PlayPhasePlayer {
         data = &bytes[offset..offset + size];
         let rotation = <[f32; 4]>::from_big_endian_bytes(data);
 
+        // Ex스킬 코스트를 가져옵니다.
+        offset = offset + size;
+        size = f32::byte_size();
+        data = &bytes[offset..offset + size];
+        let ex_skill_cost = ExSkillCost::from_big_endian_bytes(data);
+
+        // 일반 스킬 쿨 타임을 가져옵니다.
+        offset = offset + size;
+        size = SkillKind::byte_size();
+        data = &bytes[offset..offset + size];
+        let skill_cool_time = SkillKind::from_big_endian_bytes(data);
+
         // 비트 필드를 가져옵니다.
         offset = offset + size;
         size = u16::byte_size();
@@ -358,11 +384,13 @@ impl TryFromBigEndian for PlayPhasePlayer {
         Some(Self {
             account,
             character_kind,
-            remaining_bullet, 
+            remaining_bullet,
             max_health_point,
             health_point,
             translation,
             rotation,
+            ex_skill_cost,
+            skill_cool_time,
             bitfield,
             action_state_timer,
             movement_state_timer,
@@ -394,6 +422,8 @@ mod tests {
             [12.0, 34.123, 1.23423],
             [1.243214, 0.51251512, 0.1324131, 0.34151512],
             Team::Red,
+            ExSkillCost(55.31),
+            SkillKind::Passive,
             ActionState::Aiming,
             ActionStateTimer(1.2432),
             MovementState::InPlaceLanding,

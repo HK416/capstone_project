@@ -110,6 +110,17 @@ pub const WEAPON_ICON_URIS: [&'static str; NUM_CHARACTERS] = [
     "Weapon_Icon_Yuuka",
 ];
 
+/// 무기 아이콘 마스크의 `Uri`입니다.
+pub const WEAPON_ICON_MASK_URI: &'static str = "Weapon_Icon_Mask";
+
+/// 무기 아이콘의 마스크의 `Uri`입니다.
+pub const WEAPON_ICON_MASK_URIS: [&'static str; NUM_CHARACTERS] = [
+    "Weapon_Icon_Aris_Mask",
+    "Weapon_Icon_Momoi_Mask",
+    "Weapon_Icon_Midori_Mask",
+    "Weapon_Icon_Yuuka_Mask",
+];
+
 /// 총알 모델의 작업 공간입니다.
 pub const BULLET_WORKSPACE: &'static str = "common";
 

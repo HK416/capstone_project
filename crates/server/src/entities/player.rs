@@ -1,9 +1,9 @@
 use std::num::NonZeroU16;
 
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameInputBits, HealthPoint,
-    LatLon, MAX_JUMP_DURATION, MaxHealthPoint, MovementState, MovementStateTimer,
-    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Permission, RemainingBullet, Team,
+    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, ExSkillCost, GameInputBits,
+    HealthPoint, LatLon, MAX_JUMP_DURATION, MaxHealthPoint, MovementState, MovementStateTimer,
+    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Permission, RemainingBullet, SkillKind, Team,
     UserAccount, ViewState, ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
@@ -42,9 +42,13 @@ pub struct PlayerObject {
     /// 플레이어 캐릭터 체력
     health_point: HealthPoint,
     /// 한 공격 당 총알 발사 횟수
-    fired_per_attack: u32,
+    fired_per_attack: u16,
     /// 남은 총알의 개수
-    remaining_bullets: u32,
+    remaining_bullets: u16,
+    /// 현재 일반 스킬 쿨 타임
+    skill_cool_time: SkillKind,
+    /// 현재 Ex 스킬 코스트 (최대 100.0)
+    ex_skill_cost: f32,
 
     /// 플레이어 캐릭터의 월드 공간 위치
     translation: glam::Vec3A,
@@ -92,14 +96,18 @@ impl PlayerObject {
         let bool_bitfield = (false as u8) << 0;
         let bitfield = team_bitfield | permission_bitfield | bool_bitfield;
 
+        let attributes = get_character_attributes(CharacterKind::default());
+
         Self {
             account,
             bitfield,
             character_kind: CharacterKind::default(),
-            attributes: get_character_attributes(CharacterKind::default()),
+            attributes,
             health_point: HealthPoint(0),
             fired_per_attack: 0,
             remaining_bullets: 1,
+            skill_cool_time: attributes.skill_cool_time,
+            ex_skill_cost: 0.0,
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
             velocity: glam::Vec3A::ZERO,
@@ -124,6 +132,8 @@ impl PlayerObject {
         self.health_point = HealthPoint(self.attributes.health_point as u16);
         self.fired_per_attack = 0;
         self.remaining_bullets = self.attributes.max_bullets;
+        self.ex_skill_cost = 0.0;
+        self.skill_cool_time = self.attributes.skill_cool_time;
         self.action_state = ActionState::Idle;
         self.prev_action_state = ActionState::Idle;
         self.action_state_timer = ActionStateTimer::default();
@@ -218,6 +228,33 @@ impl PlayerObject {
     /// 남은 총알의 개수를 반환합니다.
     pub fn remaining_bullet(&self) -> RemainingBullet {
         RemainingBullet::new(self.attributes.max_bullets, self.remaining_bullets)
+    }
+
+    /// 현재 Ex스킬 코스트를 가져옵니다.
+    pub fn get_ex_skill_cost(&self) -> ExSkillCost {
+        ExSkillCost(self.ex_skill_cost)
+    }
+
+    /// Ex스킬 코스트를 더합니다.  
+    /// Ex스킬 코스트의 값은 100을 넘지 못합니다.
+    pub fn add_ex_skill_cost(&mut self, pt: f32) {
+        self.ex_skill_cost = (self.ex_skill_cost + pt).min(100.0);
+    }
+
+    /// 일반 스킬 쿨 타임을 가져옵니다.
+    pub fn get_skill_cool_time(&self) -> SkillKind {
+        self.skill_cool_time
+    }
+
+    /// 일반 스킬 쿨 타임을 갱신합니다.  
+    /// 일반 스킬의 유형이 "패시브"인 경우 이 함수는 아무 동작을 수행하지 않습니다.
+    pub fn update_skill_cool_time(&mut self, elapsed_time_sec: f32) {
+        self.skill_cool_time = match self.skill_cool_time {
+            SkillKind::Active(cool_time) => {
+                SkillKind::Active((cool_time - elapsed_time_sec).max(0.0))
+            }
+            SkillKind::Passive => SkillKind::Passive,
+        };
     }
 
     /// 플레이엉 오브젝트의 위치를 설정합니다.

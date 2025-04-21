@@ -150,6 +150,8 @@ impl GameWorldState for GameWorldInGameSyncState {
                         player.translation().to_array(),
                         player.rotation().to_array(),
                         player.team(),
+                        player.get_ex_skill_cost(),
+                        player.get_skill_cool_time(),
                         player.action_state(),
                         player.action_state_timer(),
                         player.movement_state(),

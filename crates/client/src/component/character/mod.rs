@@ -121,6 +121,8 @@ pub fn spawn_player_character(
     let max_health_point = player.max_health_point;
     let health_point = player.health_point;
     let remaining_bullet = player.remaining_bullet;
+    let ex_skill_cost = player.ex_skill_cost;
+    let skill_cool_time = player.skill_cool_time;
     let action_state = player.action_state();
     let movement_state = player.movement_state();
     let view_state = player.view_state();
@@ -133,11 +135,15 @@ pub fn spawn_player_character(
     builder.add_bundle((
         character_kind,
         team,
-        local_transform,
-        world_transform,
         max_health_point,
         health_point,
         remaining_bullet,
+        ex_skill_cost,
+        skill_cool_time,
+    ));
+    builder.add_bundle((
+        local_transform,
+        world_transform,
         action_state,
         action_state_timer,
         movement_state,

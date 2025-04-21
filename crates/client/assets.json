@@ -229,9 +229,13 @@
                 "UI_Game_Layout.png",
                 "UI_Timer_Icon.dds",
                 "Weapon_Icon_Aris.dds",
+                "Weapon_Icon_Aris_Mask.dds",
                 "Weapon_Icon_Midori.dds",
+                "Weapon_Icon_Midori_Mask.dds",
                 "Weapon_Icon_Momoi.dds",
-                "Weapon_Icon_Yuuka.dds"
+                "Weapon_Icon_Momoi_Mask.dds",
+                "Weapon_Icon_Yuuka.dds",
+                "Weapon_Icon_Yuuka_Mask.dds"
             ],
             "directories" : {}
         }

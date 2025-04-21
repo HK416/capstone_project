@@ -48,6 +48,8 @@
     "evasion_stat": 197,
     "critical_rate": 202,
     "critical_damage": 200,
+    "cost_recovery_rate": 2.5,
+    "skill_cool_time": "Passive",
     "attack_range": 750,
     "bullet_radius": 0.02
 }

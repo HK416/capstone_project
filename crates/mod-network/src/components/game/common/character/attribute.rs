@@ -1,6 +1,40 @@
 use serde::{Deserialize, Serialize};
 
-use crate::components::Float3;
+use crate::components::{BigEndian, Float3};
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub enum SkillKind {
+    Active(f32),
+    Passive,
+}
+
+impl BigEndian for SkillKind {
+    fn byte_size() -> usize {
+        f32::byte_size()
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        // SkillKind::Active인 경우 최상위 비트를 1로 설정합니다.
+        match self {
+            SkillKind::Active(cool_time) => {
+                let mut bitfield = cool_time.to_big_endian_bytes();
+                bitfield[0] |= 0b1000_0000;
+                bitfield
+            }
+            SkillKind::Passive => vec![0; 4],
+        }
+    }
+
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        if bytes[0] & 0b1000_0000 == 0b1000_0000 {
+            let mut bytes = bytes.to_vec();
+            bytes[0] &= 0b0111_1111;
+            SkillKind::Active(f32::from_big_endian_bytes(&bytes))
+        } else {
+            SkillKind::Passive
+        }
+    }
+}
 
 /// 캐릭터 속성 데이터를 저장합니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -38,17 +72,30 @@ pub struct CharacterAttributes {
     /// 일반 공격 총알 발사 시간 (단위: 초)
     pub normal_attack_timing: Vec<f32>,
     /// 일반 공격 총알 발사 수
-    pub normal_attack_count: u32,
+    pub normal_attack_count: u16,
     /// 총알의 최대 개수
-    pub max_bullets: u32,
-    pub health_point: u32,
-    pub attack_power: u32,
-    pub defense_power: u32,
-    pub accuracy_stat: u32,
-    pub evasion_stat: u32,
-    pub critical_rate: u32,
-    pub critical_damage: u32,
-    pub attack_range: u32,
+    pub max_bullets: u16,
+    /// 캐릭터의 최대 체력
+    pub health_point: u16,
+    /// 캐릭터의 공격력
+    pub attack_power: u16,
+    /// 캐릭터의 방어력
+    pub defense_power: u16,
+    /// 캐릭터의 명중 수치
+    pub accuracy_stat: u16,
+    /// 캐릭터의 회피 수치
+    pub evasion_stat: u16,
+    /// 캐릭터의 치명 수치
+    pub critical_rate: u16,
+    /// 캐릭터의 치명 데미지
+    pub critical_damage: u16,
+    /// 캐릭터의 코스트 회복력
+    pub cost_recovery_rate: f32,
+    /// 일반 스킬 쿨 타임
+    pub skill_cool_time: SkillKind,
+    /// 캐릭터의 공격 사거리
+    pub attack_range: u16,
+    /// 캐릭터 총알의 반지름
     pub bullet_radius: f32,
 }
 
@@ -93,5 +140,22 @@ impl CharacterAttributes {
         let z = z1 * l1 + z2 * l2 + z3 * l3;
 
         (x, y, z)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::components::BigEndian;
+
+    use super::SkillKind;
+
+    #[test]
+    fn test_skill_kind() {
+        let origin = SkillKind::Active(12.24132);
+        let bytes = origin.to_big_endian_bytes();
+        let other = SkillKind::from_big_endian_bytes(&bytes);
+
+        // 원본과 일치하는지 확인
+        assert_eq!(origin, other);
     }
 }

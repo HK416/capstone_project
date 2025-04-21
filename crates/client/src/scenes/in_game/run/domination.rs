@@ -10,10 +10,10 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, Bullet, CapturePoint, CharacterKind, DamageLog,
+        ActionState, ActionStateTimer, Bullet, CapturePoint, CharacterKind, DamageLog, ExSkillCost,
         GameInputBits, HealthPoint, LatLon, LoginToken, MaxHealthPoint, MovementState,
-        MovementStateTimer, ObjectId, PlayPhasePlayer, RemainingBullet, Team, UserId, ViewState,
-        ViewStateTimer, MAX_CAPTURE_SCORE,
+        MovementStateTimer, ObjectId, PlayPhasePlayer, RemainingBullet, SkillKind, Team, UserId,
+        ViewState, ViewStateTimer, MAX_CAPTURE_SCORE,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -31,7 +31,7 @@ use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
         TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI,
-        UI_TIMER_ICON_URI, WEAPON_ICON_URI,
+        UI_TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -331,6 +331,30 @@ impl InGameDominationModeScene {
                 size: texture_size,
             },
         );
+
+        // 플레이어 캐릭터 무기 아이콘 마스킹 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(WEAPON_ICON_MASK_URI)
+            .expect("the Weapon Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            WEAPON_ICON_MASK_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
     }
 
     /// 그림자 쉐이더 리소스를 생성합니다.
@@ -590,6 +614,9 @@ impl InGameDominationModeScene {
         type Query<'a> = (
             &'a mut MaxHealthPoint,
             &'a mut HealthPoint,
+            &'a mut RemainingBullet,
+            &'a mut ExSkillCost,
+            &'a mut SkillKind,
             &'a mut ActionState,
             &'a mut ActionStateTimer,
             &'a mut MovementState,
@@ -609,6 +636,9 @@ impl InGameDominationModeScene {
                 let (
                     max_health_point,
                     health_point,
+                    remaining_bullet,
+                    ex_skill_cost,
+                    skill_cool_time,
                     action_state,
                     action_state_timer,
                     movement_state,
@@ -622,6 +652,9 @@ impl InGameDominationModeScene {
                     .expect("invalid entity or invalid entity component");
 
                 *max_health_point = data.max_health_point;
+                *remaining_bullet = data.remaining_bullet;
+                *ex_skill_cost = data.ex_skill_cost;
+                *skill_cool_time = data.skill_cool_time;
                 *health_point = data.health_point;
                 *action_state = data.action_state();
                 *action_state_timer = data.action_state_timer;
@@ -1754,7 +1787,7 @@ impl InGameDominationModeScene {
         };
         let pos_front = egui::Rect::from_min_max(
             egui::pos2(30.0 * scale, 596.0 * scale),
-            egui::pos2(66.0 * scale, 690.0 * scale),
+            egui::pos2(63.0 * scale, 690.0 * scale),
         );
         let uv_front = egui::Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.59375, 1.0));
 
@@ -1763,8 +1796,8 @@ impl InGameDominationModeScene {
             id: ui_game_layout.id,
         };
         let pos_middle = egui::Rect::from_min_max(
-            egui::pos2(66.0 * scale, 596.0 * scale),
-            egui::pos2(274.0 * scale, 690.0 * scale),
+            egui::pos2(63.0 * scale, 596.0 * scale),
+            egui::pos2(277.0 * scale, 690.0 * scale),
         );
         let uv_middle =
             egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
@@ -1774,7 +1807,7 @@ impl InGameDominationModeScene {
             id: ui_game_layout.id,
         };
         let pos_back = egui::Rect::from_min_max(
-            egui::pos2(274.0 * scale, 596.0 * scale),
+            egui::pos2(277.0 * scale, 596.0 * scale),
             egui::pos2(310.0 * scale, 690.0 * scale),
         );
         let uv_back = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
@@ -2062,7 +2095,7 @@ impl InGameDominationModeScene {
 
     /// 남은 시간 인터페이스 레이아웃입니다.
     fn remaining_timer_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
-        // 남은 시간 인터페이스 레이아웃 이미지
+        // 남은 시간 인터페이스 레이아웃
         // - 기준 가로 크기: 144
         // - 기준 세로 크기: 36
         // - 기준 시작 위치: (1144, 12)
@@ -2088,7 +2121,7 @@ impl InGameDominationModeScene {
         };
         let pos_front = egui::Rect::from_min_max(
             egui::pos2(1120.0 * scale, 12.0 * scale),
-            egui::pos2(1153.0 * scale, 48.0 * scale),
+            egui::pos2(1133.0 * scale, 48.0 * scale),
         );
         let uv_front = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
 
@@ -2097,8 +2130,8 @@ impl InGameDominationModeScene {
             id: ui_game_layout.id,
         };
         let pos_middle = egui::Rect::from_min_max(
-            egui::pos2(1153.0 * scale, 12.0 * scale),
-            egui::pos2(1231.0 * scale, 48.0 * scale),
+            egui::pos2(1133.0 * scale, 12.0 * scale),
+            egui::pos2(1253.0 * scale, 48.0 * scale),
         );
         let uv_middle =
             egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.59375, 1.0));
@@ -2108,7 +2141,7 @@ impl InGameDominationModeScene {
             id: ui_game_layout.id,
         };
         let pos_back = egui::Rect::from_min_max(
-            egui::pos2(1231.0 * scale, 12.0 * scale),
+            egui::pos2(1253.0 * scale, 12.0 * scale),
             egui::pos2(1264.0 * scale, 48.0 * scale),
         );
         let uv_back = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
@@ -2155,10 +2188,10 @@ impl InGameDominationModeScene {
 
     // 남은 총알 인터페이스 레이아웃입니다.
     fn remaining_bullet_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
-        // 체력 인터페이스 레이아웃 이미지
+        // 총알 인터페이스 레이아웃
         // - 기준 가로 크기: 220
         // - 기준 세로 크기: 110
-        // - 기준 시작 위치: (1030, 580)
+        // - 기준 시작 위치: (1040, 580)
         // - 기준 종료 위치: (1250, 690)
         //
         let ui_game_layout = self
@@ -2169,7 +2202,7 @@ impl InGameDominationModeScene {
 
         let icon = self
             .ui_textures
-            .get(WEAPON_ICON_URI)
+            .get(WEAPON_ICON_MASK_URI)
             .cloned()
             .expect("the Weapon Icon must exist!");
 
@@ -2252,9 +2285,110 @@ impl InGameDominationModeScene {
                 .tint(UI_BG_COLOR)
                 .paint_at(ui, pos_back);
 
-            egui::Image::new(icon).paint_at(ui, icon_area);
+            egui::Image::new(icon)
+                .tint(egui::Color32::DARK_GRAY)
+                .paint_at(ui, icon_area);
 
             ui.put(text_area, egui::Label::new(remaining_text));
+        });
+    }
+
+    /// 일반 스킬 인터페이스 레이아웃입니다.
+    fn skill_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 일반스킬 인터페이스 레이아웃
+        // - 기준 가로 크기: 74
+        // - 기준 세로 크기: 74
+        // - 기준 시작 위치: (940, 612)
+        // - 기준 종료 위치: (1032, 690)
+        //
+        let ui_game_layout = self
+            .ui_textures
+            .get(UI_GAME_LAYOUT_URI)
+            .cloned()
+            .expect("the UI_Game_Layout must exist!");
+
+        // 인터페이스 배경
+        let tex_width = ui_game_layout.size.x;
+        let tex_height = ui_game_layout.size.y;
+        let src_front = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_front = egui::Rect::from_min_max(
+            egui::pos2(940.0 * scale, 612.0 * scale),
+            egui::pos2(962.0 * scale, 690.0 * scale),
+        );
+        let uv_front = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
+
+        let src_middle = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.1875, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_middle = egui::Rect::from_min_max(
+            egui::pos2(962.0 * scale, 612.0 * scale),
+            egui::pos2(1010.0 * scale, 690.0 * scale),
+        );
+        let uv_middle =
+            egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.59375, 1.0));
+
+        let src_back = egui::load::SizedTexture {
+            size: egui::vec2(tex_width * 0.40625, tex_height),
+            id: ui_game_layout.id,
+        };
+        let pos_back = egui::Rect::from_min_max(
+            egui::pos2(1010.0 * scale, 612.0 * scale),
+            egui::pos2(1032.0 * scale, 690.0 * scale),
+        );
+        let uv_back = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
+
+        egui::Area::new(egui::Id::new("Skill_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(src_front)
+                .uv(uv_front)
+                .tint(UI_BG_COLOR)
+                .paint_at(ui, pos_front);
+            egui::Image::new(src_middle)
+                .uv(uv_middle)
+                .tint(UI_BG_COLOR)
+                .paint_at(ui, pos_middle);
+            egui::Image::new(src_back)
+                .uv(uv_back)
+                .tint(UI_BG_COLOR)
+                .paint_at(ui, pos_back);
+        });
+    }
+
+    /// Ex 스킬 게이지 인터페이스 레이아웃입니다.
+    fn ex_skill_guage_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        let icon = self
+            .ui_textures
+            .get(WEAPON_ICON_URI)
+            .cloned()
+            .expect("the Weapon Icon must exist!");
+
+        // 현재 Ex스킬 코스트를 가져옵니다.
+        let entity = self.get_player_entity();
+        let ex_skill_cost = self
+            .world
+            .query_one_mut::<&ExSkillCost>(entity)
+            .expect("invalid entity or invalid entity component");
+        let percent = (ex_skill_cost.0.min(ExSkillCost::MAX.0) / ExSkillCost::MAX.0).floor();
+
+        // 무기 아이콘
+        // 가로 길이: 200
+        let ratio = icon.size.x / icon.size.y;
+        let icon_width = 200.0;
+        let icon_height = icon_width / ratio;
+        let icon_area = egui::Rect::from_min_max(
+            egui::pos2(1040.0 * scale, 590.0 * scale),
+            egui::pos2(
+                (1040.0 + icon_width * percent) * scale,
+                (590.0 + icon_height) * scale,
+            ),
+        );
+        let icon_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(percent, 1.0));
+
+        egui::Area::new(egui::Id::new("ExSkill_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(icon).uv(icon_uv).paint_at(ui, icon_area);
         });
     }
 }
@@ -2829,6 +2963,9 @@ impl GameScene for InGameDominationModeScene {
 
         self.remaining_timer_layout(app.egui_ctx(), scale);
         self.remaining_bullet_layout(app.egui_ctx(), scale);
+
+        self.skill_layout(app.egui_ctx(), scale);
+        self.ex_skill_guage_layout(app.egui_ctx(), scale);
 
         egui::Area::new(egui::Id::new("FrameRate_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))

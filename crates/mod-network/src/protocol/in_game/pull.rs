@@ -149,7 +149,9 @@ mod tests {
     use std::num::NonZeroU16;
 
     use crate::components::{
-        ActionState, ActionStateTimer, CharacterKind, HealthPoint, LatLon, MaxHealthPoint, MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId, UserName, ViewState, ViewStateTimer
+        ActionState, ActionStateTimer, CharacterKind, ExSkillCost, HealthPoint, LatLon,
+        MaxHealthPoint, MovementState, MovementStateTimer, RemainingBullet, SkillKind, Team,
+        UserAccount, UserId, UserName, ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -165,6 +167,8 @@ mod tests {
             [1.1512351, 2.4151616, 1.16561651],
             [1.5415151, 0.16551351, 0.9513515, 1.0515161],
             Team::Blue,
+            ExSkillCost(55.31),
+            SkillKind::Active(1.3452),
             ActionState::Aiming,
             ActionStateTimer(3.03151),
             MovementState::InPlaceLanding,
