@@ -11,9 +11,9 @@ pub struct RemainingBullet(u32);
 impl RemainingBullet {
     /// 새로운 총알 데이터를 생성합니다.
     pub fn new(max_bullets: u16, num_remaining_bullets: u16) -> Self {
-        let max_field = ((max_bullets & 0xFFF) << 12) as u32;
-        let remaining_filed = ((num_remaining_bullets & 0xFFF) << 0) as u32;
-        Self(max_field | remaining_filed)
+        let max_field = ((max_bullets & 0xFFF) as u32) << 12;
+        let remaining_field = ((num_remaining_bullets & 0xFFF) as u32) << 0;
+        Self(max_field | remaining_field)
     }
 
     /// 최대 총알의 개수를 반환합니다.

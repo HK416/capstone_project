@@ -2213,7 +2213,7 @@ impl InGameDominationModeScene {
             .query_one_mut::<&RemainingBullet>(entity)
             .expect("invalid entity or invalid entity component");
         let text = format!(
-            "{:0>2}/{:0>2}",
+            "{}/{}",
             remaining_bullet.num_remaining_bullets(),
             remaining_bullet.max_bullets()
         );

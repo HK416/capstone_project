@@ -105,7 +105,7 @@ impl PlayerObject {
             attributes,
             health_point: HealthPoint(0),
             fired_per_attack: 0,
-            remaining_bullets: 1,
+            remaining_bullets: attributes.max_bullets,
             skill_cool_time: attributes.skill_cool_time,
             ex_skill_cost: 0.0,
             translation: glam::Vec3A::ZERO,
@@ -194,9 +194,9 @@ impl PlayerObject {
     pub fn with_character_kind(&mut self, character_kind: CharacterKind) -> &mut Self {
         self.character_kind = character_kind;
         self.attributes = get_character_attributes(character_kind);
-        // self.health_point = HealthPoint(self.attributes.health_point as u16);
+        self.health_point = HealthPoint(self.attributes.health_point);
         // 테스트용으로 체력을 낮게 설정
-        self.health_point = HealthPoint(50);
+        // self.health_point = HealthPoint(50);
         self
     }
 
