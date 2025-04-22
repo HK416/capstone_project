@@ -30,6 +30,7 @@ pub struct PlayerObject {
 
     /// 여러 자료형의 데이터가 포함된 비트 필드입니다.  
     /// 아래와 같은 자료형이 포함되어있습니다.
+    /// - index (2bit): 플레이어가 속한 팀 내의 인덱스
     /// - Team (1bit): 플레이어가 속한 팀
     /// - Permission (1bit): 플레이어 권한
     /// - bool (1bit): 다양한 용도로 사용되는 부울 플래그
@@ -49,6 +50,13 @@ pub struct PlayerObject {
     skill_cool_time: SkillKind,
     /// 현재 Ex 스킬 코스트 (최대 100.0)
     ex_skill_cost: f32,
+
+    /// 상대 팀을 처치한 횟수
+    kill_count: u16,
+    /// 상대 팀에게 처치당한 횟수
+    dead_count: u16,
+    /// 같은 팀을 도운 횟수(회복, 방어막)
+    assist_count: u16,
 
     /// 플레이어 캐릭터의 월드 공간 위치
     translation: glam::Vec3A,
@@ -90,6 +98,7 @@ pub struct PlayerObject {
 }
 
 impl PlayerObject {
+    /// 새로운 플레이어 오브젝트를 생성합니다.  
     pub fn new(account: UserAccount, permission: Permission, team: Team) -> Self {
         let team_bitfield = (team as u8) << 2;
         let permission_bitfield = (permission as u8) << 1;
@@ -108,6 +117,9 @@ impl PlayerObject {
             remaining_bullets: attributes.max_bullets,
             skill_cool_time: attributes.skill_cool_time,
             ex_skill_cost: 0.0,
+            kill_count: 0,
+            dead_count: 0,
+            assist_count: 0,
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
             velocity: glam::Vec3A::ZERO,
@@ -133,6 +145,9 @@ impl PlayerObject {
         self.fired_per_attack = 0;
         self.remaining_bullets = self.attributes.max_bullets;
         self.ex_skill_cost = 0.0;
+        self.kill_count = 0;
+        self.dead_count = 0;
+        self.assist_count = 0;
         self.skill_cool_time = self.attributes.skill_cool_time;
         self.action_state = ActionState::Idle;
         self.prev_action_state = ActionState::Idle;
@@ -147,6 +162,17 @@ impl PlayerObject {
     /// 플레이어 오브젝트의 사용자 정보를 가져옵니다.
     pub fn account(&self) -> &UserAccount {
         &self.account
+    }
+
+    /// 플레이어가 속한 팀의 인덱스를 설정합니다.
+    pub fn with_index(&mut self, index: usize) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x3 << 3)) | (index as u8) << 3;
+        self
+    }
+
+    /// 플레이어가 속한 팀의 인덱스를 가져옵니다.
+    pub fn index(&self) -> usize {
+        ((self.bitfield >> 3) & 0x3) as usize
     }
 
     /// 플레이어가 속한 팀을 설정합니다.
@@ -255,6 +281,21 @@ impl PlayerObject {
             }
             SkillKind::Passive => SkillKind::Passive,
         };
+    }
+
+    /// 상대 팀을 처치한 횟수를 반환합니다.
+    pub fn kill_count(&self) -> u16 {
+        self.kill_count
+    }
+
+    /// 상대 팀에게 처치당한 횟수를 반환합니다.
+    pub fn dead_count(&self) -> u16 {
+        self.dead_count
+    }
+
+    /// 같은 팀을 도운 횟수를 반환합니다.
+    pub fn assist_count(&self) -> u16 {
+        self.assist_count
     }
 
     /// 플레이엉 오브젝트의 위치를 설정합니다.

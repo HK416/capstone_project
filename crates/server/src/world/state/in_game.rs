@@ -611,6 +611,9 @@ impl GameWorldInGameState {
             .map(|player| {
                 PlayPhasePlayer::new(
                     player.account().clone(),
+                    player.kill_count(),
+                    player.dead_count(),
+                    player.assist_count(),
                     player.character_kind(),
                     player.remaining_bullet(),
                     player.max_health_point(),
@@ -618,6 +621,7 @@ impl GameWorldInGameState {
                     player.translation().to_array(),
                     player.rotation().to_array(),
                     player.team(),
+                    player.index(),
                     player.get_ex_skill_cost(),
                     player.get_skill_cool_time(),
                     player.action_state(),

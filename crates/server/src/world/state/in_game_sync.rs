@@ -81,18 +81,18 @@ impl GameWorldInGameSyncState {
 impl GameWorldState for GameWorldInGameSyncState {
     fn on_enter(&mut self, world: &Arc<GameWorld>) {
         let mut red_team_spawn_pos = vec![
-            glam::vec3a(-37.0, 0.0, -33.0),
-            glam::vec3a(-33.0, 0.0, -33.0),
-            glam::vec3a(-28.5, 0.0, -33.0),
-            glam::vec3a(-31.5, 0.0, -33.0),
-            glam::vec3a(-30.0, 0.0, -33.0),
+            (4, glam::vec3a(-27.0, 0.0, -33.0)),
+            (3, glam::vec3a(-33.0, 0.0, -33.0)),
+            (2, glam::vec3a(-28.5, 0.0, -33.0)),
+            (1, glam::vec3a(-31.5, 0.0, -33.0)),
+            (0, glam::vec3a(-30.0, 0.0, -33.0)),
         ];
         let mut blue_team_spawn_pos = vec![
-            glam::vec3a(37.0, 0.0, 33.0),
-            glam::vec3a(33.0, 0.0, 33.0),
-            glam::vec3a(28.5, 0.0, 33.0),
-            glam::vec3a(31.5, 0.0, 33.0),
-            glam::vec3a(30.0, 0.0, 33.0),
+            (4, glam::vec3a(27.0, 0.0, 33.0)),
+            (3, glam::vec3a(33.0, 0.0, 33.0)),
+            (2, glam::vec3a(28.5, 0.0, 33.0)),
+            (1, glam::vec3a(31.5, 0.0, 33.0)),
+            (0, glam::vec3a(30.0, 0.0, 33.0)),
         ];
 
         for mut player in world.players.iter_mut() {
@@ -102,11 +102,11 @@ impl GameWorldState for GameWorldInGameSyncState {
             // 팀에 따라 적절한 스폰 위치에 스폰될 수 있도록 플레이어 위치와 방향을 초기화합니다.
             let team = player.team();
             let user_id = player.account().uid;
-            let (position, direction, view_rotation) = match team {
+            let ((index, position), direction, view_rotation) = match team {
                 Team::Red => (
                     red_team_spawn_pos
                         .pop()
-                        .unwrap_or(glam::vec3a(-30.0, 0.0, -33.0)),
+                        .unwrap_or((0, glam::vec3a(-30.0, 0.0, -33.0))),
                     glam::quat(0.0, 0.0, 0.0, 1.0),
                     LatLon {
                         lon: 0f32.to_radians(),
@@ -116,7 +116,7 @@ impl GameWorldState for GameWorldInGameSyncState {
                 Team::Blue => (
                     blue_team_spawn_pos
                         .pop()
-                        .unwrap_or(glam::vec3a(30.0, 0.0, 33.0)),
+                        .unwrap_or((0, glam::vec3a(30.0, 0.0, 33.0))),
                     glam::quat(0.0, 1.0, 0.0, 0.0),
                     LatLon {
                         lon: 180f32.to_radians(),
@@ -128,6 +128,7 @@ impl GameWorldState for GameWorldInGameSyncState {
             self.spawn_positions
                 .insert(user_id, (position, direction, view_rotation));
             player
+                .with_index(index)
                 .with_translation(position)
                 .with_rotation(direction)
                 .with_view_rotation(view_rotation);
@@ -143,6 +144,9 @@ impl GameWorldState for GameWorldInGameSyncState {
                 .map(|player| {
                     PlayPhasePlayer::new(
                         player.account().clone(),
+                        player.kill_count(),
+                        player.dead_count(),
+                        player.assist_count(),
                         player.character_kind(),
                         player.remaining_bullet(),
                         player.max_health_point(),
@@ -150,6 +154,7 @@ impl GameWorldState for GameWorldInGameSyncState {
                         player.translation().to_array(),
                         player.rotation().to_array(),
                         player.team(),
+                        player.index(),
                         player.get_ex_skill_cost(),
                         player.get_skill_cool_time(),
                         player.action_state(),

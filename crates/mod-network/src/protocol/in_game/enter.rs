@@ -142,6 +142,9 @@ mod tests {
     fn test_init_stage_packet() {
         let player_0 = PlayPhasePlayer::new(
             UserAccount::new(UserId::new(1412512), UserName::from_str("Aris")),
+            1,
+            2,
+            3,
             CharacterKind::ArisOriginal,
             RemainingBullet::new(10, 7),
             MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
@@ -149,6 +152,7 @@ mod tests {
             [1.1512351, 2.4151616, 1.16561651],
             [1.5415151, 0.16551351, 0.9513515, 1.0515161],
             Team::Blue,
+            1,
             ExSkillCost(55.31),
             SkillKind::Passive,
             ActionState::Aiming,

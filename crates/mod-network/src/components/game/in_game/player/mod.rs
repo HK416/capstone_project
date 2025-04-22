@@ -17,6 +17,13 @@ pub struct PlayPhasePlayer {
     /// 사용자 계정 데이터
     pub account: UserAccount,
 
+    /// 플레이어가 상대 팀을 처치한 횟수
+    pub kill_count: u16,
+    /// 플레이어가 상대 팀에게 처치당한 횟수
+    pub dead_count: u16,
+    /// 플레이어가 같은 팀을 도운 횟수
+    pub assist_count: u16,
+
     /// 플레이어 캐릭터 종류
     pub character_kind: CharacterKind,
     /// 플레이어 총알 정보
@@ -37,6 +44,7 @@ pub struct PlayPhasePlayer {
     pub skill_cool_time: SkillKind,
     /// 여러 자료형의 데이터를 저장한 비트 필드입니다.  
     /// 아래 데이터가 포함됩니다.
+    /// - index (2bit): 플레이어가 속한 팀 내의 인덱스 (초기 플레이어 위치를 결정함)
     /// - Team (1bit): 플레이어가 속한 팀의 종류를 나타냄
     /// - ActionState (4bit): 플레이어 캐릭터의 행동 상태를 나타냄
     /// - MovementState (3bit): 플레이어 캐릭터의 움직임 상태를 나타냄
@@ -55,9 +63,12 @@ pub struct PlayPhasePlayer {
 
 impl PlayPhasePlayer {
     /// 새로운 플레이어 데이터를 생성합니다.  
-    /// `force`가 `true`인 경우 클라이언트는 데이터를 덮어씌웁니다.
+    /// 주어진 인덱스가 4보다 클 경우 [`panic!`]을 호출합니다.
     pub fn new(
         account: UserAccount,
+        kill_count: u16,
+        dead_count: u16,
+        assist_count: u16,
         character_kind: CharacterKind,
         remaining_bullet: RemainingBullet,
         max_health_point: MaxHealthPoint,
@@ -65,6 +76,7 @@ impl PlayPhasePlayer {
         translation: [f32; 3],
         rotation: [f32; 4],
         team: Team,
+        index: usize,
         ex_skill_cost: ExSkillCost,
         skill_cool_time: SkillKind,
         action_state: ActionState,
@@ -75,14 +87,21 @@ impl PlayPhasePlayer {
         view_state_timer: ViewStateTimer,
         view_rotation: LatLon,
     ) -> Self {
+        assert!(index < 5, "index out of range!");
+
+        let index_field = (index as u16) << 10;
         let team_field = (team as u16) << 9;
         let action_state_field = (action_state as u16) << 5;
         let movement_state_field = (movement_state as u16) << 2;
         let view_state_field = (view_state as u16) << 0;
-        let bitfield = team_field | action_state_field | movement_state_field | view_state_field;
+        let bitfield =
+            team_field | index_field | action_state_field | movement_state_field | view_state_field;
 
         Self {
             account,
+            kill_count,
+            dead_count,
+            assist_count,
             character_kind,
             remaining_bullet,
             max_health_point,
@@ -109,6 +128,11 @@ impl PlayPhasePlayer {
     pub fn with_health_point(&mut self, health_point: HealthPoint) -> &mut Self {
         self.health_point = health_point;
         self
+    }
+
+    /// 플레이어가 속한 팀 내의 플레이어 인덱스를 가져옵니다.
+    pub fn index(&self) -> usize {
+        ((self.bitfield >> 10) & 0x3) as usize
     }
 
     /// 플레이어가 속한 팀을 설정합니다.
@@ -215,6 +239,9 @@ impl PlayPhasePlayer {
 impl BigEndian for PlayPhasePlayer {
     fn byte_size() -> usize {
         UserAccount::byte_size()
+            + u16::byte_size()
+            + u16::byte_size()
+            + u16::byte_size()
             + CharacterKind::byte_size()
             + RemainingBullet::byte_size()
             + MaxHealthPoint::byte_size()
@@ -238,6 +265,9 @@ impl BigEndian for PlayPhasePlayer {
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.account.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.kill_count.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.dead_count.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.assist_count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
         bytes.extend_from_slice(&self.remaining_bullet.to_big_endian_bytes());
         bytes.extend_from_slice(&self.max_health_point.to_big_endian_bytes());
@@ -270,6 +300,9 @@ impl Default for PlayPhasePlayer {
     fn default() -> Self {
         Self {
             account: UserAccount::default(),
+            kill_count: 0,
+            dead_count: 0,
+            assist_count: 0,
             character_kind: CharacterKind::default(),
             remaining_bullet: RemainingBullet::default(),
             max_health_point: MaxHealthPoint::default(),
@@ -302,6 +335,24 @@ impl TryFromBigEndian for PlayPhasePlayer {
         let mut size = UserAccount::byte_size();
         let mut data = &bytes[offset..offset + size];
         let account = UserAccount::from_big_endian_bytes(data);
+
+        // 상대 팀을 처치한 횟수를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let kill_count = u16::from_big_endian_bytes(data);
+
+        // 상대 팀에게 처치당한 횟수를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let dead_count = u16::from_big_endian_bytes(data);
+
+        // 같은 팀을 도운 횟수를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let assist_count = u16::from_big_endian_bytes(data);
 
         // 플레이어 캐릭터 종류를 가져옵니다.
         offset = offset + size;
@@ -383,6 +434,9 @@ impl TryFromBigEndian for PlayPhasePlayer {
 
         Some(Self {
             account,
+            kill_count,
+            dead_count,
+            assist_count,
             character_kind,
             remaining_bullet,
             max_health_point,
@@ -415,6 +469,9 @@ mod tests {
         let account = UserAccount::new(id, name);
         let origin = PlayPhasePlayer::new(
             account,
+            10,
+            2,
+            5,
             CharacterKind::MomoiOriginal,
             RemainingBullet::new(10, 7),
             MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
@@ -422,6 +479,7 @@ mod tests {
             [12.0, 34.123, 1.23423],
             [1.243214, 0.51251512, 0.1324131, 0.34151512],
             Team::Red,
+            2,
             ExSkillCost(55.31),
             SkillKind::Passive,
             ActionState::Aiming,

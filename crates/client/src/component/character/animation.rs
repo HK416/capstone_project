@@ -71,12 +71,24 @@ pub const ATTACK_START_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Start";
 pub const ATTACK_ING_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_Ing";
 /// 모든 캐릭터 모델의 AttackEnd 애니메이션 접미사입니다.
 pub const ATTACK_END_ANIMATION_SUFFIX: &'static str = "_Normal_Attack_End";
-/// 모든 캐릭터 모델의 Vital_Death 애니메이션 접미사입니다.
-pub const VITAL_DEATH_ANIMATION_SUFFIX: &'static str = "_Vital_Death";
 /// 모든 캐릭터 모델의 Reload 애니메이션 접미사입니다.
 pub const RELOAD_ANIMATION_SUFFIX: &'static str = "_Normal_Reload";
+/// 모든 캐릭터 모델의 Vital_Death 애니메이션 접미사입니다.
+pub const VITAL_DEATH_ANIMATION_SUFFIX: &'static str = "_Vital_Death";
+/// 모든 캐릭터 모델의 Normal_Callsign 애니메이션 접미사입니다.
+pub const NORMAL_CALLSIGN_SUFFIX: &'static str = "_Normal_Callsign";
+/// 모든 캐릭터 모델의 Victory_Start 애니메이션 접미사입니다.
+pub const VICTORY_START_SUFFIX: &'static str = "_Victory_Start";
+/// 모든 캐릭터 모델의 Victory_End 애니메이션 접미사입니다.
+pub const VICTORY_END_SUFFIX: &'static str = "_Victor_End";
+/// 모든 캐릭터 모델의 Public01 애니메이션 접미사입니다.
+pub const PUBLIC01_SUFFIX: &'static str = "_Public01";
 // /// 모든 캐릭터 모델의 Ex스킬 애니메이션 접미사입니다.
-// pub const EXS_ANIMATION_SUFFIX: &'static str = "_Exs";
+pub const EXS_ANIMATION_SUFFIX: &'static str = "_Exs";
+/// 모든 캐릭터 모델의 Formation_Idle 애니메이션 접미사입니다.
+pub const FORMATION_IDLE: &'static str = "_Formation_Idle";
+/// 모든 캐릭터 모델의 Formation_Pickup 애니메이션 접미사입니다.
+pub const FORMATION_PICKUP: &'static str = "_Formation_Pickup";
 
 /// ## Skinning Animation
 /// 스키닝 애니메이션에 사용되는 스키닝 메쉬 엔터티와 최상위 뼈 노드 엔터티의 모음입니다.
