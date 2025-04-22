@@ -57,7 +57,7 @@ impl GameScene for InGamePauseLayer {
         repeat: bool,
         _window: &Window,
         app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         if !repeat && code == KeyCode::Escape {
             // 이전 게임 장면으로 되돌아갑니다.
             self.ui_enabled = false;
@@ -66,6 +66,8 @@ impl GameScene for InGamePauseLayer {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
+
+        true
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -108,7 +110,7 @@ impl GameScene for InGamePauseLayer {
 
         egui::Modal::new(egui::Id::new("Modal_Window_Layout"))
             .frame(frame)
-            .backdrop_color(egui::Color32::from_black_alpha(48))
+            .backdrop_color(egui::Color32::from_black_alpha(64))
             .show(app.egui_ctx(), |ui| {
                 ui.set_width(wnd_width);
                 ui.set_height(wnd_height);

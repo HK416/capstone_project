@@ -1,4 +1,5 @@
 mod domination;
 mod pause;
+mod status;
 
-pub use self::{domination::*, pause::*};
+pub use self::{domination::*, pause::*, status::*};

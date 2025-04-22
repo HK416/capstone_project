@@ -510,7 +510,7 @@ impl ApplicationHandler<AppEvent> for Application {
         let app_window = match self.app_window.as_ref() {
             Some(app_window) => app_window,
             None => {
-                log::info!("window event ignored >> the current window is empty.");
+                log::debug!("window event ignored >> the current window is empty.");
                 return;
             }
         };
@@ -520,107 +520,136 @@ impl ApplicationHandler<AppEvent> for Application {
             return;
         }
 
-        // 현재 게임 장면을 가져옵니다.
-        // 현재 게임 장면이 존재하지 않는 경우 함수 실행을 생략합니다.
+        // 게임 장면 스택을 가져옵니다.
+        // 게임 장면 스택이 비어있는 경우 함수 실행을 생략합니다.
         let mut scene_stack = self.scene_stack.borrow_mut();
-        let curr_scene = match scene_stack.back_mut() {
-            Some(curr_scene) => curr_scene,
-            None => {
-                log::info!("window event ignored >> the current scene is empty.");
-                return;
-            }
-        };
-
-        #[allow(unused_must_use)]
-        {
-            let mut state = app_window.egui_state.borrow_mut();
-            state.on_window_event(&app_window.window, &event);
+        if scene_stack.is_empty() {
+            log::debug!("window event ignored >> the current scene is empty.");
+            return;
         }
+
+        // UI 인터페이스 윈도우를 갱신합니다.
+        let mut state = app_window.egui_state.borrow_mut();
+        let _ = state.on_window_event(&app_window.window, &event);
+        drop(state);
 
         // 윈도우 이벤트를 처리합니다.
         match event {
             WindowEvent::Resized(_) => {
                 app_window.on_resized(&self.instance, &self.device);
-                curr_scene.on_window_resized(&app_window.window, self)
+                for scene in scene_stack.iter_mut().rev() {
+                    scene.on_window_resized(&app_window.window, self);
+                }
             }
-            WindowEvent::Moved(_) => curr_scene.on_window_moved(&app_window.window, self),
+            WindowEvent::Moved(_) => {
+                for scene in scene_stack.iter_mut().rev() {
+                    scene.on_window_moved(&app_window.window, self);
+                }
+            }
             WindowEvent::CloseRequested => {
-                if curr_scene.on_close_request(self) {
-                    self.app_window.take();
+                // Safe: 장면 스택이 비어있는지 확인함.
+                let current_scene = unsafe { scene_stack.back_mut().unwrap_unchecked() };
+                if current_scene.on_close_request(self) {
                     return;
                 };
             }
             WindowEvent::Focused(focused) => {
+                // Safe: 장면 스택이 비어있는지 확인함.
+                let current_scene = unsafe { scene_stack.back_mut().unwrap_unchecked() };
                 if focused {
-                    log::info!("Enter Foreground GameScene({:?})", &curr_scene);
-                    curr_scene.on_enter_foreground(self)
+                    current_scene.on_enter_foreground(self);
                 } else {
-                    log::info!("Enter Background GameScene({:?})", &curr_scene);
-                    curr_scene.on_enter_background(self)
+                    current_scene.on_enter_background(self);
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
                     if event.state.is_pressed() {
-                        curr_scene.on_keyboard_pressed(
-                            code,
-                            event.location,
-                            self.modifier,
-                            event.repeat,
-                            &app_window.window,
-                            self,
-                        )
+                        for scene in scene_stack.iter_mut().rev() {
+                            if scene.on_keyboard_pressed(
+                                code,
+                                event.location,
+                                self.modifier,
+                                event.repeat,
+                                &app_window.window,
+                                self,
+                            ) {
+                                break;
+                            }
+                        }
                     } else {
-                        curr_scene.on_keyboard_released(
-                            code,
-                            event.location,
-                            self.modifier,
-                            event.repeat,
-                            &app_window.window,
-                            self,
-                        )
+                        for scene in scene_stack.iter_mut().rev() {
+                            if scene.on_keyboard_released(
+                                code,
+                                event.location,
+                                self.modifier,
+                                event.repeat,
+                                &app_window.window,
+                                self,
+                            ) {
+                                break;
+                            }
+                        }
                     }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let (dx, dy): (f32, f32) = self.cursor_delta.into();
-                curr_scene.on_cursor_moved(
-                    position.x as f32,
-                    position.y as f32,
-                    dx as f32,
-                    dy as f32,
-                    &app_window.window,
-                    self,
-                )
+                for scene in scene_stack.iter_mut().rev() {
+                    if scene.on_cursor_moved(
+                        position.x as f32,
+                        position.y as f32,
+                        dx as f32,
+                        dy as f32,
+                        &app_window.window,
+                        self,
+                    ) {
+                        break;
+                    }
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 if let MouseScrollDelta::LineDelta(dx, dy) = delta {
-                    curr_scene.on_mouse_wheel(dx, dy, &app_window.window, self)
+                    for scene in scene_stack.iter_mut().rev() {
+                        if scene.on_mouse_wheel(dx, dy, &app_window.window, self) {
+                            break;
+                        }
+                    }
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let (x, y): (f64, f64) = self.cursor_delta.into();
                 if state.is_pressed() {
-                    curr_scene.on_mouse_btn_pressed(
-                        x as f32,
-                        y as f32,
-                        button,
-                        &app_window.window,
-                        self,
-                    )
+                    for scene in scene_stack.iter_mut().rev() {
+                        if scene.on_mouse_btn_pressed(
+                            x as f32,
+                            y as f32,
+                            button,
+                            &app_window.window,
+                            self,
+                        ) {
+                            break;
+                        }
+                    }
                 } else {
-                    curr_scene.on_mouse_btn_released(
-                        x as f32,
-                        y as f32,
-                        button,
-                        &app_window.window,
-                        self,
-                    )
+                    for scene in scene_stack.iter_mut().rev() {
+                        if scene.on_mouse_btn_released(
+                            x as f32,
+                            y as f32,
+                            button,
+                            &app_window.window,
+                            self,
+                        ) {
+                            break;
+                        }
+                    }
                 }
             }
             WindowEvent::ScaleFactorChanged { .. } => {
                 app_window.on_resized(&self.instance, &self.device);
-                curr_scene.on_window_resized(&app_window.window, self)
+                for scene in scene_stack.iter_mut().rev() {
+                    scene.on_window_resized(&app_window.window, self);
+                }
             }
             WindowEvent::ModifiersChanged(modifier) => {
                 self.modifier = modifier;
@@ -641,7 +670,7 @@ impl ApplicationHandler<AppEvent> for Application {
                 )
             }
             _ => {}
-        }
+        };
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {

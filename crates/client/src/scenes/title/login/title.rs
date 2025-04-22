@@ -146,8 +146,9 @@ impl GameScene for GameLoginTitleScene {
         _button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         self.is_pressed = true;
+        true
     }
 
     fn on_keyboard_pressed(
@@ -158,8 +159,9 @@ impl GameScene for GameLoginTitleScene {
         _repeat: bool,
         _window: &Window,
         _app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         self.is_pressed = true;
+        true
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {

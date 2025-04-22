@@ -44,7 +44,7 @@ pub struct CharacterFormationScene {
     /// 캐릭터 편성까지 남은 시간
     remaining_time_sec: f32,
 
-    /// 플레이어 집하
+    /// 플레이어 집합
     players: Vec<FormationPhasePlayer>,
 
     /// 배경화면 텍스처의 식별자입니다.

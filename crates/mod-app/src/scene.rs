@@ -32,8 +32,7 @@ pub trait GameScene: Debug + Send {
         false
     }
 
-    /// 하위 게임 장면이 갱신될지 여부를 반환합니다.
-    ///
+    /// 하위 게임 장면이 갱신될지 여부를 반환합니다.  
     /// `true`를 반환할 경우 게임 장면을 갱신할 때 하위 게임 장면도 갱신됩니다.
     fn should_update_subscene(&self) -> bool {
         false
@@ -85,7 +84,9 @@ pub trait GameScene: Debug + Send {
         /* empty */
     }
 
-    /// 애플리케이션에 키보드 눌림 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
+    /// 애플리케이션에 키보드 눌림 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.  
+    /// 현재 게임 장면에서 해당 이벤트를 처리한 경우 `true`를 반환해야 합니다.  
+    /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
     fn on_keyboard_pressed(
         &mut self,
         code: KeyCode,
@@ -94,11 +95,13 @@ pub trait GameScene: Debug + Send {
         repeat: bool,
         window: &Window,
         app: &dyn AppHandle,
-    ) {
-        /* empty */
+    ) -> bool {
+        true
     }
 
-    /// 애플리케이션에 키보드 떼임 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
+    /// 애플리케이션에 키보드 떼임 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.  
+    /// 현재 게임 장면에서 해당 이벤트를 처리한 경우 `true`를 반환해야 합니다.  
+    /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
     fn on_keyboard_released(
         &mut self,
         code: KeyCode,
@@ -107,11 +110,13 @@ pub trait GameScene: Debug + Send {
         repeat: bool,
         window: &Window,
         app: &dyn AppHandle,
-    ) {
-        /* empty */
+    ) -> bool {
+        true
     }
 
     /// 애플리케이션에 마우스 버튼 눌림 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
+    /// 현재 게임 장면에서 해당 이벤트를 처리한 경우 `true`를 반환해야 합니다.  
+    /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
     fn on_mouse_btn_pressed(
         &mut self,
         x: f32,
@@ -119,11 +124,13 @@ pub trait GameScene: Debug + Send {
         button: MouseButton,
         window: &Window,
         app: &dyn AppHandle,
-    ) {
-        /* empty */
+    ) -> bool {
+        true
     }
 
     /// 애플리케이션에 마우스 버튼 떼임 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
+    /// 현재 게임 장면에서 해당 이벤트를 처리한 경우 `true`를 반환해야 합니다.  
+    /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
     fn on_mouse_btn_released(
         &mut self,
         x: f32,
@@ -131,16 +138,20 @@ pub trait GameScene: Debug + Send {
         button: MouseButton,
         window: &Window,
         app: &dyn AppHandle,
-    ) {
-        /* empty */
+    ) -> bool {
+        true
     }
 
     /// 애플리케이션 창에 마우스 휠 조작 이벤트가 발생됐을 때 호출되는 콜백 함수입니다.
-    fn on_mouse_wheel(&mut self, dx: f32, dy: f32, window: &Window, app: &dyn AppHandle) {
-        /* empty */
+    /// 현재 게임 장면에서 해당 이벤트를 처리한 경우 `true`를 반환해야 합니다.  
+    /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
+    fn on_mouse_wheel(&mut self, dx: f32, dy: f32, window: &Window, app: &dyn AppHandle) -> bool {
+        true
     }
 
     /// 애플리케이션 창에 커서가 이동됐을 때 호출되는 콜백 함수입니다.
+    /// 현재 게임 장면에서 해당 이벤트를 처리한 경우 `true`를 반환해야 합니다.  
+    /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
     fn on_cursor_moved(
         &mut self,
         x: f32,
@@ -149,8 +160,8 @@ pub trait GameScene: Debug + Send {
         dy: f32,
         window: &Window,
         app: &dyn AppHandle,
-    ) {
-        /* empty */
+    ) -> bool {
+        true
     }
 
     /// 애플리케이션에서 네트워크 오류를 처리합니다.

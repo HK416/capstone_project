@@ -52,7 +52,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-use super::InGamePauseLayer;
+use super::{InGamePauseLayer, InGameStatusLayer};
 
 const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
 
@@ -102,6 +102,9 @@ pub struct InGameDominationModeScene {
     flip_horizontal: bool,
     /// 시야 조작의 좌우 반전 여부입니다.
     flip_vertical: bool,
+
+    /// 플레이어가 상태 대화상자를 보는 여부를 나타냅니다.
+    show_status: bool,
 
     /// 게임 장면의 경과 시간입니다.
     /// 패킷을 보낼 때 사용됩니다.
@@ -194,6 +197,7 @@ impl InGameDominationModeScene {
             control_sensitivity: 0.5,
             flip_horizontal: false,
             flip_vertical: false,
+            show_status: false,
             elapsed_time_sec: 0.0,
             particle_timer: 0.0,
             capture_point: CapturePoint::default(),
@@ -2478,16 +2482,28 @@ impl GameScene for InGameDominationModeScene {
         _modifiers: Modifiers,
         repeat: bool,
         _window: &Window,
-        _app: &dyn AppHandle,
-    ) {
+        app: &dyn AppHandle,
+    ) -> bool {
         if !repeat {
             let config = UserConfig::get();
             let flags = config
                 .get_keyboard_input(&(code, location))
                 .map(|input| input.into_bits())
                 .unwrap_or_default();
+
+            if flags == GameInputBits::Status {
+                // 인게임 상태창 장면으로 전환합니다.
+                let scene = InGameStatusLayer::new(self.locale);
+                let scene_flow = GameSceneFlow::Push(Box::new(scene));
+                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
+
             self.controller_input_flags |= flags;
         }
+
+        true
     }
 
     fn on_keyboard_released(
@@ -2498,17 +2514,16 @@ impl GameScene for InGameDominationModeScene {
         repeat: bool,
         _window: &Window,
         app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         if !repeat {
-            // 인게임 일시정지 장면으로 전환합니다.
-            if code == KeyCode::Escape {
-                // 이전 게임 장면으로 되돌아갑니다.
+            if !self.show_status && code == KeyCode::Escape {
+                // 인게임 일시정지 장면으로 전환합니다.
                 let scene = InGamePauseLayer::new(self.locale);
                 let scene_flow = GameSceneFlow::Push(Box::new(scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
-                return;
+                return true;
             }
 
             let config = UserConfig::get();
@@ -2518,6 +2533,8 @@ impl GameScene for InGameDominationModeScene {
                 .unwrap_or_default();
             self.controller_input_flags &= !flags;
         }
+
+        true
     }
 
     fn on_mouse_btn_pressed(
@@ -2527,13 +2544,15 @@ impl GameScene for InGameDominationModeScene {
         button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         let config = UserConfig::get();
         let flags = config
             .get_mouse_input(&button)
             .map(|input| input.into_bits())
             .unwrap_or_default();
         self.controller_input_flags |= flags;
+
+        true
     }
 
     fn on_mouse_btn_released(
@@ -2543,13 +2562,15 @@ impl GameScene for InGameDominationModeScene {
         button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         let config = UserConfig::get();
         let flags = config
             .get_mouse_input(&button)
             .map(|input| input.into_bits())
             .unwrap_or_default();
         self.controller_input_flags &= !flags;
+
+        true
     }
 
     fn on_cursor_moved(
@@ -2560,7 +2581,7 @@ impl GameScene for InGameDominationModeScene {
         mut dy: f32,
         window: &Window,
         _app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         self.reset_cursor_position_at_center(window);
 
         dx *= match self.flip_horizontal {
@@ -2588,6 +2609,8 @@ impl GameScene for InGameDominationModeScene {
             .query_one_mut::<&mut LatLon>(entity)
             .expect("invalid entity or invalid entity component");
         *view_rotation = rotation;
+
+        true
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
