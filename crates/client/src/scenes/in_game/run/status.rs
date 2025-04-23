@@ -1,9 +1,14 @@
+use ahash::HashMap;
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
+    net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::GameInput;
+use mod_network::{
+    components::{CapturePoint, GameInput},
+    protocol::{Packet, PacketType, PullStagePacket, RawPacket},
+};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -11,20 +16,37 @@ use winit::{
 };
 
 use crate::{
-    config::{Locale, UserConfig},
-    scenes::BASE_WIDTH,
+    config::{Locale, UserConfig, NUM_LOCALE},
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
 /// 인게임 장면에서 현재 게임 진행 상태를 출력하는 게임 장면입니다.
 pub struct InGameStatusLayer {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
+    /// 현재 게임 진행 상황입니다.
+    capture_point: CapturePoint,
+    /// 남은 게임 시간입니다.
+    remaining_time_sec: f32,
+
+    /// 게임 인터페이스 텍스처 식별자입니다.
+    ui_textures: HashMap<String, egui::load::SizedTexture>,
 }
 
 impl InGameStatusLayer {
     /// 새로운 게임 장면 레이어를 생성합니다.
-    pub fn new(locale: Locale) -> Self {
-        Self { locale }
+    pub fn new(
+        locale: Locale,
+        capture_point: CapturePoint,
+        remaining_time_sec: f32,
+        ui_textures: HashMap<String, egui::load::SizedTexture>,
+    ) -> Self {
+        Self {
+            locale,
+            capture_point,
+            remaining_time_sec,
+            ui_textures,
+        }
     }
 }
 
@@ -35,6 +57,42 @@ impl GameScene for InGameStatusLayer {
 
     fn should_update_subscene(&self) -> bool {
         true
+    }
+
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        match packet.packet_type() {
+            PacketType::PullStage => {
+                let packet = PullStagePacket::from_raw(packet.clone());
+                self.capture_point = packet.capture_point;
+                self.remaining_time_sec = packet.remaining_time_sec;
+            }
+            _ => {}
+        };
+        Some(packet)
     }
 
     fn on_keyboard_pressed(

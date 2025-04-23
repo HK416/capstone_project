@@ -26,10 +26,10 @@ use winit::window::Window;
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, BULLET_URIS, BULLET_WORKSPACE, CAPTURE_ZONE_URI, CHARACTER_URIS,
-        CHARACTER_WORKSPACES, DAMAGE_FONT_URI, NOTOSANS_BOLD, SKYBOX_URI, STAGE_URI,
-        STAGE_WORKSPACES, UI_GAME_LAYOUT_URI, UI_TIMER_ICON_URI, WEAPON_ICON_MASK_URI,
-        WEAPON_ICON_MASK_URIS, WEAPON_ICON_URI, WEAPON_ICON_URIS,
+        TextureViewPool, BULLET_URIS, BULLET_WORKSPACE, CAPTURE_ZONE_URI, CHARACTER_ICON_URIS,
+        CHARACTER_URIS, CHARACTER_WORKSPACES, DAMAGE_FONT_URI, NOTOSANS_BOLD, SCHALE_ICON_URI,
+        SKYBOX_URI, STAGE_URI, STAGE_WORKSPACES, TIMER_ICON_URI, UI_GAME_LAYOUT_URI,
+        WEAPON_ICON_MASK_URI, WEAPON_ICON_MASK_URIS, WEAPON_ICON_URI, WEAPON_ICON_URIS,
     },
     component::{load_stage_layout_from_file, Attributes, MaterialDataPool, Mesh, Vertices},
     config::{Locale, NUM_LOCALE},
@@ -420,7 +420,7 @@ impl InGameLoadScene {
     }
 
     /// `UI_Game_Layout` 텍스처를 생성합니다.
-    fn create_ui_game_layout_texture(
+    fn create_ui_layout_texture(
         &mut self,
         workspace: &PathBuf,
         thread_pool: &ThreadPool,
@@ -514,8 +514,8 @@ impl InGameLoadScene {
         self.num_remaining_tasks += 1;
     }
 
-    /// `UI_Timer_Icon` 텍스처를 생성합니다.
-    fn create_ui_timer_icon_texture(
+    /// `Timer_Icon` 텍스처를 생성합니다.
+    fn create_timer_icon_texture(
         &mut self,
         workspace: &PathBuf,
         thread_pool: &ThreadPool,
@@ -527,7 +527,7 @@ impl InGameLoadScene {
         let device = device.clone();
 
         let mut path = workspace.clone();
-        path.push(format!("ui/{}.dds", UI_TIMER_ICON_URI));
+        path.push(format!("ui/{}.dds", TIMER_ICON_URI));
 
         thread_pool.spawn(move || {
             log::debug!("open texture asset (PATH:{})", path.display());
@@ -581,7 +581,7 @@ impl InGameLoadScene {
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
             let texture = TexturePool::create_texture(
-                UI_TIMER_ICON_URI,
+                TIMER_ICON_URI,
                 &device,
                 &mut encoder,
                 &mut staging_buffers,
@@ -596,7 +596,7 @@ impl InGameLoadScene {
             );
 
             // 텍스터를 등록합니다.
-            texture_pool.insert(UI_TIMER_ICON_URI, texture);
+            texture_pool.insert(TIMER_ICON_URI, texture);
 
             // 커맨드 버퍼를 전송합니다.
             commands.push((staging_buffers, encoder.finish()));
@@ -607,8 +607,206 @@ impl InGameLoadScene {
         self.num_remaining_tasks += 1;
     }
 
+    /// `Schale_Icon` 텍스처를 생성합니다.
+    fn create_schale_icon_texture(
+        &mut self,
+        workspace: &PathBuf,
+        thread_pool: &ThreadPool,
+        device: &Arc<wgpu::Device>,
+    ) {
+        let commands = self.commands.clone();
+        let task_results = self.task_results.clone();
+        let texture_pool = self.texture_pool.clone();
+        let device = device.clone();
+
+        let mut path = workspace.clone();
+        path.push(format!("ui/{}.dds", SCHALE_ICON_URI));
+
+        thread_pool.spawn(move || {
+            log::debug!("open texture asset (PATH:{})", path.display());
+            let result = OpenOptions::new().read(true).write(false).open(&path);
+            let mut file = match result {
+                Ok(file) => file,
+                Err(e) => {
+                    log::error!(
+                        "failed to texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            };
+
+            log::debug!("read texture asset (PATH:{})", path.display());
+            let mut buf = Vec::new();
+            if let Err(e) = file.read_to_end(&mut buf) {
+                log::error!(
+                    "failed to read texture asset (PATH:{}, REASON:{})",
+                    path.display(),
+                    &e
+                );
+                task_results.push(Err(Box::new(e)));
+                return;
+            }
+
+            log::debug!("close texture asset (PATH:{})", path.display());
+            drop(file);
+
+            log::debug!("decode texture asset (PATH:{})", path.display());
+            let result = Dds::read(Cursor::new(buf));
+            let dds = match result {
+                Ok(dds) => dds,
+                Err(e) => {
+                    log::error!(
+                        "failed to decode texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            };
+
+            // 텍스터를 생성합니다.
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            let texture = TexturePool::create_texture(
+                SCHALE_ICON_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                dds.get_width(),
+                dds.get_height(),
+                1,
+                wgpu::TextureDimension::D2,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+                1,
+                1,
+                dds.data,
+            );
+
+            // 텍스터를 등록합니다.
+            texture_pool.insert(SCHALE_ICON_URI, texture);
+
+            // 커맨드 버퍼를 전송합니다.
+            commands.push((staging_buffers, encoder.finish()));
+
+            // 결과를 전송합니다.
+            task_results.push(Ok(()));
+        });
+        self.num_remaining_tasks += 1;
+    }
+
+    /// 캐릭터 아이콘 텍스처를 생성합니다.
+    fn create_character_icon_texture(
+        &mut self,
+        workspace: &PathBuf,
+        thread_pool: &ThreadPool,
+        device: &Arc<wgpu::Device>,
+    ) {
+        let characters: HashSet<_> = self
+            .packet
+            .as_ref()
+            .expect("the init stage packet must exist!")
+            .players
+            .iter()
+            .map(|item| item.character_kind)
+            .collect();
+
+        for kind in characters {
+            let commands = self.commands.clone();
+            let task_results = self.task_results.clone();
+            let texture_pool = self.texture_pool.clone();
+            let device = device.clone();
+            let i = kind as usize;
+
+            let mut path = workspace.clone();
+            path.push(format!("ui/{}.dds", CHARACTER_ICON_URIS[i]));
+
+            thread_pool.spawn(move || {
+                log::debug!("open texture asset (PATH:{})", path.display());
+                let result = OpenOptions::new().read(true).write(false).open(&path);
+                let mut file = match result {
+                    Ok(file) => file,
+                    Err(e) => {
+                        log::error!(
+                            "failed to texture asset (PATH:{}, REASON:{})",
+                            path.display(),
+                            &e
+                        );
+                        task_results.push(Err(Box::new(e)));
+                        return;
+                    }
+                };
+
+                log::debug!("read texture asset (PATH:{})", path.display());
+                let mut buf = Vec::new();
+                if let Err(e) = file.read_to_end(&mut buf) {
+                    log::error!(
+                        "failed to read texture asset (PATH:{}, REASON:{})",
+                        path.display(),
+                        &e
+                    );
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+
+                log::debug!("close texture asset (PATH:{})", path.display());
+                drop(file);
+
+                log::debug!("decode texture asset (PATH:{})", path.display());
+                let result = Dds::read(Cursor::new(buf));
+                let dds = match result {
+                    Ok(dds) => dds,
+                    Err(e) => {
+                        log::error!(
+                            "failed to decode texture asset (PATH:{}, REASON:{})",
+                            path.display(),
+                            &e
+                        );
+                        task_results.push(Err(Box::new(e)));
+                        return;
+                    }
+                };
+
+                // 텍스터를 생성합니다.
+                let mut staging_buffers = Vec::new();
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+                let texture = TexturePool::create_texture(
+                    CHARACTER_ICON_URIS[i],
+                    &device,
+                    &mut encoder,
+                    &mut staging_buffers,
+                    dds.get_width(),
+                    dds.get_height(),
+                    1,
+                    wgpu::TextureDimension::D2,
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    1,
+                    1,
+                    dds.data,
+                );
+
+                // 텍스터를 등록합니다.
+                texture_pool.insert(CHARACTER_ICON_URIS[i], texture);
+
+                // 커맨드 버퍼를 전송합니다.
+                commands.push((staging_buffers, encoder.finish()));
+
+                // 결과를 전송합니다.
+                task_results.push(Ok(()));
+            });
+            self.num_remaining_tasks += 1;
+        }
+    }
+
     /// 플레이어 캐릭터의 무기 아이콘 텍스처를 생성합니다.
-    fn create_weapon_icon_texture(
+    fn create_player_weapon_icon_texture(
         &mut self,
         workspace: &PathBuf,
         thread_pool: &ThreadPool,
@@ -702,7 +900,7 @@ impl InGameLoadScene {
     }
 
     /// 플레이어 캐릭터의 무기 아이콘 마스크의 텍스처를 생성합니다.
-    fn create_weapon_icon_mask_texture(
+    fn create_player_weapon_icon_mask_texture(
         &mut self,
         workspace: &PathBuf,
         thread_pool: &ThreadPool,
@@ -949,7 +1147,7 @@ impl InGameLoadScene {
 
             // 텍스터를 생성합니다.
             let mut staging_buffers = Vec::new();
-            let mut encoder =
+            let mut encoder: wgpu::CommandEncoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
             let texture = TexturePool::create_texture(
@@ -1046,10 +1244,12 @@ impl GameScene for InGameLoadScene {
         self.load_bullet_models(&workspace, thread_pool, device);
         self.load_stage_models(&workspace, thread_pool, device);
         self.load_capture_zone_model(&workspace, thread_pool, device);
-        self.create_ui_game_layout_texture(&workspace, thread_pool, device);
-        self.create_ui_timer_icon_texture(&workspace, thread_pool, device);
-        self.create_weapon_icon_texture(&workspace, thread_pool, device);
-        self.create_weapon_icon_mask_texture(&workspace, thread_pool, device);
+        self.create_ui_layout_texture(&workspace, thread_pool, device);
+        self.create_timer_icon_texture(&workspace, thread_pool, device);
+        self.create_schale_icon_texture(&workspace, thread_pool, device);
+        self.create_character_icon_texture(&workspace, thread_pool, device);
+        self.create_player_weapon_icon_texture(&workspace, thread_pool, device);
+        self.create_player_weapon_icon_mask_texture(&workspace, thread_pool, device);
         self.create_skybox_texture(&workspace, thread_pool, device);
         self.create_damage_font(&workspace, thread_pool, device);
         self.create_damage_particle_mesh(thread_pool, device);

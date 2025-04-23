@@ -30,8 +30,8 @@ use winit::{
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_GAME_LAYOUT_URI,
-        UI_TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        TextureViewPool, CHARACTER_ICON_URIS, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        SCHALE_ICON_URI, TIMER_ICON_URI, UI_GAME_LAYOUT_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -143,7 +143,7 @@ pub struct InGameDominationModeScene {
     /// 알파 블렌딩 쉐이더 리소스입니다.
     alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
-    /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
+    /// 게임 인터페이스 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
     /// 그림자 렌더링 리소스 집합입니다.
@@ -262,8 +262,22 @@ impl InGameDominationModeScene {
         self.main_camera = self.world.spawn(builder.build());
     }
 
-    /// UI 배경에 사용되는 텍스처를 Ui렌더러에 등록합니다.
-    fn register_ui_bg_texture(&mut self, device: &wgpu::Device, egui_renderer: &mut UiRenderer) {
+    /// UI에 사용되는 텍스처를 UI렌더러에 등록합니다.
+    fn register_ui_texture(&mut self, device: &wgpu::Device, egui_renderer: &mut UiRenderer) {
+        self.register_bg_layout_texture(device, egui_renderer);
+        self.register_timer_icon_texture(device, egui_renderer);
+        self.register_schale_icon_texture(device, egui_renderer);
+        self.register_character_icon_textures(device, egui_renderer);
+        self.register_player_weapon_icon_texture(device, egui_renderer);
+        self.register_player_weapon_icon_mask_texture(device, egui_renderer);
+    }
+
+    /// UI 배경 레이아웃 텍스처를 UI 렌더러에 등록합니다.
+    fn register_bg_layout_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
         // `UI_Game_Layout` 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -287,12 +301,50 @@ impl InGameDominationModeScene {
                 size: texture_size,
             },
         );
+    }
 
-        // `UI_Timer_Icon` 텍스처를 가져옵니다.
+    /// 타이머 아이콘 텍스처를 UI 렌더러에 등록합니다.
+    fn register_timer_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        // `Timer_Icon` 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
-            .get(UI_TIMER_ICON_URI)
-            .expect("UI_Timer_Icon texture must be preloaded!");
+            .get(TIMER_ICON_URI)
+            .expect("Timer_Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture: Arc<wgpu::TextureView> = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            TIMER_ICON_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+    }
+
+    /// Schale 아이콘 텍스처를 UI 렌더러에 등록합니다.
+    fn register_schale_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        // `Schale_Icon` 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(SCHALE_ICON_URI)
+            .expect("Schale_Icon texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
         // 텍스처 뷰를 생성합니다.
@@ -305,13 +357,55 @@ impl InGameDominationModeScene {
             egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         self.ui_textures.insert(
-            UI_TIMER_ICON_URI.into(),
+            SCHALE_ICON_URI.into(),
             egui::load::SizedTexture {
                 id: texture_id,
                 size: texture_size,
             },
         );
+    }
 
+    /// 캐릭터 아이콘 텍스처를 UI 렌더러에 등록합니다.
+    fn register_character_icon_textures(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        for uri in CHARACTER_ICON_URIS {
+            // 캐릭터 이미지 텍스처를 가져옵니다.
+            let result = self.texture_pool.get(uri);
+
+            let texture = match result {
+                Some(texture) => texture,
+                None => continue,
+            };
+            let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+            // 텍스처 뷰를 생성합니다.
+            let texture = self
+                .texture_view_pool
+                .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+            // egui 렌더러에 텍스처를 등록합니다.
+            let texture_id =
+                egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+            self.ui_textures.insert(
+                uri.into(),
+                egui::load::SizedTexture {
+                    id: texture_id,
+                    size: texture_size,
+                },
+            );
+        }
+    }
+
+    /// 플레이어 무기 아이콘 텍스처를 UI 렌더러에 등록합니다.
+    fn register_player_weapon_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
         // 플레이어 캐릭터 무기 아이콘 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -335,7 +429,14 @@ impl InGameDominationModeScene {
                 size: texture_size,
             },
         );
+    }
 
+    /// 플레이어 무기 아이콘 마스킹 텍스처를 UI 렌더러에 등록합니다.
+    fn register_player_weapon_icon_mask_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
         // 플레이어 캐릭터 무기 아이콘 마스킹 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -1939,6 +2040,17 @@ impl InGameDominationModeScene {
             egui::Color32::from_rgb(255, 68, 51), // 레드 팀 색상
         ];
 
+        // schale 아이콘
+        let schale_icon = self
+            .ui_textures
+            .get(SCHALE_ICON_URI)
+            .cloned()
+            .expect("the Schale_Icon must exist!");
+        let icon_area = egui::Rect::from_min_max(
+            egui::pos2(610.0 * scale, 24.0 * scale),
+            egui::pos2(670.0 * scale, 84.0 * scale),
+        );
+
         // 전체 배경
         // - 가로 기준 길이: 520
         // - 세로 기준 길이: 12
@@ -2087,6 +2199,9 @@ impl InGameDominationModeScene {
             ui.painter().add(team_bg_deco);
             ui.painter().add(team_bg_shadow);
             ui.painter().add(team_bg);
+            egui::Image::new(schale_icon)
+                .tint(egui::Color32::from_white_alpha(128))
+                .paint_at(ui, icon_area);
             if let Some(progress_guage) = progress_guage {
                 ui.painter().add(progress_guage);
             }
@@ -2113,7 +2228,7 @@ impl InGameDominationModeScene {
 
         let ui_timer_icon = self
             .ui_textures
-            .get(UI_TIMER_ICON_URI)
+            .get(TIMER_ICON_URI)
             .cloned()
             .expect("the UI_Timer_Icon must exist!");
 
@@ -2454,7 +2569,7 @@ impl GameScene for InGameDominationModeScene {
 
         let device = app.render_device();
         let mut egui_renderer = app.egui_renderer_mut();
-        self.register_ui_bg_texture(&device, &mut egui_renderer);
+        self.register_ui_texture(&device, &mut egui_renderer);
         self.create_main_camera(&device);
         self.create_shadow_resource(&device);
         self.create_alpha_blend_resource(window, &device);
@@ -2493,7 +2608,12 @@ impl GameScene for InGameDominationModeScene {
 
             if flags == GameInputBits::Status {
                 // 인게임 상태창 장면으로 전환합니다.
-                let scene = InGameStatusLayer::new(self.locale);
+                let scene = InGameStatusLayer::new(
+                    self.locale,
+                    self.capture_point,
+                    self.remaining_time_sec,
+                    self.ui_textures.clone(),
+                );
                 let scene_flow = GameSceneFlow::Push(Box::new(scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
@@ -2647,7 +2767,7 @@ impl GameScene for InGameDominationModeScene {
                 let packet = UdpDamageLogPacket::from_raw(packet);
                 self.create_damage_particles(app.render_device(), packet.logs);
             }
-            _ => panic!("invalid packet"),
+            _ => {}
         };
 
         None

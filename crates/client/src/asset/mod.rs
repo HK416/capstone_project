@@ -78,7 +78,10 @@ pub const DAMAGE_FONT_URI: &'static str = "D_Font_Normal";
 pub const UI_GAME_LAYOUT_URI: &'static str = "UI_Game_Layout";
 
 /// 인게임 타이머 아이콘 텍스처의 `Uri`입니다.
-pub const UI_TIMER_ICON_URI: &'static str = "UI_Timer_Icon";
+pub const TIMER_ICON_URI: &'static str = "Timer_Icon";
+
+/// 인게임 schale 아이콘 텍스처의 `Uri`입니다.
+pub const SCHALE_ICON_URI: &'static str = "Schale_Icon";
 
 /// 스카이박스 텍스처의 `Uri`입니다.
 pub const SKYBOX_URI: &'static str = "Sky";
@@ -97,6 +100,14 @@ pub const CHARACTER_URIS: [&'static str; NUM_CHARACTERS] = [
     "momoi_original",
     "midori_original",
     "yuuka_original",
+];
+
+/// 캐릭터 아이콘의 `Uri`입니다.
+pub const CHARACTER_ICON_URIS: [&'static str; NUM_CHARACTERS] = [
+    "Student_Portrait_Aris",
+    "Student_Portrait_Momoi",
+    "Student_Portrait_Midori",
+    "Student_Portrait_Yuuka",
 ];
 
 /// 무기 아이콘 `Uri`입니다.
