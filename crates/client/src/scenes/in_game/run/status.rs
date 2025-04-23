@@ -1,3 +1,5 @@
+use std::ptr::NonNull;
+
 use ahash::HashMap;
 use mod_app::{
     app::AppHandle,
@@ -5,10 +7,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{
-    components::{CapturePoint, GameInput},
-    protocol::{Packet, PacketType, PullStagePacket, RawPacket},
-};
+use mod_network::components::{CharacterKind, GameInput, Team, UserId};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -16,47 +15,63 @@ use winit::{
 };
 
 use crate::{
+    asset::CHARACTER_ICON_URIS,
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
-/// 인게임 장면에서 현재 게임 진행 상태를 출력하는 게임 장면입니다.
-pub struct InGameStatusLayer {
+use super::{InGameDominationModeScene, TEAM_COLOR};
+
+/// 인게임 종합전술시험(점령전)의 현재 게임 진행 상태를 출력하는 게임 장면입니다.
+pub struct InGameDominationModeStatusLayer {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
-    /// 현재 게임 진행 상황입니다.
-    capture_point: CapturePoint,
-    /// 남은 게임 시간입니다.
-    remaining_time_sec: f32,
+    /// 플레이어 식별자입니다.
+    user_id: UserId,
 
-    /// 게임 인터페이스 텍스처 식별자입니다.
-    ui_textures: HashMap<String, egui::load::SizedTexture>,
+    /// 이전 게임 장면입니다.
+    ///
+    /// # Safe
+    /// InGameDominationModeScene에서 SceneFlow::Push로 호출된 경우
+    /// InGameDominationModeScene의 주소 값이 유효하고,
+    /// 모든 GameScene은 메인 스레드에서 호출되므로
+    /// 안전하게 사용할 수 있습니다.
+    ///
+    prev_scene: NonNull<InGameDominationModeScene>,
 }
 
-impl InGameStatusLayer {
+impl InGameDominationModeStatusLayer {
     /// 새로운 게임 장면 레이어를 생성합니다.
     pub fn new(
         locale: Locale,
-        capture_point: CapturePoint,
-        remaining_time_sec: f32,
-        ui_textures: HashMap<String, egui::load::SizedTexture>,
+        user_id: UserId,
+        prev_scene: NonNull<InGameDominationModeScene>,
     ) -> Self {
         Self {
             locale,
-            capture_point,
-            remaining_time_sec,
-            ui_textures,
+            user_id,
+            prev_scene,
         }
     }
 }
 
-impl GameScene for InGameStatusLayer {
+impl GameScene for InGameDominationModeStatusLayer {
     fn transparents(&self) -> bool {
         true
     }
 
     fn should_update_subscene(&self) -> bool {
         true
+    }
+
+    fn on_enter(&mut self, _window: &Window, _app: &dyn AppHandle) {
+        let prev_scene = unsafe { self.prev_scene.as_mut() };
+        prev_scene.set_show_status(true);
+    }
+
+    fn on_exit(&mut self, _window: Option<&Window>, _app: &dyn AppHandle) {
+        let prev_scene = unsafe { self.prev_scene.as_mut() };
+        prev_scene.set_show_status(false);
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -81,18 +96,6 @@ impl GameScene for InGameStatusLayer {
         let event = AppEvent::SetGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
-    }
-
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
-        match packet.packet_type() {
-            PacketType::PullStage => {
-                let packet = PullStagePacket::from_raw(packet.clone());
-                self.capture_point = packet.capture_point;
-                self.remaining_time_sec = packet.remaining_time_sec;
-            }
-            _ => {}
-        };
-        Some(packet)
     }
 
     fn on_keyboard_pressed(
@@ -167,18 +170,28 @@ impl GameScene for InGameStatusLayer {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+        let prev_scene = unsafe { self.prev_scene.as_mut() };
         let (width, _): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
-        let i = self.locale as usize;
+
+        // 현재 플레이어 데이터를 가져옵니다.
+        let (blue, red) = prev_scene.get_player_data();
 
         // 대화 상자 속성
+        // 기준 가로 길이: 960
+        // 기준 세로 길이: 480
         let wnd_width = 960.0 * scale;
         let wnd_height = 480.0 * scale;
         let frame = egui::Frame::new()
-            .corner_radius(3.0)
+            .corner_radius(16.0)
             .fill(egui::Color32::from_black_alpha(194))
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+
+        // 플레이어 아이콘 배경 속성
+        // 기준 가로 길이: 456
+        // 기준 세로 길이: 64
+        // 간격: 8
 
         egui::Modal::new(egui::Id::new("Modal_Window_Layout"))
             .frame(frame)
@@ -186,6 +199,79 @@ impl GameScene for InGameStatusLayer {
             .show(app.egui_ctx(), |ui| {
                 ui.set_width(wnd_width);
                 ui.set_height(wnd_height);
+
+                let beg_x = 176.0 * scale;
+                let end_x = beg_x + 456.0 * scale;
+                let mut beg_y = 258.0 * scale;
+                let mut end_y;
+                for data in blue {
+                    end_y = beg_y + 64.0 * scale;
+
+                    ui.painter().rect(
+                        egui::Rect::from_min_max(
+                            egui::pos2(beg_x, beg_y),
+                            egui::pos2(end_x, end_y),
+                        ),
+                        4.0,
+                        egui::Color32::from_white_alpha(128),
+                        egui::Stroke::new(1.0 * scale, egui::Color32::WHITE),
+                        egui::StrokeKind::Middle,
+                    );
+
+                    let i = data.character_kind as usize;
+                    let icon = prev_scene
+                        .get_ui_texture(CHARACTER_ICON_URIS[i])
+                        .expect("the Character Icon must exist!");
+                    let ratio = icon.size.x / icon.size.y;
+                    let x = beg_x + 2.0 * scale;
+                    let y = beg_y + 2.0 * scale;
+                    let height = 60.0 * scale;
+                    let width = height * ratio;
+                    let icon_area = egui::Rect::from_min_max(
+                        egui::pos2(x, y),
+                        egui::pos2(x + width, y + height),
+                    );
+                    egui::Image::new(icon).paint_at(ui, icon_area);
+
+                    beg_y = end_y + 8.0 * scale;
+                }
+
+                let beg_x = 648.0 * scale;
+                let end_x = beg_x + 456.0 * scale;
+                beg_y = 258.0 * scale;
+                for data in red {
+                    end_y = beg_y + 64.0 * scale;
+
+                    ui.painter().rect(
+                        egui::Rect::from_min_max(
+                            egui::pos2(beg_x, beg_y),
+                            egui::pos2(end_x, end_y),
+                        ),
+                        4.0,
+                        egui::Color32::from_white_alpha(128),
+                        egui::Stroke::new(1.0 * scale, egui::Color32::WHITE),
+                        egui::StrokeKind::Middle,
+                    );
+
+                    let i = data.character_kind as usize;
+                    let icon = prev_scene
+                        .get_ui_texture(CHARACTER_ICON_URIS[i])
+                        .expect("the Character Icon must exist!");
+                    let ratio = icon.size.x / icon.size.y;
+                    let x = beg_x + 2.0 * scale;
+                    let y = beg_y + 2.0 * scale;
+                    let height = 60.0 * scale;
+                    let width = height * ratio;
+                    let icon_area = egui::Rect::from_min_max(
+                        egui::pos2(x, y),
+                        egui::pos2(x + width, y + height),
+                    );
+                    egui::Image::new(icon).paint_at(ui, icon_area);
+
+                    beg_y = end_y + 8.0 * scale;
+                }
             });
     }
 }
+
+unsafe impl Send for InGameDominationModeStatusLayer {}

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, ptr::NonNull, sync::Arc};
 
 use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
@@ -12,8 +12,8 @@ use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, CapturePoint, CharacterKind, DamageLog, ExSkillCost,
         GameInputBits, HealthPoint, LatLon, LoginToken, MaxHealthPoint, MovementState,
-        MovementStateTimer, ObjectId, PlayPhasePlayer, RemainingBullet, SkillKind, Team, UserId,
-        ViewState, ViewStateTimer, MAX_CAPTURE_SCORE,
+        MovementStateTimer, ObjectId, PlayPhasePlayer, RemainingBullet, SkillKind, Team,
+        UserAccount, UserId, ViewState, ViewStateTimer, MAX_CAPTURE_SCORE, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
         Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket, UdpDamageLogPacket,
@@ -52,9 +52,15 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-use super::{InGamePauseLayer, InGameStatusLayer};
+use super::{InGameDominationModeStatusLayer, InGamePauseLayer};
 
 const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
+
+/// 팀의 색상입니다.
+pub const TEAM_COLOR: [egui::Color32; 2] = [
+    egui::Color32::from_rgb(0, 150, 255), // 블루팀 색상
+    egui::Color32::from_rgb(255, 68, 51), // 레드 팀 색상
+];
 
 enum MeshFilter {
     Mesh(MeshResource),
@@ -87,6 +93,22 @@ type SkinnedMeshRenderer<'a> = (
     &'a BoneTransformUniform,
     &'a Vec<MaterialResource>,
 );
+
+/// 플레이어 데이터입니다.
+pub struct PlayerData {
+    /// 사용자 계정 데이터입니다.
+    pub account: UserAccount,
+    /// 플레이어가 속한 팀입니다.
+    pub team: Team,
+    /// 플레이어가 속한 팀의 인덱스입니다.
+    pub index: usize,
+    /// 플레이어 캐릭터 종류입니다.
+    pub character_kind: CharacterKind,
+    /// 플레이어 캐릭터 최대 체력입니다.
+    pub max_health_point: MaxHealthPoint,
+    /// 플레이어 캐릭터 체력입니다.
+    pub health_point: HealthPoint,
+}
 
 /// 종합전술시험(점령전)을 진행하는 게임 장면입니다.
 pub struct InGameDominationModeScene {
@@ -167,6 +189,76 @@ pub struct InGameDominationModeScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+}
+
+//--------------------------------------------------------------------------------------------
+// InGameDominationModeStatusLayer에서 사용되는 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameDominationModeScene {
+    /// 현재 상태창을 보고있는지 여부를 설정합니다.
+    pub fn set_show_status(&mut self, show: bool) {
+        self.show_status = show;
+    }
+
+    /// 현재 게임 진행 상황을 반환합니다.
+    pub fn get_capture_point(&self) -> &CapturePoint {
+        &self.capture_point
+    }
+
+    /// 주어진 uri에 해당하는 UI 텍스처를 가져옵니다.   
+    /// 등록된 UI 텍스처가 없는 경우 `None`을 반환합니다.
+    pub fn get_ui_texture<Uri>(&self, uri: Uri) -> Option<egui::load::SizedTexture>
+    where
+        Uri: AsRef<str>,
+    {
+        self.ui_textures.get(uri.as_ref()).cloned()
+    }
+
+    /// 플레이어 데이터를 반환합니다.  
+    /// 첫 번째 요소는 블루 팀 플레이어, 두 번째 요소는 레드 팀 플레이어 집합입니다.
+    pub fn get_player_data(&mut self) -> (Vec<PlayerData>, Vec<PlayerData>) {
+        type Query<'a> = (
+            &'a UserAccount,
+            &'a (Team, usize),
+            &'a CharacterKind,
+            &'a MaxHealthPoint,
+            &'a HealthPoint,
+        );
+
+        let mut blue = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
+        let mut red = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
+        for entity in self.players.values().cloned() {
+            let (&account, &(team, index), &character_kind, &max_health_point, &health_point) =
+                self.world
+                    .query_one_mut::<Query>(entity)
+                    .expect("invalid entity or invalid entity component");
+
+            if team == Team::Blue {
+                blue.push(PlayerData {
+                    account,
+                    team,
+                    index,
+                    character_kind,
+                    max_health_point,
+                    health_point,
+                });
+            } else {
+                red.push(PlayerData {
+                    account,
+                    team,
+                    index,
+                    character_kind,
+                    max_health_point,
+                    health_point,
+                });
+            }
+        }
+
+        blue.sort_by_key(|it| it.index);
+        red.sort_by_key(|it| it.index);
+
+        (blue, red)
+    }
 }
 
 //--------------------------------------------------------------------------------------------
@@ -555,7 +647,7 @@ impl InGameDominationModeScene {
 //--------------------------------------------------------------------------------------------
 impl InGameDominationModeScene {
     /// 플레이어 엔터티를 반환합니다.
-    fn get_player_entity(&self) -> Entity {
+    pub(super) fn get_player_entity(&self) -> Entity {
         self.players
             .get(&self.user_id)
             .cloned()
@@ -2034,12 +2126,6 @@ impl InGameDominationModeScene {
 
     /// 팀 점수 게이지 인터페이스 레이아웃입니다.
     fn score_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
-        /// 팀의 색상입니다.
-        const TEAM_COLOR: [egui::Color32; 2] = [
-            egui::Color32::from_rgb(0, 150, 255), // 블루팀 색상
-            egui::Color32::from_rgb(255, 68, 51), // 레드 팀 색상
-        ];
-
         // schale 아이콘
         let schale_icon = self
             .ui_textures
@@ -2080,9 +2166,9 @@ impl InGameDominationModeScene {
         );
 
         // 플레이어 팀 배경
-        let team = self
+        let (team, _) = self
             .world
-            .query_one_mut::<&Team>(self.get_player_entity())
+            .query_one_mut::<&(Team, usize)>(self.get_player_entity())
             .cloned()
             .expect("invalid entity or invalid entity component");
         let team_bg = egui::epaint::CircleShape::filled(
@@ -2608,12 +2694,11 @@ impl GameScene for InGameDominationModeScene {
 
             if flags == GameInputBits::Status {
                 // 인게임 상태창 장면으로 전환합니다.
-                let scene = InGameStatusLayer::new(
-                    self.locale,
-                    self.capture_point,
-                    self.remaining_time_sec,
-                    self.ui_textures.clone(),
-                );
+                // Safe: self는 null이 아님.
+                let prev_scene =
+                    unsafe { NonNull::new_unchecked(self as *mut InGameDominationModeScene) };
+                let scene =
+                    InGameDominationModeStatusLayer::new(self.locale, self.user_id, prev_scene);
                 let scene_flow = GameSceneFlow::Push(Box::new(scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();

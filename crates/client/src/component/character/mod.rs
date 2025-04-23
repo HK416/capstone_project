@@ -111,8 +111,10 @@ pub fn spawn_player_character(
     let mut builder = EntityBuilder::new();
 
     // 컴포넌트 데이터를 준비합니다.
+    let account = player.account;
     let character_kind = player.character_kind;
     let team = player.team();
+    let team_index = player.index();
     let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
         glam::Quat::from_array(player.rotation),
         glam::Vec3::from_array(player.translation),
@@ -133,8 +135,9 @@ pub fn spawn_player_character(
 
     // 컴포넌트를 추가합니다.
     builder.add_bundle((
+        account,
         character_kind,
-        team,
+        (team, team_index),
         max_health_point,
         health_point,
         remaining_bullet,

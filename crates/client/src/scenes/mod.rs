@@ -142,9 +142,9 @@ impl fmt::Debug for InGamePauseLayer {
     }
 }
 
-impl fmt::Debug for InGameStatusLayer {
+impl fmt::Debug for InGameDominationModeStatusLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(InGameStatusLayer))
+        write!(f, "{}", stringify!(InGameDominationModeStatusLayer))
     }
 }
 
