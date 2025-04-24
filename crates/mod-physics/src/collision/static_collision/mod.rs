@@ -14,6 +14,7 @@ pub trait StaticCollision<T: ConvexHull> {
 }
 
 
+#[derive(Debug)]
 pub struct StaticCollisionDetails {
     pub normal: glam::Vec3A,
     pub penetration: f32,

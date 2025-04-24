@@ -30,7 +30,7 @@ use super::GameWorldState;
 
 /// 중력 가속도입니다.
 const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
-const GROUNDED_ANGLE: f32 = 60.0;
+const GROUNDED_ANGLE: f32 = 45.0;
 lazy_static::lazy_static! {
     static ref GROUNDED_ANGLE_COS: f32 = f32::cos(f32::to_radians(GROUNDED_ANGLE));
 }
