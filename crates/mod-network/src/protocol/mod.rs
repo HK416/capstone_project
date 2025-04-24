@@ -49,6 +49,9 @@ pub enum PacketType {
     PushStatus = 51,
     PushSync = 52,
 
+    FinishStage = 64,
+    FinishStageResponse = 65,
+
     UdpDamageLog = 128,
 }
 

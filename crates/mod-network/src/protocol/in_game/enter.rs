@@ -26,8 +26,8 @@ impl InitStagePacket {
             "There are more people participaing in the game than the capacity!"
         );
 
-        let stage_kind_bigfield = (stage_kind as u8) << 0;
-        let bitfield = stage_kind_bigfield;
+        let stage_kind_bitfield = (stage_kind as u8) << 0;
+        let bitfield = stage_kind_bitfield;
 
         Self { bitfield, players }
     }
