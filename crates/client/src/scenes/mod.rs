@@ -148,6 +148,12 @@ impl fmt::Debug for InGameDominationModeStatusLayer {
     }
 }
 
+impl fmt::Debug for InGameFinishEnterScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameFinishEnterScene))
+    }
+}
+
 impl fmt::Debug for FatalErrorSceneLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(FatalErrorSceneLayer))
