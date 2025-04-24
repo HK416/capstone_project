@@ -1,13 +1,12 @@
 use std::ptr::NonNull;
 
-use ahash::HashMap;
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{CharacterKind, GameInput, Team, UserId};
+use mod_network::components::{GameInput, UserId};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -15,12 +14,12 @@ use winit::{
 };
 
 use crate::{
-    asset::CHARACTER_ICON_URIS,
+    asset::{CHARACTER_ICON_URIS, NOTOSANS_REGULAR},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
-use super::{InGameDominationModeScene, TEAM_COLOR};
+use super::InGameDominationModeScene;
 
 /// 인게임 종합전술시험(점령전)의 현재 게임 진행 상태를 출력하는 게임 장면입니다.
 pub struct InGameDominationModeStatusLayer {
@@ -170,12 +169,14 @@ impl GameScene for InGameDominationModeStatusLayer {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let prev_scene = unsafe { self.prev_scene.as_mut() };
         let (width, _): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
 
+        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+
         // 현재 플레이어 데이터를 가져옵니다.
+        let prev_scene = unsafe { self.prev_scene.as_mut() };
         let (blue, red) = prev_scene.get_player_data();
 
         // 대화 상자 속성
@@ -192,7 +193,6 @@ impl GameScene for InGameDominationModeStatusLayer {
         // 기준 가로 길이: 456
         // 기준 세로 길이: 64
         // 간격: 8
-
         egui::Modal::new(egui::Id::new("Modal_Window_Layout"))
             .frame(frame)
             .backdrop_color(egui::Color32::from_black_alpha(64))
@@ -207,6 +207,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                 for data in blue {
                     end_y = beg_y + 64.0 * scale;
 
+                    // 배경
                     ui.painter().rect(
                         egui::Rect::from_min_max(
                             egui::pos2(beg_x, beg_y),
@@ -218,6 +219,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::StrokeKind::Middle,
                     );
 
+                    // 캐릭터 아이콘
                     let i = data.character_kind as usize;
                     let icon = prev_scene
                         .get_ui_texture(CHARACTER_ICON_URIS[i])
@@ -232,6 +234,51 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::pos2(x + width, y + height),
                     );
                     egui::Image::new(icon).paint_at(ui, icon_area);
+
+                    // 플레이어 체력
+                    let max_hp = data.max_health_point.0.get() as f32;
+                    let hp = data.health_point.0 as f32;
+                    let percent = (hp / max_hp).min(1.0);
+                    let x = beg_x + 88.0 * scale;
+                    let y = beg_y + 52.0 * scale;
+                    ui.painter().rect(
+                        egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * scale, y + 8.0 * scale),
+                        ),
+                        4.0,
+                        egui::Color32::DARK_GRAY,
+                        egui::Stroke::new(1.0 * scale, egui::Color32::BLACK),
+                        egui::StrokeKind::Middle,
+                    );
+                    ui.painter().rect(
+                        egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * percent * scale, y + 8.0 * scale),
+                        ),
+                        4.0,
+                        egui::Color32::GREEN,
+                        egui::Stroke::NONE,
+                        egui::StrokeKind::Middle,
+                    );
+
+                    // 플레이어 닉네임
+                    let font_id = egui::FontId::new(18.0 * scale, main_font_family.clone());
+                    let text = egui::RichText::new(data.account.name.to_string())
+                        .font(font_id)
+                        .color(egui::Color32::DARK_GRAY);
+                    let x = beg_x + 88.0 * scale;
+                    let y = beg_y + 12.0 * scale;
+                    let text_area = egui::Rect::from_min_max(
+                        egui::pos2(x, y),
+                        egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                    );
+                    ui.put(
+                        text_area,
+                        egui::Label::new(text)
+                            .wrap_mode(egui::TextWrapMode::Truncate)
+                            .sense(egui::Sense::empty()),
+                    );
 
                     beg_y = end_y + 8.0 * scale;
                 }
@@ -242,6 +289,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                 for data in red {
                     end_y = beg_y + 64.0 * scale;
 
+                    // 배경
                     ui.painter().rect(
                         egui::Rect::from_min_max(
                             egui::pos2(beg_x, beg_y),
@@ -253,6 +301,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::StrokeKind::Middle,
                     );
 
+                    // 캐릭터 아이콘
                     let i = data.character_kind as usize;
                     let icon = prev_scene
                         .get_ui_texture(CHARACTER_ICON_URIS[i])
@@ -267,6 +316,51 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::pos2(x + width, y + height),
                     );
                     egui::Image::new(icon).paint_at(ui, icon_area);
+
+                    // 플레이어 체력
+                    let max_hp = data.max_health_point.0.get() as f32;
+                    let hp = data.health_point.0 as f32;
+                    let percent = (hp / max_hp).min(1.0);
+                    let x = beg_x + 88.0 * scale;
+                    let y = beg_y + 52.0 * scale;
+                    ui.painter().rect(
+                        egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * scale, y + 8.0 * scale),
+                        ),
+                        4.0,
+                        egui::Color32::DARK_GRAY,
+                        egui::Stroke::new(1.0 * scale, egui::Color32::BLACK),
+                        egui::StrokeKind::Middle,
+                    );
+                    ui.painter().rect(
+                        egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * percent * scale, y + 8.0 * scale),
+                        ),
+                        4.0,
+                        egui::Color32::GREEN,
+                        egui::Stroke::NONE,
+                        egui::StrokeKind::Middle,
+                    );
+
+                    // 플레이어 닉네임
+                    let font_id = egui::FontId::new(18.0 * scale, main_font_family.clone());
+                    let text = egui::RichText::new(data.account.name.to_string())
+                        .font(font_id)
+                        .color(egui::Color32::DARK_GRAY);
+                    let x = beg_x + 88.0 * scale;
+                    let y = beg_y + 12.0 * scale;
+                    let text_area = egui::Rect::from_min_max(
+                        egui::pos2(x, y),
+                        egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                    );
+                    ui.put(
+                        text_area,
+                        egui::Label::new(text)
+                            .wrap_mode(egui::TextWrapMode::Truncate)
+                            .sense(egui::Sense::empty()),
+                    );
 
                     beg_y = end_y + 8.0 * scale;
                 }

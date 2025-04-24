@@ -102,6 +102,8 @@ pub struct PlayerData {
     pub team: Team,
     /// 플레이어가 속한 팀의 인덱스입니다.
     pub index: usize,
+    /// 플레이어의 사망 여부입니다.
+    pub alive: bool,
     /// 플레이어 캐릭터 종류입니다.
     pub character_kind: CharacterKind,
     /// 플레이어 캐릭터 최대 체력입니다.
@@ -200,11 +202,6 @@ impl InGameDominationModeScene {
         self.show_status = show;
     }
 
-    /// 현재 게임 진행 상황을 반환합니다.
-    pub fn get_capture_point(&self) -> &CapturePoint {
-        &self.capture_point
-    }
-
     /// 주어진 uri에 해당하는 UI 텍스처를 가져옵니다.   
     /// 등록된 UI 텍스처가 없는 경우 `None`을 반환합니다.
     pub fn get_ui_texture<Uri>(&self, uri: Uri) -> Option<egui::load::SizedTexture>
@@ -219,6 +216,7 @@ impl InGameDominationModeScene {
     pub fn get_player_data(&mut self) -> (Vec<PlayerData>, Vec<PlayerData>) {
         type Query<'a> = (
             &'a UserAccount,
+            &'a ActionState,
             &'a (Team, usize),
             &'a CharacterKind,
             &'a MaxHealthPoint,
@@ -228,16 +226,24 @@ impl InGameDominationModeScene {
         let mut blue = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
         let mut red = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
         for entity in self.players.values().cloned() {
-            let (&account, &(team, index), &character_kind, &max_health_point, &health_point) =
-                self.world
-                    .query_one_mut::<Query>(entity)
-                    .expect("invalid entity or invalid entity component");
+            let (
+                &account,
+                &state,
+                &(team, index),
+                &character_kind,
+                &max_health_point,
+                &health_point,
+            ) = self
+                .world
+                .query_one_mut::<Query>(entity)
+                .expect("invalid entity or invalid entity component");
 
             if team == Team::Blue {
                 blue.push(PlayerData {
                     account,
                     team,
                     index,
+                    alive: state != ActionState::Dead,
                     character_kind,
                     max_health_point,
                     health_point,
@@ -247,6 +253,7 @@ impl InGameDominationModeScene {
                     account,
                     team,
                     index,
+                    alive: state != ActionState::Dead,
                     character_kind,
                     max_health_point,
                     health_point,
