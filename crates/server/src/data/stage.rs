@@ -187,7 +187,6 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
     let hh = 0.5 * stage.area_size.y;
     let translation = area.inv_transform.transform_point3a(translation);
     if translation.x < -hw || translation.x > hw || translation.z < -hh || translation.z > hh {
-        println!("끼야아악");
         return None;
     }
 

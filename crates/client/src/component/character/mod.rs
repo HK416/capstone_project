@@ -205,6 +205,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Attack
             set_character_direction_to_none,                // ActionState::Dead
             set_character_direction_to_none,                // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
         ],
         // `MovementState::Moving`
         [
@@ -215,6 +217,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Attack
             set_character_direction_to_none,     // ActionState::Dead
             set_character_direction_to_camera,   // ActionState::Reload
+            set_character_direction_to_camera,   // ActionState::Skill
+            set_character_direction_to_camera,   // ActionState::ExSkill
         ],
         // `MovementState::MoveToEnd`
         [
@@ -225,6 +229,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Attack
             set_character_direction_to_none,                // ActionState::Dead
             set_character_direction_to_none,                // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
         ],
         // `MovementState::InPlaceJumping`
         [
@@ -235,6 +241,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Attack
             set_character_direction_to_none,                // ActionState::Dead
             set_character_direction_to_camera,              // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
         ],
         // `MovementState::InPlaceLanding`
         [
@@ -245,6 +253,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Attack
             set_character_direction_to_none,                // ActionState::Dead
             set_character_direction_to_camera,              // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
         ],
         // `MovementState::MovingJumping`
         [
@@ -255,6 +265,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Attack
             set_character_direction_to_none,     // ActionState::Dead
             set_character_direction_to_camera,   // ActionState::Reload
+            set_character_direction_to_camera,   // ActionState::Skill
+            set_character_direction_to_camera,   // ActionState::ExSkill
         ],
         // `MovementState::MovingLanding`
         [
@@ -265,6 +277,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Attack
             set_character_direction_to_none,     // ActionState::Dead
             set_character_direction_to_camera,   // ActionState::Reload
+            set_character_direction_to_camera,   // ActionState::Skill
+            set_character_direction_to_camera,   // ActionState::ExSkill
         ],
     ];
 

@@ -813,6 +813,26 @@ pub fn animate_character(
             animate_character_when_reload_move_jumping, // `MovementState::MovingJumping
             animate_character_when_reload_move_landing, // `MovementState::MovingLanding
         ],
+        // `ActionState::Skill`
+        [
+            animate_character_when_reload,              // `MovementState::Idle
+            animate_character_when_reload_move,         // `MovementState::Moving
+            animate_character_when_reload,              // `MovementState::MoveToEnd
+            animate_character_when_reload_jumping,      // `MovementState::InPlaceJumping
+            animate_character_when_reload_landing,      // `MovementState::InPlaceLanding
+            animate_character_when_reload_move_jumping, // `MovementState::MovingJumping
+            animate_character_when_reload_move_landing, // `MovementState::MovingLanding
+        ],
+        // `ActionState::ExSkill`
+        [
+            animate_character_when_reload,              // `MovementState::Idle
+            animate_character_when_reload_move,         // `MovementState::Moving
+            animate_character_when_reload,              // `MovementState::MoveToEnd
+            animate_character_when_reload_jumping,      // `MovementState::InPlaceJumping
+            animate_character_when_reload_landing,      // `MovementState::InPlaceLanding
+            animate_character_when_reload_move_jumping, // `MovementState::MovingJumping
+            animate_character_when_reload_move_landing, // `MovementState::MovingLanding
+        ],
     ];
 
     // 캐릭터 모델 애니메이션 집합을 가져옵니다.
@@ -3681,6 +3701,8 @@ pub fn update_third_person_camera_when_idle(
         apply_camera_effect_when_attack,
         non_camera_effect,
         non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
     ];
 
     let i = action_state as usize;
@@ -3724,6 +3746,8 @@ pub fn update_third_person_camera_when_zoom_in(
         non_camera_effect,
         non_camera_effect,
         apply_camera_effect_when_attack,
+        non_camera_effect,
+        non_camera_effect,
         non_camera_effect,
         non_camera_effect,
     ];
@@ -3771,6 +3795,8 @@ pub fn update_third_person_camera_when_zoom_out(
         apply_camera_effect_when_attack,
         non_camera_effect,
         non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
     ];
 
     let i = action_state as usize;
@@ -3809,6 +3835,8 @@ pub fn update_third_person_camera_when_aiming(
         non_camera_effect,
         non_camera_effect,
         apply_camera_effect_when_attack,
+        non_camera_effect,
+        non_camera_effect,
         non_camera_effect,
         non_camera_effect,
     ];

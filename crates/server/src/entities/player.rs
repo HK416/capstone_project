@@ -106,6 +106,10 @@ impl PlayerObject {
         let bitfield = team_bitfield | permission_bitfield | bool_bitfield;
 
         let attributes = get_character_attributes(CharacterKind::default());
+        let skill_cool_time = match attributes.skill_cool_time {
+            SkillKind::Active(_) => SkillKind::Active(0.0),
+            SkillKind::Passive => SkillKind::Passive,
+        };
 
         Self {
             account,
@@ -115,7 +119,7 @@ impl PlayerObject {
             health_point: HealthPoint(0),
             fired_per_attack: 0,
             remaining_bullets: attributes.max_bullets,
-            skill_cool_time: attributes.skill_cool_time,
+            skill_cool_time,
             ex_skill_cost: 0.0,
             kill_count: 0,
             dead_count: 0,
@@ -148,7 +152,10 @@ impl PlayerObject {
         self.kill_count = 0;
         self.dead_count = 0;
         self.assist_count = 0;
-        self.skill_cool_time = self.attributes.skill_cool_time;
+        self.skill_cool_time = match self.attributes.skill_cool_time {
+            SkillKind::Active(_) => SkillKind::Active(0.0),
+            SkillKind::Passive => SkillKind::Passive,
+        };
         self.action_state = ActionState::Idle;
         self.prev_action_state = ActionState::Idle;
         self.action_state_timer = ActionStateTimer::default();
@@ -560,6 +567,26 @@ impl PlayerObject {
                 PlayerObject::maintain_velocity,         // `MovementState::MovingJumping`
                 PlayerObject::maintain_velocity,         // `MovementState::MovingLanding`
             ],
+            // `ActionState::Skill`
+            [
+                PlayerObject::update_velocity_when_idle, // `MovementState::Idle`
+                PlayerObject::update_velocity_when_walking, // `MovementState::Moving`
+                PlayerObject::update_velocity_when_move_to_end, // `MovementState::MoveToEnd`
+                PlayerObject::maintain_velocity,         // `MovementState::InPlaceJumping`
+                PlayerObject::maintain_velocity,         // `MovementState::InPlaceLanding`
+                PlayerObject::maintain_velocity,         // `MovementState::MovingJumping`
+                PlayerObject::maintain_velocity,         // `MovementState::MovingLanding`
+            ],
+            // `ActionState::ExSkill`
+            [
+                PlayerObject::update_velocity_when_idle, // `MovementState::Idle`
+                PlayerObject::update_velocity_when_walking, // `MovementState::Moving`
+                PlayerObject::update_velocity_when_move_to_end, // `MovementState::MoveToEnd`
+                PlayerObject::maintain_velocity,         // `MovementState::InPlaceJumping`
+                PlayerObject::maintain_velocity,         // `MovementState::InPlaceLanding`
+                PlayerObject::maintain_velocity,         // `MovementState::MovingJumping`
+                PlayerObject::maintain_velocity,         // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -657,6 +684,8 @@ impl PlayerObject {
             PlayerObject::update_action_state_when_attack,
             PlayerObject::update_action_state_when_dead,
             PlayerObject::update_action_state_when_reload,
+            PlayerObject::update_action_state_when_skill,
+            PlayerObject::update_action_state_when_ex_skill,
         ];
 
         let i = self.action_state as usize;
@@ -674,10 +703,10 @@ impl PlayerObject {
             if self.ex_skill_cost == 100.0 {
                 println!("ex_skill");
                 self.ex_skill_cost = 0.0;
-                // TODO
-                // self.prev_action_state = ActionState::Idle;
-                // self.action_state = ActionState::ExSkill;
-                // self.action_state_timer.reset();
+                
+                self.prev_action_state = ActionState::Idle;
+                self.action_state = ActionState::ExSkill;
+                self.action_state_timer.reset();
             }
         } else if input_flags.contains(GameInputBits::Skill) {
             if let SkillKind::Active(skill_cool_time) = self.skill_cool_time {
@@ -685,10 +714,10 @@ impl PlayerObject {
                 if skill_cool_time == 0.0 {
                     println!("skill");
                     self.skill_cool_time = self.attributes.skill_cool_time;
-                    // TODO
-                    // self.prev_action_state = ActionState::Idle;
-                    // self.action_state = ActionState::Skill;
-                    // self.action_state_timer.reset();
+                    
+                    self.prev_action_state = ActionState::Idle;
+                    self.action_state = ActionState::Skill;
+                    self.action_state_timer.reset();
                 }
             } else {
                 println!("skill: passive");
@@ -714,9 +743,30 @@ impl PlayerObject {
         // ExSkill << Skill << Attack << Aiming
         //
         if input_flags.contains(GameInputBits::ExSkill) {
-            // TODO
+            // 모든 코스트를 소모
+            println!("cost: {}", self.ex_skill_cost);
+            if self.ex_skill_cost == 100.0 {
+                println!("ex_skill");
+                self.ex_skill_cost = 0.0;
+                
+                self.prev_action_state = ActionState::Aiming;
+                self.action_state = ActionState::ExSkill;
+                self.action_state_timer.reset();
+            }
         } else if input_flags.contains(GameInputBits::Skill) {
-            // TODO
+            if let SkillKind::Active(skill_cool_time) = self.skill_cool_time {
+                println!("cool: {}", skill_cool_time);
+                if skill_cool_time == 0.0 {
+                    println!("skill");
+                    self.skill_cool_time = self.attributes.skill_cool_time;
+                    
+                    self.prev_action_state = ActionState::Aiming;
+                    self.action_state = ActionState::Skill;
+                    self.action_state_timer.reset();
+                }
+            } else {
+                println!("skill: passive");
+            }
         } else if input_flags.contains(GameInputBits::Attack) {
             self.prev_action_state = ActionState::Aiming;
             self.action_state = ActionState::Attack;
@@ -768,6 +818,16 @@ impl PlayerObject {
 
     /// `ActionState::Reload`일 때 `ActionState`를 갱신합니다.
     fn update_action_state_when_reload(&mut self, _input_flags: GameInputBits) {
+        /* empty */
+    }
+
+    /// `ActionState::Skill`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_skill(&mut self, _input_flags: GameInputBits) {
+        /* empty */
+    }
+
+    /// `ActionState::ExSkill`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_ex_skill(&mut self, _input_flags: GameInputBits) {
         /* empty */
     }
 
@@ -955,6 +1015,8 @@ impl PlayerObject {
             PlayerObject::update_action_state_timer_when_attack,
             PlayerObject::update_action_state_timer_when_dead,
             PlayerObject::update_action_state_timer_when_reload,
+            PlayerObject::update_action_state_timer_when_skill,
+            PlayerObject::update_action_state_timer_when_ex_skill,
         ];
 
         let i = self.action_state as usize;
@@ -1078,6 +1140,53 @@ impl PlayerObject {
         }
     }
 
+    /// `ActionState::Skill`일 때 `ActionStateTimer`를 갱신합니다.
+    fn update_action_state_timer_when_skill(&mut self, world: &GameWorld, elapsed_time_sec: f32) {
+        // 임시로 3초간 총알을 발사하는 스킬을 구현
+        let num_bullets_for_fire = 10;
+        let duration = 3.0;
+        
+        let prev_bullet_fire_count = ((self.action_state_timer.0 / duration) * num_bullets_for_fire as f32).floor() as usize;
+
+        // 타이머를 갱신합니다.
+        self.action_state_timer.0 += elapsed_time_sec;
+
+        let action_state_timer = self.action_state_timer.0.min(duration);
+        let curr_bullet_fire_count = ((action_state_timer / duration) * num_bullets_for_fire as f32).floor() as usize;
+        let num_bullets_to_fire = curr_bullet_fire_count - prev_bullet_fire_count;
+        if num_bullets_to_fire > 0 {
+            let last_fire_time = (duration / num_bullets_for_fire as f32) * curr_bullet_fire_count as f32;
+            
+            let delay = self.action_state_timer.0 - last_fire_time;
+            let shooter_id = self.account.uid;
+            
+            for i in 0..num_bullets_to_fire {
+                let delay = delay + (i as f32 * (duration / num_bullets_for_fire as f32));
+                world.push_event(GameWorldEvent::AddBullet { shooter_id, delay });
+            }
+        }
+
+        let diff_t = self.action_state_timer.0 - duration;
+        if diff_t >= 0.0 {
+            self.action_state = self.prev_action_state;
+            self.prev_action_state = ActionState::Skill;
+            self.action_state_timer.0 = diff_t;
+        }
+    }
+
+    /// `ActionState::ExSkill`일 때 `ActionStateTimer`를 갱신합니다.
+    fn update_action_state_timer_when_ex_skill(&mut self, _world: &GameWorld, elapsed_time_sec: f32) {
+        // 타이머를 갱신합니다.
+        self.action_state_timer.0 += elapsed_time_sec;
+        // 1초 후 이전 상태로 돌아감
+        let diff_t = self.action_state_timer.0 - 1.0;
+        if diff_t >= 0.0 {
+            self.action_state = self.prev_action_state;
+            self.prev_action_state = ActionState::ExSkill;
+            self.action_state_timer.0 = diff_t;
+        }
+    }
+
     /// 플레이어 오브젝트의 `MovementState`를 갱신합니다.
     fn update_movement_state(&mut self, input_flags: GameInputBits) {
         type Func = fn(&mut PlayerObject, GameInputBits);
@@ -1143,6 +1252,26 @@ impl PlayerObject {
                 PlayerObject::update_movement_state_when_moving_landing,
             ],
             // `ActionState::Reload`
+            [
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_walking,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
+            ],
+            // `ActionState::Skill`
+            [
+                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_walking,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
+            ],
+            // `ActionState::ExSkill`
             [
                 PlayerObject::update_movement_state_when_idle,
                 PlayerObject::update_movement_state_when_walking,
@@ -1331,6 +1460,26 @@ impl PlayerObject {
                 (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
                 (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
             ],
+            // (`MovementState::Idle`, `ActionState::Skill`)
+            [
+                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::Idle`, `ActionState::ExSkill`)
+            [
+                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -1432,6 +1581,26 @@ impl PlayerObject {
                 (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
                 (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
             ],
+            // (`MovementState::Moving`, `ActionState::Skill`)
+            [
+                (MovementState::Idle, reset_timer),      // `MovementState::Idle`
+                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::Moving`, `ActionState::ExSkill`)
+            [
+                (MovementState::Idle, reset_timer),      // `MovementState::Idle`
+                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                (MovementState::Idle, reset_timer),      // `MovementState::MoveToEnd`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -1523,6 +1692,26 @@ impl PlayerObject {
                 (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
             ],
             // (`MovementState::MoveToEnd`, `ActionState::Reload`)
+            [
+                (MovementState::Idle, reset_timer),   // `MovementState::Idle`
+                (MovementState::Moving, reset_timer), // `MovementState::Moving`
+                (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
+                (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
+                (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::MoveToEnd`, `ActionState::Skill`)
+            [
+                (MovementState::Idle, reset_timer),   // `MovementState::Idle`
+                (MovementState::Moving, reset_timer), // `MovementState::Moving`
+                (MovementState::Idle, reset_timer),   // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, reset_timer),   // `MovementState::InPlaceLanding`
+                (MovementState::Idle, reset_timer),   // `MovementState::MovingJumping`
+                (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::MoveToEnd`, `ActionState::ExSkill`)
             [
                 (MovementState::Idle, reset_timer),   // `MovementState::Idle`
                 (MovementState::Moving, reset_timer), // `MovementState::Moving`
@@ -1749,6 +1938,26 @@ impl PlayerObject {
                 PlayerObject::update_movement_state_timer_when_landing,
             ],
             // `ActionState::Reload`
+            [
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_walking,
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_in_place_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+                PlayerObject::update_movement_state_timer_when_moving_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+            ],
+            // `ActionState::Skill`
+            [
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_walking,
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_in_place_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+                PlayerObject::update_movement_state_timer_when_moving_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+            ],
+            // `ActionState::ExSkill`
             [
                 PlayerObject::update_movement_state_timer_when_idle,
                 PlayerObject::update_movement_state_timer_when_walking,
