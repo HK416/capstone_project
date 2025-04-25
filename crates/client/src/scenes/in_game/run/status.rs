@@ -6,7 +6,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{GameInput, UserId};
+use mod_network::components::GameInput;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -25,8 +25,6 @@ use super::InGameDominationModeScene;
 pub struct InGameDominationModeStatusLayer {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
-    /// 플레이어 식별자입니다.
-    user_id: UserId,
 
     /// 이전 게임 장면입니다.
     ///
@@ -41,16 +39,8 @@ pub struct InGameDominationModeStatusLayer {
 
 impl InGameDominationModeStatusLayer {
     /// 새로운 게임 장면 레이어를 생성합니다.
-    pub fn new(
-        locale: Locale,
-        user_id: UserId,
-        prev_scene: NonNull<InGameDominationModeScene>,
-    ) -> Self {
-        Self {
-            locale,
-            user_id,
-            prev_scene,
-        }
+    pub fn new(locale: Locale, prev_scene: NonNull<InGameDominationModeScene>) -> Self {
+        Self { locale, prev_scene }
     }
 }
 

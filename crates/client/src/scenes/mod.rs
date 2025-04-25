@@ -130,12 +130,6 @@ impl fmt::Debug for InGameDominationModeScene {
     }
 }
 
-impl fmt::Debug for InGameResultScene {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(InGameResultScene))
-    }
-}
-
 impl fmt::Debug for InGamePauseLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(InGamePauseLayer))
@@ -148,9 +142,15 @@ impl fmt::Debug for InGameDominationModeStatusLayer {
     }
 }
 
-impl fmt::Debug for InGameFinishEnterScene {
+impl fmt::Debug for InGameResultEnterScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(InGameFinishEnterScene))
+        write!(f, "{}", stringify!(InGameResultEnterScene))
+    }
+}
+
+impl fmt::Debug for InGameResultScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameResultScene))
     }
 }
 

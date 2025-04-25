@@ -39,6 +39,38 @@ impl InGamePauseLayer {
             ui_enabled: true,
         }
     }
+
+    /// 마우스 커서를 활성화합니다.
+    fn enable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(false);
+        }
+
+        window.set_cursor_visible(true);
+    }
+
+    /// 마우스 커서를 비활성화합니다.
+    fn disable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(true);
+        }
+
+        window.set_cursor_visible(false);
+    }
 }
 
 impl GameScene for InGamePauseLayer {
@@ -48,6 +80,16 @@ impl GameScene for InGamePauseLayer {
 
     fn should_update_subscene(&self) -> bool {
         true
+    }
+
+    fn on_enter(&mut self, window: &Window, _app: &dyn AppHandle) {
+        self.enable_cursor(window);
+    }
+
+    fn on_exit(&mut self, window: Option<&Window>, _app: &dyn AppHandle) {
+        if let Some(window) = window {
+            self.disable_cursor(window);
+        }
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {

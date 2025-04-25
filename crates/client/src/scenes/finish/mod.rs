@@ -1,9 +1,17 @@
+mod enter;
+
 use ahash::HashMap;
 use hecs::{Entity, World};
-use mod_app::scene::GameScene;
+use mod_app::{app::AppHandle, scene::GameScene};
 use mod_network::components::{FinishPhasePlayer, LoginToken, Team, UserId};
+use winit::window::Window;
 
 use crate::{component::Skybox, config::Locale};
+
+pub use self::enter::*;
+
+/// 게임 장면의 최대 지속 시간입니다.
+const MAX_SCENE_DURATION: f32 = 10.0;
 
 /// 인게임 장면의 결과를 보여주는 장면입니다.
 pub struct InGameResultScene {
@@ -17,7 +25,7 @@ pub struct InGameResultScene {
     /// 승리 팀
     winner: Team,
     /// 게임 장면의 남은 시간
-    remaining_time_sec: Option<f32>,
+    remaining_time_sec: f32,
 
     ///엔터티를 관리하는 월드 객체입니다.
     world: World,
@@ -55,7 +63,7 @@ impl InGameResultScene {
             token,
             world,
             winner,
-            remaining_time_sec,
+            remaining_time_sec: MAX_SCENE_DURATION,
             skybox,
             camera,
             players,
@@ -65,4 +73,15 @@ impl InGameResultScene {
     }
 }
 
-impl GameScene for InGameResultScene {}
+impl GameScene for InGameResultScene {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {}
+
+    fn on_update(&mut self, elapsed_time_sec: f32, window: &Window, app: &dyn AppHandle) {
+        // 남은 시간을 갱신합니다.
+        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+
+        if self.remaining_time_sec <= 0.0 {
+            todo!()
+        }
+    }
+}

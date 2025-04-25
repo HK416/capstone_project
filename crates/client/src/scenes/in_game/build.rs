@@ -516,7 +516,7 @@ impl InGameBuildScene {
                 // 렌더링 명령어를 전송합니다.
                 commands.push((encoder.finish(), staging_buffers));
 
-                skybox
+                Arc::new(skybox)
             };
 
             // 엔터티 생성 명령어를 실행합니다.
