@@ -642,6 +642,8 @@ impl PlayerObject {
         self.update_action_state_timer(world, elapsed_time_sec);
         self.update_movement_state_timer(world, elapsed_time_sec);
         self.update_input_timer(elapsed_time_sec);
+        self.update_skill_cool_time(elapsed_time_sec);
+        self.add_ex_skill_cost(self.attributes.cost_recovery_rate * elapsed_time_sec);
     }
 
     /// 플레이어 오브젝트의 `ActionState`를 갱신합니다.
@@ -667,9 +669,30 @@ impl PlayerObject {
         // ExSkill << Skill << Attack << Reload << Aiming
         //
         if input_flags.contains(GameInputBits::ExSkill) {
-            // TODO
+            // 모든 코스트를 소모
+            println!("cost: {}", self.ex_skill_cost);
+            if self.ex_skill_cost == 100.0 {
+                println!("ex_skill");
+                self.ex_skill_cost = 0.0;
+                // TODO
+                // self.prev_action_state = ActionState::Idle;
+                // self.action_state = ActionState::ExSkill;
+                // self.action_state_timer.reset();
+            }
         } else if input_flags.contains(GameInputBits::Skill) {
-            // TODO
+            if let SkillKind::Active(skill_cool_time) = self.skill_cool_time {
+                println!("cool: {}", skill_cool_time);
+                if skill_cool_time == 0.0 {
+                    println!("skill");
+                    self.skill_cool_time = self.attributes.skill_cool_time;
+                    // TODO
+                    // self.prev_action_state = ActionState::Idle;
+                    // self.action_state = ActionState::Skill;
+                    // self.action_state_timer.reset();
+                }
+            } else {
+                println!("skill: passive");
+            }
         } else if input_flags.contains(GameInputBits::Attack) {
             self.prev_action_state = ActionState::Idle;
             self.action_state = ActionState::Attack;

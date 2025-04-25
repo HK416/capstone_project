@@ -413,7 +413,7 @@ impl GameWorldInGameState {
     fn bullet_hit_player(
         &self,
         bullet: &mut BulletObject,
-        shooter: &PlayerObject,
+        shooter: &mut PlayerObject,
         player: &mut PlayerObject,
     ) {
         // println!("Player({}) hit by bullet", player.account().uid);
@@ -474,6 +474,9 @@ impl GameWorldInGameState {
             shooter.account().uid,
             final_dmg
         );
+        
+        // 데미지 비례 코스트 회복
+        shooter.add_ex_skill_cost(final_dmg as f32 / 20.0);
 
         if health_point.0 == 0 {
             // println!("Player({}) is dead", player.account().uid);
@@ -499,9 +502,9 @@ impl GameWorldInGameState {
 
             match self.check_bullet_collision(world, &mut bullet, &velocity) {
                 Some(id) => {
-                    let shooter = world.players.get_mut(&bullet.shooter_id).unwrap();
+                    let mut shooter = world.players.get_mut(&bullet.shooter_id).unwrap();
                     let mut player = world.players.get_mut(&id).unwrap();
-                    self.bullet_hit_player(&mut bullet, &shooter, &mut player);
+                    self.bullet_hit_player(&mut bullet, &mut shooter, &mut player);
                 }
                 None => {
                     bullet.move_velocity(velocity);
