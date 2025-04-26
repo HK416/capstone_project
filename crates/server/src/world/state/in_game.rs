@@ -7,8 +7,7 @@ use std::{
 use ahash::HashMap;
 use mod_network::{
     components::{
-        DamageLog, HealthPoint, LatLon, MovementState, ObjectId, PlayPhasePlayer, StageKind, Team,
-        UserId,
+        DamageLog, LatLon, MovementState, ObjectId, PlayPhasePlayer, StageKind, Team, UserId,
     },
     protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -382,7 +381,7 @@ impl GameWorldInGameState {
         let mut nearest_player_id = None;
         for player in world.players.iter() {
             if *player.key() == bullet.shooter_id
-                || player.health_point().0 == 0
+                || player.health_point().current == 0
                 || player.team() == bullet.shooter_team
             {
                 continue;
@@ -466,7 +465,7 @@ impl GameWorldInGameState {
 
         let uid = player.account().uid;
         let health_point = player.health_point_mut();
-        health_point.0 = health_point.0.saturating_sub(final_dmg);
+        health_point.current = health_point.current.saturating_sub(final_dmg);
         // println!("  - hp: {}(-{})", health_point.0, final_dmg);
         log::info!(
             "Player({}) hit by Bullet from Player({}) (damage: {})",
@@ -474,11 +473,11 @@ impl GameWorldInGameState {
             shooter.account().uid,
             final_dmg
         );
-        
+
         // 데미지 비례 코스트 회복
         shooter.add_ex_skill_cost(final_dmg as f32 / 20.0);
 
-        if health_point.0 == 0 {
+        if health_point.current == 0 {
             // println!("Player({}) is dead", player.account().uid);
             log::info!(
                 "Player({}) is dead (shooter: {})",
@@ -490,7 +489,7 @@ impl GameWorldInGameState {
 
         self.damage_logs.push(DamageLog {
             user_id: player.account().uid,
-            damage: HealthPoint(final_dmg),
+            damage: final_dmg,
         });
     }
 
@@ -531,7 +530,7 @@ impl GameWorldInGameState {
         let in_capture_point = world
             .players
             .iter()
-            .filter(|player| player.health_point().0 > 0)
+            .filter(|player| player.health_point().current > 0)
             .filter(|player| {
                 self.capture_point
                     .collider()
@@ -619,7 +618,6 @@ impl GameWorldInGameState {
                     player.assist_count(),
                     player.character_kind(),
                     player.remaining_bullet(),
-                    player.max_health_point(),
                     player.health_point(),
                     player.translation().to_array(),
                     player.rotation().to_array(),

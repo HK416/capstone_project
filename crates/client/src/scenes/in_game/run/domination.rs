@@ -11,10 +11,9 @@ use mod_app::{
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, CapturePoint, CharacterKind, DamageLog, ExSkillCost,
-        FinishPhasePlayer, GameInputBits, HealthPoint, LatLon, LoginToken, MaxHealthPoint,
-        MovementState, MovementStateTimer, ObjectId, PlayPhasePlayer, RemainingBullet, SkillKind,
-        Team, UserAccount, UserId, ViewState, ViewStateTimer, MAX_CAPTURE_SCORE,
-        MAX_IN_GAME_PLAYERS,
+        GameInputBits, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer,
+        ObjectId, PlayPhasePlayer, RemainingBullet, SkillKind, Team, UserAccount, UserId,
+        ViewState, ViewStateTimer, MAX_CAPTURE_SCORE, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
         FinishStagePacket, Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket,
@@ -77,8 +76,6 @@ pub struct PlayerData {
     pub alive: bool,
     /// 플레이어 캐릭터 종류입니다.
     pub character_kind: CharacterKind,
-    /// 플레이어 캐릭터 최대 체력입니다.
-    pub max_health_point: MaxHealthPoint,
     /// 플레이어 캐릭터 체력입니다.
     pub health_point: HealthPoint,
 }
@@ -190,7 +187,6 @@ impl InGameDominationModeScene {
             &'a ActionState,
             &'a (Team, usize),
             &'a CharacterKind,
-            &'a MaxHealthPoint,
             &'a HealthPoint,
         );
 
@@ -199,14 +195,7 @@ impl InGameDominationModeScene {
         let mut blue = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
         let mut red = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
         for entity in self.players.values().cloned() {
-            let (
-                &account,
-                &state,
-                &(team, index),
-                &character_kind,
-                &max_health_point,
-                &health_point,
-            ) = world
+            let (&account, &state, &(team, index), &character_kind, &health_point) = world
                 .query_one_mut::<Query>(entity)
                 .expect("invalid entity or invalid entity component");
 
@@ -217,7 +206,6 @@ impl InGameDominationModeScene {
                     index,
                     alive: state != ActionState::Dead,
                     character_kind,
-                    max_health_point,
                     health_point,
                 });
             } else {
@@ -227,7 +215,6 @@ impl InGameDominationModeScene {
                     index,
                     alive: state != ActionState::Dead,
                     character_kind,
-                    max_health_point,
                     health_point,
                 });
             }
@@ -585,7 +572,7 @@ impl InGameDominationModeScene {
                 .expect("invalid entity or invalid entity component")
                 .head;
 
-            let str = log.damage.0.to_string();
+            let str = log.damage.to_string();
             let length = str.trim().len() as f32;
             for (i, ch) in str.trim().chars().enumerate() {
                 let number = ch.to_digit(10).expect("invalid data");
@@ -809,7 +796,6 @@ impl InGameDominationModeScene {
         let world = unsafe { self.world.as_mut().unwrap_unchecked() };
 
         type Query<'a> = (
-            &'a mut MaxHealthPoint,
             &'a mut HealthPoint,
             &'a mut RemainingBullet,
             &'a mut ExSkillCost,
@@ -831,7 +817,6 @@ impl InGameDominationModeScene {
             ids.remove(&data.account.uid);
             if let Some(entity) = self.players.get(&data.account.uid).cloned() {
                 let (
-                    max_health_point,
                     health_point,
                     remaining_bullet,
                     ex_skill_cost,
@@ -848,7 +833,6 @@ impl InGameDominationModeScene {
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component");
 
-                *max_health_point = data.max_health_point;
                 *remaining_bullet = data.remaining_bullet;
                 *ex_skill_cost = data.ex_skill_cost;
                 *skill_cool_time = data.skill_cool_time;
@@ -2074,12 +2058,12 @@ impl InGameDominationModeScene {
         let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
 
         // 체력 텍스트
-        let (&max_hp, &hp) = world
-            .query_one_mut::<(&MaxHealthPoint, &HealthPoint)>(entity)
+        let &health_point = world
+            .query_one_mut::<&HealthPoint>(entity)
             .expect("invalid entity or invalid entity component");
-        let percent = (hp.0 as f32 / max_hp.0.get() as f32).min(1.0);
+        let percent = health_point.normalize();
 
-        let text = format!("{}", hp.0.min(9999));
+        let text = format!("{}", health_point.current.min(9999));
         let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
         let health_point_text = egui::RichText::new(text)
             .font(font_id)
@@ -2609,7 +2593,7 @@ impl InGameDominationModeScene {
         let ex_skill_cost = world
             .query_one_mut::<&ExSkillCost>(entity)
             .expect("invalid entity or invalid entity component");
-        let percent = (ex_skill_cost.0.min(ExSkillCost::MAX.0) / ExSkillCost::MAX.0).floor();
+        let percent = (ex_skill_cost.0 / ExSkillCost::MAX.0).min(1.0);
 
         // 무기 아이콘
         // 가로 길이: 200

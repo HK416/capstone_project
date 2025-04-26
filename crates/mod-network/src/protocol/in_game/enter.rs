@@ -128,12 +128,10 @@ impl Packet for InitStagePacket {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU16;
-
     use crate::components::{
         ActionState, ActionStateTimer, CharacterKind, ExSkillCost, HealthPoint, LatLon,
-        MaxHealthPoint, MovementState, MovementStateTimer, RemainingBullet, SkillKind, Team,
-        UserAccount, UserId, UserName, ViewState, ViewStateTimer,
+        MovementState, MovementStateTimer, RemainingBullet, SkillKind, Team, UserAccount, UserId,
+        UserName, ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -147,8 +145,7 @@ mod tests {
             3,
             CharacterKind::ArisOriginal,
             RemainingBullet::new(10, 7),
-            MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
-            HealthPoint::new(1413),
+            HealthPoint::new(1413, 1414),
             [1.1512351, 2.4151616, 1.16561651],
             [1.5415151, 0.16551351, 0.9513515, 1.0515161],
             Team::Blue,

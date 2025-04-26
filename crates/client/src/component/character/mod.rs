@@ -120,7 +120,6 @@ pub fn spawn_player_character(
         glam::Vec3::from_array(player.translation),
     ));
     let world_transform = WorldTransform::default();
-    let max_health_point = player.max_health_point;
     let health_point = player.health_point;
     let remaining_bullet = player.remaining_bullet;
     let ex_skill_cost = player.ex_skill_cost;
@@ -138,7 +137,6 @@ pub fn spawn_player_character(
         account,
         character_kind,
         (team, team_index),
-        max_health_point,
         health_point,
         remaining_bullet,
         ex_skill_cost,

@@ -149,7 +149,6 @@ impl GameWorldState for GameWorldInGameSyncState {
                         player.assist_count(),
                         player.character_kind(),
                         player.remaining_bullet(),
-                        player.max_health_point(),
                         player.health_point(),
                         player.translation().to_array(),
                         player.rotation().to_array(),

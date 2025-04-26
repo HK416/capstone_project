@@ -226,9 +226,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                     egui::Image::new(icon).paint_at(ui, icon_area);
 
                     // 플레이어 체력
-                    let max_hp = data.max_health_point.0.get() as f32;
-                    let hp = data.health_point.0 as f32;
-                    let percent = (hp / max_hp).min(1.0);
+                    let percent = data.health_point.normalize();
                     let x = beg_x + 88.0 * scale;
                     let y = beg_y + 52.0 * scale;
                     ui.painter().rect(
@@ -308,9 +306,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                     egui::Image::new(icon).paint_at(ui, icon_area);
 
                     // 플레이어 체력
-                    let max_hp = data.max_health_point.0.get() as f32;
-                    let hp = data.health_point.0 as f32;
-                    let percent = (hp / max_hp).min(1.0);
+                    let percent = data.health_point.normalize();
                     let x = beg_x + 88.0 * scale;
                     let y = beg_y + 52.0 * scale;
                     ui.painter().rect(

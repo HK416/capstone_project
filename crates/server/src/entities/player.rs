@@ -1,10 +1,8 @@
-use std::num::NonZeroU16;
-
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, ExSkillCost, GameInputBits,
-    HealthPoint, LatLon, MAX_JUMP_DURATION, MaxHealthPoint, MovementState, MovementStateTimer,
-    NUM_ACTION_STATES, NUM_MOVEMENT_STATES, ObjectId, Permission, RemainingBullet, SkillKind, Team,
-    UserAccount, ViewState, ViewStateTimer,
+    HealthPoint, LatLon, MAX_JUMP_DURATION, MovementState, MovementStateTimer, NUM_ACTION_STATES,
+    NUM_MOVEMENT_STATES, ObjectId, Permission, RemainingBullet, SkillKind, Team, UserAccount,
+    ViewState, ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
 
@@ -116,7 +114,7 @@ impl PlayerObject {
             bitfield,
             character_kind: CharacterKind::default(),
             attributes,
-            health_point: HealthPoint(0),
+            health_point: HealthPoint::default(),
             fired_per_attack: 0,
             remaining_bullets: attributes.max_bullets,
             skill_cool_time,
@@ -145,7 +143,7 @@ impl PlayerObject {
     /// 리스폰시 호출하여 플레이어 오브젝트의 상태를 초기화합니다.
     pub fn reset_state(&mut self) {
         self.attributes = get_character_attributes(self.character_kind);
-        self.health_point = HealthPoint(self.attributes.health_point as u16);
+        self.health_point = HealthPoint::splat(self.attributes.health_point);
         self.fired_per_attack = 0;
         self.remaining_bullets = self.attributes.max_bullets;
         self.ex_skill_cost = 0.0;
@@ -227,25 +225,13 @@ impl PlayerObject {
     pub fn with_character_kind(&mut self, character_kind: CharacterKind) -> &mut Self {
         self.character_kind = character_kind;
         self.attributes = get_character_attributes(character_kind);
-        self.health_point = HealthPoint(self.attributes.health_point);
-        // 테스트용으로 체력을 낮게 설정
-        // self.health_point = HealthPoint(50);
+        self.health_point = HealthPoint::splat(self.attributes.health_point);
         self
     }
 
     /// 플레이어 오브젝트의 캐릭터 속성을 가져옵니다.
     pub fn character_attributes(&self) -> &'static CharacterAttributes {
         self.attributes
-    }
-
-    /// 플레이어의 오브젝트 최대 체력을 가져옵니다.
-    pub fn max_health_point(&self) -> MaxHealthPoint {
-        // Safe: 캐릭터 속성 데이터 로드시 0이 아닌지 확인함.
-        unsafe {
-            MaxHealthPoint::new(NonZeroU16::new_unchecked(
-                self.attributes.health_point as u16,
-            ))
-        }
     }
 
     /// 플레이어 오브젝트 체력을 가져옵니다.
@@ -657,7 +643,7 @@ impl PlayerObject {
 
     /// 플레이어 오브젝트의 상태를 갱신합니다.
     pub fn update_state(&mut self, input_flags: GameInputBits) {
-        if self.health_point.0 == 0 {
+        if self.health_point.current == 0 {
             return;
         }
         self.update_action_state(input_flags);
@@ -703,7 +689,7 @@ impl PlayerObject {
             if self.ex_skill_cost == 100.0 {
                 println!("ex_skill");
                 self.ex_skill_cost = 0.0;
-                
+
                 self.prev_action_state = ActionState::Idle;
                 self.action_state = ActionState::ExSkill;
                 self.action_state_timer.reset();
@@ -714,7 +700,7 @@ impl PlayerObject {
                 if skill_cool_time == 0.0 {
                     println!("skill");
                     self.skill_cool_time = self.attributes.skill_cool_time;
-                    
+
                     self.prev_action_state = ActionState::Idle;
                     self.action_state = ActionState::Skill;
                     self.action_state_timer.reset();
@@ -748,7 +734,7 @@ impl PlayerObject {
             if self.ex_skill_cost == 100.0 {
                 println!("ex_skill");
                 self.ex_skill_cost = 0.0;
-                
+
                 self.prev_action_state = ActionState::Aiming;
                 self.action_state = ActionState::ExSkill;
                 self.action_state_timer.reset();
@@ -759,7 +745,7 @@ impl PlayerObject {
                 if skill_cool_time == 0.0 {
                     println!("skill");
                     self.skill_cool_time = self.attributes.skill_cool_time;
-                    
+
                     self.prev_action_state = ActionState::Aiming;
                     self.action_state = ActionState::Skill;
                     self.action_state_timer.reset();
@@ -1145,21 +1131,24 @@ impl PlayerObject {
         // 임시로 3초간 총알을 발사하는 스킬을 구현
         let num_bullets_for_fire = 10;
         let duration = 3.0;
-        
-        let prev_bullet_fire_count = ((self.action_state_timer.0 / duration) * num_bullets_for_fire as f32).floor() as usize;
+
+        let prev_bullet_fire_count =
+            ((self.action_state_timer.0 / duration) * num_bullets_for_fire as f32).floor() as usize;
 
         // 타이머를 갱신합니다.
         self.action_state_timer.0 += elapsed_time_sec;
 
         let action_state_timer = self.action_state_timer.0.min(duration);
-        let curr_bullet_fire_count = ((action_state_timer / duration) * num_bullets_for_fire as f32).floor() as usize;
+        let curr_bullet_fire_count =
+            ((action_state_timer / duration) * num_bullets_for_fire as f32).floor() as usize;
         let num_bullets_to_fire = curr_bullet_fire_count - prev_bullet_fire_count;
         if num_bullets_to_fire > 0 {
-            let last_fire_time = (duration / num_bullets_for_fire as f32) * curr_bullet_fire_count as f32;
-            
+            let last_fire_time =
+                (duration / num_bullets_for_fire as f32) * curr_bullet_fire_count as f32;
+
             let delay = self.action_state_timer.0 - last_fire_time;
             let shooter_id = self.account.uid;
-            
+
             for i in 0..num_bullets_to_fire {
                 let delay = delay + (i as f32 * (duration / num_bullets_for_fire as f32));
                 world.push_event(GameWorldEvent::AddBullet { shooter_id, delay });
@@ -1175,7 +1164,11 @@ impl PlayerObject {
     }
 
     /// `ActionState::ExSkill`일 때 `ActionStateTimer`를 갱신합니다.
-    fn update_action_state_timer_when_ex_skill(&mut self, _world: &GameWorld, elapsed_time_sec: f32) {
+    fn update_action_state_timer_when_ex_skill(
+        &mut self,
+        _world: &GameWorld,
+        elapsed_time_sec: f32,
+    ) {
         // 타이머를 갱신합니다.
         self.action_state_timer.0 += elapsed_time_sec;
         // 1초 후 이전 상태로 돌아감

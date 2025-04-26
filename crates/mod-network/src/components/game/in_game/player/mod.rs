@@ -28,8 +28,6 @@ pub struct PlayPhasePlayer {
     pub character_kind: CharacterKind,
     /// 플레이어 총알 정보
     pub remaining_bullet: RemainingBullet,
-    /// 플레이어 최대 체력
-    pub max_health_point: MaxHealthPoint,
     /// 플레이어 캐릭터 체력
     pub health_point: HealthPoint,
     /// 플레이어 캐릭터의 월드 공간 위치
@@ -71,7 +69,6 @@ impl PlayPhasePlayer {
         assist_count: u16,
         character_kind: CharacterKind,
         remaining_bullet: RemainingBullet,
-        max_health_point: MaxHealthPoint,
         health_point: HealthPoint,
         translation: [f32; 3],
         rotation: [f32; 4],
@@ -104,7 +101,6 @@ impl PlayPhasePlayer {
             assist_count,
             character_kind,
             remaining_bullet,
-            max_health_point,
             health_point,
             translation,
             rotation,
@@ -244,7 +240,6 @@ impl BigEndian for PlayPhasePlayer {
             + u16::byte_size()
             + CharacterKind::byte_size()
             + RemainingBullet::byte_size()
-            + MaxHealthPoint::byte_size()
             + HealthPoint::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 4]>::byte_size()
@@ -270,7 +265,6 @@ impl BigEndian for PlayPhasePlayer {
         bytes.extend_from_slice(&self.assist_count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
         bytes.extend_from_slice(&self.remaining_bullet.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.max_health_point.to_big_endian_bytes());
         bytes.extend_from_slice(&self.health_point.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
@@ -305,7 +299,6 @@ impl Default for PlayPhasePlayer {
             assist_count: 0,
             character_kind: CharacterKind::default(),
             remaining_bullet: RemainingBullet::default(),
-            max_health_point: MaxHealthPoint::default(),
             health_point: HealthPoint::default(),
             translation: [0.0, 0.0, 0.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
@@ -365,12 +358,6 @@ impl TryFromBigEndian for PlayPhasePlayer {
         size = RemainingBullet::byte_size();
         data = &bytes[offset..offset + size];
         let remaining_bullet = RemainingBullet::from_big_endian_bytes(data);
-
-        // 플레이어 캐릭터 최대 체력을 가져옵니다.
-        offset = offset + size;
-        size = HealthPoint::byte_size();
-        data = &bytes[offset..offset + size];
-        let max_health_point = MaxHealthPoint::try_from_big_endian_bytes(data)?;
 
         // 플레이어 캐릭터 체력을 가져옵니다.
         offset = offset + size;
@@ -439,7 +426,6 @@ impl TryFromBigEndian for PlayPhasePlayer {
             assist_count,
             character_kind,
             remaining_bullet,
-            max_health_point,
             health_point,
             translation,
             rotation,
@@ -456,8 +442,6 @@ impl TryFromBigEndian for PlayPhasePlayer {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU16;
-
     use crate::components::{UserId, UserName};
 
     use super::*;
@@ -474,8 +458,7 @@ mod tests {
             5,
             CharacterKind::MomoiOriginal,
             RemainingBullet::new(10, 7),
-            MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
-            HealthPoint(1324),
+            HealthPoint::new(1324, 1324),
             [12.0, 34.123, 1.23423],
             [1.243214, 0.51251512, 0.1324131, 0.34151512],
             Team::Red,
