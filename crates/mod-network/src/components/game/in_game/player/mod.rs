@@ -444,7 +444,7 @@ mod tests {
             2,
             5,
             CharacterKind::MomoiOriginal,
-            RemainingBullet::new(10, 7),
+            RemainingBullet::new(10, 30),
             HealthPoint::new(1324, 1324),
             [12.0, 34.123, 1.23423],
             [1.243214, 0.51251512, 0.1324131, 0.34151512],

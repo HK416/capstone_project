@@ -253,7 +253,9 @@ mod tests {
             CharacterKind::MomoiOriginal,
             200,
             0,
-            100,
+            1124,
+            89,
+            110,
             Team::Red,
             2,
         );

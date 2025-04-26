@@ -144,7 +144,7 @@ mod tests {
             2,
             3,
             CharacterKind::ArisOriginal,
-            RemainingBullet::new(10, 7),
+            RemainingBullet::new(10, 30),
             HealthPoint::new(1413, 1414),
             [1.1512351, 2.4151616, 1.16561651],
             [1.5415151, 0.16551351, 0.9513515, 1.0515161],

@@ -12,13 +12,18 @@ pub struct FinishPhasePlayer {
     pub kill_count: u16,
     /// 상대 팀에게 처치당한 횟수입니다.
     pub dead_count: u16,
-    /// 같은 팀을 도운 횟수입니다.
-    pub assist_count: u16,
+
+    /// 상대 팀에게 입힌 총 데미지입니다.
+    pub damage_dealt: u32,
+    /// 상대 팀에게 입은 총 데미지입니다.
+    pub damage_taken: u32,
+    /// 같은 팀에게 회복 시킨 회복량입니다.
+    pub healing_given: u32,
 
     /// 여러 자료형의 데이터를 저장한 비트 필드입니다.  
     /// 아래 데이터가 포함됩니다.
     /// - Team (1bit): 플레이어가 속한 팀의 종류를 나타냅니다.
-    /// - index (2bit): 플레이어가 속한 팀 내의 인덱스 번호 (결과 창에서 플레이어 위치를 결정함)
+    /// - index (3bit): 플레이어가 속한 팀 내의 인덱스 번호 (결과 창에서 플레이어 위치를 결정함)
     pub bitfield: u8,
 }
 
@@ -30,34 +35,51 @@ impl FinishPhasePlayer {
         character_kind: CharacterKind,
         kill_count: u16,
         dead_count: u16,
-        assist_count: u16,
+        damage_dealt: u32,
+        damage_taken: u32,
+        healing_given: u32,
         team: Team,
-        index: usize,
+        team_index: usize,
     ) -> Self {
-        assert!(index < 5, "index out of range!");
+        assert!(team_index < 5, "index out of range!");
 
-        let index_field = (index as u8) << 0;
-        let team_field = (team as u8) << 2;
+        let team_bit = ((team as u8) & 0x1) << 0;
+        let team_index_bit = ((team_index as u8) & 0x7) << 1;
+        let bitfield = team_bit | team_index_bit;
 
         Self {
             account,
             character_kind,
             kill_count,
             dead_count,
-            assist_count,
-            bitfield: index_field | team_field,
+            damage_dealt,
+            damage_taken,
+            healing_given,
+            bitfield,
         }
+    }
+
+    /// 플레이어가 속한 팀을 설정합니다.
+    pub fn with_team(&mut self, team: Team) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x1 << 0)) | ((team as u8) & 0x1) << 0;
+        self
     }
 
     /// 플레이어가 속한 팀 정보를 가져옵니다.
     pub fn team(&self) -> Team {
         // Safe: 값이 범위를 벗어나지 않음
-        unsafe { Team::new((self.bitfield >> 3) & 0x1).unwrap_unchecked() }
+        unsafe { Team::new((self.bitfield >> 0) & 0x1).unwrap_unchecked() }
+    }
+
+    /// 플레이어가 속한 팀 내의 인덱스를 설정합니다.
+    pub fn with_team_index(&mut self, team_index: usize) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x7 << 1)) | ((team_index as u8) & 0x7) << 1;
+        self
     }
 
     /// 플레이어가 속한 팀 내의 플레이어 인덱스를 가져옵니다.
     pub fn index(&self) -> usize {
-        ((self.bitfield >> 0) & 0x3) as usize
+        ((self.bitfield >> 1) & 0x7) as usize
     }
 }
 
@@ -67,7 +89,9 @@ impl BigEndian for FinishPhasePlayer {
             + CharacterKind::byte_size()
             + u16::byte_size()
             + u16::byte_size()
-            + u16::byte_size()
+            + u32::byte_size()
+            + u32::byte_size()
+            + u32::byte_size()
             + u8::byte_size()
     }
 
@@ -82,7 +106,9 @@ impl BigEndian for FinishPhasePlayer {
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
         bytes.extend_from_slice(&self.kill_count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.dead_count.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.assist_count.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.damage_dealt.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.damage_taken.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.healing_given.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
@@ -106,7 +132,9 @@ impl Default for FinishPhasePlayer {
             character_kind: CharacterKind::default(),
             kill_count: 0,
             dead_count: 0,
-            assist_count: 0,
+            damage_dealt: 0,
+            damage_taken: 0,
+            healing_given: 0,
             bitfield: 0x00,
         }
     }
@@ -146,11 +174,23 @@ impl TryFromBigEndian for FinishPhasePlayer {
         data = &bytes[offset..offset + size];
         let dead_count = u16::from_big_endian_bytes(data);
 
-        // 같은 팀을 도운 횟수를 가져옵니다.
+        // 상대 팀에게 입힌 데미지량을 가져옵니다.
         offset = offset + size;
-        size = u16::byte_size();
+        size = u32::byte_size();
         data = &bytes[offset..offset + size];
-        let assist_count = u16::from_big_endian_bytes(data);
+        let damage_dealt = u32::from_big_endian_bytes(data);
+
+        // 상대 팀에게 입은 데미지량을 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let damage_taken = u32::from_big_endian_bytes(data);
+
+        // 같은 팀을 회복시킨 회복량을 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let healing_given = u32::from_big_endian_bytes(data);
 
         // 비트 필드를 가져옵니다.
         offset = offset + size;
@@ -163,7 +203,9 @@ impl TryFromBigEndian for FinishPhasePlayer {
             character_kind,
             kill_count,
             dead_count,
-            assist_count,
+            damage_dealt,
+            damage_taken,
+            healing_given,
             bitfield,
         })
     }
@@ -181,7 +223,9 @@ mod tests {
         let character_kind = CharacterKind::ArisOriginal;
         let kill_count = 30;
         let dead_count = 20;
-        let assist_count = 10;
+        let damage_dealt = 2000;
+        let damage_taken = 500;
+        let healing_given = 0;
         let team = Team::Red;
         let index = 2;
 
@@ -190,7 +234,9 @@ mod tests {
             character_kind,
             kill_count,
             dead_count,
-            assist_count,
+            damage_dealt,
+            damage_taken,
+            healing_given,
             team,
             index,
         );

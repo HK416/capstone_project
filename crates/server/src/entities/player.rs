@@ -247,7 +247,7 @@ impl PlayerObject {
 
     /// 남은 총알의 개수를 반환합니다.
     pub fn remaining_bullet(&self) -> RemainingBullet {
-        RemainingBullet::new(self.attributes.max_bullets, self.remaining_bullets)
+        RemainingBullet::new(self.remaining_bullets, self.attributes.max_bullets)
     }
 
     /// 현재 Ex스킬 코스트를 가져옵니다.
