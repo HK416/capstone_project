@@ -41,7 +41,7 @@ impl HealthPoint {
     /// 플레이어 체력 비율을 0부터 1사이의 값으로 반환합니다.  
     /// 플레이어 현재 체력이 최대 체력보다 클 경우 1이상의 값을 반환합니다.  
     /// 플레이어 최대 체력이 0인 경우 [`f32::INFINITY`]를 반환합니다.
-    pub fn normalize(&self) -> f32 {
+    pub fn percent(&self) -> f32 {
         if self.maximum == 0 {
             f32::INFINITY
         } else {

@@ -1,40 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::components::{BigEndian, Float3};
-
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub enum SkillKind {
-    Active(f32),
-    Passive,
-}
-
-impl BigEndian for SkillKind {
-    fn byte_size() -> usize {
-        f32::byte_size()
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        // SkillKind::Active인 경우 최상위 비트를 1로 설정합니다.
-        match self {
-            SkillKind::Active(cool_time) => {
-                let mut bitfield = cool_time.to_big_endian_bytes();
-                bitfield[0] |= 0b1000_0000;
-                bitfield
-            }
-            SkillKind::Passive => vec![0; 4],
-        }
-    }
-
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        if bytes[0] & 0b1000_0000 == 0b1000_0000 {
-            let mut bytes = bytes.to_vec();
-            bytes[0] &= 0b0111_1111;
-            SkillKind::Active(f32::from_big_endian_bytes(&bytes))
-        } else {
-            SkillKind::Passive
-        }
-    }
-}
+use crate::components::Float3;
 
 /// 캐릭터 속성 데이터를 저장합니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -91,8 +57,6 @@ pub struct CharacterAttributes {
     pub critical_damage: u16,
     /// 캐릭터의 코스트 회복력
     pub cost_recovery_rate: f32,
-    /// 일반 스킬 쿨 타임
-    pub skill_cool_time: SkillKind,
     /// 캐릭터의 공격 사거리
     pub attack_range: u16,
     /// 캐릭터 총알의 반지름
@@ -140,22 +104,5 @@ impl CharacterAttributes {
         let z = z1 * l1 + z2 * l2 + z3 * l3;
 
         (x, y, z)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::components::BigEndian;
-
-    use super::SkillKind;
-
-    #[test]
-    fn test_skill_kind() {
-        let origin = SkillKind::Active(12.24132);
-        let bytes = origin.to_big_endian_bytes();
-        let other = SkillKind::from_big_endian_bytes(&bytes);
-
-        // 원본과 일치하는지 확인
-        assert_eq!(origin, other);
     }
 }

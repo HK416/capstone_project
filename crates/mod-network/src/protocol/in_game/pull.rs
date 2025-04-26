@@ -148,8 +148,8 @@ impl Packet for PullStagePacket {
 mod tests {
     use crate::components::{
         ActionState, ActionStateTimer, CharacterKind, ExSkillCost, HealthPoint, LatLon,
-        MovementState, MovementStateTimer, RemainingBullet, SkillKind, Team, UserAccount, UserId,
-        UserName, ViewState, ViewStateTimer,
+        MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId, UserName,
+        ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -169,7 +169,6 @@ mod tests {
             Team::Blue,
             0,
             ExSkillCost(55.31),
-            SkillKind::Active(1.3452),
             ActionState::Aiming,
             ActionStateTimer(3.03151),
             MovementState::InPlaceLanding,

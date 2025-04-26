@@ -226,7 +226,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                     egui::Image::new(icon).paint_at(ui, icon_area);
 
                     // 플레이어 체력
-                    let percent = data.health_point.normalize();
+                    let percent = data.health_point.percent();
                     let x = beg_x + 88.0 * scale;
                     let y = beg_y + 52.0 * scale;
                     ui.painter().rect(
@@ -306,7 +306,7 @@ impl GameScene for InGameDominationModeStatusLayer {
                     egui::Image::new(icon).paint_at(ui, icon_area);
 
                     // 플레이어 체력
-                    let percent = data.health_point.normalize();
+                    let percent = data.health_point.percent();
                     let x = beg_x + 88.0 * scale;
                     let y = beg_y + 52.0 * scale;
                     ui.painter().rect(

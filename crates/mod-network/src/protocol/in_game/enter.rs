@@ -130,8 +130,8 @@ impl Packet for InitStagePacket {
 mod tests {
     use crate::components::{
         ActionState, ActionStateTimer, CharacterKind, ExSkillCost, HealthPoint, LatLon,
-        MovementState, MovementStateTimer, RemainingBullet, SkillKind, Team, UserAccount, UserId,
-        UserName, ViewState, ViewStateTimer,
+        MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId, UserName,
+        ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -151,7 +151,6 @@ mod tests {
             Team::Blue,
             1,
             ExSkillCost(55.31),
-            SkillKind::Passive,
             ActionState::Aiming,
             ActionStateTimer(3.03151),
             MovementState::InPlaceLanding,

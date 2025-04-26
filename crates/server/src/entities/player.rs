@@ -1,8 +1,8 @@
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, ExSkillCost, GameInputBits,
     HealthPoint, LatLon, MAX_JUMP_DURATION, MovementState, MovementStateTimer, NUM_ACTION_STATES,
-    NUM_MOVEMENT_STATES, ObjectId, Permission, RemainingBullet, SkillKind, Team, UserAccount,
-    ViewState, ViewStateTimer,
+    NUM_MOVEMENT_STATES, ObjectId, Permission, RemainingBullet, Team, UserAccount, ViewState,
+    ViewStateTimer,
 };
 use mod_physics::object3d::Capsule;
 
@@ -44,8 +44,9 @@ pub struct PlayerObject {
     fired_per_attack: u16,
     /// 남은 총알의 개수
     remaining_bullets: u16,
-    /// 현재 일반 스킬 쿨 타임
-    skill_cool_time: SkillKind,
+
+    // /// 현재 일반 스킬 쿨 타임
+    // skill_cool_time: SkillKind,
     /// 현재 Ex 스킬 코스트 (최대 100.0)
     ex_skill_cost: f32,
 
@@ -104,10 +105,10 @@ impl PlayerObject {
         let bitfield = team_bitfield | permission_bitfield | bool_bitfield;
 
         let attributes = get_character_attributes(CharacterKind::default());
-        let skill_cool_time = match attributes.skill_cool_time {
-            SkillKind::Active(_) => SkillKind::Active(0.0),
-            SkillKind::Passive => SkillKind::Passive,
-        };
+        // let skill_cool_time = match attributes.skill_cool_time {
+        //     SkillKind::Active(_) => SkillKind::Active(0.0),
+        //     SkillKind::Passive => SkillKind::Passive,
+        // };
 
         Self {
             account,
@@ -117,7 +118,7 @@ impl PlayerObject {
             health_point: HealthPoint::default(),
             fired_per_attack: 0,
             remaining_bullets: attributes.max_bullets,
-            skill_cool_time,
+            // skill_cool_time,
             ex_skill_cost: 0.0,
             kill_count: 0,
             dead_count: 0,
@@ -150,10 +151,10 @@ impl PlayerObject {
         self.kill_count = 0;
         self.dead_count = 0;
         self.assist_count = 0;
-        self.skill_cool_time = match self.attributes.skill_cool_time {
-            SkillKind::Active(_) => SkillKind::Active(0.0),
-            SkillKind::Passive => SkillKind::Passive,
-        };
+        // self.skill_cool_time = match self.attributes.skill_cool_time {
+        //     SkillKind::Active(_) => SkillKind::Active(0.0),
+        //     SkillKind::Passive => SkillKind::Passive,
+        // };
         self.action_state = ActionState::Idle;
         self.prev_action_state = ActionState::Idle;
         self.action_state_timer = ActionStateTimer::default();
@@ -260,21 +261,21 @@ impl PlayerObject {
         self.ex_skill_cost = (self.ex_skill_cost + pt).min(100.0);
     }
 
-    /// 일반 스킬 쿨 타임을 가져옵니다.
-    pub fn get_skill_cool_time(&self) -> SkillKind {
-        self.skill_cool_time
-    }
+    // /// 일반 스킬 쿨 타임을 가져옵니다.
+    // pub fn get_skill_cool_time(&self) -> SkillKind {
+    //     self.skill_cool_time
+    // }
 
-    /// 일반 스킬 쿨 타임을 갱신합니다.  
-    /// 일반 스킬의 유형이 "패시브"인 경우 이 함수는 아무 동작을 수행하지 않습니다.
-    pub fn update_skill_cool_time(&mut self, elapsed_time_sec: f32) {
-        self.skill_cool_time = match self.skill_cool_time {
-            SkillKind::Active(cool_time) => {
-                SkillKind::Active((cool_time - elapsed_time_sec).max(0.0))
-            }
-            SkillKind::Passive => SkillKind::Passive,
-        };
-    }
+    // /// 일반 스킬 쿨 타임을 갱신합니다.
+    // /// 일반 스킬의 유형이 "패시브"인 경우 이 함수는 아무 동작을 수행하지 않습니다.
+    // pub fn update_skill_cool_time(&mut self, elapsed_time_sec: f32) {
+    //     self.skill_cool_time = match self.skill_cool_time {
+    //         SkillKind::Active(cool_time) => {
+    //             SkillKind::Active((cool_time - elapsed_time_sec).max(0.0))
+    //         }
+    //         SkillKind::Passive => SkillKind::Passive,
+    //     };
+    // }
 
     /// 상대 팀을 처치한 횟수를 반환합니다.
     pub fn kill_count(&self) -> u16 {
@@ -655,7 +656,7 @@ impl PlayerObject {
         self.update_action_state_timer(world, elapsed_time_sec);
         self.update_movement_state_timer(world, elapsed_time_sec);
         self.update_input_timer(elapsed_time_sec);
-        self.update_skill_cool_time(elapsed_time_sec);
+        // self.update_skill_cool_time(elapsed_time_sec);
         self.add_ex_skill_cost(self.attributes.cost_recovery_rate * elapsed_time_sec);
     }
 
@@ -695,19 +696,19 @@ impl PlayerObject {
                 self.action_state_timer.reset();
             }
         } else if input_flags.contains(GameInputBits::Skill) {
-            if let SkillKind::Active(skill_cool_time) = self.skill_cool_time {
-                println!("cool: {}", skill_cool_time);
-                if skill_cool_time == 0.0 {
-                    println!("skill");
-                    self.skill_cool_time = self.attributes.skill_cool_time;
+            // if let SkillKind::Active(skill_cool_time) = self.skill_cool_time {
+            //     println!("cool: {}", skill_cool_time);
+            //     if skill_cool_time == 0.0 {
+            //         println!("skill");
+            //         self.skill_cool_time = self.attributes.skill_cool_time;
 
-                    self.prev_action_state = ActionState::Idle;
-                    self.action_state = ActionState::Skill;
-                    self.action_state_timer.reset();
-                }
-            } else {
-                println!("skill: passive");
-            }
+            //         self.prev_action_state = ActionState::Idle;
+            //         self.action_state = ActionState::Skill;
+            //         self.action_state_timer.reset();
+            //     }
+            // } else {
+            //     println!("skill: passive");
+            // }
         } else if input_flags.contains(GameInputBits::Attack) {
             self.prev_action_state = ActionState::Idle;
             self.action_state = ActionState::Attack;
@@ -740,19 +741,19 @@ impl PlayerObject {
                 self.action_state_timer.reset();
             }
         } else if input_flags.contains(GameInputBits::Skill) {
-            if let SkillKind::Active(skill_cool_time) = self.skill_cool_time {
-                println!("cool: {}", skill_cool_time);
-                if skill_cool_time == 0.0 {
-                    println!("skill");
-                    self.skill_cool_time = self.attributes.skill_cool_time;
+            // if let SkillKind::Active(skill_cool_time) = self.skill_cool_time {
+            //     println!("cool: {}", skill_cool_time);
+            //     if skill_cool_time == 0.0 {
+            //         println!("skill");
+            //         self.skill_cool_time = self.attributes.skill_cool_time;
 
-                    self.prev_action_state = ActionState::Aiming;
-                    self.action_state = ActionState::Skill;
-                    self.action_state_timer.reset();
-                }
-            } else {
-                println!("skill: passive");
-            }
+            //         self.prev_action_state = ActionState::Aiming;
+            //         self.action_state = ActionState::Skill;
+            //         self.action_state_timer.reset();
+            //     }
+            // } else {
+            //     println!("skill: passive");
+            // }
         } else if input_flags.contains(GameInputBits::Attack) {
             self.prev_action_state = ActionState::Aiming;
             self.action_state = ActionState::Attack;
