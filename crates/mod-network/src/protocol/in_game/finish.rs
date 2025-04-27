@@ -27,7 +27,7 @@
 use crate::{
     components::{
         BigEndian, FinishPhasePlayer, LoginToken, StageKind, Team, TryFromBigEndian, UserId,
-        MAX_IN_GAME_PLAYERS,
+        VictoryType, MAX_IN_GAME_PLAYERS,
     },
     protocol::{Packet, PacketType, RawPacket},
 };
@@ -37,7 +37,8 @@ use crate::{
 pub struct FinishStagePacket {
     /// 여러 자료형의 데이터가 포함된 비트 필드입니다.  
     /// 아래 자료형의 데이터가 포함되어 있습니다.
-    /// - Team (1bit): 우승 팀 정보
+    /// - Team (2bit): 우승 팀 정보
+    /// - VictoryType (2bit): 승리 종류
     /// - StageKind (4bit): 스테이지 종류
     ///
     pub bitfield: u8,
@@ -51,15 +52,21 @@ impl FinishStagePacket {
     /// # Panics
     /// 주어진 `players`가 `MAX_IN_GAME_PLAYER`를 초과할 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(winner: Team, stage_kind: StageKind, players: Vec<FinishPhasePlayer>) -> Self {
+    pub fn new(
+        winner: Option<Team>,
+        victory_type: VictoryType,
+        stage_kind: StageKind,
+        players: Vec<FinishPhasePlayer>,
+    ) -> Self {
         assert!(
             0 < players.len() && players.len() <= MAX_IN_GAME_PLAYERS,
             "there are more people participaing in the game than the capacity!"
         );
 
-        let winner_team_bitfield = ((winner as u8) & 0x1) << 4;
-        let stage_kind_bitfield = ((stage_kind as u8) & 0xF) << 0;
-        let bitfield = winner_team_bitfield | stage_kind_bitfield;
+        let winner_team_bit = ((winner.map(|t| t as u8).unwrap_or(2)) & 0x3) << 0;
+        let victory_type_bit = ((victory_type as u8) & 0x3) << 2;
+        let stage_kind_bit = ((stage_kind as u8) & 0xF) << 4;
+        let bitfield = winner_team_bit | victory_type_bit | stage_kind_bit;
 
         Self { bitfield, players }
     }
@@ -69,36 +76,59 @@ impl FinishStagePacket {
     /// # Panics
     /// 주어진 `players`가 `MAX_IN_GAME_PLAYER`를 초과할 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn from_iter<I>(winner: Team, stage_kind: StageKind, iter: I) -> Self
+    pub fn from_iter<I>(
+        winner: Option<Team>,
+        victory_type: VictoryType,
+        stage_kind: StageKind,
+        iter: I,
+    ) -> Self
     where
         I: IntoIterator<Item = FinishPhasePlayer>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(winner, stage_kind, iter.into_iter().collect())
+        Self::new(winner, victory_type, stage_kind, iter.into_iter().collect())
     }
 
     /// 우승 팀을 설정합니다.
-    pub fn with_winner_team(&mut self, winner: Team) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 4)) | ((winner as u8) & 0x1) << 4;
+    pub fn with_winner_team(&mut self, winner: Option<Team>) -> &mut Self {
+        self.bitfield =
+            (self.bitfield & !(0x3 << 0)) | ((winner.map(|t| t as u8).unwrap_or(2)) & 0x3) << 0;
         self
     }
 
     /// 우승 팀을 반환합니다.
-    pub fn winner_team(&self) -> Team {
+    pub fn winner_team(&self) -> Option<Team> {
         // Safe: 전달되는 정수는 범위를 넘지 않음
-        let val = (self.bitfield >> 4) & 0x1;
-        unsafe { Team::new(val).unwrap_unchecked() }
+        let val = (self.bitfield >> 0) & 0x3;
+        if val < 2 {
+            Team::new(val)
+        } else {
+            None
+        }
+    }
+
+    /// 승리 종류를 설정합니다.
+    pub fn with_victory_type(&mut self, victory_type: VictoryType) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x3 << 2)) | ((victory_type as u8) & 0x3) << 2;
+        self
+    }
+
+    /// 승리 종류를 반환합니다.
+    pub fn victory_type(&self) -> VictoryType {
+        // Safe: 전달되는 정수는 범위를 넘지 않음
+        let val = (self.bitfield >> 2) & 0x3;
+        unsafe { VictoryType::new(val).unwrap_unchecked() }
     }
 
     /// 스테이지 종류를 설정합니다.
     pub fn with_stage_kind(&mut self, stage_kind: StageKind) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0xF << 0)) | ((stage_kind as u8) & 0x4) << 0;
+        self.bitfield = (self.bitfield & !(0xF << 4)) | ((stage_kind as u8) & 0x4) << 4;
         self
     }
 
     /// 스테이지 종류를 반환합니다.
     pub fn stage_kind(&self) -> StageKind {
-        let val = (self.bitfield >> 0) & 0xF;
+        let val = (self.bitfield >> 4) & 0xF;
         StageKind::new(val).unwrap_or_default()
     }
 }
@@ -109,7 +139,9 @@ impl Packet for FinishStagePacket {
     }
 
     fn as_raw(&self) -> RawPacket {
-        let data_size = u8::byte_size() + u8::byte_size() + FinishPhasePlayer::byte_size();
+        let data_size = u8::byte_size() 
+            + u8::byte_size() 
+            + FinishPhasePlayer::byte_size() * self.players.len();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -258,9 +290,15 @@ mod tests {
             110,
             Team::Red,
             2,
+            false,
         );
 
-        let origin = FinishStagePacket::from_iter(Team::Red, StageKind::City, [player_0]);
+        let origin = FinishStagePacket::from_iter(
+            Some(Team::Red),
+            VictoryType::JudgmentWin,
+            StageKind::City,
+            [player_0],
+        );
         let raw = origin.as_raw();
         let other = FinishStagePacket::from_raw(raw);
 

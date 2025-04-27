@@ -8,7 +8,7 @@ use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::{app::AppHandle, scene::GameScene};
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, FinishPhasePlayer, LatLon, LoginToken,
-    MovementState, MovementStateTimer, StageKind, Team, UserId, MAX_IN_GAME_PLAYERS,
+    MovementState, MovementStateTimer, StageKind, Team, UserId, VictoryType, MAX_IN_GAME_PLAYERS,
 };
 use winit::window::Window;
 
@@ -35,9 +35,13 @@ pub struct InGameResultEnterScene {
     user_id: UserId,
     /// 로그인 토큰입니다.
     token: LoginToken,
+    /// 플레이어가 속한 팀 입니다.
+    my_team: Team,
 
     /// 승리 팀
-    winner_team: Team,
+    winner: Option<Team>,
+    /// 승리 종류
+    victory_type: VictoryType,
     /// 게임 장면의 남은 시간
     remaining_time_sec: f32,
     /// 스테이지 종류
@@ -78,7 +82,9 @@ impl InGameResultEnterScene {
         locale: Locale,
         user_id: UserId,
         token: LoginToken,
-        winner: Team,
+        my_team: Team,
+        winner: Option<Team>,
+        victory_type: VictoryType,
         stage_kind: StageKind,
         world: World,
         skybox: Arc<Skybox>,
@@ -92,7 +98,9 @@ impl InGameResultEnterScene {
             locale,
             user_id,
             token,
-            winner_team: winner,
+            my_team,
+            winner,
+            victory_type,
             remaining_time_sec: MAX_SCENE_DURATION,
             stage_kind,
             world: Some(world),
@@ -148,7 +156,7 @@ impl InGameResultEnterScene {
                 .expect("invalid entity or invalid entity component");
 
             // 패배 팀 플레이어 엔터티를 수집 후 게임 월드에서 제거합니다.
-            if team != self.winner_team {
+            if team != self.winner.unwrap_or(self.my_team) {
                 removed.push((user_id, entity));
                 break;
             }

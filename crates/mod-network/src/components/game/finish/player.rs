@@ -24,6 +24,7 @@ pub struct FinishPhasePlayer {
     /// 아래 데이터가 포함됩니다.
     /// - Team (1bit): 플레이어가 속한 팀의 종류를 나타냅니다.
     /// - index (3bit): 플레이어가 속한 팀 내의 인덱스 번호 (결과 창에서 플레이어 위치를 결정함)
+    /// - bool (1bit): 플레이어가 게임 도중 연결이 끊어졌는지 여부
     pub bitfield: u8,
 }
 
@@ -40,12 +41,14 @@ impl FinishPhasePlayer {
         healing_given: u32,
         team: Team,
         team_index: usize,
+        connected: bool,
     ) -> Self {
         assert!(team_index < 5, "index out of range!");
 
         let team_bit = ((team as u8) & 0x1) << 0;
         let team_index_bit = ((team_index as u8) & 0x7) << 1;
-        let bitfield = team_bit | team_index_bit;
+        let connected_bit = ((connected as u8) & 0x1) << 4;
+        let bitfield = team_bit | team_index_bit | connected_bit;
 
         Self {
             account,
@@ -80,6 +83,17 @@ impl FinishPhasePlayer {
     /// 플레이어가 속한 팀 내의 플레이어 인덱스를 가져옵니다.
     pub fn index(&self) -> usize {
         ((self.bitfield >> 1) & 0x7) as usize
+    }
+
+    /// 플레이어 인게임 연결 여부를 설정합니다.
+    pub fn with_connected(&mut self, connected: bool) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x1 << 4)) | ((connected as u8) & 0x1) << 4;
+        self
+    }
+
+    /// 플레이어 인게임 연결 여부를 반환합니다.
+    pub fn connected(&self) -> bool {
+        (self.bitfield >> 4) & 0x1 == 0x1
     }
 }
 
@@ -239,6 +253,7 @@ mod tests {
             healing_given,
             team,
             index,
+            true,
         );
         let bytes = origin.to_big_endian_bytes();
         let other = FinishPhasePlayer::from_big_endian_bytes(&bytes);

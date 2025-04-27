@@ -81,7 +81,7 @@ impl SessionState for SessionFormationState {
                 // 다음 세션 상태로 전환합니다.
                 self.is_running = false;
                 let next_state = Box::new(SessionInGameSyncState::new(self.account, &self.world));
-                let control_flow = SessionStateFlow::Push(next_state);
+                let control_flow = SessionStateFlow::Change(next_state);
                 let event = SessionEvents::SetControlFlow(control_flow);
                 session.push_event(event);
             }

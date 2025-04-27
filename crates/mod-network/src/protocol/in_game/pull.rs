@@ -52,7 +52,7 @@ impl Packet for PullStagePacket {
             + u16::byte_size()
             + Bullet::byte_size() * self.bullets.len()
             + CapturePoint::byte_size()
-            + f32::byte_size(); // 남은 시간 추가
+            + f32::byte_size();
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -65,7 +65,7 @@ impl Packet for PullStagePacket {
             data.extend_from_slice(&bullet.to_big_endian_bytes());
         }
         data.extend_from_slice(&self.capture_point.to_big_endian_bytes());
-        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes()); // 남은 시간 추가
+        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -130,6 +130,7 @@ impl Packet for PullStagePacket {
         data = &bytes[offset..offset + size];
         let capture_point = CapturePoint::try_from_big_endian_bytes(data)?;
 
+        // 남은 시간 데이터를 가져옵니다.
         offset = offset + size;
         size = f32::byte_size();
         data = &bytes[offset..offset + size];
