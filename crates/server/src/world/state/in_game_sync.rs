@@ -10,7 +10,6 @@ use mod_network::{
     },
     protocol::{InitStagePacket, Packet},
 };
-use tokio::time::Instant;
 
 use crate::{
     data::get_stage_attributes,
@@ -19,18 +18,11 @@ use crate::{
     world::{GameWorld, GameWorldEvent},
 };
 
-use super::{GameWorldState, GameWorldStateFlow, in_game_prepare::GameWorldInGamePrepareState};
-
-/// 최대 상태 지속 시간입니다.
-const MAX_STATE_DURATION: f32 = 60.0;
+use super::{GameWorldState, GameWorldStateFlow, in_game::GameWorldInGameState};
 
 pub struct GameWorldInGameSyncState {
     /// 게임 월드 상태 실행 여부
     is_running: bool,
-    /// 이전 측정 시각
-    previous_time_pt: Instant,
-    /// 남은 상태 지속 시간
-    remaining_time_sec: f32,
 
     /// 게임 스테이지 종류
     stage_kind: StageKind,
@@ -49,8 +41,6 @@ impl GameWorldInGameSyncState {
     {
         Self {
             is_running: true,
-            previous_time_pt: Instant::now(),
-            remaining_time_sec: MAX_STATE_DURATION,
             stage_kind,
             spawn_positions: Some(HashMap::default()),
             play_data: Some(
@@ -104,17 +94,6 @@ impl GameWorldInGameSyncState {
         }
     }
 
-    /// 남은 상태 지속 시간을 갱신합니다.
-    fn update_remaining_time(&mut self) {
-        let current_time_pt = Instant::now();
-        let elapsed_time_sec = current_time_pt
-            .saturating_duration_since(self.previous_time_pt)
-            .as_secs_f32();
-        self.previous_time_pt = current_time_pt;
-
-        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
-    }
-
     /// 다음 게임 월드 상태로 전환을 시도합니다.
     fn try_enter_next_state(&mut self, world: &GameWorld) {
         // 락을 획득합니다.
@@ -125,39 +104,30 @@ impl GameWorldInGameSyncState {
 
         // 모든 플레이어가 준비완료 되었는지 확인합니다.
         let mut all_player_loaded = true;
-        let mut unloaded_sessions = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        for item in world.sessions.iter() {
-            if let Some(data) = play_data.get(item.value()) {
-                if !data.loaded {
-                    all_player_loaded = false;
-                    unloaded_sessions.push((item.value().clone(), item.key().clone()));
-                }
+        for data in play_data.values() {
+            if !data.connected {
+                continue;
             }
+
+            all_player_loaded &= data.loaded;
         }
 
         // 모든 플레이어가 준비된 경우 다음 게임 월드 상태로 전환합니다.
-        if all_player_loaded || self.remaining_time_sec <= 0.0 {
+        if all_player_loaded {
             self.is_running = false;
 
-            // 아직 로드가 완료되지 않은 세션을 제거합니다.
-            for (user_id, session) in unloaded_sessions {
-                if let Some(data) = play_data.get_mut(&user_id) {
-                    data.connected = false;
-                    session.close();
-                }
-            }
-
-            let next_state = GameWorldInGamePrepareState::new(
+            let next_state = GameWorldInGameState::new(
                 self.stage_kind,
                 unsafe { self.spawn_positions.take().unwrap_unchecked() },
                 unsafe { self.play_data.take().unwrap_unchecked() },
+                (5 * 60) as f32, // 5분
             );
             let control_flow = GameWorldStateFlow::Change(Box::new(next_state));
             let event = GameWorldEvent::SetControlFlow(control_flow);
             world.push_event(event);
 
             for session in world.sessions.iter() {
-                session.key().push_event(SessionEvents::EnterStage);
+                session.key().push_event(SessionEvents::EnterInGame);
             }
         }
 
@@ -304,7 +274,7 @@ impl GameWorldState for GameWorldInGameSyncState {
             return;
         }
 
-        self.update_remaining_time();
+        // 다음 게임 상태로 전환을 시도합니다.
         self.try_enter_next_state(world);
     }
 }

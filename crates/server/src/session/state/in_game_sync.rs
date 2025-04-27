@@ -14,7 +14,7 @@ use crate::{
     world::{GameWorld, GameWorldEvent},
 };
 
-use super::{SessionState, SessionStateFlow, in_game_prepare::SessionInGamePrepareState};
+use super::{SessionState, SessionStateFlow, in_game::SessionInGameState};
 
 pub struct SessionInGameSyncState {
     /// 세션 상태 실행 여부
@@ -80,11 +80,11 @@ impl SessionInGameSyncState {
 impl SessionState for SessionInGameSyncState {
     fn handle_event(&mut self, event: SessionEvents, session: &Arc<Session>) {
         match event {
-            SessionEvents::EnterStage => {
+            SessionEvents::EnterInGame => {
                 // 다음 세션 상태로 전환합니다.
                 self.is_running = false;
-                let next_state = SessionInGamePrepareState::new(self.account, &self.world);
-                let control_flow = SessionStateFlow::Change(Box::new(next_state));
+                let next_state = Box::new(SessionInGameState::new(self.account, &self.world));
+                let control_flow = SessionStateFlow::Change(next_state);
                 let event = SessionEvents::SetControlFlow(control_flow);
                 session.push_event(event);
             }

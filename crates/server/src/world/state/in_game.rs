@@ -7,12 +7,11 @@ use std::{
 use ahash::HashMap;
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, DamageLog, ExSkillCost, FinishPhasePlayer, GamePlayData,
-        HealthPoint, LatLon, MAX_IN_GAME_PLAYERS, MovementState, MovementStateTimer, ObjectId,
-        PlayPhasePlayer, RemainingBullet, StageKind, Team, UserId, VictoryType, ViewState,
-        ViewStateTimer,
+        ActionState, ActionStateTimer, DamageLog, ExSkillCost, GamePlayData, HealthPoint, LatLon,
+        MAX_IN_GAME_PLAYERS, MovementState, MovementStateTimer, ObjectId, PlayPhasePlayer,
+        RemainingBullet, StageKind, Team, UserId, ViewState, ViewStateTimer,
     },
-    protocol::{FinishStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
+    protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{
@@ -25,11 +24,10 @@ use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
     entities::{BulletObject, CapturePointObject, PlayData, PlayerObject},
     formula::movement_formulas as formulas,
-    session::SessionEvents,
     world::{GameWorld, GameWorldEvent},
 };
 
-use super::{GameWorldState, GameWorldStateFlow};
+use super::GameWorldState;
 
 /// 중력 가속도입니다.
 const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
@@ -594,6 +592,14 @@ impl GameWorldInGameState {
 
         // 남은 시간 업데이트
         self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+        if self.remaining_time_sec > 0.0 {
+            // println!("remaining time: {:.1}", self.remaining_time_sec);
+        } else {
+            println!("game over!");
+            world.push_event(GameWorldEvent::GameOver { winner: None });
+        }
+
+        // println!("fps: {:.2} (elapsed time: {})", 1.0 / elapsed_time_sec, elapsed_time_sec);
 
         self.update_player_state_timer(world, elapsed_time_sec);
         self.update_player_position(world, elapsed_time_sec);
@@ -605,166 +611,7 @@ impl GameWorldInGameState {
         self.update_capture_point(world, elapsed_time_sec);
     }
 
-    /// 다음 게임 월드 상태로 전환을 시도합니다.
-    fn try_enter_next_state(&mut self, world: &GameWorld) {
-        {
-            // 한쪽 팀 플레이어 전원이 없는 경우 다른 팀을 승리로 판정합니다.
-            let (blue, red): (Vec<_>, Vec<_>) = world
-                .players
-                .iter()
-                .partition(|player| player.team() == Team::Blue);
-
-            // 블루 팀 인원이 비어있는 경우 레드팀을 승리로 판정합니다.
-            if blue.is_empty() {
-                self.is_running = false;
-
-                // 패킷을 생성합니다.
-                let play_data = unsafe { self.play_data.as_ref().unwrap_unchecked() };
-                let players = play_data
-                    .values()
-                    .map(|data| {
-                        FinishPhasePlayer::new(
-                            data.account,
-                            data.character_kind,
-                            data.kill_count,
-                            data.dead_count,
-                            data.damage_dealt,
-                            data.damage_taken,
-                            data.healing_given,
-                            data.team,
-                            data.team_index,
-                            data.connected,
-                        )
-                    })
-                    .collect();
-                let packet = FinishStagePacket::new(
-                    Some(Team::Red),
-                    VictoryType::DefaultWin,
-                    self.stage_kind,
-                    players,
-                );
-
-                // 결과 패킷을 전송합니다.
-                for session in world.sessions.iter() {
-                    session.key().tcp_write(packet.as_raw());
-                }
-
-                // 이전 게임 월드 상태로 돌아갑니다.
-                let control_flow = GameWorldStateFlow::Pop;
-                let event = GameWorldEvent::SetControlFlow(control_flow);
-                world.push_event(event);
-
-                // 세션 상태를 갱신합니다.
-                for session in world.sessions.iter() {
-                    session.key().push_event(SessionEvents::EnterFinish);
-                }
-
-                return;
-            }
-            // 레드 팀 인원이 비어있는 경우 블루팀을 승리로 판정합니다.
-            if red.is_empty() {
-                self.is_running = false;
-
-                // 패킷을 생성합니다.
-                let play_data = unsafe { self.play_data.as_ref().unwrap_unchecked() };
-                let players = play_data
-                    .values()
-                    .map(|data| {
-                        FinishPhasePlayer::new(
-                            data.account,
-                            data.character_kind,
-                            data.kill_count,
-                            data.dead_count,
-                            data.damage_dealt,
-                            data.damage_taken,
-                            data.healing_given,
-                            data.team,
-                            data.team_index,
-                            data.connected,
-                        )
-                    })
-                    .collect();
-                let packet = FinishStagePacket::new(
-                    Some(Team::Blue),
-                    VictoryType::DefaultWin,
-                    self.stage_kind,
-                    players,
-                );
-
-                // 결과 패킷을 전송합니다.
-                for session in world.sessions.iter() {
-                    session.key().tcp_write(packet.as_raw());
-                }
-
-                // 이전 게임 월드 상태로 돌아갑니다.
-                let control_flow = GameWorldStateFlow::Pop;
-                let event = GameWorldEvent::SetControlFlow(control_flow);
-                world.push_event(event);
-
-                // 세션 상태를 갱신합니다.
-                for session in world.sessions.iter() {
-                    session.key().push_event(SessionEvents::EnterFinish);
-                }
-
-                return;
-            }
-        }
-
-        // 남은 시간이 없는 경우
-        if self.remaining_time_sec <= 0.0 {
-            self.is_running = false;
-
-            // 더 많은 점령 포인트를 가진 팀을 우승으로 판별합니다.
-            let &[blue, red] = self.capture_point.capture_score();
-            let (winner, victory_type) = if blue == red {
-                (None, VictoryType::Draw)
-            } else if blue < red {
-                (Some(Team::Red), VictoryType::JudgmentWin)
-            } else {
-                (Some(Team::Blue), VictoryType::JudgmentWin)
-            };
-
-            // 패킷을 생성합니다.
-            let play_data = unsafe { self.play_data.as_ref().unwrap_unchecked() };
-            let players = play_data
-                .values()
-                .map(|data| {
-                    FinishPhasePlayer::new(
-                        data.account,
-                        data.character_kind,
-                        data.kill_count,
-                        data.dead_count,
-                        data.damage_dealt,
-                        data.damage_taken,
-                        data.healing_given,
-                        data.team,
-                        data.team_index,
-                        data.connected,
-                    )
-                })
-                .collect();
-            let packet = FinishStagePacket::new(winner, victory_type, self.stage_kind, players);
-
-            // 결과 패킷을 전송합니다.
-            for session in world.sessions.iter() {
-                session.key().tcp_write(packet.as_raw());
-            }
-
-            // 이전 게임 월드 상태로 돌아갑니다.
-            let control_flow = GameWorldStateFlow::Pop;
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
-
-            // 세션 상태를 갱신합니다.
-            for session in world.sessions.iter() {
-                session.key().push_event(SessionEvents::EnterFinish);
-            }
-
-            return;
-        }
-    }
-
-    /// 모든 세션에 패킷 데이터를 전송합니다.
+    /// 모든 세션 데이터에 패킷을 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
         let play_data = unsafe { self.play_data.as_ref().unwrap_unchecked() };
@@ -932,7 +779,6 @@ impl GameWorldState for GameWorldInGameState {
 
         self.update(world);
         self.broadcast(world);
-        self.try_enter_next_state(world);
     }
 
     fn yield_now(&self) -> Duration {

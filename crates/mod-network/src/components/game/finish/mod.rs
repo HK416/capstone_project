@@ -2,6 +2,5 @@
 //!
 
 mod player;
-mod reason;
 
-pub use self::{player::*, reason::*};
+pub use self::player::*;

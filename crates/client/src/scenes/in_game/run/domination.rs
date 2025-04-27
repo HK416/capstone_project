@@ -2931,22 +2931,14 @@ impl GameScene for InGameDominationModeScene {
             PacketType::FinishStage => {
                 let packet = FinishStagePacket::from_raw(packet);
                 // Safe: 게임 월드가 없는 경우 갱신되거나 렌더링되지 않음.
-                let mut world = unsafe { self.world.take().unwrap_unchecked() };
-
-                // 플레이어 팀을 가져옵니다.
-                let entity = self.get_player_entity();
-                let &(my_team, _) = world
-                    .query_one_mut::<&(Team, usize)>(entity)
-                    .expect("invalid entity or invalid entity component");
+                let world = unsafe { self.world.take().unwrap_unchecked() };
 
                 // 다음 게임 장면으로 전환합니다.
                 let next_scene = InGameResultEnterScene::new(
                     self.locale,
                     self.user_id,
                     self.token,
-                    my_team,
                     packet.winner_team(),
-                    packet.victory_type(),
                     packet.stage_kind(),
                     world,
                     self.skybox.clone(),
