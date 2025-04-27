@@ -50,13 +50,6 @@ pub struct PlayerObject {
     /// 현재 Ex 스킬 코스트 (최대 100.0)
     ex_skill_cost: f32,
 
-    /// 상대 팀을 처치한 횟수
-    kill_count: u16,
-    /// 상대 팀에게 처치당한 횟수
-    dead_count: u16,
-    /// 같은 팀을 도운 횟수(회복, 방어막)
-    assist_count: u16,
-
     /// 플레이어 캐릭터의 월드 공간 위치
     translation: glam::Vec3A,
     /// 플레이어 캐릭터의 월드 공간 방향 (캐릭터가 움직이는 방향과 다를 수 있음)
@@ -120,9 +113,6 @@ impl PlayerObject {
             remaining_bullets: attributes.max_bullets,
             // skill_cool_time,
             ex_skill_cost: 0.0,
-            kill_count: 0,
-            dead_count: 0,
-            assist_count: 0,
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
             velocity: glam::Vec3A::ZERO,
@@ -148,9 +138,6 @@ impl PlayerObject {
         self.fired_per_attack = 0;
         self.remaining_bullets = self.attributes.max_bullets;
         self.ex_skill_cost = 0.0;
-        self.kill_count = 0;
-        self.dead_count = 0;
-        self.assist_count = 0;
         // self.skill_cool_time = match self.attributes.skill_cool_time {
         //     SkillKind::Active(_) => SkillKind::Active(0.0),
         //     SkillKind::Passive => SkillKind::Passive,
@@ -177,7 +164,7 @@ impl PlayerObject {
     }
 
     /// 플레이어가 속한 팀의 인덱스를 가져옵니다.
-    pub fn index(&self) -> usize {
+    pub fn team_index(&self) -> usize {
         ((self.bitfield >> 3) & 0x3) as usize
     }
 
@@ -276,21 +263,6 @@ impl PlayerObject {
     //         SkillKind::Passive => SkillKind::Passive,
     //     };
     // }
-
-    /// 상대 팀을 처치한 횟수를 반환합니다.
-    pub fn kill_count(&self) -> u16 {
-        self.kill_count
-    }
-
-    /// 상대 팀에게 처치당한 횟수를 반환합니다.
-    pub fn dead_count(&self) -> u16 {
-        self.dead_count
-    }
-
-    /// 같은 팀을 도운 횟수를 반환합니다.
-    pub fn assist_count(&self) -> u16 {
-        self.assist_count
-    }
 
     /// 플레이엉 오브젝트의 위치를 설정합니다.
     pub fn with_translation<T>(&mut self, translation: T) -> &mut Self

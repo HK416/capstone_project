@@ -3,13 +3,14 @@
 
 mod attack;
 mod health;
+mod play;
 
 use crate::components::{
     ActionState, ActionStateTimer, BigEndian, CharacterKind, LatLon, MovementState,
     MovementStateTimer, Team, TryFromBigEndian, UserAccount, ViewState, ViewStateTimer,
 };
 
-pub use self::{attack::*, health::*};
+pub use self::{attack::*, health::*, play::*};
 
 /// 게임 진행 단계일 때 플레이어 데이터를 저장합니다.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,12 +18,8 @@ pub struct PlayPhasePlayer {
     /// 사용자 계정 데이터
     pub account: UserAccount,
 
-    /// 플레이어가 상대 팀을 처치한 횟수
-    pub kill_count: u16,
-    /// 플레이어가 상대 팀에게 처치당한 횟수
-    pub dead_count: u16,
-    /// 플레이어가 같은 팀을 도운 횟수
-    pub assist_count: u16,
+    // 플레이 데이터
+    pub play_data: GamePlayData,
 
     /// 플레이어 캐릭터 종류
     pub character_kind: CharacterKind,
@@ -41,11 +38,12 @@ pub struct PlayPhasePlayer {
 
     /// 여러 자료형의 데이터를 저장한 비트 필드입니다.  
     /// 아래 데이터가 포함됩니다.
-    /// - index (2bit): 플레이어가 속한 팀 내의 인덱스 (초기 플레이어 위치를 결정함)
-    /// - Team (1bit): 플레이어가 속한 팀의 종류를 나타냄
     /// - ActionState (4bit): 플레이어 캐릭터의 행동 상태를 나타냄
     /// - MovementState (3bit): 플레이어 캐릭터의 움직임 상태를 나타냄
     /// - ViewState (2bit): 플레이어 캐릭터의 카메라 시야 상태를 나타냄
+    /// - index (3bit): 플레이어가 속한 팀 내의 인덱스 (초기 플레이어 위치를 결정함)
+    /// - Team (1bit): 플레이어가 속한 팀의 종류를 나타냄
+    /// - bool (1bit): 플레이어의 게임 접속 상태를 나타냄
     ///
     pub bitfield: u16,
     /// 플레이어 캐릭터의 행동 상태 타이머
@@ -62,17 +60,16 @@ impl PlayPhasePlayer {
     /// 새로운 플레이어 데이터를 생성합니다.  
     /// 주어진 인덱스가 4보다 클 경우 [`panic!`]을 호출합니다.
     pub fn new(
+        connected: bool,
         account: UserAccount,
-        kill_count: u16,
-        dead_count: u16,
-        assist_count: u16,
+        play_data: GamePlayData,
         character_kind: CharacterKind,
         remaining_bullet: RemainingBullet,
         health_point: HealthPoint,
         translation: [f32; 3],
         rotation: [f32; 4],
         team: Team,
-        index: usize,
+        team_index: usize,
         ex_skill_cost: ExSkillCost,
         action_state: ActionState,
         action_state_timer: ActionStateTimer,
@@ -82,21 +79,24 @@ impl PlayPhasePlayer {
         view_state_timer: ViewStateTimer,
         view_rotation: LatLon,
     ) -> Self {
-        assert!(index < 5, "index out of range!");
+        assert!(team_index < 5, "index out of range!");
 
-        let index_field = (index as u16) << 10;
-        let team_field = (team as u16) << 9;
-        let action_state_field = (action_state as u16) << 5;
-        let movement_state_field = (movement_state as u16) << 2;
-        let view_state_field = (view_state as u16) << 0;
-        let bitfield =
-            team_field | index_field | action_state_field | movement_state_field | view_state_field;
+        let action_state_bit = ((action_state as u16) & 0xF) << 0;
+        let movement_state_bit = ((movement_state as u16) & 0x7) << 4;
+        let view_state_bit = ((view_state as u16) & 0x3) << 7;
+        let team_index_bit = ((team_index as u16) & 0x7) << 9;
+        let team_bit = ((team as u16) & 0x1) << 12;
+        let connected_bit = ((connected as u16) & 0x1) << 13;
+        let bitfield = action_state_bit
+            | movement_state_bit
+            | view_state_bit
+            | team_index_bit
+            | team_bit
+            | connected_bit;
 
         Self {
             account,
-            kill_count,
-            dead_count,
-            assist_count,
+            play_data,
             character_kind,
             remaining_bullet,
             health_point,
@@ -123,24 +123,38 @@ impl PlayPhasePlayer {
         self
     }
 
+    /// 플레이어가 속한 팀 내의 인덱스를 설정합니다.
+    pub fn with_team_index(&mut self, team_index: usize) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x7 << 9)) | ((team_index as u16) & 0x7) << 9;
+        self
+    }
+
     /// 플레이어가 속한 팀 내의 플레이어 인덱스를 가져옵니다.
-    pub fn index(&self) -> usize {
-        ((self.bitfield >> 10) & 0x3) as usize
+    pub fn team_index(&self) -> usize {
+        ((self.bitfield >> 9) & 0x7) as usize
     }
 
     /// 플레이어가 속한 팀을 설정합니다.
     pub fn with_team(&mut self, team: Team) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 9)) | (team as u16) << 9;
+        self.bitfield = (self.bitfield & !(0x1 << 12)) | ((team as u16) & 0x1) << 12;
         self
     }
 
     /// 플레이어가 속한 팀을 가져옵니다.
     pub fn team(&self) -> Team {
-        // Safe: 값이 범위를 벗어나지 않음
-        unsafe {
-            let val = ((self.bitfield >> 9) & 0x1) as u8;
-            Team::new(val).unwrap_unchecked()
-        }
+        let val = ((self.bitfield >> 12) & 0x1) as u8;
+        Team::new(val).unwrap_or_default()
+    }
+
+    /// 연결 부울 플래그를 설정합니다.
+    pub fn with_connected(&mut self, connected: bool) -> &mut Self {
+        self.bitfield = (self.bitfield & !(0x1 << 13)) | ((connected as u16) & 0x1) << 13;
+        self
+    }
+
+    /// 연결 부울 플래그를 가져옵니다.
+    pub fn connected(&self) -> bool {
+        (self.bitfield >> 13) & 0x1 == 0x1
     }
 
     /// 플레이어 캐릭터의 월드 공간 위치를 설정합니다.
@@ -164,13 +178,13 @@ impl PlayPhasePlayer {
 
     /// 플레이어 캐릭터 행동 상태를 설정합니다.
     pub fn with_action_state(&mut self, action_state: ActionState) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0xF << 5)) | (action_state as u16) << 5;
+        self.bitfield = (self.bitfield & !(0xF << 0)) | ((action_state as u16) & 0xF) << 0;
         self
     }
 
     /// 플레이어 캐릭터 행동 상태를 가져옵니다.
     pub fn action_state(&self) -> ActionState {
-        let val = ((self.bitfield >> 5) & 0xF) as u8;
+        let val = ((self.bitfield >> 0) & 0xF) as u8;
         ActionState::new(val).unwrap_or_default()
     }
 
@@ -182,13 +196,13 @@ impl PlayPhasePlayer {
 
     /// 플레이어 캐릭터 움직임 상태를 설정합니다.
     pub fn with_movement_state(&mut self, movement_state: MovementState) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x7 << 2)) | (movement_state as u16) << 2;
+        self.bitfield = (self.bitfield & !(0x7 << 4)) | ((movement_state as u16) & 0x7) << 4;
         self
     }
 
     /// 플레이어 캐릭터 움직임 상태를 가져옵니다.
     pub fn movement_state(&self) -> MovementState {
-        let val = ((self.bitfield >> 2) & 0x7) as u8;
+        let val = ((self.bitfield >> 4) & 0x7) as u8;
         MovementState::new(val).unwrap_or_default()
     }
 
@@ -203,17 +217,14 @@ impl PlayPhasePlayer {
 
     /// 플레이어 카메라 상태를 설정합니다.
     pub fn with_view_state(&mut self, view_state: ViewState) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x3 << 0)) | (view_state as u16) << 0;
+        self.bitfield = (self.bitfield & !(0x3 << 7)) | ((view_state as u16) & 0x3) << 7;
         self
     }
 
     /// 플레이어 카메라 상태를 가져옵니다.
     pub fn view_state(&self) -> ViewState {
-        // Safe: 값이 범위를 벗어나지 않음
-        unsafe {
-            let val = ((self.bitfield >> 0) & 0x3) as u8;
-            ViewState::new(val).unwrap_unchecked()
-        }
+        let val = ((self.bitfield >> 7) & 0x3) as u8;
+        ViewState::new(val).unwrap_or_default()
     }
 
     /// 플레이어 캐릭터 카메라 상태 타이머를 설정합니다.
@@ -232,9 +243,7 @@ impl PlayPhasePlayer {
 impl BigEndian for PlayPhasePlayer {
     fn byte_size() -> usize {
         UserAccount::byte_size()
-            + u16::byte_size()
-            + u16::byte_size()
-            + u16::byte_size()
+            + GamePlayData::byte_size()
             + CharacterKind::byte_size()
             + RemainingBullet::byte_size()
             + HealthPoint::byte_size()
@@ -256,9 +265,7 @@ impl BigEndian for PlayPhasePlayer {
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.account.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.kill_count.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.dead_count.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.assist_count.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.play_data.to_big_endian_bytes());
         bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
         bytes.extend_from_slice(&self.remaining_bullet.to_big_endian_bytes());
         bytes.extend_from_slice(&self.health_point.to_big_endian_bytes());
@@ -289,9 +296,7 @@ impl Default for PlayPhasePlayer {
     fn default() -> Self {
         Self {
             account: UserAccount::default(),
-            kill_count: 0,
-            dead_count: 0,
-            assist_count: 0,
+            play_data: GamePlayData::default(),
             character_kind: CharacterKind::default(),
             remaining_bullet: RemainingBullet::default(),
             health_point: HealthPoint::default(),
@@ -323,23 +328,11 @@ impl TryFromBigEndian for PlayPhasePlayer {
         let mut data = &bytes[offset..offset + size];
         let account = UserAccount::from_big_endian_bytes(data);
 
-        // 상대 팀을 처치한 횟수를 가져옵니다.
+        // 게임 플레이 데이터를 가져옵니다.
         offset = offset + size;
-        size = u16::byte_size();
+        size = GamePlayData::byte_size();
         data = &bytes[offset..offset + size];
-        let kill_count = u16::from_big_endian_bytes(data);
-
-        // 상대 팀에게 처치당한 횟수를 가져옵니다.
-        offset = offset + size;
-        size = u16::byte_size();
-        data = &bytes[offset..offset + size];
-        let dead_count = u16::from_big_endian_bytes(data);
-
-        // 같은 팀을 도운 횟수를 가져옵니다.
-        offset = offset + size;
-        size = u16::byte_size();
-        data = &bytes[offset..offset + size];
-        let assist_count = u16::from_big_endian_bytes(data);
+        let play_data = GamePlayData::from_big_endian_bytes(data);
 
         // 플레이어 캐릭터 종류를 가져옵니다.
         offset = offset + size;
@@ -409,9 +402,7 @@ impl TryFromBigEndian for PlayPhasePlayer {
 
         Some(Self {
             account,
-            kill_count,
-            dead_count,
-            assist_count,
+            play_data,
             character_kind,
             remaining_bullet,
             health_point,
@@ -439,10 +430,12 @@ mod tests {
         let name = UserName::from_str("Aris");
         let account = UserAccount::new(id, name);
         let origin = PlayPhasePlayer::new(
+            true,
             account,
-            10,
-            2,
-            5,
+            GamePlayData {
+                kill_count: 10,
+                dead_count: 3,
+            },
             CharacterKind::MomoiOriginal,
             RemainingBullet::new(10, 30),
             HealthPoint::new(1324, 1324),

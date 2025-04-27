@@ -111,47 +111,32 @@ pub fn spawn_player_character(
     let mut builder = EntityBuilder::new();
 
     // 컴포넌트 데이터를 준비합니다.
-    let account = player.account;
-    let character_kind = player.character_kind;
-    let team = player.team();
-    let team_index = player.index();
     let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
         glam::Quat::from_array(player.rotation),
         glam::Vec3::from_array(player.translation),
     ));
     let world_transform = WorldTransform::default();
-    let health_point = player.health_point;
-    let remaining_bullet = player.remaining_bullet;
-    let ex_skill_cost = player.ex_skill_cost;
-    // let skill_cool_time = player.skill_cool_time;
-    let action_state = player.action_state();
-    let movement_state = player.movement_state();
-    let view_state = player.view_state();
-    let action_state_timer = player.action_state_timer;
-    let movement_state_timer = player.movement_state_timer;
-    let view_state_timer = player.view_state_timer;
-    let view_rotation = player.view_rotation;
 
     // 컴포넌트를 추가합니다.
     builder.add_bundle((
-        account,
-        character_kind,
-        (team, team_index),
-        health_point,
-        remaining_bullet,
-        ex_skill_cost,
-        // skill_cool_time,
+        player.account,
+        player.character_kind,
+        (player.team(), player.team_index()),
+        player.play_data,
+        player.health_point,
+        player.remaining_bullet,
+        player.ex_skill_cost,
     ));
     builder.add_bundle((
         local_transform,
         world_transform,
-        action_state,
-        action_state_timer,
-        movement_state,
-        movement_state_timer,
-        view_state,
-        view_state_timer,
-        view_rotation,
+        player.action_state(),
+        player.action_state_timer,
+        player.movement_state(),
+        player.movement_state_timer,
+        player.view_state(),
+        player.view_state_timer,
+        player.view_rotation,
     ));
 
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.

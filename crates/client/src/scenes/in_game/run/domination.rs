@@ -11,9 +11,9 @@ use mod_app::{
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, Bullet, CapturePoint, CharacterKind, DamageLog, ExSkillCost,
-        GameInputBits, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer,
-        ObjectId, PlayPhasePlayer, RemainingBullet, Team, UserAccount, UserId, ViewState,
-        ViewStateTimer, MAX_CAPTURE_SCORE, MAX_IN_GAME_PLAYERS,
+        GameInputBits, GamePlayData, HealthPoint, LatLon, LoginToken, MovementState,
+        MovementStateTimer, ObjectId, PlayPhasePlayer, RemainingBullet, Team, UserAccount, UserId,
+        ViewState, ViewStateTimer, MAX_CAPTURE_SCORE, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
         FinishStagePacket, Packet, PacketType, PullStagePacket, PushStatusPacket, RawPacket,
@@ -117,6 +117,8 @@ pub struct InGameDominationModeScene {
     main_camera: Entity,
     /// 플레이어 엔터티 집합입니다.
     players: HashMap<UserId, Entity>,
+    /// 연결이 끊어진 플레이어 엔터티 집합입니다.
+    disconnected_players: Vec<Entity>,
     /// 오브젝트 엔터티 집합입니다.
     bullets: HashMap<ObjectId, Entity>,
     /// 지형 엔터티 집합입니다.
@@ -264,6 +266,7 @@ impl InGameDominationModeScene {
             world: Some(world),
             main_camera: Entity::DANGLING,
             players,
+            disconnected_players: Vec::with_capacity(MAX_IN_GAME_PLAYERS),
             bullets: HashMap::default(),
             stages,
             damage_particles: VecDeque::default(),
@@ -796,6 +799,7 @@ impl InGameDominationModeScene {
         let world = unsafe { self.world.as_mut().unwrap_unchecked() };
 
         type Query<'a> = (
+            &'a mut GamePlayData,
             &'a mut HealthPoint,
             &'a mut RemainingBullet,
             &'a mut ExSkillCost,
@@ -812,57 +816,65 @@ impl InGameDominationModeScene {
         let mut component_view = world.view_mut::<Query>();
 
         // 플레이어 데이터를 수정합니다.
-        let mut ids: HashSet<UserId> = self.players.keys().cloned().collect();
-        for data in players {
-            ids.remove(&data.account.uid);
-            if let Some(entity) = self.players.get(&data.account.uid).cloned() {
-                let (
-                    health_point,
-                    remaining_bullet,
-                    ex_skill_cost,
-                    // skill_cool_time,
-                    action_state,
-                    action_state_timer,
-                    movement_state,
-                    movement_state_timer,
-                    view_state,
-                    view_state_timer,
-                    view_rotation,
-                    local_transform,
-                ) = component_view
-                    .get_mut(entity)
-                    .expect("invalid entity or invalid entity component");
+        let mut removed = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for player in players {
+            let user_id = player.account.uid;
+            let entity = match self.players.get(&user_id).cloned() {
+                Some(entity) => entity,
+                None => continue,
+            };
 
-                *remaining_bullet = data.remaining_bullet;
-                *ex_skill_cost = data.ex_skill_cost;
-                // *skill_cool_time = data.skill_cool_time;
-                *health_point = data.health_point;
-                *action_state = data.action_state();
-                *action_state_timer = data.action_state_timer;
-                *movement_state = data.movement_state();
-                *movement_state_timer = data.movement_state_timer;
+            // 플레이어가 연결 중이 아닌 경우 플레이어 집합에서 제거합니다.
+            if !player.connected() {
+                removed.push(user_id);
+                continue;
+            }
 
-                if data.account.uid == self.user_id {
-                    local_transform.set_translation(data.translation.into());
-                } else {
-                    *view_state = data.view_state();
-                    *view_state_timer = data.view_state_timer;
-                    *view_rotation = data.view_rotation;
-                    local_transform.set_rotation_translation(
-                        glam::Quat::from_array(data.rotation),
-                        data.translation.into(),
-                    );
-                }
+            let (
+                play_data,
+                health_point,
+                remaining_bullet,
+                ex_skill_cost,
+                // skill_cool_time,
+                action_state,
+                action_state_timer,
+                movement_state,
+                movement_state_timer,
+                view_state,
+                view_state_timer,
+                view_rotation,
+                local_transform,
+            ) = component_view
+                .get_mut(entity)
+                .expect("invalid entity or invalid entity component");
+
+            *play_data = player.play_data;
+            *remaining_bullet = player.remaining_bullet;
+            *ex_skill_cost = player.ex_skill_cost;
+            *health_point = player.health_point;
+            *action_state = player.action_state();
+            *action_state_timer = player.action_state_timer;
+            *movement_state = player.movement_state();
+            *movement_state_timer = player.movement_state_timer;
+
+            if user_id == self.user_id {
+                local_transform.set_translation(player.translation.into());
             } else {
-                log::warn!("Unknown game player (UID:{})", data.account.uid);
+                *view_state = player.view_state();
+                *view_state_timer = player.view_state_timer;
+                *view_rotation = player.view_rotation;
+                local_transform.set_rotation_translation(
+                    glam::Quat::from_array(player.rotation),
+                    player.translation.into(),
+                );
             }
         }
         drop(component_view);
 
-        // 제거된 플레이어를 게임 월드에서 제거합니다.
-        for id in ids {
-            let entity = self.players.remove(&id).expect("no such entity");
-            cleanup(world, entity);
+        // 제거된 플레이어를 연결이 끊긴 플레이어 목록에 추가합니다.
+        for user_id in removed {
+            let entity = self.players.remove(&user_id).expect("no such entity");
+            self.disconnected_players.push(entity);
         }
     }
 

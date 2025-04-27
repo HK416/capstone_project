@@ -1,13 +1,19 @@
 use std::{fmt, sync::Arc};
 
 use ahash::HashMap;
+use dashmap::mapref::multiple::RefMulti;
 use mod_network::{
-    components::{LatLon, PlayPhasePlayer, StageKind, Team, UserId},
+    components::{
+        ActionState, ActionStateTimer, ExSkillCost, GamePlayData, HealthPoint, LatLon,
+        MAX_IN_GAME_PLAYERS, MovementState, MovementStateTimer, PlayPhasePlayer, RemainingBullet,
+        StageKind, Team, UserId, ViewState, ViewStateTimer,
+    },
     protocol::{InitStagePacket, Packet},
 };
 
 use crate::{
     data::get_stage_attributes,
+    entities::{PlayData, PlayerObject},
     session::{Session, SessionEvents},
     world::{GameWorld, GameWorldEvent},
 };
@@ -22,27 +28,69 @@ pub struct GameWorldInGameSyncState {
     stage_kind: StageKind,
 
     /// 플레이어 스폰 위치 저장
-    spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+    spawn_positions: Option<HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>>,
+    /// 플레이어 게임 플레이 데이터 저장
+    play_data: Option<HashMap<UserId, PlayData>>,
 }
 
 impl GameWorldInGameSyncState {
     /// 새로운 게임 월드 상태를 생성합니다.
-    pub fn new(stage_kind: StageKind) -> Self {
+    pub fn new<'a, I>(stage_kind: StageKind, iter: I) -> Self
+    where
+        I: Iterator<Item = RefMulti<'a, UserId, PlayerObject>>,
+    {
         Self {
             is_running: true,
             stage_kind,
-            spawn_positions: HashMap::default(),
+            spawn_positions: Some(HashMap::default()),
+            play_data: Some(
+                iter.map(|player| {
+                    (
+                        player.account().uid,
+                        PlayData {
+                            connected: true,
+                            loaded: false,
+                            account: player.account().clone(),
+                            character_kind: player.character_kind(),
+                            team: player.team(),
+                            team_index: player.team_index(),
+                            kill_count: 0,
+                            dead_count: 0,
+                            damage_dealt: 0,
+                            damage_taken: 0,
+                            healing_given: 0,
+                        },
+                    )
+                })
+                .collect(),
+            ),
         }
     }
 
     /// 게임 로드 완료 이벤트를 처리합니다.
-    fn handle_game_load_finish_event(&self, session: &Session, uid: UserId, world: &GameWorld) {
-        // 플레이어 캐릭터의 부울 플래그를 `true`로 변경합니다.
-        if let Some(mut player) = world.players.get_mut(&uid) {
-            player.with_bool_flag(true);
+    fn handle_game_load_finish_event(&mut self, session: &Session, uid: UserId) {
+        // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
+        let play_data = unsafe { self.play_data.as_mut().unwrap_unchecked() };
+
+        // 준비 완료 부울 플래그를 true로 설정합니다.
+        if let Some(data) = play_data.get_mut(&uid) {
+            data.loaded = true;
         } else {
             log::warn!("{} accesses an invalid game player", session);
             session.close();
+        }
+    }
+
+    /// 플레이어 떠남 이벤트를 처리합니다.
+    fn handle_player_leave_event(&mut self, uid: UserId) {
+        // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
+        let play_data = unsafe { self.play_data.as_mut().unwrap_unchecked() };
+
+        // 연결 상태 부울 플래그를 false로 설정합니다.
+        if let Some(data) = play_data.get_mut(&uid) {
+            data.connected = false;
+        } else {
+            log::warn!("unknown game player (UID:{})", uid);
         }
     }
 
@@ -51,22 +99,30 @@ impl GameWorldInGameSyncState {
         // 락을 획득합니다.
         let num_players = world.num_players.lock();
 
+        // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
+        let play_data = unsafe { self.play_data.as_mut().unwrap_unchecked() };
+
         // 모든 플레이어가 준비완료 되었는지 확인합니다.
         let mut all_player_loaded = true;
-        for player in world.players.iter() {
-            all_player_loaded &= player.bool_flag();
+        for data in play_data.values() {
+            if !data.connected {
+                continue;
+            }
+
+            all_player_loaded &= data.loaded;
         }
 
         // 모든 플레이어가 준비된 경우 다음 게임 월드 상태로 전환합니다.
         if all_player_loaded {
             self.is_running = false;
 
-            let next_state = Box::new(GameWorldInGameState::new(
+            let next_state = GameWorldInGameState::new(
                 self.stage_kind,
-                self.spawn_positions.clone(),
+                unsafe { self.spawn_positions.take().unwrap_unchecked() },
+                unsafe { self.play_data.take().unwrap_unchecked() },
                 (5 * 60) as f32, // 5분
-            ));
-            let control_flow = GameWorldStateFlow::Change(next_state);
+            );
+            let control_flow = GameWorldStateFlow::Change(Box::new(next_state));
             let event = GameWorldEvent::SetControlFlow(control_flow);
             world.push_event(event);
 
@@ -88,10 +144,10 @@ impl GameWorldState for GameWorldInGameSyncState {
         let mut blue_team_count = 0;
         let mut red_team_count = 0;
 
-        for mut player in world.players.iter_mut() {
-            // 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
-            player.with_bool_flag(false);
+        // Safe: on_enter가 호출될 때 spawn_positions는 반드시 존재합니다.
+        let spawn_positions = unsafe { self.spawn_positions.as_mut().unwrap_unchecked() };
 
+        for mut player in world.players.iter_mut() {
             // 팀에 따라 적절한 스폰 위치에 스폰될 수 있도록 플레이어 위치와 방향을 초기화합니다.
             let team = player.team();
             let user_id = player.account().uid;
@@ -116,8 +172,7 @@ impl GameWorldState for GameWorldInGameSyncState {
                 }
             };
 
-            self.spawn_positions
-                .insert(user_id, (position, direction, view_rotation));
+            spawn_positions.insert(user_id, (position, direction, view_rotation));
             player.reset_state();
             player
                 .with_index(index)
@@ -127,53 +182,81 @@ impl GameWorldState for GameWorldInGameSyncState {
         }
 
         // 각 세션에 스테이지 초기화 패킷을 전송합니다.
-        let packet = InitStagePacket::new(
-            self.stage_kind,
-            world
-                .players
-                .iter()
-                .map(|player| {
-                    PlayPhasePlayer::new(
-                        player.account().clone(),
-                        player.kill_count(),
-                        player.dead_count(),
-                        player.assist_count(),
-                        player.character_kind(),
-                        player.remaining_bullet(),
-                        player.health_point(),
-                        player.translation().to_array(),
-                        player.rotation().to_array(),
-                        player.team(),
-                        player.index(),
-                        player.get_ex_skill_cost(),
-                        // player.get_skill_cool_time(),
-                        player.action_state(),
-                        player.action_state_timer(),
-                        player.movement_state(),
-                        player.movement_state_timer(),
-                        player.view_state(),
-                        player.view_state_timer(),
-                        player.view_rotation(),
-                    )
-                })
-                .collect(),
-        );
+
+        // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
+        let play_data = unsafe { self.play_data.as_ref().unwrap_unchecked() };
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for (&user_id, data) in play_data.iter() {
+            // 게임 월드에서 플레이어를 가져옵니다.
+            let player = world.players.get(&user_id);
+            players.push(match player {
+                Some(player) => PlayPhasePlayer::new(
+                    true,
+                    player.account().clone(),
+                    GamePlayData {
+                        kill_count: data.kill_count,
+                        dead_count: data.dead_count,
+                    },
+                    player.character_kind(),
+                    player.remaining_bullet(),
+                    player.health_point(),
+                    player.translation().to_array(),
+                    player.rotation().to_array(),
+                    player.team(),
+                    player.team_index(),
+                    player.get_ex_skill_cost(),
+                    player.action_state(),
+                    player.action_state_timer(),
+                    player.movement_state(),
+                    player.movement_state_timer(),
+                    player.view_state(),
+                    player.view_state_timer(),
+                    player.view_rotation(),
+                ),
+                None => PlayPhasePlayer::new(
+                    false,
+                    data.account,
+                    GamePlayData {
+                        kill_count: data.kill_count,
+                        dead_count: data.dead_count,
+                    },
+                    data.character_kind,
+                    RemainingBullet::default(),
+                    HealthPoint::default(),
+                    [0.0; 3],
+                    [0.0; 4],
+                    data.team,
+                    data.team_index,
+                    ExSkillCost::default(),
+                    ActionState::default(),
+                    ActionStateTimer::default(),
+                    MovementState::default(),
+                    MovementStateTimer::default(),
+                    ViewState::default(),
+                    ViewStateTimer::default(),
+                    LatLon::default(),
+                ),
+            });
+        }
+
+        let packet = InitStagePacket::new(self.stage_kind, players);
         for session in world.sessions.iter() {
             session.key().tcp_write(packet.as_raw());
         }
     }
 
-    fn on_exit(&mut self, world: &Arc<GameWorld>) {
-        for mut player in world.players.iter_mut() {
-            // 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
-            player.with_bool_flag(false);
+    fn handle_event(&mut self, event: GameWorldEvent, _world: &Arc<GameWorld>) {
+        // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
+        if !self.is_running {
+            return;
         }
-    }
 
-    fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
         match event {
             GameWorldEvent::GameLoadFinish { session, uid } => {
-                self.handle_game_load_finish_event(&session, uid, world);
+                self.handle_game_load_finish_event(&session, uid);
+            }
+            GameWorldEvent::PlayerLeave(uid) => {
+                self.handle_player_leave_event(uid);
             }
             _ => {
                 log::warn!(

@@ -129,9 +129,9 @@ impl Packet for InitStagePacket {
 #[cfg(test)]
 mod tests {
     use crate::components::{
-        ActionState, ActionStateTimer, CharacterKind, ExSkillCost, HealthPoint, LatLon,
-        MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId, UserName,
-        ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, CharacterKind, ExSkillCost, GamePlayData, HealthPoint,
+        LatLon, MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId,
+        UserName, ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -139,10 +139,12 @@ mod tests {
     #[test]
     fn test_init_stage_packet() {
         let player_0 = PlayPhasePlayer::new(
+            false,
             UserAccount::new(UserId::new(1412512), UserName::from_str("Aris")),
-            1,
-            2,
-            3,
+            GamePlayData {
+                kill_count: 1,
+                dead_count: 12,
+            },
             CharacterKind::ArisOriginal,
             RemainingBullet::new(10, 30),
             HealthPoint::new(1413, 1414),

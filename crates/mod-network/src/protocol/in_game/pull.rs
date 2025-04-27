@@ -147,9 +147,9 @@ impl Packet for PullStagePacket {
 #[cfg(test)]
 mod tests {
     use crate::components::{
-        ActionState, ActionStateTimer, CharacterKind, ExSkillCost, HealthPoint, LatLon,
-        MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId, UserName,
-        ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, CharacterKind, ExSkillCost, GamePlayData, HealthPoint,
+        LatLon, MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId,
+        UserName, ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -157,10 +157,12 @@ mod tests {
     #[test]
     fn test_pull_stage_packet() {
         let player_0 = PlayPhasePlayer::new(
+            true,
             UserAccount::new(UserId::new(1412512), UserName::from_str("Aris")),
-            10,
-            5,
-            2,
+            GamePlayData {
+                kill_count: 2,
+                dead_count: 0,
+            },
             CharacterKind::ArisOriginal,
             RemainingBullet::new(10, 30),
             HealthPoint::new(1413, 1413),

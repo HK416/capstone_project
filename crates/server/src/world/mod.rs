@@ -218,7 +218,9 @@ impl GameWorld {
         // 해당 플레이어를 제거합니다.
         if let Some((_, uid)) = self.sessions.remove(session) {
             if let Some((_, player)) = self.players.remove(&uid) {
+                // 플레이어 수를 1줄이고, 이벤트를 추가합니다.
                 *num_players -= 1;
+                self.events.push(GameWorldEvent::PlayerLeave(uid));
 
                 // 모든 플레이어가 게임 월드에서 나간 경우 게임 월드를 비활성화합니다.
                 if self.players.len() == 0 {

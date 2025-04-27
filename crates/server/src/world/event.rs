@@ -12,6 +12,9 @@ pub enum GameWorldEvent {
     /// 게임 월드 상태를 변경합니다.
     SetControlFlow(GameWorldStateFlow),
 
+    /// 플레이어가 게임 월드에서 떠날 때 발생하는 이벤트입니다.
+    PlayerLeave(UserId),
+
     /// 커스텀 게임 대기실에서 사용되는
     /// 플레이어의 게임 준비 요청입니다.
     CustomRoomReady {

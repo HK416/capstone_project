@@ -7,7 +7,9 @@ use std::{
 use ahash::HashMap;
 use mod_network::{
     components::{
-        DamageLog, LatLon, MovementState, ObjectId, PlayPhasePlayer, StageKind, Team, UserId,
+        ActionState, ActionStateTimer, DamageLog, ExSkillCost, GamePlayData, HealthPoint, LatLon,
+        MAX_IN_GAME_PLAYERS, MovementState, MovementStateTimer, ObjectId, PlayPhasePlayer,
+        RemainingBullet, StageKind, Team, UserId, ViewState, ViewStateTimer,
     },
     protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
 };
@@ -20,7 +22,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
-    entities::{BulletObject, CapturePointObject, PlayerObject},
+    entities::{BulletObject, CapturePointObject, PlayData, PlayerObject},
     formula::movement_formulas as formulas,
     world::{GameWorld, GameWorldEvent},
 };
@@ -54,6 +56,8 @@ pub struct GameWorldInGameState {
 
     /// 플레이어 스폰 위치 저장
     spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+    /// 플레이어 게임 플레이 데이터 저장
+    play_data: Option<HashMap<UserId, PlayData>>,
 
     /// 점령지 오브젝트
     capture_point: CapturePointObject,
@@ -64,6 +68,7 @@ impl GameWorldInGameState {
     pub fn new(
         stage_kind: StageKind,
         spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
+        play_data: HashMap<UserId, PlayData>,
         game_duration_sec: f32, // 게임 총 시간
     ) -> Self {
         Self {
@@ -74,6 +79,7 @@ impl GameWorldInGameState {
             stage_kind,
             damage_logs: Queue::new(),
             spawn_positions,
+            play_data: Some(play_data),
             capture_point: CapturePointObject::new(Collider::Sphere(Sphere {
                 center: glam::Vec3::ZERO,
                 radius: 7.5,
@@ -607,24 +613,29 @@ impl GameWorldInGameState {
 
     /// 모든 세션 데이터에 패킷을 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
-        let players: Vec<_> = world
-            .players
-            .iter_mut()
-            .map(|player| {
-                PlayPhasePlayer::new(
+        // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
+        let play_data = unsafe { self.play_data.as_ref().unwrap_unchecked() };
+
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for (&user_id, data) in play_data.iter() {
+            // 게임 월드에서 플레이어를 가져옵니다.
+            let player = world.players.get(&user_id);
+            players.push(match player {
+                Some(player) => PlayPhasePlayer::new(
+                    true,
                     player.account().clone(),
-                    player.kill_count(),
-                    player.dead_count(),
-                    player.assist_count(),
+                    GamePlayData {
+                        kill_count: data.kill_count,
+                        dead_count: data.dead_count,
+                    },
                     player.character_kind(),
                     player.remaining_bullet(),
                     player.health_point(),
                     player.translation().to_array(),
                     player.rotation().to_array(),
                     player.team(),
-                    player.index(),
+                    player.team_index(),
                     player.get_ex_skill_cost(),
-                    // player.get_skill_cool_time(),
                     player.action_state(),
                     player.action_state_timer(),
                     player.movement_state(),
@@ -632,12 +643,31 @@ impl GameWorldInGameState {
                     player.view_state(),
                     player.view_state_timer(),
                     player.view_rotation(),
-                )
-            })
-            .collect();
-
-        if players.is_empty() {
-            return;
+                ),
+                None => PlayPhasePlayer::new(
+                    false,
+                    data.account,
+                    GamePlayData {
+                        kill_count: data.kill_count,
+                        dead_count: data.dead_count,
+                    },
+                    data.character_kind,
+                    RemainingBullet::default(),
+                    HealthPoint::default(),
+                    [0.0; 3],
+                    [0.0; 4],
+                    data.team,
+                    data.team_index,
+                    ExSkillCost::default(),
+                    ActionState::default(),
+                    ActionStateTimer::default(),
+                    MovementState::default(),
+                    MovementStateTimer::default(),
+                    ViewState::default(),
+                    ViewStateTimer::default(),
+                    LatLon::default(),
+                ),
+            });
         }
 
         let bullets: Vec<_> = world
@@ -648,6 +678,11 @@ impl GameWorldInGameState {
 
         let capture_point = self.capture_point.capture_point().clone();
         let remaining_time_sec = self.remaining_time_sec; // Copy the value
+
+        // 게임 월드에 플레이어가 없는 경우 함수 실행을 중단합니다.
+        if world.players.is_empty() {
+            return;
+        }
 
         // 패킷을 생성하고 전송합니다.
         let packet = PullStagePacket::new(players, bullets, capture_point, remaining_time_sec);
@@ -681,7 +716,22 @@ impl GameWorldInGameState {
 
 impl GameWorldState for GameWorldInGameState {
     fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
+        // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
+        if !self.is_running {
+            return;
+        }
+
         match event {
+            GameWorldEvent::PlayerLeave(user_id) => {
+                // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
+                let play_data = unsafe { self.play_data.as_mut().unwrap_unchecked() };
+                if let Some(data) = play_data.get_mut(&user_id) {
+                    // 플레이어 연결 상태 부울 플래그를 false로 설정합니다.
+                    data.connected = false;
+                } else {
+                    log::warn!("unknown player identifier (UID:{})", user_id);
+                }
+            }
             GameWorldEvent::AddBullet { shooter_id, delay } => {
                 self.add_bullet(world, shooter_id, delay);
             }

@@ -183,8 +183,8 @@ impl GameWorldFormationState {
         if all_player_selected {
             self.is_running = false;
 
-            let next_state = Box::new(GameWorldInGameSyncState::new(self.stage_kind));
-            let control_flow = GameWorldStateFlow::Change(next_state);
+            let next_state = GameWorldInGameSyncState::new(self.stage_kind, world.players.iter());
+            let control_flow = GameWorldStateFlow::Change(Box::new(next_state));
             let event = GameWorldEvent::SetControlFlow(control_flow);
             world.push_event(event);
 
