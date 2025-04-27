@@ -19,7 +19,7 @@ use crate::{
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
-use super::InGameDominationModeScene;
+use super::{InGameDominationModeScene, TEAM_COLOR};
 
 /// 인게임 종합전술시험(점령전)의 현재 게임 진행 상태를 출력하는 게임 장면입니다.
 pub struct InGameDominationModeStatusLayer {
@@ -198,18 +198,19 @@ impl GameScene for InGameDominationModeStatusLayer {
                     end_y = beg_y + 64.0 * scale;
 
                     // 배경
+                    let ui_area = egui::Rect::from_min_max(
+                        egui::pos2(beg_x, beg_y),
+                        egui::pos2(end_x, end_y),
+                    );
                     ui.painter().rect(
-                        egui::Rect::from_min_max(
-                            egui::pos2(beg_x, beg_y),
-                            egui::pos2(end_x, end_y),
-                        ),
+                        ui_area,
                         4.0,
                         egui::Color32::from_white_alpha(128),
                         egui::Stroke::new(1.0 * scale, egui::Color32::WHITE),
                         egui::StrokeKind::Middle,
                     );
 
-                    // 캐릭터 아이콘
+                    // 캐릭터 아이콘 배경
                     let i = data.character_kind as usize;
                     let icon = prev_scene
                         .get_ui_texture(CHARACTER_ICON_URIS[i])
@@ -223,9 +224,18 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::pos2(x, y),
                         egui::pos2(x + width, y + height),
                     );
+                    ui.painter().rect(
+                        icon_area,
+                        4.0,
+                        egui::Color32::WHITE,
+                        egui::Stroke::new(2.0 * scale, TEAM_COLOR[data.team as usize]),
+                        egui::StrokeKind::Middle,
+                    );
+
+                    // 캐릭터 아이콘
                     egui::Image::new(icon).paint_at(ui, icon_area);
 
-                    // 플레이어 체력
+                    // 플레이어 체력 배경
                     let percent = data.health_point.percent();
                     let x = beg_x + 88.0 * scale;
                     let y = beg_y + 52.0 * scale;
@@ -239,6 +249,8 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::Stroke::new(1.0 * scale, egui::Color32::BLACK),
                         egui::StrokeKind::Middle,
                     );
+
+                    // 플레이어 체력
                     ui.painter().rect(
                         egui::Rect::from_min_max(
                             egui::pos2(x, y),
@@ -250,23 +262,58 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::StrokeKind::Middle,
                     );
 
-                    // 플레이어 닉네임
-                    let font_id = egui::FontId::new(18.0 * scale, main_font_family.clone());
-                    let text = egui::RichText::new(data.account.name.to_string())
-                        .font(font_id)
-                        .color(egui::Color32::DARK_GRAY);
-                    let x = beg_x + 88.0 * scale;
-                    let y = beg_y + 12.0 * scale;
-                    let text_area = egui::Rect::from_min_max(
-                        egui::pos2(x, y),
-                        egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                    // 색상 데이터
+                    let fill_color = match data.connected {
+                        true => match data.alive {
+                            true => egui::Color32::TRANSPARENT,
+                            false => egui::Color32::from_black_alpha(96),
+                        },
+                        false => egui::Color32::from_black_alpha(160),
+                    };
+                    ui.painter().rect(
+                        ui_area,
+                        4.0,
+                        fill_color,
+                        egui::Stroke::new(1.0 * scale, fill_color),
+                        egui::StrokeKind::Middle,
                     );
-                    ui.put(
-                        text_area,
-                        egui::Label::new(text)
-                            .wrap_mode(egui::TextWrapMode::Truncate)
-                            .sense(egui::Sense::empty()),
-                    );
+
+                    if data.connected {
+                        // 플레이어 닉네임
+                        let font_id = egui::FontId::new(18.0 * scale, main_font_family.clone());
+                        let text = egui::RichText::new(data.account.name.to_string())
+                            .font(font_id)
+                            .color(egui::Color32::BLACK);
+                        let x = beg_x + 88.0 * scale;
+                        let y = beg_y + 12.0 * scale;
+                        let text_area = egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                        );
+                        ui.put(
+                            text_area,
+                            egui::Label::new(text)
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .sense(egui::Sense::empty()),
+                        );
+                    } else {
+                        let font_id = egui::FontId::new(26.0 * scale, main_font_family.clone());
+                        let text = egui::RichText::new("Disconnect")
+                            .font(font_id)
+                            .color(egui::Color32::WHITE);
+                        let x = beg_x + 88.0 * scale;
+                        let y = beg_y + 12.0 * scale;
+                        let text_area = egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                        );
+                        ui.put(
+                            text_area,
+                            egui::Label::new(text)
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .sense(egui::Sense::empty()),
+                        );
+                    }
 
                     beg_y = end_y + 8.0 * scale;
                 }
@@ -278,18 +325,19 @@ impl GameScene for InGameDominationModeStatusLayer {
                     end_y = beg_y + 64.0 * scale;
 
                     // 배경
+                    let ui_area = egui::Rect::from_min_max(
+                        egui::pos2(beg_x, beg_y),
+                        egui::pos2(end_x, end_y),
+                    );
                     ui.painter().rect(
-                        egui::Rect::from_min_max(
-                            egui::pos2(beg_x, beg_y),
-                            egui::pos2(end_x, end_y),
-                        ),
+                        ui_area,
                         4.0,
                         egui::Color32::from_white_alpha(128),
                         egui::Stroke::new(1.0 * scale, egui::Color32::WHITE),
                         egui::StrokeKind::Middle,
                     );
 
-                    // 캐릭터 아이콘
+                    // 캐릭터 아이콘 배경
                     let i = data.character_kind as usize;
                     let icon = prev_scene
                         .get_ui_texture(CHARACTER_ICON_URIS[i])
@@ -303,9 +351,18 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::pos2(x, y),
                         egui::pos2(x + width, y + height),
                     );
+                    ui.painter().rect(
+                        icon_area,
+                        4.0,
+                        egui::Color32::WHITE,
+                        egui::Stroke::new(2.0 * scale, TEAM_COLOR[data.team as usize]),
+                        egui::StrokeKind::Middle,
+                    );
+
+                    // 캐릭터 아이콘
                     egui::Image::new(icon).paint_at(ui, icon_area);
 
-                    // 플레이어 체력
+                    // 플레이어 체력 배경
                     let percent = data.health_point.percent();
                     let x = beg_x + 88.0 * scale;
                     let y = beg_y + 52.0 * scale;
@@ -319,6 +376,8 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::Stroke::new(1.0 * scale, egui::Color32::BLACK),
                         egui::StrokeKind::Middle,
                     );
+
+                    // 플레이어 체력
                     ui.painter().rect(
                         egui::Rect::from_min_max(
                             egui::pos2(x, y),
@@ -330,23 +389,58 @@ impl GameScene for InGameDominationModeStatusLayer {
                         egui::StrokeKind::Middle,
                     );
 
-                    // 플레이어 닉네임
-                    let font_id = egui::FontId::new(18.0 * scale, main_font_family.clone());
-                    let text = egui::RichText::new(data.account.name.to_string())
-                        .font(font_id)
-                        .color(egui::Color32::DARK_GRAY);
-                    let x = beg_x + 88.0 * scale;
-                    let y = beg_y + 12.0 * scale;
-                    let text_area = egui::Rect::from_min_max(
-                        egui::pos2(x, y),
-                        egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                    // 색상 데이터
+                    let fill_color = match data.connected {
+                        true => match data.alive {
+                            true => egui::Color32::TRANSPARENT,
+                            false => egui::Color32::from_black_alpha(96),
+                        },
+                        false => egui::Color32::from_black_alpha(160),
+                    };
+                    ui.painter().rect(
+                        ui_area,
+                        4.0,
+                        fill_color,
+                        egui::Stroke::new(1.0 * scale, fill_color),
+                        egui::StrokeKind::Middle,
                     );
-                    ui.put(
-                        text_area,
-                        egui::Label::new(text)
-                            .wrap_mode(egui::TextWrapMode::Truncate)
-                            .sense(egui::Sense::empty()),
-                    );
+
+                    if data.connected {
+                        // 플레이어 닉네임
+                        let font_id = egui::FontId::new(18.0 * scale, main_font_family.clone());
+                        let text = egui::RichText::new(data.account.name.to_string())
+                            .font(font_id)
+                            .color(egui::Color32::BLACK);
+                        let x = beg_x + 88.0 * scale;
+                        let y = beg_y + 12.0 * scale;
+                        let text_area = egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                        );
+                        ui.put(
+                            text_area,
+                            egui::Label::new(text)
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .sense(egui::Sense::empty()),
+                        );
+                    } else {
+                        let font_id = egui::FontId::new(26.0 * scale, main_font_family.clone());
+                        let text = egui::RichText::new("Disconnect")
+                            .font(font_id)
+                            .color(egui::Color32::WHITE);
+                        let x = beg_x + 88.0 * scale;
+                        let y = beg_y + 12.0 * scale;
+                        let text_area = egui::Rect::from_min_max(
+                            egui::pos2(x, y),
+                            egui::pos2(x + 250.0 * scale, y + 32.0 * scale),
+                        );
+                        ui.put(
+                            text_area,
+                            egui::Label::new(text)
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .sense(egui::Sense::empty()),
+                        );
+                    }
 
                     beg_y = end_y + 8.0 * scale;
                 }

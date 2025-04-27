@@ -66,6 +66,8 @@ pub const TEAM_COLOR: [egui::Color32; 2] = [
 
 /// 플레이어 데이터입니다.
 pub struct PlayerData {
+    /// 플레이어의 접속 여부입니다.
+    pub connected: bool,
     /// 사용자 계정 데이터입니다.
     pub account: UserAccount,
     /// 플레이어가 속한 팀입니다.
@@ -196,6 +198,8 @@ impl InGameDominationModeScene {
         let world = unsafe { self.world.as_mut().unwrap_unchecked() };
         let mut blue = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
         let mut red = Vec::with_capacity(MAX_IN_GAME_PLAYERS / 2);
+
+        // 현재 접속 중인 플레이어를 대상으로 Blue팀과 Red팀으로 나눈다.
         for entity in self.players.values().cloned() {
             let (&account, &state, &(team, index), &character_kind, &health_point) = world
                 .query_one_mut::<Query>(entity)
@@ -203,6 +207,7 @@ impl InGameDominationModeScene {
 
             if team == Team::Blue {
                 blue.push(PlayerData {
+                    connected: true,
                     account,
                     team,
                     index,
@@ -212,6 +217,36 @@ impl InGameDominationModeScene {
                 });
             } else {
                 red.push(PlayerData {
+                    connected: true,
+                    account,
+                    team,
+                    index,
+                    alive: state != ActionState::Dead,
+                    character_kind,
+                    health_point,
+                });
+            }
+        }
+
+        // 연결이 끊어진 플레이어를 대상으로 Blue팀과 Red팀으로 나눈다.
+        for entity in self.disconnected_players.iter().cloned() {
+            let (&account, &state, &(team, index), &character_kind, &health_point) = world
+                .query_one_mut::<Query>(entity)
+                .expect("invalid entity or invalid entity component");
+
+            if team == Team::Blue {
+                blue.push(PlayerData {
+                    connected: false,
+                    account,
+                    team,
+                    index,
+                    alive: state != ActionState::Dead,
+                    character_kind,
+                    health_point,
+                });
+            } else {
+                red.push(PlayerData {
+                    connected: false,
                     account,
                     team,
                     index,
