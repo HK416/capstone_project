@@ -264,6 +264,12 @@ impl Into<glam::Vec3> for Float3 {
     }
 }
 
+impl Into<glam::Vec3A> for Float3 {
+    fn into(self) -> glam::Vec3A {
+        glam::vec3a(self.x, self.y, self.z)
+    }
+}
+
 /// 4차원 실수형 벡터
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct Float4 {

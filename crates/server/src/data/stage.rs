@@ -2,7 +2,9 @@ use std::{fs::File, io::Read};
 
 use ahash::HashMap;
 use lazy_static::lazy_static;
-use mod_network::components::{NUM_STAGES, StageHeight, StageKind, StageLayoutData};
+use mod_network::components::{
+    LatLon, MAX_IN_GAME_PLAYERS, NUM_STAGES, StageHeight, StageKind, StageLayoutData,
+};
 use mod_physics::collision::ColliderTree;
 
 use super::get_current_path;
@@ -27,18 +29,30 @@ lazy_static! {
 #[derive(Debug, Clone)]
 pub struct StageAttributes {
     /// 지역의 x축 방향 개수입니다.
-    num_width: usize,
+    pub num_width: usize,
     /// 지역의 z축 방향 개수입니다.
-    num_depth: usize,
+    pub num_depth: usize,
     /// 게임 스테이지의 크기입니다.
-    size: glam::Vec2,
+    pub size: glam::Vec2,
     /// 지역의 크기입니다.
-    area_size: glam::Vec2,
+    pub area_size: glam::Vec2,
     /// 게임 월드 스테이지를 구성하는 각 지역 데이터입니다.   
     /// 인덱스 기반으로 접근하여 높이 값을 가져옵니다.
-    area: Vec<Vec<Option<Area>>>,
+    pub area: Vec<Vec<Option<Area>>>,
     /// 게임 월드 스테이지를 구성하는 충돌체 데이터입니다.
-    colliders: ColliderTree,
+    pub colliders: ColliderTree,
+    /// 블루 팀 스폰 데이터입니다.
+    pub blue_team_spawn: Spawn,
+    /// 레드 팀 스폰 데이터입니다.
+    pub red_team_spawn: Spawn,
+}
+
+/// 지형의 스폰 데이터입니다.
+#[derive(Debug, Clone)]
+pub struct Spawn {
+    pub pos: [glam::Vec3A; MAX_IN_GAME_PLAYERS / 2],
+    pub dir: glam::Quat,
+    pub view_dir: LatLon,
 }
 
 #[derive(Debug, Clone)]
@@ -56,7 +70,7 @@ pub fn init_stage_attributes() {
 }
 
 /// 주어진 스테이지 종류에 대한 스테이지 속성 데이터를 가져옵니다.
-fn get_stage_attributes(kind: StageKind) -> &'static StageAttributes {
+pub fn get_stage_attributes(kind: StageKind) -> &'static StageAttributes {
     STAGE_ATTRIBUTES.get(&kind).unwrap()
 }
 
@@ -121,6 +135,38 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         }
     }
 
+    // 블루 팀 스폰 데이터를 생성합니다.
+    let pos: [glam::Vec3A; MAX_IN_GAME_PLAYERS / 2] = stage_layout
+        .blue_spawn_pos
+        .iter()
+        .copied()
+        .map(|v| v.into())
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("스폰 위치 데이터가 잘못되었습니다!");
+    let dir: glam::Quat = stage_layout.blue_spawn_dir.into();
+    let view_dir = LatLon {
+        lat: 10f32.to_radians(),
+        lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
+    };
+    let blue_team_spawn = Spawn { pos, dir, view_dir };
+
+    // 레드 팀 스폰 데이터를 생성합니다.
+    let pos: [glam::Vec3A; MAX_IN_GAME_PLAYERS / 2] = stage_layout
+        .red_spawn_pos
+        .iter()
+        .copied()
+        .map(|v| v.into())
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("스폰 위치 데이터가 잘못되었습니다!");
+    let dir: glam::Quat = stage_layout.red_spawn_dir.into();
+    let view_dir = LatLon {
+        lat: 10f32.to_radians(),
+        lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
+    };
+    let red_team_spawn = Spawn { pos, dir, view_dir };
+
     let path = format!("{}/collider.json", workspace);
     let mut file = File::open(&path)
         .map_err(|e| log::error!("failed to open file. (PATH:{}, REASON:{})", &path, &e))
@@ -142,6 +188,8 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         area_size: stage_layout.area_size.into(),
         area,
         colliders,
+        blue_team_spawn,
+        red_team_spawn,
     }
 }
 

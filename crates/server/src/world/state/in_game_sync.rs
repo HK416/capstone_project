@@ -7,6 +7,7 @@ use mod_network::{
 };
 
 use crate::{
+    data::get_stage_attributes,
     session::{Session, SessionEvents},
     world::{GameWorld, GameWorldEvent},
 };
@@ -80,20 +81,12 @@ impl GameWorldInGameSyncState {
 
 impl GameWorldState for GameWorldInGameSyncState {
     fn on_enter(&mut self, world: &Arc<GameWorld>) {
-        let mut red_team_spawn_pos = vec![
-            (4, glam::vec3a(-27.0, 0.0, -33.0)),
-            (3, glam::vec3a(-33.0, 0.0, -33.0)),
-            (2, glam::vec3a(-28.5, 0.0, -33.0)),
-            (1, glam::vec3a(-31.5, 0.0, -33.0)),
-            (0, glam::vec3a(-30.0, 0.0, -33.0)),
-        ];
-        let mut blue_team_spawn_pos = vec![
-            (4, glam::vec3a(27.0, 0.0, 33.0)),
-            (3, glam::vec3a(33.0, 0.0, 33.0)),
-            (2, glam::vec3a(28.5, 0.0, 33.0)),
-            (1, glam::vec3a(31.5, 0.0, 33.0)),
-            (0, glam::vec3a(30.0, 0.0, 33.0)),
-        ];
+        // 스테이지 속성 데이터에서 스폰 위치 데이터를 가져옵니다.
+        let attributes = get_stage_attributes(self.stage_kind);
+        let blue_team_spawn = &attributes.blue_team_spawn;
+        let red_team_spawn = &attributes.red_team_spawn;
+        let mut blue_team_count = 0;
+        let mut red_team_count = 0;
 
         for mut player in world.players.iter_mut() {
             // 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
@@ -102,37 +95,35 @@ impl GameWorldState for GameWorldInGameSyncState {
             // 팀에 따라 적절한 스폰 위치에 스폰될 수 있도록 플레이어 위치와 방향을 초기화합니다.
             let team = player.team();
             let user_id = player.account().uid;
-            let ((index, position), direction, view_rotation) = match team {
-                Team::Red => (
-                    red_team_spawn_pos
-                        .pop()
-                        .unwrap_or((0, glam::vec3a(-30.0, 0.0, -33.0))),
-                    glam::quat(0.0, 0.0, 0.0, 1.0),
-                    LatLon {
-                        lon: 0f32.to_radians(),
-                        lat: 10f32.to_radians(),
-                    },
-                ),
-                Team::Blue => (
-                    blue_team_spawn_pos
-                        .pop()
-                        .unwrap_or((0, glam::vec3a(30.0, 0.0, 33.0))),
-                    glam::quat(0.0, 1.0, 0.0, 0.0),
-                    LatLon {
-                        lon: 180f32.to_radians(),
-                        lat: 10f32.to_radians(),
-                    },
-                ),
+            let (index, position, direction, view_rotation) = match team {
+                Team::Blue => {
+                    let index = blue_team_count;
+                    let pos = blue_team_spawn.pos[index];
+                    let dir = blue_team_spawn.dir;
+                    let view_dir = blue_team_spawn.view_dir;
+                    blue_team_count += 1;
+
+                    (index, pos, dir, view_dir)
+                }
+                Team::Red => {
+                    let index = red_team_count;
+                    let pos = red_team_spawn.pos[index];
+                    let dir = red_team_spawn.dir;
+                    let view_dir = red_team_spawn.view_dir;
+                    red_team_count += 1;
+
+                    (index, pos, dir, view_dir)
+                }
             };
 
             self.spawn_positions
                 .insert(user_id, (position, direction, view_rotation));
+            player.reset_state();
             player
                 .with_index(index)
                 .with_translation(position)
                 .with_rotation(direction)
                 .with_view_rotation(view_rotation);
-            player.reset_state();
         }
 
         // 각 세션에 스테이지 초기화 패킷을 전송합니다.
