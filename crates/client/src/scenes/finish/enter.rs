@@ -46,7 +46,7 @@ pub struct InGameResultEnterScene {
     ///엔터티를 관리하는 월드 객체입니다.
     world: Option<World>,
     /// 스카이박스입니다.
-    skybox: Arc<Skybox>,
+    skybox: Option<Skybox>,
     /// 게임 결과 장면의 메인 카메라 엔터티입니다.
     main_camera: Entity,
     /// 플레이어 엔터티 집합입니다.
@@ -81,7 +81,7 @@ impl InGameResultEnterScene {
         winner: Team,
         stage_kind: StageKind,
         world: World,
-        skybox: Arc<Skybox>,
+        skybox: Skybox,
         players: HashMap<UserId, Entity>,
         play_data: Vec<FinishPhasePlayer>,
         stages: Vec<Entity>,
@@ -96,7 +96,7 @@ impl InGameResultEnterScene {
             remaining_time_sec: MAX_SCENE_DURATION,
             stage_kind,
             world: Some(world),
-            skybox,
+            skybox: Some(skybox),
             main_camera: Entity::DANGLING,
             players,
             play_data,
@@ -810,6 +810,7 @@ impl GameScene for InGameResultEnterScene {
         //     .alpha_blend_resource
         //     .as_ref()
         //     .expect("the alpha blend shader resource must exist!");
+        let skybox = self.skybox.as_ref().unwrap();
 
         encoder.push_debug_group("opaque pass");
         {
@@ -856,7 +857,7 @@ impl GameScene for InGameResultEnterScene {
             }
 
             Self::clear_render_target_with_skybox(
-                &self.skybox,
+                skybox,
                 SkyboxRenderPipeline::get().unwrap(),
                 &mut rpass,
             );

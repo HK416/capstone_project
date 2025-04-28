@@ -19,21 +19,45 @@ use super::{SessionState, SessionStateFlow, in_game_sync::SessionInGameSyncState
 pub struct SessionFormationState {
     /// 세션 상태 실행 여부
     is_running: bool,
-
     /// 사용자 계정 데이터
-    account: UserAccount,
+    account: Option<UserAccount>,
     /// 연결된 게임 월드
-    world: Weak<GameWorld>,
+    world: Option<Weak<GameWorld>>,
 }
 
 impl SessionFormationState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(account: UserAccount, world: &Weak<GameWorld>) -> Self {
+    pub fn new(account: UserAccount, world: Weak<GameWorld>) -> Self {
         Self {
             is_running: true,
-            account,
-            world: world.clone(),
+            account: Some(account),
+            world: Some(world),
         }
+    }
+}
+
+//--------------------------------------------------------------------------------------------
+// 처리와 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl SessionFormationState {
+    /// `EnterInGameSync`이벤트를 처리합니다.
+    fn handle_enter_in_game_sync_event(&mut self, session: &Arc<Session>) {
+        // 다음 세션 상태로 전환합니다.
+        self.is_running = false;
+        let account = self.account.take().unwrap();
+        let world = self.world.take().unwrap();
+        let next_state = Box::new(SessionInGameSyncState::new(account, world));
+        let control_flow = SessionStateFlow::Change(next_state);
+        let event = SessionEvents::SetControlFlow(control_flow);
+        session.push_event(event);
+    }
+
+    fn handle_exit_formation_event(&mut self, session: &Arc<Session>) {
+        // 다음 세션 상태로 전환합니다.
+        self.is_running = false;
+        let control_flow = SessionStateFlow::Pop;
+        let event = SessionEvents::SetControlFlow(control_flow);
+        session.push_event(event);
     }
 
     /// `FormationSelectPacket`을 처리합니다.
@@ -58,7 +82,8 @@ impl SessionFormationState {
         }
 
         // 커스텀 게임 대기실 객체를 가져옵니다.
-        if let Some(world) = self.world.upgrade() {
+        let world = self.world.as_ref().unwrap();
+        if let Some(world) = world.upgrade() {
             // 캐릭터 선택 이벤트를 추가합니다.
             let event = GameWorldEvent::SelectCharacter {
                 session: session.clone(),
@@ -76,20 +101,17 @@ impl SessionFormationState {
 
 impl SessionState for SessionFormationState {
     fn handle_event(&mut self, event: SessionEvents, session: &Arc<Session>) {
+        // 세션 상태가 실행 중이 아닌 경우 함수 실행을 생략합니다.
+        if !self.is_running {
+            return;
+        }
+
         match event {
             SessionEvents::EnterInGameSync => {
-                // 다음 세션 상태로 전환합니다.
-                self.is_running = false;
-                let next_state = Box::new(SessionInGameSyncState::new(self.account, &self.world));
-                let control_flow = SessionStateFlow::Push(next_state);
-                let event = SessionEvents::SetControlFlow(control_flow);
-                session.push_event(event);
+                self.handle_enter_in_game_sync_event(session);
             }
             SessionEvents::ExitFormation => {
-                // 다음 세션 상태로 전환합니다.
-                let control_flow = SessionStateFlow::Pop;
-                let event = SessionEvents::SetControlFlow(control_flow);
-                session.push_event(event);
+                self.handle_exit_formation_event(session);
             }
             _ => {
                 log::warn!(

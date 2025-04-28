@@ -121,7 +121,8 @@ impl SessionState for SessionRoomState {
             SessionEvents::EnterFormation => {
                 // 다음 세션 상태로 전환합니다.
                 self.is_running = false;
-                let next_state = Box::new(SessionFormationState::new(self.account, &self.world));
+                let next_state =
+                    Box::new(SessionFormationState::new(self.account, self.world.clone()));
                 let control_flow = SessionStateFlow::Push(next_state);
                 let event = SessionEvents::SetControlFlow(control_flow);
                 session.push_event(event);

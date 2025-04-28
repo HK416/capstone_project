@@ -43,7 +43,8 @@ pub enum PacketType {
     FormationPull = 34,
     GamePlayStop = 35,
 
-    EnterStage = 48,
+    /// 게임 시작 전에 대기 상태에서 서버에서 클라이언트로 전송되는 패킷
+    PrepareStage = 48,
     InitStage = 49,
     PullStage = 50,
     PushStatus = 51,
@@ -94,7 +95,7 @@ impl TryFromBigEndian for PacketType {
             33 => Some(PacketType::FormationSelectResponse),
             34 => Some(PacketType::FormationPull),
             35 => Some(PacketType::GamePlayStop),
-            48 => Some(PacketType::EnterStage),
+            48 => Some(PacketType::PrepareStage),
             49 => Some(PacketType::InitStage),
             50 => Some(PacketType::PullStage),
             51 => Some(PacketType::PushStatus),

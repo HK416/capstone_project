@@ -13,7 +13,7 @@ use mod_app::{
 };
 use mod_network::{
     components::{LoginToken, StageLayoutData, UserId},
-    protocol::{InitStagePacket, Packet, PacketType, PullStagePacket, PushSyncPacket, RawPacket},
+    protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use spin::mutex::SpinMutex;
@@ -35,7 +35,7 @@ use crate::{
     PACKET_DELAY, SERVER_TCP_ADDR,
 };
 
-use super::InGameDominationModeScene;
+use super::InGameDominationModePrepareScene;
 
 /// 애플리케이션 표시 언어에 따른 로드 텍스트
 const LOAD_TEXTS: [&'static str; NUM_LOCALE] = ["Now Loading"];
@@ -62,7 +62,7 @@ pub struct InGameBuildScene {
     load_finished: bool,
     /// 다음 장면입니다.  
     /// 모든 작업이 완료되지 않았을 경우 `None`입니다.
-    next_scene: Arc<SpinMutex<Option<Box<InGameDominationModeScene>>>>,
+    next_scene: Arc<SpinMutex<Option<Box<InGameDominationModePrepareScene>>>>,
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
@@ -516,7 +516,7 @@ impl InGameBuildScene {
                 // 렌더링 명령어를 전송합니다.
                 commands.push((encoder.finish(), staging_buffers));
 
-                Arc::new(skybox)
+                skybox
             };
 
             // 엔터티 생성 명령어를 실행합니다.
@@ -541,7 +541,7 @@ impl InGameBuildScene {
             }
 
             // 다음 게임 장면을 생성합니다.
-            let next_scene = InGameDominationModeScene::new(
+            let next_scene = InGameDominationModePrepareScene::new(
                 locale,
                 user_id,
                 token,
@@ -606,12 +606,9 @@ impl GameScene for InGameBuildScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::PullStage => {
-                let packet = PullStagePacket::from_raw(packet);
-
+            PacketType::PrepareStage | PacketType::PullStage => {
                 // 다음 게임 장면으로 전환합니다.
-                if let Some(mut next_scene) = self.next_scene.lock().take() {
-                    next_scene.setup_progress(packet.capture_point, packet.remaining_time_sec);
+                if let Some(next_scene) = self.next_scene.lock().take() {
                     let scene_flow = GameSceneFlow::Change(next_scene);
                     let event = AppEvent::SetGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();

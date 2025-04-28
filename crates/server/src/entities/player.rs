@@ -309,6 +309,12 @@ impl PlayerObject {
         self.direction = v.with_y(0.0).normalize_or(glam::Vec3A::Z);
     }
 
+    /// 플레이어 행동 상태를 재설정합니다.
+    pub fn reset_action_state(&mut self, state: ActionState) {
+        self.action_state = state;
+        self.action_state_timer.reset();
+    }
+
     /// 플레이어 행동 상태를 가져옵니다.
     pub fn action_state(&self) -> ActionState {
         self.action_state

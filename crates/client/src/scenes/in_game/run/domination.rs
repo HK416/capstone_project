@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, ptr::NonNull, sync::Arc};
 
-use ahash::{HashMap, HashSet, RandomState};
+use ahash::{HashMap, HashSet};
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -21,7 +21,6 @@ use mod_network::{
     },
 };
 use mod_physics::object3d::Frustum;
-use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -31,8 +30,8 @@ use winit::{
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, CHARACTER_ICON_URIS, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR,
-        SCHALE_ICON_URI, TIMER_ICON_URI, UI_GAME_LAYOUT_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SCHALE_ICON_URI,
+        TIMER_ICON_URI, UI_GAME_LAYOUT_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -114,7 +113,7 @@ pub struct InGameDominationModeScene {
     /// 엔터티를 관리하는 월드 객체입니다.
     world: Option<World>,
     /// 스카이박스입니다.
-    skybox: Arc<Skybox>,
+    skybox: Option<Skybox>,
     /// 메인 카메라 엔터티입니다.
     main_camera: Entity,
     /// 플레이어 엔터티 집합입니다.
@@ -274,9 +273,13 @@ impl InGameDominationModeScene {
         user_id: UserId,
         token: LoginToken,
         world: World,
-        skybox: Arc<Skybox>,
+        skybox: Skybox,
         players: HashMap<UserId, Entity>,
+        disconnected_players: Vec<Entity>,
         stages: Vec<Entity>,
+        shadow_resource: ShadowResource,
+        alpha_blend_resource: WeightedBlendedOITResource,
+        ui_textures: HashMap<String, egui::load::SizedTexture>,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -297,19 +300,19 @@ impl InGameDominationModeScene {
             particle_timer: 0.0,
             capture_point: CapturePoint::default(),
             remaining_time_sec: 0.0,
-            skybox,
+            skybox: Some(skybox),
             world: Some(world),
             main_camera: Entity::DANGLING,
             players,
-            disconnected_players: Vec::with_capacity(MAX_IN_GAME_PLAYERS),
+            disconnected_players,
             bullets: HashMap::default(),
             stages,
             damage_particles: VecDeque::default(),
             move_direction: MoveDirection::default(),
             controller_input_flags: GameInputBits::default(),
-            shadow_resource: None,
-            alpha_blend_resource: None,
-            ui_textures: HashMap::with_capacity_and_hasher(16, RandomState::new()),
+            shadow_resource: Some(shadow_resource),
+            alpha_blend_resource: Some(alpha_blend_resource),
+            ui_textures,
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -357,220 +360,6 @@ impl InGameDominationModeScene {
 
         // 생성된 메인 카메라 엔터티를 저장합니다.
         self.main_camera = world.spawn(builder.build());
-    }
-
-    /// UI에 사용되는 텍스처를 UI렌더러에 등록합니다.
-    fn register_ui_texture(&mut self, device: &wgpu::Device, egui_renderer: &mut UiRenderer) {
-        self.register_bg_layout_texture(device, egui_renderer);
-        self.register_timer_icon_texture(device, egui_renderer);
-        self.register_schale_icon_texture(device, egui_renderer);
-        self.register_character_icon_textures(device, egui_renderer);
-        self.register_player_weapon_icon_texture(device, egui_renderer);
-        self.register_player_weapon_icon_mask_texture(device, egui_renderer);
-    }
-
-    /// UI 배경 레이아웃 텍스처를 UI 렌더러에 등록합니다.
-    fn register_bg_layout_texture(
-        &mut self,
-        device: &wgpu::Device,
-        egui_renderer: &mut UiRenderer,
-    ) {
-        // `UI_Game_Layout` 텍스처를 가져옵니다.
-        let texture = self
-            .texture_pool
-            .get(UI_GAME_LAYOUT_URI)
-            .expect("UI_Game_Layout texture must be preloaded!");
-        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-        // 텍스처 뷰를 생성합니다.
-        let texture = self
-            .texture_view_pool
-            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-        // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id =
-            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
-
-        self.ui_textures.insert(
-            UI_GAME_LAYOUT_URI.into(),
-            egui::load::SizedTexture {
-                id: texture_id,
-                size: texture_size,
-            },
-        );
-    }
-
-    /// 타이머 아이콘 텍스처를 UI 렌더러에 등록합니다.
-    fn register_timer_icon_texture(
-        &mut self,
-        device: &wgpu::Device,
-        egui_renderer: &mut UiRenderer,
-    ) {
-        // `Timer_Icon` 텍스처를 가져옵니다.
-        let texture = self
-            .texture_pool
-            .get(TIMER_ICON_URI)
-            .expect("Timer_Icon texture must be preloaded!");
-        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-        // 텍스처 뷰를 생성합니다.
-        let texture: Arc<wgpu::TextureView> = self
-            .texture_view_pool
-            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-        // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id =
-            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
-
-        self.ui_textures.insert(
-            TIMER_ICON_URI.into(),
-            egui::load::SizedTexture {
-                id: texture_id,
-                size: texture_size,
-            },
-        );
-    }
-
-    /// Schale 아이콘 텍스처를 UI 렌더러에 등록합니다.
-    fn register_schale_icon_texture(
-        &mut self,
-        device: &wgpu::Device,
-        egui_renderer: &mut UiRenderer,
-    ) {
-        // `Schale_Icon` 텍스처를 가져옵니다.
-        let texture = self
-            .texture_pool
-            .get(SCHALE_ICON_URI)
-            .expect("Schale_Icon texture must be preloaded!");
-        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-        // 텍스처 뷰를 생성합니다.
-        let texture = self
-            .texture_view_pool
-            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-        // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id =
-            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
-
-        self.ui_textures.insert(
-            SCHALE_ICON_URI.into(),
-            egui::load::SizedTexture {
-                id: texture_id,
-                size: texture_size,
-            },
-        );
-    }
-
-    /// 캐릭터 아이콘 텍스처를 UI 렌더러에 등록합니다.
-    fn register_character_icon_textures(
-        &mut self,
-        device: &wgpu::Device,
-        egui_renderer: &mut UiRenderer,
-    ) {
-        for uri in CHARACTER_ICON_URIS {
-            // 캐릭터 이미지 텍스처를 가져옵니다.
-            let result = self.texture_pool.get(uri);
-
-            let texture = match result {
-                Some(texture) => texture,
-                None => continue,
-            };
-            let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-            // 텍스처 뷰를 생성합니다.
-            let texture = self
-                .texture_view_pool
-                .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-            // egui 렌더러에 텍스처를 등록합니다.
-            let texture_id =
-                egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
-
-            self.ui_textures.insert(
-                uri.into(),
-                egui::load::SizedTexture {
-                    id: texture_id,
-                    size: texture_size,
-                },
-            );
-        }
-    }
-
-    /// 플레이어 무기 아이콘 텍스처를 UI 렌더러에 등록합니다.
-    fn register_player_weapon_icon_texture(
-        &mut self,
-        device: &wgpu::Device,
-        egui_renderer: &mut UiRenderer,
-    ) {
-        // 플레이어 캐릭터 무기 아이콘 텍스처를 가져옵니다.
-        let texture = self
-            .texture_pool
-            .get(WEAPON_ICON_URI)
-            .expect("the Weapon Icon texture must be preloaded!");
-        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-        // 텍스처 뷰를 생성합니다.
-        let texture = self
-            .texture_view_pool
-            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-        // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id =
-            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
-
-        self.ui_textures.insert(
-            WEAPON_ICON_URI.into(),
-            egui::load::SizedTexture {
-                id: texture_id,
-                size: texture_size,
-            },
-        );
-    }
-
-    /// 플레이어 무기 아이콘 마스킹 텍스처를 UI 렌더러에 등록합니다.
-    fn register_player_weapon_icon_mask_texture(
-        &mut self,
-        device: &wgpu::Device,
-        egui_renderer: &mut UiRenderer,
-    ) {
-        // 플레이어 캐릭터 무기 아이콘 마스킹 텍스처를 가져옵니다.
-        let texture = self
-            .texture_pool
-            .get(WEAPON_ICON_MASK_URI)
-            .expect("the Weapon Icon texture must be preloaded!");
-        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-        // 텍스처 뷰를 생성합니다.
-        let texture = self
-            .texture_view_pool
-            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-        // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id =
-            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
-
-        self.ui_textures.insert(
-            WEAPON_ICON_MASK_URI.into(),
-            egui::load::SizedTexture {
-                id: texture_id,
-                size: texture_size,
-            },
-        );
-    }
-
-    /// 그림자 쉐이더 리소스를 생성합니다.
-    fn create_shadow_resource(&mut self, device: &wgpu::Device) {
-        let resource =
-            ShadowResource::new(1024, 1024, 1, device, wgpu::TextureFormat::Depth32Float);
-        self.shadow_resource = resource.into();
-    }
-
-    /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
-    fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
-        let (width, height): (u32, u32) = window.inner_size().into();
-        let resource = WeightedBlendedOITResource::new(width, height, device);
-        self.alpha_blend_resource = resource.into();
     }
 
     /// 데미지 파티클을 생성합니다.
@@ -1165,7 +954,7 @@ impl InGameDominationModeScene {
 //--------------------------------------------------------------------------------------------
 impl InGameDominationModeScene {
     /// 카메라 쉐이더 리소스를 갱신합니다.
-    fn update_camera_resource(
+    fn update_camera_and_skybox_resource(
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
@@ -1210,7 +999,8 @@ impl InGameDominationModeScene {
         *frustum = Frustum::from_mat4(proj_view);
 
         // 스카이박스 데이터 유니폼 버퍼를 갱신합니다.
-        self.skybox.uniform.update(
+        let skybox = self.skybox.as_ref().unwrap();
+        skybox.uniform.update(
             device,
             encoder,
             staging_buffers,
@@ -2710,16 +2500,22 @@ impl InGameDominationModeScene {
 //--------------------------------------------------------------------------------------------
 
 impl GameScene for InGameDominationModeScene {
-    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
-        self.disable_cursor(window);
-
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         let device = app.render_device();
-        let mut egui_renderer = app.egui_renderer_mut();
-        self.register_ui_texture(&device, &mut egui_renderer);
         self.create_main_camera(&device);
-        self.create_shadow_resource(&device);
-        self.create_alpha_blend_resource(window, &device);
         self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
+    }
+
+    fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
+        if let Some(window) = app.window() {
+            self.disable_cursor(window);
+        }
+    }
+
+    fn on_enter_background(&mut self, app: &dyn AppHandle) {
+        if let Some(window) = app.window() {
+            self.enable_cursor(window);
+        }
     }
 
     fn on_exit(&mut self, window: Option<&Window>, _app: &dyn AppHandle) {
@@ -2930,10 +2726,12 @@ impl GameScene for InGameDominationModeScene {
             }
             PacketType::FinishStage => {
                 let packet = FinishStagePacket::from_raw(packet);
-                // Safe: 게임 월드가 없는 경우 갱신되거나 렌더링되지 않음.
-                let world = unsafe { self.world.take().unwrap_unchecked() };
 
                 // 다음 게임 장면으로 전환합니다.
+                let world = self.world.take().unwrap();
+                let skybox = self.skybox.take().unwrap();
+                let players = self.players.to_owned();
+                let stages = self.stages.to_owned();
                 let next_scene = InGameResultEnterScene::new(
                     self.locale,
                     self.user_id,
@@ -2941,10 +2739,10 @@ impl GameScene for InGameDominationModeScene {
                     packet.winner_team(),
                     packet.stage_kind(),
                     world,
-                    self.skybox.clone(),
-                    self.players.clone(),
+                    skybox,
+                    players,
                     packet.players,
-                    self.stages.clone(),
+                    stages,
                     self.ui_textures.clone(),
                     self.motion_pool.clone(),
                 );
@@ -2999,7 +2797,7 @@ impl GameScene for InGameDominationModeScene {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         // 카메라 쉐이더 리소스를 갱신합니다.
-        self.update_camera_resource(device, &mut encoder, &mut staging_buffers);
+        self.update_camera_and_skybox_resource(device, &mut encoder, &mut staging_buffers);
         // 데미지 파티클 쉐이더 리소스를 갱신합니다.
         self.update_damage_particle_resources(device, &mut encoder, &mut staging_buffers);
 
@@ -3007,9 +2805,7 @@ impl GameScene for InGameDominationModeScene {
         let mut opaque_map = HashMap::default();
         let mut transparent_map = HashMap::default();
 
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let world = unsafe { self.world.as_ref().unwrap_unchecked() };
-
+        let world = self.world.as_ref().unwrap();
         let child_view = &world.view::<&Child>();
         let sibling_view = &world.view::<&Sibling>();
         let transform_view = &world.view::<&WorldTransform>();
@@ -3097,20 +2893,16 @@ impl GameScene for InGameDominationModeScene {
             return;
         }
 
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
-
         // 카메라 쉐이더 리소스를 가져옵니다.
+        let world = self.world.as_mut().unwrap();
         let camera_resource = world
             .query_one_mut::<&CameraResource>(self.main_camera)
             .cloned()
             .expect("invalid entity or invalid entity component");
 
         // Weighted Blended OIT 쉐이더 리소스를 가져옵니다.
-        let alpha_blend_resource = self
-            .alpha_blend_resource
-            .as_ref()
-            .expect("the alpha blend shader resource must exist!");
+        let alpha_blend_resource = self.alpha_blend_resource.as_ref().unwrap();
+        let skybox = self.skybox.as_ref().unwrap();
 
         encoder.push_debug_group("opaque pass");
         {
@@ -3167,7 +2959,7 @@ impl GameScene for InGameDominationModeScene {
             );
 
             Self::clear_render_target_with_skybox(
-                &self.skybox,
+                skybox,
                 SkyboxRenderPipeline::get().unwrap(),
                 &mut rpass,
             );

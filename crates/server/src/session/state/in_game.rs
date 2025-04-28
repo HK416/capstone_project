@@ -15,21 +15,19 @@ use super::SessionState;
 pub struct SessionInGameState {
     /// 세션 상태 실행 여부
     is_running: bool,
-
     /// 사용자 계정 데이터
-    #[allow(dead_code)]
-    account: UserAccount,
+    account: Option<UserAccount>,
     /// 연결된 게임 월드
-    world: Weak<GameWorld>,
+    world: Option<Weak<GameWorld>>,
 }
 
 impl SessionInGameState {
     /// 샤로운 인게임 상태를 생성합니다.
-    pub fn new(account: UserAccount, world: &Weak<GameWorld>) -> Self {
+    pub fn new(account: UserAccount, world: Weak<GameWorld>) -> Self {
         Self {
             is_running: true,
-            account,
-            world: world.clone(),
+            account: Some(account),
+            world: Some(world),
         }
     }
 
@@ -54,7 +52,8 @@ impl SessionInGameState {
             return;
         }
 
-        if let Some(world) = self.world.upgrade() {
+        let world = self.world.as_ref().unwrap();
+        if let Some(world) = world.upgrade() {
             if !world.access_mut(session, |player| {
                 player.set_rotation(packet.rotation);
                 player.set_direction(packet.direction);
@@ -98,8 +97,6 @@ impl SessionState for SessionInGameState {
                         &self,
                         &packet
                     );
-                    session.close();
-                    return;
                 }
             };
         }

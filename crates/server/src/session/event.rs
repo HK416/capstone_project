@@ -10,6 +10,8 @@ pub enum SessionEvents {
     ExitFormation,
     /// 인게임 동기화 상태에 진입합니다.
     EnterInGameSync,
-    /// 인게임 상태에 진입합니다.
-    EnterInGame,
+    /// 게임 시작을 준비합니다.
+    PrepareGame,
+    /// 게임을 시작합니다.
+    StartGamePlay,
 }
