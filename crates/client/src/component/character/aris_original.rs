@@ -21,7 +21,8 @@ use crate::{
         TransformUniform, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
         ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX,
         MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX,
-        MOVING_ANIMATION_SUFFIX, RELOAD_ANIMATION_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
+        MOVING_ANIMATION_SUFFIX, NORMAL_CALLSIGN_SUFFIX, RELOAD_ANIMATION_SUFFIX,
+        VITAL_DEATH_ANIMATION_SUFFIX,
     },
 };
 
@@ -48,6 +49,8 @@ pub const NORMAL_ATTACK_ING_DURATION: f32 = 2.667;
 pub const VITAL_DEATH_DURATION: f32 = 1.8;
 /// 캐릭터 모델의 Reload 애니메이션 길이입니다.
 pub const NORMAL_RELOAD_DURATION: f32 = 2.0;
+/// 캐릭터 모델의 Callsign 애니메이션 길이입니다.
+pub const NORMAL_CALLSIGN_DURATION: f32 = 1.5;
 
 /// 캐릭터 모델의 카메라 기본 위치입니다.
 pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
@@ -189,6 +192,8 @@ const ATTACK_END_ANIMATION: &'static str = concat!(MODEL_NAME, ATTACK_END_ANIMAT
 const VITAL_DEATH_ANIMATION: &'static str = concat!(MODEL_NAME, VITAL_DEATH_ANIMATION_SUFFIX);
 /// 캐릭터의 Reload 애니메이션 이름입니다.
 const NORMAL_RELOAD_ANIMATION: &'static str = concat!(MODEL_NAME, RELOAD_ANIMATION_SUFFIX);
+/// 캐릭터의 Callsign 애니메이션 이름입니다.
+const NORMAL_CALLSIGN_ANIMATION: &'static str = concat!(MODEL_NAME, NORMAL_CALLSIGN_SUFFIX);
 
 /// 캐릭터 모델을 구성하는 엔터티를 생성합니다.
 ///
@@ -837,6 +842,16 @@ pub fn animate_character(
             animate_character_when_reload_landing,      // `MovementState::InPlaceLanding
             animate_character_when_reload_move_jumping, // `MovementState::MovingJumping
             animate_character_when_reload_move_landing, // `MovementState::MovingLanding
+        ],
+        // `AcstionState::Callsign`
+        [
+            animate_character_when_callsign, // `MovementState::Idle
+            animate_character_when_callsign, // `MovementState::Moving
+            animate_character_when_callsign, // `MovementState::MoveToEnd
+            animate_character_when_callsign, // `MovementState::InPlaceJumping
+            animate_character_when_callsign, // `MovementState::InPlaceLanding
+            animate_character_when_callsign, // `MovementState::MovingJumping
+            animate_character_when_callsign, // `MovementState::MovingLanding
         ],
     ];
 
@@ -3564,6 +3579,64 @@ fn animate_character_when_reload_move_landing(
     moving_landing_anime(skinning_animation, transform_view);
 }
 
+/// `ActionState::Callsign`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_callsign(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Callsign` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_CALLSIGN_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0 % NORMAL_CALLSIGN_DURATION;
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+}
+
 /// 캐릭터가 카메라가 바라보는 방향을 바라보도록 로컬 변환 행렬을 수정합니다.
 fn look_to_camera_direction(
     offset: f32,
@@ -3708,6 +3781,7 @@ pub fn update_third_person_camera_when_idle(
         non_camera_effect,
         non_camera_effect,
         non_camera_effect,
+        non_camera_effect,
     ];
 
     let i = action_state as usize;
@@ -3751,6 +3825,7 @@ pub fn update_third_person_camera_when_zoom_in(
         non_camera_effect,
         non_camera_effect,
         apply_camera_effect_when_attack,
+        non_camera_effect,
         non_camera_effect,
         non_camera_effect,
         non_camera_effect,
@@ -3802,6 +3877,7 @@ pub fn update_third_person_camera_when_zoom_out(
         non_camera_effect,
         non_camera_effect,
         non_camera_effect,
+        non_camera_effect,
     ];
 
     let i = action_state as usize;
@@ -3840,6 +3916,7 @@ pub fn update_third_person_camera_when_aiming(
         non_camera_effect,
         non_camera_effect,
         apply_camera_effect_when_attack,
+        non_camera_effect,
         non_camera_effect,
         non_camera_effect,
         non_camera_effect,

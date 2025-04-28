@@ -114,7 +114,7 @@ impl GameWorldInGameSyncState {
 
             spawn_positions.insert(user_id, (position, direction, view_rotation));
             player.reset_state();
-            player.reset_action_state(ActionState::Idle);
+            player.reset_action_state(ActionState::Callsign);
             player
                 .with_index(index)
                 .with_translation(position)

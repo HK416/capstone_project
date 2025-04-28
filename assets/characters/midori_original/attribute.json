@@ -38,6 +38,7 @@
     "normal_attack_start_duration": 0.433,
     "normal_attack_end_duration": 0.533,
     "normal_attack_ing_duration": 1.5,
+    "normal_callsign_duration": 1.5,
     "normal_attack_timing": [0.9],
     "normal_attack_count": 1,
     "max_bullets": 8,

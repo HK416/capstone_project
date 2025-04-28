@@ -190,6 +190,7 @@ pub fn update_character_direction(
             set_character_direction_to_none,                // ActionState::Reload
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
         ],
         // `MovementState::Moving`
         [
@@ -202,6 +203,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Reload
             set_character_direction_to_camera,   // ActionState::Skill
             set_character_direction_to_camera,   // ActionState::ExSkill
+            set_character_direction_to_none,     // ActionState::Callsign
         ],
         // `MovementState::MoveToEnd`
         [
@@ -214,6 +216,7 @@ pub fn update_character_direction(
             set_character_direction_to_none,                // ActionState::Reload
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
         ],
         // `MovementState::InPlaceJumping`
         [
@@ -226,6 +229,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Reload
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
         ],
         // `MovementState::InPlaceLanding`
         [
@@ -238,6 +242,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Reload
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
         ],
         // `MovementState::MovingJumping`
         [
@@ -250,6 +255,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Reload
             set_character_direction_to_camera,   // ActionState::Skill
             set_character_direction_to_camera,   // ActionState::ExSkill
+            set_character_direction_to_none,     // ActionState::Callsign
         ],
         // `MovementState::MovingLanding`
         [
@@ -262,6 +268,7 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Reload
             set_character_direction_to_camera,   // ActionState::Skill
             set_character_direction_to_camera,   // ActionState::ExSkill
+            set_character_direction_to_none,     // ActionState::Callsign
         ],
     ];
 

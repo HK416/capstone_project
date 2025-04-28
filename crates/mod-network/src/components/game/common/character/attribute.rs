@@ -35,6 +35,8 @@ pub struct CharacterAttributes {
     pub normal_attack_end_duration: f32,
     /// `ActionState::Attack` 애니메이션 시간 (단위: 초)
     pub normal_attack_ing_duration: f32,
+    /// `AcstionState::Callsign` 애니메이션 시간 (단위: 초)
+    pub normal_callsign_duration: f32,
     /// 일반 공격 총알 발사 시간 (단위: 초)
     pub normal_attack_timing: Vec<f32>,
     /// 일반 공격 총알 발사 수
