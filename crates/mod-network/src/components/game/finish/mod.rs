@@ -2,5 +2,6 @@
 //!
 
 mod player;
+mod victory;
 
-pub use self::player::*;
+pub use self::{player::*, victory::*};

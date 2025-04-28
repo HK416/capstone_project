@@ -5,11 +5,17 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
-use mod_app::{app::AppHandle, scene::GameScene};
+use mod_app::{
+    app::AppHandle,
+    etc::AppEvent,
+    net::NetworkError,
+    scene::{GameScene, GameSceneFlow},
+};
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, FinishPhasePlayer, LatLon, LoginToken,
-    MovementState, MovementStateTimer, StageKind, Team, UserId, MAX_IN_GAME_PLAYERS,
+    MovementState, MovementStateTimer, StageKind, Team, UserId, VictoryType, MAX_IN_GAME_PLAYERS,
 };
+use mod_physics::object3d::Frustum;
 use winit::window::Window;
 
 use crate::{
@@ -18,11 +24,14 @@ use crate::{
         animate_character, set_weapon_position, update_entity_hierarchy, AttributeKind,
         BoneCollection, CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline,
         Child, EyeMouthRenderPipeline, HaloRenderPipeline, MaterialKind, MaterialResource, Mesh,
-        MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxRenderPipeline, StageRenderPipeline, ToParentTrans,
-        TransformDataLayout, WorldTransform, NUM_CUBE_VERTICES, RESET_POSITIONS, RESET_ROTATION,
+        MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap, ShadowResource, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
+        StageRenderPipeline, ToParentTrans, TransformDataLayout, TransparentMap,
+        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform,
+        NUM_CUBE_VERTICES, RESET_POSITIONS, RESET_ROTATION,
     },
-    config::Locale,
+    config::{Locale, NUM_LOCALE},
+    scenes::FatalErrorSceneLayer,
 };
 
 const MAX_SCENE_DURATION: f32 = 3.0;
@@ -37,11 +46,16 @@ pub struct InGameResultEnterScene {
     token: LoginToken,
 
     /// 승리 팀
-    winner_team: Team,
-    /// 게임 장면의 남은 시간
-    remaining_time_sec: f32,
+    winner: Team,
+    /// 승리 종류
+    victory_type: VictoryType,
+    /// 게임 진행 시간
+    play_time: f32,
     /// 스테이지 종류
     stage_kind: StageKind,
+
+    /// 남은 게임 장면 지속 시간
+    remaining_time_sec: f32,
 
     ///엔터티를 관리하는 월드 객체입니다.
     world: Option<World>,
@@ -49,13 +63,18 @@ pub struct InGameResultEnterScene {
     skybox: Option<Skybox>,
     /// 게임 결과 장면의 메인 카메라 엔터티입니다.
     main_camera: Entity,
-    /// 플레이어 엔터티 집합입니다.
-    players: HashMap<UserId, Entity>,
+    /// 우승팀 플레이어 집합입니다.
+    winner_players: Vec<Entity>,
     /// 스테이지 엔터티 집합입니다.
     stages: Vec<Entity>,
 
     /// 게임 진행 데이터입니다.
     play_data: Vec<FinishPhasePlayer>,
+
+    /// 그림자 쉐이더 리소스입니다.
+    shadow_resource: Option<ShadowResource>,
+    /// 알파 블렌딩 쉐이더 리소스입니다.
+    alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
     /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
@@ -64,9 +83,41 @@ pub struct InGameResultEnterScene {
     shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
     opaque_map: OpaqueMap,
+    /// 투명 메쉬 렌더링 리소스 집합입니다.
+    transparent_map: TransparentMap,
 
     /// 애니메이션 데이터 풀 객체입니다.
     motion_pool: MotionPool,
+}
+
+//--------------------------------------------------------------------------------------------
+// InGameDominationModeScene에서 사용되는 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameResultEnterScene {
+    /// 승리한 팀의 플레이어 엔터티를 가져옵니다.
+    pub fn get_winner_players(
+        winner: Team,
+        world: &mut World,
+        players: HashMap<UserId, Entity>,
+        disconnected_players: Vec<Entity>,
+    ) -> Vec<Entity> {
+        let mut entities = disconnected_players;
+        entities.extend(players.values());
+
+        type Query<'a> = &'a (Team, usize);
+        let mut winner_players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for entity in entities {
+            let &(team, _) = world
+                .query_one_mut::<Query>(entity)
+                .expect("invalid entity or invalid entity component");
+
+            if winner == team {
+                winner_players.push(entity);
+            }
+        }
+
+        winner_players
+    }
 }
 
 //--------------------------------------------------------------------------------------------
@@ -79,12 +130,16 @@ impl InGameResultEnterScene {
         user_id: UserId,
         token: LoginToken,
         winner: Team,
+        victory_type: VictoryType,
+        play_time: f32,
         stage_kind: StageKind,
         world: World,
         skybox: Skybox,
-        players: HashMap<UserId, Entity>,
-        play_data: Vec<FinishPhasePlayer>,
+        winner_players: Vec<Entity>,
         stages: Vec<Entity>,
+        play_data: Vec<FinishPhasePlayer>,
+        shadow_resource: ShadowResource,
+        alpha_blend_resource: WeightedBlendedOITResource,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         motion_pool: MotionPool,
     ) -> Self {
@@ -92,36 +147,55 @@ impl InGameResultEnterScene {
             locale,
             user_id,
             token,
-            winner_team: winner,
-            remaining_time_sec: MAX_SCENE_DURATION,
+            winner,
+            victory_type,
+            play_time,
             stage_kind,
+            remaining_time_sec: MAX_SCENE_DURATION,
             world: Some(world),
             skybox: Some(skybox),
             main_camera: Entity::DANGLING,
-            players,
-            play_data,
+            winner_players,
             stages,
+            play_data,
             ui_textures,
+            shadow_resource: Some(shadow_resource),
+            alpha_blend_resource: Some(alpha_blend_resource),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
+            transparent_map: HashMap::default(),
             motion_pool,
         }
     }
 
     /// 메인 카메라를 생성합니다.
     fn create_main_camera(&mut self, device: &wgpu::Device) {
+        // 카메라의 위치와 방향을 설정합니다.
+        let pivot = glam::Vec3A::Y * 0.6;
+        let direction = RESET_ROTATION[self.stage_kind as usize][self.winner as usize];
+        let look = direction.mul_vec3a(glam::Vec3A::Z).normalize();
+        let position = pivot + look * 1.0;
+        let look = (pivot - position).normalize();
+        let right = glam::Vec3A::Y.cross(look);
+        let up = look.cross(right);
+        let cam_trans = glam::Mat4::from_mat3_translation(
+            glam::mat3(right.into(), up.into(), look.into()),
+            position.into(),
+        );
+
         // 카메라 쉐이더 리소스를 생성합니다.
-        let camera_uniform = CameraUniform::uninit(Some("Main"), device);
-        let camera_resource = CameraResource::new(Some("Main"), device, &camera_uniform);
+        let camera_uniform = CameraUniform::uninit(Some("Finish"), device);
+        let camera_resource = CameraResource::new(Some("Finish"), device, &camera_uniform);
 
         // 로컬 변환 행렬, 월드 변환 행렬, 투영 변환 행렬 컴포넌트를 추가합니다.
         let mut builder = EntityBuilder::new();
         builder.add_bundle((
-            ToParentTrans::default(),
+            ToParentTrans(cam_trans),
             WorldTransform::default(),
             Projection::perspective(75f32.to_radians(), 16.0 / 9.0, 0.01, 500.0),
             camera_uniform,
             camera_resource,
+            Frustum::from_mat4(glam::Mat4::IDENTITY),
         ));
 
         // 카메라 엔터티를 생성합니다.
@@ -138,36 +212,17 @@ impl InGameResultEnterScene {
 
         // 플레이어 엔터티를 순회하면서
         // 승리 팀 플레이어 엔터티의 위치를 재설정합니다.
-        let mut removed = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        for (&user_id, &entity) in self.players.iter() {
-            let (&(team, index), local_transform) = self
-                .world
-                .as_mut()
-                .expect("the world must exist!")
+        let world = self.world.as_mut().unwrap();
+        for entity in self.winner_players.iter().cloned() {
+            let (&(team, index), local_transform) = world
                 .query_one_mut::<Query>(entity)
                 .expect("invalid entity or invalid entity component");
-
-            // 패배 팀 플레이어 엔터티를 수집 후 게임 월드에서 제거합니다.
-            if team != self.winner_team {
-                removed.push((user_id, entity));
-                break;
-            }
 
             // 승리 팀 플레이어의 위치를 재설정합니다.
             local_transform.set_rotation_translation(
                 RESET_ROTATION[self.stage_kind as usize][team as usize],
                 RESET_POSITIONS[self.stage_kind as usize][index],
             );
-        }
-
-        // 패배 팀 플레이어 엔터티를 제거합니다.
-        while let Some((user_id, entity)) = removed.pop() {
-            self.players.remove(&user_id);
-            self.world
-                .as_mut()
-                .expect("the world must exist!")
-                .despawn(entity)
-                .expect("no such entity!");
         }
     }
 }
@@ -177,48 +232,10 @@ impl InGameResultEnterScene {
 //--------------------------------------------------------------------------------------------
 impl InGameResultEnterScene {
     /// 카메라를 갱신합니다.
-    fn update_camera(
-        &mut self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-    ) {
-        // 카메라 계층 구조를 갱신합니다.
-        let world = self.world.as_mut().expect("the world must exist!");
+    fn update_camera(&mut self) {
+        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
+        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
         update_entity_hierarchy(world, self.main_camera, glam::Mat4::IDENTITY);
-
-        // 카메라 쉐이더 리소스를 갱신합니다.
-        type Query<'a> = (&'a WorldTransform, &'a Projection, &'a CameraUniform);
-        let (world_transform, projection, uniform) = world
-            .query_one_mut::<Query>(self.main_camera)
-            .expect("invalid entity or invalid entity component");
-
-        let view = world_transform.to_view_trans();
-        let proj_view = projection.0 * view;
-        let position_w = world_transform.get_translation();
-        uniform.update(
-            device,
-            encoder,
-            staging_buffers,
-            CameraDataLayout {
-                proj_view: proj_view.to_cols_array(),
-                position_w: position_w.to_array(),
-                ..Default::default()
-            },
-        );
-    }
-
-    /// 캐릭터를 갱신합니다.
-    fn update_character(&mut self) {
-        self.animate_character();
-
-        // 캐릭터의 계층 구조를 갱신합니다.
-        let world = self.world.as_mut().expect("the world must exist!");
-        for entity in self.players.values().cloned() {
-            update_entity_hierarchy(world, entity, glam::Mat4::IDENTITY);
-        }
-
-        self.update_character_weapon();
     }
 
     /// 캐릭터 애니메이션을 재생합니다.
@@ -237,7 +254,7 @@ impl InGameResultEnterScene {
         let collection_view = world.view::<&BoneCollection>();
         let mut transform_view = world.view::<&mut ToParentTrans>();
 
-        for entity in self.players.values().cloned() {
+        for entity in self.winner_players.iter().cloned() {
             let (
                 &character_kind,
                 skinning_animation,
@@ -275,7 +292,7 @@ impl InGameResultEnterScene {
         let sibling_view = world.view::<&Sibling>();
         let mut transform_view = world.view::<(&ToParentTrans, &mut WorldTransform)>();
 
-        for entity in self.players.values().cloned() {
+        for entity in self.winner_players.iter().cloned() {
             let (&character_kind, &action_state, skinning_animation) = element_view
                 .get(entity)
                 .expect("invalid entity or invalid entity component");
@@ -291,9 +308,96 @@ impl InGameResultEnterScene {
         }
     }
 
-    /// 캐릭터의 쉐이더 리소스를 갱신하는 재귀함수입니다.
+    /// 캐릭터를 갱신합니다.
+    fn update_character(&mut self) {
+        self.animate_character();
+
+        // 캐릭터의 계층 구조를 갱신합니다.
+        let world = self.world.as_mut().expect("the world must exist!");
+        for entity in self.winner_players.iter().cloned() {
+            update_entity_hierarchy(world, entity, glam::Mat4::IDENTITY);
+        }
+
+        self.update_character_weapon();
+    }
+
+    /// 지형 엔터티의 계층 구조를 갱신합니다.
+    fn update_stage(&mut self) {
+        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
+        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
+
+        for entity in self.stages.iter().cloned() {
+            update_entity_hierarchy(world, entity, glam::Mat4::IDENTITY);
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------------------
+// 쉐이더 리소스 갱신과 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameResultEnterScene {
+    fn update_camera_and_skybox_resource(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+    ) {
+        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
+        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
+
+        type Query<'a> = (
+            &'a CameraUniform,
+            &'a WorldTransform,
+            &'a Projection,
+            &'a mut Frustum,
+        );
+
+        // 카메라 엔터티의 요소를 가져옵니다.
+        let (uniform, trans, proj, frustum) = world
+            .query_one_mut::<Query>(self.main_camera)
+            .expect("invalid entity or invalid entity component");
+
+        // 카메라 데이터 유니폼 버퍼를 갱신합니다.
+        let position_w = trans.get_translation();
+        let view = trans.to_view_trans();
+        let proj_view = proj.0 * view;
+        uniform.update(
+            device,
+            encoder,
+            staging_buffers,
+            CameraDataLayout {
+                proj_view: proj_view.to_cols_array(),
+                position_w: position_w.to_array(),
+                ..Default::default()
+            },
+        );
+
+        // 카메라 절두체를 갱신합니다.
+        *frustum = Frustum::from_mat4(proj_view);
+
+        // 스카이박스 데이터 유니폼 버퍼를 갱신합니다.
+        // Safe: 스카이박스가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
+        let skybox = unsafe { self.skybox.as_ref().unwrap_unchecked() };
+        skybox.uniform.update(
+            device,
+            encoder,
+            staging_buffers,
+            SkyboxDataLayout {
+                proj_view: proj_view.to_cols_array(),
+                color: [1.0; 3],
+                ..Default::default()
+            },
+        );
+    }
+
+    /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 캐릭터 엔터티를 수집합니다.
+    fn culling_character(&self) -> Vec<Entity> {
+        self.winner_players.clone()
+    }
+
+    /// 캐릭터의 쉐이더 리소스를 갱신합니다.
     fn update_character_resource(
-        world: &World,
+        &self,
         entity: Entity,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
@@ -308,8 +412,7 @@ impl InGameResultEnterScene {
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
-            Self::update_character_resource(
-                world,
+            self.update_character_resource(
                 *child_entity,
                 device,
                 encoder,
@@ -326,8 +429,7 @@ impl InGameResultEnterScene {
 
         // 형제 엔터티가 존재하는 경우 형제 엔터티를 갱신합니다.
         if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
-            Self::update_character_resource(
-                world,
+            self.update_character_resource(
                 *sibling_entity,
                 device,
                 encoder,
@@ -439,15 +541,22 @@ impl InGameResultEnterScene {
         }
     }
 
+    /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 지형 엔터티를 수집합니다.
+    fn culling_stages(&self) -> Vec<Entity> {
+        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
+        self.stages.iter().cloned().collect()
+    }
+
     /// 지형의 쉐이더 리소스를 갱신합니다.
     fn update_stage_resource(
-        world: &World,
+        &self,
         entity: Entity,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
         shadow_map: &mut ShadowMap,
         opaque_map: &mut OpaqueMap,
+        transparent_map: &mut TransparentMap,
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
@@ -456,14 +565,14 @@ impl InGameResultEnterScene {
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
-            Self::update_stage_resource(
-                world,
+            self.update_stage_resource(
                 *child_entity,
                 device,
                 encoder,
                 staging_buffers,
                 shadow_map,
                 opaque_map,
+                transparent_map,
                 child_view,
                 sibling_view,
                 transform_view,
@@ -474,14 +583,14 @@ impl InGameResultEnterScene {
 
         // 형제 엔터티가 존재하는 경우 형제 엔터티를 갱신합니다.
         if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
-            Self::update_stage_resource(
-                world,
+            self.update_stage_resource(
                 *sibling_entity,
                 device,
                 encoder,
                 staging_buffers,
                 shadow_map,
                 opaque_map,
+                transparent_map,
                 child_view,
                 sibling_view,
                 transform_view,
@@ -530,6 +639,20 @@ impl InGameResultEnterScene {
                             shadow_map.insert(key, vec![value]);
                         }
                     }
+                    MaterialKind::CaptureZone => {
+                        // 투명 렌더 집합에 추가합니다.
+                        let key = (mesh.clone(), material.kind());
+                        let value = (
+                            index,
+                            MeshFilter::Mesh(mesh_resource.clone()),
+                            material.clone(),
+                        );
+                        if let Some(resources) = transparent_map.get_mut(&key) {
+                            resources.push(value);
+                        } else {
+                            transparent_map.insert(key, vec![value]);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -575,6 +698,21 @@ impl InGameResultEnterScene {
                             resources.push(shadow_value);
                         } else {
                             shadow_map.insert(key, vec![shadow_value]);
+                        }
+                    }
+                    MaterialKind::CaptureZone => {
+                        let key = (mesh.clone(), material.kind());
+                        let value = (
+                            index,
+                            MeshFilter::SkinnedMesh(mesh_resource.clone()),
+                            material.clone(),
+                        );
+
+                        // 투명 렌더 집합에 추가합니다.
+                        if let Some(resources) = transparent_map.get_mut(&key) {
+                            resources.push(value);
+                        } else {
+                            transparent_map.insert(key, vec![value]);
                         }
                     }
                     _ => {}
@@ -715,6 +853,43 @@ impl GameScene for InGameResultEnterScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         self.create_main_camera(app.render_device());
         self.reset_player_position();
+        self.update_stage();
+    }
+
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+        if self.world.is_none() {
+            return;
+        }
+
+        // 게임 장면 지속 시간을 갱신합니다.
+        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+        if self.remaining_time_sec <= 0.0 {
+            todo!()
+        }
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -722,58 +897,62 @@ impl GameScene for InGameResultEnterScene {
             return;
         }
 
+        self.update_camera();
+        self.update_character();
+
         let device = app.render_device();
         let queue = app.render_queue();
         let mut staging_buffers = Vec::new();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        self.update_camera(device, &mut encoder, &mut staging_buffers);
-        self.update_character();
+        // 카메라 쉐이더 리소스를 갱신합니다.
+        self.update_camera_and_skybox_resource(device, &mut encoder, &mut staging_buffers);
 
-        let world = match self.world.as_mut() {
-            Some(world) => world,
-            None => return,
-        };
-        let child_view = world.view::<&Child>();
-        let sibling_view = world.view::<&Sibling>();
-        let transform_view = world.view::<&WorldTransform>();
-        let mesh_filter_view = world.view::<MeshRenderer>();
-        let skinned_mesh_filter_view = world.view::<SkinnedMeshRenderer>();
+        let mut shadow_map = HashMap::default();
+        let mut opaque_map = HashMap::default();
+        let mut transparent_map = HashMap::default();
 
-        let mut shadow_map = ShadowMap::default();
-        let mut opaque_map = OpaqueMap::default();
+        let world = self.world.as_ref().unwrap();
+        let child_view = &world.view::<&Child>();
+        let sibling_view = &world.view::<&Sibling>();
+        let transform_view = &world.view::<&WorldTransform>();
+        let mesh_filter_view = &world.view::<MeshRenderer>();
+        let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
 
-        for entity in self.players.values().cloned() {
-            Self::update_character_resource(
-                world,
+        // 캐릭터 쉐이더 리소스를 갱신합니다.
+        let entities = self.culling_character();
+        for entity in entities {
+            self.update_character_resource(
                 entity,
                 device,
                 &mut encoder,
                 &mut staging_buffers,
                 &mut shadow_map,
                 &mut opaque_map,
-                &child_view,
-                &sibling_view,
-                &transform_view,
-                &mesh_filter_view,
-                &skinned_mesh_filter_view,
+                child_view,
+                sibling_view,
+                transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
             );
         }
 
-        for entity in self.stages.iter().cloned() {
-            Self::update_stage_resource(
-                world,
+        // 지형 쉐이더 리소스를 갱신합니다.
+        let entities = self.culling_stages();
+        for entity in entities {
+            self.update_stage_resource(
                 entity,
                 device,
                 &mut encoder,
                 &mut staging_buffers,
                 &mut shadow_map,
                 &mut opaque_map,
-                &child_view,
-                &sibling_view,
-                &transform_view,
-                &mesh_filter_view,
-                &skinned_mesh_filter_view,
+                &mut transparent_map,
+                child_view,
+                sibling_view,
+                transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
             );
         }
 
@@ -782,6 +961,7 @@ impl GameScene for InGameResultEnterScene {
 
         self.shadow_map = shadow_map;
         self.opaque_map = opaque_map;
+        self.transparent_map = transparent_map;
     }
 
     fn on_draw(
@@ -806,10 +986,10 @@ impl GameScene for InGameResultEnterScene {
             .expect("invalid entity or invalid entity component");
 
         // Weighted Blended OIT 쉐이더 리소스를 가져옵니다.
-        // let alpha_blend_resource = self
-        //     .alpha_blend_resource
-        //     .as_ref()
-        //     .expect("the alpha blend shader resource must exist!");
+        let alpha_blend_resource = self
+            .alpha_blend_resource
+            .as_ref()
+            .expect("the alpha blend shader resource must exist!");
         let skybox = self.skybox.as_ref().unwrap();
 
         encoder.push_debug_group("opaque pass");
@@ -864,105 +1044,92 @@ impl GameScene for InGameResultEnterScene {
         }
         encoder.pop_debug_group();
 
-        // encoder.push_debug_group("transparent pass");
-        // {
-        //     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        //         label: Some("RenderPass(InGame(TransparentPass))"),
-        //         color_attachments: &[
-        //             Some(wgpu::RenderPassColorAttachment {
-        //                 ops: wgpu::Operations {
-        //                     load: wgpu::LoadOp::Clear({
-        //                         wgpu::Color {
-        //                             a: 0.0,
-        //                             r: 0.0,
-        //                             g: 0.0,
-        //                             b: 0.0,
-        //                         }
-        //                     }),
-        //                     store: wgpu::StoreOp::Store,
-        //                 },
-        //                 view: &alpha_blend_resource.accum_render_target,
-        //                 resolve_target: None,
-        //             }),
-        //             Some(wgpu::RenderPassColorAttachment {
-        //                 ops: wgpu::Operations {
-        //                     load: wgpu::LoadOp::Clear({
-        //                         wgpu::Color {
-        //                             a: 1.0,
-        //                             r: 1.0,
-        //                             g: 1.0,
-        //                             b: 1.0,
-        //                         }
-        //                     }),
-        //                     store: wgpu::StoreOp::Store,
-        //                 },
-        //                 view: &alpha_blend_resource.reveal_render_target,
-        //                 resolve_target: None,
-        //             }),
-        //         ],
-        //         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-        //             view: depth_buffer_view,
-        //             depth_ops: Some(wgpu::Operations {
-        //                 load: wgpu::LoadOp::Load,
-        //                 store: wgpu::StoreOp::Discard,
-        //             }),
-        //             stencil_ops: None,
-        //         }),
-        //         timestamp_writes: None,
-        //         occlusion_query_set: None,
-        //     });
+        encoder.push_debug_group("transparent pass");
+        {
+            let mut _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(TransparentPass))"),
+                color_attachments: &[
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear({
+                                wgpu::Color {
+                                    a: 0.0,
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                }
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: &alpha_blend_resource.accum_render_target,
+                        resolve_target: None,
+                    }),
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear({
+                                wgpu::Color {
+                                    a: 1.0,
+                                    r: 1.0,
+                                    g: 1.0,
+                                    b: 1.0,
+                                }
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: &alpha_blend_resource.reveal_render_target,
+                        resolve_target: None,
+                    }),
+                ],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        encoder.pop_debug_group();
 
-        //     for ((mesh, kind), resources) in self.transparent_map.iter() {
-        //         let func = match kind {
-        //             MaterialKind::CaptureZone => Self::draw_capture_zone,
-        //             _ => continue,
-        //         };
-        //         let pipeline = match kind {
-        //             MaterialKind::CaptureZone => CaptureZoneRenderPipeline::get(),
-        //             _ => continue,
-        //         }
-        //         .unwrap();
+        encoder.push_debug_group("composite pass");
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(CompositePass))"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    view: render_target_view,
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
 
-        //         func(&mesh, pipeline, &camera_resource, &resources, &mut rpass);
-        //     }
-        // }
-        // encoder.pop_debug_group();
-
-        // encoder.push_debug_group("composite pass");
-        // {
-        //     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-        //         label: Some("RenderPass(InGame(CompositePass))"),
-        //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-        //             ops: wgpu::Operations {
-        //                 load: wgpu::LoadOp::Load,
-        //                 store: wgpu::StoreOp::Store,
-        //             },
-        //             view: render_target_view,
-        //             resolve_target: None,
-        //         })],
-        //         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-        //             view: depth_buffer_view,
-        //             depth_ops: Some(wgpu::Operations {
-        //                 load: wgpu::LoadOp::Load,
-        //                 store: wgpu::StoreOp::Store,
-        //             }),
-        //             stencil_ops: None,
-        //         }),
-        //         timestamp_writes: None,
-        //         occlusion_query_set: None,
-        //     });
-
-        //     // 그래픽스 파이프라인을 가져옵니다.
-        //     let pipeline = WeightedBlendedOITRenderPipeline::get().unwrap();
-        //     rpass.set_pipeline(&pipeline);
-        //     rpass.set_bind_group(0, &alpha_blend_resource.bind_group, &[]);
-        //     rpass.draw(0..4, 0..1);
-        // }
-        // encoder.pop_debug_group();
+            // 그래픽스 파이프라인을 가져옵니다.
+            let pipeline = WeightedBlendedOITRenderPipeline::get().unwrap();
+            rpass.set_pipeline(&pipeline);
+            rpass.set_bind_group(0, &alpha_blend_resource.bind_group, &[]);
+            rpass.draw(0..4, 0..1);
+        }
+        encoder.pop_debug_group();
     }
 
     fn on_finish_draw(&mut self, _window: &Window, _app: &dyn AppHandle) {
         self.shadow_map.clear();
         self.opaque_map.clear();
+        self.transparent_map.clear();
     }
 }

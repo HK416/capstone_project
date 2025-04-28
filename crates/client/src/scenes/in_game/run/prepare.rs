@@ -1176,7 +1176,6 @@ impl GameScene for InGameDominationModePrepareScene {
         self.create_shadow_resource(&device);
         self.create_alpha_blend_resource(window, &device);
         self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
-        self.update_camera(); // 정적인 카메라는 매번 계층 구조를 갱신할 필요가 없다.
     }
 
     fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
@@ -1192,6 +1191,10 @@ impl GameScene for InGameDominationModePrepareScene {
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        if let Some(window) = app.window() {
+            self.enable_cursor(window);
+        }
+
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
         let title = ERR_TITLE_TEXTS[i];
@@ -1299,9 +1302,7 @@ impl GameScene for InGameDominationModePrepareScene {
         let mut opaque_map = HashMap::default();
         let mut transparent_map = HashMap::default();
 
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let world = unsafe { self.world.as_ref().unwrap_unchecked() };
-
+        let world = self.world.as_ref().unwrap();
         let child_view = &world.view::<&Child>();
         let sibling_view = &world.view::<&Sibling>();
         let transform_view = &world.view::<&WorldTransform>();

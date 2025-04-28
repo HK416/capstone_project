@@ -2687,6 +2687,10 @@ impl GameScene for InGameDominationModeScene {
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        if let Some(window) = app.window() {
+            self.enable_cursor(window);
+        }
+
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
         let title = ERR_TITLE_TEXTS[i];
@@ -2726,24 +2730,39 @@ impl GameScene for InGameDominationModeScene {
             }
             PacketType::FinishStage => {
                 let packet = FinishStagePacket::from_raw(packet);
+                println!("!");
 
                 // 다음 게임 장면으로 전환합니다.
-                let world = self.world.take().unwrap();
+                let mut world = self.world.take().unwrap();
                 let skybox = self.skybox.take().unwrap();
                 let players = self.players.to_owned();
+                let disconnected_players = self.disconnected_players.to_owned();
+                let winner_players = InGameResultEnterScene::get_winner_players(
+                    packet.winner_team(),
+                    &mut world,
+                    players,
+                    disconnected_players,
+                );
                 let stages = self.stages.to_owned();
+                let shadow_resource = self.shadow_resource.take().unwrap();
+                let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
+                let ui_textures = self.ui_textures.to_owned();
                 let next_scene = InGameResultEnterScene::new(
                     self.locale,
                     self.user_id,
                     self.token,
                     packet.winner_team(),
+                    packet.victory_type(),
+                    packet.play_time,
                     packet.stage_kind(),
                     world,
                     skybox,
-                    players,
-                    packet.players,
+                    winner_players,
                     stages,
-                    self.ui_textures.clone(),
+                    packet.players,
+                    shadow_resource,
+                    alpha_blend_resource,
+                    ui_textures,
                     self.motion_pool.clone(),
                 );
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
@@ -3070,6 +3089,10 @@ impl GameScene for InGameDominationModeScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+        if self.world.is_none() {
+            return;
+        }
+
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;

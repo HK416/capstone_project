@@ -100,6 +100,8 @@ impl TryFromBigEndian for PacketType {
             50 => Some(PacketType::PullStage),
             51 => Some(PacketType::PushStatus),
             52 => Some(PacketType::PushSync),
+            64 => Some(PacketType::FinishStage),
+            65 => Some(PacketType::FinishStageResponse),
             128 => Some(PacketType::UdpDamageLog),
             _ => {
                 log::error!(

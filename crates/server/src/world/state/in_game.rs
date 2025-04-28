@@ -7,11 +7,12 @@ use std::{
 use ahash::HashMap;
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, DamageLog, ExSkillCost, GamePlayData, HealthPoint, LatLon,
-        MAX_IN_GAME_PLAYERS, MovementState, MovementStateTimer, ObjectId, PlayPhasePlayer,
-        RemainingBullet, StageKind, Team, UserId, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, DamageLog, ExSkillCost, FinishPhasePlayer, GamePlayData,
+        HealthPoint, LatLon, MAX_IN_GAME_PLAYERS, MovementState, MovementStateTimer, ObjectId,
+        PlayPhasePlayer, RemainingBullet, StageKind, Team, UserId, VictoryType, ViewState,
+        ViewStateTimer,
     },
-    protocol::{Packet, PullStagePacket, UdpDamageLogPacket},
+    protocol::{FinishStagePacket, Packet, PullStagePacket, UdpDamageLogPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::{
@@ -24,10 +25,11 @@ use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
     entities::{BulletObject, CapturePointObject, PlayData, PlayerObject},
     formula::movement_formulas as formulas,
+    session::SessionEvents,
     world::{GameWorld, GameWorldEvent},
 };
 
-use super::GameWorldState;
+use super::{GameWorldState, GameWorldStateFlow};
 
 /// 중력 가속도입니다.
 const GRAVITY: glam::Vec3A = glam::vec3a(0.0, -9.8, 0.0);
@@ -42,6 +44,8 @@ pub struct GameWorldInGameState {
     /// 이전 측정 시각
     previous_time_pt: Instant,
 
+    /// 총 게임 진행 시간(초)
+    total_play_sec: f32,
     /// 남은 게임 시간 (초)
     remaining_time_sec: f32,
 
@@ -74,6 +78,7 @@ impl GameWorldInGameState {
         Self {
             is_running: true,
             previous_time_pt: Instant::now(),
+            total_play_sec: game_duration_sec,
             remaining_time_sec: game_duration_sec, // 초기화
             counter: 0,
             stage_kind,
@@ -97,110 +102,6 @@ impl GameWorldInGameState {
         let time_bit = duration.subsec_nanos() & 0xFFFF;
 
         ObjectId::new((time_bit << 16) | counter_bit)
-    }
-
-    /// 플레이어 상태 타이머를 갱신합니다.
-    fn update_player_state_timer(&self, world: &GameWorld, elapsed_time_sec: f32) {
-        for mut player in world.players.iter_mut() {
-            player.update_state_timer(world, elapsed_time_sec);
-        }
-    }
-
-    /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
-    fn update_player_position(&self, world: &GameWorld, elapsed_time_sec: f32) {
-        let colliders = get_stage_colliders(self.stage_kind);
-
-        for mut player in world.players.iter_mut() {
-            // 플레이어 위치를 가져옵니다.
-            let translation = player.translation();
-
-            // 플레이어 속도를 갱신합니다.
-            player.update_velocity();
-
-            // 플레이어의 이동 속도를 가져옵니다.
-            let mut velocity = player.velocity();
-
-            // 속도에 가속도를 적용합니다.
-            if !player.is_grounded {
-                velocity += GRAVITY * elapsed_time_sec;
-            }
-
-            // 이동 시도 (이동 전 위치 저장)
-            let mut new_p = translation + velocity * elapsed_time_sec;
-
-            // 충돌처리 시작
-            player.is_grounded = false;
-
-            let mut player_capsule = player.collider();
-            player_capsule.center = new_p.into();
-            let player_aabb = BoundingBox::from(&player_capsule);
-            let player_collider = Collider::Capsule(player_capsule);
-
-            for collider in ColliderTreeIterator::new(colliders) {
-                if !collider.check_aabb_collision(&player_aabb) {
-                    continue;
-                }
-                if let Some(collision_info) = player_collider.check_collision_details(collider) {
-                    new_p += collision_info.normal * collision_info.penetration;
-                    // 충돌벡터가 지면(xz평면)과 일정 이상의 각을 이루면 서있을 수 있음
-                    if collision_info.normal.y >= *GROUNDED_ANGLE_COS {
-                        velocity.y = 0.0;
-                        player.is_grounded = true;
-                    }
-                    // 아니라면 미끄러지도록 처리
-                    else {
-                        let slide =
-                            velocity - collision_info.normal * velocity.dot(collision_info.normal);
-                        // +y방향으로 튀어오르지 않게 한다.
-                        let vy = if slide.y < velocity.y {
-                            slide.y
-                        } else {
-                            velocity.y
-                        };
-                        velocity = glam::Vec3A::new(slide.x, vy, slide.z);
-                    }
-                }
-            }
-
-            if !is_valid_position(self.stage_kind, new_p.x, new_p.z) {
-                let (x, z) = get_nearest_valid_position(self.stage_kind, new_p.x, new_p.z);
-                if x != new_p.x {
-                    velocity.x = 0.0;
-                    new_p.x = x;
-                }
-                if z != new_p.z {
-                    velocity.z = 0.0;
-                    new_p.z = z;
-                }
-            }
-
-            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
-                if height >= new_p.y {
-                    new_p.y = height;
-                    velocity.y = 0.0;
-                    player.is_grounded = true;
-                }
-            }
-
-            if player.is_grounded {
-                match player.movement_state() {
-                    MovementState::InPlaceLanding => {
-                        player.change_movement_state(MovementState::Idle);
-                    }
-                    MovementState::MovingLanding => {
-                        player.change_movement_state(MovementState::Moving);
-                    }
-                    MovementState::InPlaceJumping | MovementState::MovingJumping => {
-                        velocity.y = 5.0;
-                    }
-                    _ => {}
-                }
-            }
-
-            *player.velocity_mut() = velocity;
-            *player.translation_mut() = new_p;
-            player.update_collider();
-        }
     }
 
     /// 게임 세상에 총알 오브젝트를 추가합니다.
@@ -244,7 +145,12 @@ impl GameWorldInGameState {
             ),
         };
     }
+}
 
+//--------------------------------------------------------------------------------------------
+// 처리와 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl GameWorldInGameState {
     /// 0.1m 마다 바닥과의 충돌을 검사하여 바닥과의 충돌을 확인합니다.
     fn check_bullet_ground_collision(
         &self,
@@ -499,32 +405,6 @@ impl GameWorldInGameState {
         });
     }
 
-    /// 총알 이동 및 충돌처리를 수행합니다.
-    fn update_bullet(&self, world: &GameWorld, elapsed_time_sec: f32) {
-        // 총알 이동
-        for mut bullet in world.bullets.iter_mut() {
-            let velocity = bullet.velocity * elapsed_time_sec;
-
-            match self.check_bullet_collision(world, &mut bullet, &velocity) {
-                Some(id) => {
-                    let mut shooter = world.players.get_mut(&bullet.shooter_id).unwrap();
-                    let mut player = world.players.get_mut(&id).unwrap();
-                    self.bullet_hit_player(&mut bullet, &mut shooter, &mut player);
-                }
-                None => {
-                    bullet.move_velocity(velocity);
-                }
-            }
-        }
-
-        // 살아남은 총알만 남김
-        for bullet in world.bullets.iter() {
-            if bullet.remaining_distance <= 0.0 {
-                world.push_event(GameWorldEvent::RemoveBullet(*bullet.key()));
-            }
-        }
-    }
-
     /// 점령지 안에 존재하는 팀과 인원수를 리턴합니다.  
     /// 점령지 안에 존재하는 팀이 없거나, 두 팀 모두 존재하는 경우 팀은 None입니다.  
     /// 점령지 안에 두 팀이 모두 존재하는 경우 인원수는 0이 아닌 양의 정수입니다.  
@@ -561,6 +441,214 @@ impl GameWorldInGameState {
         }
 
         (new_capture_team, capturing_count)
+    }
+
+    /// 다음 게임 월드 상태로 전환을 시도합니다.
+    fn try_enter_next_state(&self, world: &GameWorld) {
+        // 힌쪽 팀 플레이어가 비어있는 경우 부전승으로 처리합니다.
+        let mut blue_teams = 0;
+        let mut red_teams = 0;
+        let play_data = self.play_data.as_ref().unwrap();
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for (user_id, data) in play_data.iter() {
+            if world.players.contains_key(user_id) {
+                match data.team {
+                    Team::Blue => blue_teams += 1,
+                    Team::Red => red_teams += 1,
+                };
+            }
+
+            players.push(FinishPhasePlayer::new(
+                data.account,
+                data.character_kind,
+                data.kill_count,
+                data.dead_count,
+                data.damage_dealt,
+                data.damage_taken,
+                data.healing_given,
+                data.team,
+                data.team_index,
+            ));
+        }
+
+        if blue_teams == 0 {
+            // 패킷을 생성하고 전송합니다.
+            let play_time = self.total_play_sec - self.remaining_time_sec;
+            let packet = FinishStagePacket::new(
+                Team::Red,
+                VictoryType::DefaultWin,
+                self.stage_kind,
+                play_time,
+                players,
+            );
+
+            for item in world.sessions.iter() {
+                item.key().push_event(SessionEvents::GameFinished);
+                item.key().tcp_write(packet.as_raw());
+            }
+
+            // 게임 월드 상태를 변경합니다.
+            let control_flow = GameWorldStateFlow::Pop;
+            let event = GameWorldEvent::SetControlFlow(control_flow);
+            world.push_event(event);
+            return;
+        } else if red_teams == 0 {
+            // 패킷을 생성하고 전송합니다.
+            let play_time = self.total_play_sec - self.remaining_time_sec;
+            let packet = FinishStagePacket::new(
+                Team::Blue,
+                VictoryType::DefaultWin,
+                self.stage_kind,
+                play_time,
+                players,
+            );
+
+            for item in world.sessions.iter() {
+                item.key().push_event(SessionEvents::GameFinished);
+                item.key().tcp_write(packet.as_raw());
+            }
+
+            // 게임 월드 상태를 변경합니다.
+            let control_flow = GameWorldStateFlow::Pop;
+            let event = GameWorldEvent::SetControlFlow(control_flow);
+            world.push_event(event);
+            return;
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------------------
+// 갱신과 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl GameWorldInGameState {
+    /// 플레이어 상태 타이머를 갱신합니다.
+    fn update_player_state_timer(&self, world: &GameWorld, elapsed_time_sec: f32) {
+        for mut player in world.players.iter_mut() {
+            player.update_state_timer(world, elapsed_time_sec);
+        }
+    }
+
+    /// 주어진 시간 간격으로 플레이어의 위치를 갱신합니다.
+    fn update_player_position(&self, world: &GameWorld, elapsed_time_sec: f32) {
+        let colliders = get_stage_colliders(self.stage_kind);
+
+        for mut player in world.players.iter_mut() {
+            // 플레이어 위치를 가져옵니다.
+            let translation = player.translation();
+
+            // 플레이어 속도를 갱신합니다.
+            player.update_velocity();
+
+            // 플레이어의 이동 속도를 가져옵니다.
+            let mut velocity = player.velocity();
+
+            // 속도에 가속도를 적용합니다.
+            if !player.is_grounded {
+                velocity += GRAVITY * elapsed_time_sec;
+            }
+
+            // 이동 시도 (이동 전 위치 저장)
+            let mut new_p = translation + velocity * elapsed_time_sec;
+
+            // 충돌처리 시작
+            player.is_grounded = false;
+
+            let mut player_capsule = player.collider();
+            player_capsule.center = new_p.into();
+            let player_aabb = BoundingBox::from(&player_capsule);
+            let player_collider = Collider::Capsule(player_capsule);
+
+            for collider in ColliderTreeIterator::new(colliders) {
+                if !collider.check_aabb_collision(&player_aabb) {
+                    continue;
+                }
+                if let Some(collision_info) = player_collider.check_collision_details(collider) {
+                    new_p += collision_info.normal * collision_info.penetration;
+                    // 충돌벡터가 지면(xz평면)과 일정 이상의 각을 이루면 서있을 수 있음
+                    if collision_info.normal.y >= *GROUNDED_ANGLE_COS {
+                        velocity.y = 0.0;
+                        player.is_grounded = true;
+                    }
+                    // 아니라면 미끄러지도록 처리
+                    else {
+                        let slide =
+                            velocity - collision_info.normal * velocity.dot(collision_info.normal);
+                        // +y방향으로 튀어오르지 않게 한다.
+                        let vy = if slide.y < velocity.y {
+                            slide.y
+                        } else {
+                            velocity.y
+                        };
+                        velocity = glam::Vec3A::new(slide.x, vy, slide.z);
+                    }
+                }
+            }
+
+            if !is_valid_position(self.stage_kind, new_p.x, new_p.z) {
+                let (x, z) = get_nearest_valid_position(self.stage_kind, new_p.x, new_p.z);
+                if x != new_p.x {
+                    velocity.x = 0.0;
+                    new_p.x = x;
+                }
+                if z != new_p.z {
+                    velocity.z = 0.0;
+                    new_p.z = z;
+                }
+            }
+
+            if let Some(height) = get_stage_height(self.stage_kind, new_p.x, new_p.z) {
+                if height >= new_p.y {
+                    new_p.y = height;
+                    velocity.y = 0.0;
+                    player.is_grounded = true;
+                }
+            }
+
+            if player.is_grounded {
+                match player.movement_state() {
+                    MovementState::InPlaceLanding => {
+                        player.change_movement_state(MovementState::Idle);
+                    }
+                    MovementState::MovingLanding => {
+                        player.change_movement_state(MovementState::Moving);
+                    }
+                    MovementState::InPlaceJumping | MovementState::MovingJumping => {
+                        velocity.y = 5.0;
+                    }
+                    _ => {}
+                }
+            }
+
+            *player.velocity_mut() = velocity;
+            *player.translation_mut() = new_p;
+            player.update_collider();
+        }
+    }
+
+    /// 총알 이동 및 충돌처리를 수행합니다.
+    fn update_bullet(&self, world: &GameWorld, elapsed_time_sec: f32) {
+        // 총알 이동
+        for mut bullet in world.bullets.iter_mut() {
+            let velocity = bullet.velocity * elapsed_time_sec;
+
+            match self.check_bullet_collision(world, &mut bullet, &velocity) {
+                Some(id) => {
+                    let mut shooter = world.players.get_mut(&bullet.shooter_id).unwrap();
+                    let mut player = world.players.get_mut(&id).unwrap();
+                    self.bullet_hit_player(&mut bullet, &mut shooter, &mut player);
+                }
+                None => {
+                    bullet.move_velocity(velocity);
+                }
+            }
+        }
+
+        // 살아남은 총알만 남김
+        for bullet in world.bullets.iter() {
+            if bullet.remaining_distance <= 0.0 {
+                world.push_event(GameWorldEvent::RemoveBullet(*bullet.key()));
+            }
+        }
     }
 
     /// 점령지의 상태를 갱신합니다.
@@ -610,7 +698,12 @@ impl GameWorldInGameState {
         // 점령상태 갱신
         self.update_capture_point(world, elapsed_time_sec);
     }
+}
 
+//--------------------------------------------------------------------------------------------
+// 패킷 전송과 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl GameWorldInGameState {
     /// 모든 세션 데이터에 패킷을 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
@@ -714,6 +807,8 @@ impl GameWorldInGameState {
     }
 }
 
+//--------------------------------------------------------------------------------------------
+
 impl GameWorldState for GameWorldInGameState {
     fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
         // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
@@ -779,6 +874,7 @@ impl GameWorldState for GameWorldInGameState {
 
         self.update(world);
         self.broadcast(world);
+        self.try_enter_next_state(world);
     }
 
     fn yield_now(&self) -> Duration {

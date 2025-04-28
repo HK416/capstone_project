@@ -14,4 +14,6 @@ pub enum SessionEvents {
     PrepareGame,
     /// 게임을 시작합니다.
     StartGamePlay,
+    /// 게임을 결과를 표시합니다.
+    GameFinished,
 }

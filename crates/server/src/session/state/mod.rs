@@ -10,6 +10,7 @@
 //! - InGameEnter: 클라이언트가 인게임 장면에 진입하고 있는 상태입니다.
 //! - InGame: 클라이언트가 인게임 장면에 있는 상태입니다.
 //!
+mod finish;
 mod formation;
 mod in_game;
 mod in_game_prepare;
