@@ -157,7 +157,7 @@ impl InGameDominationModePrepareScene {
             .expect("invalid entity or invalid entity component");
 
         // 카메라의 위치와 방향을 설정합니다.
-        let pivot = trans.get_translation() + glam::Vec3A::Y * 0.75;
+        let pivot = trans.get_translation() + glam::Vec3A::Y * 0.6;
         let position = pivot + trans.get_right_vector() * 1.0 + trans.get_look_vector() * 1.0;
         let look = (pivot - position).normalize();
         let right = glam::Vec3A::Y.cross(look);
@@ -175,7 +175,7 @@ impl InGameDominationModePrepareScene {
         self.main_camera = world.spawn((
             ToParentTrans(cam_trans),
             WorldTransform::default(),
-            Projection::perspective(45f32.to_radians(), 16.0 / 9.0, 0.01, 50.0),
+            Projection::perspective(60f32.to_radians(), 16.0 / 9.0, 0.01, 50.0),
             camera_uniform,
             camera_resource,
             Frustum::from_mat4(glam::Mat4::IDENTITY),
@@ -670,8 +670,7 @@ impl InGameDominationModePrepareScene {
 
     /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 캐릭터 엔터티를 수집합니다.
     fn culling_character(&self) -> Vec<Entity> {
-        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
-        self.players.values().cloned().collect()
+        vec![self.get_player_entity()]
     }
 
     /// 캐릭터의 쉐이더 리소스를 갱신합니다.
