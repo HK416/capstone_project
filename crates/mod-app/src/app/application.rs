@@ -550,6 +550,7 @@ impl ApplicationHandler<AppEvent> for Application {
                 // Safe: 장면 스택이 비어있는지 확인함.
                 let current_scene = unsafe { scene_stack.back_mut().unwrap_unchecked() };
                 if current_scene.on_close_request(self) {
+                    self.app_window.take();
                     return;
                 };
             }
