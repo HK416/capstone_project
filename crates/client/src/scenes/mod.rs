@@ -13,6 +13,15 @@ pub use self::{
     finish::*, formation::*, in_game::*, layer::*, lobby::*, room::*, startup::*, title::*,
 };
 
+/// 인터페이스 배경 색상입니다.
+pub const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
+
+/// 팀의 색상입니다.
+pub const TEAM_COLOR: [egui::Color32; 2] = [
+    egui::Color32::from_rgb(0, 150, 255), // 블루팀 색상
+    egui::Color32::from_rgb(255, 68, 51), // 레드 팀 색상
+];
+
 /// 기본 애플리케이션 창의 가로 길이 입니다.
 const BASE_WIDTH: f32 = 1280.0;
 

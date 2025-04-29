@@ -16,10 +16,10 @@ use winit::{
 use crate::{
     asset::{CHARACTER_ICON_URIS, NOTOSANS_REGULAR},
     config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH, TEAM_COLOR},
 };
 
-use super::{InGameDominationModeScene, TEAM_COLOR};
+use super::InGameDominationModeScene;
 
 /// 인게임 종합전술시험(점령전)의 현재 게임 진행 상태를 출력하는 게임 장면입니다.
 pub struct InGameDominationModeStatusLayer {

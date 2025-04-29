@@ -50,19 +50,11 @@ use crate::{
         NUM_CUBE_VERTICES,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, InGameResultEnterScene, BASE_WIDTH},
+    scenes::{FatalErrorSceneLayer, InGameResultEnterScene, BASE_WIDTH, TEAM_COLOR, UI_BG_COLOR},
     PACKET_DELAY, SERVER_TCP_ADDR,
 };
 
 use super::{InGameDominationModeStatusLayer, InGamePauseLayer};
-
-const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
-
-/// 팀의 색상입니다.
-pub const TEAM_COLOR: [egui::Color32; 2] = [
-    egui::Color32::from_rgb(0, 150, 255), // 블루팀 색상
-    egui::Color32::from_rgb(255, 68, 51), // 레드 팀 색상
-];
 
 /// 플레이어 데이터입니다.
 pub struct PlayerData {
@@ -2008,7 +2000,7 @@ impl InGameDominationModeScene {
     /// 팀 점수 게이지 인터페이스 레이아웃입니다.
     fn draw_score_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
-        const BEG_Y: f32 = -84.0;
+        const BEG_Y: f32 = -134.0;
         const END_Y: f32 = 0.0;
 
         let delta = (self.elapsed_time_sec / DURATION).min(1.0);
