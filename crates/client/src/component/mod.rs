@@ -46,6 +46,7 @@ pub type MeshRenderer<'a> = (
     &'a Arc<Mesh>,
     &'a MeshResource,
     &'a TransformUniform,
+    &'a mut Vec<MaterialUniform>,
     &'a Vec<MaterialResource>,
 );
 pub type SkinnedMeshRenderer<'a> = (
@@ -53,5 +54,6 @@ pub type SkinnedMeshRenderer<'a> = (
     &'a SkinnedMeshResource,
     &'a BoneCollection,
     &'a BoneTransformUniform,
+    &'a mut Vec<MaterialUniform>,
     &'a Vec<MaterialResource>,
 );

@@ -3969,3 +3969,357 @@ fn apply_camera_effect_when_attack(
         third_person_camera.fov_y = default_fov_y;
     }
 }
+
+/// `ActionStateTimer`를 갱신합니다.
+pub fn update_action_state_timer(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
+    const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
+        update_action_state_timer_when_idle,
+        update_action_state_timer_when_aiming,
+        update_action_state_timer_when_aim_at,
+        update_action_state_timer_when_aim_off,
+        update_action_state_timer_when_attack,
+        update_action_state_timer_when_dead,
+        update_action_state_timer_when_reload,
+        update_action_state_timer_when_skill,
+        update_action_state_timer_when_ex_skill,
+        update_action_state_timer_when_callsign,
+    ];
+
+    let i = *action_state as usize;
+    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
+}
+
+/// `ActionState::Idle`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_idle(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = NORMAL_IDLE_DURATION;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `ActionState::Aiming`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_aiming(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = NORMAL_IDLE_DURATION;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `ActionState::AimAt`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_aim_at(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_ATTACK_START_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Aiming;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::AimOff`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_aim_off(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_ATTACK_END_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::Attack`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_attack(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_ATTACK_ING_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::AimOff`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_dead(
+    _action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec).min(VITAL_DEATH_DURATION);
+}
+
+/// `ActionState::Reload`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_reload(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_RELOAD_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::Skill`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_skill(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    // TODO!
+}
+
+/// `ActionState::ExSkill`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_ex_skill(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    // TODO!
+}
+
+/// `ActionState::Callsign`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_callsign(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_CALLSIGN_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `MovementStateTimer`를 갱신합니다.
+pub fn update_movement_state_timer(
+    action_state: ActionState,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(&mut MovementState, &mut MovementStateTimer, f32);
+    const FUNC_TABLE: [[Func; NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
+        // `ActionState::Idle`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_moving,
+            update_movement_state_timer_when_move_to_end,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Aiming`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::AimAt`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::AimOff`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Attack`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Dead`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Reload`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Skill`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::ExSkill`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Callsign`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_moving,
+            update_movement_state_timer_when_move_to_end,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+    ];
+
+    let i = action_state as usize;
+    let j = *movement_state as usize;
+    FUNC_TABLE[i][j](movement_state, movement_state_timer, elapsed_time_sec);
+}
+
+/// `MovementState::Idle`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_idle(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = NORMAL_IDLE_DURATION;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `ActionState::Idle`이고, `MovementState::Moving`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_moving(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = MOVE_ING_DURATION;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `MovementState::MoveToEnd`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_move_to_end(
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 += elapsed_time_sec;
+
+    let duration = MOVE_END_NORMAL_DURATION;
+    let diff_t = movement_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *movement_state = MovementState::Idle;
+        movement_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::Aiming`이고, `MovementState::Moving`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_walking(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = CAFE_WALK_DURATION;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `MovementState::InPlaceJumping`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_in_place_jumping(
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 += elapsed_time_sec;
+
+    let duration = MAX_JUMP_DURATION;
+    let diff_t = movement_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *movement_state = MovementState::InPlaceLanding;
+        movement_state_timer.0 = diff_t;
+    }
+}
+
+/// `MovementState::MovingJumping`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_moving_jumping(
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 += elapsed_time_sec;
+
+    let duration = MAX_JUMP_DURATION;
+    let diff_t = movement_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *movement_state = MovementState::MovingLanding;
+        movement_state_timer.0 = diff_t;
+    }
+}
+
+/// `MovementState::InPlaceLanding` 또는 `MovementState::MovingLanding`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_landing(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec).min(MAX_JUMP_DURATION);
+}

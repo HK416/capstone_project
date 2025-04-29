@@ -1030,8 +1030,8 @@ impl InGameDominationModeScene {
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
@@ -1067,8 +1067,8 @@ impl InGameDominationModeScene {
             );
         }
 
-        let result = mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, uniform, materials)) = result {
+        let result = mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let transform = transform_view
                 .get(entity)
@@ -1115,8 +1115,8 @@ impl InGameDominationModeScene {
             return;
         }
 
-        let result = skinned_mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, materials)) = result {
+        let result = skinned_mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let data = collection
                 .bones
@@ -1179,11 +1179,12 @@ impl InGameDominationModeScene {
         staging_buffers: &mut Vec<wgpu::Buffer>,
         shadow_map: &mut ShadowMap,
         opaque_map: &mut OpaqueMap,
+        transparent_map: &mut TransparentMap,
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
@@ -1194,6 +1195,7 @@ impl InGameDominationModeScene {
                 staging_buffers,
                 shadow_map,
                 opaque_map,
+                transparent_map,
                 child_view,
                 sibling_view,
                 transform_view,
@@ -1211,6 +1213,7 @@ impl InGameDominationModeScene {
                 staging_buffers,
                 shadow_map,
                 opaque_map,
+                transparent_map,
                 child_view,
                 sibling_view,
                 transform_view,
@@ -1219,8 +1222,8 @@ impl InGameDominationModeScene {
             );
         }
 
-        let result = mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, uniform, materials)) = result {
+        let result = mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let transform = transform_view
                 .get(entity)
@@ -1242,11 +1245,24 @@ impl InGameDominationModeScene {
                     MeshFilter::Mesh(mesh_resource.clone()),
                     material.clone(),
                 );
-                if let Some(resources) = opaque_map.get_mut(&key) {
-                    resources.push(value);
-                } else {
-                    opaque_map.insert(key, vec![value]);
-                }
+
+                match material.kind() {
+                    MaterialKind::Bullet => {
+                        if let Some(resources) = opaque_map.get_mut(&key) {
+                            resources.push(value);
+                        } else {
+                            opaque_map.insert(key, vec![value]);
+                        }
+                    }
+                    MaterialKind::EnergyBullet => {
+                        if let Some(resources) = transparent_map.get_mut(&key) {
+                            resources.push(value);
+                        } else {
+                            transparent_map.insert(key, vec![value]);
+                        }
+                    }
+                    _ => {}
+                };
             }
 
             // 그림자 집합에 추가합니다.
@@ -1265,8 +1281,8 @@ impl InGameDominationModeScene {
             return;
         }
 
-        let result = skinned_mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, materials)) = result {
+        let result = skinned_mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let data = collection
                 .bones
@@ -1331,8 +1347,8 @@ impl InGameDominationModeScene {
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
@@ -1370,8 +1386,8 @@ impl InGameDominationModeScene {
             );
         }
 
-        let result = mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, uniform, materials)) = result {
+        let result = mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, uniform, uniforms, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let transform = transform_view
                 .get(entity)
@@ -1385,7 +1401,17 @@ impl InGameDominationModeScene {
                 },
             );
 
-            for (index, material) in materials.iter().enumerate() {
+            let iter = uniforms.iter_mut().zip(materials.iter());
+            for (index, (uniform, material)) in iter.enumerate() {
+                match uniform {
+                    MaterialUniform::CaptureZone { data, buffer } => {
+                        let mut data_layout = data.clone();
+                        data_layout.timer = self.particle_timer;
+                        buffer.update(device, encoder, staging_buffers, data_layout);
+                    }
+                    _ => {}
+                };
+
                 match material.kind() {
                     MaterialKind::Stage => {
                         // 불투명 렌더 집합에 추가합니다.
@@ -1431,8 +1457,8 @@ impl InGameDominationModeScene {
             return;
         }
 
-        let result = skinned_mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, materials)) = result {
+        let result = skinned_mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let data = collection
                 .bones
@@ -1553,35 +1579,6 @@ impl InGameDominationModeScene {
                     ..Default::default()
                 },
             );
-        }
-    }
-
-    /// 점령 지역의 재질 데이터 유니폼 버퍼를 갱신합니다.
-    fn update_capture_zone_material_resource(
-        &self,
-        entity: Entity,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-    ) {
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let world = unsafe { self.world.as_ref().unwrap_unchecked() };
-
-        // 점령 지역 재질 요소를 가져옵니다.
-        let mut query = world
-            .query_one::<&Vec<MaterialUniform>>(entity)
-            .expect("invalid entity");
-        if let Some(uniform_buffers) = query.get() {
-            for uniform_buffer in uniform_buffers {
-                match uniform_buffer {
-                    MaterialUniform::CaptureZone { data, buffer } => {
-                        let mut data = *data;
-                        data.timer = self.particle_timer;
-                        buffer.update(device, encoder, staging_buffers, data);
-                    }
-                    _ => {}
-                }
-            }
         }
     }
 }
@@ -2730,19 +2727,14 @@ impl GameScene for InGameDominationModeScene {
             }
             PacketType::FinishStage => {
                 let packet = FinishStagePacket::from_raw(packet);
-                println!("!");
 
                 // 다음 게임 장면으로 전환합니다.
-                let mut world = self.world.take().unwrap();
+                let world = self.world.take().unwrap();
                 let skybox = self.skybox.take().unwrap();
                 let players = self.players.to_owned();
                 let disconnected_players = self.disconnected_players.to_owned();
-                let winner_players = InGameResultEnterScene::get_winner_players(
-                    packet.winner_team(),
-                    &mut world,
-                    players,
-                    disconnected_players,
-                );
+                let bullets = self.bullets.to_owned();
+                let damage_particles = self.damage_particles.to_owned();
                 let stages = self.stages.to_owned();
                 let shadow_resource = self.shadow_resource.take().unwrap();
                 let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
@@ -2751,15 +2743,23 @@ impl GameScene for InGameDominationModeScene {
                     self.locale,
                     self.user_id,
                     self.token,
+                    self.control_sensitivity,
+                    self.flip_horizontal,
+                    self.flip_vertical,
                     packet.winner_team(),
                     packet.victory_type(),
                     packet.play_time,
                     packet.stage_kind(),
+                    packet.players,
+                    self.capture_point,
                     world,
                     skybox,
-                    winner_players,
+                    self.main_camera,
+                    players,
+                    disconnected_players,
+                    bullets,
+                    damage_particles,
                     stages,
-                    packet.players,
                     shadow_resource,
                     alpha_blend_resource,
                     ui_textures,
@@ -2828,8 +2828,8 @@ impl GameScene for InGameDominationModeScene {
         let child_view = &world.view::<&Child>();
         let sibling_view = &world.view::<&Sibling>();
         let transform_view = &world.view::<&WorldTransform>();
-        let mesh_filter_view = &world.view::<MeshRenderer>();
-        let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
+        let mesh_filter_view = &mut world.view::<MeshRenderer>();
+        let skinned_mesh_filter_view = &mut world.view::<SkinnedMeshRenderer>();
 
         // 캐릭터 쉐이더 리소스를 갱신합니다.
         let entities = self.culling_character();
@@ -2859,6 +2859,7 @@ impl GameScene for InGameDominationModeScene {
                 &mut staging_buffers,
                 &mut shadow_map,
                 &mut opaque_map,
+                &mut transparent_map,
                 child_view,
                 sibling_view,
                 transform_view,
@@ -2883,12 +2884,6 @@ impl GameScene for InGameDominationModeScene {
                 transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-            );
-            self.update_capture_zone_material_resource(
-                entity,
-                device,
-                &mut encoder,
-                &mut staging_buffers,
             );
         }
 
@@ -2950,7 +2945,6 @@ impl GameScene for InGameDominationModeScene {
             for ((mesh, kind), resources) in self.opaque_map.iter() {
                 let func = match kind {
                     MaterialKind::Bullet => Self::draw_bullet,
-                    MaterialKind::EnergyBullet => Self::draw_energy_bullet,
                     MaterialKind::Character => Self::draw_character,
                     MaterialKind::CharacterEyeMouth => Self::draw_character_eye_mouth,
                     MaterialKind::CharacterHalo => Self::draw_character_halo,
@@ -2959,7 +2953,6 @@ impl GameScene for InGameDominationModeScene {
                 };
                 let pipeline = match kind {
                     MaterialKind::Bullet => BulletRenderPipeline::get(),
-                    MaterialKind::EnergyBullet => EnergyBulletRenderPipeline::get(),
                     MaterialKind::Character => CharacterRenderPipeline::get(),
                     MaterialKind::CharacterEyeMouth => EyeMouthRenderPipeline::get(),
                     MaterialKind::CharacterHalo => HaloRenderPipeline::get(),
@@ -3036,10 +3029,12 @@ impl GameScene for InGameDominationModeScene {
             for ((mesh, kind), resources) in self.transparent_map.iter() {
                 let func = match kind {
                     MaterialKind::CaptureZone => Self::draw_capture_zone,
+                    MaterialKind::EnergyBullet => Self::draw_energy_bullet,
                     _ => continue,
                 };
                 let pipeline = match kind {
                     MaterialKind::CaptureZone => CaptureZoneRenderPipeline::get(),
+                    MaterialKind::EnergyBullet => EnergyBulletRenderPipeline::get(),
                     _ => continue,
                 }
                 .unwrap();

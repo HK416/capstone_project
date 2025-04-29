@@ -1,25 +1,25 @@
-//! 에너지 볼 형태의 총알과 관련된 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
+//! 일반 총알과 관련된 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
 //!
 
 use std::sync::{Arc, OnceLock};
 
 use crate::component::{
-    CameraResource, EnergyBulletMaterialResource, MeshResource, WeightedBlendedOITResource,
+    BulletMaterialResource, CameraResource, MeshResource, WeightedBlendedOITResource,
 };
 
-/// 에너지 볼 형태의 총알을 그리는 그래픽스 파이프라인입니다.
-pub struct EnergyBulletRenderPipeline;
+/// 일반 총알을 투명하게 그리는 그래픽스 파이프라인입니다.
+pub struct BulletRenderPipelineTransparency;
 
-/// 에너지 볼 형태의 총알을 그리는 그래픽스 파이프라인 인스턴스입니다.
+/// 일반 총알을 투명하게 그리는 그래픽스 파이프라인 인스턴스입니다.
 static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
 
-impl EnergyBulletRenderPipeline {
+impl BulletRenderPipelineTransparency {
     /// [wgpu::ShaderModule]을 반환합니다.
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
         unsafe {
             let desc = wgpu::include_wgsl!(concat!(
                 env!("CARGO_WORKSPACE_DIR"),
-                "/assets/shaders/energy_bullet.wgsl",
+                "/assets/shaders/bullet.wgsl",
             ));
 
             if cfg!(feature = "enable-shader-validation") {
@@ -33,11 +33,11 @@ impl EnergyBulletRenderPipeline {
     /// [wgpu::PipelineLayout]을 반환합니다.
     fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("PipelineLayout(EnergyBullet)"),
+            label: Some("PipelineLayout(BulletTransparency)"),
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device),
                 MeshResource::bind_group_layout(device),
-                EnergyBulletMaterialResource::bind_group_layout(device),
+                BulletMaterialResource::bind_group_layout(device),
             ],
             push_constant_ranges: &[],
         })
@@ -60,7 +60,7 @@ impl EnergyBulletRenderPipeline {
                 let layout = Self::create_pipeline_layout(device);
                 Arc::new(
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                        label: Some("RenderPipeline(EnergyBullet)"),
+                        label: Some("RenderPipeline(BulletTransparency)"),
                         layout: Some(&layout),
                         vertex: wgpu::VertexState {
                             module: &module,
@@ -77,19 +77,21 @@ impl EnergyBulletRenderPipeline {
                                     }],
                                     step_mode: wgpu::VertexStepMode::Vertex,
                                 },
-                                // 1번 입력 속성: 텍스처 좌표
+                                // 1번 입력 속성: 노멀
                                 wgpu::VertexBufferLayout {
-                                    array_stride: core::mem::size_of::<[f32; 2]>()
+                                    array_stride: core::mem::size_of::<[f32; 3]>()
                                         as wgpu::BufferAddress,
                                     attributes: &[wgpu::VertexAttribute {
                                         offset: 0,
                                         shader_location: 1,
-                                        format: wgpu::VertexFormat::Float32x2,
+                                        format: wgpu::VertexFormat::Float32x3,
                                     }],
                                     step_mode: wgpu::VertexStepMode::Vertex,
                                 },
                             ],
-                            compilation_options: wgpu::PipelineCompilationOptions::default(),
+                            compilation_options: wgpu::PipelineCompilationOptions {
+                                ..Default::default()
+                            },
                         },
                         primitive: wgpu::PrimitiveState {
                             cull_mode: Some(wgpu::Face::Back),
@@ -108,7 +110,7 @@ impl EnergyBulletRenderPipeline {
                         multisample: wgpu::MultisampleState::default(),
                         fragment: Some(wgpu::FragmentState {
                             module: &module,
-                            entry_point: Some("fs_main"),
+                            entry_point: Some("fs_transparency_main"),
                             compilation_options: wgpu::PipelineCompilationOptions::default(),
                             targets: &[
                                 Some(wgpu::ColorTargetState {

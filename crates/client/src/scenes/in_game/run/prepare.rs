@@ -685,8 +685,8 @@ impl InGameDominationModePrepareScene {
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
@@ -722,8 +722,8 @@ impl InGameDominationModePrepareScene {
             );
         }
 
-        let result = mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, uniform, materials)) = result {
+        let result = mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let transform = transform_view
                 .get(entity)
@@ -770,8 +770,8 @@ impl InGameDominationModePrepareScene {
             return;
         }
 
-        let result = skinned_mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, materials)) = result {
+        let result = skinned_mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let data = collection
                 .bones
@@ -838,8 +838,8 @@ impl InGameDominationModePrepareScene {
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
@@ -877,8 +877,8 @@ impl InGameDominationModePrepareScene {
             );
         }
 
-        let result = mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, uniform, materials)) = result {
+        let result = mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let transform = transform_view
                 .get(entity)
@@ -938,8 +938,8 @@ impl InGameDominationModePrepareScene {
             return;
         }
 
-        let result = skinned_mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, materials)) = result {
+        let result = skinned_mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let data = collection
                 .bones
@@ -1306,8 +1306,8 @@ impl GameScene for InGameDominationModePrepareScene {
         let child_view = &world.view::<&Child>();
         let sibling_view = &world.view::<&Sibling>();
         let transform_view = &world.view::<&WorldTransform>();
-        let mesh_filter_view = &world.view::<MeshRenderer>();
-        let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
+        let mesh_filter_view = &mut world.view::<MeshRenderer>();
+        let skinned_mesh_filter_view = &mut world.view::<SkinnedMeshRenderer>();
 
         // 캐릭터 쉐이더 리소스를 갱신합니다.
         let entities = self.culling_character();

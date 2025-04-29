@@ -170,8 +170,14 @@ impl MaterialDataPool {
 /// 재질 유니폼 버퍼입니다.
 #[derive(Debug, Clone)]
 pub enum MaterialUniform {
-    Bullet(BulletMaterialUniform),
-    EnergyBullet(EnergyBulletMaterialUniform),
+    Bullet {
+        data: BulletMaterialDataLayout,
+        buffer: BulletMaterialUniform,
+    },
+    EnergyBullet {
+        data: EnergyBulletMaterialDataLayout,
+        buffer: EnergyBulletMaterialUniform,
+    },
     Character(CharacterMaterialUniform),
     CharacterEyeMouth {
         data: EyeMouthMaterialDataLayout,
@@ -192,8 +198,8 @@ impl MaterialUniform {
         S: RangeBounds<wgpu::BufferAddress>,
     {
         match self {
-            MaterialUniform::Bullet(uniform) => uniform.slice(bounds),
-            MaterialUniform::EnergyBullet(uniform) => uniform.slice(bounds),
+            MaterialUniform::Bullet { buffer, .. } => buffer.slice(bounds),
+            MaterialUniform::EnergyBullet { buffer, .. } => buffer.slice(bounds),
             MaterialUniform::Character(uniform) => uniform.slice(bounds),
             MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.slice(bounds),
             MaterialUniform::CharacterHalo(uniform) => uniform.slice(bounds),
@@ -205,8 +211,8 @@ impl MaterialUniform {
     /// 유니폼 버퍼의 [`wgpu::BindingResource`]를 반환합니다.
     pub fn as_entire_binding(&self) -> wgpu::BindingResource<'_> {
         match self {
-            MaterialUniform::Bullet(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::EnergyBullet(uniform) => uniform.as_entire_binding(),
+            MaterialUniform::Bullet { buffer, .. } => buffer.as_entire_binding(),
+            MaterialUniform::EnergyBullet { buffer, .. } => buffer.as_entire_binding(),
             MaterialUniform::Character(uniform) => uniform.as_entire_binding(),
             MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.as_entire_binding(),
             MaterialUniform::CharacterHalo(uniform) => uniform.as_entire_binding(),

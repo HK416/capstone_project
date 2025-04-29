@@ -171,8 +171,8 @@ impl InGameResultScene {
         // 카메라의 위치와 방향을 설정합니다.
         let pivot = glam::Vec3A::Y * 0.6;
         let direction = RESET_ROTATION[self.stage_kind as usize][self.winner as usize];
-        let look = direction.mul_vec3a(glam::Vec3A::Z).normalize();
-        let position = pivot + look * 1.0;
+        let direction = direction.mul_vec3a(glam::Vec3A::Z).normalize();
+        let position = pivot + direction * 3.5;
         let look = (pivot - position).normalize();
         let right = glam::Vec3A::Y.cross(look);
         let up = look.cross(right);
@@ -190,7 +190,7 @@ impl InGameResultScene {
         builder.add_bundle((
             ToParentTrans(cam_trans),
             WorldTransform::default(),
-            Projection::perspective(75f32.to_radians(), 16.0 / 9.0, 0.01, 500.0),
+            Projection::perspective(60f32.to_radians(), 16.0 / 9.0, 0.01, 500.0),
             camera_uniform,
             camera_resource,
             Frustum::from_mat4(glam::Mat4::IDENTITY),
@@ -388,8 +388,8 @@ impl InGameResultScene {
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
@@ -425,8 +425,8 @@ impl InGameResultScene {
             );
         }
 
-        let result = mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, uniform, materials)) = result {
+        let result = mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let transform = transform_view
                 .get(entity)
@@ -473,8 +473,8 @@ impl InGameResultScene {
             return;
         }
 
-        let result = skinned_mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, materials)) = result {
+        let result = skinned_mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let data = collection
                 .bones
@@ -541,8 +541,8 @@ impl InGameResultScene {
         child_view: &ViewBorrow<'_, &Child>,
         sibling_view: &ViewBorrow<'_, &Sibling>,
         transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
         // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
         if let Some(child_entity) = child_view.get(entity).cloned() {
@@ -580,8 +580,8 @@ impl InGameResultScene {
             );
         }
 
-        let result = mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, uniform, materials)) = result {
+        let result = mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let transform = transform_view
                 .get(entity)
@@ -641,8 +641,8 @@ impl InGameResultScene {
             return;
         }
 
-        let result = skinned_mesh_filter_view.get(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, materials)) = result {
+        let result = skinned_mesh_filter_view.get_mut(entity);
+        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
             // 유니폼 버퍼를 갱신합니다.
             let data = collection
                 .bones
@@ -880,8 +880,8 @@ impl GameScene for InGameResultScene {
         let child_view = &self.world.view::<&Child>();
         let sibling_view = &self.world.view::<&Sibling>();
         let transform_view = &self.world.view::<&WorldTransform>();
-        let mesh_filter_view = &self.world.view::<MeshRenderer>();
-        let skinned_mesh_filter_view = &self.world.view::<SkinnedMeshRenderer>();
+        let mesh_filter_view = &mut self.world.view::<MeshRenderer>();
+        let skinned_mesh_filter_view = &mut self.world.view::<SkinnedMeshRenderer>();
 
         // 캐릭터 쉐이더 리소스를 갱신합니다.
         let entities = self.culling_character();
