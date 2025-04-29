@@ -30,8 +30,9 @@ use winit::{
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, FIELD_DECO_00_URI, IMG_FONT_DAMAGE_NORMAL_URI, NOTOSANS_BOLD,
-        NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        TextureViewPool, FIELD_DECO_00_URI, IMG_FONT_DAMAGE_NORMAL_URI, IMG_FONT_START_URI,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI,
+        WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -50,7 +51,7 @@ use crate::{
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, InGameResultEnterScene, BASE_WIDTH},
-    SERVER_TCP_ADDR,
+    PACKET_DELAY, SERVER_TCP_ADDR,
 };
 
 use super::{InGameDominationModeStatusLayer, InGamePauseLayer};
@@ -99,8 +100,9 @@ pub struct InGameDominationModeScene {
     /// 플레이어가 상태 대화상자를 보는 여부를 나타냅니다.
     show_status: bool,
 
+    /// 패킷을 전송할 때 딜레이 시간입니다.
+    packet_delay_time: f32,
     /// 게임 장면의 경과 시간입니다.
-    /// 패킷을 보낼 때 사용됩니다.
     elapsed_time_sec: f32,
     /// 파티클의 타이머입니다.
     particle_timer: f32,
@@ -296,6 +298,7 @@ impl InGameDominationModeScene {
             flip_horizontal: false,
             flip_vertical: false,
             show_status: false,
+            packet_delay_time: 0.0,
             elapsed_time_sec: 0.0,
             particle_timer: 0.0,
             capture_point: CapturePoint::default(),
@@ -554,12 +557,10 @@ impl InGameDominationModeScene {
 impl InGameDominationModeScene {
     /// 게임 서버에 플레이어 데이터를 전송합니다.
     fn push_player_data(&mut self, net_manager: &NetManager) {
-        // 패킷 지연 시간 이후 패킷을 전송합니다.
-        const DEALY: f32 = 1.0 / 120.0;
-        if self.elapsed_time_sec < DEALY {
+        if self.packet_delay_time < PACKET_DELAY {
             return;
         }
-        self.elapsed_time_sec = 0.0;
+        self.packet_delay_time = 0.0;
 
         type Query<'a> = (&'a WorldTransform, &'a ViewState, &'a ViewStateTimer);
         let entity = self.get_player_entity();
@@ -1804,52 +1805,81 @@ impl InGameDominationModeScene {
 // 사용자 인터페이스와 관련된 코드를 작성합니다.
 //--------------------------------------------------------------------------------------------
 impl InGameDominationModeScene {
+    /// 게임 시작 문구를 화면에 출력합니다.
+    fn draw_start_font(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+
+        // 게임 장면 경과 시간이 시작 문구 지속 시간보다 큰 경우 함수 실행을 생략
+        if self.elapsed_time_sec > DURATION {
+            return;
+        }
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+
+        // 게임 시작 폰트 속성
+        // - 기준 시작 가로 크기: 768
+        // - 기준 시작 세로 크기: 192
+        // - 기준 종료 가로 크기: 1024
+        // - 기준 종료 세로 크기: 256
+        let hw = (768.0 * (1.0 - t) + 1024.0 * t) * 0.5;
+        let hh = (192.0 * (1.0 - t) + 256.0 * t) * 0.5;
+        let tint = egui::Color32::from_white_alpha((255.0 * (1.0 - t)) as u8);
+        let img_font_start = self
+            .ui_textures
+            .get(IMG_FONT_START_URI)
+            .cloned()
+            .expect("the ImgFont_Start must exist!");
+        let font_rect = egui::Rect::from_min_max(
+            egui::pos2((640.0 - hw) * scale, (360.0 - hh) * scale),
+            egui::pos2((640.0 + hw) * scale, (360.0 + hh) * scale),
+        );
+
+        egui::Area::new(egui::Id::new("Start_Font_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(img_font_start)
+                .tint(tint)
+                .paint_at(ui, font_rect);
+        });
+    }
+
     /// 체력 인터페이스 배경 레이아웃이미지입니다.
-    fn health_point_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    fn draw_health_point_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = -310.0;
+        const END_X: f32 = 0.0;
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
         // 체력 인터페이스 레이아웃 이미지
         // - 기준 가로 크기: 280
         // - 기준 세로 크기: 94
         // - 기준 시작 위치: (30, 596)
         // - 기준 종료 위치: (310, 690)
         //
-        let ui_game_layout = self
+        let field_deco_00 = self
             .ui_textures
             .get(FIELD_DECO_00_URI)
             .cloned()
-            .expect("the UI_Game_Layout must exist!");
+            .expect("the Field_Deco_00 must exist!");
 
-        let tex_width = ui_game_layout.size.x;
-        let tex_height = ui_game_layout.size.y;
-        let src_front = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_front = egui::Rect::from_min_max(
-            egui::pos2(30.0 * scale, 596.0 * scale),
-            egui::pos2(63.0 * scale, 690.0 * scale),
+        let front_rect = egui::Rect::from_min_max(
+            egui::pos2((x + 30.0) * scale, 596.0 * scale),
+            egui::pos2((x + 63.0) * scale, 690.0 * scale),
         );
-        let uv_front = egui::Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.59375, 1.0));
-
-        let src_middle = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.1875, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_middle = egui::Rect::from_min_max(
-            egui::pos2(63.0 * scale, 596.0 * scale),
-            egui::pos2(277.0 * scale, 690.0 * scale),
+        let front_uv = egui::Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.59375, 1.0));
+        let middle_rect = egui::Rect::from_min_max(
+            egui::pos2((x + 63.0) * scale, 596.0 * scale),
+            egui::pos2((x + 277.0) * scale, 690.0 * scale),
         );
-        let uv_middle =
+        let middle_uv =
             egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
-
-        let src_back = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_back = egui::Rect::from_min_max(
-            egui::pos2(277.0 * scale, 596.0 * scale),
-            egui::pos2(310.0 * scale, 690.0 * scale),
+        let back_rect = egui::Rect::from_min_max(
+            egui::pos2((x + 277.0) * scale, 596.0 * scale),
+            egui::pos2((x + 310.0) * scale, 690.0 * scale),
         );
-        let uv_back = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
+        let back_uv = egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.0, 1.0));
 
         // 체력 인터페이스 데코레이션
         // - 기준 가로 크기: 210
@@ -1857,46 +1887,53 @@ impl InGameDominationModeScene {
         // - 기준 시작 위치: (75, 678)
         // - 기준 종료 위치: (285, 680)
         let deco_pos = egui::Rect::from_min_max(
-            egui::pos2(75.0 * scale, 678.0 * scale),
-            egui::pos2(285.0 * scale, 680.0 * scale),
+            egui::pos2((x + 75.0) * scale, 678.0 * scale),
+            egui::pos2((x + 285.0) * scale, 680.0 * scale),
         );
         let deco_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(0.40625, 1.0));
 
         egui::Area::new(egui::Id::new("Health_BG_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(src_front)
-                .uv(uv_front)
+            egui::Image::new(field_deco_00)
+                .uv(front_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_front);
-            egui::Image::new(src_middle)
-                .uv(uv_middle)
+                .paint_at(ui, front_rect);
+            egui::Image::new(field_deco_00)
+                .uv(middle_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_middle);
-            egui::Image::new(src_back)
-                .uv(uv_back)
+                .paint_at(ui, middle_rect);
+            egui::Image::new(field_deco_00)
+                .uv(back_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_back);
+                .paint_at(ui, back_rect);
 
-            egui::Image::new(ui_game_layout)
+            egui::Image::new(field_deco_00)
                 .uv(deco_uv)
                 .paint_at(ui, deco_pos);
         });
     }
 
     /// 체력 게이지 인터페이스 레이아웃입니다.
-    fn health_point_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let entity = self.get_player_entity();
-        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
+    fn draw_health_point_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = -310.0;
+        const END_X: f32 = 0.0;
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
 
         // 폰트 속성
         let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
 
-        // 체력 텍스트
+        // 플레이어의 현재 체력을 가져옵니다.
+        let entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
         let &health_point = world
             .query_one_mut::<&HealthPoint>(entity)
             .expect("invalid entity or invalid entity component");
         let percent = health_point.percent();
 
+        // 체력 텍스트를 생성합니다.
         let text = format!("{}", health_point.current.min(9999));
         let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
         let health_point_text = egui::RichText::new(text)
@@ -1910,9 +1947,9 @@ impl InGameDominationModeScene {
             // 기준 시작 위치: (55, 612)
             // 기준 종료 위치: (280, 647.5)
             // 기준 범위: 225
-            let pivot_x = 55.0 * scale;
-            let range_x = 225.0 * percent * scale;
-            let maximum = 225.0 * scale;
+            let pivot_x = (x + 55.0) * scale;
+            let range_x = (x + 225.0) * percent * scale;
+            let maximum = (x + 225.0) * scale;
             let mut beg_x = pivot_x;
             let mut end_x: f32;
             let mut rect: egui::Rect;
@@ -1969,7 +2006,15 @@ impl InGameDominationModeScene {
     }
 
     /// 팀 점수 게이지 인터페이스 레이아웃입니다.
-    fn score_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    fn draw_score_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_Y: f32 = -84.0;
+        const END_Y: f32 = 0.0;
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let y = BEG_Y * (1.0 - t) + END_Y * t;
+
         // schale 아이콘
         let schale_icon = self
             .ui_textures
@@ -1977,8 +2022,8 @@ impl InGameDominationModeScene {
             .cloned()
             .expect("the Schale_Icon must exist!");
         let icon_area = egui::Rect::from_min_max(
-            egui::pos2(610.0 * scale, 24.0 * scale),
-            egui::pos2(670.0 * scale, 84.0 * scale),
+            egui::pos2(610.0 * scale, (y + 24.0) * scale),
+            egui::pos2(670.0 * scale, (y + 84.0) * scale),
         );
 
         // 전체 배경
@@ -1986,8 +2031,8 @@ impl InGameDominationModeScene {
         // - 세로 기준 길이: 12
         //
         let rect = egui::Rect::from_min_max(
-            egui::pos2(380.0 * scale, 48.0 * scale),
-            egui::pos2(900.0 * scale, 60.0 * scale),
+            egui::pos2(380.0 * scale, (y + 48.0) * scale),
+            egui::pos2(900.0 * scale, (y + 60.0) * scale),
         );
         let frame_bg = egui::epaint::RectShape::new(
             rect,
@@ -1999,27 +2044,25 @@ impl InGameDominationModeScene {
 
         // 플레이어 팀 데코
         let team_bg_deco = egui::epaint::CircleShape::stroke(
-            egui::pos2(640.0 * scale, 54.0 * scale),
+            egui::pos2(640.0 * scale, (y + 54.0) * scale),
             40.0 * scale,
             egui::Stroke::new(3.0 * scale, egui::Color32::WHITE),
         );
         let team_bg_shadow = egui::epaint::CircleShape::filled(
-            egui::pos2(640.0 * scale, 54.0 * scale),
+            egui::pos2(640.0 * scale, (y + 54.0) * scale),
             33.0 * scale,
             egui::Color32::from_black_alpha(192),
         );
 
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let entity = self.get_player_entity();
-        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
-
         // 플레이어 팀 배경
+        let entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
         let (team, _) = world
             .query_one_mut::<&(Team, usize)>(entity)
             .cloned()
             .expect("invalid entity or invalid entity component");
         let team_bg = egui::epaint::CircleShape::filled(
-            egui::pos2(640.0 * scale, 54.0 * scale),
+            egui::pos2(640.0 * scale, (y + 54.0) * scale),
             32.0 * scale,
             TEAM_COLOR[team as usize],
         );
@@ -2029,8 +2072,8 @@ impl InGameDominationModeScene {
         // - 세로 기준 길이: 8
         //
         let rect = egui::Rect::from_min_max(
-            egui::pos2(382.0 * scale, 50.0 * scale),
-            egui::pos2(582.0 * scale, 58.0 * scale),
+            egui::pos2(382.0 * scale, (y + 50.0) * scale),
+            egui::pos2(582.0 * scale, (y + 58.0) * scale),
         );
         let blue_guage_bg = egui::epaint::RectShape::new(
             rect,
@@ -2045,8 +2088,8 @@ impl InGameDominationModeScene {
         // - 세로 기준 길이: 8
         //
         let rect = egui::Rect::from_min_max(
-            egui::pos2(698.0 * scale, 50.0 * scale),
-            egui::pos2(898.0 * scale, 58.0 * scale),
+            egui::pos2(698.0 * scale, (y + 50.0) * scale),
+            egui::pos2(898.0 * scale, (y + 58.0) * scale),
         );
         let red_guage_bg = egui::epaint::RectShape::new(
             rect,
@@ -2061,8 +2104,8 @@ impl InGameDominationModeScene {
         let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
         let width = 200.0 * scale * percent;
         let rect = egui::Rect::from_min_max(
-            egui::pos2(582.0 * scale - width, 50.0 * scale),
-            egui::pos2(582.0 * scale, 58.0 * scale),
+            egui::pos2(582.0 * scale - width, (y + 50.0) * scale),
+            egui::pos2(582.0 * scale, (y + 58.0) * scale),
         );
         let blue_guage = egui::epaint::RectShape::new(
             rect,
@@ -2077,8 +2120,8 @@ impl InGameDominationModeScene {
         let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
         let width = 200.0 * scale * percent;
         let rect = egui::Rect::from_min_max(
-            egui::pos2(698.0 * scale, 50.0 * scale),
-            egui::pos2(698.0 * scale + width, 58.0 * scale),
+            egui::pos2(698.0 * scale, (y + 50.0) * scale),
+            egui::pos2(698.0 * scale + width, (y + 58.0) * scale),
         );
         let red_guage = egui::epaint::RectShape::new(
             rect,
@@ -2098,8 +2141,8 @@ impl InGameDominationModeScene {
                 match team {
                     Team::Blue => {
                         let rect = egui::Rect::from_min_max(
-                            egui::pos2(380.0 * scale, 48.0 * scale),
-                            egui::pos2(380.0 * scale + width, 60.0 * scale),
+                            egui::pos2(380.0 * scale, (y + 48.0) * scale),
+                            egui::pos2(380.0 * scale + width, (y + 60.0) * scale),
                         );
                         Some(egui::epaint::RectShape::new(
                             rect,
@@ -2111,8 +2154,8 @@ impl InGameDominationModeScene {
                     }
                     Team::Red => {
                         let rect = egui::Rect::from_min_max(
-                            egui::pos2(900.0 * scale - width, 48.0 * scale),
-                            egui::pos2(900.0 * scale, 60.0 * scale),
+                            egui::pos2(900.0 * scale - width, (y + 48.0) * scale),
+                            egui::pos2(900.0 * scale, (y + 60.0) * scale),
                         );
                         Some(egui::epaint::RectShape::new(
                             rect,
@@ -2146,62 +2189,54 @@ impl InGameDominationModeScene {
     }
 
     /// 남은 시간 인터페이스 레이아웃입니다.
-    fn remaining_timer_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    fn draw_remaining_timer_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = 1424.0;
+        const END_X: f32 = 1280.0;
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
         // 남은 시간 인터페이스 레이아웃
         // - 기준 가로 크기: 144
         // - 기준 세로 크기: 36
         // - 기준 시작 위치: (1144, 12)
         // - 기준 종료 위치: (1264, 42)
         //
-        let ui_game_layout = self
+        let field_deco_00 = self
             .ui_textures
             .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
 
-        let ui_timer_icon = self
+        let timer_icon = self
             .ui_textures
             .get(TIMER_ICON_URI)
             .cloned()
             .expect("the UI_Timer_Icon must exist!");
 
-        let tex_width = ui_game_layout.size.x;
-        let tex_height = ui_game_layout.size.y;
-        let src_front = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_front = egui::Rect::from_min_max(
-            egui::pos2(1120.0 * scale, 12.0 * scale),
-            egui::pos2(1133.0 * scale, 48.0 * scale),
+        let front_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1120.0)) * scale, 12.0 * scale),
+            egui::pos2((x - (1280.0 - 1133.0)) * scale, 48.0 * scale),
         );
-        let uv_front = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
-
-        let src_middle = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.1875, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_middle = egui::Rect::from_min_max(
-            egui::pos2(1133.0 * scale, 12.0 * scale),
-            egui::pos2(1253.0 * scale, 48.0 * scale),
+        let front_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
+        let middle_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1133.0)) * scale, 12.0 * scale),
+            egui::pos2((x - (1280.0 - 1253.0)) * scale, 48.0 * scale),
         );
-        let uv_middle =
+        let middle_uv =
             egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.59375, 1.0));
-
-        let src_back = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_back = egui::Rect::from_min_max(
-            egui::pos2(1253.0 * scale, 12.0 * scale),
-            egui::pos2(1264.0 * scale, 48.0 * scale),
+        let back_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1253.0)) * scale, 12.0 * scale),
+            egui::pos2((x - (1280.0 - 1264.0)) * scale, 48.0 * scale),
         );
-        let uv_back = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
+        let back_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
 
-        // 타이머 아이콘
+        // 타이머 아이콘 인터페이스
         let timer_icon_rect = egui::Rect::from_min_max(
-            egui::pos2(1140.0 * scale, 16.0 * scale),
-            egui::pos2(1168.0 * scale, 44.0 * scale),
+            egui::pos2((x - (1280.0 - 1140.0)) * scale, 16.0 * scale),
+            egui::pos2((x - (1280.0 - 1168.0)) * scale, 44.0 * scale),
         );
 
         // 남은 시간 폰트
@@ -2214,55 +2249,61 @@ impl InGameDominationModeScene {
             .font(font_id)
             .color(egui::Color32::WHITE);
         let text_area_rect = egui::Rect::from_min_max(
-            egui::pos2(1164.0 * scale, 14.0 * scale),
-            egui::pos2(1252.0 * scale, 46.0 * scale),
+            egui::pos2((x - (1280.0 - 1164.0)) * scale, 14.0 * scale),
+            egui::pos2((x - (1280.0 - 1252.0)) * scale, 46.0 * scale),
         );
 
         egui::Area::new(egui::Id::new("Timer_BG_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(src_front)
-                .uv(uv_front)
+            egui::Image::new(field_deco_00)
+                .uv(front_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_front);
-            egui::Image::new(src_middle)
-                .uv(uv_middle)
+                .paint_at(ui, front_rect);
+            egui::Image::new(field_deco_00)
+                .uv(middle_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_middle);
-            egui::Image::new(src_back)
-                .uv(uv_back)
+                .paint_at(ui, middle_rect);
+            egui::Image::new(field_deco_00)
+                .uv(back_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_back);
+                .paint_at(ui, back_rect);
 
-            egui::Image::new(ui_timer_icon).paint_at(ui, timer_icon_rect);
+            egui::Image::new(timer_icon).paint_at(ui, timer_icon_rect);
 
             ui.put(text_area_rect, egui::Label::new(remaining_time_text));
         });
     }
 
     // 남은 총알 인터페이스 레이아웃입니다.
-    fn remaining_bullet_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    fn draw_remaining_bullet_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = 1520.0;
+        const END_X: f32 = 1280.0;
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
         // 총알 인터페이스 레이아웃
         // - 기준 가로 크기: 220
         // - 기준 세로 크기: 110
         // - 기준 시작 위치: (1040, 580)
         // - 기준 종료 위치: (1250, 690)
         //
-        let ui_game_layout = self
+        let field_deco_00 = self
             .ui_textures
             .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
 
-        let icon = self
+        let weapon_mask_icon = self
             .ui_textures
             .get(WEAPON_ICON_MASK_URI)
             .cloned()
             .expect("the Weapon Icon must exist!");
 
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let entity = self.get_player_entity();
-        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
-
         // 남은 총알 텍스트
+        let entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
         let remaining_bullet = world
             .query_one_mut::<&RemainingBullet>(entity)
             .expect("invalid entity or invalid entity component");
@@ -2272,154 +2313,83 @@ impl InGameDominationModeScene {
         let remaining_text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::WHITE);
-        let text_area = egui::Rect::from_min_max(
-            egui::pos2(1040.0 * scale, 650.0 * scale),
-            egui::pos2(1240.0 * scale, 670.0 * scale),
+        let text_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1040.0)) * scale, 650.0 * scale),
+            egui::pos2((x - (1280.0 - 1240.0)) * scale, 670.0 * scale),
         );
 
         // 인터페이스 배경
-        let tex_width = ui_game_layout.size.x;
-        let tex_height = ui_game_layout.size.y;
-        let src_front = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_front = egui::Rect::from_min_max(
-            egui::pos2(1030.0 * scale, 580.0 * scale),
-            egui::pos2(1063.0 * scale, 690.0 * scale),
+        let front_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1030.0)) * scale, 580.0 * scale),
+            egui::pos2((x - (1280.0 - 1063.0)) * scale, 690.0 * scale),
         );
-        let uv_front = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
-
-        let src_middle = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.1875, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_middle = egui::Rect::from_min_max(
-            egui::pos2(1063.0 * scale, 580.0 * scale),
-            egui::pos2(1217.0 * scale, 690.0 * scale),
+        let front_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
+        let middle_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1063.0)) * scale, 580.0 * scale),
+            egui::pos2((x - (1280.0 - 1217.0)) * scale, 690.0 * scale),
         );
-        let uv_middle =
+        let middle_uv =
             egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.59375, 1.0));
-
-        let src_back = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_back = egui::Rect::from_min_max(
-            egui::pos2(1217.0 * scale, 580.0 * scale),
-            egui::pos2(1250.0 * scale, 690.0 * scale),
+        let back_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1217.0)) * scale, 580.0 * scale),
+            egui::pos2((x - (1280.0 - 1250.0)) * scale, 690.0 * scale),
         );
-        let uv_back = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
+        let back_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
 
         // 무기 아이콘
         // 가로 길이: 200
-        let ratio = icon.size.x / icon.size.y;
+        let ratio = weapon_mask_icon.size.x / weapon_mask_icon.size.y;
         let icon_width = 200.0;
         let icon_height = icon_width / ratio;
-        let icon_area = egui::Rect::from_min_max(
-            egui::pos2(1040.0 * scale, 590.0 * scale),
-            egui::pos2(1240.0 * scale, (590.0 + icon_height) * scale),
+        let weapon_icon_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1040.0)) * scale, 590.0 * scale),
+            egui::pos2(
+                (x - (1280.0 - 1240.0)) * scale,
+                (590.0 + icon_height) * scale,
+            ),
         );
 
         egui::Area::new(egui::Id::new("Bullet_BG_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(src_front)
-                .uv(uv_front)
+            egui::Image::new(field_deco_00)
+                .uv(front_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_front);
-            egui::Image::new(src_middle)
-                .uv(uv_middle)
+                .paint_at(ui, front_rect);
+            egui::Image::new(field_deco_00)
+                .uv(middle_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_middle);
-            egui::Image::new(src_back)
-                .uv(uv_back)
+                .paint_at(ui, middle_rect);
+            egui::Image::new(field_deco_00)
+                .uv(back_uv)
                 .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_back);
+                .paint_at(ui, back_rect);
 
-            egui::Image::new(icon)
+            egui::Image::new(weapon_mask_icon)
                 .tint(egui::Color32::DARK_GRAY)
-                .paint_at(ui, icon_area);
+                .paint_at(ui, weapon_icon_rect);
 
-            ui.put(text_area, egui::Label::new(remaining_text));
-        });
-    }
-
-    /// 일반 스킬 인터페이스 레이아웃입니다.
-    fn skill_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
-        // 일반스킬 인터페이스 레이아웃
-        // - 기준 가로 크기: 74
-        // - 기준 세로 크기: 74
-        // - 기준 시작 위치: (940, 612)
-        // - 기준 종료 위치: (1032, 690)
-        //
-        let ui_game_layout = self
-            .ui_textures
-            .get(FIELD_DECO_00_URI)
-            .cloned()
-            .expect("the UI_Game_Layout must exist!");
-
-        // 인터페이스 배경
-        let tex_width = ui_game_layout.size.x;
-        let tex_height = ui_game_layout.size.y;
-        let src_front = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_front = egui::Rect::from_min_max(
-            egui::pos2(940.0 * scale, 612.0 * scale),
-            egui::pos2(962.0 * scale, 690.0 * scale),
-        );
-        let uv_front = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(0.40625, 1.0));
-
-        let src_middle = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.1875, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_middle = egui::Rect::from_min_max(
-            egui::pos2(962.0 * scale, 612.0 * scale),
-            egui::pos2(1010.0 * scale, 690.0 * scale),
-        );
-        let uv_middle =
-            egui::Rect::from_min_max(egui::pos2(0.40625, 0.0), egui::pos2(0.59375, 1.0));
-
-        let src_back = egui::load::SizedTexture {
-            size: egui::vec2(tex_width * 0.40625, tex_height),
-            id: ui_game_layout.id,
-        };
-        let pos_back = egui::Rect::from_min_max(
-            egui::pos2(1010.0 * scale, 612.0 * scale),
-            egui::pos2(1032.0 * scale, 690.0 * scale),
-        );
-        let uv_back = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
-
-        egui::Area::new(egui::Id::new("Skill_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(src_front)
-                .uv(uv_front)
-                .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_front);
-            egui::Image::new(src_middle)
-                .uv(uv_middle)
-                .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_middle);
-            egui::Image::new(src_back)
-                .uv(uv_back)
-                .tint(UI_BG_COLOR)
-                .paint_at(ui, pos_back);
+            ui.put(text_rect, egui::Label::new(remaining_text));
         });
     }
 
     /// Ex 스킬 게이지 인터페이스 레이아웃입니다.
-    fn ex_skill_guage_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
-        let icon = self
+    fn draw_ex_skill_guage_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = 1520.0;
+        const END_X: f32 = 1280.0;
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
+        let weapon_icon = self
             .ui_textures
             .get(WEAPON_ICON_URI)
             .cloned()
             .expect("the Weapon Icon must exist!");
 
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let entity = self.get_player_entity();
-        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
-
         // 현재 Ex스킬 코스트를 가져옵니다.
+        let entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
         let ex_skill_cost = world
             .query_one_mut::<&ExSkillCost>(entity)
             .expect("invalid entity or invalid entity component");
@@ -2427,20 +2397,22 @@ impl InGameDominationModeScene {
 
         // 무기 아이콘
         // 가로 길이: 200
-        let ratio = icon.size.x / icon.size.y;
+        let ratio = weapon_icon.size.x / weapon_icon.size.y;
         let icon_width = 200.0;
         let icon_height = icon_width / ratio;
         let icon_area = egui::Rect::from_min_max(
-            egui::pos2(1040.0 * scale, 590.0 * scale),
+            egui::pos2((x - (1280.0 - 1040.0)) * scale, 590.0 * scale),
             egui::pos2(
-                (1040.0 + icon_width * percent) * scale,
+                ((x - (1280.0 - 1040.0)) + icon_width * percent) * scale,
                 (590.0 + icon_height) * scale,
             ),
         );
         let icon_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(percent, 1.0));
 
         egui::Area::new(egui::Id::new("ExSkill_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(icon).uv(icon_uv).paint_at(ui, icon_area);
+            egui::Image::new(weapon_icon)
+                .uv(icon_uv)
+                .paint_at(ui, icon_area);
         });
     }
 }
@@ -2782,7 +2754,8 @@ impl GameScene for InGameDominationModeScene {
         }
 
         // 경과 시간을 갱신합니다.
-        self.elapsed_time_sec += elapsed_time_sec;
+        self.packet_delay_time += elapsed_time_sec;
+        self.elapsed_time_sec = (self.elapsed_time_sec + elapsed_time_sec).min(3.0);
         self.particle_timer = (self.particle_timer + elapsed_time_sec) % 1.0;
 
         self.update_view_state();
@@ -3116,16 +3089,13 @@ impl GameScene for InGameDominationModeScene {
                 ui.painter().add(reticle);
             });
 
-        self.score_gauge_layout(app.egui_ctx(), scale);
-
-        self.health_point_bg_layout(app.egui_ctx(), scale);
-        self.health_point_gauge_layout(app.egui_ctx(), scale);
-
-        self.remaining_timer_layout(app.egui_ctx(), scale);
-        self.remaining_bullet_layout(app.egui_ctx(), scale);
-
-        self.skill_layout(app.egui_ctx(), scale);
-        self.ex_skill_guage_layout(app.egui_ctx(), scale);
+        self.draw_score_gauge_layout(app.egui_ctx(), scale);
+        self.draw_health_point_bg_layout(app.egui_ctx(), scale);
+        self.draw_health_point_gauge_layout(app.egui_ctx(), scale);
+        self.draw_remaining_timer_layout(app.egui_ctx(), scale);
+        self.draw_remaining_bullet_layout(app.egui_ctx(), scale);
+        self.draw_ex_skill_guage_layout(app.egui_ctx(), scale);
+        self.draw_start_font(app.egui_ctx(), scale);
 
         egui::Area::new(egui::Id::new("FrameRate_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
