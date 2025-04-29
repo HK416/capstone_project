@@ -38,7 +38,7 @@ use crate::{
         NUM_CUBE_VERTICES,
     },
     config::{Locale, NUM_LOCALE},
-    scenes::FatalErrorSceneLayer,
+    scenes::{FatalErrorSceneLayer, InGameResultScene},
 };
 
 /// 게임 장면의 지속 시간입니다.
@@ -1488,7 +1488,7 @@ impl GameScene for InGameResultEnterScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.world.is_none() {
             return;
         }
@@ -1496,7 +1496,45 @@ impl GameScene for InGameResultEnterScene {
         // 게임 장면 지속 시간을 갱신합니다.
         self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
         if self.remaining_time_sec <= 0.0 {
-            todo!()
+            // 다음 게임 장면으로 이동합니다.
+            let mut world = self.world.take().unwrap();
+            let skybox = self.skybox.take().unwrap();
+            let players = self.players.to_owned();
+            let disconnected_players = self.disconnected_players.to_owned();
+            let stages = self.stages.to_owned();
+            let play_data = self.play_data.to_owned();
+            let shadow_resource = self.shadow_resource.take().unwrap();
+            let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
+            let ui_textures = self.ui_textures.to_owned();
+            let winner_players = InGameResultScene::get_winner_players(
+                self.winner,
+                &mut world,
+                players,
+                disconnected_players,
+            );
+            let next_scene = InGameResultScene::new(
+                self.locale,
+                self.user_id,
+                self.token,
+                self.winner,
+                self.victory_type,
+                self.play_time,
+                self.stage_kind,
+                world,
+                skybox,
+                winner_players,
+                stages,
+                play_data,
+                shadow_resource,
+                alpha_blend_resource,
+                ui_textures,
+                self.motion_pool.clone(),
+            );
+            let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+            return;
         }
 
         self.update_action_state_and_timer(elapsed_time_sec);

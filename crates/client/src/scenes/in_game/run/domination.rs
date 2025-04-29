@@ -30,8 +30,8 @@ use winit::{
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, DAMAGE_FONT_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SCHALE_ICON_URI,
-        TIMER_ICON_URI, UI_GAME_LAYOUT_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        TextureViewPool, FIELD_DECO_00_URI, IMG_FONT_DAMAGE_NORMAL_URI, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -367,13 +367,13 @@ impl InGameDominationModeScene {
         // 데미지 파티클 메쉬를 가져옵니다.
         let (mesh, _) = self
             .mesh_pool
-            .get(DAMAGE_FONT_URI)
+            .get(IMG_FONT_DAMAGE_NORMAL_URI)
             .expect("the damage particle mesh must exist!");
 
         // 데미지 폰트 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
-            .get(DAMAGE_FONT_URI)
+            .get(IMG_FONT_DAMAGE_NORMAL_URI)
             .expect("the damage font texture must exist!");
         let view = self
             .texture_view_pool
@@ -1814,7 +1814,7 @@ impl InGameDominationModeScene {
         //
         let ui_game_layout = self
             .ui_textures
-            .get(UI_GAME_LAYOUT_URI)
+            .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
 
@@ -2155,7 +2155,7 @@ impl InGameDominationModeScene {
         //
         let ui_game_layout = self
             .ui_textures
-            .get(UI_GAME_LAYOUT_URI)
+            .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
 
@@ -2248,7 +2248,7 @@ impl InGameDominationModeScene {
         //
         let ui_game_layout = self
             .ui_textures
-            .get(UI_GAME_LAYOUT_URI)
+            .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
 
@@ -2353,7 +2353,7 @@ impl InGameDominationModeScene {
         //
         let ui_game_layout = self
             .ui_textures
-            .get(UI_GAME_LAYOUT_URI)
+            .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
 

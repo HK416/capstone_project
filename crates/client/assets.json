@@ -151,7 +151,6 @@
         },
         "font" : {
             "files" : [
-                "D_Font_Normal.dds",
                 "NotoSans_Bold.ttf",
                 "NotoSans_Regular.ttf"
             ],
@@ -226,7 +225,13 @@
         "ui" : {
             "files" : [
                 "BG_Main_Lobby.png",
-                "UI_Game_Layout.png",
+                "Field_Deco_00.png",
+                "Field_Deco_01.dds",
+                "ImgFont_Damage_Normal.dds",
+                "ImgFont_Lose.dds",
+                "ImgFont_Mission.dds",
+                "ImgFont_Start.dds",
+                "ImgFont_Win.dds",
                 "Schale_Icon.dds",
                 "Student_Portrait_Aris.dds",
                 "Student_Portrait_Midori.dds",

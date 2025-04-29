@@ -72,10 +72,25 @@ pub const BG_LOGIN_TITLE_5_DATA: &'static [u8; 3016216] = include_bytes!(concat!
 pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby.png";
 
 /// 데미지 폰트 텍스처의 `Uri`입니다.
-pub const DAMAGE_FONT_URI: &'static str = "D_Font_Normal";
+pub const IMG_FONT_DAMAGE_NORMAL_URI: &'static str = "ImgFont_Damage_Normal";
 
-/// 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
-pub const UI_GAME_LAYOUT_URI: &'static str = "UI_Game_Layout";
+/// Lose 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_LOSE_URI: &'static str = "ImgFont_Lose";
+
+/// Mission 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_MISSION_URI: &'static str = "ImgFont_Mission";
+
+/// Start 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_START_URI: &'static str = "ImgFont_Start";
+
+/// Win 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_WIN_URI: &'static str = "ImgFont_Win";
+
+/// 0번 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
+pub const FIELD_DECO_00_URI: &'static str = "Field_Deco_00";
+
+/// 1번 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
+pub const FIELD_DECO_01_URI: &'static str = "Field_Deco_01";
 
 /// 인게임 타이머 아이콘 텍스처의 `Uri`입니다.
 pub const TIMER_ICON_URI: &'static str = "Timer_Icon";

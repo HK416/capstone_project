@@ -23,8 +23,9 @@ use winit::window::Window;
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, CHARACTER_ICON_URIS, SCHALE_ICON_URI, TIMER_ICON_URI, UI_GAME_LAYOUT_URI,
-        WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        TextureViewPool, CHARACTER_ICON_URIS, FIELD_DECO_00_URI, FIELD_DECO_01_URI,
+        IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_START_URI, IMG_FONT_WIN_URI,
+        SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, set_weapon_position, update_entity_hierarchy, AttributeKind,
@@ -184,25 +185,30 @@ impl InGameDominationModePrepareScene {
 
     /// UI에 사용되는 텍스처를 UI렌더러에 등록합니다.
     fn register_ui_texture(&mut self, device: &wgpu::Device, egui_renderer: &mut UiRenderer) {
-        self.register_bg_layout_texture(device, egui_renderer);
+        self.register_field_deco_00_texture(device, egui_renderer);
+        self.register_field_deco_01_texture(device, egui_renderer);
         self.register_timer_icon_texture(device, egui_renderer);
         self.register_schale_icon_texture(device, egui_renderer);
         self.register_character_icon_textures(device, egui_renderer);
+        self.register_img_font_lose_texture(device, egui_renderer);
+        self.register_img_font_mission_texture(device, egui_renderer);
+        self.register_img_font_start_texture(device, egui_renderer);
+        self.register_img_font_win_texture(device, egui_renderer);
         self.register_player_weapon_icon_texture(device, egui_renderer);
         self.register_player_weapon_icon_mask_texture(device, egui_renderer);
     }
 
-    /// UI 배경 레이아웃 텍스처를 UI 렌더러에 등록합니다.
-    fn register_bg_layout_texture(
+    /// `Field_Deco_00` 텍스처를 UI 렌더러에 등록합니다.
+    fn register_field_deco_00_texture(
         &mut self,
         device: &wgpu::Device,
         egui_renderer: &mut UiRenderer,
     ) {
-        // `UI_Game_Layout` 텍스처를 가져옵니다.
+        // `Field_Deco_00` 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
-            .get(UI_GAME_LAYOUT_URI)
-            .expect("UI_Game_Layout texture must be preloaded!");
+            .get(FIELD_DECO_00_URI)
+            .expect("Field_Deco_00 texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
         // 텍스처 뷰를 생성합니다.
@@ -215,7 +221,38 @@ impl InGameDominationModePrepareScene {
             egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         self.ui_textures.insert(
-            UI_GAME_LAYOUT_URI.into(),
+            FIELD_DECO_00_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+    }
+
+    /// `Field_Deco_01` 텍스처를 UI 렌더러에 등록합니다.
+    fn register_field_deco_01_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        // `Field_Deco_01` 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(FIELD_DECO_01_URI)
+            .expect("Field_Deco_01 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            FIELD_DECO_01_URI.into(),
             egui::load::SizedTexture {
                 id: texture_id,
                 size: texture_size,
@@ -318,6 +355,130 @@ impl InGameDominationModePrepareScene {
                 },
             );
         }
+    }
+
+    /// `Img_Font_Lose`텍스처를 UI렌더러에 등록합니다.
+    fn register_img_font_lose_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        // `Img_Font_Lose` 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_LOSE_URI)
+            .expect("the Img_Font_Lose texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            IMG_FONT_LOSE_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+    }
+
+    /// `Img_Font_Mission`텍스처를 UI렌더러에 등록합니다.
+    fn register_img_font_mission_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        // `Img_Font_Mission` 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_MISSION_URI)
+            .expect("the Img_Font_Mission texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            IMG_FONT_MISSION_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+    }
+
+    /// `Img_Font_Start`텍스처를 UI렌더러에 등록합니다.
+    fn register_img_font_start_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        // `Img_Font_Start` 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_START_URI)
+            .expect("the Img_Font_Start texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            IMG_FONT_START_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+    }
+
+    /// `Img_Font_Win`텍스처를 UI렌더러에 등록합니다.
+    fn register_img_font_win_texture(
+        &mut self,
+        device: &wgpu::Device,
+        egui_renderer: &mut UiRenderer,
+    ) {
+        // `Img_Font_Start` 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_WIN_URI)
+            .expect("the Img_Font_Win texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            egui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        self.ui_textures.insert(
+            IMG_FONT_WIN_URI.into(),
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
     }
 
     /// 플레이어 무기 아이콘 텍스처를 UI 렌더러에 등록합니다.

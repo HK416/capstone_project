@@ -834,7 +834,6 @@ impl GameScene for InGameResultScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
         self.create_main_camera(app.render_device());
         self.reset_player_position();
-        self.update_stage();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
