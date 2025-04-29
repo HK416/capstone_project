@@ -25,7 +25,7 @@ use crate::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
         TextureViewPool, CHARACTER_ICON_URIS, FIELD_DECO_00_URI, FIELD_DECO_01_URI,
         IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_START_URI, IMG_FONT_WIN_URI,
-        SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, set_weapon_position, update_entity_hierarchy, AttributeKind,
@@ -38,10 +38,14 @@ use crate::{
         NUM_CUBE_VERTICES,
     },
     config::{Locale, NUM_LOCALE},
-    scenes::FatalErrorSceneLayer,
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
 use super::InGameDominationModeScene;
+
+/// 애플리케이션 표시 언어에 따른 게임 방법 안내 텍스트
+const INFOMATION_TEXTS: [&'static str; NUM_LOCALE] =
+    ["맵 중앙의 목표 구역을 먼저 선점하는 팀이 승리"];
 
 /// 게임 진행 전 대기하는 게임 장면입니다.
 pub struct InGameDominationModePrepareScene {
@@ -52,8 +56,10 @@ pub struct InGameDominationModePrepareScene {
     /// 현재 사용자의 로그인 토큰입니다.
     token: LoginToken,
 
-    /// 게임 장면의 경과 시간입니다.
+    /// 게임 장면의 남은 시간입니다.
     remainint_time_sec: f32,
+    /// 게임 장면의 경과 시간입니다.
+    elapsed_time_sec: f32,
 
     /// 엔터티를 관리하는 월드 객체입니다.
     world: Option<World>,
@@ -124,7 +130,8 @@ impl InGameDominationModePrepareScene {
             locale,
             user_id,
             token,
-            remainint_time_sec: 0.0,
+            remainint_time_sec: f32::INFINITY,
+            elapsed_time_sec: 0.0,
             world: Some(world),
             skybox: Some(skybox),
             main_camera: Entity::DANGLING,
@@ -1439,8 +1446,9 @@ impl GameScene for InGameDominationModePrepareScene {
             return;
         }
 
-        // 경과 시간을 갱신합니다.
+        // 남은 시간과 경과 시간을 갱신합니다.
         self.remainint_time_sec = (self.remainint_time_sec - elapsed_time_sec).max(0.0);
+        self.elapsed_time_sec += elapsed_time_sec;
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1684,5 +1692,101 @@ impl GameScene for InGameDominationModePrepareScene {
         self.shadow_map.clear();
         self.opaque_map.clear();
         self.transparent_map.clear();
+    }
+
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+        if self.world.is_none() {
+            return;
+        }
+
+        let (width, _height): (f32, f32) = window.inner_size().into();
+        let scale_factor = window.scale_factor() as f32;
+        let scale = width / scale_factor / BASE_WIDTH;
+        let i = self.locale as usize;
+
+        const BEG_X: f32 = -940.0;
+        const END_X: f32 = 0.0;
+        const DURATION: f32 = 1.25;
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
+        // 임무 설명 인터페이스 속성
+        // - 기준 가로 크기: 940
+        // - 기준 세로 크기: 120
+        // - 기준 시작 위치: (0, 504)
+        // - 기준 종료 위치: (940, 624)
+        let field_deco_01 = self
+            .ui_textures
+            .get(FIELD_DECO_01_URI)
+            .cloned()
+            .expect("the Field_Deco_01 must exsit!");
+
+        let tint = egui::Color32::from_white_alpha(192);
+        let content_rect = egui::Rect::from_min_max(
+            egui::pos2(x * scale, 504.0 * scale),
+            egui::pos2((x + 895.0) * scale, 624.0 * scale),
+        );
+        let content_uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(0.9214659686, 1.0));
+        let deco_rect_0 = egui::Rect::from_min_max(
+            egui::pos2((x + 895.0) * scale, 504.0 * scale),
+            egui::pos2((x + 940.0) * scale, 579.0 * scale),
+        );
+        let deco_uv_0 =
+            egui::Rect::from_min_max(egui::pos2(0.9214659686, 0.0), egui::Pos2::new(1.0, 0.625));
+        let deco_rect_1 = egui::Rect::from_min_max(
+            egui::pos2((x + 895.0) * scale, 579.0 * scale),
+            egui::pos2((x + 940.0) * scale, 624.0 * scale),
+        );
+        let deco_uv_1 =
+            egui::Rect::from_min_max(egui::pos2(0.9214659686, 0.625), egui::Pos2::new(1.0, 1.0));
+
+        // 임무 폰트 인터페이스 속성
+        // - 기준 가로 크기: 256
+        // - 기준 세로 크기: 64
+        // - 기준 시작 위치: (24, 530)
+        // - 기준 종료 위치: (280, 594)
+        let img_font_mission = self
+            .ui_textures
+            .get(IMG_FONT_MISSION_URI)
+            .cloned()
+            .expect("the ImgFont_Mission must exist!");
+        let font_rect = egui::Rect::from_min_max(
+            egui::pos2((x + 24.0) * scale, 530.0 * scale),
+            egui::pos2((x + 280.0) * scale, 594.0 * scale),
+        );
+
+        // 임무 설명 인터페이스
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
+        let text = egui::RichText::new(INFOMATION_TEXTS[i])
+            .font(font_id)
+            .color(egui::Color32::BLACK);
+        let text_rect = egui::Rect::from_min_max(
+            egui::pos2((x + 296.0) * scale, 530.0 * scale),
+            egui::pos2((x + 895.0) * scale, 594.0 * scale),
+        );
+
+        egui::Area::new(egui::Id::new("Notify_Layout")).show(app.egui_ctx(), |ui| {
+            egui::Image::new(field_deco_01)
+                .uv(content_uv)
+                .tint(tint)
+                .paint_at(ui, content_rect);
+            egui::Image::new(field_deco_01)
+                .uv(deco_uv_0)
+                .tint(tint)
+                .paint_at(ui, deco_rect_0);
+            egui::Image::new(field_deco_01)
+                .uv(deco_uv_1)
+                .tint(tint)
+                .paint_at(ui, deco_rect_1);
+
+            egui::Image::new(img_font_mission).paint_at(ui, font_rect);
+
+            ui.put(
+                text_rect,
+                egui::Label::new(text).sense(egui::Sense::empty()),
+            );
+        });
     }
 }
