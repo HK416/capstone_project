@@ -48,6 +48,8 @@ pub struct GameWorldInGameState {
     total_play_sec: f32,
     /// 남은 게임 시간 (초)
     remaining_time_sec: f32,
+    /// 게임 월드 상태의 경과 시간
+    elapsed_time_sec: f32,
 
     /// 오브젝트 식별자를 생성하기 위한 카운터입니다.
     counter: u32,
@@ -73,13 +75,14 @@ impl GameWorldInGameState {
         stage_kind: StageKind,
         spawn_positions: HashMap<UserId, (glam::Vec3A, glam::Quat, LatLon)>,
         play_data: HashMap<UserId, PlayData>,
-        game_duration_sec: f32, // 게임 총 시간
+        game_duration_sec: f32,
     ) -> Self {
         Self {
             is_running: true,
             previous_time_pt: Instant::now(),
             total_play_sec: game_duration_sec,
-            remaining_time_sec: game_duration_sec, // 초기화
+            remaining_time_sec: game_duration_sec,
+            elapsed_time_sec: 0.0,
             counter: 0,
             stage_kind,
             damage_logs: Queue::new(),
@@ -151,6 +154,21 @@ impl GameWorldInGameState {
 // 처리와 관련된 코드를 작성합니다.
 //--------------------------------------------------------------------------------------------
 impl GameWorldInGameState {
+    /// 플레이어 떠남 이벤트를 처리합니다.
+    fn handle_player_leave_event(&mut self, uid: UserId) {
+        let play_data = self
+            .play_data
+            .as_mut()
+            .expect("the game play data must exist!");
+
+        // 연결 상태 부울 플래그를 false로 설정합니다.
+        if let Some(data) = play_data.get_mut(&uid) {
+            data.connected = false;
+        } else {
+            log::warn!("unknown game player (UID:{})", uid);
+        }
+    }
+
     /// 0.1m 마다 바닥과의 충돌을 검사하여 바닥과의 충돌을 확인합니다.
     fn check_bullet_ground_collision(
         &self,
@@ -445,6 +463,11 @@ impl GameWorldInGameState {
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
     fn try_enter_next_state(&self, world: &GameWorld) {
+        // 경과 시간이 5초 미만인 경우 전환을 시도하지 않습니다.
+        if self.elapsed_time_sec < 5.0 {
+            return;
+        }
+
         // 힌쪽 팀 플레이어가 비어있는 경우 부전승으로 처리합니다.
         let mut blue_teams = 0;
         let mut red_teams = 0;
@@ -469,6 +492,11 @@ impl GameWorldInGameState {
                 data.team,
                 data.team_index,
             ));
+        }
+
+        // 플레이어가 비어있는 경우 함수 실행을 중단합니다.
+        if players.is_empty() {
+            return;
         }
 
         if blue_teams == 0 {
@@ -660,7 +688,7 @@ impl GameWorldInGameState {
             self.capture_point
                 .capture(new_capture_team, elapsed_time_sec, capturing_count);
         if winner.is_some() {
-            world.push_event(GameWorldEvent::GameOver { winner });
+            // TODO!
         }
 
         // println!("capture team: {:?}({:.1}%)\t score: RED[{:.1}%] : BLUE[{:.1}%]",
@@ -678,16 +706,9 @@ impl GameWorldInGameState {
             .as_secs_f32();
         self.previous_time_pt = current_time_pt;
 
-        // 남은 시간 업데이트
+        // 경과 시간과 남은 시간 업데이트
         self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
-        if self.remaining_time_sec > 0.0 {
-            // println!("remaining time: {:.1}", self.remaining_time_sec);
-        } else {
-            println!("game over!");
-            world.push_event(GameWorldEvent::GameOver { winner: None });
-        }
-
-        // println!("fps: {:.2} (elapsed time: {})", 1.0 / elapsed_time_sec, elapsed_time_sec);
+        self.elapsed_time_sec += elapsed_time_sec;
 
         self.update_player_state_timer(world, elapsed_time_sec);
         self.update_player_position(world, elapsed_time_sec);
@@ -818,14 +839,7 @@ impl GameWorldState for GameWorldInGameState {
 
         match event {
             GameWorldEvent::PlayerLeave(user_id) => {
-                // Safe: 플레이 데이터가 없는 경우 이벤트를 처리하지 않습니다.
-                let play_data = unsafe { self.play_data.as_mut().unwrap_unchecked() };
-                if let Some(data) = play_data.get_mut(&user_id) {
-                    // 플레이어 연결 상태 부울 플래그를 false로 설정합니다.
-                    data.connected = false;
-                } else {
-                    log::warn!("unknown player identifier (UID:{})", user_id);
-                }
+                self.handle_player_leave_event(user_id);
             }
             GameWorldEvent::AddBullet { shooter_id, delay } => {
                 self.add_bullet(world, shooter_id, delay);
@@ -850,11 +864,6 @@ impl GameWorldState for GameWorldInGameState {
                 } else {
                     log::warn!("failed to respawn player (uid: {})", uid);
                 }
-            }
-            GameWorldEvent::GameOver { winner } => {
-                println!("{:?} win!", winner);
-                log::info!("game over - winner: {:?}", winner);
-                // self.is_running = false;
             }
             _ => {
                 log::warn!(

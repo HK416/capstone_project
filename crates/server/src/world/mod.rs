@@ -84,6 +84,11 @@ impl GameWorld {
         self.is_closed.load(MemOrdering::Relaxed)
     }
 
+    /// 게임 월드의 외부 출입 차단 여부를 설정합니다.
+    pub fn set_closed(&self, flag: bool) {
+        self.is_closed.store(flag, MemOrdering::Release);
+    }
+
     /// 게임 월드를 비활성화합니다.
     pub fn disable(&self) {
         // 락을 획득합니다.

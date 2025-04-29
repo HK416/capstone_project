@@ -96,6 +96,7 @@ impl GameWorldRoomState {
         if other_player_readys {
             // 다음 게임 월드 상태로 전환합니다.
             self.is_running = false;
+
             let next_state = GameWorldFormationState::new(self.allow_duplicates, self.stage_kind);
             let control_flow = GameWorldStateFlow::Push(Box::new(next_state));
             let event = GameWorldEvent::SetControlFlow(control_flow);
@@ -163,10 +164,16 @@ impl GameWorldRoomState {
 //--------------------------------------------------------------------------------------------
 
 impl GameWorldState for GameWorldRoomState {
+    fn on_pause(&mut self, world: &Arc<GameWorld>) {
+        world.set_closed(true);
+    }
+
     fn on_resume(&mut self, world: &Arc<GameWorld>) {
         self.is_running = true;
         self.previous_time_pt = Instant::now();
         self.delay_time = DEALY_TIME;
+
+        world.set_closed(false);
 
         // 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
         for mut player in world.players.iter_mut() {

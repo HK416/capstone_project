@@ -172,7 +172,7 @@ impl InGameResultScene {
         let pivot = glam::Vec3A::Y * 0.6;
         let direction = RESET_ROTATION[self.stage_kind as usize][self.winner as usize];
         let direction = direction.mul_vec3a(glam::Vec3A::Z).normalize();
-        let position = pivot + direction * 3.5;
+        let position = pivot + direction * 2.0 + glam::Vec3A::Y * 0.05;
         let look = (pivot - position).normalize();
         let right = glam::Vec3A::Y.cross(look);
         let up = look.cross(right);
@@ -190,7 +190,7 @@ impl InGameResultScene {
         builder.add_bundle((
             ToParentTrans(cam_trans),
             WorldTransform::default(),
-            Projection::perspective(60f32.to_radians(), 16.0 / 9.0, 0.01, 500.0),
+            Projection::perspective(50f32.to_radians(), 16.0 / 9.0, 0.01, 100.0),
             camera_uniform,
             camera_resource,
             Frustum::from_mat4(glam::Mat4::IDENTITY),
@@ -830,8 +830,46 @@ impl InGameResultScene {
 }
 
 //--------------------------------------------------------------------------------------------
+// 시스템 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameResultScene {
+    /// 마우스 커서를 활성화합니다.
+    fn enable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(false);
+        }
+
+        window.set_cursor_visible(true);
+    }
+
+    /// 마우스 커서를 비활성화합니다.
+    fn disable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(true);
+        }
+
+        window.set_cursor_visible(false);
+    }
+}
+
+//--------------------------------------------------------------------------------------------
 impl GameScene for InGameResultScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.enable_cursor(window);
         self.create_main_camera(app.render_device());
         self.reset_player_position();
     }

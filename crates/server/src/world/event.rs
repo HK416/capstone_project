@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mod_network::components::{CharacterKind, ObjectId, Team, UserId};
+use mod_network::components::{CharacterKind, ObjectId, UserId};
 
 use crate::session::Session;
 
@@ -42,7 +42,4 @@ pub enum GameWorldEvent {
 
     /// 플레이어 리스폰 요청
     RespawnPlayer { uid: UserId },
-
-    /// 게임 종료(None이면 무승부)
-    GameOver { winner: Option<Team> },
 }

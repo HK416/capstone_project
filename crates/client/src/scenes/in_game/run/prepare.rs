@@ -166,7 +166,10 @@ impl InGameDominationModePrepareScene {
 
         // 카메라의 위치와 방향을 설정합니다.
         let pivot = trans.get_translation() + glam::Vec3A::Y * 0.6;
-        let position = pivot + trans.get_right_vector() * 1.0 + trans.get_look_vector() * 1.0;
+        let position = pivot
+            + trans.get_right_vector() * 1.0
+            + trans.get_look_vector() * 1.0
+            + glam::Vec3A::Y * 0.05;
         let look = (pivot - position).normalize();
         let right = glam::Vec3A::Y.cross(look);
         let up = look.cross(right);
@@ -1428,6 +1431,12 @@ impl GameScene for InGameDominationModePrepareScene {
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
                 let event = AppEvent::SetGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
+            PacketType::FinishStage => {
+                // 이벤트를 보류합니다.
+                let event_loop_proxy = app.event_loop_proxy();
+                let event = AppEvent::PacketReceived(packet);
                 event_loop_proxy.send_event(event).unwrap();
             }
             PacketType::PrepareStage => {
