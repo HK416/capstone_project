@@ -6,7 +6,10 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::GameInput;
+use mod_network::{
+    components::GameInput,
+    protocol::{PacketType, RawPacket},
+};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -107,9 +110,20 @@ impl GameScene for InGameDominationModeStatusLayer {
         // 다음 게임 장면으로 전환합니다.
         let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
         let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
-        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        if packet.packet_type() == PacketType::FinishStage {
+            let scene_flow = GameSceneFlow::Pop;
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+        }
+
+        Some(packet)
     }
 
     fn on_keyboard_pressed(
@@ -138,7 +152,7 @@ impl GameScene for InGameDominationModeStatusLayer {
             if let Some(input) = config.get_keyboard_input(&(code, location)) {
                 if input == GameInput::Status {
                     let scene_flow = GameSceneFlow::Pop;
-                    let event = AppEvent::SetGameSceneFlow(scene_flow);
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
                     return true;

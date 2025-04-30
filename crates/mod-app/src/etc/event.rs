@@ -8,7 +8,7 @@ use super::WindowSize;
 #[derive(Debug)]
 pub enum AppEvent {
     /// 게임 장면 흐름을 설정합니다.
-    SetGameSceneFlow(GameSceneFlow),
+    AddGameSceneFlow(GameSceneFlow),
 
     /// 애플리케이션 창의 크기를 조절합니다.
     ResizeRequest(WindowSize),

@@ -99,7 +99,7 @@ impl GameScene for InitWindowScene {
             // 다음 게임 장면으로 전환합니다.
             let next_scene = InitFinishScene::new(self.texture_pool.clone());
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
-            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
             event_loop_proxy.send_event(event).unwrap();
         }
     }

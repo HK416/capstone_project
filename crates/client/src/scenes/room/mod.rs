@@ -142,7 +142,7 @@ impl GameScene for CustomGameRoomScene {
         // 다음 게임 장면으로 전환합니다.
         let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
     }
@@ -168,7 +168,7 @@ impl GameScene for CustomGameRoomScene {
                     packet.players,
                 ));
                 let scene_flow = GameSceneFlow::Push(next_scene);
-                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }
@@ -272,7 +272,7 @@ impl GameScene for CustomGameRoomScene {
 
                         // 장면을 전환합니다.
                         let scene_flow = GameSceneFlow::Pop;
-                        let event = AppEvent::SetGameSceneFlow(scene_flow);
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
                         let event_loop_proxy = app.event_loop_proxy();
                         event_loop_proxy.send_event(event).unwrap();
                     }

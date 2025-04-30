@@ -75,7 +75,7 @@ pub struct Application {
     cursor_delta: PhysicalPosition<f64>,
 
     /// 게임 장면 스택을 제어하는 게임 장면 흐름입니다.
-    scene_flow: Option<GameSceneFlow>,
+    scene_flow: VecDeque<GameSceneFlow>,
 
     /// 생성된 게임 장면을 관리하는 게임 장면 스택입니다.
     scene_stack: RefCell<VecDeque<Box<dyn GameScene>>>,
@@ -157,7 +157,7 @@ impl Application {
             visible: builder.visible,
             modifier: Modifiers::default(),
             cursor_delta: PhysicalPosition::default(),
-            scene_flow: Some(GameSceneFlow::Reset(builder.start_scene)),
+            scene_flow: VecDeque::from_iter([GameSceneFlow::Reset(builder.start_scene)]),
             scene_stack: RefCell::new(VecDeque::with_capacity(8)),
             timer: GameTimer::start(),
             egui_ctx: egui::Context::default(),
@@ -424,7 +424,7 @@ impl ApplicationHandler<AppEvent> for Application {
         // 게임 장면 스택을 갱신합니다.
         let window = app_window.window.as_ref();
         let mut scene_stack = self.scene_stack.borrow_mut();
-        if let Some(flow) = self.scene_flow.take() {
+        if let Some(flow) = self.scene_flow.pop_front() {
             match flow {
                 GameSceneFlow::Clear => clear_scene(&mut scene_stack, Some(&window), self),
                 GameSceneFlow::Reset(new_scene) => {
@@ -691,8 +691,8 @@ impl ApplicationHandler<AppEvent> for Application {
         //     };
 
         match event {
-            AppEvent::SetGameSceneFlow(flow) => {
-                self.scene_flow = flow.into();
+            AppEvent::AddGameSceneFlow(flow) => {
+                self.scene_flow.push_back(flow);
                 return;
             }
             AppEvent::ResizeRequest(request_size) => {
