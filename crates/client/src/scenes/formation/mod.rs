@@ -147,7 +147,6 @@ impl GameScene for CharacterFormationScene {
         match packet_type {
             PacketType::FormationSelectResponse => {
                 let packet = FormationSelectResponsePacket::from_raw(packet);
-                println!("{:?}", packet.result);
                 match packet.result {
                     SelectResult::Success => self.is_selected = true,
                     SelectResult::Duplicates => {

@@ -424,7 +424,7 @@ impl ApplicationHandler<AppEvent> for Application {
         // 게임 장면 스택을 갱신합니다.
         let window = app_window.window.as_ref();
         let mut scene_stack = self.scene_stack.borrow_mut();
-        if let Some(flow) = self.scene_flow.pop_front() {
+        while let Some(flow) = self.scene_flow.pop_front() {
             match flow {
                 GameSceneFlow::Clear => clear_scene(&mut scene_stack, Some(&window), self),
                 GameSceneFlow::Reset(new_scene) => {

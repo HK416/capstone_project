@@ -42,6 +42,9 @@ pub struct CustomGameRoomScene {
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
+    /// 게임 장면의 활성화 여부입니다.
+    is_active: bool,
+
     /// 커스텀 게임 대기실의 월드 식별자입니다.
     world_id: WorldId,
     /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.
@@ -82,14 +85,15 @@ impl CustomGameRoomScene {
             locale,
             user_id,
             token,
-            texture_pool,
-            texture_view_pool,
+            is_active: true,
             world_id,
             players: iter.into_iter().collect(),
             bg_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
+            texture_pool,
+            texture_view_pool,
         }
     }
 }
@@ -123,6 +127,10 @@ impl GameScene for CustomGameRoomScene {
         };
     }
 
+    fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {
+        self.is_active = true;
+    }
+
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
@@ -148,6 +156,10 @@ impl GameScene for CustomGameRoomScene {
     }
 
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        if !self.is_active {
+            return Some(packet);
+        }
+
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::CustomGamePull => {
@@ -158,6 +170,7 @@ impl GameScene for CustomGameRoomScene {
                 let packet = FormationPullPacket::from_raw(packet);
 
                 // 다음 게임 장면으로 전환합니다.
+                self.is_active = false;
                 let next_scene = Box::new(CharacterFormationScene::new(
                     self.locale,
                     self.user_id,

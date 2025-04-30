@@ -463,8 +463,9 @@ impl GameWorldInGameState {
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
     fn try_enter_next_state(&self, world: &GameWorld) {
+        // 게임 월드 상태가 비활성화 되어있거나,
         // 경과 시간이 5초 미만인 경우 전환을 시도하지 않습니다.
-        if self.elapsed_time_sec < 5.0 {
+        if !self.is_running || self.elapsed_time_sec < 5.0 {
             return;
         }
 
@@ -687,8 +688,49 @@ impl GameWorldInGameState {
         let winner =
             self.capture_point
                 .capture(new_capture_team, elapsed_time_sec, capturing_count);
-        if winner.is_some() {
-            // TODO!
+        if let Some(winner) = winner {
+            self.is_running = false;
+
+            let play_data = self.play_data.as_ref().unwrap();
+            let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+            for (_, data) in play_data.iter() {
+                players.push(FinishPhasePlayer::new(
+                    data.account,
+                    data.character_kind,
+                    data.kill_count,
+                    data.dead_count,
+                    data.damage_dealt,
+                    data.damage_taken,
+                    data.healing_given,
+                    data.team,
+                    data.team_index,
+                ));
+            }
+
+            // 플레이어가 비어있는 경우 함수 실행을 중단합니다.
+            if players.is_empty() {
+                return;
+            }
+
+            // 패킷을 생성하고 전송합니다.
+            let play_time = self.total_play_sec - self.remaining_time_sec;
+            let packet = FinishStagePacket::new(
+                winner,
+                VictoryType::JudgmentWin,
+                self.stage_kind,
+                play_time,
+                players,
+            );
+
+            for item in world.sessions.iter() {
+                item.key().push_event(SessionEvents::GameFinished);
+                item.key().tcp_write(packet.as_raw());
+            }
+
+            // 게임 월드 상태를 변경합니다.
+            let control_flow = GameWorldStateFlow::Pop;
+            let event = GameWorldEvent::SetControlFlow(control_flow);
+            world.push_event(event);
         }
 
         // println!("capture team: {:?}({:.1}%)\t score: RED[{:.1}%] : BLUE[{:.1}%]",

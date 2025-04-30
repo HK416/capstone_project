@@ -165,6 +165,7 @@ impl GameWorldRoomState {
 
 impl GameWorldState for GameWorldRoomState {
     fn on_pause(&mut self, world: &Arc<GameWorld>) {
+        self.is_running = false;
         world.set_closed(true);
     }
 
