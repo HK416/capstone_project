@@ -3,10 +3,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use mod_network::{
-    components::UserAccount,
-    protocol::{Packet, PacketType, PushSyncPacket, RawPacket},
-};
+use mod_network::protocol::{Packet, PacketType, PushSyncPacket, RawPacket};
 
 use crate::{
     session::{Session, SessionEvents},
@@ -22,17 +19,14 @@ use super::{
 pub struct SessionInGameSyncState {
     /// 세션 상태 실행 여부
     is_running: bool,
-    /// 사용자 계정 데이터
-    account: Option<UserAccount>,
     /// 연결된 게임 월드
     world: Option<Weak<GameWorld>>,
 }
 
 impl SessionInGameSyncState {
-    pub fn new(account: UserAccount, world: Weak<GameWorld>) -> Self {
+    pub fn new(world: Weak<GameWorld>) -> Self {
         Self {
             is_running: true,
-            account: Some(account),
             world: Some(world),
         }
     }
@@ -46,9 +40,8 @@ impl SessionInGameSyncState {
     fn handle_prepare_game_event(&mut self, session: &Arc<Session>) {
         // 다음 세션 상태로 전환합니다.
         self.is_running = false;
-        let account = self.account.take().unwrap();
         let world = self.world.take().unwrap();
-        let next_state = SessionInGamePrepareState::new(account, world);
+        let next_state = SessionInGamePrepareState::new(world);
         let control_flow = SessionStateFlow::Change(Box::new(next_state));
         let event = SessionEvents::SetControlFlow(control_flow);
         session.push_event(event);
@@ -58,9 +51,8 @@ impl SessionInGameSyncState {
     fn handle_start_game_play_event(&mut self, session: &Arc<Session>) {
         // 다음 세션 상태로 전환합니다.
         self.is_running = false;
-        let account = self.account.take().unwrap();
         let world = self.world.take().unwrap();
-        let next_state = SessionInGameState::new(account, world);
+        let next_state = SessionInGameState::new(world);
         let control_flow = SessionStateFlow::Change(Box::new(next_state));
         let event = SessionEvents::SetControlFlow(control_flow);
         session.push_event(event);

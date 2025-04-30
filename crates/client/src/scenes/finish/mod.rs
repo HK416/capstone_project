@@ -10,15 +10,19 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, FinishPhasePlayer, LatLon, LoginToken,
-    MovementState, MovementStateTimer, StageKind, Team, UserId, VictoryType, MAX_IN_GAME_PLAYERS,
+use mod_network::{
+    components::{
+        ActionState, ActionStateTimer, CharacterKind, FinishPhasePlayer, LatLon, LoginToken,
+        MovementState, MovementStateTimer, StageKind, Team, UserId, VictoryType,
+        MAX_IN_GAME_PLAYERS,
+    },
+    protocol::{FinishStageResponsePacket, Packet},
 };
 use mod_physics::object3d::Frustum;
 use winit::window::Window;
 
 use crate::{
-    asset::MotionPool,
+    asset::{MotionPool, NOTOSANS_BOLD},
     component::{
         animate_character, update_action_state_timer, update_entity_hierarchy, AttributeKind,
         BoneCollection, CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline,
@@ -31,12 +35,18 @@ use crate::{
     },
     config::{Locale, NUM_LOCALE},
     scenes::FatalErrorSceneLayer,
+    SERVER_TCP_ADDR,
 };
 
 pub use self::enter::*;
 
+use super::BASE_WIDTH;
+
 /// 게임 장면의 최대 지속 시간입니다.
 const MAX_SCENE_DURATION: f32 = 10.0;
+
+/// 애플리케이션 표시 언어에 따른 나가기 버튼 텍스트
+const EXIT_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["나가기"];
 
 /// 인게임 장면의 결과를 보여주는 장면입니다.
 pub struct InGameResultScene {
@@ -55,6 +65,9 @@ pub struct InGameResultScene {
     play_time: f32,
     /// 스테이지 종류
     stage_kind: StageKind,
+
+    /// 나가기 버튼이 눌린 여부입니다.
+    exit_btn_pressed: bool,
 
     ///엔터티를 관리하는 월드 객체입니다.
     world: World,
@@ -150,6 +163,7 @@ impl InGameResultScene {
             victory_type,
             play_time,
             stage_kind,
+            exit_btn_pressed: false,
             world,
             skybox,
             main_camera: Entity::DANGLING,
@@ -887,6 +901,41 @@ impl InGameResultScene {
 }
 
 //--------------------------------------------------------------------------------------------
+// 사용자 인터페이스와 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameResultScene {
+    /// 나가기 버튼을 그립니다.
+    fn draw_exit_button(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 버튼 속성
+        // - 기본 가로 크기: 240
+        // - 기본 세로 크기: 80
+        // - 기본 시작 위치: (976, 576)
+        // - 기본 끝 위치: (1216, 656)
+        let btn_rect = egui::Rect::from_min_max(
+            egui::pos2(976.0 * scale, 576.0 * scale),
+            egui::pos2(1216.0 * scale, 656.0 * scale),
+        );
+        let i = self.locale as usize;
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(18.0 * scale, family);
+        let text = egui::RichText::new(EXIT_BTN_TEXTS[i])
+            .font(font_id)
+            .color(egui::Color32::BLACK);
+        let button = egui::Button::new(text)
+            .fill(egui::Color32::LIGHT_GRAY)
+            .corner_radius(2.0);
+
+        egui::Area::new(egui::Id::new("Exit_Btn_Layout")).show(egui_ctx, |ui| {
+            ui.add_enabled_ui(!self.exit_btn_pressed, |ui| {
+                if ui.put(btn_rect, button).clicked() {
+                    self.exit_btn_pressed = true;
+                }
+            })
+        });
+    }
+}
+
+//--------------------------------------------------------------------------------------------
 impl GameScene for InGameResultScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
         self.enable_cursor(window);
@@ -918,8 +967,22 @@ impl GameScene for InGameResultScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         self.update_action_state_and_timer(elapsed_time_sec);
+
+        if self.exit_btn_pressed {
+            // 패킷을 전송합니다.
+            let packet = FinishStageResponsePacket::new(self.user_id, self.token);
+            let net_manager = app.net_manager();
+            let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+            socket.push_packet(packet.as_raw());
+
+            // 이전 게임 장면으로 전환합니다.
+            let scene_flow = GameSceneFlow::Pop;
+            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+        }
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1144,5 +1207,14 @@ impl GameScene for InGameResultScene {
         self.shadow_map.clear();
         self.opaque_map.clear();
         self.transparent_map.clear();
+    }
+
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+        let (width, _height): (f32, f32) = window.inner_size().into();
+        let scale_factor = window.scale_factor() as f32;
+        let scale = width / scale_factor / BASE_WIDTH;
+
+        let egui_ctx = app.egui_ctx();
+        self.draw_exit_button(egui_ctx, scale);
     }
 }

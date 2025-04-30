@@ -3,9 +3,8 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use mod_network::{
-    components::UserAccount,
-    protocol::{CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket},
+use mod_network::protocol::{
+    CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket,
 };
 
 use crate::{
@@ -19,19 +18,15 @@ use super::{SessionState, SessionStateFlow, formation::SessionFormationState};
 pub struct SessionRoomState {
     /// 세션 상태 실행 여부
     is_running: bool,
-
-    /// 사용자 계정 데이터
-    account: UserAccount,
     /// 연결된 게임 월드
     world: Weak<GameWorld>,
 }
 
 impl SessionRoomState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(account: UserAccount, world: &Arc<GameWorld>) -> Self {
+    pub fn new(world: &Arc<GameWorld>) -> Self {
         Self {
             is_running: true,
-            account,
             world: Arc::downgrade(world),
         }
     }
@@ -121,8 +116,7 @@ impl SessionState for SessionRoomState {
             SessionEvents::EnterFormation => {
                 // 다음 세션 상태로 전환합니다.
                 self.is_running = false;
-                let next_state =
-                    Box::new(SessionFormationState::new(self.account, self.world.clone()));
+                let next_state = Box::new(SessionFormationState::new(self.world.clone()));
                 let control_flow = SessionStateFlow::Push(next_state);
                 let event = SessionEvents::SetControlFlow(control_flow);
                 session.push_event(event);

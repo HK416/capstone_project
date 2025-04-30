@@ -1,17 +1,10 @@
-use std::{
-    fmt,
-    sync::{Arc, Weak},
-};
+use std::{fmt, sync::Arc};
 
-use mod_network::{
-    components::UserAccount,
-    protocol::{FinishStageResponsePacket, Packet, PacketType, RawPacket},
-};
+use mod_network::protocol::{FinishStageResponsePacket, Packet, PacketType, RawPacket};
 
 use crate::{
     session::{Session, SessionEvents},
     token::UserTokenMap,
-    world::GameWorld,
 };
 
 use super::{SessionState, SessionStateFlow};
@@ -19,20 +12,12 @@ use super::{SessionState, SessionStateFlow};
 pub struct SessionFinishState {
     /// 세션 상태 실행 여부
     is_running: bool,
-    /// 사용자 계정 데이터
-    account: UserAccount,
-    /// 연결된 게임 월드
-    world: Weak<GameWorld>,
 }
 
 impl SessionFinishState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(account: UserAccount, world: Weak<GameWorld>) -> Self {
-        Self {
-            is_running: true,
-            account,
-            world,
-        }
+    pub fn new() -> Self {
+        Self { is_running: true }
     }
 }
 
@@ -84,7 +69,9 @@ impl SessionState for SessionFinishState {
                 PacketType::FinishStageResponse => {
                     self.handle_finish_stage_response_packet(session, packet);
                 }
-                PacketType::PushStatus => { /* empty */ }
+                PacketType::PushStatus
+                | PacketType::CustomGameLeave
+                | PacketType::CustomGameReady => { /* empty */ }
                 _ => {
                     log::warn!(
                         "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

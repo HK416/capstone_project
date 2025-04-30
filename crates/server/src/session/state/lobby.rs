@@ -81,7 +81,7 @@ impl SessionLobbyState {
             session.tcp_write(packet.as_raw());
 
             // 다음 세션 상태로 전환합니다.
-            let next_state = Box::new(SessionRoomState::new(self.account, &world));
+            let next_state = Box::new(SessionRoomState::new(&world));
             let control_flow = SessionStateFlow::Push(next_state);
             let event = SessionEvents::SetControlFlow(control_flow);
             session.push_event(event);
@@ -120,7 +120,7 @@ impl SessionLobbyState {
                         session.tcp_write(packet.as_raw());
 
                         // 다음 세션 상태로 전환합니다.
-                        let next_state = Box::new(SessionRoomState::new(self.account, &world));
+                        let next_state = Box::new(SessionRoomState::new(&world));
                         let control_flow = SessionStateFlow::Push(next_state);
                         let event = SessionEvents::SetControlFlow(control_flow);
                         session.push_event(event);
