@@ -191,6 +191,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
             set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::Moving`
         [
@@ -204,6 +206,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Skill
             set_character_direction_to_camera,   // ActionState::ExSkill
             set_character_direction_to_none,     // ActionState::Callsign
+            set_character_direction_to_none,     // ActionState::VictoryStart
+            set_character_direction_to_none,     // ActionState::VictoryEnd
         ],
         // `MovementState::MoveToEnd`
         [
@@ -217,6 +221,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
             set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::InPlaceJumping`
         [
@@ -230,6 +236,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
             set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::InPlaceLanding`
         [
@@ -243,6 +251,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,              // ActionState::Skill
             set_character_direction_to_camera,              // ActionState::ExSkill
             set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::MovingJumping`
         [
@@ -256,6 +266,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Skill
             set_character_direction_to_camera,   // ActionState::ExSkill
             set_character_direction_to_none,     // ActionState::Callsign
+            set_character_direction_to_none,     // ActionState::VictoryStart
+            set_character_direction_to_none,     // ActionState::VictoryEnd
         ],
         // `MovementState::MovingLanding`
         [
@@ -269,6 +281,8 @@ pub fn update_character_direction(
             set_character_direction_to_camera,   // ActionState::Skill
             set_character_direction_to_camera,   // ActionState::ExSkill
             set_character_direction_to_none,     // ActionState::Callsign
+            set_character_direction_to_none,     // ActionState::VictoryStart
+            set_character_direction_to_none,     // ActionState::VictoryEnd
         ],
     ];
 
@@ -498,7 +512,9 @@ pub fn try_change_action_state(
         try_change_action_state_when_reload,
         try_change_action_state_when_skill,
         try_change_action_state_when_ex_skill,
-        try_change_action_state_when_callsign,
+        try_change_action_state_when_special,
+        try_change_action_state_when_special,
+        try_change_action_state_when_special,
     ];
 
     let i = *action_state as usize;
@@ -536,6 +552,12 @@ fn try_change_action_state_when_idle(
         (ActionState::Callsign, |t| {
             t.reset();
         }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -573,7 +595,15 @@ fn try_change_action_state_when_aiming(
         (ActionState::ExSkill, |t| {
             t.reset();
         }), // ActionState::ExSkill
-        (ActionState::Aiming, |_| {}), // ActionState::Callsign
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -630,7 +660,15 @@ fn try_change_action_state_when_aim_at(
         (ActionState::AimAt, |_, _| {}), // ActionState::Reload
         (ActionState::AimAt, |_, _| {}), // ActionState::Skill
         (ActionState::AimAt, |_, _| {}), // ActionState::ExSkill
-        (ActionState::AimAt, |_, _| {}), // ActionState::Callsign
+        (ActionState::Callsign, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryEnd, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
     ];
 
     let i = new as usize;
@@ -687,7 +725,15 @@ fn try_change_action_state_when_aim_off(
         (ActionState::AimOff, |_, _| {}),   // ActionState::Reload
         (ActionState::AimOff, |_, _| {}),   // ActionState::Skill
         (ActionState::AimOff, |_, _| {}),   // ActionState::ExSkill
-        (ActionState::AimOff, |_, _| {}),   // ActionState::Callsign
+        (ActionState::Callsign, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |_, t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |_, t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -717,7 +763,15 @@ fn try_change_action_state_when_attack(
         (ActionState::Attack, |_| {}), // ActionState::Reload
         (ActionState::Attack, |_| {}), // ActionState::Skill
         (ActionState::Attack, |_| {}), // ActionState::ExSkill
-        (ActionState::Attack, |_| {}), // ActionState::Callsign
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -745,7 +799,15 @@ fn try_change_action_state_when_dead(
         (ActionState::Dead, |_| {}), // ActionState::Reload
         (ActionState::Dead, |_| {}), // ActionState::Skill
         (ActionState::Dead, |_| {}), // ActionState::ExSkill
-        (ActionState::Dead, |_| {}), // ActionState::Callsign
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -775,7 +837,15 @@ fn try_change_action_state_when_reload(
         (ActionState::Reload, |_| {}), // ActionState::Reload
         (ActionState::Reload, |_| {}), // ActionState::Skill
         (ActionState::Reload, |_| {}), // ActionState::ExSkill
-        (ActionState::Reload, |_| {}), // ActionState::Callsign
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -805,7 +875,15 @@ fn try_change_action_state_when_skill(
         (ActionState::Skill, |_| {}), // ActionState::Reload
         (ActionState::Skill, |_| {}), // ActionState::Skill
         (ActionState::Skill, |_| {}), // ActionState::ExSkill
-        (ActionState::Skill, |_| {}), // ActionState::Callsign
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -835,7 +913,15 @@ fn try_change_action_state_when_ex_skill(
         (ActionState::ExSkill, |_| {}), // ActionState::Reload
         (ActionState::ExSkill, |_| {}), // ActionState::Skill
         (ActionState::ExSkill, |_| {}), // ActionState::ExSkill
-        (ActionState::ExSkill, |_| {}), // ActionState::Callsign
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;
@@ -845,8 +931,8 @@ fn try_change_action_state_when_ex_skill(
     timer_func(action_state_timer);
 }
 
-/// `ActionState::Callsign`일 때 주어진 상태로 변경을 시도합니다.
-fn try_change_action_state_when_callsign(
+/// 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_special(
     _character_kind: CharacterKind,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
@@ -854,18 +940,42 @@ fn try_change_action_state_when_callsign(
 ) {
     type Func = fn(&mut ActionStateTimer);
     const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
-        (ActionState::Callsign, |_| {}), // ActionState::Idle
-        (ActionState::Callsign, |_| {}), // ActionState::Aiming
-        (ActionState::Callsign, |_| {}), // ActionState::AimAt
-        (ActionState::Callsign, |_| {}), // ActionState::AimOff
-        (ActionState::Callsign, |_| {}), // ActionState::Attack
+        (ActionState::Idle, |t| {
+            t.reset();
+        }), // ActionState::Idle
+        (ActionState::Aiming, |t| {
+            t.reset();
+        }), // ActionState::Aiming
+        (ActionState::AimAt, |t| {
+            t.reset();
+        }), // ActionState::AimAt
+        (ActionState::AimOff, |t| {
+            t.reset();
+        }), // ActionState::AimOff
+        (ActionState::Attack, |t| {
+            t.reset();
+        }), // ActionState::Attack
         (ActionState::Dead, |t| {
             t.reset();
         }), // ActionState::Dead
-        (ActionState::Callsign, |_| {}), // ActionState::Reload
-        (ActionState::Callsign, |_| {}), // ActionState::Skill
-        (ActionState::Callsign, |_| {}), // ActionState::ExSkill
-        (ActionState::Callsign, |_| {}), // ActionState::Callsign
+        (ActionState::Reload, |t| {
+            t.reset();
+        }), // ActionState::Reload
+        (ActionState::Skill, |t| {
+            t.reset();
+        }), // ActionState::Skill
+        (ActionState::ExSkill, |t| {
+            t.reset();
+        }), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
     ];
 
     let i = new as usize;

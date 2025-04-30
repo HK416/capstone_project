@@ -28,7 +28,7 @@ pub struct PlayerObject {
 
     /// 여러 자료형의 데이터가 포함된 비트 필드입니다.  
     /// 아래와 같은 자료형이 포함되어있습니다.
-    /// - index (2bit): 플레이어가 속한 팀 내의 인덱스
+    /// - index (3bit): 플레이어가 속한 팀 내의 인덱스
     /// - Team (1bit): 플레이어가 속한 팀
     /// - Permission (1bit): 플레이어 권한
     /// - bool (1bit): 다양한 용도로 사용되는 부울 플래그
@@ -92,10 +92,10 @@ pub struct PlayerObject {
 impl PlayerObject {
     /// 새로운 플레이어 오브젝트를 생성합니다.  
     pub fn new(account: UserAccount, permission: Permission, team: Team) -> Self {
-        let team_bitfield = (team as u8) << 2;
-        let permission_bitfield = (permission as u8) << 1;
-        let bool_bitfield = (false as u8) << 0;
-        let bitfield = team_bitfield | permission_bitfield | bool_bitfield;
+        let team_bit = ((team as u8) & 0x1) << 3;
+        let permission_bit = ((permission as u8) & 0x1) << 4;
+        let flag_bit = ((false as u8) & 0x1) << 5;
+        let bitfield = team_bit | permission_bit | flag_bit;
 
         let attributes = get_character_attributes(CharacterKind::default());
         // let skill_cool_time = match attributes.skill_cool_time {
@@ -159,49 +159,51 @@ impl PlayerObject {
 
     /// 플레이어가 속한 팀의 인덱스를 설정합니다.
     pub fn with_index(&mut self, index: usize) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x3 << 3)) | (index as u8) << 3;
+        self.bitfield = (self.bitfield & !(0x7 << 0)) | ((index as u8) & 0x7) << 0;
         self
     }
 
     /// 플레이어가 속한 팀의 인덱스를 가져옵니다.
     pub fn team_index(&self) -> usize {
-        ((self.bitfield >> 3) & 0x3) as usize
+        ((self.bitfield >> 0) & 0x7) as usize
     }
 
     /// 플레이어가 속한 팀을 설정합니다.
     #[allow(dead_code)]
     pub fn with_team(&mut self, team: Team) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 2)) | (team as u8) << 2;
+        self.bitfield = (self.bitfield & !(0x1 << 3)) | ((team as u8) & 0x1) << 3;
         self
     }
 
     /// 플레이어가 속한 팀을 가져옵니다.
     pub fn team(&self) -> Team {
         // Safe: 값이 범위를 벗어나지 않음
-        unsafe { Team::new((self.bitfield >> 2) & 0x1).unwrap_unchecked() }
+        let val = (self.bitfield >> 3) & 0x1;
+        unsafe { Team::new(val).unwrap_unchecked() }
     }
 
     /// 플레이어의 권한을 설정합니다.
     pub fn with_permission(&mut self, permission: Permission) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 1)) | (permission as u8) << 1;
+        self.bitfield = (self.bitfield & !(0x1 << 4)) | ((permission as u8) & 0x1) << 4;
         self
     }
 
     /// 플레이어의 권한을 가져옵니다.
     pub fn permission(&self) -> Permission {
         // Safe: 값이 범위를 벗어나지 않음
-        unsafe { Permission::new((self.bitfield >> 1) & 0x1).unwrap_unchecked() }
+        let val = (self.bitfield >> 4) & 0x1;
+        unsafe { Permission::new(val).unwrap_unchecked() }
     }
 
     /// 부울 플래그 변수의 값을 설정합니다.
     pub fn with_bool_flag(&mut self, flag: bool) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 0)) | (flag as u8) << 0;
+        self.bitfield = (self.bitfield & !(0x1 << 5)) | ((flag as u8) & 0x1) << 5;
         self
     }
 
     /// 부울 플래그 변수의 값을 가져옵니다.
     pub fn bool_flag(&self) -> bool {
-        (self.bitfield >> 0) & 0x1 == 0x1
+        (self.bitfield >> 5) & 0x1 == 0x1
     }
 
     /// 플레이어 캐릭터 종류를 가져옵니다.
@@ -562,6 +564,26 @@ impl PlayerObject {
                 PlayerObject::update_velocity_when_idle, // `MovementState::MovingJumping`
                 PlayerObject::update_velocity_when_idle, // `MovementState::MovingLanding`
             ],
+            // `ActionState::VictoryStart`
+            [
+                PlayerObject::update_velocity_when_idle, // `MovementState::Idle`
+                PlayerObject::update_velocity_when_idle, // `MovementState::Moving`
+                PlayerObject::update_velocity_when_idle, // `MovementState::MoveToEnd`
+                PlayerObject::update_velocity_when_idle, // `MovementState::InPlaceJumping`
+                PlayerObject::update_velocity_when_idle, // `MovementState::InPlaceLanding`
+                PlayerObject::update_velocity_when_idle, // `MovementState::MovingJumping`
+                PlayerObject::update_velocity_when_idle, // `MovementState::MovingLanding`
+            ],
+            // `ActionState::VictoryEnd`
+            [
+                PlayerObject::update_velocity_when_idle, // `MovementState::Idle`
+                PlayerObject::update_velocity_when_idle, // `MovementState::Moving`
+                PlayerObject::update_velocity_when_idle, // `MovementState::MoveToEnd`
+                PlayerObject::update_velocity_when_idle, // `MovementState::InPlaceJumping`
+                PlayerObject::update_velocity_when_idle, // `MovementState::InPlaceLanding`
+                PlayerObject::update_velocity_when_idle, // `MovementState::MovingJumping`
+                PlayerObject::update_velocity_when_idle, // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -662,6 +684,8 @@ impl PlayerObject {
             PlayerObject::update_action_state_when_skill,
             PlayerObject::update_action_state_when_ex_skill,
             PlayerObject::update_action_state_when_callsign,
+            PlayerObject::update_action_state_when_victory_start,
+            PlayerObject::update_action_state_when_victory_end,
         ];
 
         let i = self.action_state as usize;
@@ -809,6 +833,16 @@ impl PlayerObject {
 
     /// `ActionState::Callsign`일 때 `ActionState`를 갱신합니다.
     fn update_action_state_when_callsign(&mut self, _input_flags: GameInputBits) {
+        /* empty */
+    }
+
+    /// `ActionState::VictoryStart`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_victory_start(&mut self, _input_flags: GameInputBits) {
+        /* empty */
+    }
+
+    /// `ActionState::VictoryEnd`일 때 `ActionState`를 갱신합니다.
+    fn update_action_state_when_victory_end(&mut self, _input_flags: GameInputBits) {
         /* empty */
     }
 
@@ -999,6 +1033,8 @@ impl PlayerObject {
             PlayerObject::update_action_state_timer_when_skill,
             PlayerObject::update_action_state_timer_when_ex_skill,
             PlayerObject::update_action_state_timer_when_callsign,
+            PlayerObject::update_action_state_timer_when_victory_start,
+            PlayerObject::update_action_state_timer_when_victory_end,
         ];
 
         let i = self.action_state as usize;
@@ -1197,6 +1233,24 @@ impl PlayerObject {
         }
     }
 
+    /// `ActionState::VictoryStart`일 때 `ActionStateTimer`를 갱신합니다.
+    fn update_action_state_timer_when_victory_start(
+        &mut self,
+        _world: &GameWorld,
+        _elapsed_time_sec: f32,
+    ) {
+        /* empty */
+    }
+
+    /// `ActionState::Callsign`일 때 `ActionStateTimer`를 갱신합니다.
+    fn update_action_state_timer_when_victory_end(
+        &mut self,
+        _world: &GameWorld,
+        _elapsed_time_sec: f32,
+    ) {
+        /* empty */
+    }
+
     /// 플레이어 오브젝트의 `MovementState`를 갱신합니다.
     fn update_movement_state(&mut self, input_flags: GameInputBits) {
         type Func = fn(&mut PlayerObject, GameInputBits);
@@ -1294,12 +1348,32 @@ impl PlayerObject {
             // `ActionState::Callsign`
             [
                 PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_moving,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
+            ],
+            // `ActionState::VictoryStart`
+            [
                 PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_moving,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
+            ],
+            // `ActionState::VictoryEnd`
+            [
                 PlayerObject::update_movement_state_when_idle,
-                PlayerObject::update_movement_state_when_idle,
-                PlayerObject::update_movement_state_when_idle,
-                PlayerObject::update_movement_state_when_idle,
-                PlayerObject::update_movement_state_when_idle,
+                PlayerObject::update_movement_state_when_moving,
+                PlayerObject::update_movement_state_when_move_to_end,
+                PlayerObject::update_movement_state_when_in_place_jumping,
+                PlayerObject::update_movement_state_when_in_place_landing,
+                PlayerObject::update_movement_state_when_moving_jumping,
+                PlayerObject::update_movement_state_when_moving_landing,
             ],
         ];
 
@@ -1510,6 +1584,26 @@ impl PlayerObject {
                 (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
                 (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
             ],
+            // (`MovementState::Idle`, `ActionState::VictoryStart`)
+            [
+                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::Idle`, `ActionState::VictoryEnd`)
+            [
+                (MovementState::Idle, maintain_timer), // `MovementState::Idle`
+                (MovementState::Moving, reset_timer),  // `MovementState::Moving`
+                (MovementState::Idle, maintain_timer), // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingJumping`
+                (MovementState::Idle, maintain_timer), // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -1641,6 +1735,26 @@ impl PlayerObject {
                 (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
                 (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
             ],
+            // (`MovementState::Moving`, `ActionState::VictoryStart`)
+            [
+                (MovementState::MoveToEnd, reset_timer), // `MovementState::Idle`
+                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                (MovementState::MoveToEnd, reset_timer), // `MovementState::MoveToEnd`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::Moving`, `ActionState::VictoryEnd`)
+            [
+                (MovementState::MoveToEnd, reset_timer), // `MovementState::Idle`
+                (MovementState::Moving, maintain_timer), // `MovementState::Moving`
+                (MovementState::MoveToEnd, reset_timer), // `MovementState::MoveToEnd`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::MovingJumping, reset_timer), // `MovementState::MovingJumping`
+                (MovementState::Moving, maintain_timer), // `MovementState::MovingLanding`
+            ],
         ];
 
         let i = self.action_state as usize;
@@ -1762,6 +1876,26 @@ impl PlayerObject {
                 (MovementState::Idle, reset_timer),   // `MovementState::MovingLanding`
             ],
             // (`MovementState::MoveToEnd`, `ActionState::Callsign`)
+            [
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::Idle`
+                (MovementState::Moving, reset_timer),       // `MovementState::Moving`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingJumping`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::MoveToEnd`, `ActionState::VictoryStart`)
+            [
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::Idle`
+                (MovementState::Moving, reset_timer),       // `MovementState::Moving`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MoveToEnd`
+                (MovementState::InPlaceJumping, reset_timer), // `MovementState::InPlaceJumping`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::InPlaceLanding`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingJumping`
+                (MovementState::MoveToEnd, maintain_timer), // `MovementState::MovingLanding`
+            ],
+            // (`MovementState::MoveToEnd`, `ActionState::VictoryEnd`)
             [
                 (MovementState::MoveToEnd, maintain_timer), // `MovementState::Idle`
                 (MovementState::Moving, reset_timer),       // `MovementState::Moving`
@@ -2018,6 +2152,26 @@ impl PlayerObject {
                 PlayerObject::update_movement_state_timer_when_landing,
             ],
             // `ActionState::Callsign`
+            [
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_moving,
+                PlayerObject::update_movement_state_timer_when_move_to_end,
+                PlayerObject::update_movement_state_timer_when_in_place_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+                PlayerObject::update_movement_state_timer_when_moving_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+            ],
+            // `ActionState::VictoryStart`
+            [
+                PlayerObject::update_movement_state_timer_when_idle,
+                PlayerObject::update_movement_state_timer_when_moving,
+                PlayerObject::update_movement_state_timer_when_move_to_end,
+                PlayerObject::update_movement_state_timer_when_in_place_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+                PlayerObject::update_movement_state_timer_when_moving_jumping,
+                PlayerObject::update_movement_state_timer_when_landing,
+            ],
+            // `ActionState::VictoryEnd`
             [
                 PlayerObject::update_movement_state_timer_when_idle,
                 PlayerObject::update_movement_state_timer_when_moving,

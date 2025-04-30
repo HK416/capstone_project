@@ -80,7 +80,7 @@ pub const NORMAL_CALLSIGN_SUFFIX: &'static str = "_Normal_Callsign";
 /// 모든 캐릭터 모델의 Victory_Start 애니메이션 접미사입니다.
 pub const VICTORY_START_SUFFIX: &'static str = "_Victory_Start";
 /// 모든 캐릭터 모델의 Victory_End 애니메이션 접미사입니다.
-pub const VICTORY_END_SUFFIX: &'static str = "_Victor_End";
+pub const VICTORY_END_SUFFIX: &'static str = "_Victory_End";
 /// 모든 캐릭터 모델의 Public01 애니메이션 접미사입니다.
 pub const PUBLIC01_SUFFIX: &'static str = "_Public01";
 // /// 모든 캐릭터 모델의 Ex스킬 애니메이션 접미사입니다.

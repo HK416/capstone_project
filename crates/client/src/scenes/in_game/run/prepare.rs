@@ -28,9 +28,9 @@ use crate::{
         NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
-        animate_character, set_weapon_position, update_entity_hierarchy, AttributeKind,
-        BoneCollection, CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline,
-        Child, EyeMouthRenderPipeline, HaloRenderPipeline, MaterialKind, MaterialResource, Mesh,
+        animate_character, update_entity_hierarchy, AttributeKind, BoneCollection,
+        CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline, Child,
+        EyeMouthRenderPipeline, HaloRenderPipeline, MaterialKind, MaterialResource, Mesh,
         MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap, ShadowResource, Sibling,
         SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
         StageRenderPipeline, ToParentTrans, TransformDataLayout, TransparentMap,
@@ -728,32 +728,32 @@ impl InGameDominationModePrepareScene {
         }
     }
 
-    /// 캐릭터의 무기를 갱신합니다.
-    fn update_character_weapon(&mut self) {
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
+    // /// 캐릭터의 무기를 갱신합니다.
+    // fn update_character_weapon(&mut self) {
+    //     // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
+    //     let world = unsafe { self.world.as_mut().unwrap_unchecked() };
 
-        type Query<'a> = (&'a CharacterKind, &'a ActionState, &'a SkinningAnimation);
-        let element_view = world.view::<Query>();
-        let child_view = world.view::<&Child>();
-        let sibling_view = world.view::<&Sibling>();
-        let mut transform_view = world.view::<(&ToParentTrans, &mut WorldTransform)>();
+    //     type Query<'a> = (&'a CharacterKind, &'a ActionState, &'a SkinningAnimation);
+    //     let element_view = world.view::<Query>();
+    //     let child_view = world.view::<&Child>();
+    //     let sibling_view = world.view::<&Sibling>();
+    //     let mut transform_view = world.view::<(&ToParentTrans, &mut WorldTransform)>();
 
-        for entity in self.players.values().cloned() {
-            let (&character_kind, &action_state, skinning_animation) = element_view
-                .get(entity)
-                .expect("invalid entity or invalid entity component");
+    //     for entity in self.players.values().cloned() {
+    //         let (&character_kind, &action_state, skinning_animation) = element_view
+    //             .get(entity)
+    //             .expect("invalid entity or invalid entity component");
 
-            set_weapon_position(
-                character_kind,
-                action_state,
-                skinning_animation,
-                &child_view,
-                &sibling_view,
-                &mut transform_view,
-            );
-        }
-    }
+    //         set_weapon_position(
+    //             character_kind,
+    //             action_state,
+    //             skinning_animation,
+    //             &child_view,
+    //             &sibling_view,
+    //             &mut transform_view,
+    //         );
+    //     }
+    // }
 
     /// 캐릭터 엔터티의 계층 구조를 갱신합니다.
     fn update_character(&mut self) {
@@ -766,8 +766,6 @@ impl InGameDominationModePrepareScene {
         for entity in self.players.values().cloned() {
             update_entity_hierarchy(world, entity, glam::Mat4::IDENTITY);
         }
-
-        self.update_character_weapon();
     }
 
     /// 지형 엔터티의 계층 구조를 갱신합니다.

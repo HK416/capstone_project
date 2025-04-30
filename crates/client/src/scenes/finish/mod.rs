@@ -20,7 +20,7 @@ use winit::window::Window;
 use crate::{
     asset::MotionPool,
     component::{
-        animate_character, set_weapon_position, update_entity_hierarchy, AttributeKind,
+        animate_character, update_action_state_timer, update_entity_hierarchy, AttributeKind,
         BoneCollection, CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline,
         Child, EyeMouthRenderPipeline, HaloRenderPipeline, MaterialKind, MaterialResource, Mesh,
         MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap, ShadowResource, Sibling,
@@ -172,7 +172,7 @@ impl InGameResultScene {
         let pivot = glam::Vec3A::Y * 0.6;
         let direction = RESET_ROTATION[self.stage_kind as usize][self.winner as usize];
         let direction = direction.mul_vec3a(glam::Vec3A::Z).normalize();
-        let position = pivot + direction * 2.0 + glam::Vec3A::Y * 0.05;
+        let position = pivot + direction * 2.0 + glam::Vec3A::Y * 0.2;
         let look = (pivot - position).normalize();
         let right = glam::Vec3A::Y.cross(look);
         let up = look.cross(right);
@@ -190,7 +190,7 @@ impl InGameResultScene {
         builder.add_bundle((
             ToParentTrans(cam_trans),
             WorldTransform::default(),
-            Projection::perspective(50f32.to_radians(), 16.0 / 9.0, 0.01, 100.0),
+            Projection::perspective(80f32.to_radians(), 16.0 / 9.0, 0.01, 100.0),
             camera_uniform,
             camera_resource,
             Frustum::from_mat4(glam::Mat4::IDENTITY),
@@ -202,20 +202,58 @@ impl InGameResultScene {
 
     /// 플레이어 위치를 재설정합니다.
     fn reset_player_position(&mut self) {
-        type Query<'a> = (&'a (Team, usize), &'a mut ToParentTrans);
+        type Query<'a> = (
+            &'a (Team, usize),
+            &'a mut ToParentTrans,
+            &'a mut ActionState,
+            &'a mut ActionStateTimer,
+        );
 
         // 플레이어 엔터티를 순회하면서
         // 승리 팀 플레이어 엔터티의 위치를 재설정합니다.
         for entity in self.winner_players.iter().cloned() {
-            let (&(team, index), local_transform) = self
+            let (&(team, index), local_transform, action_state, action_state_timer) = self
                 .world
                 .query_one_mut::<Query>(entity)
                 .expect("invalid entity or invalid entity component");
+
+            // 액션 상태를 초기화합니다.
+            *action_state = ActionState::VictoryStart;
+            action_state_timer.reset();
 
             // 승리 팀 플레이어의 위치를 재설정합니다.
             local_transform.set_rotation_translation(
                 RESET_ROTATION[self.stage_kind as usize][team as usize],
                 RESET_POSITIONS[self.stage_kind as usize][index],
+            );
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------------------
+// 플레이어 조작과 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl InGameResultScene {
+    /// 캐릭터의 `ActionStateTimer`를 갱신합니다.
+    fn update_action_state_and_timer(&mut self, elapsed_time_sec: f32) {
+        type Query<'a> = (
+            &'a CharacterKind,
+            &'a mut ActionState,
+            &'a mut ActionStateTimer,
+        );
+
+        // 캐릭터 종류, 행동 상태, 행동 상태 타이머를 가져옵니다.
+        let mut view = self.world.view_mut::<Query>();
+        for entity in self.winner_players.iter().cloned() {
+            let (&character_kind, action_state, action_state_timer) = view
+                .get_mut(entity)
+                .expect("invalid entity or invalid entity component");
+
+            update_action_state_timer(
+                character_kind,
+                action_state,
+                action_state_timer,
+                elapsed_time_sec,
             );
         }
     }
@@ -273,29 +311,29 @@ impl InGameResultScene {
         }
     }
 
-    /// 캐릭터의 무기를 갱신합니다.
-    fn update_character_weapon(&mut self) {
-        type Query<'a> = (&'a CharacterKind, &'a ActionState, &'a SkinningAnimation);
-        let element_view = self.world.view::<Query>();
-        let child_view = self.world.view::<&Child>();
-        let sibling_view = self.world.view::<&Sibling>();
-        let mut transform_view = self.world.view::<(&ToParentTrans, &mut WorldTransform)>();
+    // /// 캐릭터의 무기를 갱신합니다.
+    // fn update_character_weapon(&mut self) {
+    //     type Query<'a> = (&'a CharacterKind, &'a ActionState, &'a SkinningAnimation);
+    //     let element_view = self.world.view::<Query>();
+    //     let child_view = self.world.view::<&Child>();
+    //     let sibling_view = self.world.view::<&Sibling>();
+    //     let mut transform_view = self.world.view::<(&ToParentTrans, &mut WorldTransform)>();
 
-        for entity in self.winner_players.iter().cloned() {
-            let (&character_kind, &action_state, skinning_animation) = element_view
-                .get(entity)
-                .expect("invalid entity or invalid entity component");
+    //     for entity in self.winner_players.iter().cloned() {
+    //         let (&character_kind, &action_state, skinning_animation) = element_view
+    //             .get(entity)
+    //             .expect("invalid entity or invalid entity component");
 
-            set_weapon_position(
-                character_kind,
-                action_state,
-                skinning_animation,
-                &child_view,
-                &sibling_view,
-                &mut transform_view,
-            );
-        }
-    }
+    //         set_weapon_position(
+    //             character_kind,
+    //             action_state,
+    //             skinning_animation,
+    //             &child_view,
+    //             &sibling_view,
+    //             &mut transform_view,
+    //         );
+    //     }
+    // }
 
     /// 캐릭터를 갱신합니다.
     fn update_character(&mut self) {
@@ -305,8 +343,6 @@ impl InGameResultScene {
         for entity in self.winner_players.iter().cloned() {
             update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
         }
-
-        self.update_character_weapon();
     }
 
     /// 지형 엔터티의 계층 구조를 갱신합니다.
@@ -848,22 +884,6 @@ impl InGameResultScene {
 
         window.set_cursor_visible(true);
     }
-
-    /// 마우스 커서를 비활성화합니다.
-    fn disable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(true);
-        }
-
-        window.set_cursor_visible(false);
-    }
 }
 
 //--------------------------------------------------------------------------------------------
@@ -898,7 +918,12 @@ impl GameScene for InGameResultScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+        self.update_action_state_and_timer(elapsed_time_sec);
+    }
+
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
+        self.update_stage();
         self.update_camera();
         self.update_character();
 
