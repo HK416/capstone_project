@@ -111,38 +111,32 @@ pub fn spawn_player_character(
     let mut builder = EntityBuilder::new();
 
     // 컴포넌트 데이터를 준비합니다.
-    let character_kind = player.character_kind;
-    let team = player.team();
     let local_transform = ToParentTrans(glam::Mat4::from_rotation_translation(
         glam::Quat::from_array(player.rotation),
         glam::Vec3::from_array(player.translation),
     ));
     let world_transform = WorldTransform::default();
-    let max_health_point = player.max_health_point;
-    let health_point = player.health_point;
-    let action_state = player.action_state();
-    let movement_state = player.movement_state();
-    let view_state = player.view_state();
-    let action_state_timer = player.action_state_timer;
-    let movement_state_timer = player.movement_state_timer;
-    let view_state_timer = player.view_state_timer;
-    let view_rotation = player.view_rotation;
 
     // 컴포넌트를 추가합니다.
     builder.add_bundle((
-        character_kind,
-        team,
+        player.account,
+        player.character_kind,
+        (player.team(), player.team_index()),
+        player.play_data,
+        player.health_point,
+        player.remaining_bullet,
+        player.ex_skill_cost,
+    ));
+    builder.add_bundle((
         local_transform,
         world_transform,
-        max_health_point,
-        health_point,
-        action_state,
-        action_state_timer,
-        movement_state,
-        movement_state_timer,
-        view_state,
-        view_state_timer,
-        view_rotation,
+        player.action_state(),
+        player.action_state_timer,
+        player.movement_state(),
+        player.movement_state_timer,
+        player.view_state(),
+        player.view_state_timer,
+        player.view_rotation,
     ));
 
     // 캐릭터 종류에 따른 캐릭터 모델을 구성하는 엔터티를 생성합니다.
@@ -192,7 +186,13 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_none,                // ActionState::Death
+            set_character_direction_to_none,                // ActionState::Dead
+            set_character_direction_to_none,                // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::Moving`
         [
@@ -201,7 +201,13 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_none,     // ActionState::Death
+            set_character_direction_to_none,     // ActionState::Dead
+            set_character_direction_to_camera,   // ActionState::Reload
+            set_character_direction_to_camera,   // ActionState::Skill
+            set_character_direction_to_camera,   // ActionState::ExSkill
+            set_character_direction_to_none,     // ActionState::Callsign
+            set_character_direction_to_none,     // ActionState::VictoryStart
+            set_character_direction_to_none,     // ActionState::VictoryEnd
         ],
         // `MovementState::MoveToEnd`
         [
@@ -210,7 +216,13 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_none,                // ActionState::Death
+            set_character_direction_to_none,                // ActionState::Dead
+            set_character_direction_to_none,                // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::InPlaceJumping`
         [
@@ -219,7 +231,13 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_none,                // ActionState::Death
+            set_character_direction_to_none,                // ActionState::Dead
+            set_character_direction_to_camera,              // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::InPlaceLanding`
         [
@@ -228,7 +246,13 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_none,                // ActionState::AimOff
             set_character_direction_to_camera,              // ActionState::Attack
-            set_character_direction_to_none,                // ActionState::Death
+            set_character_direction_to_none,                // ActionState::Dead
+            set_character_direction_to_camera,              // ActionState::Reload
+            set_character_direction_to_camera,              // ActionState::Skill
+            set_character_direction_to_camera,              // ActionState::ExSkill
+            set_character_direction_to_none,                // ActionState::Callsign
+            set_character_direction_to_none,                // ActionState::VictoryStart
+            set_character_direction_to_none,                // ActionState::VictoryEnd
         ],
         // `MovementState::MovingJumping`
         [
@@ -237,7 +261,13 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_none,     // ActionState::Death
+            set_character_direction_to_none,     // ActionState::Dead
+            set_character_direction_to_camera,   // ActionState::Reload
+            set_character_direction_to_camera,   // ActionState::Skill
+            set_character_direction_to_camera,   // ActionState::ExSkill
+            set_character_direction_to_none,     // ActionState::Callsign
+            set_character_direction_to_none,     // ActionState::VictoryStart
+            set_character_direction_to_none,     // ActionState::VictoryEnd
         ],
         // `MovementState::MovingLanding`
         [
@@ -246,7 +276,13 @@ pub fn update_character_direction(
             set_character_direction_to_camera_from_current, // ActionState::AimAt
             set_character_direction_to_current_from_camera, // ActionState::AimOff
             set_character_direction_to_camera,   // ActionState::Attack
-            set_character_direction_to_none,     // ActionState::Death
+            set_character_direction_to_none,     // ActionState::Dead
+            set_character_direction_to_camera,   // ActionState::Reload
+            set_character_direction_to_camera,   // ActionState::Skill
+            set_character_direction_to_camera,   // ActionState::ExSkill
+            set_character_direction_to_none,     // ActionState::Callsign
+            set_character_direction_to_none,     // ActionState::VictoryStart
+            set_character_direction_to_none,     // ActionState::VictoryEnd
         ],
     ];
 
@@ -411,6 +447,568 @@ pub fn update_view_state_timer(
 
     let i = character_kind as usize;
     FUNC_TABLE[i](view_state, view_state_timer, elapsed_time_sec);
+}
+
+/// 주어진 경과 시간 만큼 `MovementStateTimer`를 갱신합니다.
+pub fn update_movement_state_timer(
+    character_kind: CharacterKind,
+    action_state: ActionState,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(ActionState, &mut MovementState, &mut MovementStateTimer, f32);
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::update_movement_state_timer,
+        momoi_original::update_movement_state_timer,
+        midori_original::update_movement_state_timer,
+        yuuka_original::update_movement_state_timer,
+    ];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](
+        action_state,
+        movement_state,
+        movement_state_timer,
+        elapsed_time_sec,
+    );
+}
+
+/// 주어진 경과 시간 만큼 `ActionStateTimer`를 갱신합니다.
+pub fn update_action_state_timer(
+    character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
+    const FUNC_TABLE: [Func; NUM_CHARACTERS] = [
+        aris_original::update_action_state_timer,
+        momoi_original::update_action_state_timer,
+        midori_original::update_action_state_timer,
+        yuuka_original::update_action_state_timer,
+    ];
+
+    let i = character_kind as usize;
+    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
+}
+
+/// `ActionState` 변경을 시도합니다.  
+/// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
+pub fn try_change_action_state(
+    character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(CharacterKind, &mut ActionState, &mut ActionStateTimer, ActionState);
+    const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
+        try_change_action_state_when_idle,
+        try_change_action_state_when_aiming,
+        try_change_action_state_when_aim_at,
+        try_change_action_state_when_aim_off,
+        try_change_action_state_when_attack,
+        try_change_action_state_when_dead,
+        try_change_action_state_when_reload,
+        try_change_action_state_when_skill,
+        try_change_action_state_when_ex_skill,
+        try_change_action_state_when_special,
+        try_change_action_state_when_special,
+        try_change_action_state_when_special,
+    ];
+
+    let i = *action_state as usize;
+    FUNC_TABLE[i](character_kind, action_state, action_state_timer, new);
+}
+
+/// `ActionState::Idle`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_idle(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Idle, |_| {}),  // ActionState::Idle
+        (ActionState::Idle, |_| {}),  // ActionState::Aiming
+        (ActionState::AimAt, |_| {}), // ActionState::AimAt
+        (ActionState::Idle, |_| {}),  // ActionState::AimOff
+        (ActionState::Attack, |t| {
+            t.reset();
+        }), // ActionState::Attack
+        (ActionState::Dead, |t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::Reload, |t| {
+            t.reset();
+        }), // ActionState::Reload
+        (ActionState::Skill, |t| {
+            t.reset();
+        }), // ActionState::Skill
+        (ActionState::ExSkill, |t| {
+            t.reset();
+        }), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// `ActionState::Aiming`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_aiming(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Aiming, |_| {}), // ActionState::Idle
+        (ActionState::Aiming, |_| {}), // ActionState::Aiming
+        (ActionState::Aiming, |_| {}), // ActionState::AimAt
+        (ActionState::AimOff, |t| {
+            t.reset();
+        }), // ActionState::AimOff
+        (ActionState::Attack, |t| {
+            t.reset();
+        }), // ActionState::Attack
+        (ActionState::Dead, |t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::Aiming, |_| {}), // ActionState::Reload
+        (ActionState::Skill, |t| {
+            t.reset();
+        }), // ActionState::Skill
+        (ActionState::ExSkill, |t| {
+            t.reset();
+        }), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// `ActionState::AimAt`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_aim_at(
+    character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    fn switch_timer(kind: CharacterKind, t: &mut ActionStateTimer) {
+        const DURATIONS: [(f32, f32); NUM_CHARACTERS] = [
+            (
+                aris_original::NORMAL_ATTACK_START_DURATION,
+                aris_original::NORMAL_ATTACK_END_DURATION,
+            ),
+            (
+                momoi_original::NORMAL_ATTACK_START_DURATION,
+                momoi_original::NORMAL_ATTACK_END_DURATION,
+            ),
+            (
+                midori_original::NORMAL_ATTACK_START_DURATION,
+                midori_original::NORMAL_ATTACK_END_DURATION,
+            ),
+            (
+                yuuka_original::NORMAL_ATTACK_START_DURATION,
+                yuuka_original::NORMAL_ATTACK_END_DURATION,
+            ),
+        ];
+
+        let (start, end) = DURATIONS[kind as usize];
+        let p = (start - t.0) / start;
+        t.0 = end * p;
+    }
+
+    type Func = fn(CharacterKind, &mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::AimAt, |_, _| {}), // ActionState::Idle
+        (ActionState::Aiming, |_, t| {
+            t.reset();
+        }), // ActionState::Aiming
+        (ActionState::AimAt, |_, _| {}), // ActionState::AimAt
+        (ActionState::AimOff, switch_timer), // ActionState::AimOff
+        (ActionState::AimAt, |_, _| {}), // ActionState::Attack
+        (ActionState::Dead, |_, t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::AimAt, |_, _| {}), // ActionState::Reload
+        (ActionState::AimAt, |_, _| {}), // ActionState::Skill
+        (ActionState::AimAt, |_, _| {}), // ActionState::ExSkill
+        (ActionState::Callsign, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryEnd, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(character_kind, action_state_timer);
+}
+
+/// `ActionState::AimOff`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_aim_off(
+    character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    fn switch_timer(kind: CharacterKind, t: &mut ActionStateTimer) {
+        const DURATIONS: [(f32, f32); NUM_CHARACTERS] = [
+            (
+                aris_original::NORMAL_ATTACK_START_DURATION,
+                aris_original::NORMAL_ATTACK_END_DURATION,
+            ),
+            (
+                momoi_original::NORMAL_ATTACK_START_DURATION,
+                momoi_original::NORMAL_ATTACK_END_DURATION,
+            ),
+            (
+                midori_original::NORMAL_ATTACK_START_DURATION,
+                midori_original::NORMAL_ATTACK_END_DURATION,
+            ),
+            (
+                yuuka_original::NORMAL_ATTACK_START_DURATION,
+                yuuka_original::NORMAL_ATTACK_END_DURATION,
+            ),
+        ];
+
+        let (start, end) = DURATIONS[kind as usize];
+        let p = (end - t.0) / end;
+        t.0 = start * p;
+    }
+
+    type Func = fn(CharacterKind, &mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Idle, |_, t| {
+            t.reset();
+        }), // ActionState::Idle
+        (ActionState::AimOff, |_, _| {}),   // ActionState::Aiming
+        (ActionState::AimAt, switch_timer), // ActionState::AimAt
+        (ActionState::AimOff, |_, _| {}),   // ActionState::AimOff
+        (ActionState::AimOff, |_, _| {}),   // ActionState::Attack
+        (ActionState::Dead, |_, t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::AimOff, |_, _| {}),   // ActionState::Reload
+        (ActionState::AimOff, |_, _| {}),   // ActionState::Skill
+        (ActionState::AimOff, |_, _| {}),   // ActionState::ExSkill
+        (ActionState::Callsign, |_, t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |_, t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |_, t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(character_kind, action_state_timer);
+}
+
+/// `ActionState::Attack`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_attack(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Attack, |_| {}), // ActionState::Idle
+        (ActionState::Attack, |_| {}), // ActionState::Aiming
+        (ActionState::Attack, |_| {}), // ActionState::AimAt
+        (ActionState::Attack, |_| {}), // ActionState::AimOff
+        (ActionState::Attack, |_| {}), // ActionState::Attack
+        (ActionState::Dead, |t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::Attack, |_| {}), // ActionState::Reload
+        (ActionState::Attack, |_| {}), // ActionState::Skill
+        (ActionState::Attack, |_| {}), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// `ActionState::Dead`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_dead(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Dead, |_| {}), // ActionState::Idle
+        (ActionState::Dead, |_| {}), // ActionState::Aiming
+        (ActionState::Dead, |_| {}), // ActionState::AimAt
+        (ActionState::Dead, |_| {}), // ActionState::AimOff
+        (ActionState::Dead, |_| {}), // ActionState::Attack
+        (ActionState::Dead, |_| {}), // ActionState::Dead
+        (ActionState::Dead, |_| {}), // ActionState::Reload
+        (ActionState::Dead, |_| {}), // ActionState::Skill
+        (ActionState::Dead, |_| {}), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// `ActionState::Reload`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_reload(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Reload, |_| {}), // ActionState::Idle
+        (ActionState::Reload, |_| {}), // ActionState::Aiming
+        (ActionState::Reload, |_| {}), // ActionState::AimAt
+        (ActionState::Reload, |_| {}), // ActionState::AimOff
+        (ActionState::Reload, |_| {}), // ActionState::Attack
+        (ActionState::Dead, |t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::Reload, |_| {}), // ActionState::Reload
+        (ActionState::Reload, |_| {}), // ActionState::Skill
+        (ActionState::Reload, |_| {}), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// `ActionState::Skill`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_skill(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Skill, |_| {}), // ActionState::Idle
+        (ActionState::Skill, |_| {}), // ActionState::Aiming
+        (ActionState::Skill, |_| {}), // ActionState::AimAt
+        (ActionState::Skill, |_| {}), // ActionState::AimOff
+        (ActionState::Skill, |_| {}), // ActionState::Attack
+        (ActionState::Dead, |t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::Skill, |_| {}), // ActionState::Reload
+        (ActionState::Skill, |_| {}), // ActionState::Skill
+        (ActionState::Skill, |_| {}), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// `ActionState::ExSkill`일 때 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_ex_skill(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::ExSkill, |_| {}), // ActionState::Idle
+        (ActionState::ExSkill, |_| {}), // ActionState::Aiming
+        (ActionState::ExSkill, |_| {}), // ActionState::AimAt
+        (ActionState::ExSkill, |_| {}), // ActionState::AimOff
+        (ActionState::ExSkill, |_| {}), // ActionState::Attack
+        (ActionState::Dead, |t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::ExSkill, |_| {}), // ActionState::Reload
+        (ActionState::ExSkill, |_| {}), // ActionState::Skill
+        (ActionState::ExSkill, |_| {}), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// 주어진 상태로 변경을 시도합니다.
+fn try_change_action_state_when_special(
+    _character_kind: CharacterKind,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    new: ActionState,
+) {
+    type Func = fn(&mut ActionStateTimer);
+    const TABLE: [(ActionState, Func); NUM_ACTION_STATES] = [
+        (ActionState::Idle, |t| {
+            t.reset();
+        }), // ActionState::Idle
+        (ActionState::Aiming, |t| {
+            t.reset();
+        }), // ActionState::Aiming
+        (ActionState::AimAt, |t| {
+            t.reset();
+        }), // ActionState::AimAt
+        (ActionState::AimOff, |t| {
+            t.reset();
+        }), // ActionState::AimOff
+        (ActionState::Attack, |t| {
+            t.reset();
+        }), // ActionState::Attack
+        (ActionState::Dead, |t| {
+            t.reset();
+        }), // ActionState::Dead
+        (ActionState::Reload, |t| {
+            t.reset();
+        }), // ActionState::Reload
+        (ActionState::Skill, |t| {
+            t.reset();
+        }), // ActionState::Skill
+        (ActionState::ExSkill, |t| {
+            t.reset();
+        }), // ActionState::ExSkill
+        (ActionState::Callsign, |t| {
+            t.reset();
+        }), // ActionState::Callsign
+        (ActionState::VictoryStart, |t| {
+            t.reset();
+        }), // ActionState::VictoryStart
+        (ActionState::VictoryEnd, |t| {
+            t.reset();
+        }), // ActionState::VictoryEnd
+    ];
+
+    let i = new as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *action_state = next_state;
+    timer_func(action_state_timer);
+}
+
+/// `MovementState` 변경을 시도합니다.  
+/// `MovementState::Idle`로 변경이 불가능할 경우 무시됩니다.
+pub fn try_reset_movement_state(
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+) {
+    type Func = fn(&mut MovementStateTimer);
+    const TABLE: [(MovementState, Func); NUM_MOVEMENT_STATES] = [
+        (MovementState::Idle, |_| {}), // MovementState::Idle
+        (MovementState::Idle, |t| {
+            t.reset();
+        }), // MovementState::Moving
+        (MovementState::MoveToEnd, |_| {}), // MovementState::MoveToEnd
+        (MovementState::InPlaceJumping, |_| {}), // MovementState::InPlaceJumping
+        (MovementState::InPlaceLanding, |_| {}), // MovementState::InPlaceLanding
+        (MovementState::MovingJumping, |_| {}), // MovementState::MovingJumping
+        (MovementState::MovingLanding, |_| {}), // MovementState::MovingLanding
+    ];
+
+    let i = *movement_state as usize;
+    let (next_state, timer_func) = TABLE[i];
+
+    *movement_state = next_state;
+    timer_func(movement_state_timer);
 }
 
 pub fn animate_character(

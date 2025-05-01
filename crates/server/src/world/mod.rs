@@ -84,6 +84,11 @@ impl GameWorld {
         self.is_closed.load(MemOrdering::Relaxed)
     }
 
+    /// 게임 월드의 외부 출입 차단 여부를 설정합니다.
+    pub fn set_closed(&self, flag: bool) {
+        self.is_closed.store(flag, MemOrdering::Release);
+    }
+
     /// 게임 월드를 비활성화합니다.
     pub fn disable(&self) {
         // 락을 획득합니다.
@@ -218,7 +223,9 @@ impl GameWorld {
         // 해당 플레이어를 제거합니다.
         if let Some((_, uid)) = self.sessions.remove(session) {
             if let Some((_, player)) = self.players.remove(&uid) {
+                // 플레이어 수를 1줄이고, 이벤트를 추가합니다.
                 *num_players -= 1;
+                self.events.push(GameWorldEvent::PlayerLeave(uid));
 
                 // 모든 플레이어가 게임 월드에서 나간 경우 게임 월드를 비활성화합니다.
                 if self.players.len() == 0 {
@@ -383,7 +390,11 @@ fn push_state(
     mut new: Box<dyn GameWorldState>,
 ) {
     if let Some(curr_state) = stack.back_mut() {
-        log::info!("GamwWorld({:?}) pause GameWorldState({:?})", &world, &curr_state);
+        log::info!(
+            "GamwWorld({:?}) pause GameWorldState({:?})",
+            &world,
+            &curr_state
+        );
         curr_state.on_pause(world);
     }
 
@@ -400,7 +411,11 @@ fn pop_state(stack: &mut VecDeque<Box<dyn GameWorldState>>, world: &Arc<GameWorl
     }
 
     if let Some(curr_state) = stack.back_mut() {
-        log::info!("GamwWorld({:?}) resume GameWorldState({:?})", &world, &curr_state);
+        log::info!(
+            "GamwWorld({:?}) resume GameWorldState({:?})",
+            &world,
+            &curr_state
+        );
         curr_state.on_resume(world);
     }
 }

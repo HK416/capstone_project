@@ -3,6 +3,9 @@ use crate::components::{BigEndian, TryFromBigEndian};
 /// 게임에 참여 가능한 최대 인원 수 입니다.
 pub const MAX_IN_GAME_PLAYERS: usize = 10;
 
+/// 게임 팀에 참여 가능한 최대 인원 수 입니다.
+pub const MAX_IN_GAME_TEAM_PLAYERS: usize = MAX_IN_GAME_PLAYERS / 2;
+
 /// 게임 플레이 중단 사유 목록
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

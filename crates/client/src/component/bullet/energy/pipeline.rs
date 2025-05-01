@@ -3,7 +3,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::component::{CameraResource, EnergyBulletMaterialResource, MeshResource};
+use crate::component::{
+    CameraResource, EnergyBulletMaterialResource, MeshResource, WeightedBlendedOITResource,
+};
 
 /// 에너지 볼 형태의 총알을 그리는 그래픽스 파이프라인입니다.
 pub struct EnergyBulletRenderPipeline;
@@ -50,7 +52,6 @@ impl EnergyBulletRenderPipeline {
     /// 렌더링 파이프라인을 가져오거나 초기화합니다.
     pub fn get_or_init(
         device: &wgpu::Device,
-        render_target_format: wgpu::TextureFormat,
         depth_stencil_format: wgpu::TextureFormat,
     ) -> Arc<wgpu::RenderPipeline> {
         PIPELINE
@@ -111,15 +112,37 @@ impl EnergyBulletRenderPipeline {
                             compilation_options: wgpu::PipelineCompilationOptions::default(),
                             targets: &[
                                 Some(wgpu::ColorTargetState {
-                                    blend: None,
-                                    format: render_target_format,
+                                    blend: Some(wgpu::BlendState {
+                                        color: wgpu::BlendComponent {
+                                            src_factor: wgpu::BlendFactor::One,
+                                            dst_factor: wgpu::BlendFactor::One,
+                                            operation: wgpu::BlendOperation::Add,
+                                        },
+                                        alpha: wgpu::BlendComponent {
+                                            src_factor: wgpu::BlendFactor::One,
+                                            dst_factor: wgpu::BlendFactor::One,
+                                            operation: wgpu::BlendOperation::Add,
+                                        },
+                                    }),
+                                    format: WeightedBlendedOITResource::ACCUM_FORMAT,
                                     write_mask: wgpu::ColorWrites::ALL,
                                 }),
-                                // Some(wgpu::ColorTargetState {
-                                //     blend: None,
-                                //     format: render_target_format,
-                                //     write_mask: wgpu::ColorWrites::ALL,
-                                // }),
+                                Some(wgpu::ColorTargetState {
+                                    blend: Some(wgpu::BlendState {
+                                        color: wgpu::BlendComponent {
+                                            src_factor: wgpu::BlendFactor::Zero,
+                                            dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                                            operation: wgpu::BlendOperation::Add,
+                                        },
+                                        alpha: wgpu::BlendComponent {
+                                            src_factor: wgpu::BlendFactor::Zero,
+                                            dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                                            operation: wgpu::BlendOperation::Add,
+                                        },
+                                    }),
+                                    format: WeightedBlendedOITResource::REVEAL_FORMAT,
+                                    write_mask: wgpu::ColorWrites::ALL,
+                                }),
                             ],
                         }),
                         multiview: None,

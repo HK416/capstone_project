@@ -50,8 +50,9 @@ impl CaptureZoneMaterialUniform {
         core::mem::size_of::<CaptureZoneMaterialDataLayout>() as wgpu::BufferAddress;
 
     /// 유니폼 버퍼의 [`wgpu::BufferUsages`]입니다.
-    pub const USAGES: wgpu::BufferUsages =
-        wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST);
+    pub const USAGES: wgpu::BufferUsages = wgpu::BufferUsages::UNIFORM
+        .union(wgpu::BufferUsages::MAP_WRITE)
+        .union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
     pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {

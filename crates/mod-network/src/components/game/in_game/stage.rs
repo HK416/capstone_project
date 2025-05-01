@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::components::{BigEndian, Float2, Float3, Float4, HealthPoint, TryFromBigEndian, UserId};
+use crate::components::{BigEndian, Float2, Float3, Float4, TryFromBigEndian, UserId};
 
 /// 스테이지 종류의 수 입니다.
 pub const NUM_STAGES: usize = 1;
@@ -77,6 +77,14 @@ pub struct StageLayoutData {
     pub area: Vec<StageAreaData>,
     /// 게임 월드 스테이지 소품 데이터입니다.
     pub props: Vec<StagePropData>,
+    /// 블루 팀 스폰 위치입니다.
+    pub blue_spawn_pos: Vec<Float3>,
+    /// 블루 팀 스폰 방향입니다.
+    pub blue_spawn_dir: Float4,
+    /// 레드 팀 스폰 위치입니다.
+    pub red_spawn_pos: Vec<Float3>,
+    /// 레드 팀 스폰 방향입니다.
+    pub red_spawn_dir: Float4,
 }
 
 /// 게임 월드 스테이지를 구성하는 지역 데이터입니다.
@@ -109,12 +117,12 @@ pub struct StageHeight {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DamageLog {
     pub user_id: UserId,
-    pub damage: HealthPoint,
+    pub damage: u16,
 }
 
 impl BigEndian for DamageLog {
     fn byte_size() -> usize {
-        UserId::byte_size() + HealthPoint::byte_size()
+        UserId::byte_size() + u16::byte_size()
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -133,7 +141,7 @@ impl Default for DamageLog {
     fn default() -> Self {
         Self {
             user_id: UserId::NULL,
-            damage: HealthPoint(0),
+            damage: 0,
         }
     }
 }
@@ -156,9 +164,9 @@ impl TryFromBigEndian for DamageLog {
 
         // 데미지를 가져옵니다.
         offset = offset + size;
-        size = HealthPoint::byte_size();
+        size = u16::byte_size();
         data = &bytes[offset..offset + size];
-        let damage = HealthPoint::from_big_endian_bytes(data);
+        let damage = u16::from_big_endian_bytes(data);
 
         Some(Self {
             user_id: object_id,
@@ -192,7 +200,7 @@ mod tests {
     fn test_player() {
         let origin = DamageLog {
             user_id: UserId::new(3141592),
-            damage: HealthPoint(2700),
+            damage: 2700,
         };
         let bytes = origin.to_big_endian_bytes();
         let other = DamageLog::from_big_endian_bytes(&bytes);

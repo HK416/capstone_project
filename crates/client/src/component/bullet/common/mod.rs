@@ -2,6 +2,7 @@
 //!
 
 mod pipeline;
+mod transparency;
 
 use std::ops::Deref;
 
@@ -17,7 +18,7 @@ use crate::{
     },
 };
 
-pub use self::pipeline::*;
+pub use self::{pipeline::*, transparency::*};
 
 /// 일반 총알 모델을 구성하는 엔터티를 생성합니다.
 ///
@@ -163,21 +164,29 @@ fn spawn_common_bullet_model_recursive(
                 match data.deref() {
                     MaterialData::Bullet(data) => {
                         // 재질 쉐이더 리소스를 생성합니다.
-                        let bullet_uniform = BulletMaterialUniform::new(
-                            label,
-                            device,
-                            BulletMaterialDataLayout {
-                                glossiness: data.glossiness,
-                                smoothness: data.smoothness,
-                                metallic: data.metallic,
-                                main_color: data.main_color.into(),
-                                ..Default::default()
-                            },
-                        );
+                        let data_layout = BulletMaterialDataLayout {
+                            glossiness: data.glossiness,
+                            smoothness: data.smoothness,
+                            metallic: data.metallic,
+                            main_color: [
+                                data.main_color.x,
+                                data.main_color.y,
+                                data.main_color.z,
+                                1.0,
+                            ],
+                            ..Default::default()
+                        };
+                        let bullet_uniform = BulletMaterialUniform::new(label, device, data_layout);
                         let material_resource =
                             BulletMaterialResource::new(label, device, &bullet_uniform);
 
-                        (MaterialUniform::Bullet(bullet_uniform), material_resource)
+                        (
+                            MaterialUniform::Bullet {
+                                data: data_layout,
+                                buffer: bullet_uniform,
+                            },
+                            material_resource,
+                        )
                     }
                     _ => panic!("invalid material data!"),
                 }

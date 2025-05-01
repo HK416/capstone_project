@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mod_network::components::{CharacterKind, ObjectId, Team, UserId};
+use mod_network::components::{CharacterKind, ObjectId, UserId};
 
 use crate::session::Session;
 
@@ -11,6 +11,9 @@ use super::GameWorldStateFlow;
 pub enum GameWorldEvent {
     /// 게임 월드 상태를 변경합니다.
     SetControlFlow(GameWorldStateFlow),
+
+    /// 플레이어가 게임 월드에서 떠날 때 발생하는 이벤트입니다.
+    PlayerLeave(UserId),
 
     /// 커스텀 게임 대기실에서 사용되는
     /// 플레이어의 게임 준비 요청입니다.
@@ -39,7 +42,4 @@ pub enum GameWorldEvent {
 
     /// 플레이어 리스폰 요청
     RespawnPlayer { uid: UserId },
-
-    /// 게임 종료(None이면 무승부)
-    GameOver { winner: Option<Team> },
 }

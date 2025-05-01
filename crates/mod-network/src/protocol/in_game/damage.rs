@@ -110,7 +110,7 @@ impl Packet for UdpDamageLogPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{HealthPoint, UserId};
+    use crate::components::UserId;
 
     use super::*;
 
@@ -119,11 +119,11 @@ mod tests {
         let origin = UdpDamageLogPacket::new(vec![
             DamageLog {
                 user_id: UserId::new(123456),
-                damage: HealthPoint(1010),
+                damage: 1010,
             },
             DamageLog {
                 user_id: UserId::new(1),
-                damage: HealthPoint(52),
+                damage: 52,
             },
         ]);
         let raw_packet = origin.as_raw();

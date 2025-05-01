@@ -1,7 +1,6 @@
 use crate::{
     components::{
-        BigEndian, Bullet, CapturePoint, PlayPhasePlayer, TryFromBigEndian,
-        MAX_IN_GAME_PLAYERS,
+        BigEndian, Bullet, CapturePoint, PlayPhasePlayer, TryFromBigEndian, MAX_IN_GAME_PLAYERS,
     },
     protocol::{Packet, PacketType, RawPacket},
 };
@@ -53,7 +52,7 @@ impl Packet for PullStagePacket {
             + u16::byte_size()
             + Bullet::byte_size() * self.bullets.len()
             + CapturePoint::byte_size()
-            + f32::byte_size();  // 남은 시간 추가
+            + f32::byte_size(); // 남은 시간 추가
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
@@ -130,7 +129,7 @@ impl Packet for PullStagePacket {
         size = CapturePoint::byte_size();
         data = &bytes[offset..offset + size];
         let capture_point = CapturePoint::try_from_big_endian_bytes(data)?;
-        
+
         offset = offset + size;
         size = f32::byte_size();
         data = &bytes[offset..offset + size];
@@ -147,12 +146,10 @@ impl Packet for PullStagePacket {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU16;
-
     use crate::components::{
-        ActionState, ActionStateTimer, CharacterKind, HealthPoint, LatLon, MaxHealthPoint,
-        MovementState, MovementStateTimer, Team, UserAccount, UserId, UserName, ViewState,
-        ViewStateTimer,
+        ActionState, ActionStateTimer, CharacterKind, ExSkillCost, GamePlayData, HealthPoint,
+        LatLon, MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId,
+        UserName, ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -160,13 +157,20 @@ mod tests {
     #[test]
     fn test_pull_stage_packet() {
         let player_0 = PlayPhasePlayer::new(
+            true,
             UserAccount::new(UserId::new(1412512), UserName::from_str("Aris")),
+            GamePlayData {
+                kill_count: 2,
+                dead_count: 0,
+            },
             CharacterKind::ArisOriginal,
-            MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
-            HealthPoint::new(1413),
+            RemainingBullet::new(10, 30),
+            HealthPoint::new(1413, 1413),
             [1.1512351, 2.4151616, 1.16561651],
             [1.5415151, 0.16551351, 0.9513515, 1.0515161],
             Team::Blue,
+            0,
+            ExSkillCost(55.31),
             ActionState::Aiming,
             ActionStateTimer(3.03151),
             MovementState::InPlaceLanding,
@@ -181,7 +185,8 @@ mod tests {
         let capture_point = CapturePoint::default();
         let remaining_time_sec = 60.0;
 
-        let origin = PullStagePacket::new(vec![player_0], vec![], capture_point, remaining_time_sec);
+        let origin =
+            PullStagePacket::new(vec![player_0], vec![], capture_point, remaining_time_sec);
         let raw = origin.as_raw();
         let other = PullStagePacket::from_raw(raw);
 

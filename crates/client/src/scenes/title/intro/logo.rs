@@ -96,7 +96,7 @@ impl GameScene for GameIntroLogoScene {
                 self.texture_view_pool.clone(),
             );
             let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }

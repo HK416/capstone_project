@@ -21,7 +21,8 @@ use crate::{
         TransformUniform, WorldTransform, ATTACK_END_ANIMATION_SUFFIX, ATTACK_ING_ANIMATION_SUFFIX,
         ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX,
         MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_THIGH, MOVE_TO_END_ANIMATION_SUFFIX,
-        MOVING_ANIMATION_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
+        MOVING_ANIMATION_SUFFIX, NORMAL_CALLSIGN_SUFFIX, RELOAD_ANIMATION_SUFFIX,
+        VICTORY_END_SUFFIX, VICTORY_START_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
     },
 };
 
@@ -46,6 +47,14 @@ pub const NORMAL_ATTACK_END_DURATION: f32 = 0.667;
 pub const NORMAL_ATTACK_ING_DURATION: f32 = 2.667;
 /// 캐릭터 모델의 Vital_Death 애니메이션 길이입니다.
 pub const VITAL_DEATH_DURATION: f32 = 1.8;
+/// 캐릭터 모델의 Reload 애니메이션 길이입니다.
+pub const NORMAL_RELOAD_DURATION: f32 = 2.0;
+/// 캐릭터 모델의 Callsign 애니메이션 길이입니다.
+pub const NORMAL_CALLSIGN_DURATION: f32 = 1.5;
+/// 캐릭터 모델의 *_Victory_Start 애니메이션 길이입니다.
+pub const VICTORY_START_DURATION: f32 = 3.0;
+/// 캐릭터 모델의 *_Victory_End 애니메이션 길이입니다.
+pub const VICTORY_END_DURATION: f32 = 3.2;
 
 /// 캐릭터 모델의 카메라 기본 위치입니다.
 pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
@@ -185,6 +194,14 @@ const ATTACK_ING_ANIMATION: &'static str = concat!(MODEL_NAME, ATTACK_ING_ANIMAT
 const ATTACK_END_ANIMATION: &'static str = concat!(MODEL_NAME, ATTACK_END_ANIMATION_SUFFIX);
 /// 캐릭터의 VitalDeath 애니메이션 이름입니다.
 const VITAL_DEATH_ANIMATION: &'static str = concat!(MODEL_NAME, VITAL_DEATH_ANIMATION_SUFFIX);
+/// 캐릭터의 Reload 애니메이션 이름입니다.
+const NORMAL_RELOAD_ANIMATION: &'static str = concat!(MODEL_NAME, RELOAD_ANIMATION_SUFFIX);
+/// 캐릭터의 Callsign 애니메이션 이름입니다.
+const NORMAL_CALLSIGN_ANIMATION: &'static str = concat!(MODEL_NAME, NORMAL_CALLSIGN_SUFFIX);
+/// 캐릭터의 *_Victory_Start 애니메이션 이름입니다.
+const VICTORY_START_ANIMATION: &'static str = concat!(MODEL_NAME, VICTORY_START_SUFFIX);
+/// 캐릭터의 *_Victory_End 애니메이션 이름입니다.
+const VICTORY_END_ANIMATION: &'static str = concat!(MODEL_NAME, VICTORY_END_SUFFIX);
 
 /// 캐릭터 모델을 구성하는 엔터티를 생성합니다.
 ///
@@ -794,15 +811,75 @@ pub fn animate_character(
             animate_character_when_attack_move_jumping, // `MovementState::MovingJumping`
             animate_character_when_attack_move_landing, // `MovementState::MovingLanding`
         ],
-        // `ActionState::Death`
+        // `ActionState::Dead`
         [
-            animate_character_when_death, // `MovementState::Idle`
-            animate_character_when_death, // `MovementState::Moving`
-            animate_character_when_death, // `MovementState::MoveToEnd`
-            animate_character_when_death, // `MovementState::InPlaceJumping`
-            animate_character_when_death, // `MovementState::InPlaceLanding`
-            animate_character_when_death, // `MovementState::MovingJumping`
-            animate_character_when_death, // `MovementState::MovingLanding`
+            animate_character_when_dead, // `MovementState::Idle`
+            animate_character_when_dead, // `MovementState::Moving`
+            animate_character_when_dead, // `MovementState::MoveToEnd`
+            animate_character_when_dead, // `MovementState::InPlaceJumping`
+            animate_character_when_dead, // `MovementState::InPlaceLanding`
+            animate_character_when_dead, // `MovementState::MovingJumping`
+            animate_character_when_dead, // `MovementState::MovingLanding`
+        ],
+        // `ActionState::Reload`
+        [
+            animate_character_when_reload,              // `MovementState::Idle
+            animate_character_when_reload_move,         // `MovementState::Moving
+            animate_character_when_reload,              // `MovementState::MoveToEnd
+            animate_character_when_reload_jumping,      // `MovementState::InPlaceJumping
+            animate_character_when_reload_landing,      // `MovementState::InPlaceLanding
+            animate_character_when_reload_move_jumping, // `MovementState::MovingJumping
+            animate_character_when_reload_move_landing, // `MovementState::MovingLanding
+        ],
+        // `ActionState::Skill`
+        [
+            animate_character_when_reload,              // `MovementState::Idle
+            animate_character_when_reload_move,         // `MovementState::Moving
+            animate_character_when_reload,              // `MovementState::MoveToEnd
+            animate_character_when_reload_jumping,      // `MovementState::InPlaceJumping
+            animate_character_when_reload_landing,      // `MovementState::InPlaceLanding
+            animate_character_when_reload_move_jumping, // `MovementState::MovingJumping
+            animate_character_when_reload_move_landing, // `MovementState::MovingLanding
+        ],
+        // `ActionState::ExSkill`
+        [
+            animate_character_when_reload,              // `MovementState::Idle
+            animate_character_when_reload_move,         // `MovementState::Moving
+            animate_character_when_reload,              // `MovementState::MoveToEnd
+            animate_character_when_reload_jumping,      // `MovementState::InPlaceJumping
+            animate_character_when_reload_landing,      // `MovementState::InPlaceLanding
+            animate_character_when_reload_move_jumping, // `MovementState::MovingJumping
+            animate_character_when_reload_move_landing, // `MovementState::MovingLanding
+        ],
+        // `AcstionState::Callsign`
+        [
+            animate_character_when_callsign, // `MovementState::Idle
+            animate_character_when_callsign, // `MovementState::Moving
+            animate_character_when_callsign, // `MovementState::MoveToEnd
+            animate_character_when_callsign, // `MovementState::InPlaceJumping
+            animate_character_when_callsign, // `MovementState::InPlaceLanding
+            animate_character_when_callsign, // `MovementState::MovingJumping
+            animate_character_when_callsign, // `MovementState::MovingLanding
+        ],
+        // `AcstionState::VictoryStart`
+        [
+            animate_character_when_victory_start, // `MovementState::Idle
+            animate_character_when_victory_start, // `MovementState::Moving
+            animate_character_when_victory_start, // `MovementState::MoveToEnd
+            animate_character_when_victory_start, // `MovementState::InPlaceJumping
+            animate_character_when_victory_start, // `MovementState::InPlaceLanding
+            animate_character_when_victory_start, // `MovementState::MovingJumping
+            animate_character_when_victory_start, // `MovementState::MovingLanding
+        ],
+        // `AcstionState::VictoryEnd`
+        [
+            animate_character_when_victory_end, // `MovementState::Idle
+            animate_character_when_victory_end, // `MovementState::Moving
+            animate_character_when_victory_end, // `MovementState::MoveToEnd
+            animate_character_when_victory_end, // `MovementState::InPlaceJumping
+            animate_character_when_victory_end, // `MovementState::InPlaceLanding
+            animate_character_when_victory_end, // `MovementState::MovingJumping
+            animate_character_when_victory_end, // `MovementState::MovingLanding
         ],
     ];
 
@@ -3082,7 +3159,7 @@ fn moving_landing_anime(
 /// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
 /// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
 ///
-fn animate_character_when_death(
+fn animate_character_when_dead(
     motions: &Arc<HashMap<String, Motion>>,
     _view_rotation: LatLon,
     action_state_timer: ActionStateTimer,
@@ -3096,6 +3173,579 @@ fn animate_character_when_death(
 
     // 애니메이션 키 프레임을 샘플링합니다.
     let s = action_state_timer.0.min(VITAL_DEATH_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+}
+
+/// `ActionState::Reload`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_reload(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Reload` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_RELOAD_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_RELOAD_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+}
+
+/// `MovementState::Moving`이고, `ActionState::Reload`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_reload_move(
+    motions: &Arc<HashMap<String, Motion>>,
+    view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Reload` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_RELOAD_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_RELOAD_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // `*_Cafe_Walk` 애니메이션을 가져옵니다.
+    let motion = motions.get(CAFE_WALK_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = movement_state_timer.0 % CAFE_WALK_DURATION;
+    let keyframe = motion.linear_sampling(s);
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            // 뼈 엔터티가 애니메이션 믹싱 뼈 집합에 포함되는 겨우 로컬 변환 행렬을 선형 보간합니다.
+            let bone_entity = bone_collection.bones[bone_index];
+            if skinning_animation
+                .animation_mixing_bones
+                .contains(&bone_entity)
+            {
+                let local_transform = transform_view
+                    .get_mut(bone_entity)
+                    .expect("invalid entity or invalid entity component");
+                local_transform.0 = local_transform.0 * 0.2 + bone_transform * 0.8;
+            }
+        }
+    }
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
+}
+
+/// `MovementState::InPlaceJumping`이고, `ActionState::Reload`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_reload_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Reload` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_RELOAD_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_RELOAD_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    in_place_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+}
+
+/// `MovementState::InPlaceLanding`이고, `ActionState::Reload`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_reload_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Reload` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_RELOAD_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_RELOAD_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    in_place_landing_anime(skinning_animation, movement_state_timer, transform_view);
+}
+
+/// `MovementState::MovingJumping`이고, `ActionState::Reload`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_reload_move_jumping(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Reload` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_RELOAD_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_RELOAD_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 점프 애니메이션을 적용합니다.
+    moving_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+}
+
+/// `MovementState::MovingLanding`이고, `ActionState::Reload`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_reload_move_landing(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Reload` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_RELOAD_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0.min(NORMAL_RELOAD_DURATION);
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+
+    // 착지 애니메이션을 적용합니다.
+    moving_landing_anime(skinning_animation, transform_view);
+}
+
+/// `ActionState::Callsign`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_callsign(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Normal_Callsign` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(NORMAL_CALLSIGN_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0 % NORMAL_CALLSIGN_DURATION;
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+}
+
+/// `ActionState::VictoryStart`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_victory_start(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Victory_Start` 애니메이션을 가져옵니다.
+    let motion = motions
+        .get(VICTORY_START_ANIMATION)
+        .expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0 % VICTORY_START_DURATION;
+    let keyframe = motion.linear_sampling(s);
+
+    // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
+    let local_transform = transform_view
+        .get_mut(skinning_animation.root)
+        .expect("invalid entity or invalid entity component");
+    local_transform.0 = keyframe.root_matrix;
+
+    // 키 프레임을 구성하는 스키닝된 메쉬 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+    for keyframe_mesh in keyframe.meshes.iter() {
+        // 스키닝된 메쉬의 엔터티를 가져옵니다.
+        let entity = skinning_animation
+            .meshes
+            .get(&keyframe_mesh.name)
+            .cloned()
+            .expect("no such entity");
+
+        // 스키닝된 메쉬를 구성하는 뼈 노드의 집합을 가져옵니다.
+        let bone_collection = collection_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 뼈 노드의 로컬 변환 행렬을 갱신합니다.
+        for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
+            let bone_entity = bone_collection.bones[bone_index];
+            let local_transform = transform_view
+                .get_mut(bone_entity)
+                .expect("invalid entity or invalid entity component");
+            local_transform.0 = bone_transform;
+        }
+    }
+}
+
+/// `ActionState::VictoryEnd`일 때 애니메이션을 재생합니다.
+///
+/// # Note
+/// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
+///
+/// # Panics
+/// - 스키닝 애니메이션을 구성하는 엔터티는 유효애햐 합니다. 그렇지 않는 경우 [`panic!`]을 호출합니다.
+/// - 엔터티의 컴포넌트 데이터가 스레드에 안전하지 않는 경우 [`panic!`]을 호출합니다.
+///
+fn animate_character_when_victory_end(
+    motions: &Arc<HashMap<String, Motion>>,
+    _view_rotation: LatLon,
+    action_state_timer: ActionStateTimer,
+    _movement_state_timer: MovementStateTimer,
+    skinning_animation: &SkinningAnimation,
+    collection_view: &ViewBorrow<&BoneCollection>,
+    transform_view: &mut ViewBorrow<&mut ToParentTrans>,
+) {
+    // `*_Victory_Start` 애니메이션을 가져옵니다.
+    let motion = motions.get(VICTORY_END_ANIMATION).expect("no such motion");
+
+    // 애니메이션 키 프레임을 샘플링합니다.
+    let s = action_state_timer.0 % VICTORY_START_DURATION;
     let keyframe = motion.linear_sampling(s);
 
     // 최상위 뼈 변환 행렬의 로컬 변환 행렬을 갱신합니다.
@@ -3270,6 +3920,12 @@ pub fn update_third_person_camera_when_idle(
         non_camera_effect,
         apply_camera_effect_when_attack,
         non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
     ];
 
     let i = action_state as usize;
@@ -3313,6 +3969,12 @@ pub fn update_third_person_camera_when_zoom_in(
         non_camera_effect,
         non_camera_effect,
         apply_camera_effect_when_attack,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
         non_camera_effect,
     ];
 
@@ -3358,6 +4020,12 @@ pub fn update_third_person_camera_when_zoom_out(
         non_camera_effect,
         apply_camera_effect_when_attack,
         non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
     ];
 
     let i = action_state as usize;
@@ -3396,6 +4064,12 @@ pub fn update_third_person_camera_when_aiming(
         non_camera_effect,
         non_camera_effect,
         apply_camera_effect_when_attack,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
+        non_camera_effect,
         non_camera_effect,
     ];
 
@@ -3444,4 +4118,406 @@ fn apply_camera_effect_when_attack(
         third_person_camera.position = default_position;
         third_person_camera.fov_y = default_fov_y;
     }
+}
+
+/// `ActionStateTimer`를 갱신합니다.
+pub fn update_action_state_timer(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(&mut ActionState, &mut ActionStateTimer, f32);
+    const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
+        update_action_state_timer_when_idle,
+        update_action_state_timer_when_aiming,
+        update_action_state_timer_when_aim_at,
+        update_action_state_timer_when_aim_off,
+        update_action_state_timer_when_attack,
+        update_action_state_timer_when_dead,
+        update_action_state_timer_when_reload,
+        update_action_state_timer_when_skill,
+        update_action_state_timer_when_ex_skill,
+        update_action_state_timer_when_callsign,
+        update_action_state_timer_when_victory_start,
+        update_action_state_timer_when_victory_end,
+    ];
+
+    let i = *action_state as usize;
+    FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
+}
+
+/// `ActionState::Idle`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_idle(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = NORMAL_IDLE_DURATION;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `ActionState::Aiming`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_aiming(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = NORMAL_IDLE_DURATION;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `ActionState::AimAt`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_aim_at(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_ATTACK_START_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Aiming;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::AimOff`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_aim_off(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_ATTACK_END_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::Attack`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_attack(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_ATTACK_ING_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::AimOff`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_dead(
+    _action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec).min(VITAL_DEATH_DURATION);
+}
+
+/// `ActionState::Reload`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_reload(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_RELOAD_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::Skill`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_skill(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    // TODO!
+}
+
+/// `ActionState::ExSkill`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_ex_skill(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    // TODO!
+}
+
+/// `ActionState::Callsign`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_callsign(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = NORMAL_CALLSIGN_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::VictoryStart`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_victory_start(
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    action_state_timer.0 += elapsed_time_sec;
+
+    let duration = VICTORY_START_DURATION;
+    let diff_t = action_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *action_state = ActionState::VictoryEnd;
+        action_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::VictoryEnd`일 때 `ActionStateTimer`를 갱신합니다.
+fn update_action_state_timer_when_victory_end(
+    _action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = VICTORY_END_DURATION;
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `MovementStateTimer`를 갱신합니다.
+pub fn update_movement_state_timer(
+    action_state: ActionState,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    type Func = fn(&mut MovementState, &mut MovementStateTimer, f32);
+    const FUNC_TABLE: [[Func; NUM_MOVEMENT_STATES]; NUM_ACTION_STATES] = [
+        // `ActionState::Idle`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_moving,
+            update_movement_state_timer_when_move_to_end,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Aiming`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::AimAt`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::AimOff`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Attack`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Dead`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Reload`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Skill`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::ExSkill`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_walking,
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::Callsign`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_moving,
+            update_movement_state_timer_when_move_to_end,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::VictoryStart`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_moving,
+            update_movement_state_timer_when_move_to_end,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+        // `ActionState::VictoryEnd`
+        [
+            update_movement_state_timer_when_idle,
+            update_movement_state_timer_when_moving,
+            update_movement_state_timer_when_move_to_end,
+            update_movement_state_timer_when_in_place_jumping,
+            update_movement_state_timer_when_landing,
+            update_movement_state_timer_when_moving_jumping,
+            update_movement_state_timer_when_landing,
+        ],
+    ];
+
+    let i = action_state as usize;
+    let j = *movement_state as usize;
+    FUNC_TABLE[i][j](movement_state, movement_state_timer, elapsed_time_sec);
+}
+
+/// `MovementState::Idle`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_idle(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = NORMAL_IDLE_DURATION;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `ActionState::Idle`이고, `MovementState::Moving`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_moving(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = MOVE_ING_DURATION;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `MovementState::MoveToEnd`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_move_to_end(
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 += elapsed_time_sec;
+
+    let duration = MOVE_END_NORMAL_DURATION;
+    let diff_t = movement_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *movement_state = MovementState::Idle;
+        movement_state_timer.0 = diff_t;
+    }
+}
+
+/// `ActionState::Aiming`이고, `MovementState::Moving`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_walking(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    let duration = CAFE_WALK_DURATION;
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec) % duration;
+}
+
+/// `MovementState::InPlaceJumping`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_in_place_jumping(
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 += elapsed_time_sec;
+
+    let duration = MAX_JUMP_DURATION;
+    let diff_t = movement_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *movement_state = MovementState::InPlaceLanding;
+        movement_state_timer.0 = diff_t;
+    }
+}
+
+/// `MovementState::MovingJumping`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_moving_jumping(
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 += elapsed_time_sec;
+
+    let duration = MAX_JUMP_DURATION;
+    let diff_t = movement_state_timer.0 - duration;
+    if diff_t >= 0.0 {
+        *movement_state = MovementState::MovingLanding;
+        movement_state_timer.0 = diff_t;
+    }
+}
+
+/// `MovementState::InPlaceLanding` 또는 `MovementState::MovingLanding`일 때 `MovementStateTimer`를 갱신합니다.
+fn update_movement_state_timer_when_landing(
+    _movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+    elapsed_time_sec: f32,
+) {
+    movement_state_timer.0 = (movement_state_timer.0 + elapsed_time_sec).min(MAX_JUMP_DURATION);
 }

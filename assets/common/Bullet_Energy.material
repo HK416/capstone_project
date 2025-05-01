@@ -1,1 +1,1 @@
-{ "EnergyBullet": { "uri": "Bullet_Energy", "emissive": { "x": 0.5330075, "y": 3.56161, "z": 4.883966, "w": 1 }, "main_color": { "x": 0.361635, "y": 0.8875314, "z": 1, "w": 1 } } }
+{ "EnergyBullet": { "uri": "Bullet_Energy", "emissive": { "x": 0.5330075, "y": 3.56161, "z": 4.883966, "w": 1 }, "main_color": { "x": 0.361635, "y": 0.8875314, "z": 1, "w": 0.85 } } }

@@ -9,7 +9,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use mod_network::components::Float3;
+use mod_network::components::{Float3, Float4};
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
@@ -21,8 +21,7 @@ use crate::component::{MaterialKind, MaterialResource};
 pub struct EnergyBulletMaterialDataLayout {
     pub emissive: [f32; 3],
     pub _padding0: [u8; 4],
-    pub main_color: [f32; 3],
-    pub _padding1: [u8; 4],
+    pub main_color: [f32; 4],
 }
 
 impl Default for EnergyBulletMaterialDataLayout {
@@ -30,8 +29,7 @@ impl Default for EnergyBulletMaterialDataLayout {
         Self {
             emissive: [0.0; 3],
             _padding0: [0; 4],
-            main_color: [0.0; 3],
-            _padding1: [0; 4],
+            main_color: [0.0; 4],
         }
     }
 }
@@ -169,7 +167,7 @@ static_assertions::const_assert_eq!(
 pub struct EnergyBulletMaterialData {
     pub uri: String,
     pub emissive: Float3,
-    pub main_color: Float3,
+    pub main_color: Float4,
 }
 
 /// 에너지 볼 형태의 총알 재질 쉐이더 리소스입니다.

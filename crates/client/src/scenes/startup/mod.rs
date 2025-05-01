@@ -30,9 +30,9 @@ use crate::{
         USER_CONFIG,
     },
     component::{
-        BulletRenderPipeline, CaptureZoneRenderPipeline, CharacterRenderPipeline,
-        DamageFontRenderPipeline, EnergyBulletRenderPipeline, EyeMouthRenderPipeline,
-        HaloRenderPipeline, SkyboxRenderPipeline, StageRenderPipeline,
+        BulletRenderPipeline, BulletRenderPipelineTransparency, CaptureZoneRenderPipeline,
+        CharacterRenderPipeline, DamageFontRenderPipeline, EnergyBulletRenderPipeline,
+        EyeMouthRenderPipeline, HaloRenderPipeline, SkyboxRenderPipeline, StageRenderPipeline,
         WeightedBlendedOITRenderPipeline,
     },
     config::UserConfig,
@@ -96,11 +96,20 @@ impl GameStartupScene {
         });
         self.num_remaining_tasks += 1;
 
+        // 일반 총알을 투명하게 그리는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            BulletRenderPipelineTransparency::get_or_init(&device_cloned, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
         // 에너지 볼 형태의 총알을 그리는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            EnergyBulletRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            EnergyBulletRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -518,7 +527,7 @@ impl GameScene for GameStartupScene {
                 }
             };
             let scene_flow = GameSceneFlow::Change(next_scene);
-            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }

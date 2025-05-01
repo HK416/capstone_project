@@ -23,8 +23,7 @@ pub struct BulletMaterialDataLayout {
     pub smoothness: f32,
     pub metallic: f32,
     pub _padding0: [u8; 4],
-    pub main_color: [f32; 3],
-    pub _padding1: [u8; 4],
+    pub main_color: [f32; 4],
 }
 
 impl Default for BulletMaterialDataLayout {
@@ -34,8 +33,7 @@ impl Default for BulletMaterialDataLayout {
             smoothness: 0.0,
             metallic: 0.0,
             _padding0: [0; 4],
-            main_color: [0.0; 3],
-            _padding1: [0; 4],
+            main_color: [0.0; 4],
         }
     }
 }

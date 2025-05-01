@@ -34,11 +34,14 @@
     "move_end_normal_duration": 2.0,
     "walk_duration": 1.267,
     "normal_idle_duration": 2.8,
+    "normal_reload_duration": 2.0,
     "normal_attack_start_duration": 0.667,
     "normal_attack_end_duration": 0.667,
     "normal_attack_ing_duration": 2.667, 
+    "normal_callsign_duration": 1.5, 
     "normal_attack_timing": [1.0],
     "normal_attack_count": 1,
+    "max_bullets": 3,
     "health_point": 2142,
     "attack_power": 514,
     "defense_power": 68,
@@ -46,6 +49,8 @@
     "evasion_stat": 170,
     "critical_rate": 230,
     "critical_damage": 200,
+    "cost_recovery_rate": 1.25,
+    "skill_cool_time": { "Active": 30.0 },
     "attack_range": 850,
     "bullet_radius": 0.1
 }

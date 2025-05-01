@@ -10,8 +10,10 @@
 //! - InGameEnter: 클라이언트가 인게임 장면에 진입하고 있는 상태입니다.
 //! - InGame: 클라이언트가 인게임 장면에 있는 상태입니다.
 //!
+mod finish;
 mod formation;
 mod in_game;
+mod in_game_prepare;
 mod in_game_sync;
 mod lobby;
 mod login;
@@ -120,7 +122,11 @@ impl<'a> SessionStateManager<'a> {
     /// 모든 세션 상태를 제거합니다.
     fn clear(&mut self) {
         while let Some(mut state) = self.states.pop_back() {
-            log::info!("Session({}), exit SessionState({:?})", &self.session, &state);
+            log::info!(
+                "Session({}), exit SessionState({:?})",
+                &self.session,
+                &state
+            );
             state.on_exit(&self.session);
         }
     }
@@ -128,11 +134,19 @@ impl<'a> SessionStateManager<'a> {
     /// 새로운 세션 상태로 교체합니다.
     fn change(&mut self, mut state: Box<dyn SessionState>) {
         if let Some(mut state) = self.states.pop_back() {
-            log::info!("Session({}), exit SessionState({:?})", &self.session, &state);
+            log::info!(
+                "Session({}), exit SessionState({:?})",
+                &self.session,
+                &state
+            );
             state.on_exit(&self.session);
         }
 
-        log::info!("Session({}), enter SessionState({:?})", &self.session, &state);
+        log::info!(
+            "Session({}), enter SessionState({:?})",
+            &self.session,
+            &state
+        );
         state.on_enter(&self.session);
         self.states.push_back(state);
     }
@@ -140,11 +154,19 @@ impl<'a> SessionStateManager<'a> {
     /// 새로운 세션 상태를 추가합니다.
     fn push(&mut self, mut state: Box<dyn SessionState>) {
         if let Some(curr_state) = self.states.back_mut() {
-            log::info!("Session({}), pause SessionState({:?})", &self.session, &curr_state);
+            log::info!(
+                "Session({}), pause SessionState({:?})",
+                &self.session,
+                &curr_state
+            );
             curr_state.on_pause(self.session);
         }
 
-        log::info!("Session({}), enter SessionState({:?})", &self.session, &state);
+        log::info!(
+            "Session({}), enter SessionState({:?})",
+            &self.session,
+            &state
+        );
         state.on_enter(&self.session);
         self.states.push_back(state);
     }
@@ -152,12 +174,20 @@ impl<'a> SessionStateManager<'a> {
     /// 현재 세션 상태를 제거합니다.
     fn pop(&mut self) {
         if let Some(mut state) = self.states.pop_back() {
-            log::info!("Session({}), exit SessionState({:?})", &self.session, &state);
+            log::info!(
+                "Session({}), exit SessionState({:?})",
+                &self.session,
+                &state
+            );
             state.on_exit(&self.session);
         }
 
         if let Some(curr_state) = self.states.back_mut() {
-            log::info!("Session({}), resume SessionState({:?})", &self.session, &curr_state);
+            log::info!(
+                "Session({}), resume SessionState({:?})",
+                &self.session,
+                &curr_state
+            );
             curr_state.on_resume(self.session);
         }
     }

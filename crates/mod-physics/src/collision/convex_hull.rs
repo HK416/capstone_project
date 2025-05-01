@@ -83,6 +83,7 @@ pub trait ConvexHull {
         }
 
         // 5. Simplex가 원점을 포함할 때까지 반복한다.
+        let mut loop_count = 0;
         while let Some(face) = simplex.get_nearest_if_not_contains_origin() {
             simplex.vertices = [
                 // CCW로 정렬
@@ -93,6 +94,12 @@ pub trait ConvexHull {
             ];
             if simplex.vertices[3].dot(face.normal) < 0.0 {
                 return None;
+            }
+
+            loop_count += 1;
+            if loop_count > 100 {
+                println!("gjk loop count exceeded");
+                break;
             }
         }
 
@@ -195,7 +202,7 @@ pub trait ConvexHull {
 
             loop_count += 1;
             if loop_count > 25 {
-                println!("loop count exceeded");
+                println!("epa loop count exceeded");
                 return Some(collision_info);
             }
         }

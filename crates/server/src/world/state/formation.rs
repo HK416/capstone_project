@@ -19,6 +19,7 @@ use super::{GameWorldState, GameWorldStateFlow, in_game_sync::GameWorldInGameSyn
 /// 최대 상태 지속 시간(초)
 const MAX_STATE_DURATION: f32 = 60.0;
 
+/// 캐릭터 선택 상태의 게임 월드입니다.
 pub struct GameWorldFormationState {
     /// 게임 월드 상태 실행 여부
     is_running: bool,
@@ -44,17 +45,12 @@ impl GameWorldFormationState {
             stage_kind,
         }
     }
+}
 
-    /// 남은 시간을 갱신합니다.
-    fn update_remaining_time(&mut self) {
-        let current_time_pt = Instant::now();
-        let elapsed_time_sec = current_time_pt
-            .saturating_duration_since(self.previous_time_pt)
-            .as_secs_f32();
-        self.previous_time_pt = current_time_pt;
-        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
-    }
-
+//--------------------------------------------------------------------------------------------
+// 처리와 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl GameWorldFormationState {
     /// 캐릭터 선택 이벤트를 처리합니다.
     fn handle_select_character_event(
         &self,
@@ -183,8 +179,8 @@ impl GameWorldFormationState {
         if all_player_selected {
             self.is_running = false;
 
-            let next_state = Box::new(GameWorldInGameSyncState::new(self.stage_kind));
-            let control_flow = GameWorldStateFlow::Change(next_state);
+            let next_state = GameWorldInGameSyncState::new(self.stage_kind, world.players.iter());
+            let control_flow = GameWorldStateFlow::Change(Box::new(next_state));
             let event = GameWorldEvent::SetControlFlow(control_flow);
             world.push_event(event);
 
@@ -197,48 +193,27 @@ impl GameWorldFormationState {
     }
 }
 
-impl GameWorldState for GameWorldFormationState {
-    fn on_enter(&mut self, world: &Arc<GameWorld>) {
-        // 게임 월드에 포함된 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
-        for mut item in world.players.iter_mut() {
-            item.with_bool_flag(false);
-        }
+//--------------------------------------------------------------------------------------------
+// 갱신과 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl GameWorldFormationState {
+    /// 남은 시간을 갱신합니다.
+    fn update_remaining_time(&mut self) {
+        let current_time_pt = Instant::now();
+        let elapsed_time_sec = current_time_pt
+            .saturating_duration_since(self.previous_time_pt)
+            .as_secs_f32();
+        self.previous_time_pt = current_time_pt;
+
+        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
     }
+}
 
-    fn on_exit(&mut self, world: &Arc<GameWorld>) {
-        // 게임 월드에 포함된 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
-        for mut item in world.players.iter_mut() {
-            item.with_bool_flag(false);
-        }
-    }
-
-    fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
-        match event {
-            GameWorldEvent::SelectCharacter { session, uid, kind } => {
-                self.handle_select_character_event(&session, uid, kind, world);
-            }
-            _ => {
-                log::warn!(
-                    "ignored >> unused world event (EVENT:{:?} STATE:{:?})",
-                    &event,
-                    &self
-                );
-            }
-        }
-    }
-
-    fn on_advanced(&mut self, world: &Arc<GameWorld>) {
-        // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
-        if !self.is_running {
-            return;
-        }
-
-        // 남은 시간을 갱신합니다.
-        self.update_remaining_time();
-
-        // 다음 게임 상태로 전환을 시도합니다.
-        self.try_enter_next_state(world);
-
+//--------------------------------------------------------------------------------------------
+// 패킷 전송과 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl GameWorldFormationState {
+    fn broadcast(&self, world: &GameWorld) {
         // 패킷을 생성합니다.
         let packet = FormationPullPacket::new(
             self.allow_duplicates,
@@ -262,6 +237,55 @@ impl GameWorldState for GameWorldFormationState {
         for session in world.sessions.iter() {
             session.key().tcp_write(packet.as_raw());
         }
+    }
+}
+
+//--------------------------------------------------------------------------------------------
+
+impl GameWorldState for GameWorldFormationState {
+    fn on_enter(&mut self, world: &Arc<GameWorld>) {
+        // 게임 월드에 포함된 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
+        for mut item in world.players.iter_mut() {
+            item.with_bool_flag(false);
+        }
+    }
+
+    fn on_exit(&mut self, world: &Arc<GameWorld>) {
+        // 게임 월드에 포함된 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
+        for mut item in world.players.iter_mut() {
+            item.with_bool_flag(false);
+        }
+    }
+
+    fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
+        // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
+        if !self.is_running {
+            return;
+        }
+
+        match event {
+            GameWorldEvent::SelectCharacter { session, uid, kind } => {
+                self.handle_select_character_event(&session, uid, kind, world);
+            }
+            _ => {
+                log::warn!(
+                    "ignored >> unused world event (EVENT:{:?} STATE:{:?})",
+                    &event,
+                    &self
+                );
+            }
+        }
+    }
+
+    fn on_advanced(&mut self, world: &Arc<GameWorld>) {
+        // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
+        if !self.is_running {
+            return;
+        }
+
+        self.update_remaining_time();
+        self.broadcast(world);
+        self.try_enter_next_state(world);
     }
 }
 

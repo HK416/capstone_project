@@ -44,7 +44,7 @@ pub struct CharacterFormationScene {
     /// 캐릭터 편성까지 남은 시간
     remaining_time_sec: f32,
 
-    /// 플레이어 집하
+    /// 플레이어 집합
     players: Vec<FormationPhasePlayer>,
 
     /// 배경화면 텍스처의 식별자입니다.
@@ -137,7 +137,7 @@ impl GameScene for CharacterFormationScene {
         // 다음 게임 장면으로 전환합니다.
         let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-        let event = AppEvent::SetGameSceneFlow(scene_flow);
+        let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
     }
@@ -147,7 +147,6 @@ impl GameScene for CharacterFormationScene {
         match packet_type {
             PacketType::FormationSelectResponse => {
                 let packet = FormationSelectResponsePacket::from_raw(packet);
-                println!("{:?}", packet.result);
                 match packet.result {
                     SelectResult::Success => self.is_selected = true,
                     SelectResult::Duplicates => {
@@ -176,7 +175,7 @@ impl GameScene for CharacterFormationScene {
 
                 // 게임 장면을 변경합니다.
                 let scene_flow = GameSceneFlow::Pop;
-                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }
@@ -187,7 +186,7 @@ impl GameScene for CharacterFormationScene {
                 let next_scene =
                     InGameLoadScene::new(self.locale, self.user_id, self.token, packet);
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
-                let event = AppEvent::SetGameSceneFlow(scene_flow);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }

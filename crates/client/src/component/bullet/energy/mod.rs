@@ -176,20 +176,21 @@ fn spawn_energy_bullet_model_recursive(
                 match data.deref() {
                     MaterialData::EnergyBullet(data) => {
                         // 재질 쉐이더 리소스를 생성합니다.
-                        let bullet_uniform = EnergyBulletMaterialUniform::new(
-                            label,
-                            device,
-                            EnergyBulletMaterialDataLayout {
-                                emissive: data.emissive.into(),
-                                main_color: data.main_color.into(),
-                                ..Default::default()
-                            },
-                        );
+                        let data_layout = EnergyBulletMaterialDataLayout {
+                            emissive: data.emissive.into(),
+                            main_color: data.main_color.into(),
+                            ..Default::default()
+                        };
+                        let bullet_uniform =
+                            EnergyBulletMaterialUniform::new(label, device, data_layout);
                         let material_resource =
                             EnergyBulletMaterialResource::new(label, device, &bullet_uniform);
 
                         (
-                            MaterialUniform::EnergyBullet(bullet_uniform),
+                            MaterialUniform::EnergyBullet {
+                                data: data_layout,
+                                buffer: bullet_uniform,
+                            },
                             material_resource,
                         )
                     }

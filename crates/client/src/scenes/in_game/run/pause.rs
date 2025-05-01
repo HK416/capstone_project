@@ -1,8 +1,10 @@
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
+    net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_network::protocol::{PacketType, RawPacket};
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -12,7 +14,7 @@ use winit::{
 use crate::{
     asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
 /// 애플리케이션 표시 언어에 따른 대화 상자 타이틀 텍스트입니다.
@@ -38,6 +40,38 @@ impl InGamePauseLayer {
             ui_enabled: true,
         }
     }
+
+    /// 마우스 커서를 활성화합니다.
+    fn enable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::None).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(false);
+        }
+
+        window.set_cursor_visible(true);
+    }
+
+    /// 마우스 커서를 비활성화합니다.
+    fn disable_cursor(&self, window: &Window) {
+        #[cfg(not(target_os = "windows"))]
+        {
+            use winit::window::CursorGrabMode;
+            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use mod_app::ext::AppWindowExt;
+            window.confine_cursor_to_window(true);
+        }
+
+        window.set_cursor_visible(false);
+    }
 }
 
 impl GameScene for InGamePauseLayer {
@@ -49,6 +83,51 @@ impl GameScene for InGamePauseLayer {
         true
     }
 
+    fn on_enter(&mut self, window: &Window, _app: &dyn AppHandle) {
+        self.enable_cursor(window);
+    }
+
+    fn on_exit(&mut self, window: Option<&Window>, _app: &dyn AppHandle) {
+        if let Some(window) = window {
+            self.disable_cursor(window);
+        }
+    }
+
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+        let title = ERR_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+            NetworkError::IO(_) => {
+                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
+                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
+                ERR_MSG_TEXTS[i]
+            }
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+        let event = AppEvent::AddGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        if packet.packet_type() == PacketType::FinishStage {
+            let scene_flow = GameSceneFlow::Pop;
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+        }
+
+        Some(packet)
+    }
+
     fn on_keyboard_released(
         &mut self,
         code: KeyCode,
@@ -57,15 +136,17 @@ impl GameScene for InGamePauseLayer {
         repeat: bool,
         _window: &Window,
         app: &dyn AppHandle,
-    ) {
+    ) -> bool {
         if !repeat && code == KeyCode::Escape {
             // 이전 게임 장면으로 되돌아갑니다.
             self.ui_enabled = false;
             let scene_flow = GameSceneFlow::Pop;
-            let event = AppEvent::SetGameSceneFlow(scene_flow);
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
+
+        true
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -108,7 +189,7 @@ impl GameScene for InGamePauseLayer {
 
         egui::Modal::new(egui::Id::new("Modal_Window_Layout"))
             .frame(frame)
-            .backdrop_color(egui::Color32::from_black_alpha(48))
+            .backdrop_color(egui::Color32::from_black_alpha(64))
             .show(app.egui_ctx(), |ui| {
                 ui.set_width(wnd_width);
                 ui.set_height(wnd_height);
@@ -122,7 +203,7 @@ impl GameScene for InGamePauseLayer {
                             // 이전 게임 장면으로 되돌아갑니다.
                             self.ui_enabled = false;
                             let scene_flow = GameSceneFlow::Pop;
-                            let event = AppEvent::SetGameSceneFlow(scene_flow);
+                            let event = AppEvent::AddGameSceneFlow(scene_flow);
                             let event_loop_proxy = app.event_loop_proxy();
                             event_loop_proxy.send_event(event).unwrap();
                         }

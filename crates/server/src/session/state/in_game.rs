@@ -3,34 +3,40 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use mod_network::{
-    components::UserAccount,
-    protocol::{Packet, PacketType, PushStatusPacket, RawPacket},
+use mod_network::protocol::{Packet, PacketType, PushStatusPacket, RawPacket};
+
+use crate::{
+    session::{Session, SessionEvents},
+    token::UserTokenMap,
+    world::GameWorld,
 };
 
-use crate::{session::Session, token::UserTokenMap, world::GameWorld};
-
-use super::SessionState;
+use super::{SessionState, SessionStateFlow, finish::SessionFinishState};
 
 pub struct SessionInGameState {
     /// 세션 상태 실행 여부
     is_running: bool,
-
-    /// 사용자 계정 데이터
-    #[allow(dead_code)]
-    account: UserAccount,
     /// 연결된 게임 월드
-    world: Weak<GameWorld>,
+    world: Option<Weak<GameWorld>>,
 }
 
 impl SessionInGameState {
     /// 샤로운 인게임 상태를 생성합니다.
-    pub fn new(account: UserAccount, world: &Weak<GameWorld>) -> Self {
+    pub fn new(world: Weak<GameWorld>) -> Self {
         Self {
             is_running: true,
-            account,
-            world: world.clone(),
+            world: Some(world),
         }
+    }
+
+    /// `GameFinished` 이벤트를 처리합니다.
+    fn handle_game_finished_event(&mut self, session: &Arc<Session>) {
+        // 다음 세션 상태로 전환합니다.
+        self.is_running = false;
+        let next_state = SessionFinishState::new();
+        let control_flow = SessionStateFlow::Change(Box::new(next_state));
+        let event = SessionEvents::SetControlFlow(control_flow);
+        session.push_event(event);
     }
 
     /// `PushStatusPacket`을 처리합니다.
@@ -54,7 +60,8 @@ impl SessionInGameState {
             return;
         }
 
-        if let Some(world) = self.world.upgrade() {
+        let world = self.world.as_ref().unwrap();
+        if let Some(world) = world.upgrade() {
             if !world.access_mut(session, |player| {
                 player.set_rotation(packet.rotation);
                 player.set_direction(packet.direction);
@@ -78,6 +85,26 @@ impl SessionInGameState {
 }
 
 impl SessionState for SessionInGameState {
+    fn handle_event(&mut self, event: SessionEvents, session: &Arc<Session>) {
+        // 세션 상태가 실행 중이 아닌 경우 스킵합니다
+        if !self.is_running {
+            return;
+        }
+
+        match event {
+            SessionEvents::GameFinished => {
+                self.handle_game_finished_event(session);
+            }
+            _ => {
+                log::warn!(
+                    "ignored >> unused session event (EVENT:{:?}, STATE:{:?})",
+                    &event,
+                    &self,
+                );
+            }
+        }
+    }
+
     fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
             // 세션 상태가 실행 중이 아닌 경우 스킵합니다
@@ -87,9 +114,7 @@ impl SessionState for SessionInGameState {
 
             let packet_type = packet.packet_type();
             match packet_type {
-                PacketType::PushSync => {
-                    /* empty */
-                },
+                PacketType::PushSync => { /* empty */ }
                 PacketType::PushStatus => {
                     self.handle_push_status_packet(session, packet);
                 }
@@ -100,8 +125,6 @@ impl SessionState for SessionInGameState {
                         &self,
                         &packet
                     );
-                    session.close();
-                    return;
                 }
             };
         }

@@ -26,8 +26,8 @@ impl InitStagePacket {
             "There are more people participaing in the game than the capacity!"
         );
 
-        let stage_kind_bigfield = (stage_kind as u8) << 0;
-        let bitfield = stage_kind_bigfield;
+        let stage_kind_bitfield = (stage_kind as u8) << 0;
+        let bitfield = stage_kind_bitfield;
 
         Self { bitfield, players }
     }
@@ -128,12 +128,10 @@ impl Packet for InitStagePacket {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU16;
-
     use crate::components::{
-        ActionState, ActionStateTimer, CharacterKind, HealthPoint, LatLon, MaxHealthPoint,
-        MovementState, MovementStateTimer, Team, UserAccount, UserId, UserName, ViewState,
-        ViewStateTimer,
+        ActionState, ActionStateTimer, CharacterKind, ExSkillCost, GamePlayData, HealthPoint,
+        LatLon, MovementState, MovementStateTimer, RemainingBullet, Team, UserAccount, UserId,
+        UserName, ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -141,13 +139,20 @@ mod tests {
     #[test]
     fn test_init_stage_packet() {
         let player_0 = PlayPhasePlayer::new(
+            false,
             UserAccount::new(UserId::new(1412512), UserName::from_str("Aris")),
+            GamePlayData {
+                kill_count: 1,
+                dead_count: 12,
+            },
             CharacterKind::ArisOriginal,
-            MaxHealthPoint::new(NonZeroU16::new(1234).unwrap()),
-            HealthPoint::new(1413),
+            RemainingBullet::new(10, 30),
+            HealthPoint::new(1413, 1414),
             [1.1512351, 2.4151616, 1.16561651],
             [1.5415151, 0.16551351, 0.9513515, 1.0515161],
             Team::Blue,
+            1,
+            ExSkillCost(55.31),
             ActionState::Aiming,
             ActionStateTimer(3.03151),
             MovementState::InPlaceLanding,

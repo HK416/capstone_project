@@ -27,24 +27,41 @@ pub struct CharacterAttributes {
     pub walk_duration: f32,
     /// `ActionState::Idle` 애니메이션 시간 (단위: 초)
     pub normal_idle_duration: f32,
+    /// `ActionState::Reload` 애니메이션 시간 (단위: 초)
+    pub normal_reload_duration: f32,
     /// `ActionState::Aiming` 애니메이션 시간 (단위: 초)
     pub normal_attack_start_duration: f32,
     /// `ActionState::AimOff` 애니메이션 시간 (단위: 초)
     pub normal_attack_end_duration: f32,
     /// `ActionState::Attack` 애니메이션 시간 (단위: 초)
     pub normal_attack_ing_duration: f32,
+    /// `AcstionState::Callsign` 애니메이션 시간 (단위: 초)
+    pub normal_callsign_duration: f32,
     /// 일반 공격 총알 발사 시간 (단위: 초)
     pub normal_attack_timing: Vec<f32>,
     /// 일반 공격 총알 발사 수
-    pub normal_attack_count: u32,
-    pub health_point: u32,
-    pub attack_power: u32,
-    pub defense_power: u32,
-    pub accuracy_stat: u32,
-    pub evasion_stat: u32,
-    pub critical_rate: u32,
-    pub critical_damage: u32,
-    pub attack_range: u32,
+    pub normal_attack_count: u16,
+    /// 총알의 최대 개수
+    pub max_bullets: u16,
+    /// 캐릭터의 최대 체력
+    pub health_point: u16,
+    /// 캐릭터의 공격력
+    pub attack_power: u16,
+    /// 캐릭터의 방어력
+    pub defense_power: u16,
+    /// 캐릭터의 명중 수치
+    pub accuracy_stat: u16,
+    /// 캐릭터의 회피 수치
+    pub evasion_stat: u16,
+    /// 캐릭터의 치명 수치
+    pub critical_rate: u16,
+    /// 캐릭터의 치명 데미지
+    pub critical_damage: u16,
+    /// 캐릭터의 코스트 회복력
+    pub cost_recovery_rate: f32,
+    /// 캐릭터의 공격 사거리
+    pub attack_range: u16,
+    /// 캐릭터 총알의 반지름
     pub bullet_radius: f32,
 }
 
