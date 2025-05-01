@@ -1495,9 +1495,6 @@ impl InGameResultEnterScene {
         let t = 1.0 - delta * delta * (3.0 - 2.0 * delta);
         let x = BEG_X * (1.0 - t) + END_X * t;
 
-        // 폰트 속성
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-
         // 플레이어의 현재 체력을 가져옵니다.
         let entity = self.get_player_entity();
         let world = self.world.as_mut().unwrap();
@@ -1508,10 +1505,16 @@ impl InGameResultEnterScene {
 
         // 체력 텍스트를 생성합니다.
         let text = format!("{}", health_point.current.min(9999));
-        let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
-        let health_point_text = egui::RichText::new(text)
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(22.0 * scale, family);
+        let text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::WHITE);
+        let health_text_rect = egui::Rect::from_min_max(
+            egui::pos2((x + 55.0) * scale, 647.5 * scale),
+            egui::pos2((x + 183.0) * scale, 672.0 * scale),
+        );
+        let health_point = egui::Label::new(text).sense(egui::Sense::empty());
 
         egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(egui_ctx, |ui| {
             // 기준 가로 크기: 39.6
@@ -1570,12 +1573,9 @@ impl InGameResultEnterScene {
             }
         });
 
-        egui::Area::new(egui::Id::new("Health_Number_Layout"))
-            .anchor(egui::Align2::LEFT_BOTTOM, (70.0 * scale, -38.0 * scale))
-            .show(egui_ctx, |ui| {
-                ui.set_width(128.0 * scale);
-                ui.label(health_point_text).interact(egui::Sense::empty())
-            });
+        egui::Area::new(egui::Id::new("Health_Number_Layout")).show(egui_ctx, |ui| {
+            ui.put(health_text_rect, health_point);
+        });
     }
 
     /// 팀 점수 게이지 인터페이스 레이아웃입니다.

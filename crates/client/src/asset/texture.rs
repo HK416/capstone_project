@@ -393,21 +393,21 @@ impl TexturePool {
     ) -> (Vec<u8>, Vec<MipLevelCopyLayout>) {
         let mut padded_data = Vec::new();
         let mut layout_info = Vec::new();
-    
+
         let block_dim = if is_compressed { 4 } else { 1 };
-    
+
         #[allow(unused_assignments)]
         let mut read_offset = 0;
         let mut write_offset = 0;
-    
+
         for array_layer in 0..depth_or_array_layers {
             let mut layer_read_offset = 0;
-    
+
             let mut layer_size = 0;
             for mip_level in 0..mip_level_count {
                 let mip_width = std::cmp::max(1, width >> mip_level);
                 let mip_height = std::cmp::max(1, height >> mip_level);
-    
+
                 let (row_count, raw_bytes_per_row) = if is_compressed {
                     let block_width = (mip_width + block_dim - 1) / block_dim;
                     let block_height = (mip_height + block_dim - 1) / block_dim;
@@ -415,16 +415,16 @@ impl TexturePool {
                 } else {
                     (mip_height, mip_width * unit_bytes)
                 };
-    
+
                 layer_size += raw_bytes_per_row * row_count;
             }
-    
+
             read_offset = array_layer * layer_size;
-    
+
             for mip_level in 0..mip_level_count {
                 let mip_width = std::cmp::max(1, width >> mip_level);
                 let mip_height = std::cmp::max(1, height >> mip_level);
-    
+
                 let (row_count, raw_bytes_per_row) = if is_compressed {
                     let block_width = (mip_width + block_dim - 1) / block_dim;
                     let block_height = (mip_height + block_dim - 1) / block_dim;
@@ -432,9 +432,9 @@ impl TexturePool {
                 } else {
                     (mip_height, mip_width * unit_bytes)
                 };
-    
+
                 let padded_bytes_per_row = ((raw_bytes_per_row + 255) / 256) * 256;
-    
+
                 // ✅ write_offset를 512바이트 정렬
                 let aligned_offset = ((write_offset + 511) / 512) * 512;
                 let padding = aligned_offset - write_offset;
@@ -442,7 +442,7 @@ impl TexturePool {
                     padded_data.extend(std::iter::repeat(0u8).take(padding as usize));
                     write_offset = aligned_offset;
                 }
-    
+
                 layout_info.push(MipLevelCopyLayout {
                     mip_level,
                     array_layer,
@@ -450,36 +450,36 @@ impl TexturePool {
                     bytes_per_row: padded_bytes_per_row,
                     rows_per_image: row_count,
                 });
-    
+
                 let current_read_offset = read_offset + layer_read_offset;
-    
+
                 for row in 0..row_count {
                     let row_start = current_read_offset + row * raw_bytes_per_row;
                     let row_end = row_start + raw_bytes_per_row;
-    
+
                     if row_end as usize > bytes.len() {
                         panic!(
                             "original bytes too small for layer {} mip level {} at read offset {}..{}",
                             array_layer, mip_level, row_start, row_end
                         );
                     }
-    
+
                     padded_data.extend_from_slice(&bytes[row_start as usize..row_end as usize]);
                     padded_data.extend(
                         std::iter::repeat(0u8)
                             .take((padded_bytes_per_row - raw_bytes_per_row) as usize),
                     );
-    
+
                     write_offset += padded_bytes_per_row;
                 }
-    
+
                 layer_read_offset += raw_bytes_per_row * row_count;
             }
         }
-    
+
         (padded_data, layout_info)
     }
-    
+
     /// 주어진 데이터로 텍스처를 생성합니다.
     pub fn create_texture<Uri>(
         uri: Uri,
