@@ -723,9 +723,21 @@ impl PlayerObject {
             //     println!("skill: passive");
             // }
         } else if input_flags.contains(GameInputBits::Attack) {
-            self.prev_action_state = ActionState::Idle;
-            self.action_state = ActionState::Attack;
-            self.action_state_timer.reset();
+            let bullets_per_shot = 1; // 1발사 당 1 탄환
+
+            if self.remaining_bullets >= bullets_per_shot {
+                self.remaining_bullets -= bullets_per_shot;
+  
+        
+                self.prev_action_state = ActionState::Idle;
+                self.action_state = ActionState::Attack;
+                self.action_state_timer.reset();
+            } else {
+                println!(
+                    "not enough bullets! (Remaining: {})",
+                    self.remaining_bullets
+                );
+            }
         } else if input_flags.contains(GameInputBits::Reload) {
             self.prev_action_state = ActionState::Idle;
             self.action_state = ActionState::Reload;
