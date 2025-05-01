@@ -723,17 +723,12 @@ impl PlayerObject {
             //     println!("skill: passive");
             // }
         } else if input_flags.contains(GameInputBits::Attack) {
-            let bullets_per_shot = 1; // 1발사 당 1 탄환
-
-            if self.remaining_bullets >= bullets_per_shot {
-                self.remaining_bullets -= bullets_per_shot;
-  
-        
+            if self.remaining_bullets > 0 {
                 self.prev_action_state = ActionState::Idle;
                 self.action_state = ActionState::Attack;
                 self.action_state_timer.reset();
             } else {
-                println!(
+                log::debug!(
                     "not enough bullets! (Remaining: {})",
                     self.remaining_bullets
                 );
@@ -1119,7 +1114,7 @@ impl PlayerObject {
             && self.remaining_bullets > 0
         {
             self.fired_per_attack += 1;
-            // self.remaining_bullets -= 1;
+            self.remaining_bullets -= 1;
 
             let shooter_id = self.account.uid;
             let delay = self.action_state_timer.0 - *time_point;
