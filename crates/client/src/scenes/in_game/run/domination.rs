@@ -31,8 +31,7 @@ use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
         TextureViewPool, FIELD_DECO_00_URI, IMG_FONT_DAMAGE_NORMAL_URI, IMG_FONT_START_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI,
-        WEAPON_ICON_URI,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
@@ -1798,7 +1797,7 @@ impl InGameDominationModeScene {
 //--------------------------------------------------------------------------------------------
 impl InGameDominationModeScene {
     /// 게임 시작 문구를 화면에 출력합니다.
-    fn draw_start_font(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    fn draw_ui_start_font(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
 
         // 게임 장면 경과 시간이 시작 문구 지속 시간보다 큰 경우 함수 실행을 생략
@@ -1834,8 +1833,44 @@ impl InGameDominationModeScene {
         });
     }
 
-    /// 체력 인터페이스 배경 레이아웃이미지입니다.
-    fn draw_health_point_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 십자 선 인터페이스를 그립니다.
+    fn draw_ui_reticle(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        // 원형 모양
+        let center = egui::pos2(640.0 * scale, 360.0 * scale);
+        let radius = 4.0 * scale;
+        let fill_color = egui::Color32::from_white_alpha(192);
+        let fill_shape = egui::Shape::circle_filled(center, radius, fill_color);
+        let stroke = egui::Stroke::new(1.0 * scale, egui::Color32::BLACK);
+        let stroke_shape = egui::Shape::circle_stroke(center, radius, stroke);
+
+        egui::Area::new(egui::Id::new("Reticle_Layout")).show(egui_ctx, |ui| {
+            ui.painter().add(fill_shape);
+            ui.painter().add(stroke_shape);
+        });
+    }
+
+    /// 프레임 레이트 인터페이스를 그립니다.
+    fn draw_ui_framerate(&mut self, egui_ctx: &egui::Context, scale: f32, fps: u32) {
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(28.0 * scale, family);
+        let text = format!("{}FPS", fps);
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE)
+            .background_color(egui::Color32::from_black_alpha(96));
+        let widget = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .wrap_mode(egui::TextWrapMode::Extend);
+
+        egui::Area::new(egui::Id::new("FrameRate_Layout"))
+            .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
+            .show(egui_ctx, |ui| {
+                ui.add(widget);
+            });
+    }
+
+    /// 체력 인터페이스 배경을 그립니다.
+    fn draw_ui_health_point_bg(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = -310.0;
         const END_X: f32 = 0.0;
@@ -1904,8 +1939,8 @@ impl InGameDominationModeScene {
         });
     }
 
-    /// 체력 게이지 인터페이스 레이아웃입니다.
-    fn draw_health_point_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 체력 게이지 인터페이스를 그립니다.
+    fn draw_ui_health_point_gauge(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = -310.0;
         const END_X: f32 = 0.0;
@@ -1936,15 +1971,15 @@ impl InGameDominationModeScene {
         let health_point = egui::Label::new(text).sense(egui::Sense::empty());
 
         egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(egui_ctx, |ui| {
-            // 기준 가로 크기: 39.6
-            // 기준 세로 크기: 52
-            // 기준 간격 가로 크기: 3
+            // 기준 가로 크기: 35.5
+            // 기준 세로 크기: 35.5
+            // 기준 간격 가로 크기: 2.4
             // 기준 시작 위치: (55, 612)
             // 기준 종료 위치: (280, 647.5)
             // 기준 범위: 225
             let pivot_x = (x + 55.0) * scale;
-            let range_x = (x + 225.0) * percent * scale;
-            let maximum = (x + 225.0) * scale;
+            let range_x = 225.0 * percent * scale;
+            let maximum = 225.0 * scale;
             let mut beg_x = pivot_x;
             let mut end_x: f32;
             let mut rect: egui::Rect;
@@ -1997,8 +2032,8 @@ impl InGameDominationModeScene {
         });
     }
 
-    /// 팀 점수 게이지 인터페이스 레이아웃입니다.
-    fn draw_score_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 팀 점수 게이지 인터페이스를 그립니다.
+    fn draw_ui_score_gauge(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_Y: f32 = -134.0;
         const END_Y: f32 = 0.0;
@@ -2180,8 +2215,8 @@ impl InGameDominationModeScene {
         });
     }
 
-    /// 남은 시간 인터페이스 레이아웃입니다.
-    fn draw_remaining_timer_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 남은 시간 인터페이스를 그립니다.
+    fn draw_ui_remaining_timer(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = 1424.0;
         const END_X: f32 = 1280.0;
@@ -2265,8 +2300,8 @@ impl InGameDominationModeScene {
         });
     }
 
-    // 남은 총알 인터페이스 레이아웃입니다.
-    fn draw_remaining_bullet_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    // 무기 정보 인터페이스를 그립니다.
+    fn draw_ui_weapon_info(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = 1520.0;
         const END_X: f32 = 1280.0;
@@ -2276,7 +2311,7 @@ impl InGameDominationModeScene {
         let x = BEG_X * (1.0 - t) + END_X * t;
 
         // 총알 인터페이스 레이아웃
-        // - 기준 가로 크기: 220
+        // - 기준 가로 크기: 210
         // - 기준 세로 크기: 110
         // - 기준 시작 위치: (1040, 580)
         // - 기준 종료 위치: (1250, 690)
@@ -2286,29 +2321,6 @@ impl InGameDominationModeScene {
             .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
-
-        let weapon_mask_icon = self
-            .ui_textures
-            .get(WEAPON_ICON_MASK_URI)
-            .cloned()
-            .expect("the Weapon Icon must exist!");
-
-        // 남은 총알 텍스트
-        let entity = self.get_player_entity();
-        let world = self.world.as_mut().unwrap();
-        let remaining_bullet = world
-            .query_one_mut::<&RemainingBullet>(entity)
-            .expect("invalid entity or invalid entity component");
-        let text = format!("{}/{}", remaining_bullet.current, remaining_bullet.maximum);
-        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let font_id = egui::FontId::new(18.0 * scale, family);
-        let remaining_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::WHITE);
-        let text_rect = egui::Rect::from_min_max(
-            egui::pos2((x - (1280.0 - 1040.0)) * scale, 650.0 * scale),
-            egui::pos2((x - (1280.0 - 1240.0)) * scale, 670.0 * scale),
-        );
 
         // 인터페이스 배경
         let front_rect = egui::Rect::from_min_max(
@@ -2328,19 +2340,6 @@ impl InGameDominationModeScene {
         );
         let back_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
 
-        // 무기 아이콘
-        // 가로 길이: 200
-        let ratio = weapon_mask_icon.size.x / weapon_mask_icon.size.y;
-        let icon_width = 200.0;
-        let icon_height = icon_width / ratio;
-        let weapon_icon_rect = egui::Rect::from_min_max(
-            egui::pos2((x - (1280.0 - 1040.0)) * scale, 590.0 * scale),
-            egui::pos2(
-                (x - (1280.0 - 1240.0)) * scale,
-                (590.0 + icon_height) * scale,
-            ),
-        );
-
         egui::Area::new(egui::Id::new("Bullet_BG_Layout")).show(egui_ctx, |ui| {
             egui::Image::new(field_deco_00)
                 .uv(front_uv)
@@ -2354,17 +2353,11 @@ impl InGameDominationModeScene {
                 .uv(back_uv)
                 .tint(UI_BG_COLOR)
                 .paint_at(ui, back_rect);
-
-            egui::Image::new(weapon_mask_icon)
-                .tint(egui::Color32::DARK_GRAY)
-                .paint_at(ui, weapon_icon_rect);
-
-            ui.put(text_rect, egui::Label::new(remaining_text));
         });
     }
 
-    /// Ex 스킬 게이지 인터페이스 레이아웃입니다.
-    fn draw_ex_skill_guage_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 님은 총알 갯수 인터페이스를 그립니다.
+    fn draw_ui_bullet_count(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = 1520.0;
         const END_X: f32 = 1280.0;
@@ -2373,13 +2366,44 @@ impl InGameDominationModeScene {
         let t = delta * delta * (3.0 - 2.0 * delta);
         let x = BEG_X * (1.0 - t) + END_X * t;
 
-        let weapon_icon = self
-            .ui_textures
-            .get(WEAPON_ICON_URI)
-            .cloned()
-            .expect("the Weapon Icon must exist!");
+        // 남은 총알을 개수를 가져옵니다.
+        let entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
+        let remaining_bullet = world
+            .query_one_mut::<&RemainingBullet>(entity)
+            .expect("invalid entity or invalid entity component");
 
-        // 현재 Ex스킬 코스트를 가져옵니다.
+        // 남은 총알 텍스트를 생성합니다.
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(22.0 * scale, family);
+        let text = format!("{}/{}", remaining_bullet.current, remaining_bullet.maximum);
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE);
+        let max_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1040.0)) * scale, 650.0 * scale),
+            egui::pos2((x - (1280.0 - 1140.0)) * scale, 670.0 * scale),
+        );
+        let widget = egui::Label::new(text).sense(egui::Sense::empty());
+
+        egui::Area::new(egui::Id::new("Bullet_Text_Layout")).show(egui_ctx, |ui| {
+            ui.put(max_rect, widget);
+        });
+    }
+
+    /// 스킬 게이지 인터페이스를 그립니다.
+    fn draw_ui_skill_guage(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = 1520.0;
+        const END_X: f32 = 1280.0;
+        const BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(192);
+        const FILL_COLOR: egui::Color32 = egui::Color32::from_rgb(253, 218, 13);
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
+        // 현재 스킬 코스트를 가져옵니다.
         let entity = self.get_player_entity();
         let world = self.world.as_mut().unwrap();
         let ex_skill_cost = world
@@ -2387,24 +2411,95 @@ impl InGameDominationModeScene {
             .expect("invalid entity or invalid entity component");
         let percent = ex_skill_cost.percent();
 
-        // 무기 아이콘
-        // 가로 길이: 200
-        let ratio = weapon_icon.size.x / weapon_icon.size.y;
-        let icon_width = 200.0;
-        let icon_height = icon_width / ratio;
-        let icon_area = egui::Rect::from_min_max(
-            egui::pos2((x - (1280.0 - 1040.0)) * scale, 590.0 * scale),
-            egui::pos2(
-                ((x - (1280.0 - 1040.0)) + icon_width * percent) * scale,
-                (590.0 + icon_height) * scale,
-            ),
-        );
-        let icon_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(percent, 1.0));
+        egui::Area::new(egui::Id::new("Skill_Gauge_Layout")).show(egui_ctx, |ui| {
+            // 기준 가로 크기: 18.3
+            // 기준 세로 크기: 18.3
+            // 기준 간격 가로 크기: 3
+            // 기준 시작 위치: (1040, 555.7)
+            // 기준 종료 위치: (1250, 574)
+            let pivot_x = (x - (1280.0 - 1040.0)) * scale;
+            let range_x = 210.0 * percent * scale;
+            let maximum = 210.0 * scale;
+            let corner_radius = 1.5 * scale;
+            let interval = 3.0 * scale;
+            let width = 18.3 * scale;
+            let beg_y = 555.7 * scale;
+            let end_y = 574.0 * scale;
+            let mut beg_x = pivot_x;
+            let mut end_x: f32;
+            let mut rect: egui::Rect;
+            let mut shape: egui::Shape;
 
-        egui::Area::new(egui::Id::new("ExSkill_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(weapon_icon)
-                .uv(icon_uv)
-                .paint_at(ui, icon_area);
+            // 채워진 게이지 그리기
+            while beg_x < pivot_x + range_x {
+                end_x = beg_x + width;
+                let x = if end_x > pivot_x + range_x {
+                    // 게이지의 비어있는 영역 그리기
+                    rect = egui::Rect::from_min_max(
+                        egui::pos2(beg_x, beg_y),
+                        egui::pos2(end_x, end_y),
+                    );
+                    shape = egui::Shape::rect_filled(rect, corner_radius, BG_COLOR);
+                    ui.painter().add(shape);
+
+                    pivot_x + range_x
+                } else {
+                    end_x
+                };
+
+                rect = egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(x, end_y));
+                shape = egui::Shape::rect_filled(rect, corner_radius, FILL_COLOR);
+                ui.painter().add(shape);
+
+                beg_x = end_x + interval;
+            }
+
+            // 비어있는 게이지 그리기
+            while beg_x < pivot_x + maximum {
+                end_x = beg_x + width;
+                rect = egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(end_x, end_y));
+                shape = egui::Shape::rect_filled(rect, corner_radius, BG_COLOR);
+                ui.painter().add(shape);
+
+                beg_x = end_x + interval;
+            }
+        });
+    }
+
+    /// 무기 아이콘을 인터페이스를 그립니다.
+    fn draw_ui_weapon_icon(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = 1520.0;
+        const END_X: f32 = 1280.0;
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
+        // 무기 아이콘을 가져옵니다.
+        let weapon_icon = self
+            .ui_textures
+            .get(WEAPON_ICON_URI)
+            .cloned()
+            .expect("the Weapon_Icon must exist!");
+
+        // 무기 아이콘
+        // - 기준 가로 크기: 200
+        // - 기준 시작 위치: (1040, 590)
+        // - 기준 종료 위치: (1240, 200 / image_ratio)
+        //
+        let image_ratio = weapon_icon.size.x / weapon_icon.size.y;
+        let width = 200.0;
+        let height = width / image_ratio;
+        let beg_x = (x - (1280.0 - 1040.0)) * scale;
+        let beg_y = 590.0 * scale;
+        let end_x = (x - (1280.0 - 1240.0)) * scale;
+        let end_y = beg_y + height * scale;
+        let icon_rect =
+            egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(end_x, end_y));
+
+        egui::Area::new(egui::Id::new("Weapon_Icon_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(weapon_icon).paint_at(ui, icon_rect);
         });
     }
 }
@@ -3056,43 +3151,20 @@ impl GameScene for InGameDominationModeScene {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
-
-        // 폰트 속성
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-
-        // 십자선 원
-        let reticle_pos = (640.0 * scale, 360.0 * scale);
-        let reticle_radius = 4.0 * scale;
-        let reticle_color = egui::Color32::from_white_alpha(192);
-        let reticle = egui::Shape::circle_filled(reticle_pos.into(), reticle_radius, reticle_color);
-
-        // 프레임 레이트 텍스트
+        let egui_ctx = app.egui_ctx();
         let fps = app.timer().frame_rate();
-        let text = format!("{}FPS", fps);
-        let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
-        let frame_rate_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::WHITE)
-            .background_color(egui::Color32::from_black_alpha(96));
 
-        egui::Area::new(egui::Id::new("Reticle_Layout"))
-            .anchor(egui::Align2::CENTER_CENTER, (0.0, 0.0))
-            .show(app.egui_ctx(), |ui| {
-                ui.painter().add(reticle);
-            });
+        self.draw_ui_reticle(egui_ctx, scale);
+        self.draw_ui_score_gauge(egui_ctx, scale);
+        self.draw_ui_health_point_bg(egui_ctx, scale);
+        self.draw_ui_health_point_gauge(egui_ctx, scale);
+        self.draw_ui_remaining_timer(egui_ctx, scale);
+        self.draw_ui_weapon_info(egui_ctx, scale);
+        self.draw_ui_weapon_icon(egui_ctx, scale);
+        self.draw_ui_bullet_count(egui_ctx, scale);
+        self.draw_ui_skill_guage(egui_ctx, scale);
+        self.draw_ui_start_font(egui_ctx, scale);
 
-        self.draw_score_gauge_layout(app.egui_ctx(), scale);
-        self.draw_health_point_bg_layout(app.egui_ctx(), scale);
-        self.draw_health_point_gauge_layout(app.egui_ctx(), scale);
-        self.draw_remaining_timer_layout(app.egui_ctx(), scale);
-        self.draw_remaining_bullet_layout(app.egui_ctx(), scale);
-        self.draw_ex_skill_guage_layout(app.egui_ctx(), scale);
-        self.draw_start_font(app.egui_ctx(), scale);
-
-        egui::Area::new(egui::Id::new("FrameRate_Layout"))
-            .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
-            .show(app.egui_ctx(), |ui| {
-                ui.label(frame_rate_text);
-            });
+        self.draw_ui_framerate(egui_ctx, scale, fps);
     }
 }
