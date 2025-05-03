@@ -216,6 +216,12 @@
                         "City_Plane_04.mesh",
                         "City_Plane_05.hierarchy",
                         "City_Plane_05.mesh",
+                        "City_Prop_Fence_00.hierarchy",
+                        "City_Prop_Fence_00.mesh",
+                        "City_Prop_Fence_01.hierarchy",
+                        "City_Prop_Fence_01.mesh",
+                        "City_Prop_Fence_Base_00.hierarchy",
+                        "City_Prop_Fence_Base_00.mesh",
                         "map.json"
                     ],
                     "directories" : {}
