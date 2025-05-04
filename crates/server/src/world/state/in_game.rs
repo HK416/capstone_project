@@ -19,7 +19,7 @@ use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
-use tokio::time::{Duration, Instant};
+use tokio::time::Instant;
 
 use crate::{
     data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
@@ -926,10 +926,6 @@ impl GameWorldState for GameWorldInGameState {
         self.update(world);
         self.broadcast(world);
         self.try_enter_next_state(world);
-    }
-
-    fn yield_now(&self) -> Duration {
-        Duration::from_millis(1)
     }
 }
 
