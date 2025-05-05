@@ -11,9 +11,18 @@ use super::WorldTransform;
 /// Cascade 분할 수 입니다.
 pub const NUM_CASCADES: usize = 4;
 
+/// 그림자 맵 텍스처의 텍스처 포맷입니다.
+pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+
+/// 그림자 맵 텍스처의 가로 세로 크기입니다.
+pub const SHADOW_MAP_SIZE: u32 = 1024;
+
+/// 최대 조명의 개수입니다.
+pub const MAX_LIGHTS: usize = 16;
+
 /// Cascade 분할
 pub fn compute_cascade_splits(num_cascades: usize, near: f32, far: f32, lambda: f32) -> Vec<f32> {
-    (0..=num_cascades)
+    (0..num_cascades)
         .map(|i| {
             let p = (i + 1) as f32 / num_cascades as f32;
             let log = near * (far / near).powf(p);
@@ -90,7 +99,7 @@ pub fn compute_light_view_proj_matrix(
     min -= glam::Vec3A::splat(margin);
     max += glam::Vec3A::splat(margin);
 
-    let light_proj = glam::Mat4::orthographic_lh(min.x, max.x, min.y, max.y, min.z, max.z);
+    let light_proj = glam::Mat4::orthographic_lh(min.x, max.x, min.y, max.y, min.z, max.z + 5.0);
 
     (light_pos, light_proj * light_view)
 }

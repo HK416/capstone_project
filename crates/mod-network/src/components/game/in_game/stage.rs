@@ -116,7 +116,6 @@ pub enum StageLightData {
 /// Direction Light 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DirectionalLight {
-    pub label: String,
     pub direction: Float3,
     pub color: Float3,
 }

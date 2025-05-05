@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ahash::{HashMap, HashSet};
+use ahash::HashMap;
 use hecs::{Entity, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -12,7 +12,7 @@ use mod_network::{
     components::{
         ActionState, ActionStateTimer, CharacterKind, ExSkillCost, GamePlayData, HealthPoint,
         LatLon, LoginToken, MovementState, MovementStateTimer, PlayPhasePlayer, RemainingBullet,
-        UserId, ViewState, ViewStateTimer, MAX_IN_GAME_PLAYERS,
+        StageLightData, UserId, ViewState, ViewStateTimer, MAX_IN_GAME_PLAYERS,
     },
     protocol::{Packet, PacketType, PrepareStagePacket, PullStagePacket, RawPacket},
 };
@@ -28,13 +28,14 @@ use crate::{
         NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
-        animate_character, update_entity_hierarchy, AttributeKind, BoneCollection,
+        animate_character, update_entity_hierarchy, AttributeKind, BakeList, BoneCollection,
         CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline, Child,
-        EyeMouthRenderPipeline, HaloRenderPipeline, LightSet, MaterialKind, MaterialResource, Mesh,
-        MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline,
-        ToParentTrans, TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
-        WeightedBlendedOITResource, WorldTransform, NUM_CUBE_VERTICES,
+        EyeMouthRenderPipeline, HaloRenderPipeline, LightSetResource, MaterialKind,
+        MaterialResource, Mesh, MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap,
+        Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
+        SkyboxRenderPipeline, StageRenderPipeline, ToParentTrans, TransformDataLayout,
+        TransparentMap, WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource,
+        WorldTransform, NUM_CUBE_VERTICES,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
@@ -72,9 +73,11 @@ pub struct InGameDominationModePrepareScene {
     disconnected_players: Vec<Entity>,
     /// 지형 엔터티 집합입니다.
     stages: Vec<Entity>,
-    /// 조명 엔터티 집합입니다.
-    lights: Vec<Entity>,
+    /// 지형의 조명 데이터 집합입니다.
+    lights: Vec<StageLightData>,
 
+    /// 조명 집합 쉐이더 리소스입니다.
+    light_set_resource: Option<LightSetResource>,
     /// 알파 블렌딩 쉐이더 리소스입니다.
     alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
@@ -82,7 +85,7 @@ pub struct InGameDominationModePrepareScene {
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
     /// 조명 렌더링 리소스 집합입니다.
-    light_set: LightSet,
+    bake_list: BakeList,
     /// 그림자 렌더링 리소스 집합입니다.
     shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
@@ -119,7 +122,7 @@ impl InGameDominationModePrepareScene {
         skybox: Skybox,
         players: HashMap<UserId, Entity>,
         stages: Vec<Entity>,
-        lights: Vec<Entity>,
+        lights: Vec<StageLightData>,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -141,9 +144,10 @@ impl InGameDominationModePrepareScene {
             disconnected_players: Vec::with_capacity(MAX_IN_GAME_PLAYERS),
             stages,
             lights,
+            light_set_resource: None,
             alpha_blend_resource: None,
             ui_textures: HashMap::default(),
-            light_set: Vec::default(),
+            bake_list: Vec::default(),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -554,6 +558,11 @@ impl InGameDominationModePrepareScene {
                 size: texture_size,
             },
         );
+    }
+
+    /// 조명 집합에 사용되는 쉐이더 리소스를 생성합니다.
+    fn create_light_set_resource(&mut self, device: &wgpu::Device) {
+        self.light_set_resource = Some(LightSetResource::new(Some("Main"), device));
     }
 
     /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
@@ -1338,6 +1347,7 @@ impl GameScene for InGameDominationModePrepareScene {
         let mut egui_renderer = app.egui_renderer_mut();
         self.register_ui_texture(&device, &mut egui_renderer);
         self.create_main_camera(&device);
+        self.create_light_set_resource(device);
         self.create_alpha_blend_resource(window, &device);
         self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
     }
@@ -1398,6 +1408,7 @@ impl GameScene for InGameDominationModePrepareScene {
                 let disconnected_players = self.disconnected_players.to_owned();
                 let stages = self.stages.to_owned();
                 let lights = self.lights.to_owned();
+                let light_set_resource = self.light_set_resource.take().unwrap();
                 let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
                 let ui_textures = self.ui_textures.to_owned();
                 let mut next_scene = InGameDominationModeScene::new(
@@ -1410,6 +1421,7 @@ impl GameScene for InGameDominationModePrepareScene {
                     disconnected_players,
                     stages,
                     lights,
+                    light_set_resource,
                     alpha_blend_resource,
                     ui_textures,
                     self.mesh_pool.clone(),
@@ -1584,14 +1596,14 @@ impl GameScene for InGameDominationModePrepareScene {
                     MaterialKind::Character => Self::draw_character,
                     MaterialKind::CharacterEyeMouth => Self::draw_character_eye_mouth,
                     MaterialKind::CharacterHalo => Self::draw_character_halo,
-                    MaterialKind::Stage => Self::draw_stage,
+                    // MaterialKind::Stage => Self::draw_stage,
                     _ => continue,
                 };
                 let pipeline = match kind {
                     MaterialKind::Character => CharacterRenderPipeline::get(),
                     MaterialKind::CharacterEyeMouth => EyeMouthRenderPipeline::get(),
                     MaterialKind::CharacterHalo => HaloRenderPipeline::get(),
-                    MaterialKind::Stage => StageRenderPipeline::get(),
+                    // MaterialKind::Stage => StageRenderPipeline::get(),
                     _ => continue,
                 }
                 .unwrap();

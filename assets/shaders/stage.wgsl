@@ -2,7 +2,7 @@
 //!
 
 // 최대 조명의 개수입니다.
-const max_lights: u32 = 32u;
+const max_lights: u32 = 16u;
 
 // 정점 입력 속성입니다.
 struct InputAttributes {
@@ -38,6 +38,25 @@ struct StageMaterialDataLayout {
     metallic: f32,
 };
 
+// 조명 데이터 유니폼 버퍼입니다.
+struct LightDataLayout {
+    proj_view: mat4x4<f32>,
+    position_w: vec3<f32>,
+    _padding0: u32,
+    color: vec3<f32>,
+    _padding1: u32,
+    constant: f32,
+    linear: f32,
+    quadratic: f32,
+    _padding2: u32,
+};
+
+// 조명 데이터 집합 유니폼 버퍼입니다.
+struct LightSetDataLayout {
+    lights: array<LightDataLayout, max_lights>,
+    num_lights: u32,
+}
+
 @group(0) @binding(0)
 var<uniform> u_camera: CameraDataLayout;
 
@@ -52,6 +71,15 @@ var t_main_color: texture_2d<f32>;
 
 @group(2) @binding(2)
 var s_main_color: sampler;
+
+@group(3) @binding(0)
+var<uniform> u_lights: LightSetDataLayout;
+
+@group(3) @binding(1)
+var t_lights: texture_depth_2d_array;
+
+@group(3) @binding(2)
+var s_lights: sampler_comparison;
 
 // 지형을 그리는 버텍스 쉐이더입니다.
 @vertex
@@ -72,9 +100,41 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 // 지형을 그리는 프래그먼트 쉐이더입니다.
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
-    var color = textureSample(t_main_color, s_main_color, input.texcoord);
+    let normal = normalize(input.normal_w);
+
+    // 메인 텍스처를 가져옵니다.
+    let main_color = textureSample(t_main_color, s_main_color, input.texcoord).rgb;
+    
+    // 그림자 색상을 계산합니다.
+    var color = main_color;
+    for (var i = 0u; i < u_lights.num_lights; i += 1u) {
+        let light = u_lights.lights[i];
+        let shadow = calculate_shadow(i, light.proj_view * vec4<f32>(input.position_w, 1.0));
+        let light_dir = normalize(light.position_w - u_camera.position_w);
+        let diffuse = max(0.0, dot(normal, light_dir));
+        color += (main_color * diffuse) * shadow;
+    }
 
     var out: RenderTarget;
-    out.color = vec4(pow(color.rgb, vec3(1.0 / 2.2)), color.a); // 감마 보정
+    out.color = vec4(pow(color.rgb, vec3(1.0 / 2.2)), 1.0); // 감마 보정
     return out;
+}
+
+/// 그림자를 계산합니다.
+fn calculate_shadow(index: u32, light_space_position: vec4<f32>) -> f32 {if (light_space_position.w <= 0.0) {
+        return 1.0;
+    }
+    
+    let bias = 0.005;
+    let curr_depth = clamp(light_space_position.z / light_space_position.w - bias, 0.0, 1.0);
+    var proj_coords = light_space_position.xy / light_space_position.w;
+    proj_coords = proj_coords * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    
+    // 그림자 맵 경계 확인
+    if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || 
+        proj_coords.y < 0.0 || proj_coords.y > 1.0) {
+        return 1.0; // 그림자 맵 밖은 그림자 없음
+    }
+    
+    return textureSampleCompare(t_lights, s_lights, proj_coords, i32(index), curr_depth);
 }

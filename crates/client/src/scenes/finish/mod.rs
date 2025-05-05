@@ -2,7 +2,7 @@ mod enter;
 
 use std::sync::Arc;
 
-use ahash::{HashMap, HashSet};
+use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -13,7 +13,7 @@ use mod_app::{
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, CharacterKind, FinishPhasePlayer, LatLon, LoginToken,
-        MovementState, MovementStateTimer, StageKind, Team, UserId, VictoryType,
+        MovementState, MovementStateTimer, StageKind, StageLightData, Team, UserId, VictoryType,
         MAX_IN_GAME_PLAYERS,
     },
     protocol::{FinishStageResponsePacket, Packet},
@@ -25,13 +25,14 @@ use crate::{
     asset::{MotionPool, NOTOSANS_BOLD},
     component::{
         animate_character, update_action_state_timer, update_entity_hierarchy, AttributeKind,
-        BoneCollection, CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline,
-        Child, EyeMouthRenderPipeline, HaloRenderPipeline, LightSet, MaterialKind,
-        MaterialResource, Mesh, MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap,
-        Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
-        SkyboxRenderPipeline, StageRenderPipeline, ToParentTrans, TransformDataLayout,
-        TransparentMap, WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource,
-        WorldTransform, NUM_CUBE_VERTICES, RESET_POSITIONS, RESET_ROTATION,
+        BakeList, BoneCollection, CameraDataLayout, CameraResource, CameraUniform,
+        CharacterRenderPipeline, Child, EyeMouthRenderPipeline, HaloRenderPipeline,
+        LightSetResource, MaterialKind, MaterialResource, Mesh, MeshFilter, MeshRenderer,
+        OpaqueMap, Projection, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox,
+        SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline, ToParentTrans,
+        TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
+        WeightedBlendedOITResource, WorldTransform, NUM_CUBE_VERTICES, RESET_POSITIONS,
+        RESET_ROTATION,
     },
     config::{Locale, NUM_LOCALE},
     scenes::FatalErrorSceneLayer,
@@ -77,14 +78,15 @@ pub struct InGameResultScene {
     main_camera: Entity,
     /// 우승팀 플레이어 집합입니다.
     winner_players: Vec<Entity>,
-    /// 스테이지 엔터티 집합입니다.
+    /// 지역 엔터티 집합입니다.
     stages: Vec<Entity>,
-    /// 조명 엔터티 집합입니다.
-    lights: Vec<Entity>,
+    /// 지역 조명 데이터 집합입니다.
+    lights: Vec<StageLightData>,
 
     /// 게임 진행 데이터입니다.
     play_data: Vec<FinishPhasePlayer>,
 
+    light_set_resource: LightSetResource,
     /// 알파 블렌딩 쉐이더 리소스입니다.
     alpha_blend_resource: WeightedBlendedOITResource,
 
@@ -92,7 +94,7 @@ pub struct InGameResultScene {
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
     /// 조명 렌더링 리소스 집합입니다.
-    light_set: LightSet,
+    bake_list: BakeList,
     /// 그림자 렌더링 리소스 집합입니다.
     shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
@@ -151,8 +153,9 @@ impl InGameResultScene {
         skybox: Skybox,
         winner_players: Vec<Entity>,
         stages: Vec<Entity>,
-        lights: Vec<Entity>,
+        lights: Vec<StageLightData>,
         play_data: Vec<FinishPhasePlayer>,
+        light_set_resource: LightSetResource,
         alpha_blend_resource: WeightedBlendedOITResource,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         motion_pool: MotionPool,
@@ -174,8 +177,9 @@ impl InGameResultScene {
             lights,
             play_data,
             ui_textures,
+            light_set_resource,
             alpha_blend_resource,
-            light_set: Vec::default(),
+            bake_list: Vec::default(),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),

@@ -25,10 +25,10 @@ use crate::{
         TextureViewPool, CAPTURE_ZONE_URI, NOTOSANS_BOLD, SKYBOX_URI,
     },
     component::{
-        spawn_player_character, spawn_stage_area, spawn_stage_light, spawn_stage_prop,
-        CaptureZoneMaterialDataLayout, CaptureZoneMaterialResource, CaptureZoneMaterialUniform,
-        Child, MaterialData, MaterialUniform, MeshResource, Parent, Sibling, Skybox, ToParentTrans,
-        TransformUniform, WorldTransform,
+        spawn_player_character, spawn_stage_area, spawn_stage_prop, CaptureZoneMaterialDataLayout,
+        CaptureZoneMaterialResource, CaptureZoneMaterialUniform, Child, MaterialData,
+        MaterialUniform, MeshResource, Parent, Sibling, Skybox, ToParentTrans, TransformUniform,
+        WorldTransform,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
@@ -350,7 +350,6 @@ impl InGameBuildScene {
             let batch_commands_ref = &batch_commands;
             let model_pool_ref = &model_pool;
             let texture_data_pool_ref = &texture_data_pool;
-            let sampler_pool_ref = &sampler_pool;
             let stage_layout_data_ref = stage_layout_data
                 .get()
                 .expect("the stage layout data must exist!");
@@ -360,7 +359,6 @@ impl InGameBuildScene {
 
             let player_entities: Arc<Queue<_>> = Arc::new(Queue::new());
             let stage_entities: Arc<Queue<_>> = Arc::new(Queue::new());
-            let light_entities: Arc<Queue<_>> = Arc::new(Queue::new());
             rayon::scope(|scope| {
                 {
                     // 플레이어 캐릭터 엔터티를 생성합니다.
@@ -456,25 +454,6 @@ impl InGameBuildScene {
                     });
                 }
 
-                // 조명 엔터티를 생성합니다.
-                {
-                    let lights = light_entities.clone();
-                    scope.spawn(move |_| {
-                        for data in stage_layout_data_ref.lights.iter() {
-                            let (entities, batch_commands) =
-                                spawn_stage_light(sampler_pool_ref, device_ref, world_ref, data);
-
-                            // 엔터티 생성 명령어를 전송합니다.
-                            batch_commands_ref.push(batch_commands);
-
-                            // 지형 엔터티를 전송합니다.
-                            for entity in entities {
-                                lights.push(entity);
-                            }
-                        }
-                    });
-                }
-
                 // 스테이지 점령 지역 엔터티를 생성합니다.
                 {
                     let stages = stage_entities.clone();
@@ -562,10 +541,7 @@ impl InGameBuildScene {
             }
 
             // 조명 집합을 생성합니다
-            let mut lights = Vec::with_capacity(light_entities.len());
-            while let Some(entity) = light_entities.pop() {
-                lights.push(entity);
-            }
+            let lights = stage_layout_data_ref.lights.to_owned();
 
             // 다음 게임 장면을 생성합니다.
             let next_scene = InGameDominationModePrepareScene::new(

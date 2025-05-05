@@ -3,16 +3,14 @@
 use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path};
 
 use hecs::{Entity, EntityBuilder, World};
-use mod_network::components::{
-    DirectionalLight, StageAreaData, StageLayoutData, StageLightData, StagePropData,
-};
+use mod_network::components::{StageAreaData, StageLayoutData, StagePropData};
 
 use crate::{
-    asset::{AssetError, ModelNode, ModelPool, ModelRoot, SamplerPool, TextureDataPool},
+    asset::{AssetError, ModelNode, ModelPool, ModelRoot, TextureDataPool},
     component::{
-        Child, LightResource, MaterialData, MaterialUniform, MeshResource, Parent, ShadowResource,
-        Sibling, StageMaterialDataLayout, StageMaterialResource, StageMaterialUniform, StageTag,
-        ToParentTrans, TransformUniform, WorldTransform, NUM_CASCADES,
+        Child, MaterialData, MaterialUniform, MeshResource, Parent, Sibling,
+        StageMaterialDataLayout, StageMaterialResource, StageMaterialUniform, StageTag,
+        ToParentTrans, TransformUniform, WorldTransform,
     },
 };
 
@@ -355,95 +353,4 @@ fn spawn_stage_model_recursive(
     batch_commands.push((entity, builder));
 
     entity
-}
-
-/// 스테이지를 구성하는 조명 엔터티를 생성합니다.
-///
-/// 생성된 엔터티는 아래 컴포넌트를 공통적으로 가집니다.
-/// - 로컬 변환 행렬(`ToParentTrans`)
-/// - 월드 변환 행렬(`WorldTransform`)
-/// - 조명 쉐이더 리소스(`LightResource`)
-/// - 그림자 쉐이더 리소스(`ShadowResource`)
-///
-pub fn spawn_stage_light(
-    sampler_pool: &SamplerPool,
-    device: &wgpu::Device,
-    world: &World,
-    data: &StageLightData,
-) -> (Vec<Entity>, Vec<(Entity, EntityBuilder)>) {
-    let mut entities = Vec::new();
-    let mut batch_commands = Vec::new();
-
-    match data {
-        StageLightData::Directional(data) => spawn_stage_directional_light(
-            sampler_pool,
-            device,
-            world,
-            data.clone(),
-            &mut entities,
-            &mut batch_commands,
-        ),
-    };
-
-    (entities, batch_commands)
-}
-
-/// 스테이지를 구성하는 조명 엔터티를 생성합니다.
-///
-/// 생성된 엔터티는 아래 컴포넌트를 가집니다.
-/// - 로컬 변환 행렬(`ToParentTrans`)
-/// - 월드 변환 행렬(`WorldTransform`)
-/// - Directional Light 데이터(`DirectionalLight`)
-/// - 조명 쉐이더 리소스(`LightResource`)
-/// - 그림자 쉐이더 리소스(`ShadowResource`)
-///
-fn spawn_stage_directional_light(
-    sampler_pool: &SamplerPool,
-    device: &wgpu::Device,
-    world: &World,
-    data: DirectionalLight,
-    entities: &mut Vec<Entity>,
-    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
-) {
-    // 엔터티를 하나 할당받습니다.
-    let entity = world.reserve_entity();
-    let mut builder = EntityBuilder::new();
-
-    // 컴포넌트 데이터를 준비합니다.
-    let local_transform = ToParentTrans::default();
-    let world_transform = WorldTransform::default();
-    let mut light_resources = Vec::with_capacity(NUM_CASCADES);
-    let mut shadow_resources = Vec::with_capacity(NUM_CASCADES);
-    for i in 0..NUM_CASCADES {
-        let light_resource = LightResource::new(
-            Some(&format!("{}_{}", &data.label, i)),
-            device,
-            wgpu::TextureFormat::Depth32Float,
-            1024,
-            sampler_pool,
-        );
-        let shadow_resource = ShadowResource::new(
-            Some(&format!("{}_{}", data.label, i)),
-            device,
-            &light_resource,
-        );
-
-        light_resources.push(light_resource);
-        shadow_resources.push(shadow_resource);
-    }
-
-    // 컴포넌트를 추가합니다.
-    builder.add_bundle((
-        local_transform,
-        world_transform,
-        data,
-        light_resources,
-        shadow_resources,
-    ));
-
-    // 엔터티 생성 명령어를 추가합니다.
-    batch_commands.push((entity, builder));
-
-    // 조명 엔터티를 추가합니다.
-    entities.push(entity);
 }
