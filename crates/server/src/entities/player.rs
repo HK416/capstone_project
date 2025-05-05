@@ -86,7 +86,10 @@ pub struct PlayerObject {
     collider: Capsule,
 
     /// 땅을 밟고 있는지
-    pub is_grounded: bool,
+    is_grounded: bool,
+    /// 플레이어가 무적상태인지  
+    /// safe area 내부에 있는 경우 true로 설정됩니다.
+    is_invincible: bool,
 }
 
 impl PlayerObject {
@@ -128,6 +131,7 @@ impl PlayerObject {
             view_rotation: LatLon::default(),
             collider: Capsule::new(glam::Vec3::ZERO, PLAYER_HEIGHT, PLAYER_RADIUS),
             is_grounded: false,
+            is_invincible: false,
         }
     }
 
@@ -373,6 +377,26 @@ impl PlayerObject {
     /// 플레이어 오브젝트의 충돌체(캡슐)의 위치를 갱신합니다.
     pub fn update_collider(&mut self) {
         self.collider.center = self.translation.into();
+    }
+
+    /// 플레이어 오브젝트가 땅에 닿아있는지 여부를 설정합니다.
+    pub fn set_grounded(&mut self, grounded: bool) {
+        self.is_grounded = grounded;
+    }
+
+    /// 플레이어 오브젝트가 땅에 닿아있는지 여부를 가져옵니다.
+    pub fn is_grounded(&self) -> bool {
+        self.is_grounded
+    }
+
+    /// 플레이어 오브젝트가 무적 상태인지 여부를 설정합니다.
+    pub fn set_invincible(&mut self, invincible: bool) {
+        self.is_invincible = invincible;
+    }
+
+    /// 플레이어 오브젝트가 무적 상태인지 여부를 가져옵니다.
+    pub fn is_invincible(&self) -> bool {
+        self.is_invincible
     }
 
     /// 플레이어를 사망 상태로 설정합니다.

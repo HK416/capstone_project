@@ -313,6 +313,7 @@ impl GameWorldInGameState {
             if *player.key() == bullet.shooter_id
                 || player.health_point().current == 0
                 || player.team() == bullet.shooter_team
+                || player.is_invincible()
             {
                 continue;
             }
@@ -572,7 +573,7 @@ impl GameWorldInGameState {
             let mut velocity = player.velocity();
 
             // 속도에 가속도를 적용합니다.
-            if !player.is_grounded {
+            if !player.is_grounded() {
                 velocity += GRAVITY * elapsed_time_sec;
             }
 
@@ -580,7 +581,7 @@ impl GameWorldInGameState {
             let mut new_p = translation + velocity * elapsed_time_sec;
 
             // 충돌처리 시작
-            player.is_grounded = false;
+            player.set_grounded(false);
 
             let mut player_capsule = player.collider();
             player_capsule.center = new_p.into();
@@ -596,7 +597,7 @@ impl GameWorldInGameState {
                     // 충돌벡터가 지면(xz평면)과 일정 이상의 각을 이루면 서있을 수 있음
                     if collision_info.normal.y >= *GROUNDED_ANGLE_COS {
                         velocity.y = 0.0;
-                        player.is_grounded = true;
+                        player.set_grounded(true);
                     }
                     // 아니라면 미끄러지도록 처리
                     else {
@@ -613,8 +614,9 @@ impl GameWorldInGameState {
                 }
             }
 
-            if !is_valid_position(self.stage_kind, new_p.x, new_p.z) {
-                let (x, z) = get_nearest_valid_position(self.stage_kind, new_p.x, new_p.z);
+            if !is_valid_position(self.stage_kind, player.team(), new_p.x, new_p.z) {
+                let (x, z) = get_nearest_valid_position(self.stage_kind, 
+                    player.team(), new_p.x, new_p.z);
                 if x != new_p.x {
                     velocity.x = 0.0;
                     new_p.x = x;
@@ -629,11 +631,11 @@ impl GameWorldInGameState {
                 if height >= new_p.y {
                     new_p.y = height;
                     velocity.y = 0.0;
-                    player.is_grounded = true;
+                    player.set_grounded(true);
                 }
             }
 
-            if player.is_grounded {
+            if player.is_grounded() {
                 match player.movement_state() {
                     MovementState::InPlaceLanding => {
                         player.change_movement_state(MovementState::Idle);
