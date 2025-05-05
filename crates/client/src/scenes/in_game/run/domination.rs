@@ -40,13 +40,14 @@ use crate::{
         update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
         update_view_state_timer, AttributeKind, BoneCollection, BulletRenderPipeline,
         CameraDataLayout, CameraResource, CameraUniform, CaptureZoneRenderPipeline,
-        CharacterRenderPipeline, Child, DamageFontDataLayout, DamageFontRenderPipeline,
-        DamageFontResource, DamageFontUniform, DamageParticle, DirectionalLightFilter,
-        EnergyBulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline, LightDataLayout,
-        LightSet, MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer,
-        MoveDirection, OpaqueMap, Parent, Projection, ShadowMap, ShadowResource, Sibling,
-        SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
-        StageRenderPipeline, ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
+        CharacterBakePipeline, CharacterRenderPipeline, Child, DamageFontDataLayout,
+        DamageFontRenderPipeline, DamageFontResource, DamageFontUniform, DamageParticle,
+        DirectionalLightFilter, EnergyBulletRenderPipeline, EyeMouthBakePipeline,
+        EyeMouthRenderPipeline, HaloRenderPipeline, LightDataLayout, LightSet, MaterialKind,
+        MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer, MoveDirection,
+        OpaqueMap, Parent, Projection, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
+        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline,
+        ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
         WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform, NUM_CASCADES,
         NUM_CUBE_VERTICES,
     },
@@ -1550,8 +1551,9 @@ impl InGameDominationModeScene {
                 let corners =
                     compute_frustum_corners_no_inverse(transform, fov_y, 16.0 / 9.0, near, far);
 
+                let margin = (far - near) * 0.05;
                 let (light_pos, proj_view) =
-                    compute_light_view_proj_matrix(&corners, data.direction.into(), 10.0);
+                    compute_light_view_proj_matrix(&corners, data.direction.into(), margin);
 
                 // 유니폼 버퍼를 갱신합니다.
                 lights[i].uniform.update(
@@ -1671,6 +1673,30 @@ impl InGameDominationModeScene {
         }
     }
 
+    /// 캐릭터의 그림자를 생성합니다.
+    fn bake_character<'a>(
+        mesh: &'a Mesh,
+        pipeline: Arc<wgpu::RenderPipeline>,
+        shadow_resource: &'a ShadowResource,
+        submesh_resources: &'a [(usize, MeshFilter)],
+        rpass: &mut wgpu::RenderPass<'a>,
+    ) {
+        rpass.set_pipeline(&pipeline);
+
+        rpass.set_bind_group(0, shadow_resource.bind_group(), &[]);
+
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+        for (index, mesh_resource) in submesh_resources {
+            let index_buffer = mesh.submeshes().get(*index).unwrap();
+            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+
     /// 캐릭터의 눈과 입을 그립니다.
     fn draw_character_eye_mouth<'a>(
         mesh: &'a Mesh,
@@ -1694,6 +1720,30 @@ impl InGameDominationModeScene {
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
             rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+
+    /// 캐릭터의 눈과 입의 그림자를 생성합니다.
+    fn bake_character_eye_mouth<'a>(
+        mesh: &'a Mesh,
+        pipeline: Arc<wgpu::RenderPipeline>,
+        shadow_resource: &'a ShadowResource,
+        submesh_resources: &'a [(usize, MeshFilter)],
+        rpass: &mut wgpu::RenderPass<'a>,
+    ) {
+        rpass.set_pipeline(&pipeline);
+
+        rpass.set_bind_group(0, shadow_resource.bind_group(), &[]);
+
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+        for (index, mesh_resource) in submesh_resources {
+            let index_buffer = mesh.submeshes().get(*index).unwrap();
+            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
     }
@@ -3075,6 +3125,23 @@ impl GameScene for InGameDominationModeScene {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+
+            for ((mesh, kind), resources) in self.shadow_map.iter() {
+                let func = match kind {
+                    MaterialKind::Character => Self::bake_character,
+                    MaterialKind::CharacterEyeMouth => Self::bake_character_eye_mouth,
+                    _ => continue,
+                };
+                let pipeline = match kind {
+                    MaterialKind::Character => CharacterBakePipeline::get(),
+                    MaterialKind::CharacterEyeMouth => EyeMouthBakePipeline::get(),
+                    _ => continue,
+                }
+                .unwrap();
+
+                func(&mesh, pipeline, &shadow_resource, &resources, &mut rpass);
+                println!("!");
+            }
         }
         encoder.pop_debug_group();
 
