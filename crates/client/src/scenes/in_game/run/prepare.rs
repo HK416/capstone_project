@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use hecs::{Entity, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -30,12 +30,11 @@ use crate::{
     component::{
         animate_character, update_entity_hierarchy, AttributeKind, BoneCollection,
         CameraDataLayout, CameraResource, CameraUniform, CharacterRenderPipeline, Child,
-        EyeMouthRenderPipeline, HaloRenderPipeline, MaterialKind, MaterialResource, Mesh,
-        MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap, ShadowResource, Sibling,
-        SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
-        StageRenderPipeline, ToParentTrans, TransformDataLayout, TransparentMap,
-        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform,
-        NUM_CUBE_VERTICES,
+        EyeMouthRenderPipeline, HaloRenderPipeline, LightSet, MaterialKind, MaterialResource, Mesh,
+        MeshFilter, MeshRenderer, OpaqueMap, Projection, ShadowMap, Sibling, SkinnedMeshRenderer,
+        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline,
+        ToParentTrans, TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
+        WeightedBlendedOITResource, WorldTransform, NUM_CUBE_VERTICES,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
@@ -73,15 +72,17 @@ pub struct InGameDominationModePrepareScene {
     disconnected_players: Vec<Entity>,
     /// 지형 엔터티 집합입니다.
     stages: Vec<Entity>,
+    /// 조명 엔터티 집합입니다.
+    lights: Vec<Entity>,
 
-    /// 그림자 쉐이더 리소스입니다.
-    shadow_resource: Option<ShadowResource>,
     /// 알파 블렌딩 쉐이더 리소스입니다.
     alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
     /// 게임 인터페이스 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
+    /// 조명 렌더링 리소스 집합입니다.
+    light_set: LightSet,
     /// 그림자 렌더링 리소스 집합입니다.
     shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
@@ -118,6 +119,7 @@ impl InGameDominationModePrepareScene {
         skybox: Skybox,
         players: HashMap<UserId, Entity>,
         stages: Vec<Entity>,
+        lights: Vec<Entity>,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -138,9 +140,10 @@ impl InGameDominationModePrepareScene {
             players,
             disconnected_players: Vec::with_capacity(MAX_IN_GAME_PLAYERS),
             stages,
-            shadow_resource: None,
+            lights,
             alpha_blend_resource: None,
             ui_textures: HashMap::default(),
+            light_set: Vec::default(),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -551,13 +554,6 @@ impl InGameDominationModePrepareScene {
                 size: texture_size,
             },
         );
-    }
-
-    /// 그림자 쉐이더 리소스를 생성합니다.
-    fn create_shadow_resource(&mut self, device: &wgpu::Device) {
-        let resource =
-            ShadowResource::new(1024, 1024, 1, device, wgpu::TextureFormat::Depth32Float);
-        self.shadow_resource = resource.into();
     }
 
     /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
@@ -1342,7 +1338,6 @@ impl GameScene for InGameDominationModePrepareScene {
         let mut egui_renderer = app.egui_renderer_mut();
         self.register_ui_texture(&device, &mut egui_renderer);
         self.create_main_camera(&device);
-        self.create_shadow_resource(&device);
         self.create_alpha_blend_resource(window, &device);
         self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
     }
@@ -1402,7 +1397,7 @@ impl GameScene for InGameDominationModePrepareScene {
                 let players = self.players.to_owned();
                 let disconnected_players = self.disconnected_players.to_owned();
                 let stages = self.stages.to_owned();
-                let shadow_resource = self.shadow_resource.take().unwrap();
+                let lights = self.lights.to_owned();
                 let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
                 let ui_textures = self.ui_textures.to_owned();
                 let mut next_scene = InGameDominationModeScene::new(
@@ -1414,7 +1409,7 @@ impl GameScene for InGameDominationModePrepareScene {
                     players,
                     disconnected_players,
                     stages,
-                    shadow_resource,
+                    lights,
                     alpha_blend_resource,
                     ui_textures,
                     self.mesh_pool.clone(),

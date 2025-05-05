@@ -3,7 +3,7 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use ahash::HashMap;
+use ahash::{HashMap, HashSet};
 use hecs::{Entity, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -34,12 +34,11 @@ use crate::{
         CameraUniform, CaptureZoneRenderPipeline, CharacterRenderPipeline, Child,
         DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
         DamageParticle, EnergyBulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline,
-        MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer, OpaqueMap,
-        Parent, Projection, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline,
-        ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
-        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform,
-        NUM_CUBE_VERTICES,
+        LightSet, MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer,
+        OpaqueMap, Parent, Projection, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation,
+        Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline, ThirdPersonCamera,
+        ToParentTrans, TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
+        WeightedBlendedOITResource, WorldTransform, NUM_CUBE_VERTICES,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, InGameResultScene, BASE_WIDTH, TEAM_COLOR, UI_BG_COLOR},
@@ -95,18 +94,20 @@ pub struct InGameResultEnterScene {
     bullets: HashMap<ObjectId, Entity>,
     /// 지형 엔터티 집합입니다.
     stages: Vec<Entity>,
+    /// 조명 엔터티 집합입니다.
+    lights: Vec<Entity>,
 
     /// 데미지 파티클 엔터티입니다.
     damage_particles: VecDeque<Entity>,
 
-    /// 그림자 쉐이더 리소스입니다.
-    shadow_resource: Option<ShadowResource>,
     /// 알파 블렌딩 쉐이더 리소스입니다.
     alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
     /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
+    /// 조명 렌더링 리소스 집합입니다.
+    light_set: LightSet,
     /// 그림자 렌더링 리소스 집합입니다.
     shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
@@ -144,7 +145,7 @@ impl InGameResultEnterScene {
         bullets: HashMap<ObjectId, Entity>,
         damage_particles: VecDeque<Entity>,
         stages: Vec<Entity>,
-        shadow_resource: ShadowResource,
+        lights: Vec<Entity>,
         alpha_blend_resource: WeightedBlendedOITResource,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         motion_pool: MotionPool,
@@ -172,8 +173,9 @@ impl InGameResultEnterScene {
             stages,
             damage_particles,
             ui_textures,
-            shadow_resource: Some(shadow_resource),
+            lights,
             alpha_blend_resource: Some(alpha_blend_resource),
+            light_set: Vec::default(),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -2245,7 +2247,7 @@ impl GameScene for InGameResultEnterScene {
             let disconnected_players = self.disconnected_players.to_owned();
             let stages = self.stages.to_owned();
             let play_data = self.play_data.to_owned();
-            let shadow_resource = self.shadow_resource.take().unwrap();
+            let lights = self.lights.to_owned();
             let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
             let ui_textures = self.ui_textures.to_owned();
             let winner_players = InGameResultScene::get_winner_players(
@@ -2266,8 +2268,8 @@ impl GameScene for InGameResultEnterScene {
                 skybox,
                 winner_players,
                 stages,
+                lights,
                 play_data,
-                shadow_resource,
                 alpha_blend_resource,
                 ui_textures,
                 self.motion_pool.clone(),

@@ -8,7 +8,6 @@ mod hierarchy;
 mod light;
 mod material;
 mod mesh;
-mod shadow;
 mod skybox;
 mod stage;
 mod transform;
@@ -17,11 +16,11 @@ mod weighted_blended_oit;
 use std::sync::Arc;
 
 use ahash::HashMap;
+use mod_network::components::DirectionalLight;
 
 pub use self::{
     bullet::*, camera::*, capture_zone::*, character::*, control::*, damage_font::*, hierarchy::*,
-    light::*, material::*, mesh::*, shadow::*, skybox::*, stage::*, transform::*,
-    weighted_blended_oit::*,
+    light::*, material::*, mesh::*, skybox::*, stage::*, transform::*, weighted_blended_oit::*,
 };
 
 pub enum MeshFilter {
@@ -38,6 +37,7 @@ impl MeshFilter {
     }
 }
 
+pub type LightSet = Vec<(LightResource, ShadowResource)>;
 pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter)>>;
 pub type OpaqueMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter, MaterialResource)>>;
 pub type TransparentMap =
@@ -56,4 +56,9 @@ pub type SkinnedMeshRenderer<'a> = (
     &'a BoneTransformUniform,
     &'a mut Vec<MaterialUniform>,
     &'a Vec<MaterialResource>,
+);
+pub type DirectionalLightFilter<'a> = (
+    &'a mut DirectionalLight,
+    &'a Vec<LightResource>,
+    &'a Vec<ShadowResource>,
 );

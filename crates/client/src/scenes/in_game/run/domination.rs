@@ -34,18 +34,20 @@ use crate::{
         NOTOSANS_BOLD, NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_URI,
     },
     component::{
-        animate_character, cleanup, set_weapon_position, spawn_bullet, update_character_direction,
-        update_entity_hierarchy, update_third_person_camera, update_third_person_camera_hierarchy,
-        update_view_state_by_controller_input_flags, update_view_state_timer, AttributeKind,
-        BoneCollection, BulletRenderPipeline, CameraDataLayout, CameraResource, CameraUniform,
-        CaptureZoneRenderPipeline, CharacterRenderPipeline, Child, DamageFontDataLayout,
-        DamageFontRenderPipeline, DamageFontResource, DamageFontUniform, DamageParticle,
-        EnergyBulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline, MaterialKind,
-        MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer, MoveDirection,
-        OpaqueMap, Parent, Projection, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline,
-        ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
-        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform,
+        animate_character, cleanup, compute_cascade_splits, compute_frustum_corners_no_inverse,
+        compute_light_view_proj_matrix, set_weapon_position, spawn_bullet,
+        update_character_direction, update_entity_hierarchy, update_third_person_camera,
+        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
+        update_view_state_timer, AttributeKind, BoneCollection, BulletRenderPipeline,
+        CameraDataLayout, CameraResource, CameraUniform, CaptureZoneRenderPipeline,
+        CharacterRenderPipeline, Child, DamageFontDataLayout, DamageFontRenderPipeline,
+        DamageFontResource, DamageFontUniform, DamageParticle, DirectionalLightFilter,
+        EnergyBulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline, LightDataLayout,
+        LightSet, MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer,
+        MoveDirection, OpaqueMap, Parent, Projection, ShadowMap, ShadowResource, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
+        StageRenderPipeline, ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
+        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform, NUM_CASCADES,
         NUM_CUBE_VERTICES,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
@@ -117,6 +119,8 @@ pub struct InGameDominationModeScene {
     bullets: HashMap<ObjectId, Entity>,
     /// 지형 엔터티 집합입니다.
     stages: Vec<Entity>,
+    /// 조명 엔터티 집합입니다.
+    lights: Vec<Entity>,
 
     /// 데미지 파티클 엔터티입니다.
     damage_particles: VecDeque<Entity>,
@@ -126,14 +130,14 @@ pub struct InGameDominationModeScene {
     /// 사용자 입력 상태 플래그 변수입니다.
     controller_input_flags: GameInputBits,
 
-    /// 그림자 쉐이더 리소스입니다.
-    shadow_resource: Option<ShadowResource>,
     /// 알파 블렌딩 쉐이더 리소스입니다.
     alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
     /// 게임 인터페이스 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
+    /// 조명 렌더링 리소스 집합입니다.
+    light_set: LightSet,
     /// 그림자 렌더링 리소스 집합입니다.
     shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
@@ -270,7 +274,7 @@ impl InGameDominationModeScene {
         players: HashMap<UserId, Entity>,
         disconnected_players: Vec<Entity>,
         stages: Vec<Entity>,
-        shadow_resource: ShadowResource,
+        lights: Vec<Entity>,
         alpha_blend_resource: WeightedBlendedOITResource,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         mesh_pool: MeshPool,
@@ -301,12 +305,13 @@ impl InGameDominationModeScene {
             disconnected_players,
             bullets: HashMap::default(),
             stages,
+            lights,
             damage_particles: VecDeque::default(),
             move_direction: MoveDirection::default(),
             controller_input_flags: GameInputBits::default(),
-            shadow_resource: Some(shadow_resource),
             alpha_blend_resource: Some(alpha_blend_resource),
             ui_textures,
+            light_set: Vec::default(),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -1506,6 +1511,66 @@ impl InGameDominationModeScene {
                     }
                     _ => {}
                 }
+            }
+
+            return;
+        }
+    }
+
+    /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 조명 엔터티를 수집합니다.
+    fn culling_lights(&self) -> Vec<Entity> {
+        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
+        self.lights.iter().cloned().collect()
+    }
+
+    /// 조명 쉐이더 리소스를 갱신합니다.
+    fn update_light_resource(
+        &self,
+        entity: Entity,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+        light_set: &mut LightSet,
+        directional_view: &mut ViewBorrow<'_, DirectionalLightFilter>,
+    ) {
+        let result = directional_view.get_mut(entity);
+        if let Some((data, lights, shadows)) = result {
+            // 메인 카메라의 월드 변환 행렬과 fov값을 가져옵니다.
+            let world = self.world.as_ref().unwrap();
+            let mut query = world
+                .query_one::<(&WorldTransform, &ThirdPersonCamera)>(self.main_camera)
+                .expect("invalid entity");
+            let (transform, third_person_camera) = query.get().expect("invalid entity component");
+
+            let splits = compute_cascade_splits(NUM_CASCADES, 0.01, 100.0, 0.9);
+            for i in 0..NUM_CASCADES {
+                let near = splits[i];
+                let far = splits[i + 1];
+                let fov_y = third_person_camera.fov_y;
+                let corners =
+                    compute_frustum_corners_no_inverse(transform, fov_y, 16.0 / 9.0, near, far);
+
+                let (light_pos, proj_view) =
+                    compute_light_view_proj_matrix(&corners, data.direction.into(), 10.0);
+
+                // 유니폼 버퍼를 갱신합니다.
+                lights[i].uniform.update(
+                    device,
+                    encoder,
+                    staging_buffers,
+                    LightDataLayout {
+                        proj_view: proj_view.to_cols_array(),
+                        position_w: light_pos.to_array(),
+                        color: data.color.into(),
+                        constant: 1.0,
+                        linear: 0.0,
+                        quadratic: 0.0,
+                        ..Default::default()
+                    },
+                );
+
+                // 조명 렌더링 집합에 추가합니다.
+                light_set.push((lights[i].clone(), shadows[i].clone()));
             }
 
             return;
@@ -2795,7 +2860,7 @@ impl GameScene for InGameDominationModeScene {
                 let bullets = self.bullets.to_owned();
                 let damage_particles = self.damage_particles.to_owned();
                 let stages = self.stages.to_owned();
-                let shadow_resource = self.shadow_resource.take().unwrap();
+                let lights = self.lights.to_owned();
                 let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
                 let ui_textures = self.ui_textures.to_owned();
                 let next_scene = InGameResultEnterScene::new(
@@ -2819,7 +2884,7 @@ impl GameScene for InGameDominationModeScene {
                     bullets,
                     damage_particles,
                     stages,
-                    shadow_resource,
+                    lights,
                     alpha_blend_resource,
                     ui_textures,
                     self.motion_pool.clone(),
@@ -2883,6 +2948,7 @@ impl GameScene for InGameDominationModeScene {
         let mut shadow_map = HashMap::default();
         let mut opaque_map = HashMap::default();
         let mut transparent_map = HashMap::default();
+        let mut light_set = Vec::default();
 
         let world = self.world.as_ref().unwrap();
         let child_view = &world.view::<&Child>();
@@ -2890,6 +2956,7 @@ impl GameScene for InGameDominationModeScene {
         let transform_view = &world.view::<&WorldTransform>();
         let mesh_filter_view = &mut world.view::<MeshRenderer>();
         let skinned_mesh_filter_view = &mut world.view::<SkinnedMeshRenderer>();
+        let directional_view = &mut world.view::<DirectionalLightFilter>();
 
         // 캐릭터 쉐이더 리소스를 갱신합니다.
         let entities = self.culling_character();
@@ -2947,12 +3014,26 @@ impl GameScene for InGameDominationModeScene {
             );
         }
 
+        // 조명 쉐이더 리소스를 갱신합니다.
+        let entities = self.culling_lights();
+        for entity in entities {
+            self.update_light_resource(
+                entity,
+                device,
+                &mut encoder,
+                &mut staging_buffers,
+                &mut light_set,
+                directional_view,
+            );
+        }
+
         queue.submit(Some(encoder.finish()));
         drop(staging_buffers);
 
         self.shadow_map = shadow_map;
         self.opaque_map = opaque_map;
         self.transparent_map = transparent_map;
+        self.light_set = light_set;
     }
 
     fn on_draw(
@@ -2977,6 +3058,25 @@ impl GameScene for InGameDominationModeScene {
         // Weighted Blended OIT 쉐이더 리소스를 가져옵니다.
         let alpha_blend_resource = self.alpha_blend_resource.as_ref().unwrap();
         let skybox = self.skybox.as_ref().unwrap();
+
+        encoder.push_debug_group("shadow pass");
+        for (light_resource, shadow_resource) in self.light_set.iter() {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(ShadowPass))"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &light_resource.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        encoder.pop_debug_group();
 
         encoder.push_debug_group("opaque pass");
         {
@@ -3141,6 +3241,7 @@ impl GameScene for InGameDominationModeScene {
         self.shadow_map.clear();
         self.opaque_map.clear();
         self.transparent_map.clear();
+        self.light_set.clear();
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {

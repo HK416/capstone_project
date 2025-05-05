@@ -78,6 +78,11 @@ impl WorldTransform {
         glam::Quat::from_mat4(&self.0).normalize()
     }
 
+    /// 월드 변환 행렬의 오른쪽 방향 벡터를 반환합니다.
+    pub fn get_right_vector(&self) -> glam::Vec3A {
+        glam::Vec3A::from_vec4(self.0.x_axis).normalize_or(glam::Vec3A::X)
+    }
+
     /// 월드 변환 행렬의 위쪽 방향 벡터를 반환합니다.
     pub fn get_up_vector(&self) -> glam::Vec3A {
         glam::Vec3A::from_vec4(self.0.y_axis).normalize_or(glam::Vec3A::Y)
