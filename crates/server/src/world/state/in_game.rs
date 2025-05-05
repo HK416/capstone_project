@@ -689,48 +689,8 @@ impl GameWorldInGameState {
             self.capture_point
                 .capture(new_capture_team, elapsed_time_sec, capturing_count);
         if let Some(winner) = winner {
-            self.is_running = false;
-
-            let play_data = self.play_data.as_ref().unwrap();
-            let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-            for (_, data) in play_data.iter() {
-                players.push(FinishPhasePlayer::new(
-                    data.account,
-                    data.character_kind,
-                    data.kill_count,
-                    data.dead_count,
-                    data.damage_dealt,
-                    data.damage_taken,
-                    data.healing_given,
-                    data.team,
-                    data.team_index,
-                ));
-            }
-
-            // 플레이어가 비어있는 경우 함수 실행을 중단합니다.
-            if players.is_empty() {
-                return;
-            }
-
-            // 패킷을 생성하고 전송합니다.
-            let play_time = self.total_play_sec - self.remaining_time_sec;
-            let packet = FinishStagePacket::new(
-                winner,
-                VictoryType::JudgmentWin,
-                self.stage_kind,
-                play_time,
-                players,
-            );
-
-            for item in world.sessions.iter() {
-                item.key().push_event(SessionEvents::GameFinished);
-                item.key().tcp_write(packet.as_raw());
-            }
-
-            // 게임 월드 상태를 변경합니다.
-            let control_flow = GameWorldStateFlow::Pop;
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
+            log::info!("capture complete");
+            self.game_over(world, winner, VictoryType::JudgmentWin);
         }
 
         // println!("capture team: {:?}({:.1}%)\t score: RED[{:.1}%] : BLUE[{:.1}%]",
@@ -738,6 +698,79 @@ impl GameWorldInGameState {
         //     self.capture_point.capture_score()[Team::Red as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0,
         //     self.capture_point.capture_score()[Team::Blue as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0
         // );
+    }
+
+    /// 게임을 종료합니다.
+    fn game_over(
+        &mut self,
+        world: &GameWorld,
+        winner: Team,
+        victory_type: VictoryType,
+    ) {
+        log::info!("game over (winner: {:?})", winner);
+
+        self.is_running = false;
+
+        let play_data = self.play_data.as_ref().unwrap();
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for (_, data) in play_data.iter() {
+            players.push(FinishPhasePlayer::new(
+                data.account,
+                data.character_kind,
+                data.kill_count,
+                data.dead_count,
+                data.damage_dealt,
+                data.damage_taken,
+                data.healing_given,
+                data.team,
+                data.team_index,
+            ));
+        }
+
+        // 플레이어가 비어있는 경우 함수 실행을 중단합니다.
+        if players.is_empty() {
+            return;
+        }
+
+        // 패킷을 생성하고 전송합니다.
+        let play_time = self.total_play_sec - self.remaining_time_sec;
+        let packet = FinishStagePacket::new(
+            winner,
+            victory_type,
+            self.stage_kind,
+            play_time,
+            players,
+        );
+
+        for item in world.sessions.iter() {
+            item.key().push_event(SessionEvents::GameFinished);
+            item.key().tcp_write(packet.as_raw());
+        }
+
+        // 게임 월드 상태를 변경합니다.
+        let control_flow = GameWorldStateFlow::Pop;
+        let event = GameWorldEvent::SetControlFlow(control_flow);
+        world.push_event(event);
+    }
+
+    /// 시간 초과로 게임을 종료합니다.
+    fn time_out(&mut self, world: &GameWorld) {
+        log::info!("time out");
+        
+        let capture_scores = self.capture_point.capture_score();
+        let red_score = capture_scores[Team::Red as usize];
+        let blue_score = capture_scores[Team::Blue as usize];
+
+        let winner = if red_score > blue_score {
+            Team::Red
+        } else if red_score < blue_score {
+            Team::Blue
+        } else {
+            // 동점인 경우 아직 게임을 끝내지 않음
+            return;
+        };
+
+        self.game_over(world, winner, VictoryType::JudgmentWin);
     }
 
     /// 게임 월드를 갱신합니다.
@@ -751,6 +784,10 @@ impl GameWorldInGameState {
         // 경과 시간과 남은 시간 업데이트
         self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
         self.elapsed_time_sec += elapsed_time_sec;
+        if self.remaining_time_sec <= 0.0 {
+            self.time_out(world);
+            // return;
+        }
 
         self.update_player_state_timer(world, elapsed_time_sec);
         self.update_player_position(world, elapsed_time_sec);
