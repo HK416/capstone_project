@@ -282,6 +282,21 @@ pub fn is_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
     }
 }
 
+pub fn is_safe_area(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
+    let stage = get_stage_attributes(kind);
+    let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
+    let z = (z + 0.5 * stage.size.y) / stage.area_size.y;
+    let i = x.floor() as usize;
+    let j = z.floor() as usize;
+
+    let safe_area = match team {
+        Team::Blue => stage.blue_safe_area,
+        Team::Red => stage.red_safe_area,
+    };
+
+    [i, j] == safe_area
+}
+
 pub fn get_nearest_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> (f32, f32) {
     let stage = get_stage_attributes(kind);
     let mut min_distance_position = (x, z);

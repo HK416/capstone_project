@@ -22,7 +22,7 @@ use mod_physics::{
 use tokio::time::Instant;
 
 use crate::{
-    data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
+    data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_safe_area, is_valid_position},
     entities::{BulletObject, CapturePointObject, PlayData, PlayerObject},
     formula::movement_formulas as formulas,
     session::SessionEvents,
@@ -614,9 +614,11 @@ impl GameWorldInGameState {
                 }
             }
 
-            if !is_valid_position(self.stage_kind, player.team(), new_p.x, new_p.z) {
+            let team = player.team();
+
+            if !is_valid_position(self.stage_kind, team, new_p.x, new_p.z) {
                 let (x, z) = get_nearest_valid_position(self.stage_kind, 
-                    player.team(), new_p.x, new_p.z);
+                    team, new_p.x, new_p.z);
                 if x != new_p.x {
                     velocity.x = 0.0;
                     new_p.x = x;
@@ -633,6 +635,12 @@ impl GameWorldInGameState {
                     velocity.y = 0.0;
                     player.set_grounded(true);
                 }
+            }
+
+            let in_safe_area = is_safe_area(self.stage_kind, team, new_p.x, new_p.z);
+            player.set_invincible(in_safe_area);
+            if in_safe_area {
+                player.health_point_mut().current = player.health_point().maximum;
             }
 
             if player.is_grounded() {
