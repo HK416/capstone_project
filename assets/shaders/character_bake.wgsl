@@ -11,20 +11,8 @@ struct InputAttributes {
     @location(2) bone_weight: vec4<f32>,
 };
 
-// 조명 데이터 유니폼 버퍼입니다.
-struct LightDataLayout {
-    proj_view: mat4x4<f32>,
-    position_w: vec3<f32>,
-    _padding0: u32,
-    color: vec3<f32>,
-    _padding1: u32,
-    constant: f32,
-    linear: f32,
-    quadratic: f32,
-};
-
 @group(0) @binding(0)
-var<uniform> u_light: LightDataLayout;
+var<uniform> u_light_trans: mat4x4<f32>;
 
 @group(1) @binding(0)
 var<uniform> u_bindposes: array<mat4x4<f32>, max_bones>;
@@ -47,5 +35,5 @@ fn vs_bake(input: InputAttributes) -> @builtin(position) vec4<f32> {
     
     let position_w = (final_matrix * vec4<f32>(input.position, 1.0)).xyz;
     
-    return u_light.proj_view * vec4<f32>(position_w, 1.0);
+    return u_light_trans * vec4<f32>(position_w, 1.0);
 }

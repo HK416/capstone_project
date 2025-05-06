@@ -43,13 +43,13 @@ use crate::{
         CharacterBakePipeline, CharacterRenderPipeline, Child, DamageFontDataLayout,
         DamageFontRenderPipeline, DamageFontResource, DamageFontUniform, DamageParticle,
         EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-        HaloRenderPipeline, LightDataLayout, LightSetDataLayout, LightSetResource, MaterialKind,
-        MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer, MoveDirection,
-        OpaqueMap, Parent, Projection, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageBakePipeline,
-        StageRenderPipeline, ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
-        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform, MAX_LIGHTS,
-        NUM_CASCADES, NUM_CUBE_VERTICES,
+        HaloRenderPipeline, LightSetDataLayout, LightSetResource, LightTransformDataLayout,
+        MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer,
+        MoveDirection, OpaqueMap, Parent, Projection, ShadowMap, ShadowResource, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
+        StageBakePipeline, StageRenderPipeline, ThirdPersonCamera, ToParentTrans,
+        TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
+        WeightedBlendedOITResource, WorldTransform, NUM_CASCADES, NUM_CUBE_VERTICES,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, InGameResultEnterScene, BASE_WIDTH, TEAM_COLOR, UI_BG_COLOR},
@@ -1537,15 +1537,9 @@ impl InGameDominationModeScene {
         staging_buffers: &mut Vec<wgpu::Buffer>,
         bake_list: &mut BakeList,
     ) {
-        let mut index = 0;
         let mut data_layout = Box::new(LightSetDataLayout::default());
         let light_set_resource = self.light_set_resource.as_ref().unwrap();
         for data in lights {
-            // 최대 조명 개수를 넘어간 경우 반복문을 탈출합니다.
-            if index == MAX_LIGHTS {
-                break;
-            }
-
             match data {
                 StageLightData::Directional(light) => {
                     // 카메라의 월드 공간 행렬과 Fov-y값을 가져옵니다.
@@ -1556,10 +1550,13 @@ impl InGameDominationModeScene {
                     let (transform, third_person_camera) =
                         query.get().expect("invalid entity component");
 
-                    let splits = compute_cascade_splits(NUM_CASCADES, 0.01, 50.0, 0.8);
-                    for i in 0..1 {
+                    data_layout.direction_w = light.direction.into();
+                    data_layout.color = light.color.into();
+
+                    let splits = compute_cascade_splits(NUM_CASCADES, 0.01, 50.0, 0.85);
+                    for i in 0..NUM_CASCADES {
                         // 프러스텀의 모서리 위치를 계산합니다.
-                        let near = if i == 0 { 0.0 } else { splits[i - 1] };
+                        let near = if i == 0 { 0.01 } else { splits[i - 1] };
                         let far = splits[i];
                         let fov_y = third_person_camera.fov_y;
                         let corner = compute_frustum_corners_no_inverse(
@@ -1571,31 +1568,25 @@ impl InGameDominationModeScene {
                         );
 
                         // 조명 변환 행렬을 계산합니다.
-                        let (light_pos, proj_view) =
-                            compute_light_view_proj_matrix(&corner, light.direction.into(), 2.5);
+                        let proj_view =
+                            compute_light_view_proj_matrix(&corner, light.direction.into(), 5.0);
 
-                        // 유니폼 버퍼 데이터를 갱신합니다.
-                        let data = LightDataLayout {
+                        // 전역 조명 유니폼 버퍼 데이터를 갱신합니다.
+                        data_layout.global_lights[i] = LightTransformDataLayout {
                             proj_view: proj_view.to_cols_array(),
-                            position_w: light_pos.to_array(),
-                            color: light.color.into(),
-                            constant: 1.0,
-                            linear: 0.0,
-                            quadratic: 0.0,
-                            ..Default::default()
                         };
-                        data_layout.lights[index] = data;
-                        data_layout.num_lights += 1;
 
-                        // 그림자 쉐이더 리소스를 가져옵니다.
-                        let resource = light_set_resource.get(None, device, index);
-                        resource
-                            .uniform
-                            .update(device, encoder, staging_buffers, data);
+                        // 전역 조명 그림자 쉐이더 리소스를 가져옵니다.
+                        let resource = light_set_resource.get_global(i);
+                        resource.uniform.update(
+                            device,
+                            encoder,
+                            staging_buffers,
+                            LightTransformDataLayout {
+                                proj_view: proj_view.to_cols_array(),
+                            },
+                        );
                         bake_list.push(resource);
-
-                        // 인덱스를 증가시킵니다.
-                        index += 1;
                     }
                 }
             }
@@ -3181,13 +3172,13 @@ impl GameScene for InGameDominationModeScene {
                 let func = match kind {
                     MaterialKind::Character => Self::bake_character,
                     MaterialKind::CharacterEyeMouth => Self::bake_character_eye_mouth,
-                    // MaterialKind::Stage => Self::bake_stage,
+                    MaterialKind::Stage => Self::bake_stage,
                     _ => continue,
                 };
                 let pipeline = match kind {
                     MaterialKind::Character => CharacterBakePipeline::get(),
                     MaterialKind::CharacterEyeMouth => EyeMouthBakePipeline::get(),
-                    // MaterialKind::Stage => StageBakePipeline::get(),
+                    MaterialKind::Stage => StageBakePipeline::get(),
                     _ => continue,
                 }
                 .unwrap();

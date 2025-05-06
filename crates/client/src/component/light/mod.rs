@@ -8,17 +8,20 @@ pub use self::{resource::*, uniform::*};
 
 use super::WorldTransform;
 
-/// Cascade 분할 수 입니다.
+/// Cascade 분할 수 입니다. (최대 전역 조명의 수)
 pub const NUM_CASCADES: usize = 4;
+
+/// 최대 조명의 개수입니다. (최대 로컬 조명의 수)
+pub const MAX_LIGHTS: usize = 8;
 
 /// 그림자 맵 텍스처의 텍스처 포맷입니다.
 pub const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-/// 그림자 맵 텍스처의 가로 세로 크기입니다.
-pub const SHADOW_MAP_SIZE: u32 = 1024;
+/// 로컬 조명의 그림자 맵 텍스처의 가로 세로 크기입니다.
+pub const LOCAL_SHADOW_MAP_SIZE: u32 = 1024;
 
-/// 최대 조명의 개수입니다.
-pub const MAX_LIGHTS: usize = 16;
+/// 전역 조명의 그림자 맵 텍스처의 가로 세로 크기입니다.
+pub const GLOBAL_SHADOW_MAP_SIZE: u32 = 2048;
 
 /// Cascade 분할
 pub fn compute_cascade_splits(num_cascades: usize, near: f32, far: f32, lambda: f32) -> Vec<f32> {
@@ -81,7 +84,7 @@ pub fn compute_light_view_proj_matrix(
     cascade_corners: &[glam::Vec3A; 8],
     light_dir: glam::Vec3A,
     margin: f32,
-) -> (glam::Vec3A, glam::Mat4) {
+) -> glam::Mat4 {
     let center =
         cascade_corners.iter().copied().sum::<glam::Vec3A>() / cascade_corners.len() as f32;
     let light_pos = center - light_dir.normalize() * 100.0;
@@ -101,5 +104,5 @@ pub fn compute_light_view_proj_matrix(
 
     let light_proj = glam::Mat4::orthographic_lh(min.x, max.x, min.y, max.y, min.z, max.z + 5.0);
 
-    (light_pos, light_proj * light_view)
+    light_proj * light_view
 }

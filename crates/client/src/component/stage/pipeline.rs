@@ -3,7 +3,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::component::{CameraResource, LightSetResource, MeshResource, ShadowResource, StageMaterialResource};
+use crate::component::{
+    CameraResource, LightSetResource, MeshResource, ShadowResource, StageMaterialResource,
+};
 
 /// 쉐이더 모듈을 생성합니다.
 fn create_shadoer_module(device: &wgpu::Device) -> &'static wgpu::ShaderModule {

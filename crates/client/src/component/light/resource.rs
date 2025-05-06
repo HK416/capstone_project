@@ -4,14 +4,15 @@
 use std::sync::OnceLock;
 
 use super::{
-    LightSetUniform, LightUniform, MAX_LIGHTS, SHADOW_FORMAT, SHADOW_MAP_SIZE,
+    LightSetUniform, LightTransformUniform, GLOBAL_SHADOW_MAP_SIZE, LOCAL_SHADOW_MAP_SIZE,
+    MAX_LIGHTS, NUM_CASCADES, SHADOW_FORMAT,
 };
 
 /// 그림자 쉐이더 리소스입니다.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShadowResource {
     pub view: wgpu::TextureView,
-    pub uniform: LightUniform,
+    pub uniform: LightTransformUniform,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -23,11 +24,8 @@ impl ShadowResource {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("BindGroupLayout(ShadowResource)"),
                 entries: &[
-                    // 0번 바인딩: 조명 데이터 유니폼 버퍼
-                    LightUniform::bind_group_layout_entry(
-                        wgpu::ShaderStages::VERTEX, 
-                        0
-                    ),
+                    // 0번 바인딩: 조명 변환 행렬 데이터 유니폼 버퍼
+                    LightTransformUniform::bind_group_layout_entry(wgpu::ShaderStages::VERTEX, 0),
                 ],
             })
         })
@@ -35,7 +33,7 @@ impl ShadowResource {
 
     /// 새로운 쉐이더 리소스를 생성합니다.
     pub fn new(label: Option<&str>, device: &wgpu::Device, view: wgpu::TextureView) -> Self {
-        let uniform = LightUniform::uninit(label, device);
+        let uniform = LightTransformUniform::uninit(label, device);
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
             layout: Self::bind_group_layout(device),
@@ -56,7 +54,8 @@ impl ShadowResource {
 /// 조명 집합 쉐이더 리소스입니다.
 pub struct LightSetResource {
     pub uniform: LightSetUniform,
-    texture: wgpu::Texture,
+    local_lights: Vec<ShadowResource>,
+    global_lights: Vec<ShadowResource>,
     bind_group: wgpu::BindGroup,
 }
 
@@ -70,7 +69,7 @@ impl LightSetResource {
                 entries: &[
                     // 0번 바인딩: 조명 데이터 집합 유니폼 버퍼
                     LightSetUniform::bind_group_layout_entry(wgpu::ShaderStages::FRAGMENT, 0),
-                    // 1번 바인딩: 그림자 텍스처
+                    // 1번 바인딩: 전역 조명 그림자 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -81,9 +80,20 @@ impl LightSetResource {
                         },
                         count: None,
                     },
-                    // 2번 바인딩: 그림자 텍스처 샘플러
+                    // 2번 바인딩: 로컬 조명 그림자 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 3번 바인딩: 조명 그림자 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                         count: None,
@@ -96,13 +106,13 @@ impl LightSetResource {
     /// 새로운 쉐이더 리소스를 생성합니다.
     pub fn new(label: Option<&str>, device: &wgpu::Device) -> Self {
         let uniform = LightSetUniform::uninit(label, device);
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&format!("Depth({})", label.unwrap_or("Unknown"))),
+        let local_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("LocalLightDepth({})", label.unwrap_or("Unknown"))),
             dimension: wgpu::TextureDimension::D2,
             format: SHADOW_FORMAT,
             size: wgpu::Extent3d {
-                width: SHADOW_MAP_SIZE,
-                height: SHADOW_MAP_SIZE,
+                width: LOCAL_SHADOW_MAP_SIZE,
+                height: LOCAL_SHADOW_MAP_SIZE,
                 depth_or_array_layers: MAX_LIGHTS as u32,
             },
             mip_level_count: 1,
@@ -110,9 +120,19 @@ impl LightSetResource {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            ..Default::default()
+        let global_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(&format!("GlobalLightDepth({})", label.unwrap_or("Unknown"))),
+            dimension: wgpu::TextureDimension::D2,
+            format: SHADOW_FORMAT,
+            size: wgpu::Extent3d {
+                width: GLOBAL_SHADOW_MAP_SIZE,
+                height: GLOBAL_SHADOW_MAP_SIZE,
+                depth_or_array_layers: NUM_CASCADES as u32,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Sampler(Shadow)"),
@@ -135,37 +155,90 @@ impl LightSetResource {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view),
+                    resource: wgpu::BindingResource::TextureView(&global_texture.create_view(
+                        &wgpu::TextureViewDescriptor {
+                            dimension: Some(wgpu::TextureViewDimension::D2Array),
+                            ..Default::default()
+                        },
+                    )),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&local_texture.create_view(
+                        &wgpu::TextureViewDescriptor {
+                            dimension: Some(wgpu::TextureViewDimension::D2Array),
+                            ..Default::default()
+                        },
+                    )),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
                     resource: wgpu::BindingResource::Sampler(&sampler),
                 },
             ],
         });
 
+        let local_lights = (0..MAX_LIGHTS)
+            .map(|i| {
+                let label = format!("LocalLight_{}", i);
+                ShadowResource::new(
+                    Some(&label),
+                    device,
+                    local_texture.create_view(&wgpu::TextureViewDescriptor {
+                        dimension: Some(wgpu::TextureViewDimension::D2),
+                        base_array_layer: i as u32,
+                        array_layer_count: Some(1),
+                        ..Default::default()
+                    }),
+                )
+            })
+            .collect();
+        let global_lights = (0..NUM_CASCADES)
+            .map(|i| {
+                let label = format!("GlobalLight_{}", i);
+                ShadowResource::new(
+                    Some(&label),
+                    device,
+                    global_texture.create_view(&wgpu::TextureViewDescriptor {
+                        dimension: Some(wgpu::TextureViewDimension::D2),
+                        base_array_layer: i as u32,
+                        array_layer_count: Some(1),
+                        ..Default::default()
+                    }),
+                )
+            })
+            .collect();
+
         Self {
             uniform,
-            texture,
+            local_lights,
+            global_lights,
             bind_group,
         }
     }
 
-    /// 주어진 인덱스에 해당하는 그림자 쉐이더 리소스를 반환합니다.
+    /// 주어진 인덱스에 해당하는 지역 조명 그림자 쉐이더 리소스를 반환합니다.
     ///
     /// # Panics
     /// 주어진 인덱스가 범위를 벗어나는 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn get(&self, label: Option<&str>, device: &wgpu::Device, index: usize) -> ShadowResource {
-        assert!(index < MAX_LIGHTS, "index out of range!");
-        let view = self.texture.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::D2),
-            base_array_layer: index as u32,
-            array_layer_count: Some(1),
-            ..Default::default()
-        });
+    pub fn get_local(&self, index: usize) -> ShadowResource {
+        self.local_lights
+            .get(index)
+            .cloned()
+            .expect("index out of range!")
+    }
 
-        ShadowResource::new(label, device, view)
+    /// 주어진 인덱스에 해당하는 전역 조명 그림자 쉐이더 리소스를 반환합니다.
+    ///
+    /// # Panics
+    /// 주어진 인덱스가 범위를 벗어나는 경우 [`panic!`]을 호출합니다.
+    ///
+    pub fn get_global(&self, index: usize) -> ShadowResource {
+        self.global_lights
+            .get(index)
+            .cloned()
+            .expect("index out of range!")
     }
 
     /// [wgpu::BindGroup]을 반환합니다.
