@@ -3,8 +3,8 @@ use std::{
     io::{self, BufReader, BufWriter, ErrorKind, Read, Write},
     net::{SocketAddr, TcpStream, UdpSocket},
     sync::{
-        atomic::{AtomicBool, Ordering as MemOrdering},
         Arc,
+        atomic::{AtomicBool, Ordering as MemOrdering},
     },
     time::Duration,
 };

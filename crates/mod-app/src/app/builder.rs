@@ -132,7 +132,7 @@ impl AppBuilder {
 
         use crate::{
             app::command::parse_command_line_args,
-            error::{show_error_msg, Alert},
+            error::{Alert, show_error_msg},
         };
 
         // 명령줄 인자를 구문 분석합니다.

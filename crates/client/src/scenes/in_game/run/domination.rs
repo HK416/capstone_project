@@ -2663,55 +2663,6 @@ impl InGameDominationModeScene {
 }
 
 //--------------------------------------------------------------------------------------------
-// 시스템 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl InGameDominationModeScene {
-    /// 마우스 커서를 활성화합니다.
-    fn enable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::None).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(false);
-        }
-
-        window.set_cursor_visible(true);
-    }
-
-    /// 마우스 커서를 비활성화합니다.
-    fn disable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(true);
-        }
-
-        window.set_cursor_visible(false);
-    }
-
-    /// 커서 위치를 애플리케이션 창 중앙으로 초기화합니다.
-    #[allow(unused_variables)]
-    fn reset_cursor_position_at_center(&self, window: &Window) {
-        #[cfg(target_os = "windows")]
-        {
-            use winit::dpi::PhysicalPosition;
-            let (width, height): (u32, u32) = window.inner_size().into();
-            let position = PhysicalPosition::new(width / 2, height / 2);
-            window.set_cursor_position(position).unwrap();
-        }
-    }
-}
-
-//--------------------------------------------------------------------------------------------
 
 impl GameScene for InGameDominationModeScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -2721,21 +2672,11 @@ impl GameScene for InGameDominationModeScene {
     }
 
     fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.disable_cursor(window);
-        }
+        app.disable_cursor();
     }
 
     fn on_enter_background(&mut self, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.enable_cursor(window);
-        }
-    }
-
-    fn on_exit(&mut self, window: Option<&Window>, _app: &dyn AppHandle) {
-        if let Some(window) = window {
-            self.enable_cursor(window);
-        }
+        app.enable_cursor();
     }
 
     fn on_keyboard_pressed(
@@ -2861,14 +2802,12 @@ impl GameScene for InGameDominationModeScene {
         _y: f32,
         mut dx: f32,
         mut dy: f32,
-        window: &Window,
+        _window: &Window,
         _app: &dyn AppHandle,
     ) -> bool {
         if self.world.is_none() {
             return false;
         }
-
-        self.reset_cursor_position_at_center(window);
 
         dx *= match self.flip_horizontal {
             true => -self.control_sensitivity,
@@ -2901,10 +2840,6 @@ impl GameScene for InGameDominationModeScene {
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.enable_cursor(window);
-        }
-
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
         let title = ERR_TITLE_TEXTS[i];

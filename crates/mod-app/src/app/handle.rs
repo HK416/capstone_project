@@ -12,6 +12,12 @@ use crate::{
 
 /// 외부에서 애플리케이션에 접근할 수 있는 `trait`입니다.
 pub trait AppHandle {
+    /// 애플리케이션의 커서를 활성화합니다.
+    fn enable_cursor(&self);
+
+    /// 애플리케이션의 커서를 비활성화 합니다.
+    fn disable_cursor(&self);
+
     /// 애플리케이션 이벤트 루프 프록시를 가져옵니다.
     fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>>;
 

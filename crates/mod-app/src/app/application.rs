@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use mod_render::{init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{SWAPCHAIN_FORMAT, ScreenDescriptor, UiRenderer, init_wgpu};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -19,13 +19,14 @@ use winit::{
 
 use crate::{
     asset::AssetManager,
-    error::{show_error_msg, Alert},
+    error::{Alert, show_error_msg},
     etc::{AppEvent, AppFlags, GameTimer, WindowSize},
+    ext::AppWindowExt,
     net::{NetManager, NetworkError},
     scene::{GameScene, GameSceneFlow},
 };
 
-use super::{builder::AppBuilder, window::AppWindow, AppHandle};
+use super::{AppHandle, builder::AppBuilder, window::AppWindow};
 
 /// 고정 시간 갱신에 사용되는 경과 시간입니다.
 pub const FIXED_TIME_SEC: f32 = 1.0 / 60.0;
@@ -595,6 +596,13 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
+                if app_window.get_cursor_disabled() {
+                    let (w, h): (u32, u32) = app_window.window.inner_size().into();
+                    let _ = app_window
+                        .window
+                        .set_cursor_position(PhysicalPosition::new(w / 2, h / 2));
+                }
+
                 let (dx, dy): (f32, f32) = self.cursor_delta.into();
                 for scene in scene_stack.iter_mut().rev() {
                     if scene.on_cursor_moved(
@@ -805,6 +813,26 @@ impl ApplicationHandler<AppEvent> for Application {
 }
 
 impl AppHandle for Application {
+    fn enable_cursor(&self) {
+        if let Some(app_window) = self.app_window.as_ref() {
+            if app_window.get_cursor_disabled() {
+                app_window.window.set_cursor_visible(true);
+                app_window.window.confine_cursor_to_window(false);
+                app_window.set_cursor_disable(false);
+            }
+        }
+    }
+
+    fn disable_cursor(&self) {
+        if let Some(app_window) = self.app_window.as_ref() {
+            if !app_window.get_cursor_disabled() {
+                app_window.window.set_cursor_visible(false);
+                app_window.window.confine_cursor_to_window(true);
+                app_window.set_cursor_disable(true);
+            }
+        }
+    }
+
     fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>> {
         &self.event_loop_proxy
     }

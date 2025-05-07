@@ -1450,47 +1450,10 @@ impl InGameDominationModePrepareScene {
 }
 
 //--------------------------------------------------------------------------------------------
-// 시스템 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl InGameDominationModePrepareScene {
-    /// 마우스 커서를 활성화합니다.
-    fn enable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::None).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(false);
-        }
-
-        window.set_cursor_visible(true);
-    }
-
-    /// 마우스 커서를 비활성화합니다.
-    fn disable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(true);
-        }
-
-        window.set_cursor_visible(false);
-    }
-}
-
-//--------------------------------------------------------------------------------------------
 
 impl GameScene for InGameDominationModePrepareScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
-        self.disable_cursor(window);
+        app.disable_cursor();
 
         let device = app.render_device();
         let mut egui_renderer = app.egui_renderer_mut();
@@ -1502,22 +1465,14 @@ impl GameScene for InGameDominationModePrepareScene {
     }
 
     fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.disable_cursor(window);
-        }
+        app.disable_cursor();
     }
 
     fn on_enter_background(&mut self, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.enable_cursor(window);
-        }
+        app.enable_cursor();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.enable_cursor(window);
-        }
-
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
         let title = ERR_TITLE_TEXTS[i];

@@ -1035,27 +1035,6 @@ impl InGameResultScene {
 }
 
 //--------------------------------------------------------------------------------------------
-// 시스템 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl InGameResultScene {
-    /// 마우스 커서를 활성화합니다.
-    fn enable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::None).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(false);
-        }
-
-        window.set_cursor_visible(true);
-    }
-}
-
-//--------------------------------------------------------------------------------------------
 // 사용자 인터페이스와 관련된 코드를 작성합니다.
 //--------------------------------------------------------------------------------------------
 impl InGameResultScene {
@@ -1092,8 +1071,8 @@ impl InGameResultScene {
 
 //--------------------------------------------------------------------------------------------
 impl GameScene for InGameResultScene {
-    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
-        self.enable_cursor(window);
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+        app.enable_cursor();
         self.create_main_camera(app.render_device());
         self.reset_player_position();
     }

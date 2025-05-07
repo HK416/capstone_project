@@ -1,6 +1,12 @@
-use std::{cell::RefCell, sync::Arc};
+use std::{
+    cell::RefCell,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering as MemOrdering},
+    },
+};
 
-use mod_render::{config_swapchain, create_surface, SurfaceInitError, DEPTH_FORMAT};
+use mod_render::{DEPTH_FORMAT, SurfaceInitError, config_swapchain, create_surface};
 use winit::{
     error::OsError,
     event_loop::ActiveEventLoop,
@@ -26,6 +32,7 @@ pub struct AppWindow {
     pub egui_state: RefCell<egui_winit::State>,
     pub surface: Arc<wgpu::Surface<'static>>,
     pub depth_buffer_view: RefCell<Arc<wgpu::TextureView>>,
+    pub disable_cursor: AtomicBool,
     pub disable_vsync: bool,
 }
 
@@ -104,6 +111,7 @@ impl AppWindow {
             egui_state,
             surface,
             depth_buffer_view,
+            disable_cursor: AtomicBool::new(false),
             disable_vsync: vsync,
         })
     }
@@ -143,5 +151,15 @@ impl AppWindow {
                 })
                 .create_view(&wgpu::TextureViewDescriptor::default()),
         );
+    }
+
+    /// 커서의 비활성화 여부를 반환합니다.
+    pub fn get_cursor_disabled(&self) -> bool {
+        self.disable_cursor.load(MemOrdering::Acquire)
+    }
+
+    /// 커서의 비활성화 여부를 설정합니다.
+    pub fn set_cursor_disable(&self, val: bool) {
+        self.disable_cursor.store(val, MemOrdering::Release);
     }
 }

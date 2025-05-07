@@ -50,6 +50,10 @@ impl GameScene for FatalErrorSceneLayer {
         true
     }
 
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+        app.enable_cursor();
+    }
+
     fn on_received_packet(
         &mut self,
         _packet: RawPacket,
