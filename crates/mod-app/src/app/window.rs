@@ -1,12 +1,12 @@
 use std::{
     cell::RefCell,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering as MemOrdering},
+        Arc,
     },
 };
 
-use mod_render::{DEPTH_FORMAT, SurfaceInitError, config_swapchain, create_surface};
+use mod_render::{config_swapchain, create_surface, SurfaceInitError, DEPTH_FORMAT};
 use winit::{
     error::OsError,
     event_loop::ActiveEventLoop,

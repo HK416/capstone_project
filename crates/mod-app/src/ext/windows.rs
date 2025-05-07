@@ -1,21 +1,21 @@
-//! 시스템 API를 이용하여 확장 함수를 구현합니다.
+//! Win32 API를 이용하여 확장 함수를 구현합니다.
 //!
 
-use winit::window::Window;
+use windows::Win32::{
+    Foundation::{HWND, POINT, RECT},
+    Graphics::Gdi::ClientToScreen,
+    UI::WindowsAndMessaging::{ClipCursor, GetClientRect},
+};
+use winit::{
+    raw_window_handle::{HasWindowHandle, RawWindowHandle},
+    window::Window,
+};
 
 use super::AppWindowExt;
 
 impl AppWindowExt for Window {
     #[allow(unused_must_use)]
-    #[cfg(target_os = "windows")]
     fn confine_cursor_to_window(&self, confine: bool) {
-        use windows::Win32::{
-            Foundation::{HWND, POINT, RECT},
-            Graphics::Gdi::ClientToScreen,
-            UI::WindowsAndMessaging::{ClipCursor, GetClientRect},
-        };
-        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
         unsafe {
             let handle = self.window_handle().unwrap();
             let hwnd = match handle.as_raw() {
@@ -46,18 +46,6 @@ impl AppWindowExt for Window {
             } else {
                 ClipCursor(None);
             }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn confine_cursor_to_window(&self, confine: bool) {
-        use winit::window::CursorGrabMode;
-        if confine {
-            self.set_cursor_grab(CursorGrabMode::Confined)
-                .or_else(|_| self.set_cursor_grab(CursorGrabMode::Locked))
-                .unwrap();
-        } else {
-            self.set_cursor_grab(CursorGrabMode::None).unwrap();
         }
     }
 }

@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use mod_render::{SWAPCHAIN_FORMAT, ScreenDescriptor, UiRenderer, init_wgpu};
+use mod_render::{init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -19,14 +19,14 @@ use winit::{
 
 use crate::{
     asset::AssetManager,
-    error::{Alert, show_error_msg},
+    error::{show_error_msg, Alert},
     etc::{AppEvent, AppFlags, GameTimer, WindowSize},
     ext::AppWindowExt,
     net::{NetManager, NetworkError},
     scene::{GameScene, GameSceneFlow},
 };
 
-use super::{AppHandle, builder::AppBuilder, window::AppWindow};
+use super::{builder::AppBuilder, window::AppWindow, AppHandle};
 
 /// 고정 시간 갱신에 사용되는 경과 시간입니다.
 pub const FIXED_TIME_SEC: f32 = 1.0 / 60.0;
@@ -596,6 +596,7 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
+                #[cfg(target_os = "windows")]
                 if app_window.get_cursor_disabled() {
                     let (w, h): (u32, u32) = app_window.window.inner_size().into();
                     let _ = app_window
