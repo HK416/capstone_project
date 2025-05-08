@@ -816,21 +816,17 @@ impl ApplicationHandler<AppEvent> for Application {
 impl AppHandle for Application {
     fn enable_cursor(&self) {
         if let Some(app_window) = self.app_window.as_ref() {
-            if app_window.get_cursor_disabled() {
-                app_window.window.set_cursor_visible(true);
-                app_window.window.confine_cursor_to_window(false);
-                app_window.set_cursor_disable(false);
-            }
+            app_window.window.set_cursor_visible(true);
+            app_window.window.confine_cursor_to_window(false);
+            app_window.set_cursor_disable(false);
         }
     }
 
     fn disable_cursor(&self) {
         if let Some(app_window) = self.app_window.as_ref() {
-            if !app_window.get_cursor_disabled() {
-                app_window.window.set_cursor_visible(false);
-                app_window.window.confine_cursor_to_window(true);
-                app_window.set_cursor_disable(true);
-            }
+            app_window.window.set_cursor_visible(false);
+            app_window.window.confine_cursor_to_window(true);
+            app_window.set_cursor_disable(true);
         }
     }
 

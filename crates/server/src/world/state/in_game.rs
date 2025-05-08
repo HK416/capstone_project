@@ -22,7 +22,10 @@ use mod_physics::{
 use tokio::time::Instant;
 
 use crate::{
-    data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_safe_area, is_valid_position},
+    data::{
+        get_nearest_valid_position, get_stage_colliders, get_stage_height, is_safe_area,
+        is_valid_position,
+    },
     entities::{BulletObject, CapturePointObject, PlayData, PlayerObject},
     formula::movement_formulas as formulas,
     session::SessionEvents,
@@ -617,8 +620,7 @@ impl GameWorldInGameState {
             let team = player.team();
 
             if !is_valid_position(self.stage_kind, team, new_p.x, new_p.z) {
-                let (x, z) = get_nearest_valid_position(self.stage_kind, 
-                    team, new_p.x, new_p.z);
+                let (x, z) = get_nearest_valid_position(self.stage_kind, team, new_p.x, new_p.z);
                 if x != new_p.x {
                     velocity.x = 0.0;
                     new_p.x = x;
@@ -711,12 +713,7 @@ impl GameWorldInGameState {
     }
 
     /// 게임을 종료합니다.
-    fn game_over(
-        &mut self,
-        world: &GameWorld,
-        winner: Team,
-        victory_type: VictoryType,
-    ) {
+    fn game_over(&mut self, world: &GameWorld, winner: Team, victory_type: VictoryType) {
         log::info!("game over (winner: {:?})", winner);
 
         self.is_running = false;
@@ -744,13 +741,8 @@ impl GameWorldInGameState {
 
         // 패킷을 생성하고 전송합니다.
         let play_time = self.total_play_sec - self.remaining_time_sec;
-        let packet = FinishStagePacket::new(
-            winner,
-            victory_type,
-            self.stage_kind,
-            play_time,
-            players,
-        );
+        let packet =
+            FinishStagePacket::new(winner, victory_type, self.stage_kind, play_time, players);
 
         for item in world.sessions.iter() {
             item.key().push_event(SessionEvents::GameFinished);
@@ -766,7 +758,7 @@ impl GameWorldInGameState {
     /// 시간 초과로 게임을 종료합니다.
     fn time_out(&mut self, world: &GameWorld) {
         log::info!("time out");
-        
+
         let capture_scores = self.capture_point.capture_score();
         let red_score = capture_scores[Team::Red as usize];
         let blue_score = capture_scores[Team::Blue as usize];

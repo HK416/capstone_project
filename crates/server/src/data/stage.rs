@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 use ahash::HashMap;
 use lazy_static::lazy_static;
 use mod_network::components::{
-    LatLon, MAX_IN_GAME_PLAYERS, NUM_STAGES, StageHeight, StageKind, StageLayoutData, Team, 
+    LatLon, MAX_IN_GAME_PLAYERS, NUM_STAGES, StageHeight, StageKind, StageLayoutData, Team,
 };
 use mod_physics::collision::ColliderTree;
 

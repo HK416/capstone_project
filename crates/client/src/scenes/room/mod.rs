@@ -11,8 +11,8 @@ use mod_network::{
         LoginToken, Permission, RecruitPhasePlayer, Team, UserId, WorldId, MAX_IN_GAME_PLAYERS,
     },
     protocol::{
-        CustomGameLeavePacket, CustomGamePullPacket, CustomGameReadyPacket, FormationPullPacket,
-        Packet, PacketType, RawPacket,
+        CustomGameLeavePacket, CustomGamePullPacket, CustomGameReadyPacket,
+        CustomGameStartFailedPacket, FormationPullPacket, Packet, PacketType, RawPacket,
     },
 };
 use winit::window::Window;
@@ -186,6 +186,8 @@ impl GameScene for CustomGameRoomScene {
                 event_loop_proxy.send_event(event).unwrap();
             }
             PacketType::CustomGameStartFailed => {
+                let packet = CustomGameStartFailedPacket::from_raw(packet);
+                println!("{:?}", packet.reason);
                 // TODO : 오류 메시지 네비게이션 모달 띄우기
             }
             _ => {

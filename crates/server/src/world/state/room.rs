@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use mod_network::{
-    components::{RecruitPhasePlayer, StageKind, StartFailedReason},
+    components::{RecruitPhasePlayer, StageKind, StartFailedReason, Team},
     protocol::{CustomGamePullPacket, CustomGameStartFailedPacket, Packet},
 };
 use tokio::time::Instant;
@@ -72,25 +72,42 @@ impl GameWorldRoomState {
             return;
         }
 
-        // 팀 균형이 맞지 않은 경우
-        if self.is_balanced && *num_players % 2 != 0 {
-            // 패킷을 전송합니다.
-            let reason = StartFailedReason::UnbalancedTeams;
+        // 각 팀에 속한 인원과 게임 관리자를 제외한 전원이 준비되었는지 확인합니다.
+        let admin = world.admin();
+        let mut num_reds = 0;
+        let mut num_blues = 0;
+        let mut other_player_readys = true;
+        for player in world.players.iter() {
+            if player.team() == Team::Blue {
+                num_blues += 1;
+            } else {
+                num_reds += 1;
+            }
+
+            if *player.key() != admin {
+                other_player_readys &= player.bool_flag();
+            }
+        }
+
+        // 각 팀에 속한 인원이 1명 이상 존재하는지 확인합니다.
+        if num_reds == 0 {
+            let reason = StartFailedReason::EmptyRedTeam;
+            let packet = CustomGameStartFailedPacket::new(reason);
+            session.tcp_write(packet.as_raw());
+            return;
+        } else if num_blues == 0 {
+            let reason = StartFailedReason::EmptyBlueTeam;
             let packet = CustomGameStartFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
             return;
         }
 
-        // 게임 관리자를 제외한 전원이 준비되었는지 확인합니다.
-        let admin = world.admin();
-        let mut other_player_readys = true;
-        for player in world.players.iter() {
-            // 게임 관리자의 경우 스킵
-            if *player.key() == admin {
-                continue;
-            }
-
-            other_player_readys &= player.bool_flag();
+        // 팀 밸런스를 확인합니다.
+        if self.is_balanced && num_blues != num_reds {
+            let reason = StartFailedReason::UnbalancedTeams;
+            let packet = CustomGameStartFailedPacket::new(reason);
+            session.tcp_write(packet.as_raw());
+            return;
         }
 
         if other_player_readys {
@@ -107,8 +124,6 @@ impl GameWorldRoomState {
                 item.key().push_event(SessionEvents::EnterFormation);
             }
         } else {
-            // 모든 플레이어가 준비되지 않은 경우
-            // 패킷을 전송합니다.
             let reason = StartFailedReason::PlayersNotReady;
             let packet = CustomGameStartFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
