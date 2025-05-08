@@ -769,49 +769,10 @@ impl InGameDominationModeScene {
 impl InGameDominationModeScene {
     /// 카메라를 갱신합니다.
     fn update_camera(&mut self) {
-        type Query<'a> = (
-            &'a CharacterKind,
-            &'a ActionState,
-            &'a ActionStateTimer,
-            &'a ViewState,
-            &'a ViewStateTimer,
-            &'a WorldTransform,
-        );
-        let entity = self.get_player_entity();
-
-        // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
-        let world = unsafe { self.world.as_mut().unwrap_unchecked() };
-
-        // 삼인칭 카메라 대상의 요소를 가져옵니다.
-        let (
-            &character_kind,
-            &action_state,
-            &action_state_timer,
-            &view_state,
-            &view_state_timer,
-            world_transform,
-        ) = world
-            .query_one_mut::<Query>(entity)
-            .expect("invalid entity or invalid entity component");
-        let target_pos = world_transform.get_translation();
-
-        // 삼인칭 카메라 요소를 가져옵니다.
-        let third_person_camera = world
-            .query_one_mut::<&mut ThirdPersonCamera>(self.main_camera)
-            .expect("invalid entity or invalid entity component");
-
-        // 삼인칭 카메라를 갱신합니다.
-        update_third_person_camera(
-            third_person_camera,
-            character_kind,
-            action_state,
-            action_state_timer,
-            view_state,
-            view_state_timer,
-        );
-
-        // 삼인칭 카메라의 계층 구조를 갱신합니다.
-        update_third_person_camera_hierarchy(world, self.main_camera, target_pos);
+        let camera_entity = self.main_camera;
+        let player_entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
+        update_third_person_camera(world, player_entity, camera_entity);
     }
 
     /// 캐릭터 애니메이션을 재생합니다.

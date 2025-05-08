@@ -1121,17 +1121,10 @@ pub fn create_third_person_camera_of_character(
 /// 삼인칭 카메라를 갱신합니다.
 ///
 /// # Note
-/// 이 함수를 호출하기 전에 `ViewState`가 먼저 갱신되어야합니다.
+/// 이 함수를 호출하기 전에 플레이어 캐릭터와 `ViewState`가 먼저 갱신되어야합니다.
 ///
-pub fn update_third_person_camera(
-    third_person_camera: &mut ThirdPersonCamera,
-    character_kind: CharacterKind,
-    action_state: ActionState,
-    action_state_timer: ActionStateTimer,
-    view_state: ViewState,
-    view_state_timer: ViewStateTimer,
-) {
-    type Func = fn(&mut ThirdPersonCamera, ActionState, ActionStateTimer, ViewStateTimer);
+pub fn update_third_person_camera(world: &mut World, player_entity: Entity, camera_entity: Entity) {
+    type Func = fn(&mut World, Entity, Entity);
     const FUNC_TABLE: [[Func; 4]; NUM_CHARACTERS] = [
         [
             aris_original::update_third_person_camera_when_idle,
@@ -1159,15 +1152,13 @@ pub fn update_third_person_camera(
         ],
     ];
 
-    let i = character_kind as usize;
-    let j = match action_state {
-        _ => view_state as usize,
-    };
+    // 플레이어의 요소를 가져옵니다.
+    let (&character_kind, &view_state) = world
+        .query_one_mut::<(&CharacterKind, &ViewState)>(player_entity)
+        .expect("invalid entity or invalid entity component");
 
-    FUNC_TABLE[i][j](
-        third_person_camera,
-        action_state,
-        action_state_timer,
-        view_state_timer,
-    );
+    let i = character_kind as usize;
+    let j = view_state as usize;
+
+    FUNC_TABLE[i][j](world, player_entity, camera_entity);
 }

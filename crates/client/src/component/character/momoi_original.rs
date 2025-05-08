@@ -59,11 +59,11 @@ pub const VICTORY_END_DURATION: f32 = 1.667;
 /// 캐릭터 모델의 카메라 기본 위치입니다.
 pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
 /// 캐릭터 모델의 카메라 줌 위치입니다.
-pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.125, 0.7, 0.5);
+pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.0, 0.035, -0.075);
 /// 캐릭터 모델의 카메라 기본 Fov-y 라디안 각도입니다.
-pub const CAMERA_IDLE_FOV_Y: f32 = 1.309; // 75도
+pub const CAMERA_IDLE_FOV_Y: f32 = 75f32.to_radians(); // 75도
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
-pub const CAMERA_ZOOM_FOV_Y: f32 = 1.22173; // 70도
+pub const CAMERA_ZOOM_FOV_Y: f32 = 60f32.to_radians(); // 60도
 
 /// `Bip001_Head`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
 pub const HEAD_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(-0.0489224, 0.6057397, -0.7941568);
@@ -2078,7 +2078,7 @@ fn animate_character_when_aim_landing(
 ///
 fn animate_character_when_aim_move_jumping(
     motions: &Arc<HashMap<String, Motion>>,
-    _view_rotation: LatLon,
+    view_rotation: LatLon,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -2126,6 +2126,10 @@ fn animate_character_when_aim_move_jumping(
 
     // 점프 애니메이션을 적용합니다.
     moving_jumping_anime(skinning_animation, movement_state_timer, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `MovementState::MovingLanding`이고, `ActionState::Aim`일 때 착지 애니메이션을 재생합니다.
@@ -2139,7 +2143,7 @@ fn animate_character_when_aim_move_jumping(
 ///
 fn animate_character_when_aim_move_landing(
     motions: &Arc<HashMap<String, Motion>>,
-    _view_rotation: LatLon,
+    view_rotation: LatLon,
     _action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
     skinning_animation: &SkinningAnimation,
@@ -2187,6 +2191,10 @@ fn animate_character_when_aim_move_landing(
 
     // 착지 애니메이션을 적용합니다.
     moving_landing_anime(skinning_animation, transform_view);
+
+    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
+    let offset = 1.0;
+    look_to_camera_direction(offset, skinning_animation, view_rotation, transform_view);
 }
 
 /// `MovementState::InPlaceJumping`이고, `ActionState::AimAt`일 때 점프 애니메이션을 재생합니다.
@@ -3890,10 +3898,9 @@ fn set_weapon_position_recursion(
 
 /// `ViewState::Idle`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
 pub fn update_third_person_camera_when_idle(
-    third_person_camera: &mut ThirdPersonCamera,
-    action_state: ActionState,
-    action_state_timer: ActionStateTimer,
-    view_state_timer: ViewStateTimer,
+    world: &mut World,
+    player_entity: Entity,
+    camera_entity: Entity,
 ) {
     /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
     fn non_camera_effect(
@@ -3906,6 +3913,27 @@ pub fn update_third_person_camera_when_idle(
         third_person_camera.position = default_position;
         third_person_camera.fov_y = default_fov_y;
     }
+
+    // 플레이어의 요소를 가져옵니다
+    type Query<'a> = (
+        &'a ActionState,
+        &'a ActionStateTimer,
+        &'a ViewStateTimer,
+        &'a WorldTransform,
+    );
+    let (&action_state, &action_state_timer, &view_state_timer, transform) = world
+        .query_one_mut::<Query>(player_entity)
+        .expect("invalid entity or invalid entity component");
+    let player_translation = transform.get_translation();
+
+    // 카메라의 요소를 가져옵니다
+    let (local_trans, world_trans, third_person_camera) = world
+        .query_one_mut::<(
+            &mut ToParentTrans,
+            &mut WorldTransform,
+            &mut ThirdPersonCamera,
+        )>(camera_entity)
+        .expect("invalid entity or invalid entity component");
 
     type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
     const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
@@ -3931,20 +3959,19 @@ pub fn update_third_person_camera_when_idle(
         CAMERA_IDLE_POSITION,
         CAMERA_IDLE_FOV_Y,
     );
+
+    // 카메라 변환 행렬을 갱신합니다.
+    let root = glam::Mat4::from_translation(player_translation.into());
+    local_trans.0 = third_person_camera.to_matrix();
+    world_trans.0 = root * local_trans.0;
 }
 
 /// `ViewState::ZoomIn`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
 pub fn update_third_person_camera_when_zoom_in(
-    third_person_camera: &mut ThirdPersonCamera,
-    action_state: ActionState,
-    action_state_timer: ActionStateTimer,
-    view_state_timer: ViewStateTimer,
+    world: &mut World,
+    player_entity: Entity,
+    camera_entity: Entity,
 ) {
-    // 현재 카메라 위치와 Fov-y를 계산합니다.
-    let s = view_state_timer.0 / NORMAL_ATTACK_START_DURATION;
-    let position = CAMERA_IDLE_POSITION.lerp(CAMERA_ZOOM_POSITION, s);
-    let fov_y = CAMERA_IDLE_FOV_Y.lerp(CAMERA_ZOOM_FOV_Y, s);
-
     /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
     fn non_camera_effect(
         third_person_camera: &mut ThirdPersonCamera,
@@ -3956,6 +3983,42 @@ pub fn update_third_person_camera_when_zoom_in(
         third_person_camera.position = default_position;
         third_person_camera.fov_y = default_fov_y;
     }
+
+    // 플레이어의 요소를 가져옵니다
+    type Query<'a> = (
+        &'a ActionState,
+        &'a ActionStateTimer,
+        &'a ViewStateTimer,
+        &'a SkinningAnimation,
+        &'a WorldTransform,
+    );
+    let (&action_state, &action_state_timer, &view_state_timer, skinning_animation, transform) =
+        world
+            .query_one_mut::<Query>(player_entity)
+            .expect("invalid entity or invalid entity component");
+    let player_translation = transform.get_translation();
+
+    // 무기의 요소를 가져옵니다.
+    let weapon_entity = skinning_animation.weapon;
+    let transform = world
+        .query_one_mut::<&WorldTransform>(weapon_entity)
+        .expect("invalid entity or invalid entity component");
+    let weapon_translation = transform.get_translation();
+
+    // 카메라의 요소를 가져옵니다
+    let (local_trans, world_trans, third_person_camera) = world
+        .query_one_mut::<(
+            &mut ToParentTrans,
+            &mut WorldTransform,
+            &mut ThirdPersonCamera,
+        )>(camera_entity)
+        .expect("invalid entity or invalid entity component");
+
+    // 현재 카메라 위치와 Fov-y를 계산합니다.
+    let s = view_state_timer.0 / NORMAL_ATTACK_START_DURATION;
+    let root_position = player_translation.lerp(weapon_translation, s);
+    let position = CAMERA_IDLE_POSITION.lerp(CAMERA_ZOOM_POSITION, s);
+    let fov_y = CAMERA_IDLE_FOV_Y.lerp(CAMERA_ZOOM_FOV_Y, s);
 
     type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
     const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
@@ -3981,20 +4044,19 @@ pub fn update_third_person_camera_when_zoom_in(
         position,
         fov_y,
     );
+
+    // 카메라 변환 행렬을 갱신합니다.
+    let root = glam::Mat4::from_translation(root_position.into());
+    local_trans.0 = third_person_camera.to_matrix();
+    world_trans.0 = root * local_trans.0;
 }
 
 /// `ViewState::ZoomOut`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
 pub fn update_third_person_camera_when_zoom_out(
-    third_person_camera: &mut ThirdPersonCamera,
-    action_state: ActionState,
-    action_state_timer: ActionStateTimer,
-    view_state_timer: ViewStateTimer,
+    world: &mut World,
+    player_entity: Entity,
+    camera_entity: Entity,
 ) {
-    // 현재 카메라 위치와 Fov-y를 계산합니다.
-    let s = view_state_timer.0 / NORMAL_ATTACK_END_DURATION;
-    let position: glam::Vec3A = CAMERA_ZOOM_POSITION.lerp(CAMERA_IDLE_POSITION, s);
-    let fov_y = CAMERA_ZOOM_FOV_Y.lerp(CAMERA_IDLE_FOV_Y, s);
-
     /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
     fn non_camera_effect(
         third_person_camera: &mut ThirdPersonCamera,
@@ -4006,6 +4068,42 @@ pub fn update_third_person_camera_when_zoom_out(
         third_person_camera.position = default_position;
         third_person_camera.fov_y = default_fov_y;
     }
+
+    // 플레이어의 요소를 가져옵니다
+    type Query<'a> = (
+        &'a ActionState,
+        &'a ActionStateTimer,
+        &'a ViewStateTimer,
+        &'a SkinningAnimation,
+        &'a WorldTransform,
+    );
+    let (&action_state, &action_state_timer, &view_state_timer, skinning_animation, transform) =
+        world
+            .query_one_mut::<Query>(player_entity)
+            .expect("invalid entity or invalid entity component");
+    let player_translation = transform.get_translation();
+
+    // 무기의 요소를 가져옵니다.
+    let weapon_entity = skinning_animation.weapon;
+    let transform = world
+        .query_one_mut::<&WorldTransform>(weapon_entity)
+        .expect("invalid entity or invalid entity component");
+    let weapon_translation = transform.get_translation();
+
+    // 카메라의 요소를 가져옵니다
+    let (local_trans, world_trans, third_person_camera) = world
+        .query_one_mut::<(
+            &mut ToParentTrans,
+            &mut WorldTransform,
+            &mut ThirdPersonCamera,
+        )>(camera_entity)
+        .expect("invalid entity or invalid entity component");
+
+    // 현재 카메라 위치와 Fov-y를 계산합니다.
+    let s = view_state_timer.0 / NORMAL_ATTACK_END_DURATION;
+    let root_position = weapon_translation.lerp(player_translation, s);
+    let position: glam::Vec3A = CAMERA_ZOOM_POSITION.lerp(CAMERA_IDLE_POSITION, s);
+    let fov_y = CAMERA_ZOOM_FOV_Y.lerp(CAMERA_IDLE_FOV_Y, s);
 
     type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
     const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
@@ -4031,14 +4129,18 @@ pub fn update_third_person_camera_when_zoom_out(
         position,
         fov_y,
     );
+
+    // 카메라 변환 행렬을 갱신합니다.
+    let root = glam::Mat4::from_translation(root_position.into());
+    local_trans.0 = third_person_camera.to_matrix();
+    world_trans.0 = root * local_trans.0;
 }
 
 /// `ViewState::Aiming`일 때 캐릭터 모델의 삼인칭 카메라를 갱신합니다.
 pub fn update_third_person_camera_when_aiming(
-    third_person_camera: &mut ThirdPersonCamera,
-    action_state: ActionState,
-    action_state_timer: ActionStateTimer,
-    view_state_timer: ViewStateTimer,
+    world: &mut World,
+    player_entity: Entity,
+    camera_entity: Entity,
 ) {
     /// 카메라 이펙트를 사용하지 않는 경우 사용되는 함수
     fn non_camera_effect(
@@ -4051,6 +4153,33 @@ pub fn update_third_person_camera_when_aiming(
         third_person_camera.position = default_position;
         third_person_camera.fov_y = default_fov_y;
     }
+
+    // 플레이어의 요소를 가져옵니다
+    type Query<'a> = (
+        &'a ActionState,
+        &'a ActionStateTimer,
+        &'a ViewStateTimer,
+        &'a SkinningAnimation,
+    );
+    let (&action_state, &action_state_timer, &view_state_timer, skinning_animation) = world
+        .query_one_mut::<Query>(player_entity)
+        .expect("invalid entity or invalid entity component");
+
+    // 무기의 요소를 가져옵니다.
+    let weapon_entity = skinning_animation.weapon;
+    let transform = world
+        .query_one_mut::<&WorldTransform>(weapon_entity)
+        .expect("invalid entity or invalid entity component");
+    let weapon_translation = transform.get_translation();
+
+    // 카메라의 요소를 가져옵니다
+    let (local_trans, world_trans, third_person_camera) = world
+        .query_one_mut::<(
+            &mut ToParentTrans,
+            &mut WorldTransform,
+            &mut ThirdPersonCamera,
+        )>(camera_entity)
+        .expect("invalid entity or invalid entity component");
 
     type Func = fn(&mut ThirdPersonCamera, ActionStateTimer, ViewStateTimer, glam::Vec3A, f32);
     const FUNC_TABLE: [Func; NUM_ACTION_STATES] = [
@@ -4076,6 +4205,11 @@ pub fn update_third_person_camera_when_aiming(
         CAMERA_ZOOM_POSITION,
         CAMERA_ZOOM_FOV_Y,
     );
+
+    // 카메라 변환 행렬을 갱신합니다.
+    let root = glam::Mat4::from_translation(weapon_translation.into());
+    local_trans.0 = third_person_camera.to_matrix();
+    world_trans.0 = root * local_trans.0;
 }
 
 /// 카메라 이펙트 함수
