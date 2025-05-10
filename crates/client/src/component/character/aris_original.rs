@@ -59,7 +59,7 @@ pub const VICTORY_END_DURATION: f32 = 3.2;
 /// 캐릭터 모델의 카메라 기본 위치입니다.
 pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
 /// 캐릭터 모델의 카메라 줌 위치입니다.
-pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.125, 0.7, 0.5);
+pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.7, 0.5);
 /// 캐릭터 모델의 카메라 기본 Fov-y 라디안 각도입니다.
 pub const CAMERA_IDLE_FOV_Y: f32 = 75f32.to_radians();
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
