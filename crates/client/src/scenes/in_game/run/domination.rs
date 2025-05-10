@@ -37,18 +37,17 @@ use crate::{
         animate_character, cleanup, compute_cascade_splits, compute_frustum_corners_no_inverse,
         compute_light_view_proj_matrix, set_weapon_position, spawn_bullet,
         update_character_direction, update_entity_hierarchy, update_third_person_camera,
-        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
-        update_view_state_timer, AttributeKind, BakeList, BoneCollection, BulletRenderPipeline,
-        CameraDataLayout, CameraResource, CameraUniform, CaptureZoneRenderPipeline,
-        CharacterBakePipeline, CharacterRenderPipeline, Child, DamageFontDataLayout,
-        DamageFontRenderPipeline, DamageFontResource, DamageFontUniform, DamageParticle,
-        EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-        HaloRenderPipeline, LightSetDataLayout, LightSetResource, LightTransformDataLayout,
-        MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer,
-        MoveDirection, OpaqueMap, Parent, Projection, ShadowMap, ShadowResource, Sibling,
-        SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
-        StageBakePipeline, StageRenderPipeline, ThirdPersonCamera, ToParentTrans,
-        TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
+        update_view_state_by_controller_input_flags, update_view_state_timer, AttributeKind,
+        BakeList, BoneCollection, BulletRenderPipeline, CameraDataLayout, CameraResource,
+        CameraUniform, CaptureZoneRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
+        Child, DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource,
+        DamageFontUniform, DamageParticle, EnergyBulletRenderPipeline, EyeMouthBakePipeline,
+        EyeMouthRenderPipeline, HaloRenderPipeline, LightSetDataLayout, LightSetResource,
+        LightTransformDataLayout, MaterialKind, MaterialResource, MaterialUniform, Mesh,
+        MeshFilter, MeshRenderer, MoveDirection, OpaqueMap, Parent, Projection, ShadowMap,
+        ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
+        SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline, ThirdPersonCamera,
+        ToParentTrans, TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
         WeightedBlendedOITResource, WorldTransform, NUM_CASCADES, NUM_CUBE_VERTICES,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
@@ -439,6 +438,12 @@ impl InGameDominationModeScene {
                 self.damage_particles.push_back(entity);
             }
         }
+    }
+
+    /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
+    fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
+        let (width, height): (u32, u32) = window.inner_size().into();
+        self.alpha_blend_resource = Some(WeightedBlendedOITResource::new(width, height, device));
     }
 }
 
@@ -2889,6 +2894,10 @@ impl GameScene for InGameDominationModeScene {
         };
 
         None
+    }
+
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.create_alpha_blend_resource(window, app.render_device());
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _pp: &dyn AppHandle) {

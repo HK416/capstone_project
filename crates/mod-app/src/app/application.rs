@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use mod_render::{init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{config_swapchain, init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -232,31 +232,31 @@ impl Application {
         // 현재 프레임 버퍼를 가져옵니다.
         let frame = match surface.get_current_texture() {
             Ok(frame) => frame,
-            Err(e) => match e {
-                wgpu::SurfaceError::Timeout
-                | wgpu::SurfaceError::Outdated
-                | wgpu::SurfaceError::Lost => {
-                    // 현재 스왑체인 텍스처 버퍼가 갱신이 필요한 경우 렌더링을 생략합니다.
-                    log::info!("frame skip >> swapchin needs to be refreshed.");
-                    return;
+            Err(wgpu::SurfaceError::Timeout) => {
+                log::info!("frame skip >> swapchin needs to be refreshed.");
+                return;
+            }
+            Err(
+                wgpu::SurfaceError::Outdated
+                | wgpu::SurfaceError::Lost
+                | wgpu::SurfaceError::Other
+                | wgpu::SurfaceError::OutOfMemory,
+            ) => {
+                let vsync = !self.flags.contains(AppFlags::DISABLE_VSYNC);
+                let (width, height) = window.inner_size().into();
+                config_swapchain(width, height, &self.device, surface, vsync);
+                match surface.get_current_texture() {
+                    Ok(frame) => frame,
+                    Err(e) => {
+                        log::error!("failed to acquire next sufrace texture! (REASON:{})", &e);
+                        let title = "Runtime error".into();
+                        let message = "Failed to acquire next surface texture!".into();
+                        let alert = Alert { title, message };
+                        show_error_msg(alert, Some(window));
+                        std::process::exit(-1);
+                    }
                 }
-                wgpu::SurfaceError::OutOfMemory => {
-                    log::error!("there is no more memory left to allocate a new frame.");
-                    let title = "Ouf of memory".into();
-                    let message = "There is no more memory left to allocate a new frame.".into();
-                    let alert = Alert { title, message };
-                    show_error_msg(alert, Some(&window));
-                    std::process::exit(-1);
-                }
-                wgpu::SurfaceError::Other => {
-                    log::error!("failed to fetch frame due to unknown error.");
-                    let title = "Runtime error".into();
-                    let message = "Failed to fetch frame due to unknown error.".into();
-                    let alert = Alert { title, message };
-                    show_error_msg(alert, Some(&window));
-                    std::process::exit(-1);
-                }
-            },
+            }
         };
 
         let (width, height): (u32, u32) = window.inner_size().into();

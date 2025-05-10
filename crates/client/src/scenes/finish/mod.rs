@@ -251,6 +251,12 @@ impl InGameResultScene {
             );
         }
     }
+
+    /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
+    fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
+        let (width, height): (u32, u32) = window.inner_size().into();
+        self.alpha_blend_resource = WeightedBlendedOITResource::new(width, height, device);
+    }
 }
 
 //--------------------------------------------------------------------------------------------
@@ -1099,6 +1105,10 @@ impl GameScene for InGameResultScene {
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.create_alpha_blend_resource(window, app.render_device());
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {

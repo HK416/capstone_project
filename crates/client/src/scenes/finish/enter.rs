@@ -30,19 +30,18 @@ use crate::{
         compute_light_view_proj_matrix, set_weapon_position, try_change_action_state,
         try_reset_movement_state, update_action_state_timer, update_entity_hierarchy,
         update_movement_state_timer, update_third_person_camera,
-        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
-        update_view_state_timer, AttributeKind, BakeList, BoneCollection,
-        BulletRenderPipelineTransparency, CameraDataLayout, CameraResource, CameraUniform,
-        CaptureZoneRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline, Child,
-        DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
-        DamageParticle, EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-        HaloRenderPipeline, LightSetDataLayout, LightSetResource, LightTransformDataLayout,
-        MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer, OpaqueMap,
-        Parent, Projection, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageBakePipeline,
-        StageRenderPipeline, ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
-        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform, NUM_CASCADES,
-        NUM_CUBE_VERTICES,
+        update_view_state_by_controller_input_flags, update_view_state_timer, AttributeKind,
+        BakeList, BoneCollection, BulletRenderPipelineTransparency, CameraDataLayout,
+        CameraResource, CameraUniform, CaptureZoneRenderPipeline, CharacterBakePipeline,
+        CharacterRenderPipeline, Child, DamageFontDataLayout, DamageFontRenderPipeline,
+        DamageFontResource, DamageFontUniform, DamageParticle, EnergyBulletRenderPipeline,
+        EyeMouthBakePipeline, EyeMouthRenderPipeline, HaloRenderPipeline, LightSetDataLayout,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MaterialResource,
+        MaterialUniform, Mesh, MeshFilter, MeshRenderer, OpaqueMap, Parent, Projection, ShadowMap,
+        ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
+        SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline, ThirdPersonCamera,
+        ToParentTrans, TransformDataLayout, TransparentMap, WeightedBlendedOITRenderPipeline,
+        WeightedBlendedOITResource, WorldTransform, NUM_CASCADES, NUM_CUBE_VERTICES,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, InGameResultScene, BASE_WIDTH, TEAM_COLOR, UI_BG_COLOR},
@@ -189,6 +188,12 @@ impl InGameResultEnterScene {
             transparent_map: HashMap::default(),
             motion_pool,
         }
+    }
+
+    /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
+    fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
+        let (width, height): (u32, u32) = window.inner_size().into();
+        self.alpha_blend_resource = Some(WeightedBlendedOITResource::new(width, height, device));
     }
 }
 
@@ -2293,6 +2298,10 @@ impl GameScene for InGameResultEnterScene {
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.create_alpha_blend_resource(window, app.render_device());
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {

@@ -570,8 +570,7 @@ impl InGameDominationModePrepareScene {
     /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
     fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
         let (width, height): (u32, u32) = window.inner_size().into();
-        let resource = WeightedBlendedOITResource::new(width, height, device);
-        self.alpha_blend_resource = resource.into();
+        self.alpha_blend_resource = Some(WeightedBlendedOITResource::new(width, height, device));
     }
 }
 
@@ -1557,6 +1556,10 @@ impl GameScene for InGameDominationModePrepareScene {
         }
 
         None
+    }
+
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.create_alpha_blend_resource(window, app.render_device());
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
