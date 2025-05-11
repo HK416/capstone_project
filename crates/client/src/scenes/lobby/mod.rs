@@ -132,7 +132,6 @@ impl GameScene for MainLobbyScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CustomGameJoinFailed => {}
             PacketType::CustomGameJoinSuccess => {
                 // 패킷을 생성합니다
                 let packet = CustomGameJoinSuccessPacket::from_raw(packet);
@@ -169,38 +168,91 @@ impl GameScene for MainLobbyScene {
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
 
-        // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-
         // 플레이어 정보 텍스트
-        let font_id = egui::FontId::new(28.0 * scale, head_font_family);
-        let text = self.user_info.name.to_string();
-        let info_text = egui::RichText::new(text)
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(28.0 * scale, family);
+        let text = egui::RichText::new(self.user_info.name.to_string())
             .font(font_id)
             .color(egui::Color32::DARK_GRAY);
+        let label_widget = egui::Label::new(text)
+            .halign(egui::Align::Min)
+            .wrap_mode(egui::TextWrapMode::Extend);
+        // 플레이어 정보 텍스트 출력
+        egui::Area::new(egui::Id::new("Player_Info"))
+            .default_pos(egui::pos2(32.0 * scale, 8.0 * scale))
+            .default_size(egui::vec2(1216.0 * scale, 64.0 * scale))
+            .show(app.egui_ctx(), |ui| {
+                ui.add(label_widget);
+            });
 
         // 게임 생성 버튼
         let i = self.locale as usize;
         let text = CREATE_GAME_BTN_TEXTS[i];
-        let font_id = egui::FontId::new(48.0 * scale, main_font_family);
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(48.0 * scale, family);
         let text = egui::RichText::new(text)
-            .font(font_id.clone())
+            .font(font_id)
             .color(egui::Color32::BLACK);
         let create_button = egui::Button::new(text)
             .fill(egui::Color32::LIGHT_GRAY)
             .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::DARK_GRAY));
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+        let create_rect = egui::Rect::from_min_max(
+            egui::pos2(1004.0 * scale, 536.0 * scale),
+            egui::pos2(1264.0 * scale, 616.0 * scale),
+        );
 
         // 게임 참가 버튼
         let text = JOIN_GAME_BTN_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(48.0 * scale, family);
         let text = egui::RichText::new(text)
-            .font(font_id.clone())
+            .font(font_id)
             .color(egui::Color32::BLACK);
         let join_button = egui::Button::new(text)
             .fill(egui::Color32::LIGHT_GRAY)
             .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::DARK_GRAY));
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+        let join_rect = egui::Rect::from_min_max(
+            egui::pos2(1004.0 * scale, 624.0 * scale),
+            egui::pos2(1264.0 * scale, 704.0 * scale),
+        );
+
+        egui::Area::new(egui::Id::new("Game")).show(app.egui_ctx(), |ui| {
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                ui.add_enabled_ui(self.button_enabled, |ui| {
+                    if ui.put(create_rect, create_button).clicked() {
+                        // 커스텀 게임 생성 패킷을 생성합니다.
+                        let packet = CustomGameJoinRequestPacket::new(
+                            WorldId::NULL,
+                            self.user_info.uid,
+                            self.token,
+                        );
+
+                        // 패킷을 전송합니다.
+                        let net_manager = app.net_manager();
+                        let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                        socket.push_packet(packet.as_raw());
+                        return;
+                    }
+
+                    if ui.put(join_rect, join_button).clicked() {
+                        // 다음 게임 장면으로 전환합니다.
+                        let next_scene = MainLobbyJoinModalScene::new(
+                            self.locale,
+                            self.user_info.uid,
+                            self.token,
+                            self.texture_pool.clone(),
+                            self.texture_view_pool.clone(),
+                        );
+                        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
+                    }
+                });
+            });
+        });
 
         // 배경화면
         let source = self.bg_texture_id;
@@ -219,48 +271,6 @@ impl GameScene for MainLobbyScene {
                 (center_y + 0.5 * img_height) / scale_factor,
             ),
         };
-
-        egui::Area::new(egui::Id::new("Player_Info"))
-            .anchor(egui::Align2::LEFT_TOP, (32.0 * scale, 8.0 * scale))
-            .show(app.egui_ctx(), |ui| {
-                ui.label(info_text);
-            });
-
-        egui::Area::new(egui::Id::new("Game"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, (-32.0 * scale, -64.0 * scale))
-            .show(app.egui_ctx(), |ui| {
-                ui.add_enabled_ui(self.button_enabled, |ui| {
-                    if ui.add(create_button).clicked() {
-                        // 커스텀 게임 생성 패킷을 생성합니다.
-                        let packet = CustomGameJoinRequestPacket::new(
-                            WorldId::NULL,
-                            self.user_info.uid,
-                            self.token,
-                        );
-
-                        // 패킷을 전송합니다.
-                        let net_manager = app.net_manager();
-                        let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-                        socket.push_packet(packet.as_raw());
-                        return;
-                    }
-
-                    if ui.add(join_button).clicked() {
-                        // 다음 게임 장면으로 전환합니다.
-                        let next_scene = MainLobbyJoinModalScene::new(
-                            self.locale,
-                            self.user_info.uid,
-                            self.token,
-                            self.texture_pool.clone(),
-                            self.texture_view_pool.clone(),
-                        );
-                        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
-                });
-            });
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new())

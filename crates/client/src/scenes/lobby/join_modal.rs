@@ -22,12 +22,14 @@ use crate::{
 
 use super::MainLobbyMessageModalScene;
 
-/// 애플리케이션 표시 언어에 따른 `Head` 텍스트입니다.
-const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 참여"];
+/// 애플리케이션 표시 언어에 따른 타이틀 텍스트입니다.
+const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 참여"];
 /// 애플리케이션 표시 언어에 따른 `확인 버튼` 텍스트입니다.
 const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
 /// 애플리케이션 표시 언어에 따른 `취소 버튼` 텍스트입니다.
 const CANCEL_TEXTS: [&'static str; NUM_LOCALE] = ["취소"];
+/// 애플리케이션 표시 언어에 따른 `방 번호 입력` 텍스트 입니다.
+const INFORMATION_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 방 번호를 입력해 주세요"];
 /// 애플리케이션 표시 언어에 따른 `모달 대화상자` 타이틀 텍스트입니다.
 const MSG_MODAL_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
 /// 애플리케이션 표시 언어에 따른 `모달 대화상자` 메시지 텍스트입니다.
@@ -174,90 +176,104 @@ impl GameScene for MainLobbyJoinModalScene {
         let scale = width / scale_factor / BASE_WIDTH;
         let i = self.locale as usize;
 
-        // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-
-        // `Head` 텍스트
-        let text = HEAD_TEXTS[i];
-        let font_id = egui::FontId::new(32.0 * scale, head_font_family.clone());
-        let head_text = egui::RichText::new(text)
+        // 타이틀 텍스트
+        let text = TITLE_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(32.0 * scale, family);
+        let title = egui::RichText::new(text)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(egui::Color32::BLACK);
+
+        // 안내 텍스트
+        let text = INFORMATION_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
+        let info_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::BLACK);
 
         // `확인 버튼` 텍스트
         let text = OKAY_TEXTS[i];
-        let font_id = egui::FontId::new(24.0 * scale, main_font_family.clone());
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
         let okay_text = egui::RichText::new(text)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(egui::Color32::BLACK);
 
         // `취소 버튼` 텍스트
         let text = CANCEL_TEXTS[i];
-        let font_id = egui::FontId::new(24.0 * scale, main_font_family.clone());
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
         let cancel_text = egui::RichText::new(text)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(egui::Color32::BLACK);
 
         // 텍스트 입력기
         let mut input_changed = false;
-        let font_id = egui::FontId::new(24.0 * scale, main_font_family.clone());
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
         let editor = egui::TextEdit::singleline(&mut self.input_number)
             .font(font_id)
             .char_limit(8)
-            .text_color(egui::Color32::DARK_GRAY)
+            .min_size(egui::vec2(272.0 * scale, 52.0 * scale))
+            .text_color(egui::Color32::BLACK)
             .background_color(egui::Color32::LIGHT_GRAY);
 
         // 확인 버튼
         let mut requested = false;
         let okay_button = egui::Button::new(okay_text)
-            .fill(egui::Color32::LIGHT_GRAY)
             .corner_radius(3.0)
-            .min_size((128.0 * scale, 72.0 * scale).into());
+            .fill(egui::Color32::WHITE)
+            .min_size((128.0 * scale, 72.0 * scale).into())
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
 
         // 취소 버튼
         let cancel_button = egui::Button::new(cancel_text)
-            .fill(egui::Color32::LIGHT_GRAY)
-            .corner_radius(3.0)
-            .min_size((128.0 * scale, 72.0 * scale).into());
-
-        let frame = egui::Frame::new()
             .fill(egui::Color32::WHITE)
             .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::DARK_GRAY));
-        egui::Modal::new(egui::Id::new("Join_Custom"))
+            .min_size((128.0 * scale, 72.0 * scale).into())
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+
+        let frame = egui::Frame::new()
+            .corner_radius(3.0)
+            .fill(egui::Color32::WHITE)
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+        egui::Modal::new(egui::Id::new("Join_Custom_Modal"))
             .frame(frame)
             .show(app.egui_ctx(), |ui| {
                 ui.set_max_width(640.0 * scale);
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.label(head_text);
+                    ui.add(egui::Label::new(title).sense(egui::Sense::empty()));
                     ui.separator();
 
+                    ui.add_space(8.0 * scale);
+                    ui.add(egui::Label::new(info_text).sense(egui::Sense::empty()));
+                    ui.add_space(8.0 * scale);
                     ui.add_enabled_ui(self.input_enabled, |ui| {
-                        ui.add_space(16.0 * scale);
-
-                        if ui.add(editor).changed() {
+                        if ui
+                            .add_sized((272.0 * scale, 52.0 * scale), editor)
+                            .changed()
+                        {
                             input_changed = true;
                         }
-
-                        ui.add_space(16.0 * scale);
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(okay_button).clicked() {
-                                requested = true;
-                            }
-
-                            ui.add_space(16.0 * scale);
-
-                            if ui.add(cancel_button).clicked() {
-                                // 이전 게임 장면으로 복귀합니다.
-                                let scene_flow = GameSceneFlow::Pop;
-                                let event = AppEvent::AddGameSceneFlow(scene_flow);
-                                let event_loop_proxy = app.event_loop_proxy();
-                                event_loop_proxy.send_event(event).unwrap();
-                            };
-                        });
                     });
+                    ui.add_space(8.0 * scale);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.set_max_height(72.0 * scale);
+                        ui.add_space(16.0 * scale);
+                        if ui.add(okay_button).clicked() {
+                            requested = true;
+                        }
+
+                        if ui.add(cancel_button).clicked() {
+                            // 이전 게임 장면으로 복귀합니다.
+                            let scene_flow = GameSceneFlow::Pop;
+                            let event = AppEvent::AddGameSceneFlow(scene_flow);
+                            let event_loop_proxy = app.event_loop_proxy();
+                            event_loop_proxy.send_event(event).unwrap();
+                        };
+                    });
+                    ui.add_space(8.0 * scale);
                 });
             });
 

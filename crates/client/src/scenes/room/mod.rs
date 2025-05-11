@@ -24,7 +24,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-use super::{CharacterFormationScene, BASE_WIDTH};
+use super::{CharacterFormationScene, BASE_WIDTH, TEAM_COLOR};
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 대기실"];
@@ -208,12 +208,11 @@ impl GameScene for CustomGameRoomScene {
         let i = self.locale as usize;
 
         // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
 
         // Head 텍스트
         let text = format!("{} - {}", HEAD_TEXTS[i], self.world_id);
-        let font_id = egui::FontId::new(32.0 * scale, head_font_family.clone());
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(32.0 * scale, family);
         let head_text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::DARK_GRAY);
@@ -240,13 +239,14 @@ impl GameScene for CustomGameRoomScene {
             Permission::Admin => START_TEXTS[i],
             Permission::User => READY_TEXTS[i],
         };
-        let font_id = egui::FontId::new(48.0 * scale, head_font_family.clone());
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(48.0 * scale, family);
         let text = egui::RichText::new(text)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(egui::Color32::BLACK);
         let enter_button = egui::Button::new(text)
             .fill(button_color)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK))
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK))
             .corner_radius(1.5);
 
         // 나가기 버튼
@@ -254,7 +254,7 @@ impl GameScene for CustomGameRoomScene {
         let exit_button = egui::Button::new("X")
             .corner_radius(1.5)
             .fill(egui::Color32::WHITE)
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::DARK_GRAY));
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
 
         // 배경화면
         let source = self.bg_texture_id;
@@ -302,31 +302,32 @@ impl GameScene for CustomGameRoomScene {
                 ui.set_height(500.0 * scale);
 
                 ui.columns(2, |cols| {
-                    let font_id = egui::FontId::new(24.0 * scale, main_font_family);
+                    let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                    let font_id = egui::FontId::new(24.0 * scale, family);
                     let mut iter = self.players.iter();
                     for i in 0..MAX_IN_GAME_PLAYERS {
                         let ui = &mut cols[i % 2];
                         if let Some(player) = iter.next() {
                             let text = if player.account.uid == self.user_id {
-                                &format!("*{}", &player.account.name.to_string())
+                                &format!("*me* {}", &player.account.name.to_string())
                             } else {
                                 &player.account.name.to_string()
                             };
                             let text = egui::RichText::new(text)
                                 .font(font_id.clone())
-                                .color(egui::Color32::DARK_GRAY);
+                                .color(egui::Color32::BLACK);
                             let button = egui::Button::new(text)
                                 .corner_radius(1.0)
                                 .min_size((470.0 * scale, 80.0 * scale).into())
                                 .stroke(egui::Stroke::new(
-                                    3.0,
+                                    3.0 * scale,
                                     match player.team() {
                                         Team::Blue => match player.is_ready() {
-                                            true => egui::Color32::BLUE,
+                                            true => TEAM_COLOR[Team::Blue as usize],
                                             false => egui::Color32::DARK_BLUE,
                                         },
                                         Team::Red => match player.is_ready() {
-                                            true => egui::Color32::RED,
+                                            true => TEAM_COLOR[Team::Red as usize],
                                             false => egui::Color32::DARK_RED,
                                         },
                                     },
@@ -340,7 +341,7 @@ impl GameScene for CustomGameRoomScene {
                             let button = egui::Button::new("")
                                 .corner_radius(1.0)
                                 .min_size((470.0 * scale, 80.0 * scale).into())
-                                .stroke(egui::Stroke::new(3.0, egui::Color32::DARK_GRAY))
+                                .stroke(egui::Stroke::new(3.0 * scale, egui::Color32::DARK_GRAY))
                                 .fill(egui::Color32::LIGHT_GRAY);
                             ui.add(button);
                         }
