@@ -4,7 +4,12 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use winit::window::Window;
+use mod_network::protocol::RawPacket;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
     asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
@@ -15,7 +20,8 @@ use crate::{
 /// 애플리케이션 표시 언어에 따른 `확인 버튼` 텍스트입니다.
 const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
 
-pub struct MainLobbyMessageModalScene {
+/// 메시지를 출력하는 게임 장면입니다.
+pub struct MessageSceneLayer {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
 
@@ -23,10 +29,15 @@ pub struct MainLobbyMessageModalScene {
     title: String,
     /// 모달 대화상자의 내용 문자열입니다.
     message: String,
+
+    /// 버튼 눌림 여부입니다.
+    is_button_pressed: bool,
+    /// 입력 지연 시간입니다.
+    delay_time_sec: f32,
 }
 
-impl MainLobbyMessageModalScene {
-    /// 새로운 `MainLobbyMessageModalScene`을 생성합니다.
+impl MessageSceneLayer {
+    /// 새로운 `MessageSceneLayer`을 생성합니다.
     pub fn new<T, M>(locale: Locale, title: T, message: M) -> Self
     where
         T: Into<String>,
@@ -36,13 +47,23 @@ impl MainLobbyMessageModalScene {
             locale,
             title: title.into(),
             message: message.into(),
+            is_button_pressed: false,
+            delay_time_sec: 1.0,
         }
     }
 }
 
-impl GameScene for MainLobbyMessageModalScene {
+impl GameScene for MessageSceneLayer {
     fn transparents(&self) -> bool {
         true
+    }
+
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+        app.enable_cursor();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, _app: &dyn AppHandle) -> Option<RawPacket> {
+        Some(packet)
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -67,6 +88,34 @@ impl GameScene for MainLobbyMessageModalScene {
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_keyboard_released(
+        &mut self,
+        code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        repeat: bool,
+        _window: &Window,
+        _app: &dyn AppHandle,
+    ) -> bool {
+        if !repeat && self.delay_time_sec <= 0.0 {
+            if code == KeyCode::Enter {
+                self.is_button_pressed = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, app: &dyn AppHandle) {
+        self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
+        if self.is_button_pressed {
+            let scene_flow = GameSceneFlow::Pop;
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+        }
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {

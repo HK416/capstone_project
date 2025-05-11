@@ -16,11 +16,9 @@ use winit::window::Window;
 use crate::{
     asset::{TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::{CustomGameRoomScene, FatalErrorSceneLayer, BASE_WIDTH},
+    scenes::{CustomGameRoomScene, FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
-
-use super::MainLobbyMessageModalScene;
 
 /// 애플리케이션 표시 언어에 따른 타이틀 텍스트입니다.
 const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 참여"];
@@ -124,7 +122,7 @@ impl GameScene for MainLobbyJoinModalScene {
 
                 // 게임 장면을 변경합니다.
                 let i = self.locale as usize;
-                let next_scene = Box::new(MainLobbyMessageModalScene::new(
+                let next_scene = Box::new(MessageSceneLayer::new(
                     self.locale,
                     MSG_MODAL_TEXTS[i],
                     match packet.reason {

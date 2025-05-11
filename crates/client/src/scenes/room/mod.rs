@@ -24,7 +24,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-use super::{CharacterFormationScene, BASE_WIDTH, TEAM_COLOR};
+use super::{CharacterFormationScene, MessageSceneLayer, BASE_WIDTH, TEAM_COLOR};
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 대기실"];
@@ -32,6 +32,20 @@ const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 대기실"];
 const READY_TEXTS: [&'static str; NUM_LOCALE] = ["준비"];
 /// 애플리케이션 표시 언어에 따른 `시작 버튼` 텍스트
 const START_TEXTS: [&'static str; NUM_LOCALE] = ["시작"];
+
+/// 애플리케이션 표시 언어에 따른 오류 타이틀 텍스트
+const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const NOT_ENOUGH_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참여 인원이 적습니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const UNBALANCED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["두 팀의 인원이 다릅니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const PLAYER_NOT_READY_ERR_TEXTS: [&'static str; NUM_LOCALE] =
+    ["모든 플레이어가 준비되지 않았습니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const EMPTY_BLUE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["블루 팀 인원이 비어있습니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const EMPTY_RED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 비어있습니다"];
 
 /// 커스텀 게임 대기실 장면입니다.
 pub struct CustomGameRoomScene {
@@ -42,9 +56,6 @@ pub struct CustomGameRoomScene {
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
-    /// 게임 장면의 활성화 여부입니다.
-    is_active: bool,
-
     /// 커스텀 게임 대기실의 월드 식별자입니다.
     world_id: WorldId,
     /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.
@@ -52,6 +63,8 @@ pub struct CustomGameRoomScene {
 
     /// 배경화면 텍스처의 식별자입니다.
     bg_texture_id: egui::load::SizedTexture,
+    /// 다음 게임 장면 전환 여부입니다.
+    formation_packet: Option<FormationPullPacket>,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -85,13 +98,13 @@ impl CustomGameRoomScene {
             locale,
             user_id,
             token,
-            is_active: true,
             world_id,
             players: iter.into_iter().collect(),
             bg_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
+            formation_packet: None,
             texture_pool,
             texture_view_pool,
         }
@@ -128,7 +141,11 @@ impl GameScene for CustomGameRoomScene {
     }
 
     fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        self.is_active = true;
+        self.formation_packet = None;
+    }
+
+    fn on_pause(&mut self, _window: &Window, _app: &dyn AppHandle) {
+        self.formation_packet = None;
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -156,10 +173,6 @@ impl GameScene for CustomGameRoomScene {
     }
 
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
-        if !self.is_active {
-            return Some(packet);
-        }
-
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::CustomGamePull => {
@@ -167,28 +180,38 @@ impl GameScene for CustomGameRoomScene {
                 self.players = packet.players;
             }
             PacketType::FormationPull => {
-                let packet = FormationPullPacket::from_raw(packet);
+                self.formation_packet = Some(FormationPullPacket::from_raw(packet));
+            }
+            PacketType::CustomGameStartFailed => {
+                let packet = CustomGameStartFailedPacket::from_raw(packet);
 
                 // 다음 게임 장면으로 전환합니다.
-                self.is_active = false;
-                let next_scene = Box::new(CharacterFormationScene::new(
+                let i = self.locale as usize;
+                let next_scene = Box::new(MessageSceneLayer::new(
                     self.locale,
-                    self.user_id,
-                    self.token,
-                    self.texture_pool.clone(),
-                    self.texture_view_pool.clone(),
-                    packet.remaining_time,
-                    packet.players,
+                    ERR_TITLE_TEXTS[i],
+                    match packet.reason {
+                        mod_network::components::StartFailedReason::NotEnoughPlayers => {
+                            NOT_ENOUGH_ERR_TEXTS[i]
+                        }
+                        mod_network::components::StartFailedReason::UnbalancedTeams => {
+                            UNBALANCED_ERR_TEXTS[i]
+                        }
+                        mod_network::components::StartFailedReason::PlayersNotReady => {
+                            PLAYER_NOT_READY_ERR_TEXTS[i]
+                        }
+                        mod_network::components::StartFailedReason::EmptyBlueTeam => {
+                            EMPTY_BLUE_ERR_TEXTS[i]
+                        }
+                        mod_network::components::StartFailedReason::EmptyRedTeam => {
+                            EMPTY_RED_ERR_TEXTS[i]
+                        }
+                    },
                 ));
                 let scene_flow = GameSceneFlow::Push(next_scene);
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
-            }
-            PacketType::CustomGameStartFailed => {
-                let packet = CustomGameStartFailedPacket::from_raw(packet);
-                println!("{:?}", packet.reason);
-                // TODO : 오류 메시지 네비게이션 모달 띄우기
             }
             _ => {
                 log::warn!(
@@ -199,6 +222,24 @@ impl GameScene for CustomGameRoomScene {
         };
 
         None
+    }
+
+    fn on_update(&mut self, _: f32, _: &Window, app: &dyn AppHandle) {
+        if let Some(packet) = self.formation_packet.as_ref() {
+            let next_scene = Box::new(CharacterFormationScene::new(
+                self.locale,
+                self.user_id,
+                self.token,
+                self.texture_pool.clone(),
+                self.texture_view_pool.clone(),
+                packet.remaining_time,
+                packet.players.clone(),
+            ));
+            let scene_flow = GameSceneFlow::Push(next_scene);
+            let event = AppEvent::AddGameSceneFlow(scene_flow);
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+        }
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {

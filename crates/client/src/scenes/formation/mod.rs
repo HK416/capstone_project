@@ -23,7 +23,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-use super::{InGameLoadScene, BASE_WIDTH};
+use super::{InGameLoadScene, MessageSceneLayer, BASE_WIDTH};
 
 /// 애플리케이션 표시 언어에 따른 Title 텍스트
 const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 편성"];
@@ -31,6 +31,17 @@ const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 편성"];
 const TIMER_TEXTS: [&'static str; NUM_LOCALE] = ["남은 시간"];
 /// 애플리케이션 표시 언어에 따른 `캐릭터 선택` 텍스트
 const SELECT_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 선택"];
+
+/// 애플리케이션 표시 언어에 따른 오류 타이틀 텍스트
+const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const NOT_ENOUGH_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참여 인원이 적습니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const EMPTY_TEAM_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["한쪽 팀 인원이 비어있습니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const DUPLICATE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["이미 사용중인 캐릭터입니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const BANNED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["사용이 금지된 캐릭터입니다"];
 
 /// 인 게임 장면에 진입하기 전 캐릭터를 편성하는 장면입니다.  
 pub struct CharacterFormationScene {
@@ -150,10 +161,30 @@ impl GameScene for CharacterFormationScene {
                 match packet.result {
                     SelectResult::Success => self.is_selected = true,
                     SelectResult::Duplicates => {
-                        // TODO : 오류 메시지 네비게이션 모달 띄우기
+                        // 다음 게임 장면으로 전환합니다.
+                        let i = self.locale as usize;
+                        let next_scene = Box::new(MessageSceneLayer::new(
+                            self.locale,
+                            ERR_TITLE_TEXTS[i],
+                            DUPLICATE_ERR_TEXTS[i],
+                        ));
+                        let scene_flow = GameSceneFlow::Push(next_scene);
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
                     }
                     SelectResult::Banned => {
-                        // TODO : 오류 메시지 네비게이션 모달 띄우기
+                        // 다음 게임 장면으로 전환합니다.
+                        let i = self.locale as usize;
+                        let next_scene = Box::new(MessageSceneLayer::new(
+                            self.locale,
+                            ERR_TITLE_TEXTS[i],
+                            BANNED_ERR_TEXTS[i],
+                        ));
+                        let scene_flow = GameSceneFlow::Push(next_scene);
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
                     }
                 }
             }
@@ -163,21 +194,41 @@ impl GameScene for CharacterFormationScene {
                 self.players = packet.players;
             }
             PacketType::GamePlayStop => {
-                let packet = GamePlayStopPacket::from_raw(packet);
-                match packet.reason {
-                    GamePlayStopReason::NotEnughPlayers => {
-                        // TODO : 오류 메시지 모달 띄우기
-                    }
-                    GamePlayStopReason::OneTeamEmpty => {
-                        // TODO: 오류 메시지 모달 띄우기
-                    }
-                };
-
                 // 게임 장면을 변경합니다.
                 let scene_flow = GameSceneFlow::Pop;
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                let packet = GamePlayStopPacket::from_raw(packet);
+                match packet.reason {
+                    GamePlayStopReason::NotEnughPlayers => {
+                        // 다음 게임 장면으로 전환합니다.
+                        let i = self.locale as usize;
+                        let next_scene = Box::new(MessageSceneLayer::new(
+                            self.locale,
+                            ERR_TITLE_TEXTS[i],
+                            NOT_ENOUGH_ERR_TEXTS[i],
+                        ));
+                        let scene_flow = GameSceneFlow::Push(next_scene);
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
+                    }
+                    GamePlayStopReason::OneTeamEmpty => {
+                        // 다음 게임 장면으로 전환합니다.
+                        let i = self.locale as usize;
+                        let next_scene = Box::new(MessageSceneLayer::new(
+                            self.locale,
+                            ERR_TITLE_TEXTS[i],
+                            EMPTY_TEAM_ERR_TEXTS[i],
+                        ));
+                        let scene_flow = GameSceneFlow::Push(next_scene);
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
+                    }
+                };
             }
             PacketType::InitStage => {
                 let packet = InitStagePacket::from_raw(packet);

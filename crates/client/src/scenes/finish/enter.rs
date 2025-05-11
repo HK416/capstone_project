@@ -23,7 +23,7 @@ use winit::window::Window;
 use crate::{
     asset::{
         MotionPool, FIELD_DECO_00_URI, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD,
-        SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, compute_cascade_splits, compute_frustum_corners_no_inverse,
@@ -2202,61 +2202,30 @@ impl InGameResultEnterScene {
         let t = 1.0 - delta * delta * (3.0 - 2.0 * delta);
         let x = BEG_X * (1.0 - t) + END_X * t;
 
-        // 현재 스킬 코스트를 가져옵니다.
-        let entity = self.get_player_entity();
-        let world = self.world.as_mut().unwrap();
-        let ex_skill_cost = world
-            .query_one_mut::<&ExSkillCost>(entity)
-            .expect("invalid entity or invalid entity component");
-        let percent = ex_skill_cost.percent();
-        let full_capacity = percent == 1.0;
-
         // 무기 아이콘을 가져옵니다.
-        let weapon_icon_mask = self
-            .ui_textures
-            .get(WEAPON_ICON_MASK_URI)
-            .cloned()
-            .expect("the Weapon_Icon_Mask must exist!");
         let weapon_icon = self
             .ui_textures
             .get(WEAPON_ICON_URI)
             .cloned()
             .expect("the Weapon_Icon must exist!");
 
-        // 무기 아이콘 마스킹
-        // - 기준 가로 크기: 212
-        // - 기준 시작 위치: (1034, 584)
-        // - 기준 종료 위치: (1246, 212 / image_ratio)
-        let mut image_ratio = weapon_icon_mask.size.x / weapon_icon_mask.size.y;
-        let mut width = 212.0;
-        let mut height = width / image_ratio;
-        let mut beg_x = (x - (1280.0 - 1034.0)) * scale;
-        let mut beg_y = 584.0 * scale;
-        let mut end_x = (x - (1280.0 - 1246.0)) * scale;
-        let mut end_y = beg_y + height * scale;
-        let icon_mask_rect =
-            egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(end_x, end_y));
-
         // 무기 아이콘
         // - 기준 가로 크기: 200
         // - 기준 시작 위치: (1040, 590)
         // - 기준 종료 위치: (1240, 200 / image_ratio)
         //
-        image_ratio = weapon_icon.size.x / weapon_icon.size.y;
-        width = 200.0;
-        height = width / image_ratio;
-        beg_x = (x - (1280.0 - 1040.0)) * scale;
-        beg_y = 590.0 * scale;
-        end_x = (x - (1280.0 - 1240.0)) * scale;
-        end_y = beg_y + height * scale;
+        let image_ratio = weapon_icon.size.x / weapon_icon.size.y;
+        let width = 200.0;
+        let height = width / image_ratio;
+        let beg_x = (x - (1280.0 - 1040.0)) * scale;
+        let beg_y = 590.0 * scale;
+        let end_x = (x - (1280.0 - 1240.0)) * scale;
+        let end_y = beg_y + height * scale;
         let icon_rect =
             egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(end_x, end_y));
 
         egui::Area::new(egui::Id::new("Weapon_Icon_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(weapon_icon_mask).paint_at(ui, icon_mask_rect);
-            if full_capacity {
-                egui::Image::new(weapon_icon).paint_at(ui, icon_rect);
-            }
+            egui::Image::new(weapon_icon).paint_at(ui, icon_rect);
         });
     }
 }

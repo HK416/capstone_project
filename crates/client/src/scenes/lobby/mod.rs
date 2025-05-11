@@ -1,6 +1,5 @@
 mod enter;
 mod join_modal;
-mod msg_modal;
 
 use mod_app::{
     app::AppHandle,
@@ -23,7 +22,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-pub use self::{enter::*, join_modal::*, msg_modal::*};
+pub use self::{enter::*, join_modal::*};
 
 use super::{CustomGameRoomScene, BASE_WIDTH};
 
