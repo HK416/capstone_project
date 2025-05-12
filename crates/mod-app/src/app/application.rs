@@ -227,7 +227,10 @@ impl Application {
         self.queue.submit(commands);
 
         // 이전 렌더링 작업이 끝날때 까지 대기합니다.
-        self.device.poll(wgpu::Maintain::Wait);
+        while !self.device.poll(wgpu::Maintain::Poll).is_queue_empty() {
+            std::hint::spin_loop();
+            std::thread::yield_now();
+        }
 
         // 현재 프레임 버퍼를 가져옵니다.
         let frame = match surface.get_current_texture() {
