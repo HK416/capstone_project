@@ -60,13 +60,6 @@ impl SessionInGameState {
             return;
         }
 
-        use mod_network::components::UserId;
-        if user_id == UserId::new(1) {
-            for _ in 0..1_000_000 {
-                std::hint::spin_loop();
-            }
-        }
-
         let world = self.world.as_ref().unwrap();
         if let Some(world) = world.upgrade() {
             if !world.access_mut(session, |player| {
