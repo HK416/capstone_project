@@ -119,7 +119,8 @@ impl SessionState for SessionFormationState {
     fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
             // 세션 상태가 실행 중이 아닌 경우 스킵합니다
-            if !self.is_running {
+            // 취소된 패킷의 경우 스킵합니다.
+            if !self.is_running && session.packet_canceled() {
                 continue;
             }
 

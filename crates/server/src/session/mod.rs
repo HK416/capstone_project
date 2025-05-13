@@ -25,6 +25,9 @@ use tokio::{
 
 pub use self::{event::*, pool::*, state::*};
 
+/// 수신된 패킷 데이터 대기열의 최대 용량입니다.
+pub const MAX_QUEUE_CAPACITY: usize = 64;
+
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
@@ -38,6 +41,8 @@ pub struct Session {
     udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>,
     /// 수신된 패킷 데이터 대기열
     received_packets: Queue<RawPacket>,
+    /// 수신된 패킷의 버림 여부
+    cancel_token: AtomicBool,
 
     /// 세션 이벤트 대기열입니다.
     events: Queue<SessionEvents>,
@@ -54,6 +59,7 @@ impl Session {
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
+            cancel_token: AtomicBool::new(false),
             events: Queue::new(),
             running: AtomicBool::new(true),
         }
@@ -104,6 +110,11 @@ impl Session {
     pub fn push_event(&self, event: SessionEvents) {
         self.events.push(event);
     }
+
+    /// 수신된 패킷의 처리가 취소됐는지 여부를 반환합니다.
+    pub fn packet_canceled(&self) -> bool {
+        self.cancel_token.load(MemOrdering::Acquire)
+    }
 }
 
 impl fmt::Display for Session {
@@ -148,7 +159,7 @@ pub async fn handle_connection(stream: TcpStream, session: Arc<Session>) {
     tokio::spawn(tcp_write_loop(tcp_writer, session.clone()));
 
     // 네트워크 패킷 처리 루프를 실행합니다.
-    SessionStateManager::new(&session).run().await;
+    SessionStateManager::new(session.clone()).run().await;
 
     log::info!("{} connection closed.", &session);
 }
@@ -193,6 +204,17 @@ async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
         // 패킷 구문 분석 및 대기열에 추가.
         while let Some(packet) = packet_parser.pop() {
             log::trace!("{} packet received (PACKET:{:?})", &session, &packet);
+
+            // 수신된 패킷 데이터가 가득찼는지 확인합니다.
+            if session.received_packets.len() > MAX_QUEUE_CAPACITY {
+                log::warn!("the number of received packets exceeded the allowed capacity!");
+                session.cancel_token.store(true, MemOrdering::Release);
+                while let Some(_) = session.received_packets.pop() {
+                    std::hint::spin_loop();
+                }
+                session.cancel_token.store(false, MemOrdering::Release);
+            }
+
             session.received_packets.push(packet);
         }
 
@@ -209,6 +231,7 @@ async fn tcp_write_loop(mut tcp_writer: OwnedWriteHalf, session: Arc<Session>) {
             if !session.is_running() {
                 return;
             }
+
             // 소켓에 데이터를 작성한다.
             let bytes = packet.as_bytes();
             let result = tcp_writer.write_all(&bytes).await;

@@ -147,6 +147,11 @@ impl SessionLobbyState {
 impl SessionState for SessionLobbyState {
     fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
+            // 취소된 패킷의 경우 스킵합니다.
+            if session.packet_canceled() {
+                continue;
+            }
+
             let packet_type = packet.packet_type();
             match packet_type {
                 PacketType::CustomGameJoinRequest => {

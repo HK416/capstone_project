@@ -60,6 +60,13 @@ impl SessionInGameState {
             return;
         }
 
+        use mod_network::components::UserId;
+        if user_id == UserId::new(1) {
+            for _ in 0..1_000_000 {
+                std::hint::spin_loop();
+            }
+        }
+
         let world = self.world.as_ref().unwrap();
         if let Some(world) = world.upgrade() {
             if !world.access_mut(session, |player| {
@@ -108,7 +115,8 @@ impl SessionState for SessionInGameState {
     fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
             // 세션 상태가 실행 중이 아닌 경우 스킵합니다
-            if !self.is_running {
+            // 취소된 패킷의 경우 스킵합니다.
+            if !self.is_running && session.packet_canceled() {
                 continue;
             }
 
