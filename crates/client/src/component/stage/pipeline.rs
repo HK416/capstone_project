@@ -3,7 +3,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::component::{CameraResource, MeshResource, StageMaterialResource};
+use crate::component::{
+    CameraResource, LightSetResource, MeshResource, ShadowResource, StageMaterialResource,
+};
 
 /// 쉐이더 모듈을 생성합니다.
 fn create_shadoer_module(device: &wgpu::Device) -> &'static wgpu::ShaderModule {
@@ -37,6 +39,7 @@ impl StageRenderPipeline {
                 CameraResource::bind_group_layout(device),
                 MeshResource::bind_group_layout(device),
                 StageMaterialResource::bind_group_layout(device),
+                LightSetResource::bind_group_layout(device),
             ],
             push_constant_ranges: &[],
         })
@@ -127,6 +130,109 @@ impl StageRenderPipeline {
                                 write_mask: wgpu::ColorWrites::ALL,
                             })],
                         }),
+                        multiview: None,
+                        cache: None,
+                    }),
+                )
+            })
+            .clone()
+    }
+}
+
+/// 지형의 그림자를 생성하는 파이프라인입니다.
+pub struct StageBakePipeline;
+
+/// 지형의 그림자를 생성하는 그래픽스 파이프라인 인스턴스입니다.
+static BAKE_PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
+
+impl StageBakePipeline {
+    /// [wgpu::ShaderModule]을 반환합니다.
+    fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
+        unsafe {
+            let desc = wgpu::include_wgsl!(concat!(
+                env!("CARGO_WORKSPACE_DIR"),
+                "/assets/shaders/stage_bake.wgsl"
+            ));
+
+            if cfg!(feature = "enable-shader-validation") {
+                device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::checked())
+            } else {
+                device.create_shader_module_trusted(desc, wgpu::ShaderRuntimeChecks::unchecked())
+            }
+        }
+    }
+
+    /// [wgpu::PipelineLayout]을 반환합니다.
+    fn get_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("PipelineLayout(Bake(Stage))"),
+            bind_group_layouts: &[
+                ShadowResource::bind_group_layout(device),
+                MeshResource::bind_group_layout(device),
+            ],
+            push_constant_ranges: &[],
+        })
+    }
+
+    /// 렌더링 파이프라인을 가져옵니다.  
+    /// 렌더링 파이프라인이 초기화되지 않은 상태일 경우 `None`을 반환합니다.
+    pub fn get() -> Option<Arc<wgpu::RenderPipeline>> {
+        BAKE_PIPELINE.get().cloned()
+    }
+
+    /// 렌더링 파이프라인을 가져오거나 초기화합니다.
+    pub fn get_or_init(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) -> Arc<wgpu::RenderPipeline> {
+        BAKE_PIPELINE
+            .get_or_init(|| {
+                let module = Self::create_shader_module(device);
+                let layout = Self::get_pipeline_layout(device);
+                Arc::new(
+                    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                        label: Some("RenderPipeline(Bake(Stage))"),
+                        layout: Some(&layout),
+                        vertex: wgpu::VertexState {
+                            module: &module,
+                            entry_point: Some("vs_bake"),
+                            buffers: &[
+                                // 0번 입력 속성: 위치
+                                wgpu::VertexBufferLayout {
+                                    array_stride: core::mem::size_of::<[f32; 3]>()
+                                        as wgpu::BufferAddress,
+                                    attributes: &[wgpu::VertexAttribute {
+                                        offset: 0,
+                                        shader_location: 0,
+                                        format: wgpu::VertexFormat::Float32x3,
+                                    }],
+                                    step_mode: wgpu::VertexStepMode::Vertex,
+                                },
+                            ],
+                            compilation_options: wgpu::PipelineCompilationOptions {
+                                ..Default::default()
+                            },
+                        },
+                        primitive: wgpu::PrimitiveState {
+                            cull_mode: Some(wgpu::Face::Back),
+                            front_face: wgpu::FrontFace::Ccw,
+                            topology: wgpu::PrimitiveTopology::TriangleList,
+                            polygon_mode: wgpu::PolygonMode::Fill,
+                            ..Default::default()
+                        },
+                        depth_stencil: Some(wgpu::DepthStencilState {
+                            depth_compare: wgpu::CompareFunction::LessEqual,
+                            depth_write_enabled: true,
+                            format,
+                            stencil: wgpu::StencilState::default(),
+                            bias: wgpu::DepthBiasState {
+                                constant: 2,
+                                slope_scale: 2.0,
+                                clamp: 0.0,
+                            },
+                        }),
+                        multisample: wgpu::MultisampleState::default(),
+                        fragment: None,
                         multiview: None,
                         cache: None,
                     }),

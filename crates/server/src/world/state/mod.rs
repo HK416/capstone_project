@@ -46,6 +46,6 @@ pub trait GameWorldState: fmt::Debug + Send {
 
     /// 다른 작업을 수행할 수 있도록 양보합니다.
     fn yield_now(&self) -> Duration {
-        Duration::from_millis(4)
+        Duration::from_millis(5) // FIXME: 추후 32로 늘려야 함!
     }
 }

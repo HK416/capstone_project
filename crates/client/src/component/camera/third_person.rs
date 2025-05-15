@@ -29,12 +29,16 @@ impl ThirdPersonCamera {
     pub fn rotate(&mut self, dx: f32, dy: f32, offset: f32) {
         use core::f32::consts::TAU;
 
+        // Fov-y에 따른 카메라 이동 속도를 조절합니다.
+        const RANGE: f32 = 90f32.to_radians();
+        let speed = 0.1 + 0.9 * (self.fov_y / RANGE).min(1.0);
+
         // 삼인칭 카메라가 바라보는 방향을 갱신합니다.
-        let angle = (dx * offset).to_radians();
+        let angle = (dx * offset * speed).to_radians();
         self.rotation.lon = (self.rotation.lon + angle) % TAU;
 
         // 삼인칭 카메라의 바라보는 각도를 갱신합니다.
-        let angle = (dy * offset).to_radians();
+        let angle = (dy * offset * speed).to_radians();
         self.rotation.lat =
             (self.rotation.lat + angle).clamp(LatLon::MIN_LATITUDE, LatLon::MAX_LATITUDE);
     }

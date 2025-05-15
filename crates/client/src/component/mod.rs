@@ -8,7 +8,6 @@ mod hierarchy;
 mod light;
 mod material;
 mod mesh;
-mod shadow;
 mod skybox;
 mod stage;
 mod transform;
@@ -20,8 +19,7 @@ use ahash::HashMap;
 
 pub use self::{
     bullet::*, camera::*, capture_zone::*, character::*, control::*, damage_font::*, hierarchy::*,
-    light::*, material::*, mesh::*, shadow::*, skybox::*, stage::*, transform::*,
-    weighted_blended_oit::*,
+    light::*, material::*, mesh::*, skybox::*, stage::*, transform::*, weighted_blended_oit::*,
 };
 
 pub enum MeshFilter {
@@ -38,6 +36,7 @@ impl MeshFilter {
     }
 }
 
+pub type BakeList = Vec<ShadowResource>;
 pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter)>>;
 pub type OpaqueMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter, MaterialResource)>>;
 pub type TransparentMap =

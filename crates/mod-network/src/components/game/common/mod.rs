@@ -33,6 +33,14 @@ impl Team {
             }
         }
     }
+
+    /// 상대방 팀을 반환합니다.
+    pub fn opponent(&self) -> Self {
+        match self {
+            Team::Blue => Team::Red,
+            Team::Red => Team::Blue,
+        }
+    }
 }
 
 impl BigEndian for Team {

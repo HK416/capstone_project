@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 use ahash::HashMap;
 use lazy_static::lazy_static;
 use mod_network::components::{
-    LatLon, MAX_IN_GAME_PLAYERS, NUM_STAGES, StageHeight, StageKind, StageLayoutData,
+    LatLon, MAX_IN_GAME_PLAYERS, NUM_STAGES, StageHeight, StageKind, StageLayoutData, Team,
 };
 use mod_physics::collision::ColliderTree;
 
@@ -43,8 +43,12 @@ pub struct StageAttributes {
     pub colliders: ColliderTree,
     /// 블루 팀 스폰 데이터입니다.
     pub blue_team_spawn: Spawn,
+    /// 블루 팀 안전구역(Area) 인덱스입니다.  
+    pub blue_safe_area: [usize; 2],
     /// 레드 팀 스폰 데이터입니다.
     pub red_team_spawn: Spawn,
+    /// 레드 팀 안전구역(Area) 인덱스입니다.
+    pub red_safe_area: [usize; 2],
 }
 
 /// 지형의 스폰 데이터입니다.
@@ -150,6 +154,7 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
     };
     let blue_team_spawn = Spawn { pos, dir, view_dir };
+    let blue_safe_area = [6, 6];
 
     // 레드 팀 스폰 데이터를 생성합니다.
     let pos: [glam::Vec3A; MAX_IN_GAME_PLAYERS / 2] = stage_layout
@@ -166,6 +171,7 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
     };
     let red_team_spawn = Spawn { pos, dir, view_dir };
+    let red_safe_area = [2, 2];
 
     let path = format!("{}/collider.json", workspace);
     let mut file = File::open(&path)
@@ -189,7 +195,9 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         area,
         colliders,
         blue_team_spawn,
+        blue_safe_area,
         red_team_spawn,
+        red_safe_area,
     }
 }
 
@@ -250,7 +258,7 @@ pub fn get_stage_height(kind: StageKind, x: f32, z: f32) -> Option<f32> {
 }
 
 /// 주어진 좌표가 유효한지 확인합니다.
-pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
+pub fn is_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
     let stage = get_stage_attributes(kind);
     let n = stage.num_width;
     let m = stage.num_depth;
@@ -259,20 +267,52 @@ pub fn is_valid_position(kind: StageKind, x: f32, z: f32) -> bool {
     let i = x.floor() as usize;
     let j = z.floor() as usize;
 
-    if x < 0.0 && i < n && z < 0.0 && j < m {
-        stage.area[i][j].is_some()
+    if x > 0.0 && i < n && z > 0.0 && j < m {
+        if stage.area[i][j].is_some() {
+            // 다른팀의 안전구역이면 invalid
+            match team {
+                Team::Blue => [i, j] != stage.red_safe_area,
+                Team::Red => [i, j] != stage.blue_safe_area,
+            }
+        } else {
+            false
+        }
     } else {
         false
     }
 }
 
-pub fn get_nearest_valid_position(kind: StageKind, x: f32, z: f32) -> (f32, f32) {
+pub fn is_safe_area(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
+    let stage = get_stage_attributes(kind);
+    let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
+    let z = (z + 0.5 * stage.size.y) / stage.area_size.y;
+    let i = x.floor() as usize;
+    let j = z.floor() as usize;
+
+    let safe_area = match team {
+        Team::Blue => stage.blue_safe_area,
+        Team::Red => stage.red_safe_area,
+    };
+
+    [i, j] == safe_area
+}
+
+pub fn get_nearest_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> (f32, f32) {
     let stage = get_stage_attributes(kind);
     let mut min_distance_position = (x, z);
     let mut min_distance = f32::MAX;
     for row in 0..stage.num_depth {
         for col in 0..stage.num_width {
             if let Some(area) = &stage.area[row][col] {
+                let opponent_safe_area = match team {
+                    Team::Blue => stage.red_safe_area,
+                    Team::Red => stage.blue_safe_area,
+                };
+                // 다른팀의 안전구역이면 continue
+                if [row, col] == opponent_safe_area {
+                    continue;
+                }
+
                 let min_x = area.translation.x - 0.5 * stage.area_size.x;
                 let max_x = area.translation.x + 0.5 * stage.area_size.x;
                 let min_z = area.translation.z - 0.5 * stage.area_size.y;

@@ -14,9 +14,9 @@ use crate::session::Session;
 use super::GameWorld;
 
 /// 최대 게임 월드의 개수입니다.
-const MAX_GAME_WORLDS: usize = 1_000_000;
+const MAX_GAME_WORLDS: usize = 10;
 /// 초기화시 생성되는 게임 월드의 개수입니다.
-const INIT_GAME_WORLDS: usize = 50;
+const INIT_GAME_WORLDS: usize = 5;
 static_assertions::const_assert!(INIT_GAME_WORLDS < MAX_GAME_WORLDS);
 
 /// 생성된 게임 월드를 관리하는 풀 객체입니다.
@@ -55,7 +55,7 @@ fn generate_id() -> Option<WorldId> {
         let val = (time_bitfield << 12 | counter_bitfield) % (MAX_GAME_WORLDS as u32);
         let id = WorldId::new(val);
 
-        if !get_pool().contains_key(&id) {
+        if id != WorldId::NULL && !get_pool().contains_key(&id) {
             return Some(id);
         }
     }

@@ -2,14 +2,14 @@
 //!
 
 use windows::Win32::{
-    Foundation::{POINT, RECT},
+    Foundation::{HWND, POINT, RECT},
     Graphics::Gdi::ClientToScreen,
-    UI::{
-        Input::KeyboardAndMouse::GetActiveWindow,
-        WindowsAndMessaging::{ClipCursor, GetClientRect},
-    },
+    UI::WindowsAndMessaging::{ClipCursor, GetClientRect},
 };
-use winit::window::Window;
+use winit::{
+    raw_window_handle::{HasWindowHandle, RawWindowHandle},
+    window::Window,
+};
 
 use super::AppWindowExt;
 
@@ -17,7 +17,11 @@ impl AppWindowExt for Window {
     #[allow(unused_must_use)]
     fn confine_cursor_to_window(&self, confine: bool) {
         unsafe {
-            let hwnd = GetActiveWindow();
+            let handle = self.window_handle().unwrap();
+            let hwnd = match handle.as_raw() {
+                RawWindowHandle::Win32(win32) => HWND(win32.hwnd.get() as *mut _),
+                _ => panic!("no supported platform!"),
+            };
             let mut rect = RECT::default();
             if confine && GetClientRect(hwnd, &mut rect).is_ok() {
                 let mut top_left = POINT {

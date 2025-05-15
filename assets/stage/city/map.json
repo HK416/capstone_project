@@ -24,7 +24,10 @@
         "City_Plane_02", 
         "City_Plane_03",
         "City_Plane_04",
-        "City_Plane_05"
+        "City_Plane_05",
+        "City_Prop_Fence_00",
+        "City_Prop_Fence_01",
+        "City_Prop_Fence_Base_00"
     ],
     "area": [
         {
@@ -609,19 +612,19 @@
             "model" : "City_Building_02",
             "scale" : { "x": 1, "y": 1, "z": 1 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
-            "translation" : { "x": 36.5, "y": 0.25, "z": 33.3 }
+            "translation" : { "x": 36.5, "y": 0.25, "z": 33.55 }
         },
         {
             "model" : "City_Building_15",
             "scale" : { "x": 2, "y": 1.5, "z": 1.5 },
             "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
-            "translation" : { "x": 44, "y": -3.25, "z": 33.85 }
+            "translation" : { "x": 44, "y": -3.25, "z": 34 }
         },
         {
             "model" : "City_Building_14",
             "scale" : { "x": 1, "y": 1, "z": 1 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
-            "translation" : { "x": 35.75, "y": 0.25, "z": 23.5 }
+            "translation" : { "x": 35.75, "y": 0.25, "z": 23.6 }
         },
         {
             "model" : "City_Building_15",
@@ -766,6 +769,315 @@
             "scale" : { "x": 1, "y": 1, "z": 1 },
             "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
             "translation" : { "x": -23.35, "y": 0.25, "z": 23 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 23, "y": 0.25, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 23, "y": 2.395, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 34, "y": 0.25, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 34, "y": 2.395, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 25.8, "y": 0.1, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.2, "y": 0.9, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 27.7, "y": 0.1, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.2, "y": 1.1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 29.9, "y": 0.1, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 32.1, "y": 0.1, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 27.7, "y": 0, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 29.9, "y": 0, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 32.1, "y": 0, "z": 37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": -22.75, "y": 0.25, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": -22.75, "y": 2.395, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": -34, "y": 0.25, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": -34, "y": 2.395, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -27.4, "y": 0.1, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.2, "y": 0.9, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -29.65, "y": 0.1, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.2, "y": 1.1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -31.85, "y": 0.1, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -33.9, "y": 0.1, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -27.4, "y": 0.1, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -29.65, "y": 0.1, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -31.85, "y": 0.1, "z": -37.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 36.6, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 2, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 33.78, "y": 0, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 2, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 30.925, "y": 0, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 2, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 28.075, "y": 0, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 25.235, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": 22.425, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": 36.6, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": 33.75, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": 30.9, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": 28.05, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 1, "z": 0, "w": 0 },
+            "translation" : { "x": 25.2, "y": 0.25, "z": -7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.1, "y": 0.5, "z": 1 },
+            "rotation" : { "x": 0, "y": 0.7071068, "z": 0, "w": 0.7071068 },
+            "translation" : { "x": 22.5, "y": 0.25, "z": -7.8 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.1, "y": 0.5, "z": 1 },
+            "rotation" : { "x": 0, "y": -0.7071068, "z": 0, "w": 0.7071068 },
+            "translation" : { "x": 22.5, "y": 0.25, "z": -11.875 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -36.6, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 2, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -33.78, "y": 0, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 2, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -30.925, "y": 0, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 2, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -28.075, "y": 0, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -25.235, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_Base_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -22.425, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -36.6, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -33.75, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -30.9, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -28.05, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_00",
+            "scale" : { "x": 1, "y": 1, "z": 1 },
+            "rotation" : { "x": 0, "y": 0, "z": 0, "w": 1 },
+            "translation" : { "x": -25.2, "y": 0.25, "z": 7.5 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.1, "y": 0.5, "z": 1 },
+            "rotation" : { "x": 0, "y": -0.7071068, "z": 0, "w": 0.7071068 },
+            "translation" : { "x": -22.5, "y": 0.25, "z": 7.8 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.1, "y": 0.5, "z": 1 },
+            "rotation" : { "x": 0, "y": -0.7071068, "z": 0, "w": 0.7071068 },
+            "translation" : { "x": -22.5, "y": 0.25, "z": 9.8 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.1, "y": 0.5, "z": 1 },
+            "rotation" : { "x": 0, "y": -0.7071068, "z": 0, "w": 0.7071068 },
+            "translation" : { "x": -22.5, "y": 0.25, "z": 11.82 }
+        },
+        {
+            "model" : "City_Prop_Fence_01",
+            "scale" : { "x": 1.1, "y": 0.5, "z": 1 },
+            "rotation" : { "x": 0, "y": -0.7071068, "z": 0, "w": 0.7071068 },
+            "translation" : { "x": -22.5, "y": 0.25, "z": 13.85 }
+        }
+    ],
+    "lights": [
+        { 
+            "Directional" : { 
+                "label": "Main",
+                "direction": { "x": 0.174, "y": -0.925, "z": -0.337 },
+                "color": { "x": 1, "y": 1, "z": 0.9411764706 }
+            } 
         }
     ],
     "blue_spawn_pos": [

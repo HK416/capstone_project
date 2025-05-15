@@ -59,11 +59,12 @@ impl SessionFinishState {
 impl SessionState for SessionFinishState {
     fn handle_packets(&mut self, session: &Arc<Session>) {
         while let Some(packet) = session.received_packets.pop() {
-            // 세션 상태가 실행 중이 아닌 경우 함수 실행을 생략합니다.
-            if !self.is_running {
-                return;
+            // 세션 상태가 실행 중이 아닌 경우 스킵합니다
+            // 취소된 패킷의 경우 스킵합니다.
+            if !self.is_running && session.packet_canceled() {
+                continue;
             }
-
+            
             let packet_type = packet.packet_type();
             match packet_type {
                 PacketType::FinishStageResponse => {

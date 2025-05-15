@@ -77,6 +77,8 @@ pub struct StageLayoutData {
     pub area: Vec<StageAreaData>,
     /// 게임 월드 스테이지 소품 데이터입니다.
     pub props: Vec<StagePropData>,
+    /// 게임 월드 스테이지 조명 데이터입니다.
+    pub lights: Vec<StageLightData>,
     /// 블루 팀 스폰 위치입니다.
     pub blue_spawn_pos: Vec<Float3>,
     /// 블루 팀 스폰 방향입니다.
@@ -103,6 +105,19 @@ pub struct StagePropData {
     pub scale: Float3,
     pub translation: Float3,
     pub rotation: Float4,
+}
+
+/// 게임 월드 스테이지를 구성하는 조명 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum StageLightData {
+    Directional(DirectionalLight),
+}
+
+/// Direction Light 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DirectionalLight {
+    pub direction: Float3,
+    pub color: Float3,
 }
 
 /// 게임 월드 스테이지의 높이 데이터입니다.

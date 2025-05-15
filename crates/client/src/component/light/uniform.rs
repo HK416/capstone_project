@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! 조명 데이터 유니폼 버퍼와 관련된 코드를 관리합니다.
 //!
 
@@ -6,37 +7,31 @@ use std::{num::NonZeroU64, ops::RangeBounds, sync::Arc};
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
-/// 조명 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
+use super::{MAX_LIGHTS, NUM_CASCADES};
+
+/// 조명 변환 행렬의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-pub struct LightDataLayout {
+pub struct LightTransformDataLayout {
     pub proj_view: [f32; 16],
-    pub position_w: [f32; 3],
-    pub _padding0: [u8; 4],
-    pub color: [f32; 3],
-    pub _padding1: [u8; 4],
 }
 
-impl Default for LightDataLayout {
+impl Default for LightTransformDataLayout {
     fn default() -> Self {
         Self {
             proj_view: [0.0; 16],
-            position_w: [0.0; 3],
-            _padding0: [0; 4],
-            color: [0.0; 3],
-            _padding1: [0; 4],
         }
     }
 }
 
-/// 조명 유니폼 버퍼입니다.
+/// 조명 변환 행렬 데이터 유니폼 버퍼입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LightUniform(Arc<wgpu::Buffer>);
+pub struct LightTransformUniform(wgpu::Buffer);
 
-impl LightUniform {
+impl LightTransformUniform {
     /// 유니폼 버퍼의 크기입니다.
     pub const SIZE: wgpu::BufferAddress =
-        core::mem::size_of::<LightDataLayout>() as wgpu::BufferAddress;
+        core::mem::size_of::<LightTransformDataLayout>() as wgpu::BufferAddress;
 
     /// 유니폼 버퍼의 [wgpu::BufferUsages]입니다.
     pub const USAGES: wgpu::BufferUsages = wgpu::BufferUsages::UNIFORM
@@ -61,24 +56,24 @@ impl LightUniform {
     }
 
     /// 새로운 유니폼 버퍼를 생성합니다.
-    pub fn new(label: Option<&str>, device: &wgpu::Device, data: LightDataLayout) -> Self {
-        Self(Arc::new(device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
+    pub fn new(label: Option<&str>, device: &wgpu::Device, data: LocalLightDataLayout) -> Self {
+        Self(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
                 contents: bytemuck::bytes_of(&data),
                 usage: Self::USAGES,
-            },
-        )))
+            }),
+        )
     }
 
     /// 초기화되지 않은 새로운 유니폼 버퍼를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
-        Self(Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+        Self(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
             mapped_at_creation: false,
             size: Self::SIZE,
             usage: Self::USAGES,
-        })))
+        }))
     }
 
     /// 유니폼 버퍼를 갱신합니다.
@@ -88,7 +83,7 @@ impl LightUniform {
         _device: &wgpu::Device,
         _encoder: &mut wgpu::CommandEncoder,
         _staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: LightDataLayout,
+        data: LightTransformDataLayout,
     ) {
         let capturable = self.0.clone();
         self.0
@@ -97,7 +92,8 @@ impl LightUniform {
                 Ok(_) => {
                     {
                         let mut view = capturable.slice(..).get_mapped_range_mut();
-                        let layout: &mut LightDataLayout = bytemuck::from_bytes_mut(&mut view);
+                        let layout: &mut LightTransformDataLayout =
+                            bytemuck::from_bytes_mut(&mut view);
                         *layout = data;
                     }
                     capturable.unmap();
@@ -119,7 +115,7 @@ impl LightUniform {
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: LightDataLayout,
+        data: LightTransformDataLayout,
     ) {
         // 스테이징 버퍼를 생성합니다.
         let contents = bytemuck::bytes_of(&data);
@@ -149,37 +145,71 @@ impl LightUniform {
     }
 }
 
-static_assertions::const_assert_ne!(LightUniform::SIZE, 0);
+static_assertions::const_assert_ne!(LightTransformUniform::SIZE, 0);
 static_assertions::const_assert_eq!(
-    LightUniform::SIZE as usize,
-    core::mem::size_of::<LightDataLayout>()
+    LightTransformUniform::SIZE as usize,
+    core::mem::size_of::<LightTransformDataLayout>()
 );
 
-/// 최대 조명의 개수입니다.
-pub const MAX_LIGHTS: usize = 24;
+/// 조명 집합 유니폼 버퍼의 로컬 조명 데이터 레이아웃입니다.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct LocalLightDataLayout {
+    pub proj_view: [f32; 16],
+    pub position_w: [f32; 3],
+    pub constant: f32,
+    pub color: [f32; 3],
+    pub linear: f32,
+    pub quadratic: f32,
+    pub _padding2: [u8; 12],
+}
 
-/// 조명 집합 유니폼 버퍼의 데이터 레이아웃입니다.
+impl Default for LocalLightDataLayout {
+    fn default() -> Self {
+        Self {
+            proj_view: [0.0; 16],
+            position_w: [0.0; 3],
+            constant: 1.0,
+            color: [0.0; 3],
+            linear: 0.0,
+            quadratic: 0.0,
+            _padding2: [0; 12],
+        }
+    }
+}
+
+/// 조명 데이터 집합 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct LightSetDataLayout {
-    pub lights: [LightDataLayout; MAX_LIGHTS],
+    pub direction_w: [f32; 3],
+    pub _padding0: [u8; 4],
+    pub color: [f32; 3],
+    pub _padding1: [u8; 4],
+    pub global_lights: [LightTransformDataLayout; NUM_CASCADES],
+    pub local_lights: [LocalLightDataLayout; MAX_LIGHTS],
     pub num_lights: u32,
-    pub _padding0: [u8; 12],
+    pub _padding2: [u8; 12],
 }
 
 impl Default for LightSetDataLayout {
     fn default() -> Self {
         Self {
-            lights: [LightDataLayout::default(); MAX_LIGHTS],
+            direction_w: [0.0; 3],
+            _padding0: [0; 4],
+            color: [0.0; 3],
+            _padding1: [0; 4],
+            global_lights: [LightTransformDataLayout::default(); NUM_CASCADES],
+            local_lights: [LocalLightDataLayout::default(); MAX_LIGHTS],
             num_lights: 0,
-            _padding0: [0; 12],
+            _padding2: [0; 12],
         }
     }
 }
 
-/// 조명 집합 유니폼 버퍼입니다.
+/// 조명 데이터 집합 유니폼 버퍼입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LightSetUniform(Arc<wgpu::Buffer>);
+pub struct LightSetUniform(pub(super) Arc<wgpu::Buffer>);
 
 impl LightSetUniform {
     /// 유니폼 버퍼의 크기입니다.
@@ -208,21 +238,10 @@ impl LightSetUniform {
         }
     }
 
-    /// 새로운 유니폼 버퍼를 생성합니다.
-    pub fn new(label: Option<&str>, device: &wgpu::Device, data: &LightSetDataLayout) -> Self {
-        Self(Arc::new(device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
-                contents: bytemuck::bytes_of(data),
-                usage: Self::USAGES,
-            },
-        )))
-    }
-
     /// 초기화되지 않은 새로운 유니폼 버퍼를 생성합니다.
     pub fn uninit(label: Option<&str>, device: &wgpu::Device) -> Self {
         Self(Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
+            label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"),)),
             mapped_at_creation: false,
             size: Self::SIZE,
             usage: Self::USAGES,
@@ -230,7 +249,6 @@ impl LightSetUniform {
     }
 
     /// 유니폼 버퍼를 갱신합니다.
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub fn update(
         &self,
         _device: &wgpu::Device,
@@ -267,10 +285,10 @@ impl LightSetUniform {
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: &LightSetDataLayout,
+        data: Box<LightSetDataLayout>,
     ) {
         // 스테이징 버퍼를 생성합니다.
-        let contents = bytemuck::bytes_of(data);
+        let contents = &bytemuck::box_bytes_of(data);
         let copy_size = contents.len() as wgpu::BufferAddress;
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Staging(Uniform)"),

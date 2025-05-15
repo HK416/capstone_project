@@ -14,8 +14,8 @@ use mod_app::{
 use mod_network::components::{
     ActionState, ActionStateTimer, CapturePoint, CharacterKind, ExSkillCost, FinishPhasePlayer,
     GameInputBits, HealthPoint, LatLon, LoginToken, MovementState, MovementStateTimer, ObjectId,
-    RemainingBullet, StageKind, Team, UserId, VictoryType, ViewState, ViewStateTimer,
-    MAX_CAPTURE_SCORE,
+    RemainingBullet, StageKind, StageLightData, Team, UserId, VictoryType, ViewState,
+    ViewStateTimer, MAX_CAPTURE_SCORE,
 };
 use mod_physics::object3d::Frustum;
 use winit::window::Window;
@@ -23,22 +23,25 @@ use winit::window::Window;
 use crate::{
     asset::{
         MotionPool, FIELD_DECO_00_URI, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD,
-        NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_URI,
     },
     component::{
-        animate_character, set_weapon_position, try_change_action_state, try_reset_movement_state,
-        update_action_state_timer, update_entity_hierarchy, update_movement_state_timer,
-        update_third_person_camera, update_third_person_camera_hierarchy,
-        update_view_state_by_controller_input_flags, update_view_state_timer, AttributeKind,
-        BoneCollection, BulletRenderPipelineTransparency, CameraDataLayout, CameraResource,
-        CameraUniform, CaptureZoneRenderPipeline, CharacterRenderPipeline, Child,
+        animate_character, compute_cascade_splits, compute_frustum_corners_no_inverse,
+        compute_light_view_proj_matrix, set_weapon_position, try_change_action_state,
+        try_reset_movement_state, update_action_state_timer, update_entity_hierarchy,
+        update_movement_state_timer, update_third_person_camera,
+        update_third_person_camera_hierarchy, update_view_state_by_controller_input_flags,
+        update_view_state_timer, AttributeKind, BakeList, BoneCollection,
+        BulletRenderPipelineTransparency, CameraDataLayout, CameraResource, CameraUniform,
+        CaptureZoneRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline, Child,
         DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
-        DamageParticle, EnergyBulletRenderPipeline, EyeMouthRenderPipeline, HaloRenderPipeline,
+        DamageParticle, EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
+        HaloRenderPipeline, LightSetDataLayout, LightSetResource, LightTransformDataLayout,
         MaterialKind, MaterialResource, MaterialUniform, Mesh, MeshFilter, MeshRenderer, OpaqueMap,
         Parent, Projection, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageRenderPipeline,
-        ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
-        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform,
+        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageBakePipeline,
+        StageRenderPipeline, ThirdPersonCamera, ToParentTrans, TransformDataLayout, TransparentMap,
+        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform, NUM_CASCADES,
         NUM_CUBE_VERTICES,
     },
     config::{Locale, NUM_LOCALE},
@@ -95,18 +98,22 @@ pub struct InGameResultEnterScene {
     bullets: HashMap<ObjectId, Entity>,
     /// 지형 엔터티 집합입니다.
     stages: Vec<Entity>,
+    /// 지형의 조명 데이터 집합입니다.
+    lights: Vec<StageLightData>,
 
     /// 데미지 파티클 엔터티입니다.
     damage_particles: VecDeque<Entity>,
 
-    /// 그림자 쉐이더 리소스입니다.
-    shadow_resource: Option<ShadowResource>,
+    /// 조명 집합 쉐이더 리소스입니다.
+    light_set_resource: Option<LightSetResource>,
     /// 알파 블렌딩 쉐이더 리소스입니다.
     alpha_blend_resource: Option<WeightedBlendedOITResource>,
 
     /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
+    /// 조명 렌더링 리소스 집합입니다.
+    bake_list: BakeList,
     /// 그림자 렌더링 리소스 집합입니다.
     shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
@@ -144,7 +151,8 @@ impl InGameResultEnterScene {
         bullets: HashMap<ObjectId, Entity>,
         damage_particles: VecDeque<Entity>,
         stages: Vec<Entity>,
-        shadow_resource: ShadowResource,
+        lights: Vec<StageLightData>,
+        light_set_resource: LightSetResource,
         alpha_blend_resource: WeightedBlendedOITResource,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         motion_pool: MotionPool,
@@ -172,13 +180,21 @@ impl InGameResultEnterScene {
             stages,
             damage_particles,
             ui_textures,
-            shadow_resource: Some(shadow_resource),
+            lights,
+            light_set_resource: Some(light_set_resource),
             alpha_blend_resource: Some(alpha_blend_resource),
+            bake_list: Vec::default(),
             shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
             motion_pool,
         }
+    }
+
+    /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
+    fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
+        let (width, height): (u32, u32) = window.inner_size().into();
+        self.alpha_blend_resource = Some(WeightedBlendedOITResource::new(width, height, device));
     }
 }
 
@@ -1074,6 +1090,82 @@ impl InGameResultEnterScene {
         }
     }
 
+    /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 조명 엔터티를 수집합니다.
+    fn culling_lights(&self) -> Vec<&StageLightData> {
+        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
+        self.lights.iter().collect()
+    }
+
+    /// 조명 쉐이더 리소스를 갱신합니다.
+    fn update_light_resource<'a>(
+        &self,
+        lights: Vec<&'a StageLightData>,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+        bake_list: &mut BakeList,
+    ) {
+        let mut data_layout = Box::new(LightSetDataLayout::default());
+        let light_set_resource = self.light_set_resource.as_ref().unwrap();
+        for data in lights {
+            match data {
+                StageLightData::Directional(light) => {
+                    // 카메라의 월드 공간 행렬과 Fov-y값을 가져옵니다.
+                    let world = self.world.as_ref().unwrap();
+                    let mut query = world
+                        .query_one::<(&WorldTransform, &ThirdPersonCamera)>(self.main_camera)
+                        .expect("invalid entity");
+                    let (transform, third_person_camera) =
+                        query.get().expect("invalid entity component");
+
+                    data_layout.direction_w = light.direction.into();
+                    data_layout.color = light.color.into();
+
+                    let splits = compute_cascade_splits(NUM_CASCADES, 0.01, 50.0, 0.85);
+                    for i in 0..NUM_CASCADES {
+                        // 프러스텀의 모서리 위치를 계산합니다.
+                        let near = if i == 0 { 0.01 } else { splits[i - 1] };
+                        let far = splits[i];
+                        let fov_y = third_person_camera.fov_y;
+                        let corner = compute_frustum_corners_no_inverse(
+                            transform,
+                            fov_y,
+                            16.0 / 9.0,
+                            near,
+                            far,
+                        );
+
+                        // 조명 변환 행렬을 계산합니다.
+                        let proj_view =
+                            compute_light_view_proj_matrix(&corner, light.direction.into(), 5.0);
+
+                        // 전역 조명 유니폼 버퍼 데이터를 갱신합니다.
+                        data_layout.global_lights[i] = LightTransformDataLayout {
+                            proj_view: proj_view.to_cols_array(),
+                        };
+
+                        // 전역 조명 그림자 쉐이더 리소스를 가져옵니다.
+                        let resource = light_set_resource.get_global(i);
+                        resource.uniform.update(
+                            device,
+                            encoder,
+                            staging_buffers,
+                            LightTransformDataLayout {
+                                proj_view: proj_view.to_cols_array(),
+                            },
+                        );
+                        bake_list.push(resource);
+                    }
+                }
+            }
+        }
+
+        // 유니폼 버퍼를 갱신합니다.
+        light_set_resource
+            .uniform
+            .update(device, encoder, staging_buffers, data_layout);
+    }
+
     /// 데미지 파티클 쉐이더 리소스를 갱신합니다.
     fn update_damage_particle_resources(
         &self,
@@ -1168,6 +1260,30 @@ impl InGameResultEnterScene {
         }
     }
 
+    /// 캐릭터의 그림자를 생성합니다.
+    fn bake_character<'a>(
+        mesh: &'a Mesh,
+        pipeline: Arc<wgpu::RenderPipeline>,
+        shadow_resource: &'a ShadowResource,
+        submesh_resources: &'a [(usize, MeshFilter)],
+        rpass: &mut wgpu::RenderPass<'a>,
+    ) {
+        rpass.set_pipeline(&pipeline);
+
+        rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
+
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+        for (index, mesh_resource) in submesh_resources {
+            let index_buffer = mesh.submeshes().get(*index).unwrap();
+            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+
     /// 캐릭터의 눈과 입을 그립니다.
     fn draw_character_eye_mouth<'a>(
         mesh: &'a Mesh,
@@ -1191,6 +1307,30 @@ impl InGameResultEnterScene {
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
             rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+
+    /// 캐릭터의 눈과 입의 그림자를 생성합니다.
+    fn bake_character_eye_mouth<'a>(
+        mesh: &'a Mesh,
+        pipeline: Arc<wgpu::RenderPipeline>,
+        shadow_resource: &'a ShadowResource,
+        submesh_resources: &'a [(usize, MeshFilter)],
+        rpass: &mut wgpu::RenderPass<'a>,
+    ) {
+        rpass.set_pipeline(&pipeline);
+
+        rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
+
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+        for (index, mesh_resource) in submesh_resources {
+            let index_buffer = mesh.submeshes().get(*index).unwrap();
+            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
     }
@@ -1272,12 +1412,14 @@ impl InGameResultEnterScene {
         mesh: &'a Mesh,
         pipeline: Arc<wgpu::RenderPipeline>,
         camera_resource: &'a CameraResource,
+        light_set_resource: &'a LightSetResource,
         material_resources: &'a [(usize, MeshFilter, MaterialResource)],
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
         rpass.set_pipeline(&pipeline);
 
         rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+        rpass.set_bind_group(3, light_set_resource.bind_group(), &[]);
 
         rpass.set_vertex_buffer(0, mesh.vertex(..));
         rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
@@ -1288,6 +1430,28 @@ impl InGameResultEnterScene {
             rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
             rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.set_bind_group(2, material.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+
+    /// 지형의 그림자를 생성합니다.
+    fn bake_stage<'a>(
+        mesh: &'a Mesh,
+        pipeline: Arc<wgpu::RenderPipeline>,
+        shadow_resource: &'a ShadowResource,
+        submesh_resources: &'a [(usize, MeshFilter)],
+        rpass: &mut wgpu::RenderPass<'a>,
+    ) {
+        rpass.set_pipeline(&pipeline);
+
+        rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
+
+        rpass.set_vertex_buffer(0, mesh.vertex(..));
+
+        for (index, mesh_resource) in submesh_resources {
+            let index_buffer = mesh.submeshes().get(*index).unwrap();
+            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
             rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
         }
     }
@@ -1355,60 +1519,55 @@ impl InGameResultEnterScene {
 }
 
 //--------------------------------------------------------------------------------------------
-// 시스템 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl InGameResultEnterScene {
-    /// 마우스 커서를 활성화합니다.
-    fn enable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::None).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(false);
-        }
-
-        window.set_cursor_visible(true);
-    }
-
-    /// 마우스 커서를 비활성화합니다.
-    fn disable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(true);
-        }
-
-        window.set_cursor_visible(false);
-    }
-
-    /// 커서 위치를 애플리케이션 창 중앙으로 초기화합니다.
-    #[allow(unused_variables)]
-    fn reset_cursor_position_at_center(&self, window: &Window) {
-        #[cfg(target_os = "windows")]
-        {
-            use winit::dpi::PhysicalPosition;
-            let (width, height): (u32, u32) = window.inner_size().into();
-            let position = PhysicalPosition::new(width / 2, height / 2);
-            window.set_cursor_position(position).unwrap();
-        }
-    }
-}
-
-//--------------------------------------------------------------------------------------------
 // 사용자 인터페이스와 관련된 코드를 작성합니다.
 //--------------------------------------------------------------------------------------------
 impl InGameResultEnterScene {
-    /// 체력 인터페이스 배경 레이아웃이미지입니다.
-    fn draw_health_point_bg_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 결과 인터페이스를 출력합니다.
+    fn draw_ui_result_font(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+
+        // 게임 장면 경과 시간이 시작 문구 지속 시간보다 큰 경우 함수 실행을 생략
+        if self.elapsed_time_sec < SMOOTH_STOP_DURATION {
+            return;
+        }
+
+        let delta = ((self.elapsed_time_sec - SMOOTH_STOP_DURATION) / DURATION).min(1.0);
+        let t = delta * delta * (3.0 - 2.0 * delta);
+
+        let entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
+        let &(team, _) = world
+            .query_one_mut::<&(Team, usize)>(entity)
+            .expect("invalid entity or invalid entity component");
+
+        // 게임 시작 폰트 속성
+        // - 기준 가로 크기: 768
+        // - 기준 세로 크기: 384
+        let hw = (704.0 * (1.0 - t) + 768.0 * t) * 0.5;
+        let hh = (352.0 * (1.0 - t) + 384.0 * t) * 0.5;
+        let tint = egui::Color32::from_white_alpha((255.0 * t) as u8);
+        let img_font_start = self
+            .ui_textures
+            .get(match self.winner == team {
+                true => IMG_FONT_WIN_URI,
+                false => IMG_FONT_LOSE_URI,
+            })
+            .cloned()
+            .expect("the ImgFont must exist!");
+        let font_rect = egui::Rect::from_min_max(
+            egui::pos2((640.0 - hw) * scale, (360.0 - hh) * scale),
+            egui::pos2((640.0 + hw) * scale, (360.0 + hh) * scale),
+        );
+
+        egui::Area::new(egui::Id::new("Start_Font_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(img_font_start)
+                .tint(tint)
+                .paint_at(ui, font_rect);
+        });
+    }
+
+    /// 체력 인터페이스 배경을 그립니다.
+    fn draw_ui_health_point_bg(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = -310.0;
         const END_X: f32 = 0.0;
@@ -1481,8 +1640,8 @@ impl InGameResultEnterScene {
         });
     }
 
-    /// 체력 게이지 인터페이스 레이아웃입니다.
-    fn draw_health_point_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 체력 게이지 인터페이스를 그립니다.
+    fn draw_ui_health_point_gauge(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = -310.0;
         const END_X: f32 = 0.0;
@@ -1506,7 +1665,7 @@ impl InGameResultEnterScene {
         // 체력 텍스트를 생성합니다.
         let text = format!("{}", health_point.current.min(9999));
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let font_id = egui::FontId::new(22.0 * scale, family);
+        let font_id = egui::FontId::new(22.0 * scale, family.clone());
         let text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::WHITE);
@@ -1517,15 +1676,15 @@ impl InGameResultEnterScene {
         let health_point = egui::Label::new(text).sense(egui::Sense::empty());
 
         egui::Area::new(egui::Id::new("Health_Gauge_Layout")).show(egui_ctx, |ui| {
-            // 기준 가로 크기: 39.6
-            // 기준 세로 크기: 52
-            // 기준 간격 가로 크기: 3
+            // 기준 가로 크기: 35.5
+            // 기준 세로 크기: 35.5
+            // 기준 간격 가로 크기: 2.4
             // 기준 시작 위치: (55, 612)
             // 기준 종료 위치: (280, 647.5)
             // 기준 범위: 225
             let pivot_x = (x + 55.0) * scale;
-            let range_x = (x + 225.0) * percent * scale;
-            let maximum = (x + 225.0) * scale;
+            let range_x = 225.0 * percent * scale;
+            let maximum = 225.0 * scale;
             let mut beg_x = pivot_x;
             let mut end_x: f32;
             let mut rect: egui::Rect;
@@ -1578,8 +1737,8 @@ impl InGameResultEnterScene {
         });
     }
 
-    /// 팀 점수 게이지 인터페이스 레이아웃입니다.
-    fn draw_score_gauge_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 팀 점수 게이지 인터페이스를 그립니다.
+    fn draw_ui_score_gauge(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_Y: f32 = -134.0;
         const END_Y: f32 = 0.0;
@@ -1765,8 +1924,8 @@ impl InGameResultEnterScene {
         });
     }
 
-    /// 남은 시간 인터페이스 레이아웃입니다.
-    fn draw_remaining_timer_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 남은 시간 인터페이스를 그립니다.
+    fn draw_ui_remaining_timer(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = 1424.0;
         const END_X: f32 = 1280.0;
@@ -1823,10 +1982,7 @@ impl InGameResultEnterScene {
         // 남은 시간 폰트
         let font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(18.0 * scale, font_family);
-        let minute = (self.play_time / 60.0).floor();
-        let seconds = (self.play_time % 60.0).floor();
-        let text = format!("{:0>2}:{:0>2}", minute, seconds);
-        let remaining_time_text = egui::RichText::new(text)
+        let remaining_time_text = egui::RichText::new("--:--")
             .font(font_id)
             .color(egui::Color32::WHITE);
         let text_area_rect = egui::Rect::from_min_max(
@@ -1854,8 +2010,8 @@ impl InGameResultEnterScene {
         });
     }
 
-    // 남은 총알 인터페이스 레이아웃입니다.
-    fn draw_remaining_bullet_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    // 무기 정보 인터페이스를 그립니다.
+    fn draw_ui_weapon_info(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = 1520.0;
         const END_X: f32 = 1280.0;
@@ -1869,7 +2025,7 @@ impl InGameResultEnterScene {
         let x = BEG_X * (1.0 - t) + END_X * t;
 
         // 총알 인터페이스 레이아웃
-        // - 기준 가로 크기: 220
+        // - 기준 가로 크기: 210
         // - 기준 세로 크기: 110
         // - 기준 시작 위치: (1040, 580)
         // - 기준 종료 위치: (1250, 690)
@@ -1879,29 +2035,6 @@ impl InGameResultEnterScene {
             .get(FIELD_DECO_00_URI)
             .cloned()
             .expect("the UI_Game_Layout must exist!");
-
-        let weapon_mask_icon = self
-            .ui_textures
-            .get(WEAPON_ICON_MASK_URI)
-            .cloned()
-            .expect("the Weapon Icon must exist!");
-
-        // 남은 총알 텍스트
-        let entity = self.get_player_entity();
-        let world = self.world.as_mut().unwrap();
-        let remaining_bullet = world
-            .query_one_mut::<&RemainingBullet>(entity)
-            .expect("invalid entity or invalid entity component");
-        let text = format!("{}/{}", remaining_bullet.current, remaining_bullet.maximum);
-        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let font_id = egui::FontId::new(18.0 * scale, family);
-        let remaining_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::WHITE);
-        let text_rect = egui::Rect::from_min_max(
-            egui::pos2((x - (1280.0 - 1040.0)) * scale, 650.0 * scale),
-            egui::pos2((x - (1280.0 - 1240.0)) * scale, 670.0 * scale),
-        );
 
         // 인터페이스 배경
         let front_rect = egui::Rect::from_min_max(
@@ -1921,19 +2054,6 @@ impl InGameResultEnterScene {
         );
         let back_uv = egui::Rect::from_min_max(egui::pos2(0.59375, 0.0), egui::pos2(1.0, 1.0));
 
-        // 무기 아이콘
-        // 가로 길이: 200
-        let ratio = weapon_mask_icon.size.x / weapon_mask_icon.size.y;
-        let icon_width = 200.0;
-        let icon_height = icon_width / ratio;
-        let weapon_icon_rect = egui::Rect::from_min_max(
-            egui::pos2((x - (1280.0 - 1040.0)) * scale, 590.0 * scale),
-            egui::pos2(
-                (x - (1280.0 - 1240.0)) * scale,
-                (590.0 + icon_height) * scale,
-            ),
-        );
-
         egui::Area::new(egui::Id::new("Bullet_BG_Layout")).show(egui_ctx, |ui| {
             egui::Image::new(field_deco_00)
                 .uv(front_uv)
@@ -1947,17 +2067,11 @@ impl InGameResultEnterScene {
                 .uv(back_uv)
                 .tint(UI_BG_COLOR)
                 .paint_at(ui, back_rect);
-
-            egui::Image::new(weapon_mask_icon)
-                .tint(egui::Color32::DARK_GRAY)
-                .paint_at(ui, weapon_icon_rect);
-
-            ui.put(text_rect, egui::Label::new(remaining_text));
         });
     }
 
-    /// Ex 스킬 게이지 인터페이스 레이아웃입니다.
-    fn draw_ex_skill_guage_layout(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 님은 총알 갯수 인터페이스를 그립니다.
+    fn draw_ui_bullet_count(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
         const BEG_X: f32 = 1520.0;
         const END_X: f32 = 1280.0;
@@ -1970,13 +2084,48 @@ impl InGameResultEnterScene {
         let t = 1.0 - delta * delta * (3.0 - 2.0 * delta);
         let x = BEG_X * (1.0 - t) + END_X * t;
 
-        let weapon_icon = self
-            .ui_textures
-            .get(WEAPON_ICON_URI)
-            .cloned()
-            .expect("the Weapon Icon must exist!");
+        // 남은 총알을 개수를 가져옵니다.
+        let entity = self.get_player_entity();
+        let world = self.world.as_mut().unwrap();
+        let remaining_bullet = world
+            .query_one_mut::<&RemainingBullet>(entity)
+            .expect("invalid entity or invalid entity component");
 
-        // 현재 Ex스킬 코스트를 가져옵니다.
+        // 남은 총알 텍스트를 생성합니다.
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(22.0 * scale, family);
+        let text = format!("{}/{}", remaining_bullet.current, remaining_bullet.maximum);
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE);
+        let max_rect = egui::Rect::from_min_max(
+            egui::pos2((x - (1280.0 - 1040.0)) * scale, 650.0 * scale),
+            egui::pos2((x - (1280.0 - 1140.0)) * scale, 670.0 * scale),
+        );
+        let widget = egui::Label::new(text).sense(egui::Sense::empty());
+
+        egui::Area::new(egui::Id::new("Bullet_Text_Layout")).show(egui_ctx, |ui| {
+            ui.put(max_rect, widget);
+        });
+    }
+
+    /// 스킬 게이지 인터페이스를 그립니다.
+    fn draw_ui_skill_guage(&mut self, egui_ctx: &egui::Context, scale: f32) {
+        const DURATION: f32 = 0.8;
+        const BEG_X: f32 = 1520.0;
+        const END_X: f32 = 1280.0;
+        const BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(192);
+        const FILL_COLOR: egui::Color32 = egui::Color32::from_rgb(253, 218, 13);
+
+        if self.elapsed_time_sec > DURATION {
+            return;
+        }
+
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = 1.0 - delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
+
+        // 현재 스킬 코스트를 가져옵니다.
         let entity = self.get_player_entity();
         let world = self.world.as_mut().unwrap();
         let ex_skill_cost = world
@@ -1984,84 +2133,112 @@ impl InGameResultEnterScene {
             .expect("invalid entity or invalid entity component");
         let percent = ex_skill_cost.percent();
 
-        // 무기 아이콘
-        // 가로 길이: 200
-        let ratio = weapon_icon.size.x / weapon_icon.size.y;
-        let icon_width = 200.0;
-        let icon_height = icon_width / ratio;
-        let icon_area = egui::Rect::from_min_max(
-            egui::pos2((x - (1280.0 - 1040.0)) * scale, 590.0 * scale),
-            egui::pos2(
-                ((x - (1280.0 - 1040.0)) + icon_width * percent) * scale,
-                (590.0 + icon_height) * scale,
-            ),
-        );
-        let icon_uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(percent, 1.0));
+        egui::Area::new(egui::Id::new("Skill_Gauge_Layout")).show(egui_ctx, |ui| {
+            // 기준 가로 크기: 18.3
+            // 기준 세로 크기: 18.3
+            // 기준 간격 가로 크기: 3
+            // 기준 시작 위치: (1040, 555.7)
+            // 기준 종료 위치: (1250, 574)
+            let pivot_x = (x - (1280.0 - 1040.0)) * scale;
+            let range_x = 210.0 * percent * scale;
+            let maximum = 210.0 * scale;
+            let corner_radius = 1.5 * scale;
+            let interval = 3.0 * scale;
+            let width = 18.3 * scale;
+            let beg_y = 555.7 * scale;
+            let end_y = 574.0 * scale;
+            let mut beg_x = pivot_x;
+            let mut end_x: f32;
+            let mut rect: egui::Rect;
+            let mut shape: egui::Shape;
 
-        egui::Area::new(egui::Id::new("ExSkill_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(weapon_icon)
-                .uv(icon_uv)
-                .paint_at(ui, icon_area);
+            // 채워진 게이지 그리기
+            while beg_x < pivot_x + range_x {
+                end_x = beg_x + width;
+                let x = if end_x > pivot_x + range_x {
+                    // 게이지의 비어있는 영역 그리기
+                    rect = egui::Rect::from_min_max(
+                        egui::pos2(beg_x, beg_y),
+                        egui::pos2(end_x, end_y),
+                    );
+                    shape = egui::Shape::rect_filled(rect, corner_radius, BG_COLOR);
+                    ui.painter().add(shape);
+
+                    pivot_x + range_x
+                } else {
+                    end_x
+                };
+
+                rect = egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(x, end_y));
+                shape = egui::Shape::rect_filled(rect, corner_radius, FILL_COLOR);
+                ui.painter().add(shape);
+
+                beg_x = end_x + interval;
+            }
+
+            // 비어있는 게이지 그리기
+            while beg_x < pivot_x + maximum {
+                end_x = beg_x + width;
+                rect = egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(end_x, end_y));
+                shape = egui::Shape::rect_filled(rect, corner_radius, BG_COLOR);
+                ui.painter().add(shape);
+
+                beg_x = end_x + interval;
+            }
         });
     }
 
-    /// 결과 폰트를 출력합니다.
-    fn draw_result_font(&mut self, egui_ctx: &egui::Context, scale: f32) {
+    /// 무기 아이콘을 인터페이스를 그립니다.
+    fn draw_ui_weapon_icon(&mut self, egui_ctx: &egui::Context, scale: f32) {
         const DURATION: f32 = 0.8;
+        const BEG_X: f32 = 1520.0;
+        const END_X: f32 = 1280.0;
 
-        // 게임 장면 경과 시간이 시작 문구 지속 시간보다 큰 경우 함수 실행을 생략
-        if self.elapsed_time_sec < SMOOTH_STOP_DURATION {
+        if self.elapsed_time_sec > DURATION {
             return;
         }
 
-        let delta = ((self.elapsed_time_sec - SMOOTH_STOP_DURATION) / DURATION).min(1.0);
-        let t = delta * delta * (3.0 - 2.0 * delta);
+        let delta = (self.elapsed_time_sec / DURATION).min(1.0);
+        let t = 1.0 - delta * delta * (3.0 - 2.0 * delta);
+        let x = BEG_X * (1.0 - t) + END_X * t;
 
-        let entity = self.get_player_entity();
-        let world = self.world.as_mut().unwrap();
-        let &(team, _) = world
-            .query_one_mut::<&(Team, usize)>(entity)
-            .expect("invalid entity or invalid entity component");
-
-        // 게임 시작 폰트 속성
-        // - 기준 가로 크기: 768
-        // - 기준 세로 크기: 384
-        let hw = (704.0 * (1.0 - t) + 768.0 * t) * 0.5;
-        let hh = (352.0 * (1.0 - t) + 384.0 * t) * 0.5;
-        let tint = egui::Color32::from_white_alpha((255.0 * t) as u8);
-        let img_font_start = self
+        // 무기 아이콘을 가져옵니다.
+        let weapon_icon = self
             .ui_textures
-            .get(match self.winner == team {
-                true => IMG_FONT_WIN_URI,
-                false => IMG_FONT_LOSE_URI,
-            })
+            .get(WEAPON_ICON_URI)
             .cloned()
-            .expect("the ImgFont must exist!");
-        let font_rect = egui::Rect::from_min_max(
-            egui::pos2((640.0 - hw) * scale, (360.0 - hh) * scale),
-            egui::pos2((640.0 + hw) * scale, (360.0 + hh) * scale),
-        );
+            .expect("the Weapon_Icon must exist!");
 
-        egui::Area::new(egui::Id::new("Start_Font_Layout")).show(egui_ctx, |ui| {
-            egui::Image::new(img_font_start)
-                .tint(tint)
-                .paint_at(ui, font_rect);
+        // 무기 아이콘
+        // - 기준 가로 크기: 200
+        // - 기준 시작 위치: (1040, 590)
+        // - 기준 종료 위치: (1240, 200 / image_ratio)
+        //
+        let image_ratio = weapon_icon.size.x / weapon_icon.size.y;
+        let width = 200.0;
+        let height = width / image_ratio;
+        let beg_x = (x - (1280.0 - 1040.0)) * scale;
+        let beg_y = 590.0 * scale;
+        let end_x = (x - (1280.0 - 1240.0)) * scale;
+        let end_y = beg_y + height * scale;
+        let icon_rect =
+            egui::Rect::from_min_max(egui::pos2(beg_x, beg_y), egui::pos2(end_x, end_y));
+
+        egui::Area::new(egui::Id::new("Weapon_Icon_Layout")).show(egui_ctx, |ui| {
+            egui::Image::new(weapon_icon).paint_at(ui, icon_rect);
         });
     }
 }
 
 //--------------------------------------------------------------------------------------------
+
 impl GameScene for InGameResultEnterScene {
     fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.disable_cursor(window);
-        }
+        app.disable_cursor();
     }
 
     fn on_enter_background(&mut self, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.enable_cursor(window);
-        }
+        app.enable_cursor();
     }
 
     fn on_cursor_moved(
@@ -2070,14 +2247,12 @@ impl GameScene for InGameResultEnterScene {
         _y: f32,
         mut dx: f32,
         mut dy: f32,
-        window: &Window,
+        _window: &Window,
         _app: &dyn AppHandle,
     ) -> bool {
         if self.world.is_none() {
             return false;
         }
-
-        self.reset_cursor_position_at_center(window);
 
         dx *= match self.flip_horizontal {
             true => -self.control_sensitivity,
@@ -2134,6 +2309,10 @@ impl GameScene for InGameResultEnterScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.create_alpha_blend_resource(window, app.render_device());
+    }
+
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.world.is_none() {
             return;
@@ -2149,7 +2328,8 @@ impl GameScene for InGameResultEnterScene {
             let disconnected_players = self.disconnected_players.to_owned();
             let stages = self.stages.to_owned();
             let play_data = self.play_data.to_owned();
-            let shadow_resource = self.shadow_resource.take().unwrap();
+            let lights = self.lights.to_owned();
+            let light_set_resource = self.light_set_resource.take().unwrap();
             let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
             let ui_textures = self.ui_textures.to_owned();
             let winner_players = InGameResultScene::get_winner_players(
@@ -2170,8 +2350,9 @@ impl GameScene for InGameResultEnterScene {
                 skybox,
                 winner_players,
                 stages,
+                lights,
                 play_data,
-                shadow_resource,
+                light_set_resource,
                 alpha_blend_resource,
                 ui_textures,
                 self.motion_pool.clone(),
@@ -2213,6 +2394,7 @@ impl GameScene for InGameResultEnterScene {
         let mut shadow_map = HashMap::default();
         let mut opaque_map = HashMap::default();
         let mut transparent_map = HashMap::default();
+        let mut bake_list = Vec::default();
 
         let world = self.world.as_ref().unwrap();
         let child_view = &world.view::<&Child>();
@@ -2277,12 +2459,23 @@ impl GameScene for InGameResultEnterScene {
             );
         }
 
+        // 조명 쉐이더 리소스를 갱신합니다.
+        let lights = self.culling_lights();
+        self.update_light_resource(
+            lights,
+            device,
+            &mut encoder,
+            &mut staging_buffers,
+            &mut bake_list,
+        );
+
         queue.submit(Some(encoder.finish()));
         drop(staging_buffers);
 
         self.shadow_map = shadow_map;
         self.opaque_map = opaque_map;
         self.transparent_map = transparent_map;
+        self.bake_list = bake_list;
     }
 
     fn on_draw(
@@ -2306,12 +2499,47 @@ impl GameScene for InGameResultEnterScene {
             .cloned()
             .expect("invalid entity or invalid entity component");
 
-        // Weighted Blended OIT 쉐이더 리소스를 가져옵니다.
-        let alpha_blend_resource = self
-            .alpha_blend_resource
-            .as_ref()
-            .expect("the alpha blend shader resource must exist!");
+        // 쉐이더 리소스를 가져옵니다.
+        let light_set_resource = self.light_set_resource.as_ref().unwrap();
+        let alpha_blend_resource = self.alpha_blend_resource.as_ref().unwrap();
         let skybox = self.skybox.as_ref().unwrap();
+
+        encoder.push_debug_group("shadow pass");
+        for shadow_resource in self.bake_list.iter() {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(ShadowPass))"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &shadow_resource.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            for ((mesh, kind), resources) in self.shadow_map.iter() {
+                let func = match kind {
+                    MaterialKind::Character => Self::bake_character,
+                    MaterialKind::CharacterEyeMouth => Self::bake_character_eye_mouth,
+                    MaterialKind::Stage => Self::bake_stage,
+                    _ => continue,
+                };
+                let pipeline = match kind {
+                    MaterialKind::Character => CharacterBakePipeline::get(),
+                    MaterialKind::CharacterEyeMouth => EyeMouthBakePipeline::get(),
+                    MaterialKind::Stage => StageBakePipeline::get(),
+                    _ => continue,
+                }
+                .unwrap();
+
+                func(&mesh, pipeline, &shadow_resource, &resources, &mut rpass);
+            }
+        }
+        encoder.pop_debug_group();
 
         encoder.push_debug_group("opaque pass");
         {
@@ -2342,14 +2570,23 @@ impl GameScene for InGameResultEnterScene {
                     MaterialKind::Character => Self::draw_character,
                     MaterialKind::CharacterEyeMouth => Self::draw_character_eye_mouth,
                     MaterialKind::CharacterHalo => Self::draw_character_halo,
-                    MaterialKind::Stage => Self::draw_stage,
+                    MaterialKind::Stage => {
+                        Self::draw_stage(
+                            &mesh,
+                            StageRenderPipeline::get().unwrap(),
+                            &camera_resource,
+                            light_set_resource,
+                            &resources,
+                            &mut rpass,
+                        );
+                        continue;
+                    }
                     _ => continue,
                 };
                 let pipeline = match kind {
                     MaterialKind::Character => CharacterRenderPipeline::get(),
                     MaterialKind::CharacterEyeMouth => EyeMouthRenderPipeline::get(),
                     MaterialKind::CharacterHalo => HaloRenderPipeline::get(),
-                    MaterialKind::Stage => StageRenderPipeline::get(),
                     _ => continue,
                 }
                 .unwrap();
@@ -2486,14 +2723,16 @@ impl GameScene for InGameResultEnterScene {
         let (width, _height): (f32, f32) = window.inner_size().into();
         let scale_factor = window.scale_factor() as f32;
         let scale = width / scale_factor / BASE_WIDTH;
-
         let egui_ctx = app.egui_ctx();
-        self.draw_score_gauge_layout(egui_ctx, scale);
-        self.draw_health_point_bg_layout(egui_ctx, scale);
-        self.draw_health_point_gauge_layout(egui_ctx, scale);
-        self.draw_remaining_timer_layout(egui_ctx, scale);
-        self.draw_remaining_bullet_layout(egui_ctx, scale);
-        self.draw_ex_skill_guage_layout(egui_ctx, scale);
-        self.draw_result_font(egui_ctx, scale);
+
+        self.draw_ui_score_gauge(egui_ctx, scale);
+        self.draw_ui_health_point_bg(egui_ctx, scale);
+        self.draw_ui_health_point_gauge(egui_ctx, scale);
+        self.draw_ui_remaining_timer(egui_ctx, scale);
+        self.draw_ui_weapon_info(egui_ctx, scale);
+        self.draw_ui_weapon_icon(egui_ctx, scale);
+        self.draw_ui_bullet_count(egui_ctx, scale);
+        self.draw_ui_skill_guage(egui_ctx, scale);
+        self.draw_ui_result_font(egui_ctx, scale);
     }
 }

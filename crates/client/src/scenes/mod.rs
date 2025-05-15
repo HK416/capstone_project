@@ -103,12 +103,6 @@ impl fmt::Debug for MainLobbyJoinModalScene {
     }
 }
 
-impl fmt::Debug for MainLobbyMessageModalScene {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(MainLobbyMessageModalScene))
-    }
-}
-
 impl fmt::Debug for CustomGameRoomScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(CustomGameRoomScene))
@@ -172,5 +166,11 @@ impl fmt::Debug for InGameResultScene {
 impl fmt::Debug for FatalErrorSceneLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(FatalErrorSceneLayer))
+    }
+}
+
+impl fmt::Debug for MessageSceneLayer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(MessageSceneLayer))
     }
 }

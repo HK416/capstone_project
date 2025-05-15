@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use mod_render::{init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{config_swapchain, init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -21,6 +21,7 @@ use crate::{
     asset::AssetManager,
     error::{show_error_msg, Alert},
     etc::{AppEvent, AppFlags, GameTimer, WindowSize},
+    ext::AppWindowExt,
     net::{NetManager, NetworkError},
     scene::{GameScene, GameSceneFlow},
 };
@@ -226,36 +227,39 @@ impl Application {
         self.queue.submit(commands);
 
         // 이전 렌더링 작업이 끝날때 까지 대기합니다.
-        self.device.poll(wgpu::Maintain::Wait);
+        while !self.device.poll(wgpu::Maintain::Poll).is_queue_empty() {
+            std::hint::spin_loop();
+            std::thread::yield_now();
+        }
 
         // 현재 프레임 버퍼를 가져옵니다.
         let frame = match surface.get_current_texture() {
             Ok(frame) => frame,
-            Err(e) => match e {
-                wgpu::SurfaceError::Timeout
-                | wgpu::SurfaceError::Outdated
-                | wgpu::SurfaceError::Lost => {
-                    // 현재 스왑체인 텍스처 버퍼가 갱신이 필요한 경우 렌더링을 생략합니다.
-                    log::info!("frame skip >> swapchin needs to be refreshed.");
-                    return;
+            Err(wgpu::SurfaceError::Timeout) => {
+                log::info!("frame skip >> swapchin needs to be refreshed.");
+                return;
+            }
+            Err(
+                wgpu::SurfaceError::Outdated
+                | wgpu::SurfaceError::Lost
+                | wgpu::SurfaceError::Other
+                | wgpu::SurfaceError::OutOfMemory,
+            ) => {
+                let vsync = !self.flags.contains(AppFlags::DISABLE_VSYNC);
+                let (width, height) = window.inner_size().into();
+                config_swapchain(width, height, &self.device, surface, vsync);
+                match surface.get_current_texture() {
+                    Ok(frame) => frame,
+                    Err(e) => {
+                        log::error!("failed to acquire next sufrace texture! (REASON:{})", &e);
+                        let title = "Runtime error".into();
+                        let message = "Failed to acquire next surface texture!".into();
+                        let alert = Alert { title, message };
+                        show_error_msg(alert, Some(window));
+                        std::process::exit(-1);
+                    }
                 }
-                wgpu::SurfaceError::OutOfMemory => {
-                    log::error!("there is no more memory left to allocate a new frame.");
-                    let title = "Ouf of memory".into();
-                    let message = "There is no more memory left to allocate a new frame.".into();
-                    let alert = Alert { title, message };
-                    show_error_msg(alert, Some(&window));
-                    std::process::exit(-1);
-                }
-                wgpu::SurfaceError::Other => {
-                    log::error!("failed to fetch frame due to unknown error.");
-                    let title = "Runtime error".into();
-                    let message = "Failed to fetch frame due to unknown error.".into();
-                    let alert = Alert { title, message };
-                    show_error_msg(alert, Some(&window));
-                    std::process::exit(-1);
-                }
-            },
+            }
         };
 
         let (width, height): (u32, u32) = window.inner_size().into();
@@ -595,6 +599,14 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
+                #[cfg(target_os = "windows")]
+                if app_window.get_cursor_disabled() {
+                    let (w, h): (u32, u32) = app_window.window.inner_size().into();
+                    let _ = app_window
+                        .window
+                        .set_cursor_position(PhysicalPosition::new(w / 2, h / 2));
+                }
+
                 let (dx, dy): (f32, f32) = self.cursor_delta.into();
                 for scene in scene_stack.iter_mut().rev() {
                     if scene.on_cursor_moved(
@@ -805,6 +817,22 @@ impl ApplicationHandler<AppEvent> for Application {
 }
 
 impl AppHandle for Application {
+    fn enable_cursor(&self) {
+        if let Some(app_window) = self.app_window.as_ref() {
+            app_window.window.set_cursor_visible(true);
+            app_window.window.confine_cursor_to_window(false);
+            app_window.set_cursor_disable(false);
+        }
+    }
+
+    fn disable_cursor(&self) {
+        if let Some(app_window) = self.app_window.as_ref() {
+            app_window.window.set_cursor_visible(false);
+            app_window.window.confine_cursor_to_window(true);
+            app_window.set_cursor_disable(true);
+        }
+    }
+
     fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>> {
         &self.event_loop_proxy
     }

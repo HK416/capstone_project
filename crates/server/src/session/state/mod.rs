@@ -44,14 +44,14 @@ pub enum SessionStateFlow {
 
 /// Session의 상태를 관리하는 관리자입니다.
 #[derive(Debug)]
-pub struct SessionStateManager<'a> {
-    session: &'a Arc<Session>,
+pub struct SessionStateManager {
+    session: Arc<Session>,
     states: VecDeque<Box<dyn SessionState>>,
 }
 
-impl<'a> SessionStateManager<'a> {
+impl SessionStateManager {
     /// 새로운 세션 상태 관리자를 생성합니다.
-    pub fn new(session: &'a Arc<Session>) -> Self {
+    pub fn new(session: Arc<Session>) -> Self {
         Self {
             session,
             states: VecDeque::new(),
@@ -60,18 +60,17 @@ impl<'a> SessionStateManager<'a> {
 
     /// 세션 상태 관리자를 실행합니다.
     pub async fn run(mut self) {
-        let session = self.session;
-
         // 초기 세션을 이벤트에 추가합니다.
         let next_state = Box::new(SessionVerifyState::new());
         let control_flow = SessionStateFlow::Reset(next_state);
-        session.push_event(SessionEvents::SetControlFlow(control_flow));
+        self.session
+            .push_event(SessionEvents::SetControlFlow(control_flow));
 
         let mut events = VecDeque::new();
 
-        while session.is_running() {
+        while self.session.is_running() {
             // 세션 이벤트를 처리합니다.
-            while let Some(event) = session.events.pop() {
+            while let Some(event) = self.session.events.pop() {
                 match event {
                     SessionEvents::SetControlFlow(control_flow) => {
                         // 세션 상태를 갱신합니다.
@@ -82,7 +81,7 @@ impl<'a> SessionStateManager<'a> {
             }
 
             // 현재 세션 상태를 가져옵니다.
-            let curr_state = match self.current_state() {
+            let mut curr_state = match self.states.pop_back() {
                 Some(state) => state,
                 None => {
                     // 현재 세션 상태가 없는 경우 세션을 종료합니다.
@@ -93,19 +92,21 @@ impl<'a> SessionStateManager<'a> {
 
             // 현재 세션 상태에서 이벤트를 처리합니다.
             while let Some(event) = events.pop_front() {
-                curr_state.handle_event(event, session);
+                curr_state.handle_event(event, &self.session);
             }
 
             // 현재 세션 상태에서 패킷을 처리합니다.
-            curr_state.handle_packets(session);
+            let session_cloned = self.session.clone();
+            let curr_state = tokio::task::spawn_blocking(move || {
+                curr_state.handle_packets(&session_cloned);
+                curr_state
+            })
+            .await
+            .unwrap();
 
+            self.states.push_back(curr_state);
             tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
         }
-    }
-
-    /// 현재 세션 상태를 가져옵니다.
-    fn current_state(&mut self) -> Option<&mut Box<dyn SessionState>> {
-        self.states.back_mut()
     }
 
     /// 세션 상태를 갱신합니다.
@@ -159,7 +160,7 @@ impl<'a> SessionStateManager<'a> {
                 &self.session,
                 &curr_state
             );
-            curr_state.on_pause(self.session);
+            curr_state.on_pause(&self.session);
         }
 
         log::info!(
@@ -188,7 +189,7 @@ impl<'a> SessionStateManager<'a> {
                 &self.session,
                 &curr_state
             );
-            curr_state.on_resume(self.session);
+            curr_state.on_resume(&self.session);
         }
     }
 
@@ -199,7 +200,7 @@ impl<'a> SessionStateManager<'a> {
     }
 }
 
-impl<'a> Drop for SessionStateManager<'a> {
+impl Drop for SessionStateManager {
     fn drop(&mut self) {
         self.clear()
     }

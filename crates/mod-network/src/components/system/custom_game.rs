@@ -62,6 +62,10 @@ pub enum StartFailedReason {
     UnbalancedTeams = 1,
     /// 모든 플레이어가 준비되지 않은 경우
     PlayersNotReady = 2,
+    /// Blue팀 플레이어가 비어있는 경우
+    EmptyBlueTeam = 3,
+    /// Red팀 플레이어가 비어있는 경우
+    EmptyRedTeam = 4,
 }
 
 impl StartFailedReason {
@@ -72,6 +76,8 @@ impl StartFailedReason {
             0 => Some(Self::NotEnoughPlayers),
             1 => Some(Self::UnbalancedTeams),
             2 => Some(Self::PlayersNotReady),
+            3 => Some(Self::EmptyBlueTeam),
+            4 => Some(Self::EmptyRedTeam),
             _ => {
                 log::error!(
                     "the value is out of range for `{}`, (VALUE:{})",

@@ -540,6 +540,9 @@ impl InGameBuildScene {
                 stages.push(entity);
             }
 
+            // 조명 집합을 생성합니다
+            let lights = stage_layout_data_ref.lights.to_owned();
+
             // 다음 게임 장면을 생성합니다.
             let next_scene = InGameDominationModePrepareScene::new(
                 locale,
@@ -549,6 +552,7 @@ impl InGameBuildScene {
                 skybox,
                 players,
                 stages,
+                lights,
                 mesh_pool,
                 model_pool,
                 motion_pool,

@@ -19,10 +19,13 @@ use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
-use tokio::time::{Duration, Instant};
+use tokio::time::Instant;
 
 use crate::{
-    data::{get_nearest_valid_position, get_stage_colliders, get_stage_height, is_valid_position},
+    data::{
+        get_nearest_valid_position, get_stage_colliders, get_stage_height, is_safe_area,
+        is_valid_position,
+    },
     entities::{BulletObject, CapturePointObject, PlayData, PlayerObject},
     formula::movement_formulas as formulas,
     session::SessionEvents,
@@ -313,6 +316,7 @@ impl GameWorldInGameState {
             if *player.key() == bullet.shooter_id
                 || player.health_point().current == 0
                 || player.team() == bullet.shooter_team
+                || player.is_invincible()
             {
                 continue;
             }
@@ -572,7 +576,7 @@ impl GameWorldInGameState {
             let mut velocity = player.velocity();
 
             // 속도에 가속도를 적용합니다.
-            if !player.is_grounded {
+            if !player.is_grounded() {
                 velocity += GRAVITY * elapsed_time_sec;
             }
 
@@ -580,7 +584,7 @@ impl GameWorldInGameState {
             let mut new_p = translation + velocity * elapsed_time_sec;
 
             // 충돌처리 시작
-            player.is_grounded = false;
+            player.set_grounded(false);
 
             let mut player_capsule = player.collider();
             player_capsule.center = new_p.into();
@@ -596,7 +600,7 @@ impl GameWorldInGameState {
                     // 충돌벡터가 지면(xz평면)과 일정 이상의 각을 이루면 서있을 수 있음
                     if collision_info.normal.y >= *GROUNDED_ANGLE_COS {
                         velocity.y = 0.0;
-                        player.is_grounded = true;
+                        player.set_grounded(true);
                     }
                     // 아니라면 미끄러지도록 처리
                     else {
@@ -613,8 +617,10 @@ impl GameWorldInGameState {
                 }
             }
 
-            if !is_valid_position(self.stage_kind, new_p.x, new_p.z) {
-                let (x, z) = get_nearest_valid_position(self.stage_kind, new_p.x, new_p.z);
+            let team = player.team();
+
+            if !is_valid_position(self.stage_kind, team, new_p.x, new_p.z) {
+                let (x, z) = get_nearest_valid_position(self.stage_kind, team, new_p.x, new_p.z);
                 if x != new_p.x {
                     velocity.x = 0.0;
                     new_p.x = x;
@@ -629,11 +635,17 @@ impl GameWorldInGameState {
                 if height >= new_p.y {
                     new_p.y = height;
                     velocity.y = 0.0;
-                    player.is_grounded = true;
+                    player.set_grounded(true);
                 }
             }
 
-            if player.is_grounded {
+            let in_safe_area = is_safe_area(self.stage_kind, team, new_p.x, new_p.z);
+            player.set_invincible(in_safe_area);
+            if in_safe_area {
+                player.health_point_mut().current = player.health_point().maximum;
+            }
+
+            if player.is_grounded() {
                 match player.movement_state() {
                     MovementState::InPlaceLanding => {
                         player.change_movement_state(MovementState::Idle);
@@ -689,48 +701,8 @@ impl GameWorldInGameState {
             self.capture_point
                 .capture(new_capture_team, elapsed_time_sec, capturing_count);
         if let Some(winner) = winner {
-            self.is_running = false;
-
-            let play_data = self.play_data.as_ref().unwrap();
-            let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-            for (_, data) in play_data.iter() {
-                players.push(FinishPhasePlayer::new(
-                    data.account,
-                    data.character_kind,
-                    data.kill_count,
-                    data.dead_count,
-                    data.damage_dealt,
-                    data.damage_taken,
-                    data.healing_given,
-                    data.team,
-                    data.team_index,
-                ));
-            }
-
-            // 플레이어가 비어있는 경우 함수 실행을 중단합니다.
-            if players.is_empty() {
-                return;
-            }
-
-            // 패킷을 생성하고 전송합니다.
-            let play_time = self.total_play_sec - self.remaining_time_sec;
-            let packet = FinishStagePacket::new(
-                winner,
-                VictoryType::JudgmentWin,
-                self.stage_kind,
-                play_time,
-                players,
-            );
-
-            for item in world.sessions.iter() {
-                item.key().push_event(SessionEvents::GameFinished);
-                item.key().tcp_write(packet.as_raw());
-            }
-
-            // 게임 월드 상태를 변경합니다.
-            let control_flow = GameWorldStateFlow::Pop;
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
+            log::info!("capture complete");
+            self.game_over(world, winner, VictoryType::JudgmentWin);
         }
 
         // println!("capture team: {:?}({:.1}%)\t score: RED[{:.1}%] : BLUE[{:.1}%]",
@@ -738,6 +710,69 @@ impl GameWorldInGameState {
         //     self.capture_point.capture_score()[Team::Red as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0,
         //     self.capture_point.capture_score()[Team::Blue as usize] / CapturePointObject::MAX_CAPTURE_SCORE * 100.0
         // );
+    }
+
+    /// 게임을 종료합니다.
+    fn game_over(&mut self, world: &GameWorld, winner: Team, victory_type: VictoryType) {
+        log::info!("game over (winner: {:?})", winner);
+
+        self.is_running = false;
+
+        let play_data = self.play_data.as_ref().unwrap();
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for (_, data) in play_data.iter() {
+            players.push(FinishPhasePlayer::new(
+                data.account,
+                data.character_kind,
+                data.kill_count,
+                data.dead_count,
+                data.damage_dealt,
+                data.damage_taken,
+                data.healing_given,
+                data.team,
+                data.team_index,
+            ));
+        }
+
+        // 플레이어가 비어있는 경우 함수 실행을 중단합니다.
+        if players.is_empty() {
+            return;
+        }
+
+        // 패킷을 생성하고 전송합니다.
+        let play_time = self.total_play_sec - self.remaining_time_sec;
+        let packet =
+            FinishStagePacket::new(winner, victory_type, self.stage_kind, play_time, players);
+
+        for item in world.sessions.iter() {
+            item.key().push_event(SessionEvents::GameFinished);
+            item.key().tcp_write(packet.as_raw());
+        }
+
+        // 게임 월드 상태를 변경합니다.
+        let control_flow = GameWorldStateFlow::Pop;
+        let event = GameWorldEvent::SetControlFlow(control_flow);
+        world.push_event(event);
+    }
+
+    /// 시간 초과로 게임을 종료합니다.
+    fn time_out(&mut self, world: &GameWorld) {
+        log::info!("time out");
+
+        let capture_scores = self.capture_point.capture_score();
+        let red_score = capture_scores[Team::Red as usize];
+        let blue_score = capture_scores[Team::Blue as usize];
+
+        let winner = if red_score > blue_score {
+            Team::Red
+        } else if red_score < blue_score {
+            Team::Blue
+        } else {
+            // 동점인 경우 아직 게임을 끝내지 않음
+            return;
+        };
+
+        self.game_over(world, winner, VictoryType::JudgmentWin);
     }
 
     /// 게임 월드를 갱신합니다.
@@ -751,6 +786,10 @@ impl GameWorldInGameState {
         // 경과 시간과 남은 시간 업데이트
         self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
         self.elapsed_time_sec += elapsed_time_sec;
+        if self.remaining_time_sec <= 0.0 {
+            self.time_out(world);
+            // return;
+        }
 
         self.update_player_state_timer(world, elapsed_time_sec);
         self.update_player_position(world, elapsed_time_sec);
@@ -926,10 +965,6 @@ impl GameWorldState for GameWorldInGameState {
         self.update(world);
         self.broadcast(world);
         self.try_enter_next_state(world);
-    }
-
-    fn yield_now(&self) -> Duration {
-        Duration::from_millis(1)
     }
 }
 

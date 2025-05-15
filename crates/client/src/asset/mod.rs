@@ -1,13 +1,14 @@
 mod hierarchy;
 mod mesh;
 mod motion;
+mod stage;
 mod texture;
 
 use std::io;
 
 use mod_network::components::{NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES};
 
-pub use self::{hierarchy::*, mesh::*, motion::*, texture::*};
+pub use self::{hierarchy::*, mesh::*, motion::*, stage::*, texture::*};
 
 /// 사용자 구성 파일의 상대 경로입니다.
 pub const USER_CONFIG: &'static str = "user_config";
