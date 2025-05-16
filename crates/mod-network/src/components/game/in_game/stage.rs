@@ -76,7 +76,7 @@ pub struct StageLayoutData {
     /// 게임 월드 스테이지 지역 데이터입니다.
     pub area: Vec<StageAreaData>,
     /// 게임 월드 스테이지 소품 데이터입니다.
-    pub props: Vec<StagePropData>,
+    pub root_prop: Option<Box<StagePropData>>,
     /// 게임 월드 스테이지 조명 데이터입니다.
     pub lights: Vec<StageLightData>,
     /// 블루 팀 스폰 위치입니다.
@@ -103,8 +103,12 @@ pub struct StageAreaData {
 pub struct StagePropData {
     pub model: String,
     pub scale: Float3,
-    pub translation: Float3,
     pub rotation: Float4,
+    pub translation: Float3,
+    pub center: Float3,
+    pub radius: f32,
+    pub left: Option<Box<StagePropData>>,
+    pub right: Option<Box<StagePropData>>,
 }
 
 /// 게임 월드 스테이지를 구성하는 조명 데이터입니다.

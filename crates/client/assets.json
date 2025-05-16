@@ -222,6 +222,14 @@
                         "City_Prop_Fence_01.mesh",
                         "City_Prop_Fence_Base_00.hierarchy",
                         "City_Prop_Fence_Base_00.mesh",
+                        "City_Prop_Streetlight_00.hierarchy",
+                        "City_Prop_Streetlight_00.mesh",
+                        "City_Prop_Traffic_Sign_00.hierarchy",
+                        "City_Prop_Traffic_Sign_00.mesh",
+                        "City_Prop_Tree_00.hierarchy",
+                        "City_Prop_Tree_00.mesh",
+                        "City_Prop_Tree_Pot_00.hierarchy",
+                        "City_Prop_Tree_Pot_00.mesh",
                         "map.json"
                     ],
                     "directories" : {}

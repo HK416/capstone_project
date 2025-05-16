@@ -4,9 +4,13 @@ use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path};
 
 use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::{StageAreaData, StageLayoutData, StagePropData};
+use mod_physics::object3d::Sphere;
 
 use crate::{
-    asset::{AssetError, ModelNode, ModelPool, ModelRoot, TextureDataPool},
+    asset::{
+        AssetError, ModelNode, ModelPool, ModelRoot, StageBoundingVolumn,
+        StageBoundingVolumnHierarchy, TextureDataPool,
+    },
     component::{
         Child, MaterialData, MaterialUniform, MeshResource, Parent, Sibling,
         StageMaterialDataLayout, StageMaterialResource, StageMaterialUniform, StageTag,
@@ -66,6 +70,130 @@ where
     })
 }
 
+/// 스테이지를 구성하는 엔터티를 생성하고, Bounding Volumn Hierarchy를 반환합니다.
+pub fn build_stage(
+    world: &World,
+    model_pool: &ModelPool,
+    texture_data_pool: &TextureDataPool,
+    layout: &StageLayoutData,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+) -> (StageBoundingVolumnHierarchy, Vec<(Entity, EntityBuilder)>) {
+    let mut batch_commands = Vec::default();
+    let mut bvh = StageBoundingVolumnHierarchy::default();
+
+    // 지역 데이터를 생성합니다.
+    for area_data in layout.area.iter() {
+        build_stage_area(
+            world,
+            model_pool,
+            texture_data_pool,
+            area_data,
+            device,
+            encoder,
+            staging_buffers,
+            &mut batch_commands,
+            &mut bvh,
+        );
+    }
+
+    // 장식물 데이터를 생성합니다.
+    bvh.root = layout.root_prop.as_ref().map(|prop_data| {
+        build_stage_prop(
+            world,
+            model_pool,
+            texture_data_pool,
+            prop_data,
+            device,
+            encoder,
+            staging_buffers,
+            &mut batch_commands,
+        )
+    });
+
+    (bvh, batch_commands)
+}
+
+/// 스테이지를 구성하는 지역 엔터티를 추가합니다.
+fn build_stage_area(
+    world: &World,
+    model_pool: &ModelPool,
+    texture_data_pool: &TextureDataPool,
+    area_data: &StageAreaData,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
+    bvh: &mut StageBoundingVolumnHierarchy,
+) {
+    let (entity, mut batch_command) = spawn_stage_area(
+        world,
+        model_pool,
+        texture_data_pool,
+        area_data,
+        device,
+        encoder,
+        staging_buffers,
+    );
+    bvh.area.push(entity);
+    batch_commands.append(&mut batch_command);
+}
+
+fn build_stage_prop(
+    world: &World,
+    model_pool: &ModelPool,
+    texture_data_pool: &TextureDataPool,
+    prop_data: &StagePropData,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
+) -> Box<StageBoundingVolumn> {
+    let (entity, mut batch_command) = spawn_stage_prop(
+        world,
+        model_pool,
+        texture_data_pool,
+        prop_data,
+        device,
+        encoder,
+        staging_buffers,
+    );
+    batch_commands.append(&mut batch_command);
+
+    Box::new(StageBoundingVolumn {
+        entity,
+        sphere: Sphere {
+            center: prop_data.center.into(),
+            radius: prop_data.radius,
+        },
+        left: prop_data.left.as_ref().map(|prop_data| {
+            build_stage_prop(
+                world,
+                model_pool,
+                texture_data_pool,
+                prop_data,
+                device,
+                encoder,
+                staging_buffers,
+                batch_commands,
+            )
+        }),
+        right: prop_data.right.as_ref().map(|prop_data| {
+            build_stage_prop(
+                world,
+                model_pool,
+                texture_data_pool,
+                prop_data,
+                device,
+                encoder,
+                staging_buffers,
+                batch_commands,
+            )
+        }),
+    })
+}
+
 /// 스테이지를 구성하는 엔터티를 생성합니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 가집니다.
@@ -122,6 +250,58 @@ pub fn spawn_stage_area(
     (entity, batch_commands)
 }
 
+pub fn spawn_stage_props(
+    world: &World,
+    model_pool: &ModelPool,
+    texture_data_pool: &TextureDataPool,
+    node: &StagePropData,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+    entities: &mut Vec<Entity>,
+    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
+) {
+    let (entity, mut batch_command) = spawn_stage_prop(
+        world,
+        model_pool,
+        texture_data_pool,
+        node,
+        device,
+        encoder,
+        staging_buffers,
+    );
+    entities.push(entity);
+    batch_commands.append(&mut batch_command);
+
+    if let Some(left) = node.left.as_ref() {
+        let (entity, mut batch_command) = spawn_stage_prop(
+            world,
+            model_pool,
+            texture_data_pool,
+            left,
+            device,
+            encoder,
+            staging_buffers,
+        );
+        entities.push(entity);
+        batch_commands.append(&mut batch_command);
+    }
+
+    if let Some(right) = node.right.as_ref() {
+        let (entity, mut batch_command) = spawn_stage_prop(
+            world,
+            model_pool,
+            texture_data_pool,
+            right,
+            device,
+            encoder,
+            staging_buffers,
+        );
+        entities.push(entity);
+        batch_commands.append(&mut batch_command);
+    }
+}
+
 /// 스테이지를 구성하는 엔터티를 생성합니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 가집니다.
@@ -129,7 +309,7 @@ pub fn spawn_stage_area(
 /// - 로컬 변환 행렬(`ToParentTrans`)
 /// - 월드 변환 행렬(`WorldTransform`)
 ///
-pub fn spawn_stage_prop(
+fn spawn_stage_prop(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,

@@ -3,7 +3,7 @@ use super::{BoundingBox, Capsule, OrientedBoundingBox, Plane, Sphere};
 /// 절두체(Frustum)을 나타내는 구조체입니다.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Frustum {
-    planes: [Plane; 6],
+    pub planes: [Plane; 6],
 }
 
 impl Frustum {
@@ -15,7 +15,7 @@ impl Frustum {
                 Plane::from_vec4(m.row(3) - m.row(0)), // Right
                 Plane::from_vec4(m.row(3) + m.row(1)), // Bottom
                 Plane::from_vec4(m.row(3) - m.row(1)), // Top
-                Plane::from_vec4(m.row(3) - m.row(2)), // Near
+                Plane::from_vec4(m.row(3) + m.row(2)), // Near
                 Plane::from_vec4(m.row(3) - m.row(2)), // Far
             ],
         }

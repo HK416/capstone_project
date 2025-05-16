@@ -29,9 +29,10 @@ use winit::{
 
 use crate::{
     asset::{
-        MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, FIELD_DECO_00_URI, IMG_FONT_DAMAGE_NORMAL_URI, IMG_FONT_START_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_URI,
+        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumn,
+        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
+        FIELD_DECO_00_URI, IMG_FONT_DAMAGE_NORMAL_URI, IMG_FONT_START_URI, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, cleanup, compute_cascade_splits, compute_frustum_corners_no_inverse,
@@ -118,8 +119,10 @@ pub struct InGameDominationModeScene {
     disconnected_players: Vec<Entity>,
     /// 오브젝트 엔터티 집합입니다.
     bullets: HashMap<ObjectId, Entity>,
-    /// 지형 엔터티 집합입니다.
-    stages: Vec<Entity>,
+    /// 지형 엔터티의 Bounding Volumn Hierarchy 입니다.
+    stages: StageBoundingVolumnHierarchy,
+    /// 카메라 뷰 프러스텀 컬링된 엔터티 집합입니다.
+    culling_stages: Vec<Entity>,
     /// 스테이지 조명 데이터입니다.
     lights: Vec<StageLightData>,
 
@@ -276,7 +279,7 @@ impl InGameDominationModeScene {
         skybox: Skybox,
         players: HashMap<UserId, Entity>,
         disconnected_players: Vec<Entity>,
-        stages: Vec<Entity>,
+        stages: StageBoundingVolumnHierarchy,
         lights: Vec<StageLightData>,
         light_set_resource: LightSetResource,
         alpha_blend_resource: WeightedBlendedOITResource,
@@ -309,6 +312,7 @@ impl InGameDominationModeScene {
             disconnected_players,
             bullets: HashMap::default(),
             stages,
+            culling_stages: Vec::default(),
             lights,
             damage_particles: VecDeque::default(),
             move_direction: MoveDirection::default(),
@@ -923,7 +927,7 @@ impl InGameDominationModeScene {
         // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
         let world = unsafe { self.world.as_mut().unwrap_unchecked() };
 
-        for entity in self.stages.iter().cloned() {
+        for entity in self.culling_stages.iter().cloned() {
             update_entity_hierarchy(world, entity, glam::Mat4::IDENTITY);
         }
     }
@@ -1337,9 +1341,42 @@ impl InGameDominationModeScene {
     }
 
     /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 지형 엔터티를 수집합니다.
+    ///
+    /// # Note
+    /// 이 함수는 카메라의 월드 변환 행렬을 갱신한 후 호출되어야 합니다.
+    ///
     fn culling_stages(&self) -> Vec<Entity> {
-        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
-        self.stages.iter().cloned().collect()
+        // 카메라의 위치와 뷰 프러스텀을 가져옵니다.
+        let world = self.world.as_ref().unwrap();
+        let mut query = world
+            .query_one::<&Frustum>(self.main_camera)
+            .expect("invalid entity");
+        let frustum = query.get().expect("invalid entity component");
+
+        // 프러스텀 컬링된 엔터티를 수집합니다.
+        let mut entities = self.stages.area.clone();
+        if let Some(node) = self.stages.root.as_ref() {
+            Self::culling_stage_recursive(frustum, node, &mut entities);
+        }
+
+        entities
+    }
+
+    /// 카메라 프러스텀과 교차되는 엔터티를 수집합니다.
+    fn culling_stage_recursive(
+        frustum: &Frustum,
+        node: &StageBoundingVolumn,
+        entities: &mut Vec<Entity>,
+    ) {
+        if frustum.sphere_test(&node.sphere) {
+            entities.push(node.entity);
+        }
+        if let Some(left_node) = node.left.as_ref() {
+            Self::culling_stage_recursive(frustum, left_node, entities);
+        }
+        if let Some(right_node) = node.right.as_ref() {
+            Self::culling_stage_recursive(frustum, right_node, entities);
+        }
     }
 
     /// 지형의 쉐이더 리소스를 갱신합니다.
@@ -2971,7 +3008,6 @@ impl GameScene for InGameDominationModeScene {
             return;
         }
 
-        self.update_bullet();
         self.update_character();
         self.update_camera();
 
@@ -2984,6 +3020,10 @@ impl GameScene for InGameDominationModeScene {
         self.update_camera_and_skybox_resource(device, &mut encoder, &mut staging_buffers);
         // 데미지 파티클 쉐이더 리소스를 갱신합니다.
         self.update_damage_particle_resources(device, &mut encoder, &mut staging_buffers);
+
+        self.culling_stages = self.culling_stages();
+        self.update_stage();
+        self.update_bullet();
 
         let mut shadow_map = HashMap::default();
         let mut opaque_map = HashMap::default();
@@ -3035,8 +3075,7 @@ impl GameScene for InGameDominationModeScene {
         }
 
         // 지형 쉐이더 리소스를 갱신합니다.
-        let entities = self.culling_stages();
-        for entity in entities {
+        for entity in self.culling_stages.iter().cloned() {
             self.update_stage_resource(
                 entity,
                 device,

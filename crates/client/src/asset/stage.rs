@@ -1,8 +1,9 @@
 use core::f32;
 use std::{fs::OpenOptions, io::Read, path::PathBuf};
 
+use hecs::Entity;
 use mod_network::components::{StageHeight, StageLayoutData};
-use mod_physics::collision::ColliderTree;
+use mod_physics::{collision::ColliderTree, object3d::Sphere};
 
 use super::AssetError;
 
@@ -289,5 +290,43 @@ impl StageAttributes {
     /// 스테이지의 충돌체 데이터를 가져옵니다.
     pub fn get_collider_tree(&self) -> &ColliderTree {
         &self.colliders
+    }
+}
+
+/// 스테이지의 BVH입니다.
+#[derive(Debug, Clone)]
+pub struct StageBoundingVolumnHierarchy {
+    pub area: Vec<Entity>,
+    pub root: Option<Box<StageBoundingVolumn>>,
+}
+
+impl Default for StageBoundingVolumnHierarchy {
+    fn default() -> Self {
+        Self {
+            area: Vec::default(),
+            root: None,
+        }
+    }
+}
+
+/// 스테이지를 구성하는 오브젝트의 Bounding Volumn입니다.
+#[derive(Debug, Clone)]
+pub struct StageBoundingVolumn {
+    pub entity: Entity,
+    pub sphere: Sphere,
+    pub left: Option<Box<StageBoundingVolumn>>,
+    pub right: Option<Box<StageBoundingVolumn>>,
+}
+
+impl StageBoundingVolumn {
+    /// 하위 엔터티를 수집합니다.
+    pub fn collect_all_entities(&self, entities: &mut Vec<Entity>) {
+        entities.push(self.entity);
+        if let Some(left) = self.left.as_ref() {
+            left.collect_all_entities(entities);
+        }
+        if let Some(right) = self.right.as_ref() {
+            right.collect_all_entities(entities);
+        }
     }
 }

@@ -12,7 +12,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, StageLayoutData, UserId},
+    components::{LoginToken, StageLayoutData, UserId, MAX_IN_GAME_PLAYERS},
     protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -21,11 +21,11 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        MeshPool, ModelNode, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, CAPTURE_ZONE_URI, NOTOSANS_BOLD, SKYBOX_URI,
+        MeshPool, ModelNode, ModelPool, MotionPool, SamplerPool, StageBoundingVolumnHierarchy,
+        TextureDataPool, TexturePool, TextureViewPool, CAPTURE_ZONE_URI, NOTOSANS_BOLD, SKYBOX_URI,
     },
     component::{
-        spawn_player_character, spawn_stage_area, spawn_stage_prop, CaptureZoneMaterialDataLayout,
+        build_stage, spawn_player_character, CaptureZoneMaterialDataLayout,
         CaptureZoneMaterialResource, CaptureZoneMaterialUniform, Child, MaterialData,
         MaterialUniform, MeshResource, Parent, Sibling, Skybox, ToParentTrans, TransformUniform,
         WorldTransform,
@@ -354,11 +354,9 @@ impl InGameBuildScene {
                 .get()
                 .expect("the stage layout data must exist!");
 
-            let num_players = packet.players.len();
-            let num_stages = stage_layout_data_ref.area.len() + stage_layout_data_ref.props.len();
-
             let player_entities: Arc<Queue<_>> = Arc::new(Queue::new());
-            let stage_entities: Arc<Queue<_>> = Arc::new(Queue::new());
+            let stage_result: Arc<SpinMutex<Option<StageBoundingVolumnHierarchy>>> =
+                Arc::new(SpinMutex::new(None));
             rayon::scope(|scope| {
                 {
                     // 플레이어 캐릭터 엔터티를 생성합니다.
@@ -394,88 +392,27 @@ impl InGameBuildScene {
 
                 // 스테이지 지형 엔터티를 생성합니다.
                 {
-                    let stages = stage_entities.clone();
+                    let stage_result = stage_result.clone();
                     scope.spawn(move |_| {
                         let mut staging_buffers = Vec::new();
                         let mut encoder = device_ref
                             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                        for data in stage_layout_data_ref.area.iter() {
-                            let (entity, batch_command) = spawn_stage_area(
-                                world_ref,
-                                model_pool_ref,
-                                texture_data_pool_ref,
-                                data,
-                                device_ref,
-                                &mut encoder,
-                                &mut staging_buffers,
-                            );
-
-                            // 엔터티 생성 명령어를 전송합니다.
-                            batch_commands_ref.push(batch_command);
-
-                            // 지형 엔터티를 전송합니다.
-                            stages.push(entity);
-                        }
-
-                        // 렌더링 명령어를 전송합니다.
-                        commands_ref.push((encoder.finish(), staging_buffers));
-                    });
-                }
-
-                // 스테이지 장식물 엔터티를 생성합니다.
-                {
-                    let stages = stage_entities.clone();
-                    scope.spawn(move |_| {
-                        let mut staging_buffers = Vec::new();
-                        let mut encoder = device_ref
-                            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-                        for data in stage_layout_data_ref.props.iter() {
-                            let (entity, batch_command) = spawn_stage_prop(
-                                world_ref,
-                                model_pool_ref,
-                                texture_data_pool_ref,
-                                data,
-                                device_ref,
-                                &mut encoder,
-                                &mut staging_buffers,
-                            );
-
-                            // 엔터티 생성 명령어를 전송합니다.
-                            batch_commands_ref.push(batch_command);
-
-                            // 지형 엔터티를 전송합니다.
-                            stages.push(entity);
-                        }
-
-                        // 렌더링 명령어를 전송합니다.
-                        commands_ref.push((encoder.finish(), staging_buffers));
-                    });
-                }
-
-                // 스테이지 점령 지역 엔터티를 생성합니다.
-                {
-                    let stages = stage_entities.clone();
-                    scope.spawn(move |_| {
-                        let mut staging_buffers = Vec::new();
-                        let mut encoder = device_ref
-                            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-                        let (entity, batch_command) = Self::spawn_capture_zone(
+                        let (bvh, batch_commands) = build_stage(
                             world_ref,
                             model_pool_ref,
                             texture_data_pool_ref,
+                            stage_layout_data_ref,
                             device_ref,
                             &mut encoder,
                             &mut staging_buffers,
                         );
 
                         // 엔터티 생성 명령어를 전송합니다.
-                        batch_commands_ref.push(batch_command);
+                        batch_commands_ref.push(batch_commands);
 
                         // 지형 엔터티를 전송합니다.
-                        stages.push(entity);
+                        *stage_result.lock() = Some(bvh);
 
                         // 렌더링 명령어를 전송합니다.
                         commands_ref.push((encoder.finish(), staging_buffers));
@@ -529,16 +466,14 @@ impl InGameBuildScene {
             }
 
             // 플레이어 집합을 생성합니다.
-            let mut players = HashMap::with_capacity_and_hasher(num_players, RandomState::new());
+            let mut players =
+                HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new());
             while let Some((user_id, entity)) = player_entities.pop() {
                 players.insert(user_id, entity);
             }
 
-            // 지형 집합을 생성합니다.
-            let mut stages = Vec::with_capacity(num_stages);
-            while let Some(entity) = stage_entities.pop() {
-                stages.push(entity);
-            }
+            // 지형의 Bounding Volumn Hierarchy를 가져옵니다.
+            let stages = stage_result.lock().take().unwrap();
 
             // 조명 집합을 생성합니다
             let lights = stage_layout_data_ref.lights.to_owned();

@@ -22,8 +22,9 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        MotionPool, FIELD_DECO_00_URI, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD,
-        SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_URI,
+        MotionPool, StageBoundingVolumn, StageBoundingVolumnHierarchy, FIELD_DECO_00_URI,
+        IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD, SCHALE_ICON_URI, TIMER_ICON_URI,
+        WEAPON_ICON_URI,
     },
     component::{
         animate_character, compute_cascade_splits, compute_frustum_corners_no_inverse,
@@ -97,7 +98,9 @@ pub struct InGameResultEnterScene {
     /// 오브젝트 엔터티 집합입니다.
     bullets: HashMap<ObjectId, Entity>,
     /// 지형 엔터티 집합입니다.
-    stages: Vec<Entity>,
+    stages: StageBoundingVolumnHierarchy,
+    /// 프러스텀 컬링을 수행한 지형 엔터티 집합입니다.
+    culling_stages: Vec<Entity>,
     /// 지형의 조명 데이터 집합입니다.
     lights: Vec<StageLightData>,
 
@@ -150,7 +153,7 @@ impl InGameResultEnterScene {
         disconnected_players: Vec<Entity>,
         bullets: HashMap<ObjectId, Entity>,
         damage_particles: VecDeque<Entity>,
-        stages: Vec<Entity>,
+        stages: StageBoundingVolumnHierarchy,
         lights: Vec<StageLightData>,
         light_set_resource: LightSetResource,
         alpha_blend_resource: WeightedBlendedOITResource,
@@ -178,6 +181,7 @@ impl InGameResultEnterScene {
             disconnected_players,
             bullets,
             stages,
+            culling_stages: Vec::default(),
             damage_particles,
             ui_textures,
             lights,
@@ -897,9 +901,42 @@ impl InGameResultEnterScene {
     }
 
     /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 지형 엔터티를 수집합니다.
+    ///
+    /// # Note
+    /// 이 함수는 카메라의 월드 변환 행렬을 갱신한 후 호출되어야 합니다.
+    ///
     fn culling_stages(&self) -> Vec<Entity> {
-        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
-        self.stages.iter().cloned().collect()
+        // 카메라의 위치와 뷰 프러스텀을 가져옵니다.
+        let world = self.world.as_ref().unwrap();
+        let mut query = world
+            .query_one::<&Frustum>(self.main_camera)
+            .expect("invalid entity");
+        let frustum = query.get().expect("invalid entity component");
+
+        // 프러스텀 컬링된 엔터티를 수집합니다.
+        let mut entities = self.stages.area.clone();
+        if let Some(node) = self.stages.root.as_ref() {
+            Self::culling_stage_recursive(frustum, node, &mut entities);
+        }
+
+        entities
+    }
+
+    /// 카메라 프러스텀과 교차되는 엔터티를 수집합니다.
+    fn culling_stage_recursive(
+        frustum: &Frustum,
+        node: &StageBoundingVolumn,
+        entities: &mut Vec<Entity>,
+    ) {
+        if frustum.sphere_test(&node.sphere) {
+            entities.push(node.entity);
+        }
+        if let Some(left_node) = node.left.as_ref() {
+            Self::culling_stage_recursive(frustum, left_node, entities);
+        }
+        if let Some(right_node) = node.right.as_ref() {
+            Self::culling_stage_recursive(frustum, right_node, entities);
+        }
     }
 
     /// 지형의 쉐이더 리소스를 갱신합니다.
@@ -2377,9 +2414,11 @@ impl GameScene for InGameResultEnterScene {
             return;
         }
 
-        self.update_bullet();
         self.update_character();
         self.update_camera();
+
+        self.culling_stages = self.culling_stages();
+        self.update_bullet();
 
         let device = app.render_device();
         let queue = app.render_queue();
@@ -2441,8 +2480,7 @@ impl GameScene for InGameResultEnterScene {
         }
 
         // 지형 쉐이더 리소스를 갱신합니다.
-        let entities = self.culling_stages();
-        for entity in entities {
+        for entity in self.culling_stages.iter().cloned() {
             self.update_stage_resource(
                 entity,
                 device,

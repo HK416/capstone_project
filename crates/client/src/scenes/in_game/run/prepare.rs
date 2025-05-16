@@ -22,10 +22,11 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, CHARACTER_ICON_URIS, FIELD_DECO_00_URI, FIELD_DECO_01_URI,
-        IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_START_URI, IMG_FONT_WIN_URI,
-        NOTOSANS_REGULAR, SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
+        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumn,
+        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
+        CHARACTER_ICON_URIS, FIELD_DECO_00_URI, FIELD_DECO_01_URI, IMG_FONT_LOSE_URI,
+        IMG_FONT_MISSION_URI, IMG_FONT_START_URI, IMG_FONT_WIN_URI, NOTOSANS_REGULAR,
+        SCHALE_ICON_URI, TIMER_ICON_URI, WEAPON_ICON_MASK_URI, WEAPON_ICON_URI,
     },
     component::{
         animate_character, compute_cascade_splits, compute_frustum_corners_no_inverse,
@@ -73,8 +74,10 @@ pub struct InGameDominationModePrepareScene {
     players: HashMap<UserId, Entity>,
     /// 연결이 끊어진 플레이어 엔터티 집합입니다.
     disconnected_players: Vec<Entity>,
-    /// 지형 엔터티 집합입니다.
-    stages: Vec<Entity>,
+    /// 지형 엔터티의 Bounding Volumn Hierarchy 입니다.
+    stages: StageBoundingVolumnHierarchy,
+    /// 카메라 뷰 프러스텀 컬링된 엔터티 집합입니다.
+    culling_stages: Vec<Entity>,
     /// 지형의 조명 데이터 집합입니다.
     lights: Vec<StageLightData>,
 
@@ -123,7 +126,7 @@ impl InGameDominationModePrepareScene {
         world: World,
         skybox: Skybox,
         players: HashMap<UserId, Entity>,
-        stages: Vec<Entity>,
+        stages: StageBoundingVolumnHierarchy,
         lights: Vec<StageLightData>,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
@@ -145,6 +148,7 @@ impl InGameDominationModePrepareScene {
             players,
             disconnected_players: Vec::with_capacity(MAX_IN_GAME_PLAYERS),
             stages,
+            culling_stages: Vec::default(),
             lights,
             light_set_resource: None,
             alpha_blend_resource: None,
@@ -779,7 +783,7 @@ impl InGameDominationModePrepareScene {
         // Safe: 게임 월드가 없는 경우 게임 장면이 갱신되거나 렌더링 되지 않는다.
         let world = unsafe { self.world.as_mut().unwrap_unchecked() };
 
-        for entity in self.stages.iter().cloned() {
+        for entity in self.culling_stages.iter().cloned() {
             update_entity_hierarchy(world, entity, glam::Mat4::IDENTITY);
         }
     }
@@ -995,9 +999,42 @@ impl InGameDominationModePrepareScene {
     }
 
     /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 지형 엔터티를 수집합니다.
+    ///
+    /// # Note
+    /// 이 함수는 카메라의 월드 변환 행렬을 갱신한 후 호출되어야 합니다.
+    ///
     fn culling_stages(&self) -> Vec<Entity> {
-        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
-        self.stages.iter().cloned().collect()
+        // 카메라의 위치와 뷰 프러스텀을 가져옵니다.
+        let world = self.world.as_ref().unwrap();
+        let mut query = world
+            .query_one::<&Frustum>(self.main_camera)
+            .expect("invalid entity");
+        let frustum = query.get().expect("invalid entity component");
+
+        // 프러스텀 컬링된 엔터티를 수집합니다.
+        let mut entities = self.stages.area.clone();
+        if let Some(node) = self.stages.root.as_ref() {
+            Self::culling_stage_recursive(frustum, node, &mut entities);
+        }
+
+        entities
+    }
+
+    /// 카메라 프러스텀과 교차되는 엔터티를 수집합니다.
+    fn culling_stage_recursive(
+        frustum: &Frustum,
+        node: &StageBoundingVolumn,
+        entities: &mut Vec<Entity>,
+    ) {
+        if frustum.sphere_test(&node.sphere) {
+            entities.push(node.entity);
+        }
+        if let Some(left_node) = node.left.as_ref() {
+            Self::culling_stage_recursive(frustum, left_node, entities);
+        }
+        if let Some(right_node) = node.right.as_ref() {
+            Self::culling_stage_recursive(frustum, right_node, entities);
+        }
     }
 
     /// 지형의 쉐이더 리소스를 갱신합니다.
@@ -1460,7 +1497,6 @@ impl GameScene for InGameDominationModePrepareScene {
         self.create_main_camera(&device);
         self.create_light_set_resource(device);
         self.create_alpha_blend_resource(window, &device);
-        self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
     }
 
     fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
@@ -1580,6 +1616,10 @@ impl GameScene for InGameDominationModePrepareScene {
         self.update_camera();
         self.update_character();
 
+        // 프러스텀 컬링을 수행합니다.
+        self.culling_stages = self.culling_stages();
+        self.update_stage();
+
         let device = app.render_device();
         let queue = app.render_queue();
         let mut staging_buffers = Vec::new();
@@ -1618,9 +1658,8 @@ impl GameScene for InGameDominationModePrepareScene {
             );
         }
 
-        // 지형 쉐이더 리소스를 갱신합니다.
-        let entities = self.culling_stages();
-        for entity in entities {
+        // 지형의 쉐이더 리소스를 갱신합니다.
+        for entity in self.culling_stages.iter().cloned() {
             self.update_stage_resource(
                 entity,
                 device,

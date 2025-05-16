@@ -98,7 +98,7 @@ impl WorldTransform {
         glam::Mat4::look_to_lh(
             self.get_translation().into(),
             self.get_look_vector().into(),
-            self.get_up_vector().into(),
+            glam::Vec3::Y,
         )
     }
 
