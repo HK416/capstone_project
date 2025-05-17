@@ -1,4 +1,4 @@
-use mod_network::components::{Email, LoginToken, Passwd, UserAccount, UserId, WorldId};
+use mod_network::components::{Email, LoginToken, Passwd, UserAccount, WorldId};
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -10,143 +10,132 @@ use mod_network::protocol::{
 };
 
 
+struct Client {
+    account: UserAccount,
+    token: LoginToken,
+    
+    reader: tokio::net::tcp::OwnedReadHalf,
+    writer: tokio::net::tcp::OwnedWriteHalf,
+    packet_parser: PacketParser,
+    connected: bool,
+}
+
+impl Client {
+    async fn new(account: UserAccount) -> Result<Self, std::io::Error> {
+        let stream = TcpStream::connect("localhost:7878").await?;
+        let (reader, writer) = stream.into_split();
+
+        Ok(Self {
+            account,
+            token: LoginToken::default(),
+            reader,
+            writer,
+            packet_parser: PacketParser::new(),
+            connected: true,
+        })
+    }
+
+    async fn read(&mut self) -> Result<(), std::io::Error> {
+        let mut buf = [0; 32];
+
+        match self.reader.read(&mut buf).await {
+            Ok(0) => {
+                self.connected = false;
+                return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Connection closed by server"));
+            }
+            Ok(n) => {
+                println!("Received {} bytes: {:?}", n, &buf[..n]);
+                self.packet_parser.push(&buf[..n]);
+                return Ok(());
+            }
+            Err(e) => {
+                self.connected = false;
+                return Err(e);
+            }
+        }
+    }
+
+    async fn run(&mut self) -> Result<(), std::io::Error> {
+        if !self.connected {
+            return Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "Client is not connected"));
+        }
+        
+        self.login(Email::default(), Passwd::default()).await?; // 기본값으로 전송
+        self.join(WorldId::NULL).await?;
+        self.ready().await?;
+
+        Ok(())
+    }
+
+    async fn login(&mut self, email: Email, passwd: Passwd) -> Result<(), std::io::Error> {
+        let packet = LoginRequestPacket::new(email, passwd).as_raw();
+        self.writer.write_all(&packet.as_bytes()).await?;
+
+        'readloop: loop {
+            self.read().await?;
+
+            while let Some(packet) = self.packet_parser.pop() {
+                println!("Parsed packet: {:?}", packet);
+                if packet.packet_type() == PacketType::LoginSuccess {
+                    let p = LoginSuccessPacket::from_raw(packet);
+                    self.account = p.account;
+                    self.token = p.token;
+                    break 'readloop;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn join(&mut self, world_id: WorldId) -> Result<(), std::io::Error> {
+        let packet = CustomGameJoinRequestPacket::new(world_id, self.account.uid, self.token).as_raw();
+        self.writer.write_all(&packet.as_bytes()).await?;
+
+        'readloop: loop {
+            self.read().await?;
+
+            while let Some(packet) = self.packet_parser.pop() {
+                println!("Parsed packet: {:?}", packet);
+                if packet.packet_type() == PacketType::CustomGameJoinSuccess {
+                    let p = CustomGameJoinSuccessPacket::from_raw(packet);
+                    println!("Join success: {:?}", p);
+                    break 'readloop;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn ready(&mut self) -> Result<(), std::io::Error> {
+        let packet = CustomGameReadyPacket::new(self.account.uid, self.token, true).as_raw();
+        self.writer.write_all(&packet.as_bytes()).await?;
+
+        'readloop: loop {
+            self.read().await?;
+
+            while let Some(packet) = self.packet_parser.pop() {
+                println!("Parsed packet: {:?}", packet);
+                if packet.packet_type() == PacketType::CustomGamePull {
+                    let p = CustomGamePullPacket::from_raw(packet);
+                    println!("Pull: {:?}", p);
+                    break 'readloop;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+
 #[tokio::main]
 async fn main() {
     println!("Stress test started");
 
-    let mut packet_parser = PacketParser::new();
-
-    let mut client = TcpStream::connect("localhost:7878").await.unwrap();
-    println!("Connected to server");
-
-    println!();
-    println!(" - - - ");
-    println!();
-
-    // verify
-    // let packet = ClientVerifyPacket::new().as_raw();
-    // println!("Sending packet: {:?}", packet);
-    // client.write_all(&packet.as_bytes()).await.unwrap();
-    
-    let mut id = UserId::default();
-    let mut token = LoginToken::default();
-    let mut buf = [0; 10];
-
-    // Login
-    let packet = LoginRequestPacket::new(Email::default(), Passwd::default()).as_raw();
-    println!("Sending packet: {:?}", packet);
-    client.write_all(&packet.as_bytes()).await.unwrap();
-    
-    'login: loop {
-        match client.read(&mut buf).await {
-            Ok(0) => {
-                println!("Connection closed by server");
-                break;
-            }
-            Ok(n) => {
-                println!("Received {} bytes: {:?}", n, &buf[..n]);
-                packet_parser.push(&buf[..n]);
-            }
-            Err(e) => {
-                println!("Error reading from server: {}", e);
-                break;
-            }
-        }
-
-        while let Some(packet) = packet_parser.pop() {
-            println!("Parsed packet: {:?}", packet);
-            assert_eq!(packet.packet_type(), PacketType::LoginSuccess);
-            let p = LoginSuccessPacket::from_raw(packet);
-            id = p.account.uid;
-            token = p.token;
-            break 'login;
-        }
-    }
-    
-    println!();
-    println!(" - - - ");
-    println!();
-
-    if id == UserId::default() {
-        println!("Login failed");
-        return;
-    }
-    if token == LoginToken::default() {
-        println!("Login failed");
-        return;
-    }
-
-    // join(lobby)
-    let packet = CustomGameJoinRequestPacket::new(
-        WorldId::NULL,
-        id,
-        token,
-    );
-    println!("Sending packet: {:?}", packet);
-    client.write_all(&packet.as_raw().as_bytes()).await.unwrap();
-
-    'join: loop {
-        match client.read(&mut buf).await {
-            Ok(0) => {
-                println!("Connection closed by server");
-                break;
-            }
-            Ok(n) => {
-                println!("Received {} bytes: {:?}", n, &buf[..n]);
-                packet_parser.push(&buf[..n]);
-            }
-            Err(e) => {
-                println!("Error reading from server: {}", e);
-                break;
-            }
-        }
-
-        while let Some(packet) = packet_parser.pop() {
-            println!("Parsed packet: {:?}", packet);
-            assert_eq!(packet.packet_type(), PacketType::CustomGameJoinSuccess);
-            let p = CustomGameJoinSuccessPacket::from_raw(packet);
-            println!("Join success: {:?}", p);
-            break 'join;
-        }
-    }
-
-    println!();
-    println!(" - - - ");
-    println!();
-
-    // ready(room)
-    let packet = CustomGameReadyPacket::new(
-        id,
-        token,
-        true,
-    );
-    println!("Sending packet: {:?}", packet);
-    client.write_all(&packet.as_raw().as_bytes()).await.unwrap();
-
-    'ready: loop {
-        match client.read(&mut buf).await {
-            Ok(0) => {
-                println!("Connection closed by server");
-                break;
-            }
-            Ok(n) => {
-                println!("Received {} bytes: {:?}", n, &buf[..n]);
-                packet_parser.push(&buf[..n]);
-            }
-            Err(e) => {
-                println!("Error reading from server: {}", e);
-                break;
-            }
-        }
-
-        while let Some(packet) = packet_parser.pop() {
-            println!("Parsed packet: {:?}", packet);
-            assert_eq!(packet.packet_type(), PacketType::CustomGamePull);
-            let p = CustomGamePullPacket::from_raw(packet);
-            println!("Pull: {:?}", p);
-            break 'ready;
-        }
-    }
+    let mut client = Client::new(UserAccount::default()).await.unwrap();
+    client.run().await.unwrap();
 
     println!("Stress test finished");
 }
