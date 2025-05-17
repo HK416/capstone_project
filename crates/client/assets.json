@@ -230,6 +230,11 @@
                         "City_Prop_Tree_00.mesh",
                         "City_Prop_Tree_Pot_00.hierarchy",
                         "City_Prop_Tree_Pot_00.mesh",
+                        "Common_Prop_Container_00.dds",
+                        "Common_Prop_Container_00.hierarchy",
+                        "Common_Prop_Container_00.material",
+                        "Common_Prop_Container_00.mesh",
+                        "Common_Prop_Container_00.texD",
                         "map.json"
                     ],
                     "directories" : {}

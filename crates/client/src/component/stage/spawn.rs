@@ -520,7 +520,7 @@ fn spawn_stage_model_recursive(
                         );
 
                         (MaterialUniform::Stage(stage_uniform), material_resource)
-                    }
+                    },
                     _ => panic!("invalid material data!"),
                 }
             })
