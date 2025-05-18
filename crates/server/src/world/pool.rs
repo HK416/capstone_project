@@ -113,4 +113,20 @@ impl GameWorldPool {
 
         Some(world)
     }
+
+    /// 접속 가능한 월드 아이디 목록을 가져옵니다.
+    pub fn get_available_world_ids() -> Vec<WorldId> {
+        let mut ids = Vec::new();
+        for w in get_pool().iter() {
+            let id = w.key();
+            let world = w.value();
+
+            if world.is_closed() {
+                continue;
+            }
+            
+            ids.push(*id);
+        }
+        ids
+    }
 }
