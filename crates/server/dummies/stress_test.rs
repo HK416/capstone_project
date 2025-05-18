@@ -62,6 +62,8 @@ impl Client {
                 *available.choose(&mut rand::rng()).unwrap()
             };
 
+            //////////////////////////////////////////////////// **꽉 찬 방이 있어도 접속할 수 있다고 뜨는거같음**
+
             // 방 접속
             match self.join(world_id).await {
                 Ok(_) => break,
@@ -71,6 +73,8 @@ impl Client {
 
         // 준비 신호 전송
         self.ready().await?;
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
         Ok(())
     }
@@ -182,8 +186,13 @@ impl Client {
 async fn main() -> Result<(), std::io::Error> {
     println!("Stress test started");
 
-    let mut client = Client::new(UserAccount::default()).await.unwrap();
-    client.run().await?;
+    loop {
+        let mut client = Client::new(UserAccount::default()).await.unwrap();
+        tokio::spawn(async move { client.run().await });
+
+        // 접속속도 초당 10개로 제한
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
 
     println!("Stress test finished");
 
