@@ -6,15 +6,10 @@ use tokio::{
 
 use mod_network::{
     components::{
-        Email, LoginToken, Passwd, Permission, SelectResult, UserAccount, WorldId
+        CharacterKind, Email, LoginToken, Passwd, Permission, SelectResult, UserAccount, WorldId
     },
     protocol::{
-        Packet, PacketParser, PacketType, 
-        LoginRequestPacket, LoginSuccessPacket, 
-        CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket, 
-        AvailableWorldsPacket, RequestAvailableWorldsPacket, 
-        CustomGamePullPacket, CustomGameReadyPacket, CustomGameStartFailedPacket,
-        FormationPullPacket, FormationSelectResponsePacket,
+        AvailableWorldsPacket, CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket, CustomGamePullPacket, CustomGameReadyPacket, CustomGameStartFailedPacket, FormationPullPacket, FormationSelectPacket, FormationSelectResponsePacket, InitStagePacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketParser, PacketType, RequestAvailableWorldsPacket
     }
 };
 
@@ -66,8 +61,6 @@ impl Client {
                 // 랜덤으로 방 선택
                 *available.choose(&mut rand::rng()).unwrap()
             };
-
-            //////////////////////////////////////////////////// **꽉 찬 방이 있어도 접속할 수 있다고 뜨는거같음**
 
             // 방 접속
             match self.join(world_id).await {
@@ -190,19 +183,22 @@ impl Client {
                         }
                         // 이 메세지를 받는다면 방장임
                         PacketType::CustomGameStartFailed => {
-                            let p = CustomGameStartFailedPacket::from_raw(packet);
-                            println!("Game start failed: {:?}", p.reason);
+                            let _p = CustomGameStartFailedPacket::from_raw(packet);
+                            // println!("Game start failed: {:?}", p.reason);
                             tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                             continue 'writeloop;
                         }
                         // 이 메세지를 받는다면 게임이 시작된것임
                         PacketType::FormationPull => {
                             let _p = FormationPullPacket::from_raw(packet);
-                            println!("Game started");
+                            // println!("Game started");
                             break 'writeloop;
                         }
                         _ => {
                             println!("Invalid packet received: {:?}", packet.packet_type());
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData, "Invalid packet received"
+                            ));
                         }
                     }
                 }
@@ -213,18 +209,47 @@ impl Client {
     }
 
     async fn select_character(&mut self) -> Result<(), std::io::Error> {
-        // 캐릭터 선택 패킷 전송
-        let packet = FormationSelectResponsePacket::new(SelectResult::Success).as_raw();
-        self.writer.write_all(&packet.as_bytes()).await?;
+        'writeloop: loop {
+            // 캐릭터 선택 패킷 전송
+            let packet = FormationSelectPacket::new(
+                self.account.uid,
+                self.token,
+                CharacterKind::default(),
+            ).as_raw();
+            self.writer.write_all(&packet.as_bytes()).await?;
 
-        // 캐릭터 선택 완료 대기
-        loop {
-            self.read().await?;
+            // 캐릭터 선택 완료 대기
+            'readloop: loop {
+                self.read().await?;
 
-            while let Some(packet) = self.packet_parser.pop() {
-                if packet.packet_type() == PacketType::FormationPull {
-                    let _p = FormationPullPacket::from_raw(packet);
-                    break;
+                while let Some(packet) = self.packet_parser.pop() {
+                    match packet.packet_type() {
+                        // 캐릭터 선택 완료 패킷
+                        PacketType::FormationPull => {
+                            let _p = FormationPullPacket::from_raw(packet);
+                        }
+                        PacketType::FormationSelectResponse => {
+                            let p = FormationSelectResponsePacket::from_raw(packet);
+                            if p.result == SelectResult::Success {
+                                // println!("Character selected successfully");
+                                continue 'readloop;
+                            } else {
+                                println!("Character selection failed: {:?}", p.result);
+                                continue 'writeloop;
+                            }
+                        }
+                        PacketType::InitStage => {
+                            let _p = InitStagePacket::from_raw(packet);
+                            // println!("Stage initialized");
+                            break 'writeloop;
+                        }
+                        _ => {
+                            println!("Invalid packet received: {:?}", packet.packet_type());
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidData, "Invalid packet received"
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -244,8 +269,8 @@ async fn main() -> Result<(), std::io::Error> {
         let mut client = Client::new(UserAccount::default()).await.unwrap();
         tokio::spawn(async move { client.run().await });
 
-        // 접속속도 초당 50개로 제한
-        tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+        // 접속속도 초당 100개로 제한
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     }
 
     println!("Stress test finished");
