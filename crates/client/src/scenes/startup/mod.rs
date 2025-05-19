@@ -65,6 +65,8 @@ pub struct GameStartupScene {
 
     /// 남은 작업의 개수
     num_remaining_tasks: usize,
+    /// 스테이징(업로드) 버퍼의 집합
+    staging_buffers: Vec<wgpu::Buffer>,
     /// 작업 결과를 저장하는 대기열
     task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
     /// 로드된 폰트 에셋 데이터 집합
@@ -80,6 +82,7 @@ impl GameStartupScene {
         Self {
             needs_initial_setup: false,
             num_remaining_tasks: 0,
+            staging_buffers: Vec::default(),
             task_results: Arc::new(Queue::new()),
             font_asset_data: HashMap::default(),
             texture_pool: TexturePool::new(),
@@ -523,10 +526,10 @@ impl GameScene for GameStartupScene {
                         }
                         TaskResult::Texture {
                             command,
-                            staging_buffers,
+                            mut staging_buffers,
                         } => {
                             app.render_queue().submit(Some(command));
-                            drop(staging_buffers);
+                            self.staging_buffers.append(&mut staging_buffers);
                         }
                         _ => {}
                     };

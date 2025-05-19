@@ -48,6 +48,8 @@ pub struct MainLobbyEnterScene {
     /// 로그인 토큰
     token: LoginToken,
 
+    /// 스테이징(업로드) 버퍼 집합
+    staging_buffers: Vec<wgpu::Buffer>,
     /// 작업 결과
     task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
     /// 남은 작업의 수
@@ -64,6 +66,7 @@ impl MainLobbyEnterScene {
             locale,
             user_info,
             token,
+            staging_buffers: Vec::default(),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
             texture_pool: TexturePool::new(),
@@ -208,10 +211,10 @@ impl GameScene for MainLobbyEnterScene {
                     match task {
                         TaskResult::Texture {
                             command,
-                            staging_buffers,
+                            mut staging_buffers,
                         } => {
                             app.render_queue().submit(Some(command));
-                            drop(staging_buffers);
+                            self.staging_buffers.append(&mut staging_buffers);
                         }
                     }
                 }

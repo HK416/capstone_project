@@ -1733,6 +1733,14 @@ impl GameScene for InGameLoadScene {
         }
 
         app.render_queue().submit(commands);
+        while !app
+            .render_device()
+            .poll(wgpu::Maintain::Poll)
+            .is_queue_empty()
+        {
+            std::hint::spin_loop();
+        }
+
         drop(staging_buffers);
     }
 

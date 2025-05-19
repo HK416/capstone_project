@@ -317,16 +317,3 @@ pub struct StageBoundingVolumn {
     pub left: Option<Box<StageBoundingVolumn>>,
     pub right: Option<Box<StageBoundingVolumn>>,
 }
-
-impl StageBoundingVolumn {
-    /// 하위 엔터티를 수집합니다.
-    pub fn collect_all_entities(&self, entities: &mut Vec<Entity>) {
-        entities.push(self.entity);
-        if let Some(left) = self.left.as_ref() {
-            left.collect_all_entities(entities);
-        }
-        if let Some(right) = self.right.as_ref() {
-            right.collect_all_entities(entities);
-        }
-    }
-}
