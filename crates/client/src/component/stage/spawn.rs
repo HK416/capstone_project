@@ -250,58 +250,6 @@ pub fn spawn_stage_area(
     (entity, batch_commands)
 }
 
-pub fn spawn_stage_props(
-    world: &World,
-    model_pool: &ModelPool,
-    texture_data_pool: &TextureDataPool,
-    node: &StagePropData,
-    device: &wgpu::Device,
-    encoder: &mut wgpu::CommandEncoder,
-    staging_buffers: &mut Vec<wgpu::Buffer>,
-    entities: &mut Vec<Entity>,
-    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
-) {
-    let (entity, mut batch_command) = spawn_stage_prop(
-        world,
-        model_pool,
-        texture_data_pool,
-        node,
-        device,
-        encoder,
-        staging_buffers,
-    );
-    entities.push(entity);
-    batch_commands.append(&mut batch_command);
-
-    if let Some(left) = node.left.as_ref() {
-        let (entity, mut batch_command) = spawn_stage_prop(
-            world,
-            model_pool,
-            texture_data_pool,
-            left,
-            device,
-            encoder,
-            staging_buffers,
-        );
-        entities.push(entity);
-        batch_commands.append(&mut batch_command);
-    }
-
-    if let Some(right) = node.right.as_ref() {
-        let (entity, mut batch_command) = spawn_stage_prop(
-            world,
-            model_pool,
-            texture_data_pool,
-            right,
-            device,
-            encoder,
-            staging_buffers,
-        );
-        entities.push(entity);
-        batch_commands.append(&mut batch_command);
-    }
-}
-
 /// 스테이지를 구성하는 엔터티를 생성합니다.
 ///
 /// 생성된 엔터티는 아래 컴포넌트를 가집니다.

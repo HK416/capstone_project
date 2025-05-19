@@ -37,10 +37,11 @@ impl MeshFilter {
 }
 
 pub type BakeList = Vec<ShadowResource>;
-pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter)>>;
-pub type OpaqueMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter, MaterialResource)>>;
+pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), HashMap<usize, Vec<MeshFilter>>>;
+pub type OpaqueMap =
+    HashMap<(Arc<Mesh>, MaterialKind), HashMap<(usize, MaterialResource), Vec<MeshFilter>>>;
 pub type TransparentMap =
-    HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter, MaterialResource)>>;
+    HashMap<(Arc<Mesh>, MaterialKind), HashMap<(usize, MaterialResource), Vec<MeshFilter>>>;
 pub type MeshRenderer<'a> = (
     &'a Arc<Mesh>,
     &'a MeshResource,

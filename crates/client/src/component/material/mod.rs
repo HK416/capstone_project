@@ -223,7 +223,7 @@ impl MaterialUniform {
 }
 
 /// 재질 쉐이더 리소스입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MaterialResource {
     kind: MaterialKind,
     bind_group: Arc<wgpu::BindGroup>,
