@@ -124,21 +124,21 @@ async fn wait_for_players(listener: TcpListener, udp_sender: Arc<Queue<(SocketAd
                     // 클라이언트 세션을 생성하고 등록합니다.
                     let session = Arc::new(Session::new(addr, udp_sender));
                     SessionManager::regist(addr, session.clone());
-                    println!(
-                        "Accepted connection from: {} (Concurrent Users:{})",
-                        &session,
-                        &SessionManager::count()
-                    );
+                    // println!(
+                    //     "Accepted connection from: {} (Concurrent Users:{})",
+                    //     &session,
+                    //     &SessionManager::count()
+                    // );
 
                     handle_connection(stream, session).await;
 
                     // 등록된 클라이언트 세션을 제거합니다.
-                    let session = SessionManager::unregist(&addr).unwrap();
-                    println!(
-                        "{} left. (Concurrent Users:{})",
-                        &session,
-                        &SessionManager::count()
-                    );
+                    let _session = SessionManager::unregist(&addr).unwrap();
+                    // println!(
+                    //     "{} left. (Concurrent Users:{})",
+                    //     &session,
+                    //     &SessionManager::count()
+                    // );
                 });
             }
             Err(e) => {

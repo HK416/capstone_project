@@ -14,7 +14,7 @@ use crate::session::Session;
 use super::GameWorld;
 
 /// 최대 게임 월드의 개수입니다.
-const MAX_GAME_WORLDS: usize = 100;
+const MAX_GAME_WORLDS: usize = 1000;
 /// 초기화시 생성되는 게임 월드의 개수입니다.
 const INIT_GAME_WORLDS: usize = 5;
 static_assertions::const_assert!(INIT_GAME_WORLDS < MAX_GAME_WORLDS);
