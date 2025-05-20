@@ -1,1 +1,1 @@
-{ "uri": "Midori_Original_Halo", "width": 16, "height": 16, "depth_or_array_layers": 1, "mip_level_count": 5, "sample_count": 1, "format": "Bc7RgbaUnorm", "dimension": "D2", "address_u": "Repeat", "address_v": "Repeat", "address_w": "Repeat", "filter_mode": "Linear" }
+{ "uri": "Midori_Original_Halo", "width": 16, "height": 16, "depth_or_array_layers": 1, "mip_level_count": 5, "sample_count": 1, "format": "Bc7RgbaUnormSrgb", "dimension": "D2", "address_u": "Repeat", "address_v": "Repeat", "address_w": "Repeat", "filter_mode": "Linear" }

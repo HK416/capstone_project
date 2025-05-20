@@ -65,9 +65,10 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 // 캐릭터를 그리는 프래그먼트 쉐이더입니다.
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
+    let color = textureSample(t_main_color, s_main_color, input.texcoord);
+
     var out: RenderTarget;
-    
-    out.color = textureSample(t_main_color, s_main_color, input.texcoord);
+    out.color = vec4(pow(color.rgb, vec3(1.0 / 2.2)), color.a); // 감마 보정
     // out.bloom = u_material.emissive;
 
     return out;
