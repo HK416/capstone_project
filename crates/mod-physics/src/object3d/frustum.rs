@@ -23,9 +23,17 @@ impl Frustum {
 
     /// 구체가 절두체와 충돌하는지 여부를 반환합니다.
     pub fn sphere_test(&self, sphere: &Sphere) -> bool {
-        self.planes
-            .iter()
-            .all(|plane| plane.distance(sphere.center) >= -sphere.radius)
+        for p in self.planes.iter() {
+            let dist = p.normal.dot(sphere.center.into()) + p.d;
+            if dist < -sphere.radius {
+                return false;
+            }
+        }
+        return true;
+
+        // self.planes
+        //     .iter()
+        //     .all(|plane| plane.distance(sphere.center) >= sphere.radius)
     }
 
     /// 축에 정렬된 상자가 절두체와 충돌하는지 여부를 반환합니다.

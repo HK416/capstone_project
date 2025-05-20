@@ -57,13 +57,13 @@ pub const VICTORY_START_DURATION: f32 = 3.0;
 pub const VICTORY_END_DURATION: f32 = 3.2;
 
 /// 캐릭터 모델의 카메라 기본 위치입니다.
-pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
+pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 2.0);
 /// 캐릭터 모델의 카메라 줌 위치입니다.
 pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.7, 0.5);
 /// 캐릭터 모델의 카메라 기본 Fov-y 라디안 각도입니다.
-pub const CAMERA_IDLE_FOV_Y: f32 = 75f32.to_radians();
+pub const CAMERA_IDLE_FOV_Y: f32 = 45f32.to_radians();
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
-pub const CAMERA_ZOOM_FOV_Y: f32 = 70f32.to_radians();
+pub const CAMERA_ZOOM_FOV_Y: f32 = 40f32.to_radians();
 
 /// `Bip001_Head`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
 const HEAD_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 = glam::vec3(-0.06608068, 0.6346726, -0.7699505);
