@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     io::Write, 
     sync::{
-        atomic::{AtomicBool, AtomicI32, AtomicU16, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU16, Ordering},
         Arc, Mutex
     },
 };
@@ -16,7 +16,7 @@ use tokio::{
 use mod_network::{
     components::{
         CharacterKind, Email, GameInputBits, LatLon, 
-        LoginToken, Passwd, 
+        UserId, LoginToken, Passwd, 
         Permission, SelectResult, UserAccount, 
         ViewState, ViewStateTimer, WorldId
     },
@@ -37,7 +37,7 @@ use mod_network::{
 
 lazy_static::lazy_static! {
     /// milliseconds
-    static ref GLOBAL_DELAY: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+    static ref GLOBAL_DELAY: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
 
     /// 서버에 접속한 클라이언트 수
     static ref NUM_CLIENTS: Arc<AtomicU16> = Arc::new(AtomicU16::new(0));
@@ -419,7 +419,7 @@ impl Client {
         NUM_CLIENTS.fetch_add(1, Ordering::Relaxed);
 
         let ready_client = ReadyClient::new(self.account.clone(), stream);
-        let mut ready_client = match ready_client.run().await {
+        let ready_client = match ready_client.run().await {
             Ok(client) => client,
             Err(_e) => {
                 self.connected.store(false, Ordering::Relaxed);
@@ -441,9 +441,17 @@ impl Client {
                 Arc::clone(&packet_parser),
             )
         );
+        let write_handle = tokio::spawn(
+            // 쓰기 루프 시작
+            Client::start_write_loop(
+                self.account.uid,
+                self.token,
+                ready_client.writer,
+            )
+        );
 
         // 게임 시작
-        match self.start_game(&mut ready_client.writer, Arc::clone(&packet_parser)).await {
+        match self.start_game(Arc::clone(&packet_parser)).await {
             Ok(_) => {
                 self.connected.store(false, Ordering::Relaxed);
                 NUM_CLIENTS.fetch_sub(1, Ordering::Relaxed);
@@ -464,6 +472,14 @@ impl Client {
                     self.connected.store(false, Ordering::Relaxed);
                     NUM_CLIENTS.fetch_sub(1, Ordering::Relaxed);
                 }
+            }
+        }
+        match write_handle.await.unwrap() {
+            Ok(_) => {
+                // Never reached
+            }
+            Err(_) => {
+                // reader종료시 처리
             }
         }
     }
@@ -493,28 +509,56 @@ impl Client {
         // Ok(())
     }
 
+    async fn start_write_loop(
+        user_id: UserId,
+        token: LoginToken,
+        mut writer: tokio::net::tcp::OwnedWriteHalf,
+    ) -> Result<(), std::io::Error> {
+        let packet = PushStatusPacket {
+            user_id,
+            token,
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            direction: [0.0, 0.0, 0.0],
+            input_flags: GameInputBits::Forward,
+            view_state: ViewState::default(),
+            view_state_timer: ViewStateTimer::default(),
+            view_rotation: LatLon::default(),
+        };
+        let packet = packet.as_raw();
+
+        loop {
+            writer.write_all(&packet.as_bytes()).await?;
+
+            // 1초마다 패킷 전송
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        }
+    }
+
     async fn start_game(
         &mut self, 
-        writer: &mut tokio::net::tcp::OwnedWriteHalf,
         packet_parser: Arc<Mutex<PacketParser>>,
     ) -> Result<(), std::io::Error> {
         let mut prev_remain_time = 0.0;
 
         loop {
+            let mut delay_checked = false;
             while let Some(packet) = packet_parser.lock().unwrap().pop() {
                 match packet.packet_type() {
                     PacketType::PullStage => {
                         let p = PullStagePacket::from_raw(packet);
-                        let delay = ((prev_remain_time - p.remaining_time_sec) * 1000.0) as i32;
-                        prev_remain_time = p.remaining_time_sec;
-                        if delay >= 0 {
-                            let global_delay = GLOBAL_DELAY.load(Ordering::Relaxed);
-                            if delay > global_delay {
-                                GLOBAL_DELAY.fetch_add(1, Ordering::Relaxed);
-                            } else if delay < global_delay {
-                                GLOBAL_DELAY.fetch_sub(1, Ordering::Relaxed);
+                        if !delay_checked {
+                            let delay = (prev_remain_time - p.remaining_time_sec) * 1000.0; // ms
+                            if delay >= 0.0 {
+                                let global_delay = GLOBAL_DELAY.load(Ordering::Relaxed) as f32;
+                                if delay > global_delay {
+                                    GLOBAL_DELAY.fetch_add(1, Ordering::Relaxed);
+                                } else if delay < global_delay {
+                                    GLOBAL_DELAY.fetch_sub(1, Ordering::Relaxed);
+                                }
                             }
+                            delay_checked = true;
                         }
+                        prev_remain_time = p.remaining_time_sec;
                     }
                     PacketType::FinishStage => {
                         let _p = FinishStagePacket::from_raw(packet);
@@ -532,21 +576,7 @@ impl Client {
                 }
             }
 
-            let packet = PushStatusPacket {
-                user_id: self.account.uid,
-                token: self.token,
-                rotation: [0.0, 0.0, 0.0, 1.0],
-                direction: [0.0, 0.0, 0.0],
-                input_flags: GameInputBits::Forward,
-                view_state: ViewState::default(),
-                view_state_timer: ViewStateTimer::default(),
-                view_rotation: LatLon::default(),
-            };
-            let packet = packet.as_raw();
-            writer.write_all(&packet.as_bytes()).await?;
-
-            // 1초마다 패킷 전송
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            tokio::task::yield_now().await;
         }
 
         // Ok(())
@@ -570,24 +600,34 @@ async fn main() -> Result<(), std::io::Error> {
     });
 
     const MAX_CLIENTS: usize = 10000;
+    const STABLE_DELAY: u32 = 50;  // ms
+    const DELAY_LIMIT1: u32 = 100;  // ms
+    const DELAY_LIMIT2: u32 = 150;  // ms
+
+    let mut accept_delay = 50;  // ms, 처음엔 초당 20개
+
     let mut clients = Vec::with_capacity(MAX_CLIENTS);
     for _ in 0..MAX_CLIENTS {
         let delay = GLOBAL_DELAY.load(Ordering::Relaxed);
-        if delay > 150 {
+
+        if delay < STABLE_DELAY {
+            // accept
+            let mut client = Client::new(UserAccount::default()).await.unwrap();
+            clients.push(tokio::spawn(async move { client.run().await }));
+        } else if delay < DELAY_LIMIT1 {
+            // do nothing
+            accept_delay = 500;
+        } else if delay < DELAY_LIMIT2 {
+            // 연결 끊기
             clients.pop();
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            continue;
-        } else if delay > 100 {
+            accept_delay = 1000;
+        } else {
+            // 연결 끊기
             clients.pop();
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-            continue;
+            accept_delay = 5000;
         }
 
-        let mut client = Client::new(UserAccount::default()).await.unwrap();
-        clients.push(tokio::spawn(async move { client.run().await }));
-
-        // 접속속도 초당 20개로 제한
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(accept_delay)).await;
     }
 
     // 모든 클라이언트가 종료될 때까지 대기
