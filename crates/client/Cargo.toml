@@ -9,6 +9,11 @@ publish.workspace = true
 build = "build.rs"
 
 
+[[bin]]
+name = "shadow_tool"
+path = "src/shadow_tool.rs"
+
+
 [dependencies]
 ahash = { workspace = true }
 bitflags = { workspace = true }
@@ -40,7 +45,7 @@ ddsfile = "0.5"
 
 # Imaging library. Provides basic image processing and encoders/decoders for common image formats.
 # License: MIT OR Apache-2.0
-image = { version = "0.25", features = ["dds", "png"], default-features = false }
+image = { version = "0.25", features = ["dds", "png", "tga"], default-features = false }
 
 # 자체 제작 프레임워크 
 mod-app = { path = "../mod-app" }
@@ -50,6 +55,11 @@ mod-physics = { path = "../mod-physics" }
 mod-render = { path = "../mod-render" }
 
 
+# 사용 플랫폼: Windows, macOS
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+# Synchronously block the thread until a future completes
+# License: Apache-2.0 OR MIT
+pollster = "0.4"
 
 [build-dependencies]
 serde = { workspace = true }
