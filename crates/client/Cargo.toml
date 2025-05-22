@@ -9,9 +9,9 @@ publish.workspace = true
 build = "build.rs"
 
 
-[[bin]]
-name = "shadow_tool"
-path = "src/shadow_tool.rs"
+# [[bin]]
+# name = "shadow_tool"
+# path = "src/shadow_tool.rs"
 
 
 [dependencies]

@@ -248,6 +248,8 @@
                         "City_Prop_Vending_Machine_00.mesh",
                         "City_Prop_Vending_Machine_01.hierarchy",
                         "City_Prop_Vending_Machine_01.mesh",
+                        "City_Shadow.dds",
+                        "City_Shadow.texD",
                         "Common_Prop_Baricade_00.dds",
                         "Common_Prop_Baricade_00.hierarchy",
                         "Common_Prop_Baricade_00.material",

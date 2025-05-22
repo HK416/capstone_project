@@ -30,11 +30,10 @@ use crate::{
         USER_CONFIG,
     },
     component::{
-        BulletRenderPipeline, BulletRenderPipelineTransparency, CaptureZoneRenderPipeline,
-        CharacterBakePipeline, CharacterRenderPipeline, DamageFontRenderPipeline,
-        EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-        HaloRenderPipeline, SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline,
-        WeightedBlendedOITRenderPipeline, SHADOW_FORMAT,
+        BulletRenderPipeline, BulletRenderPipelineTransparency, CharacterBakePipeline,
+        CharacterRenderPipeline, DamageFontRenderPipeline, EnergyBulletRenderPipeline,
+        EyeMouthBakePipeline, EyeMouthRenderPipeline, HaloRenderPipeline, SkyboxRenderPipeline,
+        StageBakePipeline, StageRenderPipeline, WeightedBlendedOITRenderPipeline, SHADOW_FORMAT,
     },
     config::UserConfig,
 };
@@ -195,15 +194,6 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             StageBakePipeline::get_or_init(&device_cloned, SHADOW_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
-        });
-        self.num_remaining_tasks += 1;
-
-        // 점령 지역을 그리는 렌더링 파이프라인을 생성합니다.
-        let device_cloned = device.clone();
-        let task_results = self.task_results.clone();
-        thread_pool.spawn(move || {
-            CaptureZoneRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;

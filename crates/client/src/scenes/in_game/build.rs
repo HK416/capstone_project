@@ -21,7 +21,7 @@ use crate::{
         MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumnHierarchy,
         TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD, SKYBOX_URI,
     },
-    component::{build_stage, spawn_player_character, Skybox},
+    component::{build_stage, spawn_player_character, GlobalLight, Skybox},
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     PACKET_DELAY, SERVER_TCP_ADDR,
@@ -274,7 +274,14 @@ impl InGameBuildScene {
             let stages = stage_result.lock().take().unwrap();
 
             // 조명 집합을 생성합니다
-            let lights = stage_layout_data_ref.lights.to_owned();
+            let global_light =
+                stage_layout_data_ref
+                    .global_light
+                    .as_ref()
+                    .map(|light| GlobalLight {
+                        direction_w: light.direction.into(),
+                        color: light.color.into(),
+                    });
 
             // 다음 게임 장면을 생성합니다.
             let next_scene = InGameDominationModePrepareScene::new(
@@ -285,7 +292,7 @@ impl InGameBuildScene {
                 skybox,
                 players,
                 stages,
-                lights,
+                global_light,
                 mesh_pool,
                 model_pool,
                 motion_pool,

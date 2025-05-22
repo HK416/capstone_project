@@ -450,6 +450,7 @@ fn spawn_stage_model_recursive(
                                 smoothness: data.smoothness,
                                 glossiness: data.glossiness,
                                 metallic: data.metallic,
+                                light_proj_view: data.light_proj_view.into(),
                                 ..Default::default()
                             },
                         );
@@ -459,12 +460,19 @@ fn spawn_stage_model_recursive(
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
 
+                        // 그림자 맵 텍스처를 가져옵니다.
+                        let (shadow_map_view, shadow_map_sampler) = texture_data_pool
+                            .get(&data.shadow_map)
+                            .expect("the shadow map data must exist!");
+
                         let material_resource = StageMaterialResource::new(
                             None,
                             device,
                             &stage_uniform,
                             &main_color_view,
                             &main_color_sampler,
+                            &shadow_map_view,
+                            &shadow_map_sampler,
                         );
 
                         (MaterialUniform::Stage(stage_uniform), material_resource)

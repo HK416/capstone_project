@@ -11,12 +11,25 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use mod_network::components::Float4x4;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
 pub use self::capture_zone::*;
 
 use super::{MaterialKind, MaterialResource};
+
+/// 지형 재질 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StageMaterialData {
+    pub uri: String,
+    pub glossiness: f32,
+    pub smoothness: f32,
+    pub metallic: f32,
+    pub main_color: String,
+    pub light_proj_view: Float4x4,
+    pub shadow_map: String,
+}
 
 /// 지형 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
@@ -26,6 +39,7 @@ pub struct StageMaterialDataLayout {
     pub smoothness: f32,
     pub metallic: f32,
     pub _padding0: [u8; 4],
+    pub light_proj_view: [f32; 16],
 }
 
 impl Default for StageMaterialDataLayout {
@@ -35,6 +49,7 @@ impl Default for StageMaterialDataLayout {
             smoothness: 0.0,
             metallic: 0.0,
             _padding0: [0; 4],
+            light_proj_view: [0.0; 16],
         }
     }
 }
@@ -153,16 +168,6 @@ static_assertions::const_assert_eq!(
     core::mem::size_of::<StageMaterialDataLayout>()
 );
 
-/// 지형 재질 데이터입니다.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct StageMaterialData {
-    pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub main_color: String,
-}
-
 /// 지형 재질 쉐이더 리소스입니다.
 pub struct StageMaterialResource;
 
@@ -194,6 +199,24 @@ impl StageMaterialResource {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    // 3번 바인딩: 메인 텍스처
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 4번 바인딩: 메인 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             })
         })
@@ -206,6 +229,8 @@ impl StageMaterialResource {
         stage_uniform: &StageMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
+        shadow_map_view: &wgpu::TextureView,
+        shadow_map_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
         MaterialResource {
             kind: MaterialKind::Stage,
@@ -224,6 +249,14 @@ impl StageMaterialResource {
                     wgpu::BindGroupEntry {
                         binding: 2,
                         resource: wgpu::BindingResource::Sampler(main_color_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(shadow_map_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(shadow_map_sampler),
                     },
                 ],
             })),

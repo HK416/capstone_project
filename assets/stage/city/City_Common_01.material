@@ -1,1 +1,28 @@
-{ "Stage": { "uri": "City_Common_01", "glossiness": 0.5, "smoothness": 0, "metallic": 0, "main_color": "City_Common_Atlas_01" } }
+{
+    "Stage": {
+        "uri": "City_Common_01",
+        "glossiness": 0.5,
+        "smoothness": 0,
+        "metallic": 0,
+        "main_color": "City_Common_Atlas_01",
+        "light_proj_view": {
+            "m00": -0.0126935905,
+            "m01": 0.0060640206,
+            "m02": 0.0017406354,
+            "m03": 0,
+            "m10": 0,
+            "m11": 0.005419566,
+            "m12": -0.009253377,
+            "m13": 0,
+            "m20": -0.006553961,
+            "m21": -0.011744684,
+            "m22": -0.0033712308,
+            "m23": 0,
+            "m30": 0,
+            "m31": -0.000000027247838,
+            "m32": 0.49981746,
+            "m33": 1
+        },
+        "shadow_map": "City_Shadow"
+    }
+}

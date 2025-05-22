@@ -77,8 +77,8 @@ pub struct StageLayoutData {
     pub area: Vec<StageAreaData>,
     /// 게임 월드 스테이지 소품 데이터입니다.
     pub root_prop: Option<Box<StagePropData>>,
-    /// 게임 월드 스테이지 조명 데이터입니다.
-    pub lights: Vec<StageLightData>,
+    /// 게임 월드 스테이지 전역 조명 데이터입니다.
+    pub global_light: Option<DirectionalLight>,
     /// 블루 팀 스폰 위치입니다.
     pub blue_spawn_pos: Vec<Float3>,
     /// 블루 팀 스폰 방향입니다.
