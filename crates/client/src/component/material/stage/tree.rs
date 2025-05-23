@@ -1,10 +1,3 @@
-#![allow(dead_code)]
-//! 지형 재질 쉐이더 리소스와 관련된 코드를 관리합니다.
-//!
-
-mod capture_zone;
-mod tree;
-
 use std::{
     num::NonZeroU64,
     ops::RangeBounds,
@@ -16,63 +9,59 @@ use mod_network::components::Float4x4;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-pub use self::{capture_zone::*, tree::*};
+use crate::component::{MaterialKind, MaterialResource};
 
-use super::{MaterialKind, MaterialResource};
-
-/// 지형 재질 데이터입니다.
+/// 나무 재질 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct StageMaterialData {
+pub struct TreeMaterialData {
     pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
+    pub threshold: f32,
     pub main_color: String,
     pub light_proj_view: Float4x4,
     pub shadow_map: String,
 }
 
-/// 지형 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
+/// 나무 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-pub struct StageMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub _padding0: [u8; 4],
+pub struct TreeMaterialDataLayout {
     pub light_proj_view: [f32; 16],
+    pub threshold: f32,
+    pub _padding0: [u8; 12],
 }
 
-impl Default for StageMaterialDataLayout {
+impl Default for TreeMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
-            metallic: 0.0,
-            _padding0: [0; 4],
             light_proj_view: [0.0; 16],
+            threshold: 0.5,
+            _padding0: [0; 12],
         }
     }
 }
 
-/// 지형 재질 데이터 유니폼 버퍼입니다.
+/// 나무 재질 데이터 유니폼 버퍼입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StageMaterialUniform(Arc<wgpu::Buffer>);
+pub struct TreeMaterialUniform(Arc<wgpu::Buffer>);
 
-impl StageMaterialUniform {
+impl TreeMaterialUniform {
     /// 유니폼 버퍼의 크기입니다.
     pub const SIZE: wgpu::BufferAddress =
-        core::mem::size_of::<StageMaterialDataLayout>() as wgpu::BufferAddress;
+        core::mem::size_of::<TreeMaterialDataLayout>() as wgpu::BufferAddress;
 
     /// 유니폼 버퍼의 [`wgpu::BufferUsages`]입니다.
-    pub const USAGES: wgpu::BufferUsages =
-        wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST);
+    pub const USAGES: wgpu::BufferUsages = wgpu::BufferUsages::UNIFORM
+        .union(wgpu::BufferUsages::MAP_WRITE)
+        .union(wgpu::BufferUsages::COPY_DST);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -83,8 +72,7 @@ impl StageMaterialUniform {
     }
 
     /// 새로운 유니폼 버퍼를 생성합니다.
-    pub fn new(label: Option<&str>, device: &wgpu::Device, data: StageMaterialDataLayout) -> Self {
-        // 유니폼 버퍼를 생성합니다.
+    pub fn new(label: Option<&str>, device: &wgpu::Device, data: TreeMaterialDataLayout) -> Self {
         Self(Arc::new(device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
@@ -101,7 +89,7 @@ impl StageMaterialUniform {
         _device: &wgpu::Device,
         _encoder: &mut wgpu::CommandEncoder,
         _staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: StageMaterialDataLayout,
+        data: TreeMaterialDataLayout,
     ) {
         let capturable = self.0.clone();
         self.0
@@ -110,30 +98,26 @@ impl StageMaterialUniform {
                 Ok(_) => {
                     {
                         let mut view = capturable.slice(..).get_mapped_range_mut();
-                        let layout: &mut StageMaterialDataLayout =
+                        let layout: &mut TreeMaterialDataLayout =
                             bytemuck::from_bytes_mut(&mut view);
                         *layout = data;
                     }
                     capturable.unmap();
                 }
                 Err(e) => {
-                    log::warn!("failed to update uniform buffer! (REASON:{})", e)
+                    log::warn!("failed to update uniform buffer! (REASON:{})", e);
                 }
             });
     }
 
     /// 유니폼 버퍼를 갱신합니다.
-    ///
-    /// # Panics
-    /// 주어진 `contents`가 유니폼 버퍼의 크기와 다른 경우 [`panic!`]을 호출합니다.
-    ///
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     pub fn update(
         &self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: StageMaterialDataLayout,
+        data: TreeMaterialDataLayout,
     ) {
         // 스테이징 버퍼를 생성합니다.
         let contents = bytemuck::bytes_of(&data);
@@ -144,7 +128,7 @@ impl StageMaterialUniform {
             usage: wgpu::BufferUsages::COPY_SRC,
         });
 
-        // 버퍼의 내용을 복사합니다.
+        // 버퍼 내용을 복사합니다.
         encoder.copy_buffer_to_buffer(&self.0, 0, &buffer, 0, copy_size);
         staging_buffers.push(buffer);
     }
@@ -163,25 +147,25 @@ impl StageMaterialUniform {
     }
 }
 
-static_assertions::const_assert_ne!(StageMaterialUniform::SIZE, 0);
+static_assertions::const_assert_ne!(TreeMaterialUniform::SIZE, 0);
 static_assertions::const_assert_eq!(
-    StageMaterialUniform::SIZE as usize,
-    core::mem::size_of::<StageMaterialDataLayout>()
+    TreeMaterialUniform::SIZE as usize,
+    core::mem::size_of::<TreeMaterialDataLayout>()
 );
 
-/// 지형 재질 쉐이더 리소스입니다.
-pub struct StageMaterialResource;
+/// 나무 재질 쉐이더 리소스입니다.
+pub struct TreeMaterialResource;
 
-impl StageMaterialResource {
+impl TreeMaterialResource {
     /// [wgpu::BindGroupLayout]을 반환합니다.
     pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("BindGroupLayout(StageMaterialResource)"),
+                label: Some("BindGroupLayout(TreeMaterialResource)"),
                 entries: &[
-                    // 0번 바인딩: 캐릭터 재질 데이터 유니폼 버퍼
-                    StageMaterialUniform::bind_group_layout_entry(0),
+                    // 0번 바인딩: 나무 재질 데이터 유니폼 버퍼
+                    TreeMaterialUniform::bind_group_layout_entry(wgpu::ShaderStages::FRAGMENT, 0),
                     // 1번 바인딩: 메인 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
@@ -200,7 +184,7 @@ impl StageMaterialResource {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
-                    // 3번 바인딩: 메인 텍스처
+                    // 3번 바인딩: 정적 그림자 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 3,
                         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -211,7 +195,7 @@ impl StageMaterialResource {
                         },
                         count: None,
                     },
-                    // 4번 바인딩: 메인 텍스처 샘플러
+                    // 4번 바인딩: 정적 그림자 텍스처 샘플러
                     wgpu::BindGroupLayoutEntry {
                         binding: 4,
                         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -227,21 +211,21 @@ impl StageMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        stage_uniform: &StageMaterialUniform,
+        material_uniform: &TreeMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
         shadow_map_view: &wgpu::TextureView,
         shadow_map_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
         MaterialResource {
-            kind: MaterialKind::Stage,
+            kind: MaterialKind::Tree,
             bind_group: Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
                 layout: Self::bind_group_layout(device),
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: stage_uniform.as_entire_binding(),
+                        resource: material_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

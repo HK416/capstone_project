@@ -1,4 +1,4 @@
-//! 지형을 그리는 쉐이더 코드를 관리합니다.
+//! 나무를 그리는 쉐이더 코드를 관리합니다.
 //!
 
 // 최대 지역 조명의 개수입니다.
@@ -34,12 +34,10 @@ struct CameraDataLayout {
     position_w: vec3<f32>,
 };
 
-// 지형 재질 데이터 유니폼 버퍼입니다.
-struct StageMaterialDataLayout {
-    glossiness: f32,
-    smoothness: f32,
-    metallic: f32,
+// 나무 재질 데이터 유니폼 버퍼입니다.
+struct TreeMaterialDataLayout {
     light_proj_view: mat4x4<f32>,
+    threshold: f32,
 };
 
 // 전역 조명 데이터 유니폼 버퍼입니다.
@@ -72,7 +70,7 @@ var<uniform> u_camera: CameraDataLayout;
 var<uniform> u_trans: mat4x4<f32>;
 
 @group(2) @binding(0)
-var<uniform> u_material: StageMaterialDataLayout;
+var<uniform> u_material: TreeMaterialDataLayout;
 
 @group(2) @binding(1)
 var t_main_color: texture_2d<f32>;
@@ -117,17 +115,26 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
     return out;
 }
 
+
 // 지형을 그리는 프래그먼트 쉐이더입니다.
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
+    // 메인 텍스처를 가져옵니다.
+    let main_tex = textureSample(t_main_color, s_main_color, input.texcoord);
+
+    // 알파 값이 threshold보다 낮은 경우 그리지 않습니다.
+    if (main_tex.a < u_material.threshold) {
+        discard;
+    }
+
     // 노멀을 계산합니다.
     let normal = normalize(input.normal_w);
     // 카메라로부터 거리를 계산합니다.
     let distance = distance(u_camera.position_w, input.position_w);
-
-    // 메인 텍스처를 가져옵니다.
-    let main_color = textureSample(t_main_color, s_main_color, input.texcoord).rgb;
     
+    // 메인 색상을 가져옵니다.
+    let main_color = main_tex.rgb;
+
     // 전역 조명의 그림자 색상을 계산합니다.
     var shadow = 1.0;
     var diffuse = max(0.0, dot(normal, normalize(-u_global_light.direction_w)));

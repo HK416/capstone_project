@@ -14,7 +14,8 @@ use crate::{
     component::{
         Child, MaterialData, MaterialUniform, MeshResource, Parent, Sibling,
         StageMaterialDataLayout, StageMaterialResource, StageMaterialUniform, StageTag,
-        ToParentTrans, TransformUniform, WorldTransform,
+        ToParentTrans, TransformUniform, TreeMaterialDataLayout, TreeMaterialResource,
+        TreeMaterialUniform, WorldTransform,
     },
 };
 
@@ -476,6 +477,43 @@ fn spawn_stage_model_recursive(
                         );
 
                         (MaterialUniform::Stage(stage_uniform), material_resource)
+                    }
+                    MaterialData::Tree(data) => {
+                        // 재질 쉐이더 리소스를 생성합니다.
+                        let tree_material_uniform = TreeMaterialUniform::new(
+                            None,
+                            device,
+                            TreeMaterialDataLayout {
+                                light_proj_view: data.light_proj_view.into(),
+                                threshold: data.threshold.clamp(0.0, 1.0),
+                                ..Default::default()
+                            },
+                        );
+
+                        // 스테이지 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
+                            .get(&data.main_color)
+                            .expect("the texture data must exist!");
+
+                        // 그림자 맵 텍스처를 가져옵니다.
+                        let (shadow_map_view, shadow_map_sampler) = texture_data_pool
+                            .get(&data.shadow_map)
+                            .expect("the shadow map data must exist!");
+
+                        let material_resource = TreeMaterialResource::new(
+                            None,
+                            device,
+                            &tree_material_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                            &shadow_map_view,
+                            &shadow_map_sampler,
+                        );
+
+                        (
+                            MaterialUniform::Tree(tree_material_uniform),
+                            material_resource,
+                        )
                     }
                     _ => panic!("invalid material data!"),
                 }

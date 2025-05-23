@@ -27,6 +27,7 @@ pub enum MaterialKind {
     CharacterHalo,
     CaptureZone,
     Stage,
+    Tree,
 }
 
 /// 재질 데이터입니다.
@@ -39,6 +40,7 @@ pub enum MaterialData {
     CharacterHalo(HaloMaterialData),
     CaptureZone(CaptureZoneMaterialData),
     Stage(StageMaterialData),
+    Tree(TreeMaterialData),
 }
 
 /// 생성된 재질 데이터를 관리하는 풀 객체입니다.
@@ -189,6 +191,7 @@ pub enum MaterialUniform {
         buffer: CaptureZoneMaterialUniform,
     },
     Stage(StageMaterialUniform),
+    Tree(TreeMaterialUniform),
 }
 
 impl MaterialUniform {
@@ -205,6 +208,7 @@ impl MaterialUniform {
             MaterialUniform::CharacterHalo(uniform) => uniform.slice(bounds),
             MaterialUniform::CaptureZone { buffer, .. } => buffer.slice(bounds),
             MaterialUniform::Stage(uniform) => uniform.slice(bounds),
+            MaterialUniform::Tree(uniform) => uniform.slice(bounds),
         }
     }
 
@@ -218,6 +222,7 @@ impl MaterialUniform {
             MaterialUniform::CharacterHalo(uniform) => uniform.as_entire_binding(),
             MaterialUniform::CaptureZone { buffer, .. } => buffer.as_entire_binding(),
             MaterialUniform::Stage(uniform) => uniform.as_entire_binding(),
+            MaterialUniform::Tree(uniform) => uniform.as_entire_binding(),
         }
     }
 }

@@ -33,7 +33,8 @@ use crate::{
         BulletRenderPipeline, BulletRenderPipelineTransparency, CharacterBakePipeline,
         CharacterRenderPipeline, DamageFontRenderPipeline, EnergyBulletRenderPipeline,
         EyeMouthBakePipeline, EyeMouthRenderPipeline, HaloRenderPipeline, SkyboxRenderPipeline,
-        StageBakePipeline, StageRenderPipeline, WeightedBlendedOITRenderPipeline, SHADOW_FORMAT,
+        StageBakePipeline, StageRenderPipeline, TreeRenderPipeline,
+        WeightedBlendedOITRenderPipeline, SHADOW_FORMAT,
     },
     config::UserConfig,
 };
@@ -185,6 +186,15 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             StageRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
+        // 나무를 그리는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            TreeRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;

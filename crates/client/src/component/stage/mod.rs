@@ -97,7 +97,7 @@ pub fn update_stage_resource(
 
         for (index, material) in materials.iter().enumerate() {
             match material.kind() {
-                MaterialKind::Stage => {
+                MaterialKind::Stage | MaterialKind::Tree => {
                     // 불투명 렌더 집합에 추가합니다.
                     let key = (mesh.clone(), material.kind());
                     let sub_key = (index, material.clone());
@@ -155,7 +155,7 @@ pub fn update_stage_resource(
 
         for (index, material) in materials.iter().enumerate() {
             match material.kind() {
-                MaterialKind::Stage => {
+                MaterialKind::Stage | MaterialKind::Tree => {
                     // 불투명 렌더 집합에 추가합니다.
                     let key = (mesh.clone(), material.kind());
                     let sub_key = (index, material.clone());

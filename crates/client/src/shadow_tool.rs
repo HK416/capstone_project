@@ -204,17 +204,14 @@ fn main() {
 
     println!("조명을 준비합니다...");
     // 가장 맨 처음 Directional Light를 찾습니다.
-    let mut light_dir = glam::Vec3A::NEG_Y;
-    for light in layout.lights.iter() {
-        #[allow(unreachable_patterns)]
-        match light {
-            StageLightData::Directional(light) => {
-                light_dir = light.direction.into();
-                break;
-            }
-            _ => {}
+    let light_dir: glam::Vec3A = match layout.global_light {
+        Some(light) => light.direction.into(),
+        None => {
+            eprintln!("전역 조명이 게임 월드에 존재하지 않습니다!\n프로그램을 종료합니다.");
+            exit(-1);
         }
-    }
+    };
+
     let eye = -light_dir * 50.0;
     let light_view = glam::Mat4::look_at_lh(eye.into(), glam::Vec3::ZERO, glam::Vec3::Y);
     let light_proj = glam::Mat4::orthographic_lh(

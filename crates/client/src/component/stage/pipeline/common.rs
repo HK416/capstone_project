@@ -8,7 +8,7 @@ use crate::component::{
 };
 
 /// 쉐이더 모듈을 생성합니다.
-fn create_shadoer_module(device: &wgpu::Device) -> &'static wgpu::ShaderModule {
+fn create_shader_module(device: &wgpu::Device) -> &'static wgpu::ShaderModule {
     static MODULE: OnceLock<wgpu::ShaderModule> = OnceLock::new();
     MODULE.get_or_init(|| unsafe {
         let desc = wgpu::include_wgsl!(concat!(
@@ -59,7 +59,7 @@ impl StageRenderPipeline {
     ) -> Arc<wgpu::RenderPipeline> {
         PIPELINE
             .get_or_init(|| {
-                let module = create_shadoer_module(device);
+                let module = create_shader_module(device);
                 let layout = Self::create_pipeline_layout(device);
                 Arc::new(
                     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

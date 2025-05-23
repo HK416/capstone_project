@@ -44,7 +44,7 @@ use crate::{
         LightTransformDataLayout, MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent, Projection,
         ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
         SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline, ThirdPersonCamera,
-        ToParentTrans, TransparentMap, WeightedBlendedOITRenderPipeline,
+        ToParentTrans, TransparentMap, TreeRenderPipeline, WeightedBlendedOITRenderPipeline,
         WeightedBlendedOITResource, WorldTransform,
     },
     config::{Locale, NUM_LOCALE},
@@ -1797,13 +1797,13 @@ impl GameScene for InGameResultEnterScene {
                 let func = match kind {
                     MaterialKind::Character => bake_character,
                     MaterialKind::CharacterEyeMouth => bake_character_eye_mouth,
-                    MaterialKind::Stage => bake_stage,
+                    MaterialKind::Stage | MaterialKind::Tree => bake_stage,
                     _ => continue,
                 };
                 let pipeline = match kind {
                     MaterialKind::Character => CharacterBakePipeline::get(),
                     MaterialKind::CharacterEyeMouth => EyeMouthBakePipeline::get(),
-                    MaterialKind::Stage => StageBakePipeline::get(),
+                    MaterialKind::Stage | MaterialKind::Tree => StageBakePipeline::get(),
                     _ => continue,
                 }
                 .unwrap();
@@ -1849,6 +1849,17 @@ impl GameScene for InGameResultEnterScene {
                             &camera_resource,
                             light_set_resource,
                             &resources,
+                            &mut rpass,
+                        );
+                        continue;
+                    }
+                    MaterialKind::Tree => {
+                        draw_stage(
+                            &mesh,
+                            TreeRenderPipeline::get().unwrap(),
+                            &camera_resource,
+                            light_set_resource,
+                            resources,
                             &mut rpass,
                         );
                         continue;
