@@ -3,6 +3,7 @@ mod in_game;
 mod lobby;
 mod room;
 mod title;
+mod ping;
 
 mod parser;
 
@@ -10,7 +11,7 @@ use std::io::{Error, ErrorKind};
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
-pub use self::{formation::*, in_game::*, lobby::*, parser::*, room::*, title::*};
+pub use self::{formation::*, in_game::*, lobby::*, parser::*, room::*, title::*, ping::*};
 
 /// 패킷의 종류
 #[repr(u8)]
@@ -52,6 +53,10 @@ pub enum PacketType {
     PullStage = 50,
     PushStatus = 51,
     PushSync = 52,
+
+    /// 반응속도 측정을 위한 패킷  
+    /// 서버에서 수신시 그대로 클라이언트에 전송(echo)  
+    Ping = 53,
 
     FinishStage = 64,
     FinishStageResponse = 65,
@@ -105,6 +110,7 @@ impl TryFromBigEndian for PacketType {
             50 => Some(PacketType::PullStage),
             51 => Some(PacketType::PushStatus),
             52 => Some(PacketType::PushSync),
+            53 => Some(PacketType::Ping),
             64 => Some(PacketType::FinishStage),
             65 => Some(PacketType::FinishStageResponse),
             128 => Some(PacketType::UdpDamageLog),
