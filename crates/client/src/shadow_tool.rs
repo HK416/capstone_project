@@ -21,7 +21,7 @@ use component::{
 };
 use hecs::{Entity, World};
 use image::{GrayImage, Luma};
-use mod_network::components::{StageKind, StageLayoutData, StageLightData};
+use mod_network::components::{StageKind, StageLayoutData};
 use mod_render::init_wgpu;
 
 mod asset;
@@ -205,7 +205,7 @@ fn main() {
     println!("조명을 준비합니다...");
     // 가장 맨 처음 Directional Light를 찾습니다.
     let light_dir: glam::Vec3A = match layout.global_light {
-        Some(light) => light.direction.into(),
+        Some(light) => light.direction_w.into(),
         None => {
             eprintln!("전역 조명이 게임 월드에 존재하지 않습니다!\n프로그램을 종료합니다.");
             exit(-1);

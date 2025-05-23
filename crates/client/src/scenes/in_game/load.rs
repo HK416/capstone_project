@@ -353,6 +353,27 @@ impl InGameLoadScene {
                 }
             }
 
+            // 스테이지 데이터에 정적 조명 그림자 맵 데이터가 포함된 경우
+            // 정적 조명 그림자 맵 텍스처를 로드합니다.
+            if let Some(light) = layout.global_light.as_ref() {
+                let result = texture_data_pool.get_or_init(
+                    &workspace,
+                    &light.shadow_map,
+                    &device,
+                    &mut encoder,
+                    &mut staging_buffers,
+                    &texture_pool,
+                    &texture_view_pool,
+                    &sampler_pool,
+                );
+
+                // 결과를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(Err(Box::new(e)));
+                    return;
+                }
+            }
+
             // 스테이지 모델 데이터를 저장합니다.
             stage_layout_data
                 .set(layout)

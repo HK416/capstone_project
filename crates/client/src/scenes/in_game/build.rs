@@ -274,14 +274,19 @@ impl InGameBuildScene {
             let stages = stage_result.lock().take().unwrap();
 
             // 조명 집합을 생성합니다
-            let global_light =
-                stage_layout_data_ref
-                    .global_light
-                    .as_ref()
-                    .map(|light| GlobalLight {
-                        direction_w: light.direction.into(),
-                        color: light.color.into(),
-                    });
+            let global_light = stage_layout_data_ref.global_light.as_ref().map(|light| {
+                let (static_shadow_map_view, static_shadow_map_sampler) = texture_data_pool_ref
+                    .get(&light.shadow_map)
+                    .expect("the static shadow map must exist!");
+
+                GlobalLight {
+                    static_shadow_map_view,
+                    static_shadow_map_sampler,
+                    light_proj_view: light.light_proj_view.into(),
+                    direction_w: light.direction_w.into(),
+                    color: light.color.into(),
+                }
+            });
 
             // 다음 게임 장면을 생성합니다.
             let next_scene = InGameDominationModePrepareScene::new(

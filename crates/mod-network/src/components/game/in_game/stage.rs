@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::components::{BigEndian, Float2, Float3, Float4, TryFromBigEndian, UserId};
+use crate::components::{BigEndian, Float2, Float3, Float4, Float4x4, TryFromBigEndian, UserId};
 
 /// 스테이지 종류의 수 입니다.
 pub const NUM_STAGES: usize = 1;
@@ -78,7 +78,7 @@ pub struct StageLayoutData {
     /// 게임 월드 스테이지 소품 데이터입니다.
     pub root_prop: Option<Box<StagePropData>>,
     /// 게임 월드 스테이지 전역 조명 데이터입니다.
-    pub global_light: Option<DirectionalLight>,
+    pub global_light: Option<GlobalLightData>,
     /// 블루 팀 스폰 위치입니다.
     pub blue_spawn_pos: Vec<Float3>,
     /// 블루 팀 스폰 방향입니다.
@@ -87,6 +87,15 @@ pub struct StageLayoutData {
     pub red_spawn_pos: Vec<Float3>,
     /// 레드 팀 스폰 방향입니다.
     pub red_spawn_dir: Float4,
+}
+
+/// 게임 월드의 전역 조명 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GlobalLightData {
+    pub color: Float3,
+    pub direction_w: Float3,
+    pub shadow_map: String,
+    pub light_proj_view: Float4x4,
 }
 
 /// 게임 월드 스테이지를 구성하는 지역 데이터입니다.
@@ -109,19 +118,6 @@ pub struct StagePropData {
     pub radius: f32,
     pub left: Option<Box<StagePropData>>,
     pub right: Option<Box<StagePropData>>,
-}
-
-/// 게임 월드 스테이지를 구성하는 조명 데이터입니다.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum StageLightData {
-    Directional(DirectionalLight),
-}
-
-/// Direction Light 데이터입니다.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct DirectionalLight {
-    pub direction: Float3,
-    pub color: Float3,
 }
 
 /// 게임 월드 스테이지의 높이 데이터입니다.

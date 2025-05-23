@@ -567,12 +567,16 @@ impl InGameDominationModePrepareScene {
 
     /// 조명 집합에 사용되는 쉐이더 리소스를 생성합니다.
     fn create_light_set_resource(&mut self, device: &wgpu::Device) {
-        self.light_set_resource = Some(LightSetResource::new(
-            Some("City"),
-            device,
-            GLOBAL_SHADOW_MAP_SIZE,
-            LOCAL_SHADOW_MAP_SIZE,
-        ));
+        self.light_set_resource = self.global_light.as_ref().map(|light| {
+            LightSetResource::new(
+                Some("City"),
+                device,
+                &light.static_shadow_map_view,
+                &light.static_shadow_map_sampler,
+                GLOBAL_SHADOW_MAP_SIZE,
+                LOCAL_SHADOW_MAP_SIZE,
+            )
+        });
     }
 
     /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.

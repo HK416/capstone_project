@@ -1123,6 +1123,7 @@ impl InGameDominationModeScene {
             encoder,
             staging_buffers,
             GlobalLightDataLayout {
+                static_proj_view: g_light.light_proj_view.to_cols_array(),
                 proj_view: light_proj_view.to_cols_array(),
                 direction_w: g_light.direction_w.to_array(),
                 color: g_light.color.to_array(),

@@ -74,9 +74,27 @@ impl LightSetResource {
                     GlobalLightUniform::bind_group_layout_entry(wgpu::ShaderStages::FRAGMENT, 0),
                     // 1번 바인딩: 지역 조명 데이터 집합 유니폼 버퍼
                     LocalLightSetUniform::bind_group_layout_entry(wgpu::ShaderStages::FRAGMENT, 1),
-                    // 2번 바인딩: 전역 조명 그림자 텍스처
+                    // 2번 바인딩: 정적 조명 그림자 텍스처
                     wgpu::BindGroupLayoutEntry {
                         binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 3번 바인딩: 정적 조명 그림자 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    // 4번 바인딩: 전역 조명 그림자 텍스처
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Depth,
@@ -85,9 +103,9 @@ impl LightSetResource {
                         },
                         count: None,
                     },
-                    // 3번 바인딩: 로컬 조명 그림자 텍스처
+                    // 5번 바인딩: 로컬 조명 그림자 텍스처
                     wgpu::BindGroupLayoutEntry {
-                        binding: 3,
+                        binding: 5,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Depth,
@@ -96,9 +114,9 @@ impl LightSetResource {
                         },
                         count: None,
                     },
-                    // 4번 바인딩: 조명 그림자 텍스처 샘플러
+                    // 6번 바인딩: 조명 그림자 텍스처 샘플러
                     wgpu::BindGroupLayoutEntry {
-                        binding: 4,
+                        binding: 6,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                         count: None,
@@ -112,6 +130,8 @@ impl LightSetResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
+        static_shadow_map: &wgpu::TextureView,
+        static_shadow_sampler: &wgpu::Sampler,
         global_light_texture_size: u32,
         local_light_texture_size: u32,
     ) -> Self {
@@ -196,12 +216,20 @@ impl LightSetResource {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
+                    resource: wgpu::BindingResource::TextureView(static_shadow_map),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(static_shadow_sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
                     resource: wgpu::BindingResource::TextureView(
                         &global_texture.create_view(&wgpu::TextureViewDescriptor::default()),
                     ),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 3,
+                    binding: 5,
                     resource: wgpu::BindingResource::TextureView(&local_texture.create_view(
                         &wgpu::TextureViewDescriptor {
                             dimension: Some(wgpu::TextureViewDimension::D2Array),
@@ -210,7 +238,7 @@ impl LightSetResource {
                     )),
                 },
                 wgpu::BindGroupEntry {
-                    binding: 4,
+                    binding: 6,
                     resource: wgpu::BindingResource::Sampler(&sampler),
                 },
             ],

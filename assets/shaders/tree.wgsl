@@ -36,12 +36,12 @@ struct CameraDataLayout {
 
 // 나무 재질 데이터 유니폼 버퍼입니다.
 struct TreeMaterialDataLayout {
-    light_proj_view: mat4x4<f32>,
     threshold: f32,
 };
 
 // 전역 조명 데이터 유니폼 버퍼입니다.
 struct GlobalLightDataLayout {
+    static_proj_view: mat4x4<f32>,
     proj_view: mat4x4<f32>,
     direction_w: vec3<f32>,
     color: vec3<f32>,
@@ -78,12 +78,6 @@ var t_main_color: texture_2d<f32>;
 @group(2) @binding(2)
 var s_main_color: sampler;
 
-@group(2) @binding(3)
-var t_shadow_map: texture_2d<f32>;
-
-@group(2) @binding(4)
-var s_shadow_map: sampler;
-
 @group(3) @binding(0)
 var<uniform> u_global_light: GlobalLightDataLayout;
 
@@ -91,12 +85,18 @@ var<uniform> u_global_light: GlobalLightDataLayout;
 var<uniform> u_local_lights: LocalLightSetDataLayout;
 
 @group(3) @binding(2)
-var t_global_light: texture_depth_2d;
+var t_static_light: texture_2d<f32>;
 
 @group(3) @binding(3)
-var t_local_lights: texture_depth_2d_array;
+var s_static_light: sampler;
 
 @group(3) @binding(4)
+var t_global_light: texture_depth_2d;
+
+@group(3) @binding(5)
+var t_local_lights: texture_depth_2d_array;
+
+@group(3) @binding(6)
 var s_lights: sampler_comparison;
 
 // 지형을 그리는 버텍스 쉐이더입니다.
@@ -143,7 +143,7 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     var light_space_position: vec4<f32>;
     if (distance > 10.0) {
         // 정적인 오브젝트의 그림자를 계산합니다.
-        light_space_position = u_material.light_proj_view * vec4<f32>(input.position_w, 1.0);
+        light_space_position = u_global_light.static_proj_view * vec4<f32>(input.position_w, 1.0);
         shadow = min(shadow, calculate_static_shadow(light_space_position));
         color += main_color * u_global_light.color * diffuse * shadow;
     } else {
@@ -171,11 +171,11 @@ fn calculate_static_shadow(light_space_position: vec4<f32>) -> f32 {
     var uv: vec2<f32>;
     var depth: f32;
     var shadow = 0.0;
-    let texel_size = 1.0 / vec2<f32>(textureDimensions(t_shadow_map));
+    let texel_size = 1.0 / vec2<f32>(textureDimensions(t_static_light));
     for (var x = -1; x <= 1; x += 1) {
         for (var y = -1; y <= 1; y += 1) {
             uv = proj_coords + vec2<f32>(f32(x), f32(y)) * texel_size;
-            depth = textureSample(t_shadow_map, s_shadow_map, uv).r;
+            depth = textureSample(t_static_light, s_static_light, uv).r;
             if (curr_depth <= depth) {
                 shadow += 1.0;
             }

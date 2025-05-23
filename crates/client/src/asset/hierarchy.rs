@@ -266,18 +266,6 @@ impl ModelPool {
                         texture_view_pool,
                         sampler_pool,
                     )?;
-
-                    // 그림자 맵 텍스처를 로드합니다.
-                    texture_data_pool.get_or_init(
-                        workspace.as_ref(),
-                        &data.shadow_map,
-                        device,
-                        encoder,
-                        staging_buffers,
-                        texture_pool,
-                        texture_view_pool,
-                        sampler_pool,
-                    )?;
                 }
                 _ => {}
             }

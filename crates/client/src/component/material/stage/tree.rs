@@ -5,7 +5,6 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use mod_network::components::Float4x4;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
@@ -17,15 +16,12 @@ pub struct TreeMaterialData {
     pub uri: String,
     pub threshold: f32,
     pub main_color: String,
-    pub light_proj_view: Float4x4,
-    pub shadow_map: String,
 }
 
 /// 나무 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct TreeMaterialDataLayout {
-    pub light_proj_view: [f32; 16],
     pub threshold: f32,
     pub _padding0: [u8; 12],
 }
@@ -33,7 +29,6 @@ pub struct TreeMaterialDataLayout {
 impl Default for TreeMaterialDataLayout {
     fn default() -> Self {
         Self {
-            light_proj_view: [0.0; 16],
             threshold: 0.5,
             _padding0: [0; 12],
         }
@@ -184,24 +179,6 @@ impl TreeMaterialResource {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
-                    // 3번 바인딩: 정적 그림자 텍스처
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    // 4번 바인딩: 정적 그림자 텍스처 샘플러
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 4,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
                 ],
             })
         })
@@ -214,8 +191,6 @@ impl TreeMaterialResource {
         material_uniform: &TreeMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
-        shadow_map_view: &wgpu::TextureView,
-        shadow_map_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
         MaterialResource {
             kind: MaterialKind::Tree,
@@ -234,14 +209,6 @@ impl TreeMaterialResource {
                     wgpu::BindGroupEntry {
                         binding: 2,
                         resource: wgpu::BindingResource::Sampler(main_color_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(shadow_map_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 4,
-                        resource: wgpu::BindingResource::Sampler(shadow_map_sampler),
                     },
                 ],
             })),
