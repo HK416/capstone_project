@@ -542,7 +542,11 @@ impl Client {
                             }
                         }
                     }
+                    PacketType::UdpDamageLog => {
+                        // udp 패킷이 tcp로 오고있음
+                    }
                     _ => {
+                        // println!("InGame - Invalid packet received: {:?}", packet.packet_type());
                         self.connected.store(false, Ordering::Relaxed);
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidData, 
