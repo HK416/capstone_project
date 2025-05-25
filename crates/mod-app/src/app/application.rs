@@ -673,10 +673,10 @@ impl ApplicationHandler<AppEvent> for Application {
                 // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
                 if app_window.focused {
                     #[cfg(target_os = "windows")]
-                    if app_window.disable_cursor {
+                    if app_window.get_cursor_disabled() {
                         let window = app_window.window.as_ref();
                         let (w, h): (u32, u32) = window.inner_size().into();
-                        window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2));
+                        let _ = window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2));
                     }
 
                     let (dx, dy): (f32, f32) = self.cursor_delta.unwrap_or_default().into();
