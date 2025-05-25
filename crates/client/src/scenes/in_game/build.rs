@@ -13,6 +13,7 @@ use mod_network::{
     protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
+use mod_render::UiRenderer;
 use spin::mutex::SpinMutex;
 use winit::window::Window;
 
@@ -312,11 +313,16 @@ impl InGameBuildScene {
 }
 
 impl GameScene for InGameBuildScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         self.build_next_scene(app.render_device());
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         let mut staging_buffers = Vec::new();
         let mut command_buffers = Vec::new();
         while let Some((commmand, buffer)) = self.commands.pop() {

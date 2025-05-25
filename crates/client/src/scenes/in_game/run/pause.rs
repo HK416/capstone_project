@@ -5,6 +5,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::protocol::{PacketType, RawPacket};
+use mod_render::UiRenderer;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -51,12 +52,21 @@ impl GameScene for InGamePauseLayer {
         true
     }
 
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
-        app.enable_cursor();
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
-        app.disable_cursor();
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
+        let event = AppEvent::CursorDisable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {

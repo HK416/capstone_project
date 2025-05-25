@@ -10,6 +10,7 @@ use mod_network::{
     components::GameInput,
     protocol::{PacketType, RawPacket},
 };
+use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -47,27 +48,6 @@ impl InGameDominationModeStatusLayer {
     }
 }
 
-//--------------------------------------------------------------------------------------------
-// 시스템 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl InGameDominationModeStatusLayer {
-    /// 마우스 커서를 활성화합니다.
-    fn enable_cursor(&self, window: &Window) {
-        #[cfg(not(target_os = "windows"))]
-        {
-            use winit::window::CursorGrabMode;
-            window.set_cursor_grab(CursorGrabMode::None).unwrap();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            use mod_app::ext::AppWindowExt;
-            window.confine_cursor_to_window(false);
-        }
-
-        window.set_cursor_visible(true);
-    }
-}
-
 impl GameScene for InGameDominationModeStatusLayer {
     fn transparents(&self) -> bool {
         true
@@ -77,21 +57,34 @@ impl GameScene for InGameDominationModeStatusLayer {
         true
     }
 
-    fn on_enter(&mut self, _window: &Window, _app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, _app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let prev_scene = unsafe { self.prev_scene.as_mut() };
         prev_scene.set_show_status(true);
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, _app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         let prev_scene = unsafe { self.prev_scene.as_mut() };
         prev_scene.set_show_status(false);
     }
 
-    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
-        if let Some(window) = app.window() {
-            self.enable_cursor(window);
-        }
+    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorDisable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
 
+    fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
         let title = ERR_TITLE_TEXTS[i];
@@ -177,8 +170,6 @@ impl GameScene for InGameDominationModeStatusLayer {
 
     fn on_mouse_btn_pressed(
         &mut self,
-        _x: f32,
-        _y: f32,
         _button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,
@@ -188,8 +179,6 @@ impl GameScene for InGameDominationModeStatusLayer {
 
     fn on_mouse_btn_released(
         &mut self,
-        _x: f32,
-        _y: f32,
         _button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,

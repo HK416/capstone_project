@@ -1,11 +1,8 @@
 #![allow(dead_code)]
 
-use std::{
-    cell::RefCell,
-    sync::{
-        atomic::{AtomicBool, Ordering as MemOrdering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering as MemOrdering},
+    Arc,
 };
 
 use mod_render::{config_swapchain, create_surface, SurfaceInitError, DEPTH_FORMAT};
@@ -31,11 +28,12 @@ pub enum WindowInitError {
 
 pub struct AppWindow {
     pub window: Arc<Window>,
-    pub egui_state: RefCell<egui_winit::State>,
+    pub egui_state: egui_winit::State,
     pub surface: Arc<wgpu::Surface<'static>>,
-    pub depth_buffer_view: RefCell<Arc<wgpu::TextureView>>,
+    pub depth_buffer_view: Arc<wgpu::TextureView>,
     pub disable_cursor: AtomicBool,
     pub disable_vsync: bool,
+    pub focused: bool,
 }
 
 impl AppWindow {
@@ -115,11 +113,12 @@ impl AppWindow {
             depth_buffer_view,
             disable_cursor: AtomicBool::new(false),
             disable_vsync: vsync,
+            focused: false,
         })
     }
 
     /// 애플리케이션 창의 크기가 변경됐을 때 호출되는 콜백 함수입니다.
-    pub fn on_resized(&self, instance: &wgpu::Instance, device: &wgpu::Device) {
+    pub fn on_resized(&mut self, instance: &wgpu::Instance, device: &wgpu::Device) {
         // 애플리케이션 창의 가로와 세로 크기를 가져옵니다.
         // 가로 또는 세로 크기가 0인 경우 함수 실행을 중단합니다.
         let (width, height): (u32, u32) = self.window.inner_size().into();
@@ -134,8 +133,7 @@ impl AppWindow {
         config_swapchain(width, height, device, &self.surface, self.disable_vsync);
 
         // 변경된 크기로 깊이 버퍼를 재설정합니다.
-        let mut depth_buffer_view = self.depth_buffer_view.borrow_mut();
-        *depth_buffer_view = Arc::new(
+        self.depth_buffer_view = Arc::new(
             device
                 .create_texture(&wgpu::TextureDescriptor {
                     label: Some("Depth-Buffer"),

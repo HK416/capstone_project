@@ -3,6 +3,7 @@ use mod_app::{
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
+use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
@@ -57,9 +58,7 @@ impl InitWindowScene {
 }
 
 impl GameScene for InitWindowScene {
-    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
-        log::info!("Enter GameScene({:?})", &self);
-
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         // 애플리케이션 창을 표시합니다.
         window.set_visible(true);
         window.set_cursor_visible(true);
@@ -73,7 +72,12 @@ impl GameScene for InitWindowScene {
         self.window_size = app.window_size();
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, _app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         let mut config = UserConfig::get();
         config.window_size = self.window_size;
         config.is_fullscreen = self.is_fullscreen;

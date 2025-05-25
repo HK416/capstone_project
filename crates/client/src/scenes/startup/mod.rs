@@ -17,7 +17,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
-use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
@@ -455,7 +455,7 @@ impl GameStartupScene {
 }
 
 impl GameScene for GameStartupScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let device = app.render_device();
         let thread_pool = app.io_threads();
         let root_dir = app.asset_manager().get_root_dir();
@@ -502,7 +502,12 @@ impl GameScene for GameStartupScene {
         self.load_user_config(root_dir);
     }
 
-    fn on_exit(&mut self, window: Option<&Window>, app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        window: Option<&Window>,
+        app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         self.setup_custom_fonts(app.egui_ctx());
         if let Some(window) = window {
             self.change_window_config(window, app.event_loop_proxy());

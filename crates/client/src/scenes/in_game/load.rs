@@ -20,6 +20,7 @@ use mod_network::{
     protocol::{InitStagePacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
+use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
 
@@ -1718,7 +1719,7 @@ impl InGameLoadScene {
 }
 
 impl GameScene for InGameLoadScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let workspace = app.asset_manager().get_root_dir().to_path_buf();
         let thread_pool = app.io_threads();
         let device = app.render_device();
@@ -1744,7 +1745,12 @@ impl GameScene for InGameLoadScene {
         self.create_damage_particle_mesh(thread_pool, device);
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         // 커맨드 버퍼를 수집합니다.
         let mut commands = Vec::new();
         let mut staging_buffers: Vec<wgpu::Buffer> = Vec::new();
@@ -1753,16 +1759,11 @@ impl GameScene for InGameLoadScene {
             staging_buffers.append(&mut buffers);
         }
 
-        app.render_queue().submit(commands);
-        while !app
-            .render_device()
-            .poll(wgpu::Maintain::Poll)
-            .is_queue_empty()
-        {
-            std::hint::spin_loop();
-        }
-
-        drop(staging_buffers);
+        // 그래픽스 명령어를 제출합니다.
+        let device = app.render_device();
+        let queue = app.render_queue();
+        queue.submit(commands);
+        let _ = device.poll(wgpu::PollType::Wait);
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {

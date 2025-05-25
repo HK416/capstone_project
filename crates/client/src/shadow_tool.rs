@@ -124,7 +124,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::wait()).panic_on_timeout();
+        device.poll(wgpu::PollType::Wait);
     }
 
     println!("지형을 생성합니다...");
@@ -154,7 +154,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::wait()).panic_on_timeout();
+        device.poll(wgpu::PollType::Wait);
 
         bvh
     };
@@ -199,7 +199,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::wait()).panic_on_timeout();
+        device.poll(wgpu::PollType::Wait);
     }
 
     println!("조명을 준비합니다...");
@@ -240,7 +240,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::wait()).panic_on_timeout();
+        device.poll(wgpu::PollType::Wait);
     }
 
     {
@@ -276,7 +276,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::wait()).panic_on_timeout();
+        device.poll(wgpu::PollType::Wait);
     }
 
     // 버퍼에 텍스처 데이터를 복사합니다.
@@ -315,7 +315,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::Maintain::wait()).panic_on_timeout();
+        device.poll(wgpu::PollType::Wait);
     }
 
     // 버퍼로부터 텍스처 데이터를 가져옵니다.
@@ -323,7 +323,7 @@ fn main() {
     let buffer_slice = output_staging_buffer.slice(..);
     let (sender, receiver) = mpsc::channel();
     buffer_slice.map_async(wgpu::MapMode::Read, move |r| sender.send(r).unwrap());
-    device.poll(wgpu::Maintain::wait()).panic_on_timeout();
+    device.poll(wgpu::PollType::Wait);
 
     let result = receiver.recv().unwrap();
     match result {

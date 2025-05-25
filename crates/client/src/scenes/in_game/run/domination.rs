@@ -21,6 +21,7 @@ use mod_network::{
     },
 };
 use mod_physics::object3d::Frustum;
+use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -1975,18 +1976,21 @@ impl InGameDominationModeScene {
 //--------------------------------------------------------------------------------------------
 
 impl GameScene for InGameDominationModeScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let device = app.render_device();
         self.create_main_camera(&device);
-        self.update_stage(); // 정적인 지형은 매번 계층 구조를 갱신할 필요가 없다.
     }
 
-    fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
-        app.disable_cursor();
+    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorDisable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_enter_background(&mut self, app: &dyn AppHandle) {
-        app.enable_cursor();
+    fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn on_keyboard_pressed(
@@ -2064,8 +2068,6 @@ impl GameScene for InGameDominationModeScene {
 
     fn on_mouse_btn_pressed(
         &mut self,
-        _x: f32,
-        _y: f32,
         button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,
@@ -2086,8 +2088,6 @@ impl GameScene for InGameDominationModeScene {
 
     fn on_mouse_btn_released(
         &mut self,
-        _x: f32,
-        _y: f32,
         button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,

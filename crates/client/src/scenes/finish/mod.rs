@@ -17,6 +17,7 @@ use mod_network::{
     protocol::{FinishStageResponsePacket, Packet},
 };
 use mod_physics::object3d::Frustum;
+use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
@@ -611,10 +612,19 @@ impl InGameResultScene {
 
 //--------------------------------------------------------------------------------------------
 impl GameScene for InGameResultScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
-        app.enable_cursor();
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+
         self.create_main_camera(app.render_device());
         self.reset_player_position();
+    }
+
+    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {

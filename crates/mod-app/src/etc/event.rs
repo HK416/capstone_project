@@ -24,4 +24,10 @@ pub enum AppEvent {
 
     /// 패킷을 수신했을 때 전달되는 이벤트입니다.
     PacketReceived(RawPacket),
+
+    /// 마우스 커서를 비활성화 합니다.
+    CursorDisable,
+
+    /// 마우스 커서를 활성화 합니다.
+    CursorEnable,
 }

@@ -15,6 +15,7 @@ use mod_app::{
 };
 use mod_network::components::{LoginToken, UserAccount};
 use mod_parallelism::collections::Queue;
+use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
 
@@ -74,7 +75,7 @@ impl MainLobbyEnterScene {
     }
 
     /// `MainLobby`의 배경 텍스처를 풀 객체에 등록합니다.
-    fn regist_background_texture<Dir>(
+    fn load_background_texture<Dir>(
         &mut self,
         root_dir: Dir,
         thread_pool: &ThreadPool,
@@ -168,9 +169,9 @@ impl MainLobbyEnterScene {
 }
 
 impl GameScene for MainLobbyEnterScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let root_dir = app.asset_manager().get_root_dir();
-        self.regist_background_texture(root_dir, app.io_threads(), app.render_device());
+        self.load_background_texture(root_dir, app.io_threads(), app.render_device());
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {

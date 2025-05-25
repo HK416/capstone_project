@@ -996,23 +996,28 @@ impl InGameDominationModePrepareScene {
 //--------------------------------------------------------------------------------------------
 
 impl GameScene for InGameDominationModePrepareScene {
-    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
-        app.disable_cursor();
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+        let event = AppEvent::CursorDisable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
 
         let device = app.render_device();
-        let mut egui_renderer = app.egui_renderer_mut();
-        self.register_ui_texture(&device, &mut egui_renderer);
+        self.register_ui_texture(&device, ui_renderer);
         self.create_main_camera(&device);
         self.create_light_set_resource(device);
         self.create_alpha_blend_resource(window, &device);
     }
 
-    fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
-        app.disable_cursor();
+    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorDisable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_enter_background(&mut self, app: &dyn AppHandle) {
-        app.enable_cursor();
+    fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {

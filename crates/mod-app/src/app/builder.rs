@@ -144,7 +144,7 @@ impl AppBuilder {
                 let message = "Failed to parse command line arguments.".into();
                 let alert = Alert { title, message };
                 show_error_msg(alert, None);
-                std::process::exit(-1);
+                return;
             }
         };
 
@@ -157,10 +157,9 @@ impl AppBuilder {
                 let message = "Failed to create window event loop.".into();
                 let alert = Alert { title, message };
                 show_error_msg(alert, None);
-                std::process::exit(-1);
+                return;
             }
         };
-        event_loop.set_control_flow(ControlFlow::Poll);
 
         // 이벤트 루프 프록시를 생성합니다.
         let event_loop_proxy = event_loop.create_proxy().into();
@@ -175,18 +174,19 @@ impl AppBuilder {
                 let message = e.to_string();
                 let alert = Alert { title, message };
                 show_error_msg(alert, None);
-                std::process::exit(-1);
+                return;
             }
         };
 
         // 애플리케이션을 실행합니다.
+        event_loop.set_control_flow(ControlFlow::Poll);
         if let Err(e) = event_loop.run_app(&mut app) {
             log::error!("{e}");
             let title = "Runtime error".into();
             let message = e.to_string();
             let alert = Alert { title, message };
             show_error_msg(alert, None);
-            std::process::exit(-1);
+            return;
         }
     }
 }
