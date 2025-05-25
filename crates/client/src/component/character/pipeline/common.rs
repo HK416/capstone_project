@@ -4,7 +4,8 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::component::{
-    CameraResource, CharacterMaterialResource, ShadowResource, SkinnedMeshResource,
+    CameraResource, CharacterMaterialResource, LightSetResource, ShadowResource,
+    SkinnedMeshResource,
 };
 
 /// 캐릭터를 그리는 렌더링 파이프라인입니다.
@@ -38,6 +39,7 @@ impl CharacterRenderPipeline {
                 CameraResource::bind_group_layout(device),
                 SkinnedMeshResource::bind_group_layout(device),
                 CharacterMaterialResource::bind_group_layout(device),
+                LightSetResource::bind_group_layout(device),
             ],
             push_constant_ranges: &[],
         })

@@ -359,7 +359,7 @@ impl InGameDominationModeScene {
         builder.add_bundle((
             ToParentTrans::default(),
             WorldTransform::default(),
-            Projection::perspective(75f32.to_radians(), 16.0 / 9.0, 0.01, 500.0),
+            Projection::perspective(45f32.to_radians(), 16.0 / 9.0, 0.1, 500.0),
             third_person_camera,
             camera_uniform,
             camera_resource,
@@ -989,7 +989,7 @@ impl InGameDominationModeScene {
 
         // 투영 변환 행렬을 갱신합니다.
         let fov_y_radians = third_person_camera.fov_y;
-        *projection = Projection::perspective(fov_y_radians, 16.0 / 9.0, 0.01, 500.0);
+        *projection = Projection::perspective(fov_y_radians, 16.0 / 9.0, 0.1, 500.0);
 
         // 카메라 데이터 유니폼 버퍼를 갱신합니다.
         let position_w = transform.get_translation();
@@ -2465,11 +2465,31 @@ impl GameScene for InGameDominationModeScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), resources) in self.opaque_map.iter() {
+            for ((mesh, kind), material_resources) in self.opaque_map.iter() {
                 let func = match kind {
                     MaterialKind::Bullet => draw_bullet,
-                    MaterialKind::Character => draw_character,
-                    MaterialKind::CharacterEyeMouth => draw_character_eye_mouth,
+                    MaterialKind::Character => {
+                        draw_character(
+                            &mesh,
+                            CharacterRenderPipeline::get().unwrap(),
+                            &camera_resource,
+                            light_set_resource,
+                            &material_resources,
+                            &mut rpass,
+                        );
+                        continue;
+                    }
+                    MaterialKind::CharacterEyeMouth => {
+                        draw_character_eye_mouth(
+                            &mesh,
+                            EyeMouthRenderPipeline::get().unwrap(),
+                            &camera_resource,
+                            light_set_resource,
+                            &material_resources,
+                            &mut rpass,
+                        );
+                        continue;
+                    }
                     MaterialKind::CharacterHalo => draw_character_halo,
                     MaterialKind::Stage => {
                         draw_stage(
@@ -2477,7 +2497,7 @@ impl GameScene for InGameDominationModeScene {
                             StageRenderPipeline::get().unwrap(),
                             &camera_resource,
                             light_set_resource,
-                            &resources,
+                            &material_resources,
                             &mut rpass,
                         );
                         continue;
@@ -2488,7 +2508,7 @@ impl GameScene for InGameDominationModeScene {
                             TreeRenderPipeline::get().unwrap(),
                             &camera_resource,
                             light_set_resource,
-                            resources,
+                            material_resources,
                             &mut rpass,
                         );
                         continue;
@@ -2504,7 +2524,13 @@ impl GameScene for InGameDominationModeScene {
                 }
                 .unwrap();
 
-                func(&mesh, pipeline, &camera_resource, &resources, &mut rpass);
+                func(
+                    &mesh,
+                    pipeline,
+                    &camera_resource,
+                    &material_resources,
+                    &mut rpass,
+                );
             }
 
             self.draw_damage_particle(

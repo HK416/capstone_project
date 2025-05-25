@@ -23,9 +23,9 @@ use crate::{
 pub use self::{animation::*, pipeline::*};
 
 use super::{
-    AttributeKind, CameraResource, MaterialKind, MaterialResource, Mesh, MeshFilter, MeshRenderer,
-    MoveDirection, OpaqueMap, ShadowMap, ShadowResource, SkinnedMeshRenderer, ThirdPersonCamera,
-    TransformDataLayout,
+    AttributeKind, CameraResource, LightSetResource, MaterialKind, MaterialResource, Mesh,
+    MeshFilter, MeshRenderer, MoveDirection, OpaqueMap, ShadowMap, ShadowResource,
+    SkinnedMeshRenderer, ThirdPersonCamera, TransformDataLayout,
 };
 
 /// 캐릭터의 수
@@ -1351,12 +1351,14 @@ pub fn draw_character<'a>(
     mesh: &'a Mesh,
     pipeline: Arc<wgpu::RenderPipeline>,
     camera_resource: &'a CameraResource,
+    light_set_resource: &'a LightSetResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
     rpass.set_pipeline(&pipeline);
 
     rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+    rpass.set_bind_group(3, light_set_resource.bind_group(), &[]);
 
     rpass.set_vertex_buffer(0, mesh.vertex(..));
     rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
@@ -1408,12 +1410,14 @@ pub fn draw_character_eye_mouth<'a>(
     mesh: &'a Mesh,
     pipeline: Arc<wgpu::RenderPipeline>,
     camera_resource: &'a CameraResource,
+    light_set_resource: &'a LightSetResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
     rpass.set_pipeline(&pipeline);
 
     rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+    rpass.set_bind_group(3, light_set_resource.bind_group(), &[]);
 
     rpass.set_vertex_buffer(0, mesh.vertex(..));
     rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());

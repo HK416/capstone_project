@@ -832,10 +832,30 @@ impl GameScene for InGameResultScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), resources) in self.opaque_map.iter() {
+            for ((mesh, kind), material_resources) in self.opaque_map.iter() {
                 let func = match kind {
-                    MaterialKind::Character => draw_character,
-                    MaterialKind::CharacterEyeMouth => draw_character_eye_mouth,
+                    MaterialKind::Character => {
+                        draw_character(
+                            &mesh,
+                            CharacterRenderPipeline::get().unwrap(),
+                            &camera_resource,
+                            &self.light_set_resource,
+                            &material_resources,
+                            &mut rpass,
+                        );
+                        continue;
+                    }
+                    MaterialKind::CharacterEyeMouth => {
+                        draw_character_eye_mouth(
+                            &mesh,
+                            EyeMouthRenderPipeline::get().unwrap(),
+                            &camera_resource,
+                            &self.light_set_resource,
+                            &material_resources,
+                            &mut rpass,
+                        );
+                        continue;
+                    }
                     MaterialKind::CharacterHalo => draw_character_halo,
                     MaterialKind::Stage => {
                         draw_stage(
@@ -843,7 +863,7 @@ impl GameScene for InGameResultScene {
                             StageRenderPipeline::get().unwrap(),
                             &camera_resource,
                             &self.light_set_resource,
-                            &resources,
+                            &material_resources,
                             &mut rpass,
                         );
                         continue;
@@ -854,7 +874,7 @@ impl GameScene for InGameResultScene {
                             TreeRenderPipeline::get().unwrap(),
                             &camera_resource,
                             &self.light_set_resource,
-                            resources,
+                            material_resources,
                             &mut rpass,
                         );
                         continue;
@@ -870,7 +890,13 @@ impl GameScene for InGameResultScene {
                 }
                 .unwrap();
 
-                func(&mesh, pipeline, &camera_resource, &resources, &mut rpass);
+                func(
+                    &mesh,
+                    pipeline,
+                    &camera_resource,
+                    &material_resources,
+                    &mut rpass,
+                );
             }
 
             clear_render_target_with_skybox(

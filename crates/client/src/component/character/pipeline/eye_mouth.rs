@@ -4,7 +4,7 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::component::{
-    CameraResource, EyeMouthMaterialResource, ShadowResource, SkinnedMeshResource,
+    CameraResource, EyeMouthMaterialResource, LightSetResource, ShadowResource, SkinnedMeshResource,
 };
 
 /// 캐릭터의 눈과 입을 그리는 렌더링 파이프라인입니다.
@@ -38,6 +38,7 @@ impl EyeMouthRenderPipeline {
                 CameraResource::bind_group_layout(device),
                 SkinnedMeshResource::bind_group_layout(device),
                 EyeMouthMaterialResource::bind_group_layout(device),
+                LightSetResource::bind_group_layout(device),
             ],
             push_constant_ranges: &[],
         })
