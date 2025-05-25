@@ -1,1 +1,1 @@
-{ "Character": { "uri": "Yuuka_Original_Eyebrow", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Yuuka_Original_Face" } }
+{ "Character": { "uri": "Yuuka_Original_Eyebrow", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Yuuka_Original_Face", "detail_mask": "Yuuka_Original_Face_Mask" } }

@@ -1,1 +1,1 @@
-{ "Character": { "uri": "Midori_Original_Weapon", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Midori_Original_Weapon" } }
+{ "Character": { "uri": "Midori_Original_Weapon", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Midori_Original_Weapon", "detail_mask": "Midori_Original_Weapon_Mask" } }

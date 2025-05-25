@@ -497,12 +497,19 @@ fn spawn_character_model_recursive(
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
 
+                        // 캐릭터 마스킹 텍스처를 가져옵니다.
+                        let (detail_mask_view, detail_mask_sampler) = texture_data_pool
+                            .get(&data.detail_mask)
+                            .expect("the texture data must exist!");
+
                         let material_resource = CharacterMaterialResource::new(
                             label,
                             device,
                             &character_uniform,
                             &main_color_view,
                             &main_color_sampler,
+                            &detail_mask_view, 
+                            &detail_mask_sampler,
                         );
 
                         (
