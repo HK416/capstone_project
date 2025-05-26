@@ -18,6 +18,7 @@ use mod_network::components::{
     MAX_CAPTURE_SCORE,
 };
 use mod_physics::object3d::Frustum;
+use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use winit::window::Window;
 
 use crate::{
@@ -35,17 +36,17 @@ use crate::{
         update_action_state_timer, update_bullet_resource, update_character_resource,
         update_entity_hierarchy, update_movement_state_timer, update_stage_resource,
         update_third_person_camera, update_third_person_camera_hierarchy,
-        update_view_state_by_controller_input_flags, update_view_state_timer, AttributeKind,
-        BakeList, BoneCollection, BulletRenderPipelineTransparency, CameraDataLayout,
-        CameraResource, CameraUniform, CharacterBakePipeline, CharacterRenderPipeline, Child,
-        DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
-        DamageParticle, EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-        GlobalLight, GlobalLightDataLayout, HaloRenderPipeline, LightSetResource,
-        LightTransformDataLayout, MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent, Projection,
+        update_view_state_by_controller_input_flags, update_view_state_timer, AccumRenderTarget,
+        AttributeKind, BakeList, BoneCollection, BulletRenderPipelineTransparency,
+        CameraDataLayout, CameraResource, CameraUniform, CharacterBakePipeline,
+        CharacterRenderPipeline, Child, CompositePipeline, DamageFontDataLayout,
+        DamageFontRenderPipeline, DamageFontResource, DamageFontUniform, DamageParticle,
+        EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline, GlobalLight,
+        GlobalLightDataLayout, HaloRenderPipeline, LightSetResource, LightTransformDataLayout,
+        MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent, Projection, RevealRenderTarget,
         ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
         SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline, ThirdPersonCamera,
-        ToParentTrans, TransparentMap, TreeRenderPipeline, WeightedBlendedOITRenderPipeline,
-        WeightedBlendedOITResource, WorldTransform,
+        ToParentTrans, TransparentMap, TreeRenderPipeline, WorldTransform,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, InGameResultScene, BASE_WIDTH, TEAM_COLOR, UI_BG_COLOR},
@@ -111,8 +112,13 @@ pub struct InGameResultEnterScene {
     global_light: Option<GlobalLight>,
     /// 조명 집합 쉐이더 리소스입니다.
     light_set_resource: Option<LightSetResource>,
-    /// 알파 블렌딩 쉐이더 리소스입니다.
-    alpha_blend_resource: Option<WeightedBlendedOITResource>,
+
+    /// 반투명 오브젝트의 누적 값(Accumuldate)을 저장하는 렌더 타겟입니다.
+    accum_render_target: Option<AccumRenderTarget>,
+    /// 반투명 오브젝트의 노출 값(Revealage)을 저장하는 렌더 타겟입니다.
+    reveal_render_target: Option<RevealRenderTarget>,
+    /// 여러 렌더 타겟을 취합하는 파이프라인입니다.
+    composite_pipeline: Option<CompositePipeline>,
 
     /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
@@ -156,7 +162,9 @@ impl InGameResultEnterScene {
         stages: StageBoundingVolumnHierarchy,
         global_light: Option<GlobalLight>,
         light_set_resource: LightSetResource,
-        alpha_blend_resource: WeightedBlendedOITResource,
+        accum_render_target: AccumRenderTarget,
+        reveal_render_target: RevealRenderTarget,
+        composite_pipeline: CompositePipeline,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         motion_pool: MotionPool,
     ) -> Self {
@@ -186,7 +194,9 @@ impl InGameResultEnterScene {
             ui_textures,
             global_light,
             light_set_resource: Some(light_set_resource),
-            alpha_blend_resource: Some(alpha_blend_resource),
+            accum_render_target: Some(accum_render_target),
+            reveal_render_target: Some(reveal_render_target),
+            composite_pipeline: Some(composite_pipeline),
             bake_list: Vec::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -194,10 +204,25 @@ impl InGameResultEnterScene {
         }
     }
 
-    /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
-    fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
-        let (width, height): (u32, u32) = window.inner_size().into();
-        self.alpha_blend_resource = Some(WeightedBlendedOITResource::new(width, height, device));
+    /// 여러 렌더 타겟을 취합하는 그래픽스 파이프라인을 생성합니다.
+    fn create_composite_pipeline(&mut self, window: &Window, device: &wgpu::Device) {
+        let (width, height) = window.inner_size().into();
+        let accum_render_target = AccumRenderTarget::new(width, height, device);
+        let reveal_render_target = RevealRenderTarget::new(width, height, device);
+        let composite_pipeline = match self.composite_pipeline.take() {
+            Some(pipeline) => pipeline.renew(device, &accum_render_target, &reveal_render_target),
+            None => CompositePipeline::new(
+                device,
+                &accum_render_target,
+                &reveal_render_target,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+            ),
+        };
+
+        self.composite_pipeline = Some(composite_pipeline);
+        self.accum_render_target = Some(accum_render_target);
+        self.reveal_render_target = Some(reveal_render_target);
     }
 }
 
@@ -1583,7 +1608,7 @@ impl GameScene for InGameResultEnterScene {
     }
 
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
-        self.create_alpha_blend_resource(window, app.render_device());
+        self.create_composite_pipeline(window, app.render_device());
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
@@ -1603,7 +1628,9 @@ impl GameScene for InGameResultEnterScene {
             let play_data = self.play_data.to_owned();
             let global_light = self.global_light.take();
             let light_set_resource = self.light_set_resource.take().unwrap();
-            let alpha_blend_resource = self.alpha_blend_resource.take().unwrap();
+            let accum_render_target = self.accum_render_target.take().unwrap();
+            let reveal_render_target = self.reveal_render_target.take().unwrap();
+            let composite_pipeline = self.composite_pipeline.take().unwrap();
             let ui_textures = self.ui_textures.to_owned();
             let winner_players = InGameResultScene::get_winner_players(
                 self.winner,
@@ -1626,7 +1653,9 @@ impl GameScene for InGameResultEnterScene {
                 play_data,
                 global_light,
                 light_set_resource,
-                alpha_blend_resource,
+                accum_render_target,
+                reveal_render_target,
+                composite_pipeline,
                 ui_textures,
                 self.motion_pool.clone(),
             );
@@ -1776,9 +1805,11 @@ impl GameScene for InGameResultEnterScene {
             .expect("invalid entity or invalid entity component");
 
         // 쉐이더 리소스를 가져옵니다.
-        let light_set_resource = self.light_set_resource.as_ref().unwrap();
-        let alpha_blend_resource = self.alpha_blend_resource.as_ref().unwrap();
         let skybox = self.skybox.as_ref().unwrap();
+        let light_set_resource = self.light_set_resource.as_ref().unwrap();
+        let accum_render_target = self.accum_render_target.as_ref().unwrap();
+        let reveal_render_target = self.reveal_render_target.as_ref().unwrap();
+        let composite_pipeline = self.composite_pipeline.as_ref().unwrap();
 
         encoder.push_debug_group("shadow pass");
         for (shadow_resource, shadow_map) in self.bake_list.iter() {
@@ -1938,7 +1969,7 @@ impl GameScene for InGameResultEnterScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
-                        view: &alpha_blend_resource.accum_render_target,
+                        view: accum_render_target.view(),
                         resolve_target: None,
                     }),
                     Some(wgpu::RenderPassColorAttachment {
@@ -1953,7 +1984,7 @@ impl GameScene for InGameResultEnterScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
-                        view: &alpha_blend_resource.reveal_render_target,
+                        view: reveal_render_target.view(),
                         resolve_target: None,
                     }),
                 ],
@@ -2011,11 +2042,7 @@ impl GameScene for InGameResultEnterScene {
                 occlusion_query_set: None,
             });
 
-            // 그래픽스 파이프라인을 가져옵니다.
-            let pipeline = WeightedBlendedOITRenderPipeline::get().unwrap();
-            rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, &alpha_blend_resource.bind_group, &[]);
-            rpass.draw(0..4, 0..1);
+            composite_pipeline.process(&mut rpass);
         }
         encoder.pop_debug_group();
     }

@@ -4,7 +4,7 @@
 use std::sync::{Arc, OnceLock};
 
 use crate::component::{
-    BulletMaterialResource, CameraResource, MeshResource, WeightedBlendedOITResource,
+    AccumRenderTarget, BulletMaterialResource, CameraResource, MeshResource, RevealRenderTarget,
 };
 
 /// 일반 총알을 투명하게 그리는 그래픽스 파이프라인입니다.
@@ -126,7 +126,7 @@ impl BulletRenderPipelineTransparency {
                                             operation: wgpu::BlendOperation::Add,
                                         },
                                     }),
-                                    format: WeightedBlendedOITResource::ACCUM_FORMAT,
+                                    format: AccumRenderTarget::FORMAT,
                                     write_mask: wgpu::ColorWrites::ALL,
                                 }),
                                 Some(wgpu::ColorTargetState {
@@ -142,7 +142,7 @@ impl BulletRenderPipelineTransparency {
                                             operation: wgpu::BlendOperation::Add,
                                         },
                                     }),
-                                    format: WeightedBlendedOITResource::REVEAL_FORMAT,
+                                    format: RevealRenderTarget::FORMAT,
                                     write_mask: wgpu::ColorWrites::ALL,
                                 }),
                             ],

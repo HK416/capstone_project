@@ -3,6 +3,7 @@ mod camera;
 mod character;
 mod control;
 mod damage_font;
+mod deferred;
 mod hierarchy;
 mod light;
 mod material;
@@ -10,15 +11,14 @@ mod mesh;
 mod skybox;
 mod stage;
 mod transform;
-mod weighted_blended_oit;
 
 use std::sync::Arc;
 
 use ahash::HashMap;
 
 pub use self::{
-    bullet::*, camera::*, character::*, control::*, damage_font::*, hierarchy::*, light::*,
-    material::*, mesh::*, skybox::*, stage::*, transform::*, weighted_blended_oit::*,
+    bullet::*, camera::*, character::*, control::*, damage_font::*, deferred::*, hierarchy::*,
+    light::*, material::*, mesh::*, skybox::*, stage::*, transform::*,
 };
 
 pub enum MeshFilter {

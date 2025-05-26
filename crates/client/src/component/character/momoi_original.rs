@@ -503,7 +503,7 @@ fn spawn_character_model_recursive(
                             &character_uniform,
                             &main_color_view,
                             &main_color_sampler,
-                            &detail_mask_view, 
+                            &detail_mask_view,
                             &detail_mask_sampler,
                         );
 
