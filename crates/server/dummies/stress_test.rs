@@ -597,9 +597,9 @@ impl AcceptState {
 
 const MAX_CLIENTS: usize = 10000;
 const IDLE_DELAY: u32 = 10;  // ms
-const STABLE_DELAY: u32 = 30;  // ms
-const DELAY_LIMIT1: u32 = 50;  // ms
-const DELAY_LIMIT2: u32 = 100;  // ms
+const STABLE_DELAY: u32 = 50;  // ms
+const DELAY_LIMIT1: u32 = 100;  // ms
+const DELAY_LIMIT2: u32 = 150;  // ms
 
 
 async fn stress_test(addr: Addr) {
