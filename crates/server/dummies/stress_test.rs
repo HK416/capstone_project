@@ -1,6 +1,8 @@
 use std::{
     collections::HashMap,
+    env,
     io::Write, 
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
         Arc, Mutex
@@ -13,6 +15,7 @@ use tokio::{
 };
 
 use mod_network::{
+    addr::Addr,
     components::{
         CharacterKind, Email, GameInputBits, 
         LatLon, LoginToken, Passwd, Permission, 
@@ -409,8 +412,8 @@ impl Client {
         })
     }
 
-    async fn run(&self) {
-        let stream = TcpStream::connect("localhost:7878").await.unwrap();
+    async fn run(&self, addr: &str) {
+        let stream = TcpStream::connect(addr).await.unwrap();
         self.connected.store(true, Ordering::Relaxed);
         NUM_CLIENTS.fetch_add(1, Ordering::Relaxed);
 
@@ -599,7 +602,7 @@ const DELAY_LIMIT1: u32 = 50;  // ms
 const DELAY_LIMIT2: u32 = 100;  // ms
 
 
-async fn stress_test() {
+async fn stress_test(addr: Addr) {
     let accept_state = Arc::new(AtomicU32::new(AcceptState::Accept as u32));
     let state = Arc::clone(&accept_state);
 
@@ -617,7 +620,6 @@ async fn stress_test() {
 
     let mut accept_delay = 100; // ms
 
-    // let mut clients = Vec::with_capacity(MAX_CLIENTS);
     let mut clients = HashMap::with_capacity(MAX_CLIENTS);
     let mut client_id = 0;
     loop {
@@ -632,10 +634,10 @@ async fn stress_test() {
                     // accept
                     if NUM_CLIENTS.load(Ordering::Relaxed) < MAX_CLIENTS as u16 {
                         let client = Arc::new(Client::new(UserAccount::default()).await.unwrap());
-                        // clients.push(Arc::clone(&client));
                         clients.insert(client_id, Arc::clone(&client));
                         client_id += 1;
-                        tokio::spawn(async move { client.run().await });
+                        let a = addr.to_string();
+                        tokio::spawn(async move { client.run(&a).await });
                     }
 
                     tokio::time::sleep(tokio::time::Duration::from_millis(accept_delay)).await;
@@ -695,12 +697,39 @@ fn main() {
     let num_threads = num_core / 4;
     println!("Using {} threads", num_threads);
 
+    let mut args = env::args();
+    args.next();
+    let mut addr = Addr::default();
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--set-addr" => {
+                if let Some(addr_str) = args.next() {
+                    addr = match Addr::from_str(&addr_str) {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            eprintln!(
+                                "명령줄 인자 형식이 잘못되었습니다.\n  `--set-addr` - 잘못된 주소 형식입니다.\n{}",
+                                e
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
+            _ => {
+                eprintln!("Invalid option: {}", arg);
+                return;
+            }
+        }
+    }
+
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_threads)
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            stress_test().await
+            stress_test(addr).await
         });
 }
