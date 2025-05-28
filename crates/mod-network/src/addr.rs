@@ -49,8 +49,9 @@ impl FromStr for Addr {
             "localhost" | "127.0.0.1" => mode.to_string(),
 
             _ => {
-                let help_message = format!("invalid mode(or ip): '{}'\n{}", mode, mode_list_msg);
-                return Err(help_message);
+                // let help_message = format!("invalid mode(or ip): '{}'\n{}", mode, mode_list_msg);
+                // return Err(help_message);
+                mode.to_string()
             }
         };
 

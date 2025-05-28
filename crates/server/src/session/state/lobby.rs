@@ -4,6 +4,7 @@ use mod_network::{
     components::{JoinFailedReason, RecruitPhasePlayer, UserAccount, WorldId},
     protocol::{
         CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket,
+        RequestAvailableWorldsPacket, AvailableWorldsPacket,
         Packet, PacketType, RawPacket,
     },
 };
@@ -156,6 +157,17 @@ impl SessionState for SessionLobbyState {
             match packet_type {
                 PacketType::CustomGameJoinRequest => {
                     self.handle_custom_game_join_request_packet(session, packet);
+                }
+                PacketType::RequestAvailableWorlds => {
+                    let packet = RequestAvailableWorldsPacket::from_raw(packet);
+                    if !UserTokenMap::is_valid(&(packet.user_id, session.addr), packet.token) {
+                        log::warn!("{} invalid token (PACKET:{:?})", &session, &packet,);
+                        session.close();
+                        return;
+                    }
+                    let worlds = GameWorldPool::get_available_world_ids();
+                    let packet = AvailableWorldsPacket::new(worlds);
+                    session.tcp_write(packet.as_raw());
                 }
                 _ => {
                     log::warn!(
