@@ -285,7 +285,6 @@ pub fn is_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
                 }
             }
         }
-        println!("Team:{:?}, x:{}, z:{} - valid", team, x, z);
 
         true
     } else {
