@@ -43,12 +43,12 @@ pub struct StageAttributes {
     pub colliders: ColliderTree,
     /// 블루 팀 스폰 데이터입니다.
     pub blue_team_spawn: Spawn,
-    /// 블루 팀 안전구역(Area) 인덱스입니다.  
-    pub blue_safe_area: [usize; 2],
+    /// 블루 팀 안전구역(Area) 영역입니다.  
+    pub blue_safe_area: (glam::Vec2, glam::Vec2),
     /// 레드 팀 스폰 데이터입니다.
     pub red_team_spawn: Spawn,
-    /// 레드 팀 안전구역(Area) 인덱스입니다.
-    pub red_safe_area: [usize; 2],
+    /// 레드 팀 안전구역(Area) 영역입니다.
+    pub red_safe_area: (glam::Vec2, glam::Vec2),
 }
 
 /// 지형의 스폰 데이터입니다.
@@ -154,7 +154,9 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
     };
     let blue_team_spawn = Spawn { pos, dir, view_dir };
-    let blue_safe_area = [6, 6];
+    let p0: glam::Vec2 = stage_layout.blue_safe_area_p0.into();
+    let p1: glam::Vec2 = stage_layout.blue_safe_area_p1.into();
+    let blue_safe_area = (p0.min(p1), p0.max(p1));
 
     // 레드 팀 스폰 데이터를 생성합니다.
     let pos: [glam::Vec3A; MAX_IN_GAME_PLAYERS / 2] = stage_layout
@@ -171,7 +173,9 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
     };
     let red_team_spawn = Spawn { pos, dir, view_dir };
-    let red_safe_area = [2, 2];
+    let p0: glam::Vec2 = stage_layout.red_safe_area_p0.into();
+    let p1: glam::Vec2 = stage_layout.red_safe_area_p1.into();
+    let red_safe_area = (p0.min(p1), p0.max(p1));
 
     let path = format!("{}/collider.json", workspace);
     let mut file = File::open(&path)
@@ -262,21 +266,28 @@ pub fn is_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
     let stage = get_stage_attributes(kind);
     let n = stage.num_width;
     let m = stage.num_depth;
-    let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
-    let z = (z + 0.5 * stage.size.y) / stage.area_size.y;
-    let i = x.floor() as usize;
-    let j = z.floor() as usize;
+    let i = ((x + 0.5 * stage.size.x) / stage.area_size.x).floor() as usize;
+    let j = ((z + 0.5 * stage.size.y) / stage.area_size.y).floor() as usize;
 
-    if x > 0.0 && i < n && z > 0.0 && j < m {
-        if stage.area[i][j].is_some() {
-            // 다른팀의 안전구역이면 invalid
-            match team {
-                Team::Blue => [i, j] != stage.red_safe_area,
-                Team::Red => [i, j] != stage.blue_safe_area,
+    if i < n && j < m {
+        // 다른 팀의 안전구역인 경우 invalid
+        match team {
+            Team::Blue => {
+                let (min, max) = stage.red_safe_area;
+                if min.x <= x && x <= max.x && min.y <= z && z <= max.y {
+                    return false;
+                }
             }
-        } else {
-            false
+            Team::Red => {
+                let (min, max) = stage.blue_safe_area;
+                if min.x <= x && x <= max.x && min.y <= z && z <= max.y {
+                    return false;
+                }
+            }
         }
+        println!("Team:{:?}, x:{}, z:{} - valid", team, x, z);
+
+        true
     } else {
         false
     }
@@ -284,17 +295,16 @@ pub fn is_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
 
 pub fn is_safe_area(kind: StageKind, team: Team, x: f32, z: f32) -> bool {
     let stage = get_stage_attributes(kind);
-    let x = (x + 0.5 * stage.size.x) / stage.area_size.x;
-    let z = (z + 0.5 * stage.size.y) / stage.area_size.y;
-    let i = x.floor() as usize;
-    let j = z.floor() as usize;
-
-    let safe_area = match team {
-        Team::Blue => stage.blue_safe_area,
-        Team::Red => stage.red_safe_area,
-    };
-
-    [i, j] == safe_area
+    match team {
+        Team::Blue => {
+            let (min, max) = stage.blue_safe_area;
+            min.x <= x && x <= max.x && min.y <= z && z <= max.y
+        }
+        Team::Red => {
+            let (min, max) = stage.red_safe_area;
+            min.x <= x && x <= max.x && min.y <= z && z <= max.y
+        }
+    }
 }
 
 pub fn get_nearest_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -> (f32, f32) {
@@ -305,11 +315,18 @@ pub fn get_nearest_valid_position(kind: StageKind, team: Team, x: f32, z: f32) -
         for col in 0..stage.num_width {
             if let Some(area) = &stage.area[row][col] {
                 let opponent_safe_area = match team {
-                    Team::Blue => stage.red_safe_area,
-                    Team::Red => stage.blue_safe_area,
+                    Team::Blue => {
+                        let (min, max) = stage.red_safe_area;
+                        min.x <= x && x <= max.x && min.y <= z && z <= max.y
+                    }
+                    Team::Red => {
+                        let (min, max) = stage.blue_safe_area;
+                        min.x <= x && x <= max.x && min.y <= z && z <= max.y
+                    }
                 };
+
                 // 다른팀의 안전구역이면 continue
-                if [row, col] == opponent_safe_area {
+                if opponent_safe_area {
                     continue;
                 }
 

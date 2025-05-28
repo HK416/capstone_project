@@ -83,10 +83,18 @@ pub struct StageLayoutData {
     pub blue_spawn_pos: Vec<Float3>,
     /// 블루 팀 스폰 방향입니다.
     pub blue_spawn_dir: Float4,
+    /// 블루팀 안전 영역의 시작점
+    pub blue_safe_area_p0: Float2,
+    /// 블루팀 안전 영역의 끝점
+    pub blue_safe_area_p1: Float2,
     /// 레드 팀 스폰 위치입니다.
     pub red_spawn_pos: Vec<Float3>,
     /// 레드 팀 스폰 방향입니다.
     pub red_spawn_dir: Float4,
+    /// 레드 팀 안전 영역의 시작점
+    pub red_safe_area_p0: Float2,
+    /// 레드 팀 안전 영역의 끝점
+    pub red_safe_area_p1: Float2,
 }
 
 /// 게임 월드의 전역 조명 데이터입니다.
