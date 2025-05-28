@@ -136,8 +136,8 @@ impl GaussianBlurPipeline {
         render_target_format: wgpu::TextureFormat,
     ) -> (Self, BrightRenderTarget, BloomPipeline) {
         let bright_render_target = BrightRenderTarget::new(width, height, device);
-        let ping_result_texture = BlurTextureResource::new(width, height, device);
-        let blur_texture_resource = BlurTextureResource::new(width, height, device);
+        let ping_result_texture = BlurTextureResource::new(width / 2, height / 2, device);
+        let blur_texture_resource = BlurTextureResource::new(width / 2, height / 2, device);
         let ping_bind_group = Self::create_bind_group(
             device,
             bright_render_target.view(),
@@ -153,8 +153,8 @@ impl GaussianBlurPipeline {
         let bloom_pipeline =
             BloomPipeline::new(device, &blur_texture_resource, render_target_format);
 
-        let dispatch_x = (width + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-        let dispatch_y = (height + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        let dispatch_x = (width / 2 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        let dispatch_y = (height / 2 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 
         (
             Self {
