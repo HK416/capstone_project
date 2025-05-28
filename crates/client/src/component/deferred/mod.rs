@@ -2,6 +2,6 @@
 //!
 
 mod alpha;
-mod pipeline;
+mod bloom;
 
-pub use self::{alpha::*, pipeline::*};
+pub use self::{alpha::*, bloom::*};

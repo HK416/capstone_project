@@ -9,26 +9,32 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use mod_network::components::{Float3, Float4};
+use mod_network::components::Float4;
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
 use crate::component::{MaterialKind, MaterialResource};
 
+/// 에너지 볼 형태의 총알 재질 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct EnergyBulletMaterialData {
+    pub uri: String,
+    pub emissive: Float4,
+    pub main_color: Float4,
+}
+
 /// 에너지 볼 형태의 총알 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct EnergyBulletMaterialDataLayout {
-    pub emissive: [f32; 3],
-    pub _padding0: [u8; 4],
+    pub emissive: [f32; 4],
     pub main_color: [f32; 4],
 }
 
 impl Default for EnergyBulletMaterialDataLayout {
     fn default() -> Self {
         Self {
-            emissive: [0.0; 3],
-            _padding0: [0; 4],
+            emissive: [0.0; 4],
             main_color: [0.0; 4],
         }
     }
@@ -161,14 +167,6 @@ static_assertions::const_assert_eq!(
     EnergyBulletMaterialUniform::SIZE as usize,
     core::mem::size_of::<EnergyBulletMaterialDataLayout>()
 );
-
-/// 에너지 볼 형태의 총알 재질 데이터입니다.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct EnergyBulletMaterialData {
-    pub uri: String,
-    pub emissive: Float3,
-    pub main_color: Float4,
-}
 
 /// 에너지 볼 형태의 총알 재질 쉐이더 리소스입니다.
 pub struct EnergyBulletMaterialResource;

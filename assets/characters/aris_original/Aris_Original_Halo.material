@@ -1,1 +1,1 @@
-{ "CharacterHalo": { "uri": "Aris_Original_Halo", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "emissive": { "x": 0.7450980392, "y": 0.9921568627, "z": 0.9019607843, "w": 1 }, "main_color": "Aris_Original_Halo" } }
+{ "CharacterHalo": { "uri": "Aris_Original_Halo", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "emissive": { "x": 0.7450980392, "y": 0.9921568627, "z": 0.9019607843, "w": 2 }, "main_color": "Aris_Original_Halo" } }

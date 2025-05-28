@@ -1,4 +1,4 @@
-//! 여러 렌더 타겟 데이터를 취합하는 렌더링 파이프라인과 관련된 코드를 관리합니다.
+//! 누적 값 렌더 타겟과 노출 값 렌더 타겟 데이터를 취합하는 렌더링 파이프라인과 관련된 코드를 관리합니다.
 //!
 
 use std::sync::OnceLock;
@@ -7,22 +7,22 @@ use wgpu::util::DeviceExt;
 
 use super::{AccumRenderTarget, RevealRenderTarget};
 
-/// 여러 렌더 타겟의 데이터를 취합하는 렌더링 파이프라인입니다.
+/// 누적 값 렌더 타겟과 노출 값 렌더 타겟 데이터를 취합하여 알파 블렌딩을 구현하는 렌더링 파이프라인입니다.
 #[derive(Debug, PartialEq, Eq)]
-pub struct CompositePipeline {
+pub struct AlphaBlendPipeline {
     vertex: wgpu::Buffer,
     sampler: wgpu::Sampler,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
 }
 
-impl CompositePipeline {
+impl AlphaBlendPipeline {
     /// [wgpu::BindGroupLayout]을 반환합니다.
-    pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
+    fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("BindGroupLayout(Composite)"),
+                label: Some("BindGroupLayout(AlphaBlend)"),
                 entries: &[
                     // 0번 바인딩: 누적 값(Accumuldate) 렌더 타겟
                     wgpu::BindGroupLayoutEntry {
@@ -62,7 +62,7 @@ impl CompositePipeline {
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
         let desc = wgpu::include_wgsl!(concat!(
             env!("CARGO_WORKSPACE_DIR"),
-            "/assets/shaders/composite.wgsl"
+            "/assets/shaders/alpha_blend.wgsl"
         ));
 
         unsafe {
@@ -77,7 +77,7 @@ impl CompositePipeline {
     /// [wgpu::PipelineLayout]을 생성합니다.
     fn create_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("PipelineLayout(Composite)"),
+            label: Some("PipelineLayout(AlphaBlend)"),
             bind_group_layouts: &[Self::bind_group_layout(device)],
             push_constant_ranges: &[],
         })
@@ -87,12 +87,11 @@ impl CompositePipeline {
     fn create_render_pipeline(
         device: &wgpu::Device,
         render_target_format: wgpu::TextureFormat,
-        depth_stencil_format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
         let module = Self::create_shader_module(device);
         let layout = Self::create_pipeline_layout(device);
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("RenderPipeline(Composite)"),
+            label: Some("RenderPipeline(AlphaBlend)"),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
                 module: &module,
@@ -122,13 +121,7 @@ impl CompositePipeline {
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 ..Default::default()
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                bias: wgpu::DepthBiasState::default(),
-                depth_compare: wgpu::CompareFunction::Always,
-                depth_write_enabled: false,
-                format: depth_stencil_format,
-                stencil: wgpu::StencilState::default(),
-            }),
+            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
                 module: &module,
@@ -155,7 +148,7 @@ impl CompositePipeline {
         ];
 
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex(Composite)"),
+            label: Some("Vertex(AlphaBlend)"),
             contents: bytemuck::cast_slice(&VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         })
@@ -164,7 +157,7 @@ impl CompositePipeline {
     /// 렌더 타겟 텍스처 샘플러를 생성합니다.
     fn create_sampler(device: &wgpu::Device) -> wgpu::Sampler {
         device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Sampler(Composite)"),
+            label: Some("Sampler(AlphaBlend)"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -174,14 +167,15 @@ impl CompositePipeline {
         })
     }
 
+    /// [wgpu::BindGroup]을 생성합니다.
     fn create_bind_group(
         device: &wgpu::Device,
+        sampler: &wgpu::Sampler,
         accum_render_target: &AccumRenderTarget,
         reveal_render_target: &RevealRenderTarget,
-        sampler: &wgpu::Sampler,
     ) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("BindGroup(Composite)"),
+            label: Some("BindGroup(AlphaBlend)"),
             layout: Self::bind_group_layout(device),
             entries: &[
                 wgpu::BindGroupEntry {
@@ -206,14 +200,12 @@ impl CompositePipeline {
         accum_render_target: &AccumRenderTarget,
         reveal_render_target: &RevealRenderTarget,
         render_target_format: wgpu::TextureFormat,
-        depth_stencil_format: wgpu::TextureFormat,
     ) -> Self {
         let vertex = Self::create_vertex_buffer(device);
         let sampler = Self::create_sampler(device);
         let bind_group =
-            Self::create_bind_group(device, accum_render_target, reveal_render_target, &sampler);
-        let pipeline =
-            Self::create_render_pipeline(device, render_target_format, depth_stencil_format);
+            Self::create_bind_group(device, &sampler, accum_render_target, reveal_render_target);
+        let pipeline = Self::create_render_pipeline(device, render_target_format);
         Self {
             vertex,
             sampler,
@@ -232,7 +224,7 @@ impl CompositePipeline {
         let vertex = self.vertex;
         let sampler = self.sampler;
         let bind_group =
-            Self::create_bind_group(device, accum_render_target, reveal_render_target, &sampler);
+            Self::create_bind_group(device, &sampler, accum_render_target, reveal_render_target);
         let pipeline = self.pipeline;
         Self {
             vertex,

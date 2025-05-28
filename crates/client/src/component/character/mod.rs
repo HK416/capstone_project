@@ -5,8 +5,6 @@ mod momoi_original;
 mod pipeline;
 mod yuuka_original;
 
-use std::sync::Arc;
-
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_network::components::{
@@ -1349,7 +1347,7 @@ pub fn update_character_resource(
 /// 캐릭터를 그립니다.
 pub fn draw_character<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     camera_resource: &'a CameraResource,
     light_set_resource: &'a LightSetResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
@@ -1381,7 +1379,7 @@ pub fn draw_character<'a>(
 /// 캐릭터의 그림자를 생성합니다.
 pub fn bake_character<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     shadow_resource: &'a ShadowResource,
     submesh_resources: &'a HashMap<usize, Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,
@@ -1408,7 +1406,7 @@ pub fn bake_character<'a>(
 /// 캐릭터의 눈과 입을 그립니다.
 pub fn draw_character_eye_mouth<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     camera_resource: &'a CameraResource,
     light_set_resource: &'a LightSetResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
@@ -1440,7 +1438,7 @@ pub fn draw_character_eye_mouth<'a>(
 /// 캐릭터의 눈과 입의 그림자를 생성합니다.
 pub fn bake_character_eye_mouth<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     shadow_resource: &'a ShadowResource,
     submesh_resources: &'a HashMap<usize, Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,
@@ -1467,7 +1465,7 @@ pub fn bake_character_eye_mouth<'a>(
 /// 캐릭터의 헤일로를 그립니다.
 pub fn draw_character_halo<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     camera_resource: &'a CameraResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,

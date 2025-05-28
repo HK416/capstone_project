@@ -4,8 +4,6 @@
 mod common;
 mod energy;
 
-use std::sync::Arc;
-
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_network::components::{Bullet, NUM_BULLETS};
@@ -18,8 +16,9 @@ use crate::{
 pub use self::{common::*, energy::*};
 
 use super::{
-    AttributeKind, CameraResource, MaterialKind, MaterialResource, Mesh, MeshFilter, MeshRenderer,
-    OpaqueMap, ShadowMap, Sibling, SkinnedMeshRenderer, TransformDataLayout, TransparentMap,
+    AttributeKind, CameraResource, LightSetResource, MaterialKind, MaterialResource, Mesh,
+    MeshFilter, MeshRenderer, OpaqueMap, ShadowMap, Sibling, SkinnedMeshRenderer,
+    TransformDataLayout, TransparentMap,
 };
 
 /// 총알을 구성하는 엔터티를 생성합니다.
@@ -281,14 +280,16 @@ pub fn update_bullet_resource(
 /// 총알을 그립니다.
 pub fn draw_bullet<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     camera_resource: &'a CameraResource,
+    light_set_resource: &'a LightSetResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
     rpass.set_pipeline(&pipeline);
 
     rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+    rpass.set_bind_group(3, light_set_resource.bind_group(), &[]);
 
     rpass.set_vertex_buffer(0, mesh.vertex(..));
     rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
@@ -308,14 +309,16 @@ pub fn draw_bullet<'a>(
 /// 에너지 볼 형태의 총알을 그립니다.
 pub fn draw_energy_bullet<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     camera_resource: &'a CameraResource,
+    light_set_resource: &'a LightSetResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
     rpass.set_pipeline(&pipeline);
 
     rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+    rpass.set_bind_group(3, light_set_resource.bind_group(), &[]);
 
     rpass.set_vertex_buffer(0, mesh.vertex(..));
     rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());

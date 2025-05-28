@@ -37,16 +37,17 @@ use crate::{
         update_entity_hierarchy, update_movement_state_timer, update_stage_resource,
         update_third_person_camera, update_third_person_camera_hierarchy,
         update_view_state_by_controller_input_flags, update_view_state_timer, AccumRenderTarget,
-        AttributeKind, BakeList, BoneCollection, BulletRenderPipelineTransparency,
-        CameraDataLayout, CameraResource, CameraUniform, CharacterBakePipeline,
-        CharacterRenderPipeline, Child, CompositePipeline, DamageFontDataLayout,
+        AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, BulletRenderPipelineTransparency, CameraDataLayout, CameraResource,
+        CameraUniform, CharacterBakePipeline, CharacterRenderPipeline, Child, DamageFontDataLayout,
         DamageFontRenderPipeline, DamageFontResource, DamageFontUniform, DamageParticle,
-        EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline, GlobalLight,
-        GlobalLightDataLayout, HaloRenderPipeline, LightSetResource, LightTransformDataLayout,
-        MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent, Projection, RevealRenderTarget,
-        ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
-        SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline, ThirdPersonCamera,
-        ToParentTrans, TransparentMap, TreeRenderPipeline, WorldTransform,
+        EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
+        GaussianBlurPipeline, GlobalLight, GlobalLightDataLayout, HaloRenderPipeline,
+        LightSetResource, LightTransformDataLayout, MaterialKind, Mesh, MeshRenderer, OpaqueMap,
+        Parent, Projection, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer,
+        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageBakePipeline,
+        StageRenderPipeline, ThirdPersonCamera, ToParentTrans, TransparentMap, TreeRenderPipeline,
+        WorldTransform, SHADOW_FORMAT,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, InGameResultScene, BASE_WIDTH, TEAM_COLOR, UI_BG_COLOR},
@@ -117,8 +118,15 @@ pub struct InGameResultEnterScene {
     accum_render_target: Option<AccumRenderTarget>,
     /// 반투명 오브젝트의 노출 값(Revealage)을 저장하는 렌더 타겟입니다.
     reveal_render_target: Option<RevealRenderTarget>,
-    /// 여러 렌더 타겟을 취합하는 파이프라인입니다.
-    composite_pipeline: Option<CompositePipeline>,
+    /// 발광체 오브젝트의 색상을 저장하는 렌더 타겟입니다.
+    bright_render_target: Option<BrightRenderTarget>,
+
+    /// 알파 블렌딩을 수행하는 파이프라인입니다.
+    alpha_blend_pipeline: Option<AlphaBlendPipeline>,
+    /// 가우시안 블러를 수행하는 파이프라인입니다.
+    gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
+    /// Bloom 효과를 구현하는 파이프라인입니다.
+    bloom_pipeline: Option<BloomPipeline>,
 
     /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
@@ -164,7 +172,10 @@ impl InGameResultEnterScene {
         light_set_resource: LightSetResource,
         accum_render_target: AccumRenderTarget,
         reveal_render_target: RevealRenderTarget,
-        composite_pipeline: CompositePipeline,
+        bright_render_target: BrightRenderTarget,
+        alpha_blend_pipeline: AlphaBlendPipeline,
+        gaussian_blur_pipeline: GaussianBlurPipeline,
+        bloom_pipeline: BloomPipeline,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         motion_pool: MotionPool,
     ) -> Self {
@@ -196,7 +207,10 @@ impl InGameResultEnterScene {
             light_set_resource: Some(light_set_resource),
             accum_render_target: Some(accum_render_target),
             reveal_render_target: Some(reveal_render_target),
-            composite_pipeline: Some(composite_pipeline),
+            bright_render_target: Some(bright_render_target),
+            alpha_blend_pipeline: Some(alpha_blend_pipeline),
+            gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
+            bloom_pipeline: Some(bloom_pipeline),
             bake_list: Vec::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
@@ -204,25 +218,45 @@ impl InGameResultEnterScene {
         }
     }
 
-    /// 여러 렌더 타겟을 취합하는 그래픽스 파이프라인을 생성합니다.
-    fn create_composite_pipeline(&mut self, window: &Window, device: &wgpu::Device) {
+    /// 지연 쉐이더 기법을 사용하는 파이프라인과 쉐이더 리소스를 생성합니다.
+    fn create_deferred(&mut self, window: &Window, device: &wgpu::Device) {
+        // 현재 애플리케이션 창의 크기를 가져옵니다.
         let (width, height) = window.inner_size().into();
+
+        // Bloom을 위한 텍스처와 파이프라인을 생성합니다.
+        let (gaussian_blur_pipeline, bright_render_target, bloom_pipeline) = match self
+            .gaussian_blur_pipeline
+            .take()
+            .zip(self.bloom_pipeline.take())
+        {
+            Some((gaussian_blur_pipeline, bloom_pipeline)) => {
+                gaussian_blur_pipeline.renew(width, height, device, bloom_pipeline)
+            }
+            None => GaussianBlurPipeline::new(width, height, device, SWAPCHAIN_FORMAT),
+        };
+
+        // Weighted-Blended OIT를 위한 렌더 타겟을 생성합니다.
         let accum_render_target = AccumRenderTarget::new(width, height, device);
         let reveal_render_target = RevealRenderTarget::new(width, height, device);
-        let composite_pipeline = match self.composite_pipeline.take() {
+
+        // 알파 블렌드 파이프라인을 생성합니다.
+        let alpha_blend_pipeline = match self.alpha_blend_pipeline.take() {
             Some(pipeline) => pipeline.renew(device, &accum_render_target, &reveal_render_target),
-            None => CompositePipeline::new(
+            None => AlphaBlendPipeline::new(
                 device,
                 &accum_render_target,
                 &reveal_render_target,
                 SWAPCHAIN_FORMAT,
-                DEPTH_FORMAT,
             ),
         };
 
-        self.composite_pipeline = Some(composite_pipeline);
         self.accum_render_target = Some(accum_render_target);
         self.reveal_render_target = Some(reveal_render_target);
+        self.bright_render_target = Some(bright_render_target);
+
+        self.alpha_blend_pipeline = Some(alpha_blend_pipeline);
+        self.gaussian_blur_pipeline = Some(gaussian_blur_pipeline);
+        self.bloom_pipeline = Some(bloom_pipeline);
     }
 }
 
@@ -790,7 +824,7 @@ impl InGameResultEnterScene {
     /// 데미지 파티클을 그립니다.
     fn draw_damage_particle<'a>(
         &'a self,
-        pipeline: Arc<wgpu::RenderPipeline>,
+        pipeline: &'a wgpu::RenderPipeline,
         camera_resource: &'a CameraResource,
         rpass: &mut wgpu::RenderPass<'a>,
     ) {
@@ -1608,7 +1642,7 @@ impl GameScene for InGameResultEnterScene {
     }
 
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
-        self.create_composite_pipeline(window, app.render_device());
+        self.create_deferred(window, app.render_device());
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
@@ -1630,7 +1664,10 @@ impl GameScene for InGameResultEnterScene {
             let light_set_resource = self.light_set_resource.take().unwrap();
             let accum_render_target = self.accum_render_target.take().unwrap();
             let reveal_render_target = self.reveal_render_target.take().unwrap();
-            let composite_pipeline = self.composite_pipeline.take().unwrap();
+            let bright_render_target = self.bright_render_target.take().unwrap();
+            let alpha_blend_pipeline = self.alpha_blend_pipeline.take().unwrap();
+            let gaussian_blur_pipeline = self.gaussian_blur_pipeline.take().unwrap();
+            let bloom_pipeline = self.bloom_pipeline.take().unwrap();
             let ui_textures = self.ui_textures.to_owned();
             let winner_players = InGameResultScene::get_winner_players(
                 self.winner,
@@ -1655,7 +1692,10 @@ impl GameScene for InGameResultEnterScene {
                 light_set_resource,
                 accum_render_target,
                 reveal_render_target,
-                composite_pipeline,
+                bright_render_target,
+                alpha_blend_pipeline,
+                gaussian_blur_pipeline,
+                bloom_pipeline,
                 ui_textures,
                 self.motion_pool.clone(),
             );
@@ -1789,17 +1829,17 @@ impl GameScene for InGameResultEnterScene {
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
         depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
     ) {
         if self.world.is_none() {
             return;
         }
 
+        let device = app.render_device();
+
         // 카메라 쉐이더 리소스를 가져옵니다.
-        let camera_resource = self
-            .world
-            .as_mut()
-            .expect("the world must exist!")
+        let world = self.world.as_mut().unwrap();
+        let camera_resource = world
             .query_one_mut::<&CameraResource>(self.main_camera)
             .cloned()
             .expect("invalid entity or invalid entity component");
@@ -1809,7 +1849,10 @@ impl GameScene for InGameResultEnterScene {
         let light_set_resource = self.light_set_resource.as_ref().unwrap();
         let accum_render_target = self.accum_render_target.as_ref().unwrap();
         let reveal_render_target = self.reveal_render_target.as_ref().unwrap();
-        let composite_pipeline = self.composite_pipeline.as_ref().unwrap();
+        let bright_render_target = self.bright_render_target.as_ref().unwrap();
+        let alpha_blend_pipeline = self.alpha_blend_pipeline.as_ref().unwrap();
+        let gaussian_blur_pipeline = self.gaussian_blur_pipeline.as_ref().unwrap();
+        let bloom_pipeline = self.bloom_pipeline.as_ref().unwrap();
 
         encoder.push_debug_group("shadow pass");
         for (shadow_resource, shadow_map) in self.bake_list.iter() {
@@ -1828,22 +1871,31 @@ impl GameScene for InGameResultEnterScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), resources) in shadow_map.iter() {
-                let func = match kind {
-                    MaterialKind::Character => bake_character,
-                    MaterialKind::CharacterEyeMouth => bake_character_eye_mouth,
-                    MaterialKind::Stage | MaterialKind::Tree => bake_stage,
-                    _ => continue,
+            for ((mesh, kind), submesh_resources) in shadow_map.iter() {
+                match kind {
+                    MaterialKind::Character => bake_character(
+                        &mesh,
+                        CharacterBakePipeline::get_or_init(device, SHADOW_FORMAT),
+                        shadow_resource,
+                        submesh_resources,
+                        &mut rpass,
+                    ),
+                    MaterialKind::CharacterEyeMouth => bake_character_eye_mouth(
+                        &mesh,
+                        EyeMouthBakePipeline::get_or_init(device, SHADOW_FORMAT),
+                        shadow_resource,
+                        submesh_resources,
+                        &mut rpass,
+                    ),
+                    MaterialKind::Stage | MaterialKind::Tree => bake_stage(
+                        &mesh,
+                        StageBakePipeline::get_or_init(device, SHADOW_FORMAT),
+                        shadow_resource,
+                        submesh_resources,
+                        &mut rpass,
+                    ),
+                    _ => {}
                 };
-                let pipeline = match kind {
-                    MaterialKind::Character => CharacterBakePipeline::get(),
-                    MaterialKind::CharacterEyeMouth => EyeMouthBakePipeline::get(),
-                    MaterialKind::Stage | MaterialKind::Tree => StageBakePipeline::get(),
-                    _ => continue,
-                }
-                .unwrap();
-
-                func(&mesh, pipeline, &shadow_resource, &resources, &mut rpass);
             }
         }
         encoder.pop_debug_group();
@@ -1852,14 +1904,31 @@ impl GameScene for InGameResultEnterScene {
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(InGame(OpaquePass))"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                    view: render_target_view,
-                    resolve_target: None,
-                })],
+                color_attachments: &[
+                    // 0번 렌더 타겟: 색상
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: render_target_view,
+                        resolve_target: None,
+                    }),
+                    // 1번 렌더 타겟: bloom
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: bright_render_target.view(),
+                        resolve_target: None,
+                    }),
+                ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_buffer_view,
                     depth_ops: Some(wgpu::Operations {
@@ -1873,73 +1942,82 @@ impl GameScene for InGameResultEnterScene {
             });
 
             for ((mesh, kind), material_resources) in self.opaque_map.iter() {
-                let func = match kind {
+                match kind {
                     MaterialKind::Character => {
                         draw_character(
                             &mesh,
-                            CharacterRenderPipeline::get().unwrap(),
-                            &camera_resource,
-                            light_set_resource,
-                            &material_resources,
-                            &mut rpass,
-                        );
-                        continue;
-                    }
-                    MaterialKind::CharacterEyeMouth => {
-                        draw_character_eye_mouth(
-                            &mesh,
-                            EyeMouthRenderPipeline::get().unwrap(),
-                            &camera_resource,
-                            light_set_resource,
-                            &material_resources,
-                            &mut rpass,
-                        );
-                        continue;
-                    }
-                    MaterialKind::CharacterHalo => draw_character_halo,
-                    MaterialKind::Stage => {
-                        draw_stage(
-                            &mesh,
-                            StageRenderPipeline::get().unwrap(),
-                            &camera_resource,
-                            light_set_resource,
-                            &material_resources,
-                            &mut rpass,
-                        );
-                        continue;
-                    }
-                    MaterialKind::Tree => {
-                        draw_stage(
-                            &mesh,
-                            TreeRenderPipeline::get().unwrap(),
+                            CharacterRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
                             &camera_resource,
                             light_set_resource,
                             material_resources,
                             &mut rpass,
                         );
-                        continue;
                     }
-                    _ => continue,
+                    MaterialKind::CharacterEyeMouth => {
+                        draw_character_eye_mouth(
+                            &mesh,
+                            EyeMouthRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            light_set_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterHalo => {
+                        draw_character_halo(
+                            &mesh,
+                            HaloRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::Stage => {
+                        draw_stage(
+                            &mesh,
+                            StageRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            light_set_resource,
+                            &material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::Tree => {
+                        draw_stage(
+                            &mesh,
+                            TreeRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            light_set_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    _ => {}
                 };
-                let pipeline = match kind {
-                    MaterialKind::Character => CharacterRenderPipeline::get(),
-                    MaterialKind::CharacterEyeMouth => EyeMouthRenderPipeline::get(),
-                    MaterialKind::CharacterHalo => HaloRenderPipeline::get(),
-                    _ => continue,
-                }
-                .unwrap();
-
-                func(
-                    &mesh,
-                    pipeline,
-                    &camera_resource,
-                    &material_resources,
-                    &mut rpass,
-                );
             }
 
             self.draw_damage_particle(
-                DamageFontRenderPipeline::get().unwrap(),
+                DamageFontRenderPipeline::get_or_init(&device, SWAPCHAIN_FORMAT, DEPTH_FORMAT),
                 &camera_resource,
                 &mut rpass,
             );
@@ -1957,6 +2035,7 @@ impl GameScene for InGameResultEnterScene {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(InGame(TransparentPass))"),
                 color_attachments: &[
+                    // 0번 렌더 타겟: 누적 값
                     Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear({
@@ -1972,6 +2051,7 @@ impl GameScene for InGameResultEnterScene {
                         view: accum_render_target.view(),
                         resolve_target: None,
                     }),
+                    // 1번 렌더 타겟: 노출 값
                     Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear({
@@ -1987,6 +2067,15 @@ impl GameScene for InGameResultEnterScene {
                         view: reveal_render_target.view(),
                         resolve_target: None,
                     }),
+                    // 2번 렌더 타겟: bloom
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: bright_render_target.view(),
+                        resolve_target: None,
+                    }),
                 ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_buffer_view,
@@ -2000,21 +2089,41 @@ impl GameScene for InGameResultEnterScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), resources) in self.transparent_map.iter() {
-                let func = match kind {
-                    MaterialKind::Bullet => draw_bullet,
-                    MaterialKind::EnergyBullet => draw_energy_bullet,
-                    _ => continue,
+            for ((mesh, kind), material_resources) in self.transparent_map.iter() {
+                match kind {
+                    MaterialKind::Bullet => {
+                        draw_bullet(
+                            &mesh,
+                            BulletRenderPipelineTransparency::get_or_init(&device, DEPTH_FORMAT),
+                            &camera_resource,
+                            light_set_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::EnergyBullet => {
+                        draw_energy_bullet(
+                            &mesh,
+                            EnergyBulletRenderPipeline::get_or_init(&device, DEPTH_FORMAT),
+                            &camera_resource,
+                            light_set_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    _ => {}
                 };
-                let pipeline = match kind {
-                    MaterialKind::Bullet => BulletRenderPipelineTransparency::get(),
-                    MaterialKind::EnergyBullet => EnergyBulletRenderPipeline::get(),
-                    _ => continue,
-                }
-                .unwrap();
-
-                func(&mesh, pipeline, &camera_resource, &resources, &mut rpass);
             }
+        }
+        encoder.pop_debug_group();
+
+        encoder.push_debug_group("compute pass");
+        {
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("ComputePass(InGame)"),
+                timestamp_writes: None,
+            });
+            gaussian_blur_pipeline.process(&mut cpass);
         }
         encoder.pop_debug_group();
 
@@ -2030,19 +2139,13 @@ impl GameScene for InGameResultEnterScene {
                     view: render_target_view,
                     resolve_target: None,
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_buffer_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
 
-            composite_pipeline.process(&mut rpass);
+            alpha_blend_pipeline.process(&mut rpass);
+            bloom_pipeline.process(&mut rpass);
         }
         encoder.pop_debug_group();
     }

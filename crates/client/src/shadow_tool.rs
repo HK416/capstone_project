@@ -124,7 +124,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::PollType::Wait);
+        let _ = device.poll(wgpu::PollType::Wait);
     }
 
     println!("지형을 생성합니다...");
@@ -154,7 +154,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::PollType::Wait);
+        let _ = device.poll(wgpu::PollType::Wait);
 
         bvh
     };
@@ -199,7 +199,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::PollType::Wait);
+        let _ = device.poll(wgpu::PollType::Wait);
     }
 
     println!("조명을 준비합니다...");
@@ -240,7 +240,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::PollType::Wait);
+        let _ = device.poll(wgpu::PollType::Wait);
     }
 
     {
@@ -263,20 +263,14 @@ fn main() {
 
             for ((mesh, kind), resource) in shadow_map.iter() {
                 if *kind == MaterialKind::Stage {
-                    bake_stage(
-                        mesh,
-                        pipeline.clone(),
-                        &light_resource,
-                        resource,
-                        &mut rpass,
-                    );
+                    bake_stage(mesh, pipeline, &light_resource, resource, &mut rpass);
                 }
             }
         }
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::PollType::Wait);
+        let _ = device.poll(wgpu::PollType::Wait);
     }
 
     // 버퍼에 텍스처 데이터를 복사합니다.
@@ -315,7 +309,7 @@ fn main() {
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
-        device.poll(wgpu::PollType::Wait);
+        let _ = device.poll(wgpu::PollType::Wait);
     }
 
     // 버퍼로부터 텍스처 데이터를 가져옵니다.
@@ -323,7 +317,7 @@ fn main() {
     let buffer_slice = output_staging_buffer.slice(..);
     let (sender, receiver) = mpsc::channel();
     buffer_slice.map_async(wgpu::MapMode::Read, move |r| sender.send(r).unwrap());
-    device.poll(wgpu::PollType::Wait);
+    let _ = device.poll(wgpu::PollType::Wait);
 
     let result = receiver.recv().unwrap();
     match result {

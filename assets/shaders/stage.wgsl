@@ -26,6 +26,7 @@ struct VertexOutput {
 // 프래그먼트 쉐이더 출력 데이터입니다.
 struct RenderTarget {
     @location(0) color: vec4<f32>,
+    @location(1) bloom: vec4<f32>,
 };
 
 // 카메라 데이터 유니폼 버퍼입니다.
@@ -147,7 +148,8 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     }
 
     var out: RenderTarget;
-    out.color = vec4(pow(color.rgb, vec3(1.0 / 2.2)), 1.0); // 감마 보정
+    out.color = vec4<f32>(pow(color.rgb, vec3(1.0 / 2.2)), 1.0); // 감마 보정
+    out.bloom = vec4<f32>(0.0, 0.0, 0.0, 0.0);
     return out;
 }
 

@@ -5,8 +5,6 @@ mod city;
 mod pipeline;
 mod spawn;
 
-use std::sync::Arc;
-
 use ahash::HashMap;
 use hecs::{Entity, ViewBorrow};
 use mod_network::components::{MAX_IN_GAME_TEAM_PLAYERS, NUM_STAGES};
@@ -200,7 +198,7 @@ pub fn update_stage_resource(
 /// 지형을 그립니다.
 pub fn draw_stage<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     camera_resource: &'a CameraResource,
     light_set_resource: &'a LightSetResource,
     material_resources: &'a HashMap<(usize, MaterialResource), Vec<MeshFilter>>,
@@ -230,7 +228,7 @@ pub fn draw_stage<'a>(
 /// 지형의 그림자를 생성합니다.
 pub fn bake_stage<'a>(
     mesh: &'a Mesh,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     shadow_resource: &'a ShadowResource,
     submesh_resources: &'a HashMap<usize, Vec<MeshFilter>>,
     rpass: &mut wgpu::RenderPass<'a>,

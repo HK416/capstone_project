@@ -3,7 +3,6 @@
 
 const EPSILON: f32 = 1e-5;
 
-
 /// 정점 입력 속성입니다.
 struct InputAttributes {
     @location(0) position: vec2<f32>,
@@ -22,14 +21,14 @@ struct RenderTarget {
     @location(0) color: vec4<f32>,
 };
 
-
 @group(0) @binding(0)
 var t_accum: texture_2d<f32>;
+
 @group(0) @binding(1)
 var t_reveal: texture_2d<f32>;
+
 @group(0) @binding(2)
 var s_composite: sampler;
-
 
 /// 버텍스 쉐이더
 @vertex
@@ -46,8 +45,9 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     let accum = textureSample(t_accum, s_composite, input.texcoord);
     let reveal = textureSample(t_reveal, s_composite, input.texcoord).r;
 
+    // 투명도 복원
     let color = accum.rgb / max(accum.a, EPSILON);
-    let alpha = 1.0 - reveal;
+    let alpha = (1.0 - reveal);
 
     var out: RenderTarget;
     out.color = vec4<f32>(color, alpha);

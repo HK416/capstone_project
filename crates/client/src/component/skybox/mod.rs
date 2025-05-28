@@ -6,8 +6,6 @@ mod pipeline;
 mod resource;
 mod uniform;
 
-use std::sync::Arc;
-
 use wgpu::util::DeviceExt;
 
 pub use self::{cube::*, pipeline::*, resource::*, uniform::*};
@@ -71,7 +69,7 @@ impl Skybox {
 ///
 pub fn clear_render_target_with_skybox<'a>(
     skybox: &'a Skybox,
-    pipeline: Arc<wgpu::RenderPipeline>,
+    pipeline: &'a wgpu::RenderPipeline,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
     rpass.set_pipeline(&pipeline);
