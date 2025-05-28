@@ -14,8 +14,8 @@ pub struct GaussianBlurPipeline {
     pong_bind_group: wgpu::BindGroup,
     ping_pipeline: wgpu::ComputePipeline,
     pong_pipeline: wgpu::ComputePipeline,
-    dispatch_x: u32,
-    dispatch_y: u32,
+    width: u32,
+    height: u32,
 }
 
 impl GaussianBlurPipeline {
@@ -137,7 +137,7 @@ impl GaussianBlurPipeline {
     ) -> (Self, BrightRenderTarget, BloomPipeline) {
         let bright_render_target = BrightRenderTarget::new(width, height, device);
         let ping_result_texture = BlurTextureResource::new(width / 2, height / 2, device);
-        let blur_texture_resource = BlurTextureResource::new(width / 2, height / 2, device);
+        let blur_texture_resource = BlurTextureResource::new(width / 4, height / 4, device);
         let ping_bind_group = Self::create_bind_group(
             device,
             bright_render_target.view(),
@@ -153,17 +153,14 @@ impl GaussianBlurPipeline {
         let bloom_pipeline =
             BloomPipeline::new(device, &blur_texture_resource, render_target_format);
 
-        let dispatch_x = (width / 2 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-        let dispatch_y = (height / 2 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-
         (
             Self {
                 ping_bind_group,
                 pong_bind_group,
                 ping_pipeline,
                 pong_pipeline,
-                dispatch_x,
-                dispatch_y,
+                width,
+                height,
             },
             bright_render_target,
             bloom_pipeline,
@@ -179,8 +176,8 @@ impl GaussianBlurPipeline {
         bloom_pipeline: BloomPipeline,
     ) -> (Self, BrightRenderTarget, BloomPipeline) {
         let bright_render_target = BrightRenderTarget::new(width, height, device);
-        let ping_result_texture = BlurTextureResource::new(width, height, device);
-        let blur_texture_resource = BlurTextureResource::new(width, height, device);
+        let ping_result_texture = BlurTextureResource::new(width / 2, height / 2, device);
+        let blur_texture_resource = BlurTextureResource::new(width / 4, height / 4, device);
         let ping_bind_group = Self::create_bind_group(
             device,
             bright_render_target.view(),
@@ -195,17 +192,14 @@ impl GaussianBlurPipeline {
         let pong_pipeline = self.pong_pipeline;
         let bloom_pipeline = bloom_pipeline.renew(device, &blur_texture_resource);
 
-        let dispatch_x = (width + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-        let dispatch_y = (height + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
-
         (
             Self {
                 ping_bind_group,
                 pong_bind_group,
                 ping_pipeline,
                 pong_pipeline,
-                dispatch_x,
-                dispatch_y,
+                width,
+                height,
             },
             bright_render_target,
             bloom_pipeline,
@@ -216,11 +210,15 @@ impl GaussianBlurPipeline {
     pub fn process(&self, cpass: &mut wgpu::ComputePass) {
         cpass.set_pipeline(&self.ping_pipeline);
         cpass.set_bind_group(0, &self.ping_bind_group, &[]);
-        cpass.dispatch_workgroups(self.dispatch_x, self.dispatch_y, 1);
+        let dispatch_x = (self.width / 2 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        let dispatch_y = (self.height / 2 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        cpass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
 
         cpass.set_pipeline(&self.pong_pipeline);
         cpass.set_bind_group(0, &self.pong_bind_group, &[]);
-        cpass.dispatch_workgroups(self.dispatch_x, self.dispatch_y, 1);
+        let dispatch_x = (self.width / 4 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        let dispatch_y = (self.height / 4 + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+        cpass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
     }
 }
 
@@ -336,13 +334,13 @@ impl BloomPipeline {
                 targets: &[Some(wgpu::ColorTargetState {
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
+                            src_factor: wgpu::BlendFactor::SrcAlpha,
                             dst_factor: wgpu::BlendFactor::One,
                             operation: wgpu::BlendOperation::Add,
                         },
                         alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::Zero,
+                            src_factor: wgpu::BlendFactor::Zero,
+                            dst_factor: wgpu::BlendFactor::One,
                             operation: wgpu::BlendOperation::Add,
                         },
                     }),
