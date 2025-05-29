@@ -1,1 +1,1 @@
-{ "Character": { "uri": "Midori_Original_EyeBrow", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Midori_Original_Face" } }
+{ "Character": { "uri": "Midori_Original_EyeBrow", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Midori_Original_Face", "detail_mask": "Midori_Original_Face_Mask" } }

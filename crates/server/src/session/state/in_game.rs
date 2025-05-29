@@ -119,6 +119,10 @@ impl SessionState for SessionInGameState {
                 PacketType::PushStatus => {
                     self.handle_push_status_packet(session, packet);
                 }
+                PacketType::Ping => {
+                    // Ping 패킷은 무시합니다.
+                    session.tcp_write(packet);
+                }
                 _ => {
                     log::warn!(
                         "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

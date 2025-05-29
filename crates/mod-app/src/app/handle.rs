@@ -1,8 +1,7 @@
-use std::{cell::RefMut, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
-use mod_render::UiRenderer;
 use rayon::ThreadPool;
-use winit::{event_loop::EventLoopProxy, window::Window};
+use winit::event_loop::EventLoopProxy;
 
 use crate::{
     asset::AssetManager,
@@ -12,12 +11,6 @@ use crate::{
 
 /// 외부에서 애플리케이션에 접근할 수 있는 `trait`입니다.
 pub trait AppHandle {
-    /// 애플리케이션의 커서를 활성화합니다.
-    fn enable_cursor(&self);
-
-    /// 애플리케이션의 커서를 비활성화 합니다.
-    fn disable_cursor(&self);
-
     /// 애플리케이션 이벤트 루프 프록시를 가져옵니다.
     fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>>;
 
@@ -62,16 +55,4 @@ pub trait AppHandle {
 
     /// `egui` 컨텍스트를 가져옵니다.
     fn egui_ctx(&self) -> &egui::Context;
-
-    /// `egui` 입력기를 가져옵니다.
-    fn egui_raw_input(&self) -> egui::RawInput;
-
-    /// `egui` 렌더러를 빌립니다.
-    fn egui_renderer_mut(&self) -> RefMut<'_, UiRenderer>;
-
-    /// 애플리케이션 창을 가져옵니다.
-    fn window(&self) -> Option<&Arc<Window>>;
-
-    /// `wgpu` 렌더링 표면을 가져옵니다.
-    fn render_surface(&self) -> Option<&Arc<wgpu::Surface<'static>>>;
 }

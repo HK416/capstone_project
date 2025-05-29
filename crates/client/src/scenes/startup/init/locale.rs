@@ -3,6 +3,7 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
@@ -37,13 +38,18 @@ impl InitLocaleScene {
 }
 
 impl GameScene for InitLocaleScene {
-    fn on_enter(&mut self, window: &Window, _app: &dyn AppHandle) {
+    fn on_enter(&mut self, window: &Window, _app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         // 애플리케이션 창을 표시합니다.
         window.set_visible(true);
         window.set_cursor_visible(true);
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, _app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         let mut config = UserConfig::get();
         config.locale = self.locale;
     }

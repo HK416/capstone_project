@@ -4,6 +4,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -85,7 +86,7 @@ impl GameLoginTitleScene {
 }
 
 impl GameScene for GameLoginTitleScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         for uri in BG_TEXTURE_URI {
             // 로그인 배경화면 텍스처를 가져옵니다.
             let texture = self
@@ -100,8 +101,7 @@ impl GameScene for GameLoginTitleScene {
                 .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
             // egui 렌더러에 텍스처를 등록합니다.
-            let mut egui_renderer = app.egui_renderer_mut();
-            let texture_id = egui_renderer.register_native_texture(
+            let texture_id = ui_renderer.register_native_texture(
                 app.render_device(),
                 &texture,
                 wgpu::FilterMode::Linear,
@@ -141,8 +141,6 @@ impl GameScene for GameLoginTitleScene {
 
     fn on_mouse_btn_pressed(
         &mut self,
-        _x: f32,
-        _y: f32,
         _button: MouseButton,
         _window: &Window,
         _app: &dyn AppHandle,

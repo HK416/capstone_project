@@ -61,3 +61,19 @@ impl Skybox {
         }
     }
 }
+
+/// 스카이박스로 렌더 타겟을 초기화합니다.
+///
+/// # Note
+/// 이 함수는 그리기 마지막에 호출하는 것이 가장 성능이 좋습니다.
+///
+pub fn clear_render_target_with_skybox<'a>(
+    skybox: &'a Skybox,
+    pipeline: &'a wgpu::RenderPipeline,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(&pipeline);
+    rpass.set_vertex_buffer(0, skybox.vertex.slice(..));
+    rpass.set_bind_group(0, skybox.resource.bind_group(), &[]);
+    rpass.draw(0..NUM_CUBE_VERTICES as u32, 0..1);
+}

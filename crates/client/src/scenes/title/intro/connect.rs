@@ -7,6 +7,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
+use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
 
@@ -76,7 +77,7 @@ impl GameScene for GameIntroConnectScene {
         true
     }
 
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         self.try_connect_game_server(app.io_threads(), app.net_manager());
     }
 

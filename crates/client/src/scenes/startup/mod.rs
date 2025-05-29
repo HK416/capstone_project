@@ -17,7 +17,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
-use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use rayon::ThreadPool;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
@@ -30,11 +30,10 @@ use crate::{
         USER_CONFIG,
     },
     component::{
-        BulletRenderPipeline, BulletRenderPipelineTransparency, CaptureZoneRenderPipeline,
-        CharacterBakePipeline, CharacterRenderPipeline, DamageFontRenderPipeline,
-        EnergyBulletRenderPipeline, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-        HaloRenderPipeline, SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline,
-        WeightedBlendedOITRenderPipeline, SHADOW_FORMAT,
+        BulletRenderPipeline, BulletRenderPipelineTransparency, CharacterBakePipeline,
+        CharacterRenderPipeline, DamageFontRenderPipeline, EnergyBulletRenderPipeline,
+        EyeMouthBakePipeline, EyeMouthRenderPipeline, HaloRenderPipeline, SkyboxRenderPipeline,
+        StageBakePipeline, StageRenderPipeline, TreeRenderPipeline, SHADOW_FORMAT,
     },
     config::UserConfig,
 };
@@ -65,6 +64,8 @@ pub struct GameStartupScene {
 
     /// 남은 작업의 개수
     num_remaining_tasks: usize,
+    /// 스테이징(업로드) 버퍼의 집합
+    staging_buffers: Vec<wgpu::Buffer>,
     /// 작업 결과를 저장하는 대기열
     task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
     /// 로드된 폰트 에셋 데이터 집합
@@ -80,6 +81,7 @@ impl GameStartupScene {
         Self {
             needs_initial_setup: false,
             num_remaining_tasks: 0,
+            staging_buffers: Vec::default(),
             task_results: Arc::new(Queue::new()),
             font_asset_data: HashMap::default(),
             texture_pool: TexturePool::new(),
@@ -187,33 +189,20 @@ impl GameStartupScene {
         });
         self.num_remaining_tasks += 1;
 
+        // 나무를 그리는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            TreeRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(Ok(TaskResult::Pipeline));
+        });
+        self.num_remaining_tasks += 1;
+
         // 지형의 그림자를 생성하는 렌더링 파이프라인을 생성합니다.
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             StageBakePipeline::get_or_init(&device_cloned, SHADOW_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
-        });
-        self.num_remaining_tasks += 1;
-
-        // 점령 지역을 그리는 렌더링 파이프라인을 생성합니다.
-        let device_cloned = device.clone();
-        let task_results = self.task_results.clone();
-        thread_pool.spawn(move || {
-            CaptureZoneRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
-        });
-        self.num_remaining_tasks += 1;
-
-        // Weighted Blended OIT를 수행하는 렌더링 파이프라인을 생성합니다.
-        let device_cloned = device.clone();
-        let task_results = self.task_results.clone();
-        thread_pool.spawn(move || {
-            WeightedBlendedOITRenderPipeline::get_or_init(
-                &device_cloned,
-                SWAPCHAIN_FORMAT,
-                DEPTH_FORMAT,
-            );
             task_results.push(Ok(TaskResult::Pipeline));
         });
         self.num_remaining_tasks += 1;
@@ -452,7 +441,7 @@ impl GameStartupScene {
 }
 
 impl GameScene for GameStartupScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let device = app.render_device();
         let thread_pool = app.io_threads();
         let root_dir = app.asset_manager().get_root_dir();
@@ -499,7 +488,12 @@ impl GameScene for GameStartupScene {
         self.load_user_config(root_dir);
     }
 
-    fn on_exit(&mut self, window: Option<&Window>, app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        window: Option<&Window>,
+        app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         self.setup_custom_fonts(app.egui_ctx());
         if let Some(window) = window {
             self.change_window_config(window, app.event_loop_proxy());
@@ -523,10 +517,10 @@ impl GameScene for GameStartupScene {
                         }
                         TaskResult::Texture {
                             command,
-                            staging_buffers,
+                            mut staging_buffers,
                         } => {
                             app.render_queue().submit(Some(command));
-                            drop(staging_buffers);
+                            self.staging_buffers.append(&mut staging_buffers);
                         }
                         _ => {}
                     };

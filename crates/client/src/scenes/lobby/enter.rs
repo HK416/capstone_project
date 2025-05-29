@@ -15,6 +15,7 @@ use mod_app::{
 };
 use mod_network::components::{LoginToken, UserAccount};
 use mod_parallelism::collections::Queue;
+use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
 
@@ -48,6 +49,8 @@ pub struct MainLobbyEnterScene {
     /// 로그인 토큰
     token: LoginToken,
 
+    /// 스테이징(업로드) 버퍼 집합
+    staging_buffers: Vec<wgpu::Buffer>,
     /// 작업 결과
     task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
     /// 남은 작업의 수
@@ -64,6 +67,7 @@ impl MainLobbyEnterScene {
             locale,
             user_info,
             token,
+            staging_buffers: Vec::default(),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
             texture_pool: TexturePool::new(),
@@ -71,7 +75,7 @@ impl MainLobbyEnterScene {
     }
 
     /// `MainLobby`의 배경 텍스처를 풀 객체에 등록합니다.
-    fn regist_background_texture<Dir>(
+    fn load_background_texture<Dir>(
         &mut self,
         root_dir: Dir,
         thread_pool: &ThreadPool,
@@ -165,9 +169,9 @@ impl MainLobbyEnterScene {
 }
 
 impl GameScene for MainLobbyEnterScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let root_dir = app.asset_manager().get_root_dir();
-        self.regist_background_texture(root_dir, app.io_threads(), app.render_device());
+        self.load_background_texture(root_dir, app.io_threads(), app.render_device());
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -208,10 +212,10 @@ impl GameScene for MainLobbyEnterScene {
                     match task {
                         TaskResult::Texture {
                             command,
-                            staging_buffers,
+                            mut staging_buffers,
                         } => {
                             app.render_queue().submit(Some(command));
-                            drop(staging_buffers);
+                            self.staging_buffers.append(&mut staging_buffers);
                         }
                     }
                 }

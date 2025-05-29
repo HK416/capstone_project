@@ -4,13 +4,18 @@ use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path};
 
 use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::{StageAreaData, StageLayoutData, StagePropData};
+use mod_physics::object3d::Sphere;
 
 use crate::{
-    asset::{AssetError, ModelNode, ModelPool, ModelRoot, TextureDataPool},
+    asset::{
+        AssetError, ModelNode, ModelPool, ModelRoot, StageBoundingVolumn,
+        StageBoundingVolumnHierarchy, TextureDataPool,
+    },
     component::{
         Child, MaterialData, MaterialUniform, MeshResource, Parent, Sibling,
         StageMaterialDataLayout, StageMaterialResource, StageMaterialUniform, StageTag,
-        ToParentTrans, TransformUniform, WorldTransform,
+        ToParentTrans, TransformUniform, TreeMaterialDataLayout, TreeMaterialResource,
+        TreeMaterialUniform, WorldTransform,
     },
 };
 
@@ -63,6 +68,130 @@ where
             &e
         );
         AssetError::ParsingFailed(e)
+    })
+}
+
+/// 스테이지를 구성하는 엔터티를 생성하고, Bounding Volumn Hierarchy를 반환합니다.
+pub fn build_stage(
+    world: &World,
+    model_pool: &ModelPool,
+    texture_data_pool: &TextureDataPool,
+    layout: &StageLayoutData,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+) -> (StageBoundingVolumnHierarchy, Vec<(Entity, EntityBuilder)>) {
+    let mut batch_commands = Vec::default();
+    let mut bvh = StageBoundingVolumnHierarchy::default();
+
+    // 지역 데이터를 생성합니다.
+    for area_data in layout.area.iter() {
+        build_stage_area(
+            world,
+            model_pool,
+            texture_data_pool,
+            area_data,
+            device,
+            encoder,
+            staging_buffers,
+            &mut batch_commands,
+            &mut bvh,
+        );
+    }
+
+    // 장식물 데이터를 생성합니다.
+    bvh.root = layout.root_prop.as_ref().map(|prop_data| {
+        build_stage_prop(
+            world,
+            model_pool,
+            texture_data_pool,
+            prop_data,
+            device,
+            encoder,
+            staging_buffers,
+            &mut batch_commands,
+        )
+    });
+
+    (bvh, batch_commands)
+}
+
+/// 스테이지를 구성하는 지역 엔터티를 추가합니다.
+fn build_stage_area(
+    world: &World,
+    model_pool: &ModelPool,
+    texture_data_pool: &TextureDataPool,
+    area_data: &StageAreaData,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
+    bvh: &mut StageBoundingVolumnHierarchy,
+) {
+    let (entity, mut batch_command) = spawn_stage_area(
+        world,
+        model_pool,
+        texture_data_pool,
+        area_data,
+        device,
+        encoder,
+        staging_buffers,
+    );
+    bvh.area.push(entity);
+    batch_commands.append(&mut batch_command);
+}
+
+fn build_stage_prop(
+    world: &World,
+    model_pool: &ModelPool,
+    texture_data_pool: &TextureDataPool,
+    prop_data: &StagePropData,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+    batch_commands: &mut Vec<(Entity, EntityBuilder)>,
+) -> Box<StageBoundingVolumn> {
+    let (entity, mut batch_command) = spawn_stage_prop(
+        world,
+        model_pool,
+        texture_data_pool,
+        prop_data,
+        device,
+        encoder,
+        staging_buffers,
+    );
+    batch_commands.append(&mut batch_command);
+
+    Box::new(StageBoundingVolumn {
+        entity,
+        sphere: Sphere {
+            center: prop_data.center.into(),
+            radius: prop_data.radius,
+        },
+        left: prop_data.left.as_ref().map(|prop_data| {
+            build_stage_prop(
+                world,
+                model_pool,
+                texture_data_pool,
+                prop_data,
+                device,
+                encoder,
+                staging_buffers,
+                batch_commands,
+            )
+        }),
+        right: prop_data.right.as_ref().map(|prop_data| {
+            build_stage_prop(
+                world,
+                model_pool,
+                texture_data_pool,
+                prop_data,
+                device,
+                encoder,
+                staging_buffers,
+                batch_commands,
+            )
+        }),
     })
 }
 
@@ -129,7 +258,7 @@ pub fn spawn_stage_area(
 /// - 로컬 변환 행렬(`ToParentTrans`)
 /// - 월드 변환 행렬(`WorldTransform`)
 ///
-pub fn spawn_stage_prop(
+fn spawn_stage_prop(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
@@ -315,7 +444,7 @@ fn spawn_stage_model_recursive(
                 match data.deref() {
                     MaterialData::Stage(data) => {
                         // 재질 쉐이더 리소스를 생성합니다.
-                        let stage_uniform = StageMaterialUniform::new(
+                        let stage_material_uniform = StageMaterialUniform::new(
                             None,
                             device,
                             StageMaterialDataLayout {
@@ -334,12 +463,44 @@ fn spawn_stage_model_recursive(
                         let material_resource = StageMaterialResource::new(
                             None,
                             device,
-                            &stage_uniform,
+                            &stage_material_uniform,
                             &main_color_view,
                             &main_color_sampler,
                         );
 
-                        (MaterialUniform::Stage(stage_uniform), material_resource)
+                        (
+                            MaterialUniform::Stage(stage_material_uniform),
+                            material_resource,
+                        )
+                    }
+                    MaterialData::Tree(data) => {
+                        // 재질 쉐이더 리소스를 생성합니다.
+                        let tree_material_uniform = TreeMaterialUniform::new(
+                            None,
+                            device,
+                            TreeMaterialDataLayout {
+                                threshold: data.threshold.clamp(0.0, 1.0),
+                                ..Default::default()
+                            },
+                        );
+
+                        // 스테이지 메인 컬러 텍스처를 가져옵니다.
+                        let (main_color_view, main_color_sampler) = texture_data_pool
+                            .get(&data.main_color)
+                            .expect("the texture data must exist!");
+
+                        let material_resource = TreeMaterialResource::new(
+                            None,
+                            device,
+                            &tree_material_uniform,
+                            &main_color_view,
+                            &main_color_sampler,
+                        );
+
+                        (
+                            MaterialUniform::Tree(tree_material_uniform),
+                            material_resource,
+                        )
                     }
                     _ => panic!("invalid material data!"),
                 }

@@ -6,7 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use mod_network::components::{UserAccount, UserId, WorldId};
+use mod_network::components::{UserAccount, UserId, WorldId, MAX_IN_GAME_PLAYERS};
 use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::session::Session;
@@ -14,7 +14,7 @@ use crate::session::Session;
 use super::GameWorld;
 
 /// 최대 게임 월드의 개수입니다.
-const MAX_GAME_WORLDS: usize = 10;
+const MAX_GAME_WORLDS: usize = 1000;
 /// 초기화시 생성되는 게임 월드의 개수입니다.
 const INIT_GAME_WORLDS: usize = 5;
 static_assertions::const_assert!(INIT_GAME_WORLDS < MAX_GAME_WORLDS);
@@ -112,5 +112,21 @@ impl GameWorldPool {
         world.run_custom(account, session);
 
         Some(world)
+    }
+
+    /// 접속 가능한 월드 아이디 목록을 가져옵니다.
+    pub fn get_available_world_ids() -> Vec<WorldId> {
+        let mut ids = Vec::new();
+        for w in get_pool().iter() {
+            let id = w.key();
+            let world = w.value();
+
+            if world.is_closed() || *world.num_players.lock() == MAX_IN_GAME_PLAYERS {
+                continue;
+            }
+            
+            ids.push(*id);
+        }
+        ids
     }
 }

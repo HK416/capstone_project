@@ -1,7 +1,5 @@
 mod enter;
 
-use std::sync::Arc;
-
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_app::{
@@ -13,28 +11,32 @@ use mod_app::{
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, CharacterKind, FinishPhasePlayer, LatLon, LoginToken,
-        MovementState, MovementStateTimer, StageKind, StageLightData, Team, UserId, VictoryType,
+        MovementState, MovementStateTimer, StageKind, Team, UserId, VictoryType,
         MAX_IN_GAME_PLAYERS,
     },
     protocol::{FinishStageResponsePacket, Packet},
 };
 use mod_physics::object3d::Frustum;
+use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use winit::window::Window;
 
 use crate::{
-    asset::{MotionPool, NOTOSANS_BOLD},
+    asset::{MotionPool, StageBoundingVolumn, StageBoundingVolumnHierarchy, NOTOSANS_BOLD},
     component::{
-        animate_character, compute_cascade_splits, compute_frustum_corners_no_inverse,
-        compute_light_view_proj_matrix, update_action_state_timer, update_entity_hierarchy,
-        AttributeKind, BakeList, BoneCollection, CameraDataLayout, CameraResource, CameraUniform,
-        CharacterBakePipeline, CharacterRenderPipeline, Child, EyeMouthBakePipeline,
-        EyeMouthRenderPipeline, HaloRenderPipeline, LightSetDataLayout, LightSetResource,
-        LightTransformDataLayout, MaterialKind, MaterialResource, Mesh, MeshFilter, MeshRenderer,
-        OpaqueMap, Projection, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageBakePipeline,
-        StageRenderPipeline, ToParentTrans, TransformDataLayout, TransparentMap,
-        WeightedBlendedOITRenderPipeline, WeightedBlendedOITResource, WorldTransform, NUM_CASCADES,
-        NUM_CUBE_VERTICES, RESET_POSITIONS, RESET_ROTATION,
+        animate_character, bake_character, bake_character_eye_mouth, bake_stage,
+        clear_render_target_with_skybox, collect_bake_resources,
+        compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
+        draw_character_eye_mouth, draw_character_halo, draw_stage, update_action_state_timer,
+        update_character_resource, update_entity_hierarchy, update_stage_resource,
+        AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, CameraDataLayout, CameraResource, CameraUniform, CharacterBakePipeline,
+        CharacterRenderPipeline, Child, EyeMouthBakePipeline, EyeMouthRenderPipeline,
+        GaussianBlurPipeline, GlobalLight, GlobalLightDataLayout, HaloRenderPipeline,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
+        Projection, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation,
+        Skybox, SkyboxDataLayout, SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline,
+        ToParentTrans, TransparentMap, TreeRenderPipeline, WorldTransform, RESET_POSITIONS,
+        RESET_ROTATION, SHADOW_FORMAT,
     },
     config::{Locale, NUM_LOCALE},
     scenes::FatalErrorSceneLayer,
@@ -81,24 +83,37 @@ pub struct InGameResultScene {
     /// 우승팀 플레이어 집합입니다.
     winner_players: Vec<Entity>,
     /// 지역 엔터티 집합입니다.
-    stages: Vec<Entity>,
-    /// 지역 조명 데이터 집합입니다.
-    lights: Vec<StageLightData>,
+    stages: StageBoundingVolumnHierarchy,
+    /// 프러스텀 컬링을 수행한 지형 엔터티 집합입니다.
+    culling_stages: Vec<Entity>,
 
     /// 게임 진행 데이터입니다.
     play_data: Vec<FinishPhasePlayer>,
 
+    /// 전역 조명 데이터입니다.
+    global_light: Option<GlobalLight>,
+    /// 조명 집합 쉐이더 리소스입니다.
     light_set_resource: LightSetResource,
-    /// 알파 블렌딩 쉐이더 리소스입니다.
-    alpha_blend_resource: WeightedBlendedOITResource,
+
+    /// 반투명 오브젝트의 누적 값(Accumuldate)을 저장하는 렌더 타겟입니다.
+    accum_render_target: Option<AccumRenderTarget>,
+    /// 반투명 오브젝트의 노출 값(Revealage)을 저장하는 렌더 타겟입니다.
+    reveal_render_target: Option<RevealRenderTarget>,
+    /// 발광체 오브젝트의 색상을 저장하는 렌더 타겟입니다.
+    bright_render_target: Option<BrightRenderTarget>,
+
+    /// 알파 블렌딩을 수행하는 파이프라인입니다.
+    alpha_blend_pipeline: Option<AlphaBlendPipeline>,
+    /// 가우시안 블러를 수행하는 파이프라인입니다.
+    gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
+    /// Bloom 효과를 구현하는 파이프라인입니다.
+    bloom_pipeline: Option<BloomPipeline>,
 
     /// 게임 인터페이스 레이아웃 텍스처 식별자입니다.
     ui_textures: HashMap<String, egui::load::SizedTexture>,
 
     /// 조명 렌더링 리소스 집합입니다.
     bake_list: BakeList,
-    /// 그림자 렌더링 리소스 집합입니다.
-    shadow_map: ShadowMap,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
     opaque_map: OpaqueMap,
     /// 투명 메쉬 렌더링 리소스 집합입니다.
@@ -154,11 +169,16 @@ impl InGameResultScene {
         world: World,
         skybox: Skybox,
         winner_players: Vec<Entity>,
-        stages: Vec<Entity>,
-        lights: Vec<StageLightData>,
+        stages: StageBoundingVolumnHierarchy,
         play_data: Vec<FinishPhasePlayer>,
+        global_light: Option<GlobalLight>,
         light_set_resource: LightSetResource,
-        alpha_blend_resource: WeightedBlendedOITResource,
+        accum_render_target: AccumRenderTarget,
+        reveal_render_target: RevealRenderTarget,
+        bright_render_target: BrightRenderTarget,
+        alpha_blend_pipeline: AlphaBlendPipeline,
+        gaussian_blur_pipeline: GaussianBlurPipeline,
+        bloom_pipeline: BloomPipeline,
         ui_textures: HashMap<String, egui::load::SizedTexture>,
         motion_pool: MotionPool,
     ) -> Self {
@@ -176,13 +196,18 @@ impl InGameResultScene {
             main_camera: Entity::DANGLING,
             winner_players,
             stages,
-            lights,
+            culling_stages: Vec::default(),
             play_data,
-            ui_textures,
+            global_light,
             light_set_resource,
-            alpha_blend_resource,
+            accum_render_target: Some(accum_render_target),
+            reveal_render_target: Some(reveal_render_target),
+            bright_render_target: Some(bright_render_target),
+            alpha_blend_pipeline: Some(alpha_blend_pipeline),
+            gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
+            bloom_pipeline: Some(bloom_pipeline),
+            ui_textures,
             bake_list: Vec::default(),
-            shadow_map: HashMap::default(),
             opaque_map: HashMap::default(),
             transparent_map: HashMap::default(),
             motion_pool,
@@ -252,10 +277,45 @@ impl InGameResultScene {
         }
     }
 
-    /// 알파 블렌드에 사용되는 쉐이더 리소스를 생성합니다.
-    fn create_alpha_blend_resource(&mut self, window: &Window, device: &wgpu::Device) {
-        let (width, height): (u32, u32) = window.inner_size().into();
-        self.alpha_blend_resource = WeightedBlendedOITResource::new(width, height, device);
+    /// 지연 쉐이더 기법을 사용하는 파이프라인과 쉐이더 리소스를 생성합니다.
+    fn create_deferred(&mut self, window: &Window, device: &wgpu::Device) {
+        // 현재 애플리케이션 창의 크기를 가져옵니다.
+        let (width, height) = window.inner_size().into();
+
+        // Bloom을 위한 텍스처와 파이프라인을 생성합니다.
+        let (gaussian_blur_pipeline, bright_render_target, bloom_pipeline) = match self
+            .gaussian_blur_pipeline
+            .take()
+            .zip(self.bloom_pipeline.take())
+        {
+            Some((gaussian_blur_pipeline, bloom_pipeline)) => {
+                gaussian_blur_pipeline.renew(width, height, device, bloom_pipeline)
+            }
+            None => GaussianBlurPipeline::new(width, height, device, SWAPCHAIN_FORMAT),
+        };
+
+        // Weighted-Blended OIT를 위한 렌더 타겟을 생성합니다.
+        let accum_render_target = AccumRenderTarget::new(width, height, device);
+        let reveal_render_target = RevealRenderTarget::new(width, height, device);
+
+        // 알파 블렌드 파이프라인을 생성합니다.
+        let alpha_blend_pipeline = match self.alpha_blend_pipeline.take() {
+            Some(pipeline) => pipeline.renew(device, &accum_render_target, &reveal_render_target),
+            None => AlphaBlendPipeline::new(
+                device,
+                &accum_render_target,
+                &reveal_render_target,
+                SWAPCHAIN_FORMAT,
+            ),
+        };
+
+        self.accum_render_target = Some(accum_render_target);
+        self.reveal_render_target = Some(reveal_render_target);
+        self.bright_render_target = Some(bright_render_target);
+
+        self.alpha_blend_pipeline = Some(alpha_blend_pipeline);
+        self.gaussian_blur_pipeline = Some(gaussian_blur_pipeline);
+        self.bloom_pipeline = Some(bloom_pipeline);
     }
 }
 
@@ -376,7 +436,7 @@ impl InGameResultScene {
 
     /// 지형 엔터티의 계층 구조를 갱신합니다.
     fn update_stage(&mut self) {
-        for entity in self.stages.iter().cloned() {
+        for entity in self.culling_stages.iter().cloned() {
             update_entity_hierarchy(&mut self.world, entity, glam::Mat4::IDENTITY);
         }
     }
@@ -441,602 +501,135 @@ impl InGameResultScene {
         self.winner_players.clone()
     }
 
-    /// 캐릭터의 쉐이더 리소스를 갱신합니다.
-    fn update_character_resource(
-        &self,
-        entity: Entity,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-        shadow_map: &mut ShadowMap,
-        opaque_map: &mut OpaqueMap,
-        child_view: &ViewBorrow<'_, &Child>,
-        sibling_view: &ViewBorrow<'_, &Sibling>,
-        transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
-    ) {
-        // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
-        if let Some(child_entity) = child_view.get(entity).cloned() {
-            self.update_character_resource(
-                *child_entity,
-                device,
-                encoder,
-                staging_buffers,
-                shadow_map,
-                opaque_map,
-                child_view,
-                sibling_view,
-                transform_view,
-                mesh_filter_view,
-                skinned_mesh_filter_view,
-            );
-        }
-
-        // 형제 엔터티가 존재하는 경우 형제 엔터티를 갱신합니다.
-        if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
-            self.update_character_resource(
-                *sibling_entity,
-                device,
-                encoder,
-                staging_buffers,
-                shadow_map,
-                opaque_map,
-                child_view,
-                sibling_view,
-                transform_view,
-                mesh_filter_view,
-                skinned_mesh_filter_view,
-            );
-        }
-
-        let result = mesh_filter_view.get_mut(entity);
-        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
-            // 유니폼 버퍼를 갱신합니다.
-            let transform = transform_view
-                .get(entity)
-                .expect("invalid entity component");
-            uniform.update(
-                device,
-                encoder,
-                staging_buffers,
-                TransformDataLayout {
-                    trans: transform.0.to_cols_array(),
-                },
-            );
-
-            // 렌더 집합에 추가합니다.
-            for (index, material) in materials.iter().enumerate() {
-                let key = (mesh.clone(), material.kind());
-                let value = (
-                    index,
-                    MeshFilter::Mesh(mesh_resource.clone()),
-                    material.clone(),
-                );
-                if let Some(resources) = opaque_map.get_mut(&key) {
-                    resources.push(value);
-                } else {
-                    opaque_map.insert(key, vec![value]);
-                }
-            }
-
-            // 그림자 집합에 추가합니다.
-            for (index, material) in materials.iter().enumerate() {
-                if material.kind() == MaterialKind::Character
-                    || material.kind() == MaterialKind::CharacterEyeMouth
-                {
-                    let key = (mesh.clone(), material.kind());
-                    let value = (index, MeshFilter::Mesh(mesh_resource.clone()));
-                    if let Some(resources) = shadow_map.get_mut(&key) {
-                        resources.push(value);
-                    } else {
-                        shadow_map.insert(key, vec![value]);
-                    }
-                }
-            }
-
-            return;
-        }
-
-        let result = skinned_mesh_filter_view.get_mut(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
-            // 유니폼 버퍼를 갱신합니다.
-            let data = collection
-                .bones
-                .iter()
-                .map(|&entity| {
-                    transform_view
-                        .get(entity)
-                        .expect("invalid entity or invalid entity component")
-                })
-                .map(|transform| transform.0.to_cols_array())
-                .collect();
-            uniform.update(device, encoder, staging_buffers, data);
-
-            // 렌더 집합에 추가합니다.
-            for (index, material) in materials.iter().enumerate() {
-                let key = (mesh.clone(), material.kind());
-                let value = (
-                    index,
-                    MeshFilter::SkinnedMesh(mesh_resource.clone()),
-                    material.clone(),
-                );
-                if let Some(resources) = opaque_map.get_mut(&key) {
-                    resources.push(value);
-                } else {
-                    opaque_map.insert(key, vec![value]);
-                }
-            }
-
-            // 그림자 집합에 추가합니다.
-            for (index, material) in materials.iter().enumerate() {
-                if material.kind() == MaterialKind::Character
-                    || material.kind() == MaterialKind::CharacterEyeMouth
-                {
-                    let key = (mesh.clone(), material.kind());
-                    let value = (index, MeshFilter::SkinnedMesh(mesh_resource.clone()));
-                    if let Some(resources) = shadow_map.get_mut(&key) {
-                        resources.push(value);
-                    } else {
-                        shadow_map.insert(key, vec![value]);
-                    }
-                }
-            }
-
-            return;
-        }
-    }
-
     /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 지형 엔터티를 수집합니다.
+    ///
+    /// # Note
+    /// 이 함수는 카메라의 월드 변환 행렬을 갱신한 후 호출되어야 합니다.
+    ///
     fn culling_stages(&self) -> Vec<Entity> {
-        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
-        self.stages.iter().cloned().collect()
+        // 카메라의 위치와 뷰 프러스텀을 가져옵니다.
+        let mut query = self
+            .world
+            .query_one::<&Frustum>(self.main_camera)
+            .expect("invalid entity");
+        let frustum = query.get().expect("invalid entity component");
+
+        // 프러스텀 컬링된 엔터티를 수집합니다.
+        let mut entities = self.stages.area.clone();
+        if let Some(node) = self.stages.root.as_ref() {
+            Self::culling_stage_recursive(frustum, node, &mut entities);
+        }
+
+        entities
     }
 
-    /// 지형의 쉐이더 리소스를 갱신합니다.
-    fn update_stage_resource(
-        &self,
-        entity: Entity,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-        shadow_map: &mut ShadowMap,
-        opaque_map: &mut OpaqueMap,
-        transparent_map: &mut TransparentMap,
-        child_view: &ViewBorrow<'_, &Child>,
-        sibling_view: &ViewBorrow<'_, &Sibling>,
-        transform_view: &ViewBorrow<'_, &WorldTransform>,
-        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
-        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
+    /// 카메라 프러스텀과 교차되는 엔터티를 수집합니다.
+    fn culling_stage_recursive(
+        frustum: &Frustum,
+        node: &StageBoundingVolumn,
+        entities: &mut Vec<Entity>,
     ) {
-        // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
-        if let Some(child_entity) = child_view.get(entity).cloned() {
-            self.update_stage_resource(
-                *child_entity,
-                device,
-                encoder,
-                staging_buffers,
-                shadow_map,
-                opaque_map,
-                transparent_map,
-                child_view,
-                sibling_view,
-                transform_view,
-                mesh_filter_view,
-                skinned_mesh_filter_view,
-            );
+        if frustum.sphere_test(&node.sphere) {
+            entities.push(node.entity);
         }
-
-        // 형제 엔터티가 존재하는 경우 형제 엔터티를 갱신합니다.
-        if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
-            self.update_stage_resource(
-                *sibling_entity,
-                device,
-                encoder,
-                staging_buffers,
-                shadow_map,
-                opaque_map,
-                transparent_map,
-                child_view,
-                sibling_view,
-                transform_view,
-                mesh_filter_view,
-                skinned_mesh_filter_view,
-            );
+        if let Some(left_node) = node.left.as_ref() {
+            Self::culling_stage_recursive(frustum, left_node, entities);
         }
-
-        let result = mesh_filter_view.get_mut(entity);
-        if let Some((mesh, mesh_resource, uniform, _, materials)) = result {
-            // 유니폼 버퍼를 갱신합니다.
-            let transform = transform_view
-                .get(entity)
-                .expect("invalid entity component");
-            uniform.update(
-                device,
-                encoder,
-                staging_buffers,
-                TransformDataLayout {
-                    trans: transform.0.to_cols_array(),
-                },
-            );
-
-            for (index, material) in materials.iter().enumerate() {
-                match material.kind() {
-                    MaterialKind::Stage => {
-                        // 불투명 렌더 집합에 추가합니다.
-                        let key = (mesh.clone(), material.kind());
-                        let value = (
-                            index,
-                            MeshFilter::Mesh(mesh_resource.clone()),
-                            material.clone(),
-                        );
-                        if let Some(resources) = opaque_map.get_mut(&key) {
-                            resources.push(value);
-                        } else {
-                            opaque_map.insert(key, vec![value]);
-                        }
-
-                        // 그림자 집합에 추가합니다.
-                        let key = (mesh.clone(), material.kind());
-                        let value = (index, MeshFilter::Mesh(mesh_resource.clone()));
-                        if let Some(resources) = shadow_map.get_mut(&key) {
-                            resources.push(value);
-                        } else {
-                            shadow_map.insert(key, vec![value]);
-                        }
-                    }
-                    MaterialKind::CaptureZone => {
-                        // 투명 렌더 집합에 추가합니다.
-                        let key = (mesh.clone(), material.kind());
-                        let value = (
-                            index,
-                            MeshFilter::Mesh(mesh_resource.clone()),
-                            material.clone(),
-                        );
-                        if let Some(resources) = transparent_map.get_mut(&key) {
-                            resources.push(value);
-                        } else {
-                            transparent_map.insert(key, vec![value]);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            return;
-        }
-
-        let result = skinned_mesh_filter_view.get_mut(entity);
-        if let Some((mesh, mesh_resource, collection, uniform, _, materials)) = result {
-            // 유니폼 버퍼를 갱신합니다.
-            let data = collection
-                .bones
-                .iter()
-                .map(|&entity| {
-                    transform_view
-                        .get(entity)
-                        .expect("invalid entity or invalid entity component")
-                })
-                .map(|transform| transform.0.to_cols_array())
-                .collect();
-            uniform.update(device, encoder, staging_buffers, data);
-
-            for (index, material) in materials.iter().enumerate() {
-                match material.kind() {
-                    MaterialKind::Stage => {
-                        let key = (mesh.clone(), material.kind());
-                        let value = (
-                            index,
-                            MeshFilter::SkinnedMesh(mesh_resource.clone()),
-                            material.clone(),
-                        );
-                        // 불투명 렌더 집합에 추가합니다.
-                        if let Some(resources) = opaque_map.get_mut(&key) {
-                            resources.push(value);
-                        } else {
-                            opaque_map.insert(key, vec![value]);
-                        }
-
-                        let key = (mesh.clone(), material.kind());
-                        let shadow_value = (index, MeshFilter::SkinnedMesh(mesh_resource.clone()));
-                        // 그림자 집합에 추가합니다.
-                        if let Some(resources) = shadow_map.get_mut(&key) {
-                            resources.push(shadow_value);
-                        } else {
-                            shadow_map.insert(key, vec![shadow_value]);
-                        }
-                    }
-                    MaterialKind::CaptureZone => {
-                        let key = (mesh.clone(), material.kind());
-                        let value = (
-                            index,
-                            MeshFilter::SkinnedMesh(mesh_resource.clone()),
-                            material.clone(),
-                        );
-
-                        // 투명 렌더 집합에 추가합니다.
-                        if let Some(resources) = transparent_map.get_mut(&key) {
-                            resources.push(value);
-                        } else {
-                            transparent_map.insert(key, vec![value]);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            return;
+        if let Some(right_node) = node.right.as_ref() {
+            Self::culling_stage_recursive(frustum, right_node, entities);
         }
     }
 
-    /// 프러스텀 컬링(Frustum Culling)을 통해 렌더링을 수행할 조명 엔터티를 수집합니다.
-    fn culling_lights(&self) -> Vec<&StageLightData> {
-        // FIXME: 현재는 모든 엔터티를 전부 렌더링함
-        self.lights.iter().collect()
-    }
-
-    /// 조명 쉐이더 리소스를 갱신합니다.
-    fn update_light_resource<'a>(
+    /// 전역 조명 쉐이더 리소스를 갱신합니다.
+    fn update_global_light_resource(
         &self,
-        lights: Vec<&'a StageLightData>,
+        window: &Window,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
         bake_list: &mut BakeList,
+        child_view: &ViewBorrow<'_, &Child>,
+        sibling_view: &ViewBorrow<'_, &Sibling>,
+        mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
     ) {
-        let mut data_layout = Box::new(LightSetDataLayout::default());
-        for data in lights {
-            match data {
-                StageLightData::Directional(light) => {
-                    // 카메라의 월드 공간 행렬을 가져옵니다.
-                    let mut query = self
-                        .world
-                        .query_one::<&WorldTransform>(self.main_camera)
-                        .expect("invalid entity");
-                    let transform = query.get().expect("invalid entity component");
-
-                    data_layout.direction_w = light.direction.into();
-                    data_layout.color = light.color.into();
-
-                    let splits = compute_cascade_splits(NUM_CASCADES, 0.01, 50.0, 0.85);
-                    for i in 0..NUM_CASCADES {
-                        // 프러스텀의 모서리 위치를 계산합니다.
-                        let near = if i == 0 { 0.01 } else { splits[i - 1] };
-                        let far = splits[i];
-                        let fov_y = 60f32.to_radians();
-                        let corner = compute_frustum_corners_no_inverse(
-                            transform,
-                            fov_y,
-                            16.0 / 9.0,
-                            near,
-                            far,
-                        );
-
-                        // 조명 변환 행렬을 계산합니다.
-                        let proj_view =
-                            compute_light_view_proj_matrix(&corner, light.direction.into(), 5.0);
-
-                        // 전역 조명 유니폼 버퍼 데이터를 갱신합니다.
-                        data_layout.global_lights[i] = LightTransformDataLayout {
-                            proj_view: proj_view.to_cols_array(),
-                        };
-
-                        // 전역 조명 그림자 쉐이더 리소스를 가져옵니다.
-                        let resource = self.light_set_resource.get_global(i);
-                        resource.uniform.update(
-                            device,
-                            encoder,
-                            staging_buffers,
-                            LightTransformDataLayout {
-                                proj_view: proj_view.to_cols_array(),
-                            },
-                        );
-                        bake_list.push(resource);
-                    }
-                }
-            }
+        // 전역 조명이 없는 경우 해당 함수를 생략합니다.
+        if self.global_light.is_none() {
+            return;
         }
 
-        // 유니폼 버퍼를 갱신합니다.
-        self.light_set_resource
-            .uniform
-            .update(device, encoder, staging_buffers, data_layout);
-    }
-}
+        // 애플리케이션 창의 크기를 가져옵니다.
+        let (width, height): (f32, f32) = window.inner_size().into();
 
-//--------------------------------------------------------------------------------------------
-// 렌더링과 관련된 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl InGameResultScene {
-    /// 캐릭터를 그립니다.
-    fn draw_character<'a>(
-        mesh: &'a Mesh,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
+        // 카메라의 월드 공간 행렬을 가져옵니다.
+        let mut query = self
+            .world
+            .query_one::<&WorldTransform>(self.main_camera)
+            .expect("invalid entity");
+        let transform = query.get().expect("invalid entity component");
 
-        rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+        // 카메라의 뷰 프러스텀의 모서리 위치를 계산합니다.
+        let frustum_corners = compute_frustum_corners_no_inverse(
+            transform,
+            80f32.to_radians(),
+            width / height,
+            0.01,
+            15.0,
+        );
 
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
-        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
-        rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
-        rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+        // 전역 조명의 변환 행렬을 계산합니다.
+        let g_light = self.global_light.as_ref().unwrap();
+        let light_proj_view =
+            compute_light_view_proj_matrix(&frustum_corners, g_light.direction_w, 5.0);
 
-        for (index, mesh_resource, material) in material_resources {
-            let index_buffer = mesh.submeshes().get(*index).unwrap();
-            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-            rpass.set_bind_group(2, material.bind_group(), &[]);
-            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        // 전역 조명 데이터 유니폼 버퍼를 갱신합니다.
+        self.light_set_resource.global_light_uniform.update(
+            device,
+            encoder,
+            staging_buffers,
+            GlobalLightDataLayout {
+                proj_view: light_proj_view.to_cols_array(),
+                direction_w: g_light.direction_w.to_array(),
+                color: g_light.color.to_array(),
+                ..Default::default()
+            },
+        );
+
+        // 전역 조명의 그림자 쉐이더 리소스를 가져오고 내용을 갱신합니다.
+        let shadow_resource = self.light_set_resource.get_global();
+        shadow_resource.uniform.update(
+            device,
+            encoder,
+            staging_buffers,
+            LightTransformDataLayout {
+                proj_view: light_proj_view.to_cols_array(),
+            },
+        );
+
+        // 조명이 비추는 영역과 교차하는 엔터티를 수집합니다.
+        let frustum = Frustum::from_mat4(light_proj_view);
+        let mut entities: Vec<Entity> = self.winner_players.iter().cloned().collect();
+        entities.extend_from_slice(&self.stages.area);
+
+        if let Some(node) = self.stages.root.as_ref() {
+            Self::culling_stage_recursive(&frustum, node, &mut entities);
         }
-    }
 
-    /// 캐릭터의 그림자를 생성합니다.
-    fn bake_character<'a>(
-        mesh: &'a Mesh,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        shadow_resource: &'a ShadowResource,
-        submesh_resources: &'a [(usize, MeshFilter)],
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
-
-        rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
-
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
-        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
-
-        for (index, mesh_resource) in submesh_resources {
-            let index_buffer = mesh.submeshes().get(*index).unwrap();
-            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        // 수집된 엔터티의 MeshFilter를 수집합니다.
+        let mut shadow_map = ShadowMap::default();
+        for entity in entities {
+            collect_bake_resources(
+                entity,
+                &mut shadow_map,
+                child_view,
+                sibling_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+            );
         }
-    }
 
-    /// 캐릭터의 눈과 입을 그립니다.
-    fn draw_character_eye_mouth<'a>(
-        mesh: &'a Mesh,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
-
-        rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
-        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
-        rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
-        rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
-
-        for (index, mesh_resource, material) in material_resources {
-            let index_buffer = mesh.submeshes().get(*index).unwrap();
-            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-            rpass.set_bind_group(2, material.bind_group(), &[]);
-            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
-        }
-    }
-
-    /// 캐릭터의 눈과 입의 그림자를 생성합니다.
-    fn bake_character_eye_mouth<'a>(
-        mesh: &'a Mesh,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        shadow_resource: &'a ShadowResource,
-        submesh_resources: &'a [(usize, MeshFilter)],
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
-
-        rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
-
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
-        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
-
-        for (index, mesh_resource) in submesh_resources {
-            let index_buffer = mesh.submeshes().get(*index).unwrap();
-            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
-        }
-    }
-
-    /// 캐릭터의 헤일로를 그립니다.
-    fn draw_character_halo<'a>(
-        mesh: &'a Mesh,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        camera_resource: &'a CameraResource,
-        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
-
-        rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
-
-        for (index, mesh_resource, material) in material_resources {
-            let index_buffer = &mesh.submeshes().get(*index).unwrap();
-            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-            rpass.set_bind_group(2, material.bind_group(), &[]);
-            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
-        }
-    }
-
-    /// 지형을 그립니다.
-    fn draw_stage<'a>(
-        mesh: &'a Mesh,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        camera_resource: &'a CameraResource,
-        light_set_resource: &'a LightSetResource,
-        material_resources: &'a [(usize, MeshFilter, MaterialResource)],
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
-
-        rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
-        rpass.set_bind_group(3, light_set_resource.bind_group(), &[]);
-
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-        rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
-        rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
-
-        for (index, mesh_resource, material) in material_resources {
-            let index_buffer = mesh.submeshes().get(*index).unwrap();
-            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-            rpass.set_bind_group(2, material.bind_group(), &[]);
-            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
-        }
-    }
-
-    /// 지형의 그림자를 생성합니다.
-    fn bake_stage<'a>(
-        mesh: &'a Mesh,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        shadow_resource: &'a ShadowResource,
-        submesh_resources: &'a [(usize, MeshFilter)],
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
-
-        rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
-
-        rpass.set_vertex_buffer(0, mesh.vertex(..));
-
-        for (index, mesh_resource) in submesh_resources {
-            let index_buffer = mesh.submeshes().get(*index).unwrap();
-            rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
-            rpass.set_bind_group(1, mesh_resource.bind_group(), &[]);
-            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
-        }
-    }
-
-    /// 스카이박스로 렌더 타겟을 초기화합니다.
-    ///
-    /// # Note
-    /// 이 함수는 그리기 마지막에 호출하는 것이 가장 성능이 좋습니다.
-    ///
-    fn clear_render_target_with_skybox<'a>(
-        skybox: &'a Skybox,
-        pipeline: Arc<wgpu::RenderPipeline>,
-        rpass: &mut wgpu::RenderPass<'a>,
-    ) {
-        rpass.set_pipeline(&pipeline);
-        rpass.set_vertex_buffer(0, skybox.vertex.slice(..));
-        rpass.set_bind_group(0, skybox.resource.bind_group(), &[]);
-        rpass.draw(0..NUM_CUBE_VERTICES as u32, 0..1);
+        // BakeList에 추가합니다.
+        bake_list.push((shadow_resource, shadow_map));
     }
 }
 
@@ -1077,10 +670,19 @@ impl InGameResultScene {
 
 //--------------------------------------------------------------------------------------------
 impl GameScene for InGameResultScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
-        app.enable_cursor();
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+
         self.create_main_camera(app.render_device());
         self.reset_player_position();
+    }
+
+    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -1108,7 +710,7 @@ impl GameScene for InGameResultScene {
     }
 
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
-        self.create_alpha_blend_resource(window, app.render_device());
+        self.create_deferred(window, app.render_device());
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
@@ -1129,10 +731,12 @@ impl GameScene for InGameResultScene {
         }
     }
 
-    fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
-        self.update_stage();
+    fn on_prepare_draw(&mut self, window: &Window, app: &dyn AppHandle) {
         self.update_camera();
         self.update_character();
+
+        self.culling_stages = self.culling_stages();
+        self.update_stage();
 
         let device = app.render_device();
         let queue = app.render_queue();
@@ -1156,7 +760,7 @@ impl GameScene for InGameResultScene {
         // 캐릭터 쉐이더 리소스를 갱신합니다.
         let entities = self.culling_character();
         for entity in entities {
-            self.update_character_resource(
+            update_character_resource(
                 entity,
                 device,
                 &mut encoder,
@@ -1172,9 +776,8 @@ impl GameScene for InGameResultScene {
         }
 
         // 지형 쉐이더 리소스를 갱신합니다.
-        let entities = self.culling_stages();
-        for entity in entities {
-            self.update_stage_resource(
+        for entity in self.culling_stages.iter().cloned() {
+            update_stage_resource(
                 entity,
                 device,
                 &mut encoder,
@@ -1190,20 +793,22 @@ impl GameScene for InGameResultScene {
             );
         }
 
-        // 조명 쉐이더 리소스를 갱신합니다.
-        let lights = self.culling_lights();
-        self.update_light_resource(
-            lights,
+        // 전역 조명 쉐이더 리소스를 갱신합니다.
+        self.update_global_light_resource(
+            window,
             device,
             &mut encoder,
             &mut staging_buffers,
             &mut bake_list,
+            child_view,
+            sibling_view,
+            mesh_filter_view,
+            skinned_mesh_filter_view,
         );
 
         queue.submit(Some(encoder.finish()));
         drop(staging_buffers);
 
-        self.shadow_map = shadow_map;
         self.opaque_map = opaque_map;
         self.transparent_map = transparent_map;
         self.bake_list = bake_list;
@@ -1215,8 +820,10 @@ impl GameScene for InGameResultScene {
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
         depth_buffer_view: &wgpu::TextureView,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
     ) {
+        let device = app.render_device();
+
         // 카메라 쉐이더 리소스를 가져옵니다.
         let camera_resource = self
             .world
@@ -1224,8 +831,16 @@ impl GameScene for InGameResultScene {
             .cloned()
             .expect("invalid entity or invalid entity component");
 
+        // 쉐이더 리소스를 가져옵니다.
+        let accum_render_target = self.accum_render_target.as_ref().unwrap();
+        let reveal_render_target = self.reveal_render_target.as_ref().unwrap();
+        let bright_render_target = self.bright_render_target.as_ref().unwrap();
+        let alpha_blend_pipeline = self.alpha_blend_pipeline.as_ref().unwrap();
+        let gaussian_blur_pipeline = self.gaussian_blur_pipeline.as_ref().unwrap();
+        let bloom_pipeline = self.bloom_pipeline.as_ref().unwrap();
+
         encoder.push_debug_group("shadow pass");
-        for shadow_resource in self.bake_list.iter() {
+        for (shadow_resource, shadow_map) in self.bake_list.iter() {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(InGame(ShadowPass))"),
                 color_attachments: &[],
@@ -1241,22 +856,31 @@ impl GameScene for InGameResultScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), resources) in self.shadow_map.iter() {
-                let func = match kind {
-                    MaterialKind::Character => Self::bake_character,
-                    MaterialKind::CharacterEyeMouth => Self::bake_character_eye_mouth,
-                    MaterialKind::Stage => Self::bake_stage,
-                    _ => continue,
+            for ((mesh, kind), submesh_resources) in shadow_map.iter() {
+                match kind {
+                    MaterialKind::Character => bake_character(
+                        &mesh,
+                        CharacterBakePipeline::get_or_init(device, SHADOW_FORMAT),
+                        shadow_resource,
+                        submesh_resources,
+                        &mut rpass,
+                    ),
+                    MaterialKind::CharacterEyeMouth => bake_character_eye_mouth(
+                        &mesh,
+                        EyeMouthBakePipeline::get_or_init(device, SHADOW_FORMAT),
+                        shadow_resource,
+                        submesh_resources,
+                        &mut rpass,
+                    ),
+                    MaterialKind::Stage | MaterialKind::Tree => bake_stage(
+                        &mesh,
+                        StageBakePipeline::get_or_init(device, SHADOW_FORMAT),
+                        shadow_resource,
+                        submesh_resources,
+                        &mut rpass,
+                    ),
+                    _ => {}
                 };
-                let pipeline = match kind {
-                    MaterialKind::Character => CharacterBakePipeline::get(),
-                    MaterialKind::CharacterEyeMouth => EyeMouthBakePipeline::get(),
-                    MaterialKind::Stage => StageBakePipeline::get(),
-                    _ => continue,
-                }
-                .unwrap();
-
-                func(&mesh, pipeline, &shadow_resource, &resources, &mut rpass);
             }
         }
         encoder.pop_debug_group();
@@ -1265,14 +889,31 @@ impl GameScene for InGameResultScene {
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(InGame(OpaquePass))"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                    view: render_target_view,
-                    resolve_target: None,
-                })],
+                color_attachments: &[
+                    // 0번 렌더 타겟: 색상
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: render_target_view,
+                        resolve_target: None,
+                    }),
+                    // 1번 렌더 타겟: bloom
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: bright_render_target.view(),
+                        resolve_target: None,
+                    }),
+                ],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: depth_buffer_view,
                     depth_ops: Some(wgpu::Operations {
@@ -1285,39 +926,84 @@ impl GameScene for InGameResultScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), resources) in self.opaque_map.iter() {
-                let func = match kind {
-                    MaterialKind::Character => Self::draw_character,
-                    MaterialKind::CharacterEyeMouth => Self::draw_character_eye_mouth,
-                    MaterialKind::CharacterHalo => Self::draw_character_halo,
-                    MaterialKind::Stage => {
-                        Self::draw_stage(
+            for ((mesh, kind), material_resources) in self.opaque_map.iter() {
+                match kind {
+                    MaterialKind::Character => {
+                        draw_character(
                             &mesh,
-                            StageRenderPipeline::get().unwrap(),
+                            CharacterRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
                             &camera_resource,
                             &self.light_set_resource,
-                            &resources,
+                            material_resources,
                             &mut rpass,
                         );
-                        continue;
                     }
-                    _ => continue,
+                    MaterialKind::CharacterEyeMouth => {
+                        draw_character_eye_mouth(
+                            &mesh,
+                            EyeMouthRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            &self.light_set_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterHalo => {
+                        draw_character_halo(
+                            &mesh,
+                            HaloRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::Stage => {
+                        draw_stage(
+                            &mesh,
+                            StageRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            &self.light_set_resource,
+                            &material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::Tree => {
+                        draw_stage(
+                            &mesh,
+                            TreeRenderPipeline::get_or_init(
+                                &device,
+                                SWAPCHAIN_FORMAT,
+                                DEPTH_FORMAT,
+                            ),
+                            &camera_resource,
+                            &self.light_set_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    _ => {}
                 };
-                let pipeline = match kind {
-                    MaterialKind::Character => CharacterRenderPipeline::get(),
-                    MaterialKind::CharacterEyeMouth => EyeMouthRenderPipeline::get(),
-                    MaterialKind::CharacterHalo => HaloRenderPipeline::get(),
-                    MaterialKind::Stage => StageRenderPipeline::get(),
-                    _ => continue,
-                }
-                .unwrap();
-
-                func(&mesh, pipeline, &camera_resource, &resources, &mut rpass);
             }
 
-            Self::clear_render_target_with_skybox(
+            clear_render_target_with_skybox(
                 &self.skybox,
-                SkyboxRenderPipeline::get().unwrap(),
+                SkyboxRenderPipeline::get_or_init(&device, SWAPCHAIN_FORMAT, DEPTH_FORMAT),
                 &mut rpass,
             );
         }
@@ -1328,11 +1014,12 @@ impl GameScene for InGameResultScene {
             let mut _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("RenderPass(InGame(TransparentPass))"),
                 color_attachments: &[
+                    // 0번 렌더 타겟: 누적 값 렌더 타겟
                     Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear({
                                 wgpu::Color {
-                                    a: 0.0,
+                                    a: 1.0,
                                     r: 0.0,
                                     g: 0.0,
                                     b: 0.0,
@@ -1340,9 +1027,10 @@ impl GameScene for InGameResultScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
-                        view: &self.alpha_blend_resource.accum_render_target,
+                        view: accum_render_target.view(),
                         resolve_target: None,
                     }),
+                    // 1번 렌더 타겟: 노출 값 렌더 타겟
                     Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear({
@@ -1355,7 +1043,16 @@ impl GameScene for InGameResultScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
-                        view: &self.alpha_blend_resource.reveal_render_target,
+                        view: reveal_render_target.view(),
+                        resolve_target: None,
+                    }),
+                    // 2번 렌더 타겟: 발광체 색깔 렌더 타겟
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: bright_render_target.view(),
                         resolve_target: None,
                     }),
                 ],
@@ -1373,6 +1070,16 @@ impl GameScene for InGameResultScene {
         }
         encoder.pop_debug_group();
 
+        encoder.push_debug_group("compute pass");
+        {
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("ComputePass(InGame)"),
+                timestamp_writes: None,
+            });
+            gaussian_blur_pipeline.process(&mut cpass);
+        }
+        encoder.pop_debug_group();
+
         encoder.push_debug_group("composite pass");
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1385,29 +1092,18 @@ impl GameScene for InGameResultScene {
                     view: render_target_view,
                     resolve_target: None,
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: depth_buffer_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
 
-            // 그래픽스 파이프라인을 가져옵니다.
-            let pipeline = WeightedBlendedOITRenderPipeline::get().unwrap();
-            rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, &self.alpha_blend_resource.bind_group, &[]);
-            rpass.draw(0..4, 0..1);
+            alpha_blend_pipeline.process(&mut rpass);
+            bloom_pipeline.process(&mut rpass);
         }
         encoder.pop_debug_group();
     }
 
     fn on_finish_draw(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        self.shadow_map.clear();
         self.opaque_map.clear();
         self.transparent_map.clear();
     }

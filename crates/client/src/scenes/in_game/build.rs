@@ -1,10 +1,7 @@
-use std::{
-    ops::Deref,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
 use ahash::{HashMap, RandomState};
-use hecs::{Entity, EntityBuilder, World};
+use hecs::World;
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -12,24 +9,20 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, StageLayoutData, UserId},
+    components::{LoginToken, StageLayoutData, UserId, MAX_IN_GAME_PLAYERS},
     protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
+use mod_render::UiRenderer;
 use spin::mutex::SpinMutex;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        MeshPool, ModelNode, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, CAPTURE_ZONE_URI, NOTOSANS_BOLD, SKYBOX_URI,
+        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumnHierarchy,
+        TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD, SKYBOX_URI,
     },
-    component::{
-        spawn_player_character, spawn_stage_area, spawn_stage_prop, CaptureZoneMaterialDataLayout,
-        CaptureZoneMaterialResource, CaptureZoneMaterialUniform, Child, MaterialData,
-        MaterialUniform, MeshResource, Parent, Sibling, Skybox, ToParentTrans, TransformUniform,
-        WorldTransform,
-    },
+    component::{build_stage, spawn_player_character, GlobalLight, Skybox},
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
     PACKET_DELAY, SERVER_TCP_ADDR,
@@ -124,200 +117,6 @@ impl InGameBuildScene {
         }
     }
 
-    /// 점령 지역을 구성하는 엔터티를 생성합니다.
-    ///
-    /// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
-    /// - 부모 엔터티(`Parent`)
-    /// - 로컬 변환 행렬(`ToParentTrans`)
-    /// - 월드 변환 행렬(`WorldTransform`)
-    ///
-    /// 일부 엔터티는 아래 컴포넌트를 선택적으로 가집니다.
-    /// - 자식 엔터티(`Child`)
-    /// - 형제 엔터티(`Sibling`)
-    /// - 모델 메쉬(`Arc<Mesh>`)
-    /// - 메쉬 쉐이더 리소스(`MeshResource`)
-    /// - 변환 행렬 유니폼 버퍼(`TransformUniform`)
-    /// - 재질 쉐이더 리소스(`Vec<MaterialResource>`)
-    /// - 재질 유니폼 버퍼(`Vec<MaterialUniform>`)
-    ///
-    fn spawn_capture_zone(
-        world: &World,
-        model_pool: &ModelPool,
-        texture_data_pool: &TextureDataPool,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-    ) -> (Entity, Vec<(Entity, EntityBuilder)>) {
-        // 모델 풀 객체에서 점령 지역 모델 노드를 가져옵니다.
-        let root = model_pool
-            .get(CAPTURE_ZONE_URI)
-            .expect("the stage model must exist!");
-
-        // 엔터티를 하나 할당받습니다.
-        let entity = world.reserve_entity();
-        let mut builder = EntityBuilder::new();
-
-        // 컴포넌트 데이터를 준비합니다.
-        let local_transform = ToParentTrans::default();
-        let world_transform = WorldTransform::default();
-
-        // 컴포넌트를 추가합니다.
-        builder.add_bundle((local_transform, world_transform));
-
-        // 스테이지 모델을 구성하는 엔터티를 생성합니다.
-        let mut batch_commands = Vec::new();
-        let child = Self::spawn_capture_zone_recursive(
-            texture_data_pool,
-            device,
-            encoder,
-            staging_buffers,
-            &mut batch_commands,
-            world,
-            entity,
-            &root.node,
-            &[],
-        );
-
-        // 스테이지 모델 루트 노드를 추가합니다.
-        builder.add(Child(child));
-
-        // 엔터티 생성 명령어를 추가합니다.
-        batch_commands.push((entity, builder));
-
-        (entity, batch_commands)
-    }
-    /// 점령 지역을 구성하는 엔터티를 생성하는 재귀함수입니다.
-    ///
-    /// 생성된 엔터티는 아래 컴포넌트를 기본으로 가집니다.
-    /// - 부모 엔터티(`Parent`)
-    /// - 로컬 변환 행렬(`ToParentTrans`)
-    /// - 월드 변환 행렬(`WorldTransform`)
-    ///
-    /// 일부 엔터티는 아래 컴포넌트를 선택적으로 가집니다.
-    /// - 자식 엔터티(`Child`)
-    /// - 형제 엔터티(`Sibling`)
-    /// - 모델 메쉬(`Arc<Mesh>`)
-    /// - 메쉬 쉐이더 리소스(`MeshResource`)
-    /// - 변환 행렬 유니폼 버퍼(`TransformUniform`)
-    /// - 재질 쉐이더 리소스(`Vec<MaterialResource>`)
-    /// - 재질 유니폼 버퍼(`Vec<MaterialUniform>`)
-    ///
-    fn spawn_capture_zone_recursive(
-        texture_data_pool: &TextureDataPool,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-        batch_commands: &mut Vec<(Entity, EntityBuilder)>,
-        world: &World,
-        parent: Entity,
-        node: &ModelNode,
-        siblings: &[ModelNode],
-    ) -> Entity {
-        // 엔터티를 하나 할당받습니다.
-        let entity = world.reserve_entity();
-        let mut builder = EntityBuilder::new();
-
-        // 부모 엔터티, 로컬 변환 행렬, 월드 변환 행렬 컴포넌트를 추가합니다.
-        builder.add_bundle((
-            Parent(parent),
-            ToParentTrans(node.transform),
-            WorldTransform::default(),
-        ));
-
-        // 자식 노드가 존재하는 경우 자식 엔터티를 생성합니다.
-        if let Some(node) = node.children.first() {
-            // 자식 엔터티를 생성합니다.
-            let child = Self::spawn_capture_zone_recursive(
-                texture_data_pool,
-                device,
-                encoder,
-                staging_buffers,
-                batch_commands,
-                world,
-                entity,
-                node,
-                &node.children[1..],
-            );
-
-            // 자식 컴포넌트를 추가합니다.
-            builder.add(Child(child));
-        }
-
-        // 형제 노드가 존재하는 경우 형제 엔터티를 추가합니다.
-        if let Some(node) = siblings.first() {
-            // 형제 엔터티를 생성합니다.
-            let sibling = Self::spawn_capture_zone_recursive(
-                texture_data_pool,
-                device,
-                encoder,
-                staging_buffers,
-                batch_commands,
-                world,
-                parent,
-                node,
-                &siblings[1..],
-            );
-
-            // 형제 엔터티 컴포넌트를 추가합니다.
-            builder.add(Sibling(sibling));
-        }
-
-        // 노드에 메쉬 데이터가 존재하는 경우 메쉬 데이터를 추가합니다.
-        if let Some(mesh) = node.mesh.clone() {
-            // 메쉬 쉐이더 리소스를 생성합니다.
-            let transform_uniform = TransformUniform::uninit(None, device);
-            let mesh_resource = MeshResource::new(None, device, &transform_uniform);
-
-            // 메쉬, 메쉬 쉐이더 리소스, 등 컴포넌트를 추가합니다.
-            builder.add_bundle((mesh, transform_uniform, mesh_resource));
-        }
-
-        // 현제 노드에 재질 데이터가 존재하는 경우 재질 데이터를 추가합니다.
-        if !node.materials.is_empty() {
-            let (uniforms, materials): (Vec<_>, Vec<_>) = node
-                .materials
-                .iter()
-                .map(|data| {
-                    match data.deref() {
-                        MaterialData::CaptureZone(data) => {
-                            // 재질 쉐이더 유니폼 버퍼를 생성합니다.
-                            let data_layout = CaptureZoneMaterialDataLayout {
-                                color0: data.color0.into(),
-                                color1: data.color1.into(),
-                                ..Default::default()
-                            };
-                            let capture_zone_uniform =
-                                CaptureZoneMaterialUniform::new(None, device, data_layout);
-
-                            // 재질 쉐이더 리소스를 생성합니다.
-                            let material_resource = CaptureZoneMaterialResource::new(
-                                None,
-                                device,
-                                &capture_zone_uniform,
-                            );
-
-                            (
-                                MaterialUniform::CaptureZone {
-                                    data: data_layout,
-                                    buffer: capture_zone_uniform,
-                                },
-                                material_resource,
-                            )
-                        }
-                        _ => panic!("invalid material data!"),
-                    }
-                })
-                .unzip();
-
-            builder.add_bundle((uniforms, materials));
-        }
-
-        // 엔터티 생성 명령어를 추가합니다.
-        batch_commands.push((entity, builder));
-
-        entity
-    }
-
     /// 다음 게임 장면을 생성합니다.
     fn build_next_scene(&mut self, device: &Arc<wgpu::Device>) {
         let device = device.clone();
@@ -354,11 +153,9 @@ impl InGameBuildScene {
                 .get()
                 .expect("the stage layout data must exist!");
 
-            let num_players = packet.players.len();
-            let num_stages = stage_layout_data_ref.area.len() + stage_layout_data_ref.props.len();
-
             let player_entities: Arc<Queue<_>> = Arc::new(Queue::new());
-            let stage_entities: Arc<Queue<_>> = Arc::new(Queue::new());
+            let stage_result: Arc<SpinMutex<Option<StageBoundingVolumnHierarchy>>> =
+                Arc::new(SpinMutex::new(None));
             rayon::scope(|scope| {
                 {
                     // 플레이어 캐릭터 엔터티를 생성합니다.
@@ -394,88 +191,27 @@ impl InGameBuildScene {
 
                 // 스테이지 지형 엔터티를 생성합니다.
                 {
-                    let stages = stage_entities.clone();
+                    let stage_result = stage_result.clone();
                     scope.spawn(move |_| {
                         let mut staging_buffers = Vec::new();
                         let mut encoder = device_ref
                             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-                        for data in stage_layout_data_ref.area.iter() {
-                            let (entity, batch_command) = spawn_stage_area(
-                                world_ref,
-                                model_pool_ref,
-                                texture_data_pool_ref,
-                                data,
-                                device_ref,
-                                &mut encoder,
-                                &mut staging_buffers,
-                            );
-
-                            // 엔터티 생성 명령어를 전송합니다.
-                            batch_commands_ref.push(batch_command);
-
-                            // 지형 엔터티를 전송합니다.
-                            stages.push(entity);
-                        }
-
-                        // 렌더링 명령어를 전송합니다.
-                        commands_ref.push((encoder.finish(), staging_buffers));
-                    });
-                }
-
-                // 스테이지 장식물 엔터티를 생성합니다.
-                {
-                    let stages = stage_entities.clone();
-                    scope.spawn(move |_| {
-                        let mut staging_buffers = Vec::new();
-                        let mut encoder = device_ref
-                            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-                        for data in stage_layout_data_ref.props.iter() {
-                            let (entity, batch_command) = spawn_stage_prop(
-                                world_ref,
-                                model_pool_ref,
-                                texture_data_pool_ref,
-                                data,
-                                device_ref,
-                                &mut encoder,
-                                &mut staging_buffers,
-                            );
-
-                            // 엔터티 생성 명령어를 전송합니다.
-                            batch_commands_ref.push(batch_command);
-
-                            // 지형 엔터티를 전송합니다.
-                            stages.push(entity);
-                        }
-
-                        // 렌더링 명령어를 전송합니다.
-                        commands_ref.push((encoder.finish(), staging_buffers));
-                    });
-                }
-
-                // 스테이지 점령 지역 엔터티를 생성합니다.
-                {
-                    let stages = stage_entities.clone();
-                    scope.spawn(move |_| {
-                        let mut staging_buffers = Vec::new();
-                        let mut encoder = device_ref
-                            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-
-                        let (entity, batch_command) = Self::spawn_capture_zone(
+                        let (bvh, batch_commands) = build_stage(
                             world_ref,
                             model_pool_ref,
                             texture_data_pool_ref,
+                            stage_layout_data_ref,
                             device_ref,
                             &mut encoder,
                             &mut staging_buffers,
                         );
 
                         // 엔터티 생성 명령어를 전송합니다.
-                        batch_commands_ref.push(batch_command);
+                        batch_commands_ref.push(batch_commands);
 
                         // 지형 엔터티를 전송합니다.
-                        stages.push(entity);
+                        *stage_result.lock() = Some(bvh);
 
                         // 렌더링 명령어를 전송합니다.
                         commands_ref.push((encoder.finish(), staging_buffers));
@@ -529,19 +265,29 @@ impl InGameBuildScene {
             }
 
             // 플레이어 집합을 생성합니다.
-            let mut players = HashMap::with_capacity_and_hasher(num_players, RandomState::new());
+            let mut players =
+                HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new());
             while let Some((user_id, entity)) = player_entities.pop() {
                 players.insert(user_id, entity);
             }
 
-            // 지형 집합을 생성합니다.
-            let mut stages = Vec::with_capacity(num_stages);
-            while let Some(entity) = stage_entities.pop() {
-                stages.push(entity);
-            }
+            // 지형의 Bounding Volumn Hierarchy를 가져옵니다.
+            let stages = stage_result.lock().take().unwrap();
 
             // 조명 집합을 생성합니다
-            let lights = stage_layout_data_ref.lights.to_owned();
+            let global_light = stage_layout_data_ref.global_light.as_ref().map(|light| {
+                let (static_shadow_map_view, static_shadow_map_sampler) = texture_data_pool_ref
+                    .get(&light.shadow_map)
+                    .expect("the static shadow map must exist!");
+
+                GlobalLight {
+                    static_shadow_map_view,
+                    static_shadow_map_sampler,
+                    light_proj_view: light.light_proj_view.into(),
+                    direction_w: light.direction_w.into(),
+                    color: light.color.into(),
+                }
+            });
 
             // 다음 게임 장면을 생성합니다.
             let next_scene = InGameDominationModePrepareScene::new(
@@ -552,7 +298,7 @@ impl InGameBuildScene {
                 skybox,
                 players,
                 stages,
-                lights,
+                global_light,
                 mesh_pool,
                 model_pool,
                 motion_pool,
@@ -567,11 +313,16 @@ impl InGameBuildScene {
 }
 
 impl GameScene for InGameBuildScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         self.build_next_scene(app.render_device());
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
         let mut staging_buffers = Vec::new();
         let mut command_buffers = Vec::new();
         while let Some((commmand, buffer)) = self.commands.pop() {

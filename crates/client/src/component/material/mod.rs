@@ -25,8 +25,9 @@ pub enum MaterialKind {
     Character,
     CharacterEyeMouth,
     CharacterHalo,
-    Stage,
     CaptureZone,
+    Stage,
+    Tree,
 }
 
 /// 재질 데이터입니다.
@@ -37,8 +38,9 @@ pub enum MaterialData {
     Character(CharacterMaterialData),
     CharacterEyeMouth(EyeMouthMaterialData),
     CharacterHalo(HaloMaterialData),
-    Stage(StageMaterialData),
     CaptureZone(CaptureZoneMaterialData),
+    Stage(StageMaterialData),
+    Tree(TreeMaterialData),
 }
 
 /// 생성된 재질 데이터를 관리하는 풀 객체입니다.
@@ -184,11 +186,12 @@ pub enum MaterialUniform {
         buffer: EyeMouthMaterialUniform,
     },
     CharacterHalo(HaloMaterialUniform),
-    Stage(StageMaterialUniform),
     CaptureZone {
         data: CaptureZoneMaterialDataLayout,
         buffer: CaptureZoneMaterialUniform,
     },
+    Stage(StageMaterialUniform),
+    Tree(TreeMaterialUniform),
 }
 
 impl MaterialUniform {
@@ -203,8 +206,9 @@ impl MaterialUniform {
             MaterialUniform::Character(uniform) => uniform.slice(bounds),
             MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.slice(bounds),
             MaterialUniform::CharacterHalo(uniform) => uniform.slice(bounds),
-            MaterialUniform::Stage(uniform) => uniform.slice(bounds),
             MaterialUniform::CaptureZone { buffer, .. } => buffer.slice(bounds),
+            MaterialUniform::Stage(uniform) => uniform.slice(bounds),
+            MaterialUniform::Tree(uniform) => uniform.slice(bounds),
         }
     }
 
@@ -216,14 +220,15 @@ impl MaterialUniform {
             MaterialUniform::Character(uniform) => uniform.as_entire_binding(),
             MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.as_entire_binding(),
             MaterialUniform::CharacterHalo(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::Stage(uniform) => uniform.as_entire_binding(),
             MaterialUniform::CaptureZone { buffer, .. } => buffer.as_entire_binding(),
+            MaterialUniform::Stage(uniform) => uniform.as_entire_binding(),
+            MaterialUniform::Tree(uniform) => uniform.as_entire_binding(),
         }
     }
 }
 
 /// 재질 쉐이더 리소스입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MaterialResource {
     kind: MaterialKind,
     bind_group: Arc<wgpu::BindGroup>,

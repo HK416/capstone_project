@@ -14,6 +14,7 @@ use mod_network::{
         GamePlayStopPacket, InitStagePacket, Packet, PacketType, RawPacket,
     },
 };
+use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
@@ -101,7 +102,7 @@ impl CharacterFormationScene {
 }
 
 impl GameScene for CharacterFormationScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         // 메인 로비 배경화면 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -115,8 +116,7 @@ impl GameScene for CharacterFormationScene {
             .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
-        let mut egui_renderer = app.egui_renderer_mut();
-        let texture_id = egui_renderer.register_native_texture(
+        let texture_id = ui_renderer.register_native_texture(
             app.render_device(),
             &texture,
             wgpu::FilterMode::Linear,

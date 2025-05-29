@@ -3,6 +3,7 @@
 //!
 
 mod capture_zone;
+mod tree;
 
 use std::{
     num::NonZeroU64,
@@ -14,9 +15,19 @@ use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-pub use self::capture_zone::*;
+pub use self::{capture_zone::*, tree::*};
 
 use super::{MaterialKind, MaterialResource};
+
+/// 지형 재질 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct StageMaterialData {
+    pub uri: String,
+    pub glossiness: f32,
+    pub smoothness: f32,
+    pub metallic: f32,
+    pub main_color: String,
+}
 
 /// 지형 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
@@ -153,16 +164,6 @@ static_assertions::const_assert_eq!(
     core::mem::size_of::<StageMaterialDataLayout>()
 );
 
-/// 지형 재질 데이터입니다.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct StageMaterialData {
-    pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub main_color: String,
-}
-
 /// 지형 재질 쉐이더 리소스입니다.
 pub struct StageMaterialResource;
 
@@ -203,7 +204,7 @@ impl StageMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        stage_uniform: &StageMaterialUniform,
+        material_uniform: &StageMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
@@ -215,7 +216,7 @@ impl StageMaterialResource {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: stage_uniform.as_entire_binding(),
+                        resource: material_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

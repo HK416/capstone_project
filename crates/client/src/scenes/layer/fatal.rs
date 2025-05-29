@@ -4,6 +4,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::protocol::RawPacket;
+use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
@@ -50,8 +51,16 @@ impl GameScene for FatalErrorSceneLayer {
         true
     }
 
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
-        app.enable_cursor();
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn on_received_packet(

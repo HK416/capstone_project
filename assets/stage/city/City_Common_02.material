@@ -1,1 +1,9 @@
-{ "Stage": { "uri": "City_Common_02", "glossiness": 0.5, "smoothness": 0, "metallic": 0, "main_color": "City_Common_Atlas_02" } }
+{
+    "Stage": {
+        "uri": "City_Common_02",
+        "glossiness": 0.5,
+        "smoothness": 0,
+        "metallic": 0,
+        "main_color": "City_Common_Atlas_02"
+    }
+}

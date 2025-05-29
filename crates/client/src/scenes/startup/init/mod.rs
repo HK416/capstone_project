@@ -12,6 +12,7 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_render::UiRenderer;
 use rayon::ThreadPool;
 use winit::window::Window;
 
@@ -64,7 +65,7 @@ impl InitFinishScene {
 }
 
 impl GameScene for InitFinishScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         self.store_user_config(app.io_threads(), app.asset_manager());
     }
 

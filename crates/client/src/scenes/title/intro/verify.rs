@@ -4,6 +4,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
@@ -48,7 +49,7 @@ impl GameScene for GameIntroVerifyScene {
         true
     }
 
-    fn on_enter(&mut self, _window: &Window, _app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, _app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         // TODO: 현재 클라이언트 데이터 무결성 검사를 실행하고 있지 않습니다.
         log::warn!("현재 클라이언트 데이터 무결성 검사를 실행하고 있지 않습니다.");
         self.is_validate = true;

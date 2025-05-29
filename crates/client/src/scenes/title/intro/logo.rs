@@ -3,6 +3,7 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
@@ -50,7 +51,7 @@ impl GameIntroLogoScene {
 }
 
 impl GameScene for GameIntroLogoScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         // 게임 로고 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -64,8 +65,7 @@ impl GameScene for GameIntroLogoScene {
             .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
-        let mut egui_renderer = app.egui_renderer_mut();
-        let texture_id = egui_renderer.register_native_texture(
+        let texture_id = ui_renderer.register_native_texture(
             app.render_device(),
             &texture,
             wgpu::FilterMode::Linear,
@@ -78,10 +78,14 @@ impl GameScene for GameIntroLogoScene {
         };
     }
 
-    fn on_exit(&mut self, _window: Option<&Window>, app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
         // 등록된 텍스처를 해제합니다.
-        let mut egui_renderer = app.egui_renderer_mut();
-        egui_renderer.free_texture(&self.game_logo_texture_id.id);
+        ui_renderer.free_texture(&self.game_logo_texture_id.id);
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {

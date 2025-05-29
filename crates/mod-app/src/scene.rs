@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use mod_network::protocol::RawPacket;
+use mod_render::UiRenderer;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -45,12 +46,17 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 게임 장면에 진입할 때 한 번만 호출되는 콜백 함수입니다.
-    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle) {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         /* empty */
     }
 
     /// 게임 장면에서 빠져나올 때 한 번만 호출되는 콜백 함수입니다.
-    fn on_exit(&mut self, window: Option<&Window>, app: &dyn AppHandle) {
+    fn on_exit(
+        &mut self,
+        window: Option<&Window>,
+        app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
         /* empty */
     }
 
@@ -65,12 +71,12 @@ pub trait GameScene: Debug + Send {
     }
 
     /// 애플리케이션이 background로 이동될 때 호출되는 콜백 함수입니다.
-    fn on_enter_background(&mut self, app: &dyn AppHandle) {
+    fn on_enter_background(&mut self, window: &Window, app: &dyn AppHandle) {
         /* empty */
     }
 
     /// 애플리케이션이 foreground로 이동될 때 호출되는 콜백 함수입니다.
-    fn on_enter_foreground(&mut self, app: &dyn AppHandle) {
+    fn on_enter_foreground(&mut self, window: &Window, app: &dyn AppHandle) {
         /* empty */
     }
 
@@ -119,8 +125,6 @@ pub trait GameScene: Debug + Send {
     /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
     fn on_mouse_btn_pressed(
         &mut self,
-        x: f32,
-        y: f32,
         button: MouseButton,
         window: &Window,
         app: &dyn AppHandle,
@@ -133,8 +137,6 @@ pub trait GameScene: Debug + Send {
     /// `false`를 반환한 경우 하위 게임 장면에 이벤트가 전달됩니다.
     fn on_mouse_btn_released(
         &mut self,
-        x: f32,
-        y: f32,
         button: MouseButton,
         window: &Window,
         app: &dyn AppHandle,

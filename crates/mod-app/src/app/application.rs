@@ -1,5 +1,4 @@
 use std::{
-    cell::{RefCell, RefMut},
     collections::VecDeque,
     error::Error,
     path::{Path, PathBuf},
@@ -22,7 +21,7 @@ use crate::{
     error::{show_error_msg, Alert},
     etc::{AppEvent, AppFlags, GameTimer, WindowSize},
     ext::AppWindowExt,
-    net::{NetManager, NetworkError},
+    net::NetManager,
     scene::{GameScene, GameSceneFlow},
 };
 
@@ -73,13 +72,13 @@ pub struct Application {
     modifier: Modifiers,
 
     /// 커서의 이전 위치입니다.
-    cursor_delta: PhysicalPosition<f64>,
+    cursor_delta: Option<PhysicalPosition<f64>>,
 
     /// 게임 장면 스택을 제어하는 게임 장면 흐름입니다.
     scene_flow: VecDeque<GameSceneFlow>,
 
     /// 생성된 게임 장면을 관리하는 게임 장면 스택입니다.
-    scene_stack: RefCell<VecDeque<Box<dyn GameScene>>>,
+    scene_stack: Option<VecDeque<Box<dyn GameScene>>>,
 
     /// 업데이트 경과 시간을 측정하는 타이머입니다.
     timer: GameTimer,
@@ -88,7 +87,7 @@ pub struct Application {
     egui_ctx: egui::Context,
 
     /// `egui`의 렌더러입니다.
-    egui_renderer: RefCell<UiRenderer>,
+    egui_renderer: Option<UiRenderer>,
 
     /// `wgpu` 렌더링 인스턴스입니다.
     instance: Arc<wgpu::Instance>,
@@ -157,12 +156,12 @@ impl Application {
             fullscreen: builder.fullscreen,
             visible: builder.visible,
             modifier: Modifiers::default(),
-            cursor_delta: PhysicalPosition::default(),
+            cursor_delta: None,
             scene_flow: VecDeque::from_iter([GameSceneFlow::Reset(builder.start_scene)]),
-            scene_stack: RefCell::new(VecDeque::with_capacity(8)),
+            scene_stack: Some(VecDeque::with_capacity(8)),
             timer: GameTimer::start(),
             egui_ctx: egui::Context::default(),
-            egui_renderer: RefCell::new(UiRenderer::new(&device, SWAPCHAIN_FORMAT, None, 1, false)),
+            egui_renderer: Some(UiRenderer::new(&device, SWAPCHAIN_FORMAT, None, 1, false)),
             instance,
             adapter,
             device,
@@ -173,14 +172,11 @@ impl Application {
 
     fn draw(
         &self,
-        window: &Window,
-        egui_ctx: &egui::Context,
+        app_window: AppWindow,
+        mut scene_stack: VecDeque<Box<dyn GameScene>>,
+        mut egui_renderer: UiRenderer,
         egui_raw_input: egui::RawInput,
-        egui_renderer: &mut UiRenderer,
-        surface: &wgpu::Surface<'static>,
-        depth_buffer_view: &wgpu::TextureView,
-        scene_stack: &mut VecDeque<Box<dyn GameScene>>,
-    ) {
+    ) -> (AppWindow, VecDeque<Box<dyn GameScene>>, UiRenderer, bool) {
         // 그려야 하는 게임 장면의 시작 인덱스를 계산합니다.
         let mut begin = scene_stack.len();
         for scene in scene_stack.iter().rev() {
@@ -192,24 +188,27 @@ impl Application {
         }
 
         // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
+        let window = app_window.window.as_ref();
         for i in begin..scene_stack.len() {
-            scene_stack[i].on_prepare_draw(&window, self);
+            scene_stack[i].on_prepare_draw(window, self);
         }
 
         // UI 그리기 준비를 합니다.
         let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: window.inner_size().into(),
+            size_in_pixels: self.window_size.size().into(),
             pixels_per_point: window.scale_factor() as f32,
         };
 
-        egui_ctx.begin_pass(egui_raw_input);
+        // 각 장면의 Ui 콜백 함수를 호출합니다.
+        self.egui_ctx.begin_pass(egui_raw_input);
         for i in (begin..scene_stack.len()).rev() {
             scene_stack[i].ui_callback(window, self);
         }
-        let egui_full_output = egui_ctx.end_pass();
+        let egui_full_output = self.egui_ctx.end_pass();
 
-        let egui_primitive =
-            egui_ctx.tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
+        let egui_primitive = self
+            .egui_ctx
+            .tessellate(egui_full_output.shapes, egui_full_output.pixels_per_point);
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -227,17 +226,37 @@ impl Application {
         self.queue.submit(commands);
 
         // 이전 렌더링 작업이 끝날때 까지 대기합니다.
-        while !self.device.poll(wgpu::Maintain::Poll).is_queue_empty() {
+        loop {
             std::hint::spin_loop();
-            std::thread::yield_now();
+            let result = self.device.poll(wgpu::PollType::Poll);
+            match result {
+                Ok(status) => {
+                    if status.is_queue_empty() {
+                        break;
+                    } else {
+                        continue;
+                    }
+                }
+                Err(e) => match e {
+                    wgpu::PollError::Timeout => {
+                        log::error!("{e}");
+                        let title = "Processing Timeout".into();
+                        let message = "Graphics processing timeout exceeded!".into();
+                        let alert = Alert { title, message };
+                        show_error_msg(alert, Some(window));
+                        return (app_window, scene_stack, egui_renderer, false);
+                    }
+                },
+            }
         }
 
         // 현재 프레임 버퍼를 가져옵니다.
+        let surface = app_window.surface.as_ref();
         let frame = match surface.get_current_texture() {
             Ok(frame) => frame,
             Err(wgpu::SurfaceError::Timeout) => {
                 log::info!("frame skip >> swapchin needs to be refreshed.");
-                return;
+                return (app_window, scene_stack, egui_renderer, true);
             }
             Err(
                 wgpu::SurfaceError::Outdated
@@ -256,7 +275,7 @@ impl Application {
                         let message = "Failed to acquire next surface texture!".into();
                         let alert = Alert { title, message };
                         show_error_msg(alert, Some(window));
-                        std::process::exit(-1);
+                        return (app_window, scene_stack, egui_renderer, false);
                     }
                 }
             }
@@ -266,7 +285,7 @@ impl Application {
         if width != frame.texture.width() || height != frame.texture.height() {
             // 현재 스왑체인 텍스처 버퍼가 갱신이 필요한 경우 렌더링을 생략합니다.
             log::info!("frame skip >> swapchin needs to be refreshed.");
-            return;
+            return (app_window, scene_stack, egui_renderer, true);
         }
 
         // 렌더 타겟 뷰를 가져옵니다.
@@ -284,7 +303,7 @@ impl Application {
                 window,
                 &mut encoder,
                 &render_target_view,
-                depth_buffer_view,
+                &app_window.depth_buffer_view,
                 self,
             );
         }
@@ -326,6 +345,8 @@ impl Application {
         for i in begin..scene_stack.len() {
             scene_stack[i].on_finish_draw(&window, self);
         }
+
+        (app_window, scene_stack, egui_renderer, true)
     }
 }
 
@@ -334,11 +355,12 @@ impl ApplicationHandler<AppEvent> for Application {
         self.timer.tick();
     }
 
-    /// `winit` API는 애플리케이션이 생성되었을 때 `ApplicationHandler::resumed`를 호출합니다. </br>
-    /// 또한 일부 시스템(예: `Android`)은 애플리케이션 초기화 이전에 창을 생성하는 것이 허용되지 않습니다. </br>
-    /// 따라서 이 콜백 함수에서 애플리케이션 창을 생성하고, 렌더러 표면을 생성해야 합니다. </br>
-    ///
-    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // `winit` API는 애플리케이션이 생성되었을 때 `ApplicationHandler::resumed`를 호출합니다.
+        // 또한 일부 시스템(예: `Android`)은 애플리케이션 초기화 이전에 창을 생성하는 것이 허용되지 않습니다.
+        // 따라서 이 콜백 함수에서 애플리케이션 창을 생성하고, 렌더러 표면을 생성해야 합니다.
+        //
+
         // 시스템에서 사용 가능한 창의 최대 크기를 가져옵니다.
         let max_window_size = event_loop
             .primary_monitor()
@@ -400,8 +422,8 @@ impl ApplicationHandler<AppEvent> for Application {
         };
     }
 
-    /// 일반적으로 `Android` 시스템이 아닌경우 이 함수는 호출되지 않습니다.
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+        // 일반적으로 `Android` 시스템이 아닌경우 이 함수는 호출되지 않습니다.
         drop(self.app_window.take());
     }
 
@@ -413,39 +435,52 @@ impl ApplicationHandler<AppEvent> for Application {
             .map(|app_window| app_window.window.as_ref());
 
         // 게임 장면 스택을 정리합니다.
-        let mut scene_stack = self.scene_stack.borrow_mut();
-        clear_scene(&mut scene_stack, window, self);
+        let zip = self.scene_stack.take().zip(self.egui_renderer.take());
+        if let Some((mut scene_stack, mut ui_renderer)) = zip {
+            clear_scene(&mut ui_renderer, &mut scene_stack, window, self);
+        }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        // 애플리케이션 창을 가져옵니다.
-        // 애플리케이션 창이 존재하지 않는 경우 애플리케이션을 종료합니다.
-        let app_window = match self.app_window.as_ref() {
-            Some(app_window) => app_window,
+        // 애플리케이션 창과 장면 스택, 그리고 Ui 렌더러의 `소유권`을 가져옵니다.
+        // 애플리케이션 창 또는 장면 스택 또는 Ui 렌더러가 존재하지 않는 경우 애플리케이션을 종료합니다.
+        let zip = self
+            .app_window
+            .take()
+            .zip(self.scene_stack.take())
+            .zip(self.egui_renderer.take());
+        let ((app_window, mut scene_stack), mut ui_renderer) = match zip {
+            Some(it) => it,
             None => return event_loop.exit(),
         };
 
         // 게임 장면 스택을 갱신합니다.
         let window = app_window.window.as_ref();
-        let mut scene_stack = self.scene_stack.borrow_mut();
         while let Some(flow) = self.scene_flow.pop_front() {
             match flow {
-                GameSceneFlow::Clear => clear_scene(&mut scene_stack, Some(&window), self),
+                GameSceneFlow::Clear => {
+                    clear_scene(&mut ui_renderer, &mut scene_stack, Some(&window), self)
+                }
                 GameSceneFlow::Reset(new_scene) => {
-                    reset_scene(&mut scene_stack, &window, self, new_scene)
+                    reset_scene(&mut ui_renderer, &mut scene_stack, &window, self, new_scene)
                 }
                 GameSceneFlow::Change(new_scene) => {
-                    change_scene(&mut scene_stack, &window, self, new_scene)
+                    change_scene(&mut ui_renderer, &mut scene_stack, &window, self, new_scene)
                 }
                 GameSceneFlow::Push(new_scene) => {
-                    push_scene(&mut scene_stack, &window, self, new_scene)
+                    push_scene(&mut ui_renderer, &mut scene_stack, &window, self, new_scene)
                 }
-                GameSceneFlow::Pop => pop_scene(&mut scene_stack, &window, self),
+                GameSceneFlow::Pop => pop_scene(&mut ui_renderer, &mut scene_stack, &window, self),
             }
         }
 
         // 게임 장면이 존재하지 않는 경우 애플리케이션을 종료합니다.
         if scene_stack.is_empty() {
+            // 장면 스택과 Ui 렌더러의 소유권을 돌려 놓습니다. (생성된 게임 장면을 정리하기 위함)
+            self.scene_stack = Some(scene_stack);
+            self.egui_renderer = Some(ui_renderer);
+
+            // 이벤트 루프를 종료합니다.
             return event_loop.exit();
         }
 
@@ -482,6 +517,11 @@ impl ApplicationHandler<AppEvent> for Application {
 
         // 애플리케이션 창을 갱신합니다.
         window.request_redraw();
+
+        // 애플리케이션 창과 장면 스택, 그리고 Ui 렌더러의 `소유권`을 돌려놓습니다.
+        self.app_window = Some(app_window);
+        self.scene_stack = Some(scene_stack);
+        self.egui_renderer = Some(ui_renderer);
     }
 
     fn device_event(
@@ -490,52 +530,74 @@ impl ApplicationHandler<AppEvent> for Application {
         _device_id: winit::event::DeviceId,
         event: DeviceEvent,
     ) {
+        // 애플리케이션 창의 `소유권`을 가져옵니다.
+        // 애플리케이션 창이 존재하지 않는 경우 함수 실행을 생략합니다.
+        let mut app_window = match self.app_window.take() {
+            Some(app_window) => app_window,
+            None => {
+                log::debug!("device event ignored >> the current window is empty.");
+                return;
+            }
+        };
+
         match event {
             DeviceEvent::MouseMotion { delta } => {
-                if let Some(app_window) = self.app_window.as_ref() {
-                    let mut state = app_window.egui_state.borrow_mut();
-                    state.on_mouse_motion(delta);
+                // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
+                if app_window.focused {
+                    app_window.egui_state.on_mouse_motion(delta);
+
+                    match self.cursor_delta.as_mut() {
+                        Some(cursor_delta) => *cursor_delta = delta.into(),
+                        None => self.cursor_delta = Some(PhysicalPosition::default()),
+                    };
                 }
-                self.cursor_delta = delta.into();
             }
             _ => {}
         }
+
+        // 애플리케이션 창의 `소유권`을 돌려놓습니다.
+        self.app_window = Some(app_window);
     }
 
-    /// NOTE: 이 함수에서 이벤트 루프의 종료 함수를 호출할 경우 `panic!`이 발생합니다.
+    // NOTE: 이 함수에서 이벤트 루프의 종료 함수를 호출할 경우 `panic!`이 발생합니다.
     fn window_event(
         &mut self,
         _event_loop: &winit::event_loop::ActiveEventLoop,
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        // 애플리케이션 창을 가져옵니다.
-        // 애플리케이션 창이 존재하지 않는 경우 함수 실행을 생략합니다.
-        let app_window = match self.app_window.as_ref() {
-            Some(app_window) => app_window,
+        // 애플리케이션 창과 장면 스택의 `소유권`을 가져옵니다.
+        // 애플리케이션 창 또는 장면 스택이 존재하지 않는 경우 함수 실행을 생략합니다.
+        let zip = self.app_window.take().zip(self.scene_stack.take());
+        let (mut app_window, mut scene_stack) = match zip {
+            Some(it) => it,
             None => {
-                log::debug!("window event ignored >> the current window is empty.");
+                log::debug!("window event ignored >> the current window or scene stack is empty.");
                 return;
             }
         };
 
         // `winit` 윈도우 식별자가 다른 경우 함수 실행을 생략합니다.
         if window_id != app_window.window.id() {
+            // 애플리케이션 창과 장면 스택의 `소유권`을 돌려 놓습니다.
+            self.app_window = Some(app_window);
+            self.scene_stack = Some(scene_stack);
             return;
         }
 
-        // 게임 장면 스택을 가져옵니다.
         // 게임 장면 스택이 비어있는 경우 함수 실행을 생략합니다.
-        let mut scene_stack = self.scene_stack.borrow_mut();
         if scene_stack.is_empty() {
             log::debug!("window event ignored >> the current scene is empty.");
+            // 애플리케이션 창과 장면 스택의 `소유권`을 돌려 놓습니다.
+            self.app_window = Some(app_window);
+            self.scene_stack = Some(scene_stack);
             return;
         }
 
         // UI 인터페이스 윈도우를 갱신합니다.
-        let mut state = app_window.egui_state.borrow_mut();
-        let _ = state.on_window_event(&app_window.window, &event);
-        drop(state);
+        let _ = app_window
+            .egui_state
+            .on_window_event(&app_window.window, &event);
 
         // 윈도우 이벤트를 처리합니다.
         match event {
@@ -551,109 +613,113 @@ impl ApplicationHandler<AppEvent> for Application {
                 }
             }
             WindowEvent::CloseRequested => {
-                // Safe: 장면 스택이 비어있는지 확인함.
+                // Safety: 장면 스택이 비어있는지 확인함.
                 let current_scene = unsafe { scene_stack.back_mut().unwrap_unchecked() };
                 if current_scene.on_close_request(self) {
-                    self.app_window.take();
+                    // 장면 스택의 `소유권`을 돌려 놓습니다. (생성된 장면을 정리하기 위함)
+                    // 애플리케이션 창의 `소유권`은 돌려 놓지 않습니다. (현재 장면이 없는 경우 종료처리)
+                    self.scene_stack = Some(scene_stack);
                     return;
                 };
             }
             WindowEvent::Focused(focused) => {
-                // Safe: 장면 스택이 비어있는지 확인함.
+                // 애플리케이션 창의 주목 여부를 설정합니다.
+                app_window.focused = focused;
+                let window = app_window.window.as_ref();
+
+                // Safety: 장면 스택이 비어있는지 확인함.
                 let current_scene = unsafe { scene_stack.back_mut().unwrap_unchecked() };
                 if focused {
-                    current_scene.on_enter_foreground(self);
+                    current_scene.on_enter_foreground(window, self);
                 } else {
-                    current_scene.on_enter_background(self);
+                    current_scene.on_enter_background(window, self);
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if let PhysicalKey::Code(code) = event.physical_key {
-                    if event.state.is_pressed() {
-                        for scene in scene_stack.iter_mut().rev() {
-                            if scene.on_keyboard_pressed(
-                                code,
-                                event.location,
-                                self.modifier,
-                                event.repeat,
-                                &app_window.window,
-                                self,
-                            ) {
-                                break;
+                // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
+                if app_window.focused {
+                    if let PhysicalKey::Code(code) = event.physical_key {
+                        if event.state.is_pressed() {
+                            for scene in scene_stack.iter_mut().rev() {
+                                if scene.on_keyboard_pressed(
+                                    code,
+                                    event.location,
+                                    self.modifier,
+                                    event.repeat,
+                                    &app_window.window,
+                                    self,
+                                ) {
+                                    break;
+                                }
                             }
-                        }
-                    } else {
-                        for scene in scene_stack.iter_mut().rev() {
-                            if scene.on_keyboard_released(
-                                code,
-                                event.location,
-                                self.modifier,
-                                event.repeat,
-                                &app_window.window,
-                                self,
-                            ) {
-                                break;
+                        } else {
+                            for scene in scene_stack.iter_mut().rev() {
+                                if scene.on_keyboard_released(
+                                    code,
+                                    event.location,
+                                    self.modifier,
+                                    event.repeat,
+                                    &app_window.window,
+                                    self,
+                                ) {
+                                    break;
+                                }
                             }
                         }
                     }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                #[cfg(target_os = "windows")]
-                if app_window.get_cursor_disabled() {
-                    let (w, h): (u32, u32) = app_window.window.inner_size().into();
-                    let _ = app_window
-                        .window
-                        .set_cursor_position(PhysicalPosition::new(w / 2, h / 2));
-                }
+                // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
+                if app_window.focused {
+                    #[cfg(target_os = "windows")]
+                    if app_window.get_cursor_disabled() {
+                        let window = app_window.window.as_ref();
+                        let (w, h): (u32, u32) = window.inner_size().into();
+                        let _ = window.set_cursor_position(PhysicalPosition::new(w / 2, h / 2));
+                    }
 
-                let (dx, dy): (f32, f32) = self.cursor_delta.into();
-                for scene in scene_stack.iter_mut().rev() {
-                    if scene.on_cursor_moved(
-                        position.x as f32,
-                        position.y as f32,
-                        dx as f32,
-                        dy as f32,
-                        &app_window.window,
-                        self,
-                    ) {
-                        break;
+                    let (dx, dy): (f32, f32) = self.cursor_delta.unwrap_or_default().into();
+                    for scene in scene_stack.iter_mut().rev() {
+                        if scene.on_cursor_moved(
+                            position.x as f32,
+                            position.y as f32,
+                            dx as f32,
+                            dy as f32,
+                            &app_window.window,
+                            self,
+                        ) {
+                            break;
+                        }
                     }
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                if let MouseScrollDelta::LineDelta(dx, dy) = delta {
-                    for scene in scene_stack.iter_mut().rev() {
-                        if scene.on_mouse_wheel(dx, dy, &app_window.window, self) {
-                            break;
+                // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
+                if app_window.focused {
+                    if let MouseScrollDelta::LineDelta(dx, dy) = delta {
+                        for scene in scene_stack.iter_mut().rev() {
+                            if scene.on_mouse_wheel(dx, dy, &app_window.window, self) {
+                                break;
+                            }
                         }
                     }
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                let (x, y): (f64, f64) = self.cursor_delta.into();
-                if state.is_pressed() {
-                    for scene in scene_stack.iter_mut().rev() {
-                        if scene.on_mouse_btn_pressed(
-                            x as f32,
-                            y as f32,
-                            button,
-                            &app_window.window,
-                            self,
-                        ) {
-                            break;
+                // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
+                if app_window.focused {
+                    if state.is_pressed() {
+                        for scene in scene_stack.iter_mut().rev() {
+                            if scene.on_mouse_btn_pressed(button, &app_window.window, self) {
+                                break;
+                            }
                         }
-                    }
-                } else {
-                    for scene in scene_stack.iter_mut().rev() {
-                        if scene.on_mouse_btn_released(
-                            x as f32,
-                            y as f32,
-                            button,
-                            &app_window.window,
-                            self,
-                        ) {
-                            break;
+                    } else {
+                        for scene in scene_stack.iter_mut().rev() {
+                            if scene.on_mouse_btn_released(button, &app_window.window, self) {
+                                break;
+                            }
                         }
                     }
                 }
@@ -668,89 +734,105 @@ impl ApplicationHandler<AppEvent> for Application {
                 self.modifier = modifier;
             }
             WindowEvent::RedrawRequested => {
-                let mut state = app_window.egui_state.borrow_mut();
-                let egui_raw_input = state.take_egui_input(&app_window.window);
-                let mut egui_renderer = self.egui_renderer.borrow_mut();
-                let depth_buffer_view = app_window.depth_buffer_view.borrow();
-                self.draw(
-                    &app_window.window,
-                    &self.egui_ctx,
-                    egui_raw_input,
-                    &mut egui_renderer,
-                    &app_window.surface,
-                    &depth_buffer_view,
-                    &mut scene_stack,
-                )
+                // Ui 렌더러의 `소유권`을 가져옵니다.
+                let egui_renderer = match self.egui_renderer.take() {
+                    Some(it) => it,
+                    None => {
+                        log::debug!(
+                            "drawing event ignored >> the user interface renderer is empty."
+                        );
+                        // 장면 스택의 `소유권`을 돌려 놓습니다. (생성된 장면을 정리하기 위함)
+                        // 애플리케이션 창의 `소유권`은 돌려 놓지 않습니다. (현재 장면이 없는 경우 종료처리)
+                        self.scene_stack = Some(scene_stack);
+                        return;
+                    }
+                };
+
+                // egui::RawInput을 가져옵니다.
+                let egui_raw_input = app_window.egui_state.take_egui_input(&app_window.window);
+
+                // 게임 장면 그리기를 수행합니다.
+                let (app_window, scene_stack, egui_renderer, success) =
+                    self.draw(app_window, scene_stack, egui_renderer, egui_raw_input);
+
+                // 게임 장면 그리기에 성공한 경우
+                // 애플리케이션 창, 장면 스택, Ui 렌더러의 `소유권`을 돌려 놓습니다.
+                if success {
+                    self.app_window = Some(app_window);
+                    self.scene_stack = Some(scene_stack);
+                    self.egui_renderer = Some(egui_renderer);
+                }
+
+                return;
             }
             _ => {}
         };
+
+        // 애플리케이션 창, 장면 스택의 `소유권`을 돌려 놓습니다.
+        self.app_window = Some(app_window);
+        self.scene_stack = Some(scene_stack);
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
-        //     // 애플리케이션 창을 가져옵니다.
-        //     // 애플리케이션 창이 존재하지 않는 경우 함수 실행을 생략합니다.
-        //     let app_window = match self.app_window.as_ref() {
-        //         Some(app_window) => app_window,
-        //         None => return,
-        //     };
+        // 애플리케이션 창과 장면 스택의 `소유권`을 가져옵니다.
+        // 애플리케이션 창 또는 장면 스택이 존재하지 않는 경우 함수 실행을 생략합니다.
+        let zip = self.app_window.take().zip(self.scene_stack.take());
+        let (mut app_window, mut scene_stack) = match zip {
+            Some(it) => it,
+            None => {
+                log::debug!("window event ignored >> the current window or scene stack is empty.");
+                return;
+            }
+        };
 
-        //     // 현재 게임 장면을 가져옵니다.
-        //     // 현재 게임 장면이 존재하지 않는 경우 함수 실행을 생략합니다.
-        //     let mut scene_stack = self.scene_stack.borrow_mut();
-        //     let curr_scene = match scene_stack.back_mut() {
-        //         Some(curr_scene) => curr_scene,
-        //         None => return,
-        //     };
+        // 게임 장면 스택이 비어있는 경우 함수 실행을 생략합니다.
+        if scene_stack.is_empty() {
+            log::debug!("window event ignored >> the current scene is empty.");
+            // 애플리케이션 창, 장면 스택의 `소유권`을 돌려 놓습니다.
+            self.app_window = Some(app_window);
+            self.scene_stack = Some(scene_stack);
+            return;
+        }
 
         match event {
             AppEvent::AddGameSceneFlow(flow) => {
                 self.scene_flow.push_back(flow);
-                return;
             }
             AppEvent::ResizeRequest(request_size) => {
-                // 애플리케이션 창을 가져옵니다.
-                let app_window = match self.app_window.as_ref() {
-                    Some(app_window) => app_window,
-                    None => {
-                        log::warn!("app event ignored >> the window was not created!");
-                        return;
-                    }
-                };
-
-                // 현재 해상도와 같을 경우 이 이벤트를 무시합니다.
-                if self.window_size == request_size {
-                    return;
-                }
-
-                match app_window.window.request_inner_size(request_size.size()) {
-                    Some(result_size) => {
-                        if request_size.size() == result_size {
-                            // 창의 크기가 즉시 적용됐습니다.
-                            self.window_size = request_size;
-                            app_window.on_resized(&self.instance, &self.device);
-                        } else {
-                            log::warn!(
-                                "app event ignored >> the current system does not allow resizing the window!"
-                            );
+                // 요청 해상도가 현재 해상도와 다른 경우
+                // 윈도우 크기 변경 이벤트를 수행합니다.
+                if self.window_size != request_size {
+                    self.window_size = request_size;
+                    match app_window.window.request_inner_size(request_size.size()) {
+                        Some(result_size) => {
+                            if request_size.size() == result_size {
+                                // 창의 크기가 즉시 적용됐습니다.
+                                app_window.on_resized(&self.instance, &self.device);
+                            } else {
+                                log::warn!(
+                                    "app event ignored >> the current system does not allow resizing the window!"
+                                );
+                            }
                         }
-                    }
-                    None => {
-                        // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
+                        None => {
+                            // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
+                        }
                     }
                 };
             }
             AppEvent::FullScreenRequest(fullscreen) => {
-                // 애플리케이션 창을 가져옵니다.
-                let app_window = match self.app_window.as_ref() {
-                    Some(app_window) => app_window,
-                    None => {
-                        log::warn!("app event ignored >> the window was not created!");
-                        return;
-                    }
-                };
-
+                // 요청 전체 화면 여부가 현재 전체 화면 여부와 다른 경우
+                // 윈도우 전체 화면 변경 이벤트를 수행합니다.
                 if self.fullscreen != fullscreen {
                     self.fullscreen = fullscreen;
+
+                    // 윈도우 크기를 최대 윈도우 크기로 설정합니다.
+                    let window = app_window.window.as_ref();
+                    self.window_size = window
+                        .current_monitor()
+                        .map(|monitor| WindowSize::find_maximize_size(monitor))
+                        .flatten()
+                        .unwrap_or(WindowSize::MAX);
 
                     #[cfg(target_os = "macos")]
                     {
@@ -772,39 +854,18 @@ impl ApplicationHandler<AppEvent> for Application {
                     .as_ref()
                     .map(|app_wnd| app_wnd.window.as_ref());
                 show_error_msg(alert, parent);
+
+                // 장면 스택의 `소유권`을 돌려 놓습니다. (생성된 장면을 정리하기 위함)
+                // 애플리케이션 창의 `소유권`은 돌려 놓지 않습니다. (현재 장면이 없는 경우 종료처리)
+                self.scene_stack = Some(scene_stack);
+                return;
             }
             AppEvent::NetworkError(error) => {
-                let mut scene_stack = self.scene_stack.borrow_mut();
-                match scene_stack.back_mut() {
-                    Some(scene) => {
-                        scene.handle_network_error(error, self);
-                    }
-                    None => {
-                        let title = String::from("Network error");
-                        let message = match error {
-                            NetworkError::ClosedSocket(_) => {
-                                format!("The connection to the game server was lost.")
-                            }
-                            NetworkError::IO(e) => {
-                                format!("Socket I/O failed for the following reasons: {e}")
-                            }
-                        };
-                        let parent = self
-                            .app_window
-                            .as_ref()
-                            .map(|app_wnd| app_wnd.window.as_ref());
-                        show_error_msg(Alert { title, message }, parent);
-                    }
-                };
+                // Safety: 장면 스택이 비어있는지 확인함.
+                let current_scene = unsafe { scene_stack.back_mut().unwrap_unchecked() };
+                current_scene.handle_network_error(error, self);
             }
             AppEvent::PacketReceived(packet) => {
-                // 현재 애플리케이션 장면을 가져옵니다.
-                let mut scene_stack = self.scene_stack.borrow_mut();
-                if scene_stack.is_empty() {
-                    log::warn!("packet ignored >> the current game scene is empty!");
-                    return;
-                }
-
                 let mut temp = Some(packet);
                 for scene in scene_stack.iter_mut().rev() {
                     if let Some(packet) = temp.take() {
@@ -812,27 +873,36 @@ impl ApplicationHandler<AppEvent> for Application {
                     }
                 }
             }
+            AppEvent::CursorDisable => {
+                // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
+                if app_window.focused {
+                    let window = app_window.window.as_ref();
+                    let (w, h): (f64, f64) = window.inner_size().into();
+                    let _ = window.set_cursor_position(PhysicalPosition::new(w * 0.5, h * 0.5));
+                    self.cursor_delta = None;
+                    window.set_cursor_visible(false);
+                    window.confine_cursor_to_window(true);
+                    app_window.set_cursor_disable(true);
+                }
+            }
+            AppEvent::CursorEnable => {
+                // 현재 창이 주목받고 있는 경우 이벤트를 처리합니다.
+                if app_window.focused {
+                    let window = app_window.window.as_ref();
+                    window.set_cursor_visible(true);
+                    window.confine_cursor_to_window(false);
+                    app_window.set_cursor_disable(false);
+                }
+            }
         };
+
+        // 애플리케이션 창, 장면 스택의 `소유권`을 돌려 놓습니다.
+        self.app_window = Some(app_window);
+        self.scene_stack = Some(scene_stack);
     }
 }
 
 impl AppHandle for Application {
-    fn enable_cursor(&self) {
-        if let Some(app_window) = self.app_window.as_ref() {
-            app_window.window.set_cursor_visible(true);
-            app_window.window.confine_cursor_to_window(false);
-            app_window.set_cursor_disable(false);
-        }
-    }
-
-    fn disable_cursor(&self) {
-        if let Some(app_window) = self.app_window.as_ref() {
-            app_window.window.set_cursor_visible(false);
-            app_window.window.confine_cursor_to_window(true);
-            app_window.set_cursor_disable(true);
-        }
-    }
-
     fn event_loop_proxy(&self) -> &Arc<EventLoopProxy<AppEvent>> {
         &self.event_loop_proxy
     }
@@ -892,48 +962,24 @@ impl AppHandle for Application {
     fn egui_ctx(&self) -> &egui::Context {
         &self.egui_ctx
     }
-
-    fn egui_raw_input(&self) -> egui::RawInput {
-        self.app_window
-            .as_ref()
-            .map(|app_window| {
-                let mut state = app_window.egui_state.borrow_mut();
-                state.take_egui_input(&app_window.window)
-            })
-            .unwrap_or_default()
-    }
-
-    fn egui_renderer_mut(&self) -> RefMut<'_, UiRenderer> {
-        self.egui_renderer.borrow_mut()
-    }
-
-    fn window(&self) -> Option<&Arc<Window>> {
-        self.app_window
-            .as_ref()
-            .map(|app_window| &app_window.window)
-    }
-
-    fn render_surface(&self) -> Option<&Arc<wgpu::Surface<'static>>> {
-        self.app_window
-            .as_ref()
-            .map(|app_window| &app_window.surface)
-    }
 }
 
 /// 모든 게임 장면을 제거합니다.
 fn clear_scene(
+    ui_renderer: &mut UiRenderer,
     stack: &mut VecDeque<Box<dyn GameScene>>,
     window: Option<&Window>,
     app: &dyn AppHandle,
 ) {
     while let Some(mut scene) = stack.pop_back() {
         log::info!("Exit GameScene({:?})", &scene);
-        scene.on_exit(window, app);
+        scene.on_exit(window, app, ui_renderer);
     }
 }
 
 /// 모든 게임 장면을 제거하고, 새로운 게임 장면을 추가합니다.
 fn reset_scene(
+    ui_renderer: &mut UiRenderer,
     stack: &mut VecDeque<Box<dyn GameScene>>,
     window: &Window,
     app: &dyn AppHandle,
@@ -941,16 +987,17 @@ fn reset_scene(
 ) {
     while let Some(mut scene) = stack.pop_back() {
         log::info!("Exit GameScene({:?})", &scene);
-        scene.on_exit(Some(window), app);
+        scene.on_exit(Some(window), app, ui_renderer);
     }
 
     log::info!("Enter GameScene({:?})", &new_scene);
-    new_scene.on_enter(window, app);
+    new_scene.on_enter(window, app, ui_renderer);
     stack.push_back(new_scene);
 }
 
 /// 현재 게임 장면을 제거하고, 새로운 게임 장면을 추가합니다.
 fn change_scene(
+    ui_renderer: &mut UiRenderer,
     stack: &mut VecDeque<Box<dyn GameScene>>,
     window: &Window,
     app: &dyn AppHandle,
@@ -958,16 +1005,17 @@ fn change_scene(
 ) {
     if let Some(mut scene) = stack.pop_back() {
         log::info!("Exit GameScene({:?})", &scene);
-        scene.on_exit(Some(window), app);
+        scene.on_exit(Some(window), app, ui_renderer);
     }
 
     log::info!("Enter GameScene({:?})", &new_scene);
-    new_scene.on_enter(window, app);
+    new_scene.on_enter(window, app, ui_renderer);
     stack.push_back(new_scene);
 }
 
 /// 새로운 게임 장면을 초기화하고, 추가합니다.
 fn push_scene(
+    ui_renderer: &mut UiRenderer,
     stack: &mut VecDeque<Box<dyn GameScene>>,
     window: &Window,
     app: &dyn AppHandle,
@@ -979,15 +1027,20 @@ fn push_scene(
     }
 
     log::info!("Enter GameScene({:?})", &new_scene);
-    new_scene.on_enter(window, app);
+    new_scene.on_enter(window, app, ui_renderer);
     stack.push_back(new_scene);
 }
 
 /// 현재 장면을 정리하고, 제거합니다.
-fn pop_scene(stack: &mut VecDeque<Box<dyn GameScene>>, window: &Window, app: &dyn AppHandle) {
+fn pop_scene(
+    ui_renderer: &mut UiRenderer,
+    stack: &mut VecDeque<Box<dyn GameScene>>,
+    window: &Window,
+    app: &dyn AppHandle,
+) {
     if let Some(mut scene) = stack.pop_back() {
         log::info!("Exit GameScene({:?})", &scene);
-        scene.on_exit(Some(window), app);
+        scene.on_exit(Some(window), app, ui_renderer);
     }
     if let Some(scene) = stack.back_mut() {
         log::info!("Resume GameScene({:?})", &scene);

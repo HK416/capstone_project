@@ -129,6 +129,9 @@ impl SessionState for SessionFormationState {
                 PacketType::FormationSelect => {
                     self.handle_formation_select_packet(session, packet);
                 }
+                PacketType::CustomGameReady => {
+                    // 뒤늦게 도착할수있음
+                }
                 _ => {
                     log::warn!(
                         "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

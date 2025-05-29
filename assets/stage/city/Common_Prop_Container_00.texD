@@ -1,0 +1,1 @@
+{ "uri": "Common_Prop_Container_00", "width": 256, "height": 256, "depth_or_array_layers": 1, "mip_level_count": 9, "sample_count": 1, "format": "Bc7RgbaUnormSrgb", "dimension": "D2", "address_u": "ClampToEdge", "address_v": "ClampToEdge", "address_w": "ClampToEdge", "filter_mode": "Linear" }

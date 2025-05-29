@@ -16,6 +16,7 @@ struct VertexOutput {
 // 프래그먼트 쉐이더 출력 데이터입니다.
 struct RenderTarget {
     @location(0) color: vec4<f32>,
+    @location(1) bloom: vec4<f32>,
 };
 
 // Skybox 데이터 레이아웃입니다.
@@ -51,6 +52,7 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
 
     out.color = textureSample(t_skybox, s_skybox, input.texcoord);
+    out.bloom = vec4<f32>(0.0, 0.0, 0.0, 0.0);
 
     return out;
 }

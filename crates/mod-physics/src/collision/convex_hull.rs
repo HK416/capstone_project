@@ -98,7 +98,7 @@ pub trait ConvexHull {
 
             loop_count += 1;
             if loop_count > 100 {
-                println!("gjk loop count exceeded");
+                // println!("gjk loop count exceeded");
                 break;
             }
         }
@@ -202,7 +202,7 @@ pub trait ConvexHull {
 
             loop_count += 1;
             if loop_count > 25 {
-                println!("epa loop count exceeded");
+                // println!("epa loop count exceeded");
                 return Some(collision_info);
             }
         }

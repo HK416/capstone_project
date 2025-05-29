@@ -1,1 +1,1 @@
-{ "uri": "Aris_Original_Body", "width": 256, "height": 256, "depth_or_array_layers": 1, "mip_level_count": 9, "sample_count": 1, "format": "Bc7RgbaUnorm", "dimension": "D2", "address_u": "Repeat", "address_v": "Repeat", "address_w": "Repeat", "filter_mode": "Linear" }
+{ "uri": "Aris_Original_Body", "width": 256, "height": 256, "depth_or_array_layers": 1, "mip_level_count": 9, "sample_count": 1, "format": "Bc7RgbaUnormSrgb", "dimension": "D2", "address_u": "Repeat", "address_v": "Repeat", "address_w": "Repeat", "filter_mode": "Linear" }

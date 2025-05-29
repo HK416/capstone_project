@@ -143,6 +143,9 @@ impl SessionState for SessionRoomState {
                 PacketType::CustomGameReady => {
                     self.handle_custom_game_ready_packet(session, packet);
                 }
+                PacketType::FormationSelect => {
+                    // FormationState에서 돌아온 후 뒤늦게 도착할수있음
+                }
                 _ => {
                     log::warn!(
                         "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

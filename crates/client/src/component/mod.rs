@@ -1,9 +1,9 @@
 mod bullet;
 mod camera;
-mod capture_zone;
 mod character;
 mod control;
 mod damage_font;
+mod deferred;
 mod hierarchy;
 mod light;
 mod material;
@@ -11,15 +11,14 @@ mod mesh;
 mod skybox;
 mod stage;
 mod transform;
-mod weighted_blended_oit;
 
 use std::sync::Arc;
 
 use ahash::HashMap;
 
 pub use self::{
-    bullet::*, camera::*, capture_zone::*, character::*, control::*, damage_font::*, hierarchy::*,
-    light::*, material::*, mesh::*, skybox::*, stage::*, transform::*, weighted_blended_oit::*,
+    bullet::*, camera::*, character::*, control::*, damage_font::*, deferred::*, hierarchy::*,
+    light::*, material::*, mesh::*, skybox::*, stage::*, transform::*,
 };
 
 pub enum MeshFilter {
@@ -36,11 +35,12 @@ impl MeshFilter {
     }
 }
 
-pub type BakeList = Vec<ShadowResource>;
-pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter)>>;
-pub type OpaqueMap = HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter, MaterialResource)>>;
+pub type BakeList = Vec<(Arc<ShadowResource>, ShadowMap)>;
+pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), HashMap<usize, Vec<MeshFilter>>>;
+pub type OpaqueMap =
+    HashMap<(Arc<Mesh>, MaterialKind), HashMap<(usize, MaterialResource), Vec<MeshFilter>>>;
 pub type TransparentMap =
-    HashMap<(Arc<Mesh>, MaterialKind), Vec<(usize, MeshFilter, MaterialResource)>>;
+    HashMap<(Arc<Mesh>, MaterialKind), HashMap<(usize, MaterialResource), Vec<MeshFilter>>>;
 pub type MeshRenderer<'a> = (
     &'a Arc<Mesh>,
     &'a MeshResource,

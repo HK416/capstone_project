@@ -27,6 +27,7 @@ pub struct CharacterMaterialData {
     pub smoothness: f32,
     pub metallic: f32,
     pub main_color: String,
+    pub detail_mask: String,
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
@@ -206,6 +207,24 @@ impl CharacterMaterialResource {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    // 3번 바인딩: 마스킹 텍스처
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 4번 바인딩: 마스킹 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             })
         })
@@ -218,6 +237,8 @@ impl CharacterMaterialResource {
         character_uniform: &CharacterMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
+        detail_mask_view: &wgpu::TextureView,
+        detail_mask_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
         MaterialResource {
             kind: MaterialKind::Character,
@@ -236,6 +257,14 @@ impl CharacterMaterialResource {
                     wgpu::BindGroupEntry {
                         binding: 2,
                         resource: wgpu::BindingResource::Sampler(main_color_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(detail_mask_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(detail_mask_sampler),
                     },
                 ],
             })),

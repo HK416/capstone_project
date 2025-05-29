@@ -1,0 +1,1 @@
+{ "uri": "City_Shadow", "width": 4096, "height": 4096, "depth_or_array_layers": 1, "mip_level_count": 1, "sample_count": 1, "format": "Bc4RUnorm", "dimension": "D2", "address_u": "ClampToEdge", "address_v": "ClampToEdge", "address_w": "ClampToEdge", "filter_mode": "Linear" }

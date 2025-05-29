@@ -60,13 +60,13 @@ pub const VICTORY_START_DURATION: f32 = 3.0;
 pub const VICTORY_END_DURATION: f32 = 3.2;
 
 /// 캐릭터 모델의 카메라 기본 위치입니다.
-pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 1.5);
+pub const CAMERA_IDLE_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.85, 2.0);
 /// 캐릭터 모델의 카메라 줌 위치입니다.
 pub const CAMERA_ZOOM_POSITION: glam::Vec3A = glam::vec3a(0.25, 0.7, 0.15);
 /// 캐릭터 모델의 카메라 기본 Fov-y 라디안 각도입니다.
-pub const CAMERA_IDLE_FOV_Y: f32 = 75f32.to_radians();
+pub const CAMERA_IDLE_FOV_Y: f32 = 45f32.to_radians();
 /// 캐릭터 모델의 카메라 줌 Fov-y 라디안 각도 입니다.
-pub const CAMERA_ZOOM_FOV_Y: f32 = 65f32.to_radians();
+pub const CAMERA_ZOOM_FOV_Y: f32 = 35f32.to_radians();
 
 /// `Bip001_Head`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
 pub const HEAD_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 =
@@ -497,12 +497,19 @@ fn spawn_character_model_recursive(
                             .get(&data.main_color)
                             .expect("the texture data must exist!");
 
+                        // 캐릭터 마스킹 텍스처를 가져옵니다.
+                        let (detail_mask_view, detail_mask_sampler) = texture_data_pool
+                            .get(&data.detail_mask)
+                            .expect("the texture data must exist!");
+
                         let material_resource = CharacterMaterialResource::new(
                             label,
                             device,
                             &character_uniform,
                             &main_color_view,
                             &main_color_sampler,
+                            &detail_mask_view,
+                            &detail_mask_sampler,
                         );
 
                         (

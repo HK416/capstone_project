@@ -297,6 +297,43 @@ impl Into<glam::Quat> for Float4 {
     }
 }
 
+/// 4x4 행렬
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Float4x4 {
+    pub m00: f32,
+    pub m01: f32,
+    pub m02: f32,
+    pub m03: f32,
+    pub m10: f32,
+    pub m11: f32,
+    pub m12: f32,
+    pub m13: f32,
+    pub m20: f32,
+    pub m21: f32,
+    pub m22: f32,
+    pub m23: f32,
+    pub m30: f32,
+    pub m31: f32,
+    pub m32: f32,
+    pub m33: f32,
+}
+
+impl Into<[f32; 16]> for Float4x4 {
+    fn into(self) -> [f32; 16] {
+        [
+            self.m00, self.m01, self.m02, self.m03, self.m10, self.m11, self.m12, self.m13,
+            self.m20, self.m21, self.m22, self.m23, self.m30, self.m31, self.m32, self.m33,
+        ]
+    }
+}
+
+impl Into<glam::Mat4> for Float4x4 {
+    fn into(self) -> glam::Mat4 {
+        let m: [f32; 16] = self.into();
+        glam::Mat4::from_cols_array(&m)
+    }
+}
+
 /// 4차원 정수형 벡터
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct Uint4 {

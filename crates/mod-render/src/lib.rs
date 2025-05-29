@@ -31,15 +31,16 @@ fn create_instance() -> Arc<wgpu::Instance> {
     #[allow(unused_mut)]
     let mut desc = wgpu::InstanceDescriptor::default();
 
-    #[cfg(feature = "enable-debug-layer")]
-    {
+    if cfg!(feature = "enable-debug-layer") {
         desc.flags |= wgpu::InstanceFlags::debugging();
+    } else {
+        desc.flags |= wgpu::InstanceFlags::empty();
     }
 
     #[cfg(target_os = "windows")]
     {
         desc.backends = wgpu::Backends::DX12;
-        desc.backend_options = wgpu::BackendOptions::from_env_or_default()
+        desc.backend_options = wgpu::BackendOptions::from_env_or_default();
     }
     #[cfg(target_os = "macos")]
     {
@@ -60,7 +61,7 @@ async fn create_adapter(instance: &wgpu::Instance) -> Result<Arc<wgpu::Adapter>,
         })
         .await
         .map(|adapter| Arc::new(adapter))
-        .ok_or(WgpuInitError::NoSuitableAdapter)
+        .map_err(|_| WgpuInitError::NoSuitableAdapter)
 }
 
 /// 적절한 `wgpu` 논리적 장치와 명령 대기열을 생성합니다.  
@@ -82,7 +83,7 @@ async fn create_device_and_queue(
     }
 
     adapter
-        .request_device(&desc, None)
+        .request_device(&desc)
         .await
         .map(|(device, queue)| (Arc::new(device), Arc::new(queue)))
         .map_err(|e| WgpuInitError::from(e))

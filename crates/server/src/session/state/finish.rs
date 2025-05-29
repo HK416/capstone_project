@@ -64,7 +64,7 @@ impl SessionState for SessionFinishState {
             if !self.is_running && session.packet_canceled() {
                 continue;
             }
-            
+
             let packet_type = packet.packet_type();
             match packet_type {
                 PacketType::FinishStageResponse => {

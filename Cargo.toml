@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.86"
 description = "2024년 한국공학대학교 게임공학과 졸업작품"
 authors = [
     "HK416 <powerspirit127@gmail.com>", 
@@ -114,7 +114,7 @@ thiserror = "2.0"
 
 # Rusty WebGPU API wrapper
 # License: MIT OR Apache-2.0
-wgpu = "24"
+wgpu = "25"
 
 # Cross-platform window creation library.
 # License: Apache-2.0

@@ -1,17 +1,19 @@
+#![allow(dead_code)]
 //! 일반 총알과 관련된 그래픽스, 컴퓨트 파이프라인 코드를 관리합니다.
 //!
 
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use crate::component::{
-    BulletMaterialResource, CameraResource, MeshResource, WeightedBlendedOITResource,
+    AccumRenderTarget, BrightRenderTarget, BulletMaterialResource, CameraResource,
+    LightSetResource, MeshResource, RevealRenderTarget,
 };
 
 /// 일반 총알을 투명하게 그리는 그래픽스 파이프라인입니다.
 pub struct BulletRenderPipelineTransparency;
 
 /// 일반 총알을 투명하게 그리는 그래픽스 파이프라인 인스턴스입니다.
-static PIPELINE: OnceLock<Arc<wgpu::RenderPipeline>> = OnceLock::new();
+static PIPELINE: OnceLock<wgpu::RenderPipeline> = OnceLock::new();
 
 impl BulletRenderPipelineTransparency {
     /// [wgpu::ShaderModule]을 반환합니다.
@@ -38,6 +40,7 @@ impl BulletRenderPipelineTransparency {
                 CameraResource::bind_group_layout(device),
                 MeshResource::bind_group_layout(device),
                 BulletMaterialResource::bind_group_layout(device),
+                LightSetResource::bind_group_layout(device),
             ],
             push_constant_ranges: &[],
         })
@@ -45,113 +48,115 @@ impl BulletRenderPipelineTransparency {
 
     /// 렌더링 파이프라인을 가져옵니다.  
     /// 렌더링 파이프라인이 초기화되지 않은 상태일 경우 `None`을 반환합니다.
-    pub fn get() -> Option<Arc<wgpu::RenderPipeline>> {
-        PIPELINE.get().cloned()
+    pub fn get() -> Option<&'static wgpu::RenderPipeline> {
+        PIPELINE.get()
     }
 
     /// 렌더링 파이프라인을 가져오거나 초기화합니다.
     pub fn get_or_init(
         device: &wgpu::Device,
         depth_stencil_format: wgpu::TextureFormat,
-    ) -> Arc<wgpu::RenderPipeline> {
-        PIPELINE
-            .get_or_init(|| {
-                let module = Self::create_shader_module(device);
-                let layout = Self::create_pipeline_layout(device);
-                Arc::new(
-                    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                        label: Some("RenderPipeline(BulletTransparency)"),
-                        layout: Some(&layout),
-                        vertex: wgpu::VertexState {
-                            module: &module,
-                            entry_point: Some("vs_main"),
-                            buffers: &[
-                                // 0번 입력 속성: 위치
-                                wgpu::VertexBufferLayout {
-                                    array_stride: core::mem::size_of::<[f32; 3]>()
-                                        as wgpu::BufferAddress,
-                                    attributes: &[wgpu::VertexAttribute {
-                                        offset: 0,
-                                        shader_location: 0,
-                                        format: wgpu::VertexFormat::Float32x3,
-                                    }],
-                                    step_mode: wgpu::VertexStepMode::Vertex,
-                                },
-                                // 1번 입력 속성: 노멀
-                                wgpu::VertexBufferLayout {
-                                    array_stride: core::mem::size_of::<[f32; 3]>()
-                                        as wgpu::BufferAddress,
-                                    attributes: &[wgpu::VertexAttribute {
-                                        offset: 0,
-                                        shader_location: 1,
-                                        format: wgpu::VertexFormat::Float32x3,
-                                    }],
-                                    step_mode: wgpu::VertexStepMode::Vertex,
-                                },
-                            ],
-                            compilation_options: wgpu::PipelineCompilationOptions {
-                                ..Default::default()
-                            },
+    ) -> &'static wgpu::RenderPipeline {
+        PIPELINE.get_or_init(|| {
+            let module = Self::create_shader_module(device);
+            let layout = Self::create_pipeline_layout(device);
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("RenderPipeline(BulletTransparency)"),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs_main"),
+                    buffers: &[
+                        // 0번 입력 속성: 위치
+                        wgpu::VertexBufferLayout {
+                            array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                            attributes: &[wgpu::VertexAttribute {
+                                offset: 0,
+                                shader_location: 0,
+                                format: wgpu::VertexFormat::Float32x3,
+                            }],
+                            step_mode: wgpu::VertexStepMode::Vertex,
                         },
-                        primitive: wgpu::PrimitiveState {
-                            cull_mode: Some(wgpu::Face::Back),
-                            front_face: wgpu::FrontFace::Cw,
-                            topology: wgpu::PrimitiveTopology::TriangleList,
-                            polygon_mode: wgpu::PolygonMode::Fill,
-                            ..Default::default()
+                        // 1번 입력 속성: 노멀
+                        wgpu::VertexBufferLayout {
+                            array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                            attributes: &[wgpu::VertexAttribute {
+                                offset: 0,
+                                shader_location: 1,
+                                format: wgpu::VertexFormat::Float32x3,
+                            }],
+                            step_mode: wgpu::VertexStepMode::Vertex,
                         },
-                        depth_stencil: Some(wgpu::DepthStencilState {
-                            depth_compare: wgpu::CompareFunction::Less,
-                            depth_write_enabled: true,
-                            format: depth_stencil_format,
-                            stencil: wgpu::StencilState::default(),
-                            bias: wgpu::DepthBiasState::default(),
+                    ],
+                    compilation_options: wgpu::PipelineCompilationOptions {
+                        ..Default::default()
+                    },
+                },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: Some(wgpu::Face::Back),
+                    front_face: wgpu::FrontFace::Cw,
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_write_enabled: true,
+                    format: depth_stencil_format,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some("fs_transparency_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &[
+                        // 0번 렌더 타겟: 누적 값 렌더 타겟
+                        Some(wgpu::ColorTargetState {
+                            blend: Some(wgpu::BlendState {
+                                color: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::One,
+                                    dst_factor: wgpu::BlendFactor::One,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                                alpha: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::One,
+                                    dst_factor: wgpu::BlendFactor::One,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                            }),
+                            format: AccumRenderTarget::FORMAT,
+                            write_mask: wgpu::ColorWrites::ALL,
                         }),
-                        multisample: wgpu::MultisampleState::default(),
-                        fragment: Some(wgpu::FragmentState {
-                            module: &module,
-                            entry_point: Some("fs_transparency_main"),
-                            compilation_options: wgpu::PipelineCompilationOptions::default(),
-                            targets: &[
-                                Some(wgpu::ColorTargetState {
-                                    blend: Some(wgpu::BlendState {
-                                        color: wgpu::BlendComponent {
-                                            src_factor: wgpu::BlendFactor::One,
-                                            dst_factor: wgpu::BlendFactor::One,
-                                            operation: wgpu::BlendOperation::Add,
-                                        },
-                                        alpha: wgpu::BlendComponent {
-                                            src_factor: wgpu::BlendFactor::One,
-                                            dst_factor: wgpu::BlendFactor::One,
-                                            operation: wgpu::BlendOperation::Add,
-                                        },
-                                    }),
-                                    format: WeightedBlendedOITResource::ACCUM_FORMAT,
-                                    write_mask: wgpu::ColorWrites::ALL,
-                                }),
-                                Some(wgpu::ColorTargetState {
-                                    blend: Some(wgpu::BlendState {
-                                        color: wgpu::BlendComponent {
-                                            src_factor: wgpu::BlendFactor::Zero,
-                                            dst_factor: wgpu::BlendFactor::OneMinusSrc,
-                                            operation: wgpu::BlendOperation::Add,
-                                        },
-                                        alpha: wgpu::BlendComponent {
-                                            src_factor: wgpu::BlendFactor::Zero,
-                                            dst_factor: wgpu::BlendFactor::OneMinusSrc,
-                                            operation: wgpu::BlendOperation::Add,
-                                        },
-                                    }),
-                                    format: WeightedBlendedOITResource::REVEAL_FORMAT,
-                                    write_mask: wgpu::ColorWrites::ALL,
-                                }),
-                            ],
+                        // 1번 렌더 타겟: 노출 값 렌더 타겟
+                        Some(wgpu::ColorTargetState {
+                            blend: Some(wgpu::BlendState {
+                                color: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::Zero,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                                alpha: wgpu::BlendComponent {
+                                    src_factor: wgpu::BlendFactor::Zero,
+                                    dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                                    operation: wgpu::BlendOperation::Add,
+                                },
+                            }),
+                            format: RevealRenderTarget::FORMAT,
+                            write_mask: wgpu::ColorWrites::ALL,
                         }),
-                        multiview: None,
-                        cache: None,
-                    }),
-                )
+                        // 2번 렌더 타겟: 발광체 색상 렌더 타겟
+                        Some(wgpu::ColorTargetState {
+                            blend: None,
+                            format: BrightRenderTarget::FORMAT,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }),
+                    ],
+                }),
+                multiview: None,
+                cache: None,
             })
-            .clone()
+        })
     }
 }

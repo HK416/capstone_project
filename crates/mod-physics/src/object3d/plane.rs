@@ -1,3 +1,5 @@
+use glam::Vec4Swizzles;
+
 /// 평면을 나타내는 구조체입니다.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Plane {
@@ -34,9 +36,11 @@ impl Plane {
 
     /// 4차원 벡터로부터 평면을 생성합니다.
     pub fn from_vec4(v: glam::Vec4) -> Self {
-        let normal = v.truncate();
+        let normal = v.xyz();
         let d = v.w;
-        Self::new(normal.normalize(), d)
+
+        let len = normal.length();
+        Self::new(normal / len, d / len)
     }
 
     /// 주어진 점과 평면 사이의 거리를 반환합니다.
