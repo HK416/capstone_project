@@ -364,3 +364,35 @@
  - 맵 업그레이드
  - Frustrum Culling, HD-Tree 추가
 
+2025-05-29
+-------------
+0. 중간발표 통과
+1. 진행상황
+ - 맵 디테일 업
+ - 그림자 구현 효율화
+ - Blooming 추가
+ - 더미 클라이언트 구현 : 동접 500
+ - Frustrum Culling
+2. 최적화
+ - Occlusion Culling : https://aayushsoni92.medium.com/culling-in-game-development-710e12c347d4
+ - DataBase : NoSQL을 추천 (예: REDIS)
+3. 새로운 아이디어
+ - DQN을 사용해서 가상 환경에서 AI 플레이어 트레이닝.  => 논문감.
+ - MCP 서버를 제작해서 기존 LLM 모델에 연동시키고, Training도 기존 AI에 MCP를 통해서 연결해서 트레이닝 시키면 확장성과 호환성이 뛰어나고 최신유행도 만족시킨다.
+       => 논문감
+4. ToDo
+ - Occlusion Culling
+5. 최종발표까지 할 일
+ - 캐릭터 1 명 추가
+ - 스킬 5개
+ - 밤 버전 스테이지
+ - 사운드
+ - 최적화 (HD-Tree를 사용한 Occlusion Culling 건물 용)
+ - 로비 자동 매칭
+ - (최종발표 이후) 딥러닝 AI, 모든 캐릭터 수집
+6. 다음미팅
+ - 6월 23일 월요일 3: 30
+ - 로비 자동 매칭
+ - 캐릭터 1명 추가, 스킬 1개 (아리스) 구현
+
+ 
