@@ -6,7 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use mod_network::components::{UserAccount, UserId, WorldId, MAX_IN_GAME_PLAYERS};
+use mod_network::components::{MAX_IN_GAME_PLAYERS, UserAccount, UserId, WorldId};
 use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::session::Session;
@@ -124,7 +124,7 @@ impl GameWorldPool {
             if world.is_closed() || *world.num_players.lock() == MAX_IN_GAME_PLAYERS {
                 continue;
             }
-            
+
             ids.push(*id);
         }
         ids

@@ -216,7 +216,14 @@ fn main() {
 /// # Note
 /// 반환되는 `WorkerGuard`를 유지해야 로그가 정상적으로 저장됩니다.
 ///
-fn init_log_system() -> WorkerGuard {
+fn init_log_system() -> Option<WorkerGuard> {
+    #[cfg(feature = "console")]
+    {
+        use console_subscriber;
+        console_subscriber::init();
+        return None;
+    }
+
     // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
     let mut dir = get_current_path().to_path_buf();
     dir.push("logs");
@@ -232,5 +239,5 @@ fn init_log_system() -> WorkerGuard {
         .with_writer(non_blocking)
         .init();
 
-    guard
+    Some(guard)
 }

@@ -3,9 +3,8 @@ use std::{fmt, sync::Arc};
 use mod_network::{
     components::{JoinFailedReason, RecruitPhasePlayer, UserAccount, WorldId},
     protocol::{
-        CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket,
-        RequestAvailableWorldsPacket, AvailableWorldsPacket,
-        Packet, PacketType, RawPacket,
+        AvailableWorldsPacket, CustomGameJoinFailedPacket, CustomGameJoinRequestPacket,
+        CustomGameJoinSuccessPacket, Packet, PacketType, RawPacket, RequestAvailableWorldsPacket,
     },
 };
 
