@@ -136,10 +136,8 @@ impl GameWorldFormationState {
             }
 
             // 게임 월드 상태를 변경합니다.
-            let control_flow = GameWorldStateFlow::Pop;
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
-
+            let state_flow = GameWorldStateFlow::Pop;
+            world.push_state_flow(state_flow);
             return;
         }
 
@@ -168,10 +166,8 @@ impl GameWorldFormationState {
             }
 
             // 게임 월드 상태를 변경합니다.
-            let control_flow = GameWorldStateFlow::Pop;
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
-
+            let state_flow = GameWorldStateFlow::Pop;
+            world.push_state_flow(state_flow);
             return;
         }
 
@@ -180,9 +176,8 @@ impl GameWorldFormationState {
             self.is_running = false;
 
             let next_state = GameWorldInGameSyncState::new(self.stage_kind, world.players.iter());
-            let control_flow = GameWorldStateFlow::Change(Box::new(next_state));
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
+            let state_flow = GameWorldStateFlow::Change(Box::new(next_state));
+            world.push_state_flow(state_flow);
 
             for session in world.sessions.iter() {
                 session.key().push_event(SessionEvents::EnterInGameSync);

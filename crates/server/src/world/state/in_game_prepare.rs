@@ -93,9 +93,8 @@ impl GameWorldInGamePrepareState {
             play_data,
             5.0 * 60.0, // 5분
         );
-        let control_flow = GameWorldStateFlow::Change(Box::new(next_state));
-        let event = GameWorldEvent::SetControlFlow(control_flow);
-        world.push_event(event);
+        let state_flow = GameWorldStateFlow::Change(Box::new(next_state));
+        world.push_state_flow(state_flow);
 
         // 세션 상태를 갱신합니다.
         for item in world.sessions.iter() {

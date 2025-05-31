@@ -185,9 +185,8 @@ impl GameWorldInGameSyncState {
             let play_data = self.play_data.take().unwrap();
             let next_state =
                 GameWorldInGamePrepareState::new(self.stage_kind, spawn_positions, play_data);
-            let control_flow = GameWorldStateFlow::Change(Box::new(next_state));
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
+            let state_flow = GameWorldStateFlow::Change(Box::new(next_state));
+            world.push_state_flow(state_flow);
 
             for session in world.sessions.iter() {
                 session.key().push_event(SessionEvents::PrepareGame);

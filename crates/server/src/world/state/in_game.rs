@@ -521,9 +521,8 @@ impl GameWorldInGameState {
             }
 
             // 게임 월드 상태를 변경합니다.
-            let control_flow = GameWorldStateFlow::Pop;
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
+            let state_flow = GameWorldStateFlow::Pop;
+            world.push_state_flow(state_flow);
             return;
         } else if red_teams == 0 {
             // 패킷을 생성하고 전송합니다.
@@ -542,9 +541,8 @@ impl GameWorldInGameState {
             }
 
             // 게임 월드 상태를 변경합니다.
-            let control_flow = GameWorldStateFlow::Pop;
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
+            let state_flow = GameWorldStateFlow::Pop;
+            world.push_state_flow(state_flow);
             return;
         }
     }
@@ -750,9 +748,8 @@ impl GameWorldInGameState {
         }
 
         // 게임 월드 상태를 변경합니다.
-        let control_flow = GameWorldStateFlow::Pop;
-        let event = GameWorldEvent::SetControlFlow(control_flow);
-        world.push_event(event);
+        let state_flow = GameWorldStateFlow::Pop;
+        world.push_state_flow(state_flow);
     }
 
     /// 시간 초과로 게임을 종료합니다.

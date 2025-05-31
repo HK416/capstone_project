@@ -9,6 +9,7 @@ use std::{
         Arc,
         atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering},
     },
+    time::Instant,
 };
 
 use ahash::RandomState;
@@ -51,6 +52,8 @@ pub struct GameWorld {
 
     /// 게임 월드 이벤트 대기열입니다.
     events: Queue<GameWorldEvent>,
+    /// 게임 월드 상태 흐름 대기열입니다.
+    flows: Queue<GameWorldStateFlow>,
 }
 
 impl GameWorld {
@@ -66,6 +69,7 @@ impl GameWorld {
             players: DashMap::default(),
             bullets: DashMap::default(),
             events: Queue::new(),
+            flows: Queue::new(),
         }
     }
 
@@ -90,20 +94,32 @@ impl GameWorld {
     }
 
     /// 게임 월드를 비활성화합니다.
+    ///
+    /// # Warnings
+    /// 이 함수는 tokio [`Runtime`](tokio::runtime::Runtime)에서 실행될 경우 데드락을 발생시킬 수 있습니다.
+    ///
+    /// tokio에서 함수를 호출할 경우 [`tokio::task::spawn_blocking`]을 사용해 호출해야 합니다.
+    ///
     pub fn disable(&self) {
-        // 락을 획득합니다.
+        /// 게임 월드 관리자 초기화 값입니다.
+        const NULL_ID: u32 = UserId::NULL.into_inner();
+
+        // 락을 획득합니다. 락은 함수 종료 시점에 해제됩니다.
+        // 주의: tokio에서 호출될 경우 스케쥴링 과정에서 데드락이 발생할 수 있습니다.
         let mut num_player = self.num_players.lock();
+        *num_player = 0;
+
         // 게임 월드를 비활성화 합니다.
         self.is_running.store(false, MemOrdering::Release);
         self.is_closed.store(true, MemOrdering::Release);
         // 게임 월드 데이터를 초기화합니다.
-        self.admin
-            .store(UserId::NULL.into_inner(), MemOrdering::Release);
+        self.admin.store(NULL_ID, MemOrdering::Release);
         self.sessions.clear();
-
         self.players.clear();
         self.bullets.clear();
-        *num_player = 0;
+        while let Some(_) = self.events.pop() {}
+        while let Some(_) = self.flows.pop() {}
+        drop(num_player);
     }
 
     /// 게임 월드 관리자의 식별자를 가져옵니다.
@@ -118,26 +134,37 @@ impl GameWorld {
         }
     }
 
+    /// 게임 월드 상태 흐름을 추가합니다.
+    pub fn push_state_flow(&self, flow: GameWorldStateFlow) {
+        if self.is_running() {
+            self.flows.push(flow);
+        }
+    }
+
     /// 게임 월드를 커스텀 게임 월드로 재설정합니다.
+    ///
+    /// # Warnings
+    /// 이 함수는 tokio [`Runtime`](tokio::runtime::Runtime)에서 실행될 경우 데드락을 발생시킬 수 있습니다.
+    ///
+    /// tokio에서 함수를 호출할 경우 [`tokio::task::spawn_blocking`]을 사용해 호출해야 합니다.
     ///
     /// # Panics
     /// 게임 월드는 비활성화된 상태여야합니다. 그렇지 않은 경우 `panic!`을 호출합니다.
     ///
     pub fn run_custom(self: &Arc<Self>, account: &UserAccount, session: &Arc<Session>) {
-        // 락을 획득합니다.
+        // 락을 획득합니다. 락은 함수 종료 시점에 해제됩니다.
+        // 주의: tokio에서 호출될 경우 스케쥴링 과정에서 데드락이 발생할 수 있습니다.
         let mut num_players = self.num_players.lock();
         assert!(!self.is_running(), "the game world is active!");
 
         // 게임 관리자를 설정합니다.
-        self.admin
-            .store(account.uid.into_inner(), MemOrdering::Release);
+        let user_id = account.uid;
+        self.admin.store(user_id.into_inner(), MemOrdering::Release);
 
         // 세션 집합과 플레이어 집합에 게임 관리자를 추가합니다.
+        let player = PlayerObject::new(account.clone(), Permission::Admin, Team::Blue);
         self.sessions.insert(session.clone(), account.uid);
-        self.players.insert(
-            account.uid,
-            PlayerObject::new(account.clone(), Permission::Admin, Team::Blue),
-        );
+        self.players.insert(account.uid, player);
         *num_players += 1;
 
         // 게임 월드를 활성화합니다.
@@ -146,14 +173,14 @@ impl GameWorld {
 
         // 상태 변경 이벤트를 추가합니다.
         let init_state = Box::new(GameWorldRoomState::new());
-        let control_flow = GameWorldStateFlow::Reset(init_state);
-        let event = GameWorldEvent::SetControlFlow(control_flow);
-        self.push_event(event);
+        let state_flow = GameWorldStateFlow::Reset(init_state);
+        self.push_state_flow(state_flow);
 
         atomic::fence(MemOrdering::SeqCst);
 
         // 게임 월드를 실행합니다.
-        tokio::spawn(running_loop(self.clone()));
+        let this = self.clone();
+        rayon::spawn(move || running_loop(this));
     }
 
     /// 커스텀 게임 참여를 시도합니다.
@@ -291,41 +318,47 @@ impl fmt::Debug for GameWorld {
 }
 
 /// 게임 월드를 실행하는 루프함수입니다.
-async fn running_loop(world: Arc<GameWorld>) {
+///
+/// # Warnings
+/// 이 함수는 tokio [`Runtime`](tokio::runtime::Runtime)에서 실행될 경우 데드락을 발생시킬 수 있습니다.
+///
+/// tokio에서 함수를 호출할 경우 [`tokio::task::spawn_blocking`]을 사용해 호출해야 합니다.
+///
+fn running_loop(world: Arc<GameWorld>) {
     // 게임 월드 상태를 저장하는 스텍 컨테이너입니다.
-    let mut stack = VecDeque::new();
-    let mut events = VecDeque::new();
+    let mut stack: VecDeque<Box<dyn GameWorldState>> = VecDeque::new();
+    let mut previous_time_pt = Instant::now();
     while world.is_running() {
-        // 게임 월드 이벤트를 처리합니다.
-        while let Some(event) = world.events.pop() {
-            match event {
-                GameWorldEvent::SetControlFlow(control_flow) => {
-                    update_state(&mut stack, control_flow, &world);
+        // 최근 실행 시각에서 현재 시각까지 경과 시간을 측정합니다.
+        let current_time_pt = Instant::now();
+        let elapsed_time_sec = current_time_pt
+            .saturating_duration_since(previous_time_pt)
+            .as_secs_f32();
+        previous_time_pt = current_time_pt;
+
+        rayon::in_place_scope(|_s| {
+            // 현재 게임 월드 상태를 가져옵니다.
+            if let Some(curr_state) = stack.back_mut() {
+                // 게임 월드 이벤트를 처리합니다.
+                while let Some(event) = world.events.pop() {
+                    curr_state.handle_event(event, &world);
                 }
-                _ => events.push_back(event),
-            };
-        }
 
-        // 현재 상태를 가져옵니다.
-        let curr_state = match stack.back_mut() {
-            Some(state) => state,
-            None => {
-                // 현재 상태가 없는 경우 게임 월드를 비활성화합니다.
-                world.disable();
-                break;
+                // 게임 월드 상태를 갱신합니다.
+                curr_state.on_advanced(&world);
             }
-        };
 
-        // 처리하지 않은 게임 월드 이벤트를 게임 월드 상태에서 처리합니다.
-        while let Some(event) = events.pop_front() {
-            curr_state.handle_event(event, &world);
-        }
+            // 게임 월드 상태 흐름을 처리합니다.
+            while let Some(flow) = world.flows.pop() {
+                update_state(&mut stack, flow, &world);
+            }
 
-        // 현재 상태를 갱신합니다.
-        curr_state.on_advanced(&world);
-
-        // 다른 작업에 양도합니다.
-        tokio::time::sleep(curr_state.yield_now()).await;
+            // 현재 게임 월드 상태가 없는 경우 경우 게임 월드를 비활성화합니다.
+            if stack.is_empty() {
+                world.disable();
+                return;
+            }
+        });
     }
 
     // 비활성화된 게임 월드를 회수합니다.
@@ -337,10 +370,10 @@ async fn running_loop(world: Arc<GameWorld>) {
 /// 게임 월드의 이벤트를 처리합니다.
 fn update_state(
     stack: &mut VecDeque<Box<dyn GameWorldState>>,
-    control_flow: GameWorldStateFlow,
+    flow: GameWorldStateFlow,
     world: &Arc<GameWorld>,
 ) {
-    match control_flow {
+    match flow {
         GameWorldStateFlow::Clear => {
             clear_state(stack, world);
         }

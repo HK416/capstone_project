@@ -50,11 +50,6 @@ pub async fn run_server(addr: &str) {
 
     // 클라이언트 연결 관리
     wait_for_players(listener, udp_sender).await;
-
-    // 게임 월드 업데이트
-    // TODO: 나중에 여러 개의 게임 월드를 실행해야함.
-    // let world = GameWorld::get_instance();
-    // update_game_world(world).await;
 }
 
 /// UDP 통신으로 수신된 패킷을 각 세션에 전달하는 루프 함수입니다.
@@ -202,6 +197,12 @@ fn main() {
     }
 
     println!("num_threads: {}", num_threads);
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .thread_name(|id| format!("Task_Thread({})", id))
+        .build_global()
+        .unwrap();
 
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_threads)

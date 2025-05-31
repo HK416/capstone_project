@@ -4,14 +4,9 @@ use mod_network::components::{CharacterKind, ObjectId, UserId};
 
 use crate::session::Session;
 
-use super::GameWorldStateFlow;
-
 /// 게임 월드 이벤트 목록입니다.
 #[derive(Debug)]
 pub enum GameWorldEvent {
-    /// 게임 월드 상태를 변경합니다.
-    SetControlFlow(GameWorldStateFlow),
-
     /// 플레이어가 게임 월드에서 떠날 때 발생하는 이벤트입니다.
     PlayerLeave(UserId),
 

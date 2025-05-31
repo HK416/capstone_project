@@ -115,9 +115,8 @@ impl GameWorldRoomState {
             self.is_running = false;
 
             let next_state = GameWorldFormationState::new(self.allow_duplicates, self.stage_kind);
-            let control_flow = GameWorldStateFlow::Push(Box::new(next_state));
-            let event = GameWorldEvent::SetControlFlow(control_flow);
-            world.push_event(event);
+            let state_flow = GameWorldStateFlow::Push(Box::new(next_state));
+            world.push_state_flow(state_flow);
 
             // 게임 월드에 참여한 모든 세션에 이벤트를 보냅니다.
             for item in world.sessions.iter() {
@@ -151,23 +150,26 @@ impl GameWorldRoomState {
 impl GameWorldRoomState {
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
+        let players: Vec<_> = world
+            .players
+            .iter()
+            .map(|item| {
+                RecruitPhasePlayer::new(
+                    item.account().clone(),
+                    item.team(),
+                    item.bool_flag(),
+                    item.permission(),
+                )
+            })
+            .collect();
+
+        // 플레이어가 비어있는 경우 실행을 생략합니다.
+        if players.is_empty() {
+            return;
+        }
+
         // 패킷을 생성합니다.
-        let packet = CustomGamePullPacket::new(
-            self.allow_duplicates,
-            self.stage_kind,
-            world
-                .players
-                .iter()
-                .map(|item| {
-                    RecruitPhasePlayer::new(
-                        item.account().clone(),
-                        item.team(),
-                        item.bool_flag(),
-                        item.permission(),
-                    )
-                })
-                .collect(),
-        );
+        let packet = CustomGamePullPacket::new(self.allow_duplicates, self.stage_kind, players);
 
         // 패킷을 각 세션에 전송합니다.
         for session in world.sessions.iter() {
