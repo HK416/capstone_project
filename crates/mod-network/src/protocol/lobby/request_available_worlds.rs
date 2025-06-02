@@ -15,10 +15,7 @@ pub struct RequestAvailableWorldsPacket {
 impl RequestAvailableWorldsPacket {
     /// 새로운 패킷을 생성합니다.
     pub fn new(user_id: UserId, token: LoginToken) -> Self {
-        Self {
-            user_id,
-            token,
-        }
+        Self { user_id, token }
     }
 }
 
@@ -72,10 +69,7 @@ impl Packet for RequestAvailableWorldsPacket {
         data = &bytes[offset..offset + size];
         let token = LoginToken::from_big_endian_bytes(data);
 
-        Some(Self {
-            user_id,
-            token,
-        })
+        Some(Self { user_id, token })
     }
 }
 
@@ -85,10 +79,8 @@ mod tests {
 
     #[test]
     fn test_formation_select_packet() {
-        let origin = RequestAvailableWorldsPacket::new(
-            UserId::new(12351432),
-            LoginToken::new(1513425161),
-        );
+        let origin =
+            RequestAvailableWorldsPacket::new(UserId::new(12351432), LoginToken::new(1513425161));
         let raw = origin.as_raw();
         let other = RequestAvailableWorldsPacket::from_raw(raw);
 

@@ -2,9 +2,9 @@
 //!
 
 mod available_worlds;
-mod request_available_worlds;
 mod join;
+mod request_available_worlds;
 
 pub use self::available_worlds::*;
-pub use self::request_available_worlds::*;
 pub use self::join::*;
+pub use self::request_available_worlds::*;

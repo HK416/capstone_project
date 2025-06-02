@@ -5,3 +5,9 @@ mod in_game;
 mod recruit;
 
 pub use self::{common::*, finish::*, formation::*, in_game::*, recruit::*};
+
+mod health;
+mod skill;
+pub mod state;
+
+pub use self::{health::*, skill::*};

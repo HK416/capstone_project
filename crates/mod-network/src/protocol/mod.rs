@@ -1,9 +1,9 @@
 mod formation;
 mod in_game;
 mod lobby;
+mod ping;
 mod room;
 mod title;
-mod ping;
 
 mod parser;
 
@@ -11,7 +11,7 @@ use std::io::{Error, ErrorKind};
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
-pub use self::{formation::*, in_game::*, lobby::*, parser::*, room::*, title::*, ping::*};
+pub use self::{formation::*, in_game::*, lobby::*, parser::*, ping::*, room::*, title::*};
 
 /// 패킷의 종류
 #[repr(u8)]

@@ -25,7 +25,7 @@ impl Packet for PingPacket {
         let data = self.send_time.to_big_endian_bytes();
         RawPacket::new(Self::packet_type(), &data)
     }
-    
+
     fn try_from_raw(raw: RawPacket) -> Option<Self> {
         // 패킷 종류가 일치하는지 확인합니다.
         if raw.packet_type() != Self::packet_type() {

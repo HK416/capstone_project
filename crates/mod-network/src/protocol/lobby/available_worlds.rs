@@ -59,7 +59,7 @@ impl Packet for AvailableWorldsPacket {
         }
 
         let bytes = raw.data();
-        
+
         // 월드 수를 가져옵니다.
         let mut offset = 0;
         let mut size = u8::byte_size();
@@ -75,9 +75,7 @@ impl Packet for AvailableWorldsPacket {
             worlds.push(WorldId::from_big_endian_bytes(data));
         }
 
-        Some(Self {
-            worlds,
-        })
+        Some(Self { worlds })
     }
 }
 
@@ -87,13 +85,8 @@ mod tests {
 
     #[test]
     fn test_formation_select_response_packet() {
-        let origin = AvailableWorldsPacket::new(
-            vec![
-                WorldId::new(1),
-                WorldId::new(2),
-                WorldId::new(3),
-            ],
-        );
+        let origin =
+            AvailableWorldsPacket::new(vec![WorldId::new(1), WorldId::new(2), WorldId::new(3)]);
         let raw = origin.as_raw();
         let other = AvailableWorldsPacket::from_raw(raw);
 
