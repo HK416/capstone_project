@@ -201,8 +201,7 @@ impl GameWorld {
         atomic::fence(MemOrdering::SeqCst);
 
         // 게임 월드를 실행합니다.
-        let this = self.clone();
-        tokio::task::spawn_blocking(move || running_loop(this));
+        tokio::spawn(running_loop(self.clone()));
     }
 
     /// 커스텀 게임 참여를 시도합니다.
