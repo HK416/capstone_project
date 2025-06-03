@@ -258,7 +258,7 @@ impl GameWorldState for GameWorldInGamePrepareState {
         }
     }
 
-    fn on_advanced(&mut self, world: &Arc<GameWorld>) {
+    fn on_advanced(&mut self, world: &Arc<GameWorld>, elapsed_time_sec: f32) {
         // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
         if !self.is_running {
             return;
@@ -267,10 +267,6 @@ impl GameWorldState for GameWorldInGamePrepareState {
         self.on_update(world);
         self.broadcast(world);
         self.try_enter_next_state(world);
-    }
-
-    fn yield_now(&self) -> Duration {
-        Duration::from_millis(1)
     }
 }
 

@@ -16,6 +16,9 @@ use tokio::net::{TcpListener, UdpSocket};
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 use world::GameWorldPool;
 
+/// 서버의 갱신 주기입니다. (1초에 60번 갱신)
+pub const SERVER_TICK: f32 = 1.0 / 60.0;
+
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
     // TCP 소켓을 바인드합니다.

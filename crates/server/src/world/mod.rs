@@ -9,7 +9,7 @@ use std::{
         Arc,
         atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use ahash::RandomState;
@@ -23,6 +23,7 @@ use parking_lot::FairMutex;
 use rand::seq::SliceRandom;
 
 use crate::{
+    SERVER_TICK,
     entities::{BulletObject, PlayerObject},
     session::Session,
 };
@@ -417,7 +418,7 @@ fn running_loop(world: Arc<GameWorld>) {
                 }
 
                 // 게임 월드 상태를 갱신합니다.
-                curr_state.on_advanced(&world);
+                curr_state.on_advanced(&world, elapsed_time_sec);
             }
 
             // 게임 월드 상태 흐름을 처리합니다.
@@ -431,6 +432,12 @@ fn running_loop(world: Arc<GameWorld>) {
                 return;
             }
         });
+
+        const OFFSET: f32 = 0.005;
+        let diff = SERVER_TICK - OFFSET - elapsed_time_sec;
+        if diff > 0.0 {
+            std::thread::sleep(Duration::from_secs_f32(diff));
+        }
     }
 
     // 비활성화된 게임 월드를 회수합니다.
