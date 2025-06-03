@@ -9,7 +9,6 @@ use std::{
         Arc,
         atomic::{self, AtomicBool, AtomicU32, Ordering as MemOrdering},
     },
-    time::{Duration, Instant},
 };
 
 use ahash::RandomState;
@@ -21,6 +20,7 @@ use mod_network::components::{
 use mod_parallelism::collections::Queue;
 use parking_lot::FairMutex;
 use rand::seq::SliceRandom;
+use tokio::time::{Duration, Instant};
 
 use crate::{
     SERVER_TICK,
@@ -202,7 +202,7 @@ impl GameWorld {
 
         // 게임 월드를 실행합니다.
         let this = self.clone();
-        rayon::spawn(move || running_loop(this));
+        tokio::task::spawn_blocking(move || running_loop(this));
     }
 
     /// 커스텀 게임 참여를 시도합니다.
@@ -356,7 +356,7 @@ impl GameWorld {
                     let mut player = unsafe { self.players.get_mut(&uid).unwrap_unchecked() };
                     player
                         .with_permission(Permission::Admin)
-                        .with_bool_flag(false);
+                        .with_ready_to_play(false);
                 }
             }
         }
@@ -391,13 +391,7 @@ impl fmt::Debug for GameWorld {
 }
 
 /// 게임 월드를 실행하는 루프함수입니다.
-///
-/// # Warnings
-/// 이 함수는 tokio [`Runtime`](tokio::runtime::Runtime)에서 실행될 경우 데드락을 발생시킬 수 있습니다.
-///
-/// tokio에서 함수를 호출할 경우 [`tokio::task::spawn_blocking`]을 사용해 호출해야 합니다.
-///
-fn running_loop(world: Arc<GameWorld>) {
+async fn running_loop(world: Arc<GameWorld>) {
     // 게임 월드 상태를 저장하는 스텍 컨테이너입니다.
     let mut stack: VecDeque<Box<dyn GameWorldState>> = VecDeque::new();
     let mut previous_time_pt = Instant::now();
@@ -409,39 +403,39 @@ fn running_loop(world: Arc<GameWorld>) {
             .as_secs_f32();
         previous_time_pt = current_time_pt;
 
-        rayon::in_place_scope(|_s| {
-            // 현재 게임 월드 상태를 가져옵니다.
-            if let Some(curr_state) = stack.back_mut() {
-                // 게임 월드 이벤트를 처리합니다.
-                while let Some(event) = world.events.pop() {
-                    if world.flows.is_empty() {
-                        curr_state.handle_event(event, &world);
-                    }
-                }
-
-                // 게임 월드 상태를 갱신합니다.
+        // 현재 게임 월드 상태를 가져옵니다.
+        if let Some(curr_state) = stack.back_mut() {
+            // 게임 월드 이벤트를 처리합니다.
+            while let Some(event) = world.events.pop() {
                 if world.flows.is_empty() {
-                    curr_state.on_advanced(&world, elapsed_time_sec);
+                    curr_state.handle_event(event, &world);
                 }
             }
 
-            // 게임 월드 상태 흐름을 처리합니다.
-            while let Some(flow) = world.flows.pop() {
-                update_state(&mut stack, flow, &world);
+            // 게임 월드 상태를 갱신합니다.
+            if world.flows.is_empty() {
+                curr_state.on_advanced(&world, elapsed_time_sec);
             }
-
-            // 현재 게임 월드 상태가 없는 경우 경우 게임 월드를 비활성화합니다.
-            if stack.is_empty() {
-                world.disable();
-                return;
-            }
-        });
-
-        const OFFSET: f32 = 0.005;
-        let diff = SERVER_TICK - OFFSET - elapsed_time_sec;
-        if diff > 0.0 {
-            std::thread::sleep(Duration::from_secs_f32(diff));
         }
+
+        // 게임 월드 상태 흐름을 처리합니다.
+        while let Some(flow) = world.flows.pop() {
+            update_state(&mut stack, flow, &world);
+        }
+
+        // 현재 게임 월드 상태가 없는 경우 경우 게임 월드를 비활성화합니다.
+        if stack.is_empty() {
+            world.disable();
+            return;
+        }
+
+        let execute_time_pt = Instant::now();
+        let elapsed_time = execute_time_pt
+            .saturating_duration_since(previous_time_pt)
+            .as_secs_f32();
+        const OFFSET: f32 = 0.000_000_01;
+        let diff = (SERVER_TICK - elapsed_time).max(0.0);
+        tokio::time::sleep(Duration::from_secs_f32(diff + OFFSET)).await;
     }
 
     // 비활성화된 게임 월드를 회수합니다.

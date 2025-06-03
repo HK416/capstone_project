@@ -62,7 +62,7 @@ impl GameWorldFormationState {
         if self.allow_duplicates {
             // 캐릭터 중복을 허용하는 경우 플레이어 캐릭터를 선택처리합니다.
             if let Some(mut player) = world.players.get_mut(&uid) {
-                player.with_character_kind(kind).with_bool_flag(true);
+                player.with_character_kind(kind).with_ready_to_play(true);
 
                 // 패킷을 전송합니다.
                 let result = SelectResult::Success;
@@ -77,7 +77,7 @@ impl GameWorldFormationState {
             if !self.is_duplicates(world, kind) {
                 // 캐릭터가 중복되지 않은 경우 플레이어 캐릭터를 선택 처리합니다.
                 if let Some(mut player) = world.players.get_mut(&uid) {
-                    player.with_character_kind(kind).with_bool_flag(true);
+                    player.with_character_kind(kind).with_ready_to_play(true);
 
                     // 패킷을 전송합니다.
                     let result = SelectResult::Success;
@@ -94,7 +94,7 @@ impl GameWorldFormationState {
     /// 캐릭터가 중복되는지 여부를 반환합니다.
     fn is_duplicates(&self, world: &GameWorld, kind: CharacterKind) -> bool {
         for player in world.players.iter() {
-            if player.character_kind() == kind && player.bool_flag() {
+            if player.character_kind() == kind && player.is_ready_to_play() {
                 return true;
             }
         }
@@ -111,10 +111,10 @@ impl GameWorldFormationState {
             // 캐릭터를 선택하지 않은 플레이어는 무작위로 선택합니다.
             if self.allow_duplicates {
                 for mut player in world.players.iter_mut() {
-                    if !player.bool_flag() {
+                    if !player.is_ready_to_play() {
                         player
                             .with_character_kind(rand::random())
-                            .with_bool_flag(true);
+                            .with_ready_to_play(true);
                     }
                 }
             } else {
@@ -145,7 +145,7 @@ impl GameWorldFormationState {
         let mut num_blue_team = 0;
         let mut all_player_selected = true;
         for player in world.players.iter() {
-            all_player_selected &= player.bool_flag();
+            all_player_selected &= player.is_ready_to_play();
             if player.team() == Team::Blue {
                 num_blue_team += 1;
             } else {
@@ -221,7 +221,7 @@ impl GameWorldFormationState {
                     FormationPhasePlayer::new(
                         item.account().clone(),
                         item.character_kind(),
-                        item.bool_flag(),
+                        item.is_ready_to_play(),
                         item.team(),
                     )
                 })
@@ -241,14 +241,14 @@ impl GameWorldState for GameWorldFormationState {
     fn on_enter(&mut self, world: &Arc<GameWorld>) {
         // 게임 월드에 포함된 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
         for mut item in world.players.iter_mut() {
-            item.with_bool_flag(false);
+            item.with_ready_to_play(false);
         }
     }
 
     fn on_exit(&mut self, world: &Arc<GameWorld>) {
         // 게임 월드에 포함된 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
         for mut item in world.players.iter_mut() {
-            item.with_bool_flag(false);
+            item.with_ready_to_play(false);
         }
     }
 

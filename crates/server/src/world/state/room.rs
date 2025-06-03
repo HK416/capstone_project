@@ -54,7 +54,7 @@ impl GameWorldRoomState {
             self.try_enter_next_state(&session, world);
         } else {
             if !world.access_mut(&session, |data| {
-                data.with_bool_flag(ready);
+                data.with_ready_to_play(ready);
             }) {
                 log::warn!("{} accesses an invalid game player", session);
                 session.close();
@@ -127,7 +127,7 @@ impl GameWorldRoomState {
             }
 
             if *player.key() != admin {
-                other_player_readys &= player.bool_flag();
+                other_player_readys &= player.is_ready_to_play();
             }
         }
 
@@ -184,7 +184,7 @@ impl GameWorldRoomState {
                 RecruitPhasePlayer::new(
                     item.account().clone(),
                     item.team(),
-                    item.bool_flag(),
+                    item.is_ready_to_play(),
                     item.permission(),
                 )
             })
@@ -213,7 +213,7 @@ impl GameWorldState for GameWorldRoomState {
 
         // 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
         for mut player in world.players.iter_mut() {
-            player.with_bool_flag(false);
+            player.with_ready_to_play(false);
         }
     }
 

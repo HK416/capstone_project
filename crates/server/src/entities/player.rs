@@ -20,6 +20,119 @@ const MAX_INPUT_DURATION: f32 = 0.25;
 /// 플레이어 리스폰 대기 시간
 const RESPAWN_DELAY: f32 = 10.0;
 
+/// 여러 비트 데이터가 포함된 비트 필드입니다.
+///
+/// 아래 데이터가 포함됩니다.
+/// - team             | 1bit | 팀 종류
+/// - team_index       | 3bit | 팀 내의 인덱스
+/// - permission       | 1bit | 권한
+/// - is_ready_to_play | 1bit | 준비 여부
+/// - is_grounded      | 1bit | 지면을 밟고 있는 여부
+/// - is_invincible    | 1bit | 무적 여부
+///
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Bitfield(u8);
+
+impl Bitfield {
+    const TEAM_BIT_MASK: u8 = 0x01;
+    const TEAM_SHIFT: usize = 0;
+    const INDEX_BIT_MASK: u8 = 0x07;
+    const INDEX_SHIFT: usize = 1;
+    const PERMISSION_BIT_MASK: u8 = 0x01;
+    const PERMISSION_SHIFT: usize = 4;
+    const READY_BIT_MASK: u8 = 0x01;
+    const READY_SHIFT: usize = 5;
+    const GROUND_BIT_MASK: u8 = 0x01;
+    const GROUND_SHIFT: usize = 6;
+    const INVINCIBLE_BIT_MASK: u8 = 0x01;
+    const INVINCIBLE_SHIFT: usize = 7;
+
+    /// 새로운 비트 필드 데이터를 생성합니다.
+    pub const fn new() -> Self {
+        Self(0x00)
+    }
+
+    /// 팀 종류를 반환합니다.
+    pub fn team(&self) -> Team {
+        let val = (self.0 >> Self::TEAM_SHIFT) & Self::TEAM_BIT_MASK;
+        Team::new(val).unwrap_or_default()
+    }
+
+    /// 팀 종류를 설정합니다.
+    pub fn with_team(mut self, team: Team) -> Self {
+        self.0 &= !(Self::TEAM_BIT_MASK << Self::TEAM_SHIFT);
+        self.0 |= ((team as u8) & Self::TEAM_BIT_MASK) << Self::TEAM_SHIFT;
+        self
+    }
+
+    /// 팀 인덱스를 반환합니다.
+    pub fn team_index(&self) -> usize {
+        ((self.0 >> Self::INDEX_SHIFT) & Self::INDEX_BIT_MASK) as usize
+    }
+
+    /// 팀 인덱스를 설정합니다.
+    ///
+    /// # Panics
+    /// 주어진 `index`가 5이상인 경우 [`panic!`]을 호출합니다.
+    ///
+    pub fn with_team_index(mut self, index: usize) -> Self {
+        assert!(index < 5, "index out of ranges!");
+        self.0 &= !(Self::INDEX_BIT_MASK << Self::INDEX_SHIFT);
+        self.0 |= ((index as u8) & Self::INDEX_BIT_MASK) << Self::INDEX_SHIFT;
+        self
+    }
+
+    /// 권한을 가져옵니다.
+    pub fn permission(&self) -> Permission {
+        let val = (self.0 >> Self::PERMISSION_SHIFT) & Self::PERMISSION_BIT_MASK;
+        Permission::new(val).unwrap_or_default()
+    }
+
+    /// 권한을 설정합니다.
+    pub fn with_permission(mut self, permission: Permission) -> Self {
+        self.0 &= !(Self::PERMISSION_BIT_MASK << Self::PERMISSION_SHIFT);
+        self.0 |= ((permission as u8) & Self::PERMISSION_BIT_MASK) << Self::PERMISSION_SHIFT;
+        self
+    }
+
+    /// 준비 여부를 반환합니다.
+    pub fn is_ready_to_play(&self) -> bool {
+        (self.0 >> Self::READY_SHIFT) & Self::READY_BIT_MASK == Self::READY_BIT_MASK
+    }
+
+    /// 준비 여부를 설정합니다.
+    pub fn with_ready_to_play(mut self, ready: bool) -> Self {
+        self.0 &= !(Self::READY_BIT_MASK << Self::READY_SHIFT);
+        self.0 |= ((ready as u8) & Self::READY_BIT_MASK) << Self::READY_SHIFT;
+        self
+    }
+
+    /// 지면을 밟고 있는 여부를 반환합니다.
+    pub fn is_grounded(&self) -> bool {
+        (self.0 >> Self::GROUND_SHIFT) & Self::GROUND_BIT_MASK == Self::GROUND_BIT_MASK
+    }
+
+    /// 지면을 밟고 있는 여부를 설정합니다.
+    pub fn with_grounded(mut self, grounded: bool) -> Self {
+        self.0 &= !(Self::GROUND_BIT_MASK << Self::GROUND_SHIFT);
+        self.0 |= ((grounded as u8) & Self::GROUND_BIT_MASK) << Self::GROUND_SHIFT;
+        self
+    }
+
+    /// 무적 여부를 반환합니다.
+    pub fn is_invincible(&self) -> bool {
+        (self.0 >> Self::INVINCIBLE_SHIFT) & Self::INVINCIBLE_BIT_MASK == Self::INVINCIBLE_BIT_MASK
+    }
+
+    /// 무적 여부를 설정합니다.
+    pub fn with_invincible(mut self, invincible: bool) -> Self {
+        self.0 &= !(Self::INVINCIBLE_BIT_MASK << Self::INVINCIBLE_SHIFT);
+        self.0 |= ((invincible as u8) & Self::INVINCIBLE_BIT_MASK) << Self::INVINCIBLE_SHIFT;
+        self
+    }
+}
+
 /// 서버에서 관리하는 플레이어 오브젝트 데이터
 #[derive(Debug, Clone)]
 pub struct PlayerObject {
@@ -27,12 +140,7 @@ pub struct PlayerObject {
     account: UserAccount,
 
     /// 여러 자료형의 데이터가 포함된 비트 필드입니다.  
-    /// 아래와 같은 자료형이 포함되어있습니다.
-    /// - index (3bit): 플레이어가 속한 팀 내의 인덱스
-    /// - Team (1bit): 플레이어가 속한 팀
-    /// - Permission (1bit): 플레이어 권한
-    /// - bool (1bit): 다양한 용도로 사용되는 부울 플래그
-    bitfield: u8,
+    bitfield: Bitfield,
 
     /// 플레이어 캐릭터 종류
     character_kind: CharacterKind,
@@ -45,8 +153,6 @@ pub struct PlayerObject {
     /// 남은 총알의 개수
     remaining_bullets: u16,
 
-    // /// 현재 일반 스킬 쿨 타임
-    // skill_cool_time: SkillKind,
     /// 현재 Ex 스킬 코스트 (최대 100.0)
     ex_skill_cost: f32,
 
@@ -84,37 +190,20 @@ pub struct PlayerObject {
 
     /// 플레이어 충돌체
     collider: Capsule,
-
-    /// 땅을 밟고 있는지
-    is_grounded: bool,
-    /// 플레이어가 무적상태인지  
-    /// safe area 내부에 있는 경우 true로 설정됩니다.
-    is_invincible: bool,
 }
 
 impl PlayerObject {
     /// 새로운 플레이어 오브젝트를 생성합니다.  
     pub fn new(account: UserAccount, permission: Permission, team: Team) -> Self {
-        let team_bit = ((team as u8) & 0x1) << 3;
-        let permission_bit = ((permission as u8) & 0x1) << 4;
-        let flag_bit = ((false as u8) & 0x1) << 5;
-        let bitfield = team_bit | permission_bit | flag_bit;
-
         let attributes = get_character_attributes(CharacterKind::default());
-        // let skill_cool_time = match attributes.skill_cool_time {
-        //     SkillKind::Active(_) => SkillKind::Active(0.0),
-        //     SkillKind::Passive => SkillKind::Passive,
-        // };
-
         Self {
             account,
-            bitfield,
+            bitfield: Bitfield::new().with_team(team).with_permission(permission),
             character_kind: CharacterKind::default(),
             attributes,
             health_point: HealthPoint::default(),
             fired_per_attack: 0,
             remaining_bullets: attributes.max_bullets,
-            // skill_cool_time,
             ex_skill_cost: 0.0,
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
@@ -130,8 +219,6 @@ impl PlayerObject {
             view_state_timer: ViewStateTimer::default(),
             view_rotation: LatLon::default(),
             collider: Capsule::new(glam::Vec3::ZERO, PLAYER_HEIGHT, PLAYER_RADIUS),
-            is_grounded: false,
-            is_invincible: false,
         }
     }
 
@@ -162,52 +249,47 @@ impl PlayerObject {
     }
 
     /// 플레이어가 속한 팀의 인덱스를 설정합니다.
-    pub fn with_index(&mut self, index: usize) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x7 << 0)) | ((index as u8) & 0x7) << 0;
+    pub fn with_team_index(&mut self, index: usize) -> &mut Self {
+        self.bitfield = self.bitfield.with_team_index(index);
         self
     }
 
     /// 플레이어가 속한 팀의 인덱스를 가져옵니다.
     pub fn team_index(&self) -> usize {
-        ((self.bitfield >> 0) & 0x7) as usize
+        self.bitfield.team_index()
     }
 
     /// 플레이어가 속한 팀을 설정합니다.
-    #[allow(dead_code)]
     pub fn with_team(&mut self, team: Team) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 3)) | ((team as u8) & 0x1) << 3;
+        self.bitfield = self.bitfield.with_team(team);
         self
     }
 
     /// 플레이어가 속한 팀을 가져옵니다.
     pub fn team(&self) -> Team {
-        // Safe: 값이 범위를 벗어나지 않음
-        let val = (self.bitfield >> 3) & 0x1;
-        unsafe { Team::new(val).unwrap_unchecked() }
+        self.bitfield.team()
     }
 
     /// 플레이어의 권한을 설정합니다.
     pub fn with_permission(&mut self, permission: Permission) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 4)) | ((permission as u8) & 0x1) << 4;
+        self.bitfield = self.bitfield.with_permission(permission);
         self
     }
 
     /// 플레이어의 권한을 가져옵니다.
     pub fn permission(&self) -> Permission {
-        // Safe: 값이 범위를 벗어나지 않음
-        let val = (self.bitfield >> 4) & 0x1;
-        unsafe { Permission::new(val).unwrap_unchecked() }
+        self.bitfield.permission()
     }
 
     /// 부울 플래그 변수의 값을 설정합니다.
-    pub fn with_bool_flag(&mut self, flag: bool) -> &mut Self {
-        self.bitfield = (self.bitfield & !(0x1 << 5)) | ((flag as u8) & 0x1) << 5;
+    pub fn with_ready_to_play(&mut self, ready: bool) -> &mut Self {
+        self.bitfield = self.bitfield.with_ready_to_play(ready);
         self
     }
 
     /// 부울 플래그 변수의 값을 가져옵니다.
-    pub fn bool_flag(&self) -> bool {
-        (self.bitfield >> 5) & 0x1 == 0x1
+    pub fn is_ready_to_play(&self) -> bool {
+        self.bitfield.is_ready_to_play()
     }
 
     /// 플레이어 캐릭터 종류를 가져옵니다.
@@ -381,22 +463,22 @@ impl PlayerObject {
 
     /// 플레이어 오브젝트가 땅에 닿아있는지 여부를 설정합니다.
     pub fn set_grounded(&mut self, grounded: bool) {
-        self.is_grounded = grounded;
+        self.bitfield = self.bitfield.with_grounded(grounded);
     }
 
     /// 플레이어 오브젝트가 땅에 닿아있는지 여부를 가져옵니다.
     pub fn is_grounded(&self) -> bool {
-        self.is_grounded
+        self.bitfield.is_grounded()
     }
 
     /// 플레이어 오브젝트가 무적 상태인지 여부를 설정합니다.
     pub fn set_invincible(&mut self, invincible: bool) {
-        self.is_invincible = invincible;
+        self.bitfield = self.bitfield.with_invincible(invincible);
     }
 
     /// 플레이어 오브젝트가 무적 상태인지 여부를 가져옵니다.
     pub fn is_invincible(&self) -> bool {
-        self.is_invincible
+        self.bitfield.is_invincible()
     }
 
     /// 플레이어를 사망 상태로 설정합니다.

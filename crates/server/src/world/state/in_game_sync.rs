@@ -137,7 +137,7 @@ impl GameWorldInGameSyncState {
             player.reset_state();
             player.reset_action_state(ActionState::Callsign);
             player
-                .with_index(index)
+                .with_team_index(index)
                 .with_translation(position)
                 .with_rotation(direction)
                 .with_view_rotation(view_rotation);

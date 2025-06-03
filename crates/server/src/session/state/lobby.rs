@@ -71,7 +71,7 @@ impl SessionLobbyState {
                     RecruitPhasePlayer::new(
                         item.account().clone(),
                         item.team(),
-                        item.bool_flag(),
+                        item.is_ready_to_play(),
                         item.permission(),
                     )
                 })
@@ -111,7 +111,7 @@ impl SessionLobbyState {
                                 RecruitPhasePlayer::new(
                                     item.account().clone(),
                                     item.team(),
-                                    item.bool_flag(),
+                                    item.is_ready_to_play(),
                                     item.permission(),
                                 )
                             })
