@@ -3,14 +3,15 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use mod_network::protocol::{
-    CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket,
+use mod_network::{
+    components::UserId,
+    protocol::{CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket},
 };
 
 use crate::{
     session::{Session, SessionEvents},
     token::UserTokenMap,
-    world::{GameWorld, GameWorldEvent},
+    world::{GameWorld, GameWorldEvent, GameWorldRoomStateEvent},
 };
 
 use super::{SessionState, SessionStateFlow, formation::SessionFormationState};
@@ -18,15 +19,18 @@ use super::{SessionState, SessionStateFlow, formation::SessionFormationState};
 pub struct SessionRoomState {
     /// 세션 상태 실행 여부
     is_running: bool,
+    /// 사용자 식별자
+    uid: UserId,
     /// 연결된 게임 월드
     world: Weak<GameWorld>,
 }
 
 impl SessionRoomState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(world: &Arc<GameWorld>) -> Self {
+    pub fn new(uid: UserId, world: &Arc<GameWorld>) -> Self {
         Self {
             is_running: true,
+            uid,
             world: Arc::downgrade(world),
         }
     }
@@ -55,7 +59,7 @@ impl SessionRoomState {
         // 커스텀 게임 대기실 객체를 가져옵니다.
         if let Some(world) = self.world.upgrade() {
             // 커스텀 게임 대기실에서 플레이어 정보를 제거합니다.
-            world.exit(session);
+            world.exit(self.uid, session.clone());
 
             // 다음 세션 상태로 전환합니다.
             let control_flow = SessionStateFlow::Pop;
@@ -92,10 +96,11 @@ impl SessionRoomState {
         // 커스텀 게임 대기실 객체를 가져옵니다.
         if let Some(world) = self.world.upgrade() {
             // 게임 준비 요청을 보냅니다.
-            let event = GameWorldEvent::CustomRoomReady {
+            let event = GameWorldRoomStateEvent::Ready(packet.ready);
+            let event = GameWorldEvent::RoomState {
                 session: session.clone(),
                 uid: packet.user_id,
-                ready: packet.ready,
+                event,
             };
             world.push_event(event);
         } else {
@@ -163,7 +168,7 @@ impl SessionState for SessionRoomState {
     fn on_exit(&mut self, session: &Arc<Session>) {
         // 커스텀 게임 대기실에서 플레이어를 제거합니다.
         if let Some(world) = self.world.upgrade() {
-            world.exit(session);
+            world.exit(self.uid, session.clone());
         }
     }
 }

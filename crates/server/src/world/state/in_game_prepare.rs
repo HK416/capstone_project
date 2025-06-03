@@ -13,8 +13,8 @@ use tokio::time::{Duration, Instant};
 
 use crate::{
     entities::PlayData,
-    session::SessionEvents,
-    world::{GameWorld, GameWorldEvent},
+    session::{Session, SessionEvents},
+    world::{GameWorld, GameWorldEvent, GameWorldSystemEvent},
 };
 
 use super::{GameWorldState, GameWorldStateFlow, in_game::GameWorldInGameState};
@@ -55,14 +55,19 @@ impl GameWorldInGamePrepareState {
             play_data: Some(play_data),
         }
     }
-}
 
-//--------------------------------------------------------------------------------------------
-// 처리와 관련된 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl GameWorldInGamePrepareState {
-    /// 플레이어 떠남 이벤트를 처리합니다.
-    fn handle_player_leave_event(&mut self, uid: UserId) {
+    /// [`GameWorldSystemEvent::PlayerJoin`] 이벤트를 처리합니다.
+    fn handle_player_join_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
+        /* TODO */
+    }
+
+    /// [`GameWorldSystemEvent::PlayerLeave`] 이벤트를 처리합니다.
+    fn handle_player_leave_event(
+        &mut self,
+        _world: &GameWorld,
+        _session: Arc<Session>,
+        uid: UserId,
+    ) {
         let play_data = self
             .play_data
             .as_mut()
@@ -75,7 +80,12 @@ impl GameWorldInGamePrepareState {
             log::warn!("unknown game player (UID:{})", uid);
         }
     }
+}
 
+//--------------------------------------------------------------------------------------------
+// 처리와 관련된 코드를 작성합니다.
+//--------------------------------------------------------------------------------------------
+impl GameWorldInGamePrepareState {
     /// 다음 게임 월드 상태로 전환을 시도합니다.
     fn try_enter_next_state(&mut self, world: &GameWorld) {
         // 게임 월드 상태의 지속시간이 남아있는 경우 함수 실행을 생략합니다.
@@ -219,16 +229,25 @@ impl GameWorldState for GameWorldInGamePrepareState {
         self.previous_time_pt = Instant::now();
     }
 
-    fn handle_event(&mut self, event: GameWorldEvent, _world: &Arc<GameWorld>) {
+    fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
         // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
         if !self.is_running {
             return;
         }
 
         match event {
-            GameWorldEvent::PlayerLeave(uid) => {
-                self.handle_player_leave_event(uid);
-            }
+            GameWorldEvent::System {
+                session,
+                uid,
+                event,
+            } => match event {
+                GameWorldSystemEvent::PlayerJoin => {
+                    self.handle_player_join_event(world, session, uid);
+                }
+                GameWorldSystemEvent::PlayerLeave => {
+                    self.handle_player_leave_event(world, session, uid);
+                }
+            },
             _ => {
                 log::warn!(
                     "ignored >> unused world event (EVENT:{:?}, STATE:{:?})",

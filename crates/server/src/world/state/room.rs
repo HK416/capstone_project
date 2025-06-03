@@ -1,14 +1,14 @@
 use std::{fmt, sync::Arc};
 
 use mod_network::{
-    components::{RecruitPhasePlayer, StageKind, StartFailedReason, Team},
+    components::{RecruitPhasePlayer, StageKind, StartFailedReason, Team, UserId},
     protocol::{CustomGamePullPacket, CustomGameStartFailedPacket, Packet},
 };
 use tokio::time::Instant;
 
 use crate::{
     session::{Session, SessionEvents},
-    world::{GameWorld, GameWorldEvent},
+    world::{GameWorld, GameWorldEvent, GameWorldRoomStateEvent, GameWorldSystemEvent},
 };
 
 use super::{GameWorldState, GameWorldStateFlow, formation::GameWorldFormationState};
@@ -45,6 +45,69 @@ impl GameWorldRoomState {
             stage_kind: StageKind::default(),
             delay_time: 0.0,
         }
+    }
+
+    /// [`GameWorldSystemEvent::PlayerJoin`] 이벤트를 처리합니다.
+    fn handle_player_join_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
+        /* TODO */
+    }
+
+    /// [`GameWorldSystemEvent::PlayerLeave`] 이벤트를 처리합니다.
+    fn handle_player_leave_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
+        /* TODO */
+    }
+
+    /// [`GameWorldRoomStateEvent::Ready`] 이벤트를 처리합니다.
+    fn handle_ready_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        ready: bool,
+    ) {
+        if uid == world.admin() {
+            self.try_enter_next_state(&session, world);
+        } else {
+            if !world.access_mut(&session, |data| {
+                data.with_bool_flag(ready);
+            }) {
+                log::warn!("{} accesses an invalid game player", session);
+                session.close();
+            }
+        }
+    }
+
+    /// [`GameWorldRoomStateEvent::ChangeTeam`] 이벤트를 처리합니다.
+    fn handle_change_team_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        team: Team,
+    ) {
+        /* TODO */
+    }
+
+    /// [`GameWorldRoomStateEvent::ChangeDuplicateOption`] 이벤트를 처리합니다.
+    fn handle_change_duplicate_option_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        duplicates: bool,
+    ) {
+        /* TODO */
+    }
+
+    /// [`GameWorldRoomStateEvent::ChangeBalanceOption`] 이벤트를 처리합니다.
+    fn handle_change_balance_option_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        balance: bool,
+    ) {
+        /* TODO */
     }
 }
 
@@ -206,22 +269,36 @@ impl GameWorldState for GameWorldRoomState {
         }
 
         match event {
-            GameWorldEvent::CustomRoomReady {
+            GameWorldEvent::System {
                 session,
                 uid,
-                ready,
-            } => {
-                if uid == world.admin() {
-                    self.try_enter_next_state(&session, world);
-                } else {
-                    if !world.access_mut(&session, |player| {
-                        player.with_bool_flag(ready);
-                    }) {
-                        log::warn!("{} accesses an invalid game player", session);
-                        session.close();
-                    }
+                event,
+            } => match event {
+                GameWorldSystemEvent::PlayerJoin => {
+                    self.handle_player_join_event(world, session, uid);
                 }
-            }
+                GameWorldSystemEvent::PlayerLeave => {
+                    self.handle_player_leave_event(world, session, uid);
+                }
+            },
+            GameWorldEvent::RoomState {
+                session,
+                uid,
+                event,
+            } => match event {
+                GameWorldRoomStateEvent::Ready(ready) => {
+                    self.handle_ready_event(world, session, uid, ready);
+                }
+                GameWorldRoomStateEvent::ChangeTeam(team) => {
+                    self.handle_change_team_event(world, session, uid, team);
+                }
+                GameWorldRoomStateEvent::ChangeDuplicateOption(duplicates) => {
+                    self.handle_change_duplicate_option_event(world, session, uid, duplicates);
+                }
+                GameWorldRoomStateEvent::ChangeBalanceOption(balance) => {
+                    self.handle_change_balance_option_event(world, session, uid, balance);
+                }
+            },
             _ => {
                 log::warn!(
                     "ignored >> unused world event (EVENT:{:?} STATE:{:?})",

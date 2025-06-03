@@ -15,7 +15,7 @@ use crate::{
     data::get_stage_attributes,
     entities::{PlayData, PlayerObject},
     session::{Session, SessionEvents},
-    world::{GameWorld, GameWorldEvent},
+    world::{GameWorld, GameWorldEvent, GameWorldSystemEvent},
 };
 
 use super::{GameWorldState, GameWorldStateFlow, in_game_prepare::GameWorldInGamePrepareState};
@@ -74,6 +74,27 @@ impl GameWorldInGameSyncState {
                 })
                 .collect(),
             ),
+        }
+    }
+
+    /// [`GameWorldSystemEvent::PlayerJoin`] 이벤트를 처리합니다.
+    fn handle_player_join_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
+        /* TODO */
+    }
+
+    /// [`GameWorldSystemEvent::PlayerLeave`] 이벤트를 처리합니다.
+    fn handle_player_leave_event(
+        &mut self,
+        _world: &GameWorld,
+        _session: Arc<Session>,
+        uid: UserId,
+    ) {
+        // 연결 상태 부울 플래그를 false로 설정합니다.
+        let play_data = self.play_data.as_mut().unwrap();
+        if let Some(data) = play_data.get_mut(&uid) {
+            data.connected = false;
+        } else {
+            log::warn!("unknown game player (UID:{})", uid);
         }
     }
 
@@ -137,17 +158,6 @@ impl GameWorldInGameSyncState {
         } else {
             log::warn!("{} accesses an invalid game player", session);
             session.close();
-        }
-    }
-
-    /// 플레이어 떠남 이벤트를 처리합니다.
-    fn handle_player_leave_event(&mut self, uid: UserId) {
-        // 연결 상태 부울 플래그를 false로 설정합니다.
-        let play_data = self.play_data.as_mut().unwrap();
-        if let Some(data) = play_data.get_mut(&uid) {
-            data.connected = false;
-        } else {
-            log::warn!("unknown game player (UID:{})", uid);
         }
     }
 
@@ -290,18 +300,27 @@ impl GameWorldState for GameWorldInGameSyncState {
         self.previous_time_pt = Instant::now();
     }
 
-    fn handle_event(&mut self, event: GameWorldEvent, _world: &Arc<GameWorld>) {
+    fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
         // 게임 월드 상태가 실행 중이 아닌 경우 함수를 빠져나옵니다.
         if !self.is_running {
             return;
         }
 
         match event {
+            GameWorldEvent::System {
+                session,
+                uid,
+                event,
+            } => match event {
+                GameWorldSystemEvent::PlayerJoin => {
+                    self.handle_player_join_event(world, session, uid);
+                }
+                GameWorldSystemEvent::PlayerLeave => {
+                    self.handle_player_leave_event(world, session, uid);
+                }
+            },
             GameWorldEvent::GameLoadFinish { session, uid } => {
                 self.handle_game_load_finish_event(&session, uid);
-            }
-            GameWorldEvent::PlayerLeave(uid) => {
-                self.handle_player_leave_event(uid);
             }
             _ => {
                 log::warn!(

@@ -61,7 +61,9 @@ impl SessionLobbyState {
     /// 커스텀 게임 대기실을 생성합니다.
     fn create_custom_game(&mut self, session: &Arc<Session>, _packet: CustomGameJoinRequestPacket) {
         // 새로운 커스텀 게임 대기실을 생성합니다.
-        if let Some(world) = GameWorldPool::create_custom(&self.account, session) {
+        let result =
+            GameWorldPool::create_custom(self.account.uid, self.account.name, session.clone());
+        if let Some(world) = result {
             // 플레이어 정보를 수집합니다.
             let players = world
                 .iter_players()
@@ -81,7 +83,7 @@ impl SessionLobbyState {
             session.tcp_write(packet.as_raw());
 
             // 다음 세션 상태로 전환합니다.
-            let next_state = Box::new(SessionRoomState::new(&world));
+            let next_state = Box::new(SessionRoomState::new(self.account.uid, &world));
             let control_flow = SessionStateFlow::Push(next_state);
             let event = SessionEvents::SetControlFlow(control_flow);
             session.push_event(event);
@@ -99,7 +101,8 @@ impl SessionLobbyState {
         match GameWorldPool::get(&packet.world_id) {
             Some(world) => {
                 // 커스텀 게임 대기실에 참가를 시도합니다.
-                match world.try_join(self.account, session) {
+                let result = world.try_join(self.account.uid, self.account.name, session.clone());
+                match result {
                     Ok(()) => {
                         // 플레이어 정보를 수집합니다.
                         let players = world
@@ -120,7 +123,7 @@ impl SessionLobbyState {
                         session.tcp_write(packet.as_raw());
 
                         // 다음 세션 상태로 전환합니다.
-                        let next_state = Box::new(SessionRoomState::new(&world));
+                        let next_state = Box::new(SessionRoomState::new(self.account.uid, &world));
                         let control_flow = SessionStateFlow::Push(next_state);
                         let event = SessionEvents::SetControlFlow(control_flow);
                         session.push_event(event);

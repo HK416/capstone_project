@@ -6,7 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use mod_network::components::{MAX_IN_GAME_PLAYERS, UserAccount, UserId, WorldId};
+use mod_network::components::{MAX_IN_GAME_PLAYERS, UserId, UserName, WorldId};
 use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::session::Session;
@@ -90,7 +90,11 @@ impl GameWorldPool {
     }
 
     /// 새로운 게임 월드를 생성합니다.
-    pub fn create_custom(account: &UserAccount, session: &Arc<Session>) -> Option<Arc<GameWorld>> {
+    pub fn create_custom(
+        uid: UserId,
+        user_name: UserName,
+        session: Arc<Session>,
+    ) -> Option<Arc<GameWorld>> {
         // 게임 월드를 할당받습니다.
         let world = match get_retires().pop() {
             Some(world) => world,
@@ -109,7 +113,7 @@ impl GameWorldPool {
         println!("GameWorld({}) is allocated.", world.id());
 
         // 게임 월드를 실행합니다.
-        world.run_custom(account, session);
+        world.run_custom(uid, user_name, session);
 
         Some(world)
     }

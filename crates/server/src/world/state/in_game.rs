@@ -28,8 +28,8 @@ use crate::{
     },
     entities::{BulletObject, CapturePointObject, PlayData, PlayerObject},
     formula::movement_formulas as formulas,
-    session::SessionEvents,
-    world::{GameWorld, GameWorldEvent},
+    session::{Session, SessionEvents},
+    world::{GameWorld, GameWorldEvent, GameWorldSystemEvent},
 };
 
 use super::{GameWorldState, GameWorldStateFlow};
@@ -98,6 +98,31 @@ impl GameWorldInGameState {
         }
     }
 
+    /// [`GameWorldSystemEvent::PlayerJoin`] 이벤트를 처리합니다.
+    fn handle_player_join_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
+        /* TODO */
+    }
+
+    /// [`GameWorldSystemEvent::PlayerLeave`] 이벤트를 처리합니다.
+    fn handle_player_leave_event(
+        &mut self,
+        _world: &GameWorld,
+        _session: Arc<Session>,
+        uid: UserId,
+    ) {
+        let play_data = self
+            .play_data
+            .as_mut()
+            .expect("the game play data must exist!");
+
+        // 연결 상태 부울 플래그를 false로 설정합니다.
+        if let Some(data) = play_data.get_mut(&uid) {
+            data.connected = false;
+        } else {
+            log::warn!("unknown game player (UID:{})", uid);
+        }
+    }
+
     /// 오브젝트 식별자를 생성합니다.
     pub fn generate_object_id(&mut self) -> ObjectId {
         let now = SystemTime::now();
@@ -157,21 +182,6 @@ impl GameWorldInGameState {
 // 처리와 관련된 코드를 작성합니다.
 //--------------------------------------------------------------------------------------------
 impl GameWorldInGameState {
-    /// 플레이어 떠남 이벤트를 처리합니다.
-    fn handle_player_leave_event(&mut self, uid: UserId) {
-        let play_data = self
-            .play_data
-            .as_mut()
-            .expect("the game play data must exist!");
-
-        // 연결 상태 부울 플래그를 false로 설정합니다.
-        if let Some(data) = play_data.get_mut(&uid) {
-            data.connected = false;
-        } else {
-            log::warn!("unknown game player (UID:{})", uid);
-        }
-    }
-
     /// 0.1m 마다 바닥과의 충돌을 검사하여 바닥과의 충돌을 확인합니다.
     fn check_bullet_ground_collision(
         &self,
@@ -916,9 +926,18 @@ impl GameWorldState for GameWorldInGameState {
         }
 
         match event {
-            GameWorldEvent::PlayerLeave(user_id) => {
-                self.handle_player_leave_event(user_id);
-            }
+            GameWorldEvent::System {
+                session,
+                uid,
+                event,
+            } => match event {
+                GameWorldSystemEvent::PlayerJoin => {
+                    self.handle_player_join_event(world, session, uid);
+                }
+                GameWorldSystemEvent::PlayerLeave => {
+                    self.handle_player_leave_event(world, session, uid);
+                }
+            },
             GameWorldEvent::AddBullet { shooter_id, delay } => {
                 self.add_bullet(world, shooter_id, delay);
             }
