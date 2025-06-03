@@ -10,5 +10,6 @@ mod health;
 mod skill;
 pub mod state;
 pub mod timer;
+mod weapon;
 
-pub use self::{health::*, skill::*};
+pub use self::{health::*, skill::*, weapon::*};

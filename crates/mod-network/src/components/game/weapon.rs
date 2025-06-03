@@ -1,19 +1,19 @@
-//! 플레이어 스킬 코스트와 관련된 코드를 관리합니다.
+//! 무기와 관련된 코드를 관리합니다.
 //!
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
-/// 스킬 코스트 데이터입니다.
+/// 남은 총알 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SkillCostData {
-    /// 남은 스킬 코스트입니다.
+pub struct BulletData {
+    /// 남은 총알 수 입니다.
     remaining: u16,
-    /// 최대 스킬 코스트입니다. 최대 스킬 코스트가 0인 경우 무한대를 의미합니다.
+    /// 최대 총알 수 입니다. 최대 총알 수가 0인 경우 무한대를 의미합니다.
     maximum: u16,
 }
 
-impl SkillCostData {
-    /// 새로운 스킬 코스트 데이터를 생성합니다.
+impl BulletData {
+    /// 새로운 남은 총알 데이터를 생성합니다.
     ///
     /// # Panics
     /// 주어진 `remaining`이 `maximum`보다 클 경우 [`panic!`]을 호출합니다.
@@ -23,7 +23,7 @@ impl SkillCostData {
         Self { remaining, maximum }
     }
 
-    /// 새로운 스킬 코스트 데이터를 생성합니다.
+    /// 새로운 남은 총알 데이터를 생성합니다.
     pub const fn splat(maximum: u16) -> Self {
         Self {
             remaining: maximum,
@@ -31,46 +31,52 @@ impl SkillCostData {
         }
     }
 
-    /// 플레이어가 스킬 코스트를 회복할 때 호출되는 함수로
-    /// 남은 스킬 코스트를 주어진 `cost`만큼 추가합니다.
-    ///
-    /// 이때 남은 스킬 코스트는 최대 스킬 코스트를 초과할 수 없습니다.
-    ///
-    pub fn on_advanced(&mut self, cost: u16) {
-        self.remaining = (self.remaining + cost).min(self.maximum)
+    /// 플레이어가 재장전 했을 때 호출되는 함수로
+    /// 남은 총알 수를 최대 총알 수로 초기화합니다.
+    pub fn on_reload(&mut self) {
+        self.remaining = self.maximum;
     }
 
-    /// 플레이어가 스킬을 사용하고자 할 때 호출되는 함수로
-    /// 남은 스킬 코스트가 최대 스킬 코스트와 같을 경우 `true`를 반환 후
-    /// 남은 스킬 코스트를 0으로 설정합니다.
+    /// 플레이어가 일반 공격 했을 때 호출되는 함수로
+    /// 남은 총알 수를 하나 줄입니다.
+    ///
+    /// 총알이 발사될 수 있는 경우 `true`를 반환합니다.
+    ///
     pub fn on_fired(&mut self) -> bool {
-        if self.remaining == self.maximum {
-            self.remaining = 0;
+        // 남은 총알이 무한대인 경우 항상 `true`를 반환합니다.
+        if self.maximum == 0 {
             return true;
         }
-        return false;
+
+        // 남은 총알이 0보다 큰 경우 `true`를 반환합니다.
+        if self.remaining > 0 {
+            self.remaining -= 1;
+            return true;
+        } else {
+            return false;
+        }
     }
 
-    /// 남은 스킬 코스트를 가져옵니다.
-    pub fn num_remaining_cost(&self) -> u16 {
+    /// 남은 총알의 수를 가져옵니다.
+    pub fn num_remaining_bullets(&self) -> u16 {
         self.remaining
     }
 
-    /// 최대 스킬 코스트를 가져옵니다.
-    pub fn num_maximum_cost(&self) -> u16 {
+    /// 최대 총알의 수를 가져옵니다.
+    pub fn num_maximum_bullets(&self) -> u16 {
         self.maximum
     }
 
-    /// 남은 스킬 코스트 비율을 반환합니다.
+    /// 남은 총알의 비율을 반환합니다.
     ///
-    /// 남은 스킬 코스트가 무한대인 경우 `None`을 반환합니다.
+    /// 남은 총알이 무한대인 경우 `None`을 반환합니다.
     ///
     pub fn percent(&self) -> Option<f32> {
         (self.maximum != 0).then(|| self.remaining as f32 / self.maximum as f32)
     }
 }
 
-impl BigEndian for SkillCostData {
+impl BigEndian for BulletData {
     fn byte_size() -> usize {
         u16::byte_size() + u16::byte_size()
     }
@@ -91,7 +97,7 @@ impl BigEndian for SkillCostData {
                 bytes.len(),
                 Self::byte_size(),
                 "the size of byte array and the size of `{}` are different!",
-                stringify!(SkillCostData),
+                stringify!(BulletData)
             )
         };
 
@@ -99,7 +105,7 @@ impl BigEndian for SkillCostData {
     }
 }
 
-impl Default for SkillCostData {
+impl Default for BulletData {
     fn default() -> Self {
         Self {
             remaining: 0,
@@ -108,7 +114,7 @@ impl Default for SkillCostData {
     }
 }
 
-impl TryFromBigEndian for SkillCostData {
+impl TryFromBigEndian for BulletData {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         // 바이트 배열의 길이를 확인합니다.
         if cfg!(feature = "check-validation") {
@@ -116,17 +122,17 @@ impl TryFromBigEndian for SkillCostData {
                 bytes.len(),
                 Self::byte_size(),
                 "the size of byte array and the size of `{}` are different!",
-                stringify!(SkillCostData),
+                stringify!(BulletData)
             )
         };
 
-        // 남은 스킬 코스트를 가져옵니다.
+        // 남은 총알 수를 가져옵니다.
         let mut offset = 0;
         let mut size = u16::byte_size();
         let mut data = &bytes[offset..offset + size];
         let remaining = u16::from_big_endian_bytes(data);
 
-        // 최대 스킬 코스트를 가져옵니다.
+        // 최대 총알 수를 가져옵니다.
         offset = offset + size;
         size = u16::byte_size();
         data = &bytes[offset..offset + size];
@@ -142,15 +148,15 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_creation_skill_cost_data() {
-        SkillCostData::new(52, 11);
+    fn test_creation_bullet_data() {
+        BulletData::new(12, 10);
     }
 
     #[test]
-    fn test_skill_cost_data() {
-        let origin = SkillCostData::new(234, 500);
+    fn test_bullet_data() {
+        let origin = BulletData::new(100, 456);
         let bytes = origin.to_big_endian_bytes();
-        let other = SkillCostData::from_big_endian_bytes(&bytes);
+        let other = BulletData::from_big_endian_bytes(&bytes);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);
