@@ -414,11 +414,15 @@ fn running_loop(world: Arc<GameWorld>) {
             if let Some(curr_state) = stack.back_mut() {
                 // 게임 월드 이벤트를 처리합니다.
                 while let Some(event) = world.events.pop() {
-                    curr_state.handle_event(event, &world);
+                    if world.flows.is_empty() {
+                        curr_state.handle_event(event, &world);
+                    }
                 }
 
                 // 게임 월드 상태를 갱신합니다.
-                curr_state.on_advanced(&world, elapsed_time_sec);
+                if world.flows.is_empty() {
+                    curr_state.on_advanced(&world, elapsed_time_sec);
+                }
             }
 
             // 게임 월드 상태 흐름을 처리합니다.
