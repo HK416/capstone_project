@@ -25,7 +25,7 @@ use crate::{
     SERVER_TCP_ADDR,
 };
 
-use super::{CharacterFormationScene, MessageSceneLayer, BASE_WIDTH, TEAM_COLOR};
+use super::{MessageSceneLayer, BASE_WIDTH, TEAM_COLOR};
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 대기실"];
@@ -226,32 +226,34 @@ impl GameScene for CustomGameRoomScene {
 
     fn on_update(&mut self, _: f32, _: &Window, app: &dyn AppHandle) {
         if let Some(packet) = self.formation_packet.as_ref() {
-            let next_scene = Box::new(CharacterFormationScene::new(
-                self.locale,
-                self.user_id,
-                self.token,
-                self.texture_pool.clone(),
-                self.texture_view_pool.clone(),
-                packet.remaining_time,
-                packet.players.clone(),
-            ));
-            let scene_flow = GameSceneFlow::Push(next_scene);
-            let event = AppEvent::AddGameSceneFlow(scene_flow);
-            let event_loop_proxy = app.event_loop_proxy();
-            event_loop_proxy.send_event(event).unwrap();
+            // let next_scene = Box::new(CharacterFormationScene::new(
+            //     self.locale,
+            //     self.user_id,
+            //     self.token,
+            //     self.texture_pool.clone(),
+            //     self.texture_view_pool.clone(),
+            //     packet.remaining_time,
+            //     packet.players.clone(),
+            // ));
+            // let scene_flow = GameSceneFlow::Push(next_scene);
+            // let event = AppEvent::AddGameSceneFlow(scene_flow);
+            // let event_loop_proxy = app.event_loop_proxy();
+            // event_loop_proxy.send_event(event).unwrap();
         }
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
-        let i = self.locale as usize;
-
-        // 폰트 속성
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // Head 텍스트
-        let text = format!("{} - {}", HEAD_TEXTS[i], self.world_id);
+        let text = format!("{} - {}", HEAD_TEXTS[locale], self.world_id);
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(32.0 * scale, family);
         let head_text = egui::RichText::new(text)
@@ -277,8 +279,8 @@ impl GameScene for CustomGameRoomScene {
         let enable_enter_button = permission == Permission::User
             || (permission == Permission::Admin && other_players_ready);
         let text = match permission {
-            Permission::Admin => START_TEXTS[i],
-            Permission::User => READY_TEXTS[i],
+            Permission::Admin => START_TEXTS[locale],
+            Permission::User => READY_TEXTS[locale],
         };
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(48.0 * scale, family);
@@ -300,24 +302,29 @@ impl GameScene for CustomGameRoomScene {
         // 배경화면
         let source = self.bg_texture_id;
         let ratio = source.size.x / source.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width;
+        let center_x = 1280.0 * 0.5 * scale;
+        let center_y = 720.0 * 0.5 * scale;
+        let img_width = 1280.0 * scale;
         let img_height = img_width / ratio;
         let rect = egui::Rect {
             min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
+                clip_rect.min.x + center_x - 0.5 * img_width,
+                clip_rect.min.y + center_y - 0.5 * img_height,
             ),
             max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
+                clip_rect.min.x + center_x + 0.5 * img_width,
+                clip_rect.min.y + center_y + 0.5 * img_height,
             ),
         };
 
+        let offset = clip_rect.min + egui::vec2(16.0, 16.0) * scale;
         egui::Area::new(egui::Id::new("Head_Layout"))
-            .anchor(egui::Align2::LEFT_TOP, (16.0 * scale, 16.0 * scale))
+            .anchor(egui::Align2::LEFT_TOP, offset.to_vec2())
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_size(egui::vec2(1212.0, 64.0) * scale);
+                ui.set_max_size(egui::vec2(1212.0, 64.0) * scale);
+
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     if ui.add(exit_button).clicked() {
                         // 패킷을 생성하고 전송합니다.
@@ -339,8 +346,9 @@ impl GameScene for CustomGameRoomScene {
         egui::Area::new(egui::Id::new("List_Layout"))
             .anchor(egui::Align2::CENTER_CENTER, (-96.0 * scale, 48.0 * scale))
             .show(app.egui_ctx(), |ui| {
-                ui.set_width(960.0 * scale);
-                ui.set_height(500.0 * scale);
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_size(egui::vec2(960.0, 500.0) * scale);
+                ui.set_max_size(egui::vec2(960.0, 500.0) * scale);
 
                 ui.columns(2, |cols| {
                     let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
@@ -391,12 +399,14 @@ impl GameScene for CustomGameRoomScene {
                 });
             });
 
+        let offset = clip_rect.max - egui::vec2(16.0, 48.0) * scale;
         egui::Area::new(egui::Id::new("Control_Pannel"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, (-16.0 * scale, -48.0 * scale))
+            .anchor(egui::Align2::RIGHT_BOTTOM, offset.to_vec2())
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
                 ui.add_enabled_ui(enable_enter_button, |ui| {
-                    ui.set_width(200.0 * scale);
-                    ui.set_height(140.0 * scale);
+                    ui.set_min_size(egui::vec2(200.0, 140.0) * scale);
+                    ui.set_max_size(egui::vec2(200.0, 140.0) * scale);
                     ui.centered_and_justified(|ui| {
                         if ui.add(enter_button).clicked() {
                             // 패킷을 생성하고 전송합니다.
@@ -413,6 +423,7 @@ impl GameScene for CustomGameRoomScene {
         egui::CentralPanel::default()
             .frame(egui::Frame::new())
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
                 egui::Image::new(source).paint_at(ui, rect);
             });
     }

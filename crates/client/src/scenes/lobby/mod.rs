@@ -163,9 +163,14 @@ impl GameScene for MainLobbyScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 플레이어 정보 텍스트
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
@@ -176,50 +181,54 @@ impl GameScene for MainLobbyScene {
         let label_widget = egui::Label::new(text)
             .halign(egui::Align::Min)
             .wrap_mode(egui::TextWrapMode::Extend);
+
         // 플레이어 정보 텍스트 출력
         egui::Area::new(egui::Id::new("Player_Info"))
-            .default_pos(egui::pos2(32.0 * scale, 8.0 * scale))
-            .default_size(egui::vec2(1216.0 * scale, 64.0 * scale))
+            .fixed_pos(clip_rect.min + egui::vec2(8.0, 8.0) * scale)
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_width(1280.0 * scale);
+                ui.set_max_width(1280.0 * scale);
                 ui.add(label_widget);
             });
 
         // 게임 생성 버튼
-        let i = self.locale as usize;
-        let text = CREATE_GAME_BTN_TEXTS[i];
+        let text = CREATE_GAME_BTN_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(48.0 * scale, family);
         let text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::BLACK);
         let create_button = egui::Button::new(text)
-            .fill(egui::Color32::LIGHT_GRAY)
+            .fill(egui::Color32::WHITE)
             .corner_radius(3.0)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         let create_rect = egui::Rect::from_min_max(
-            egui::pos2(1004.0 * scale, 536.0 * scale),
-            egui::pos2(1264.0 * scale, 616.0 * scale),
+            clip_rect.min + egui::vec2(1004.0 * scale, 536.0 * scale),
+            clip_rect.min + egui::vec2(1264.0 * scale, 616.0 * scale),
         );
 
         // 게임 참가 버튼
-        let text = JOIN_GAME_BTN_TEXTS[i];
+        let text = JOIN_GAME_BTN_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(48.0 * scale, family);
         let text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::BLACK);
         let join_button = egui::Button::new(text)
-            .fill(egui::Color32::LIGHT_GRAY)
+            .fill(egui::Color32::WHITE)
             .corner_radius(3.0)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         let join_rect = egui::Rect::from_min_max(
-            egui::pos2(1004.0 * scale, 624.0 * scale),
-            egui::pos2(1264.0 * scale, 704.0 * scale),
+            clip_rect.min + egui::vec2(1004.0 * scale, 624.0 * scale),
+            clip_rect.min + egui::vec2(1264.0 * scale, 704.0 * scale),
         );
 
         egui::Area::new(egui::Id::new("Game")).show(app.egui_ctx(), |ui| {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                 ui.add_enabled_ui(self.button_enabled, |ui| {
+                    ui.shrink_clip_rect(clip_rect);
+
                     if ui.put(create_rect, create_button).clicked() {
                         // 커스텀 게임 생성 패킷을 생성합니다.
                         let packet = CustomGameJoinRequestPacket::new(
@@ -256,24 +265,25 @@ impl GameScene for MainLobbyScene {
         // 배경화면
         let source = self.bg_texture_id;
         let ratio = source.size.x / source.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width;
+        let center_x = 1280.0 * 0.5 * scale;
+        let center_y = 720.0 * 0.5 * scale;
+        let img_width = 1280.0 * scale;
         let img_height = img_width / ratio;
         let rect = egui::Rect {
             min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
+                clip_rect.min.x + center_x - 0.5 * img_width,
+                clip_rect.min.y + center_y - 0.5 * img_height,
             ),
             max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
+                clip_rect.min.x + center_x + 0.5 * img_width,
+                clip_rect.min.y + center_y + 0.5 * img_height,
             ),
         };
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new())
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
                 egui::Image::new(source).paint_at(ui, rect);
             });
     }

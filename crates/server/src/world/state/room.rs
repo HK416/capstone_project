@@ -10,7 +10,7 @@ use crate::{
     world::{GameWorld, GameWorldEvent, GameWorldRoomStateEvent, GameWorldSystemEvent},
 };
 
-use super::{GameWorldState, GameWorldStateFlow, formation::GameWorldFormationState};
+use super::{GameWorldState, GameWorldStateFlow};
 
 /// 커스텀 대기실 상태 게임 월드입니다.
 pub struct GameWorldRoomState {
@@ -153,16 +153,16 @@ impl GameWorldRoomState {
         }
 
         if other_player_readys {
-            world.set_closed(true);
+            // world.set_closed(true);
 
-            let next_state = GameWorldFormationState::new(self.allow_duplicates, self.stage_kind);
-            let state_flow = GameWorldStateFlow::Push(Box::new(next_state));
-            world.push_state_flow(state_flow);
+            // let next_state = GameWorldFormationState::new(self.allow_duplicates, self.stage_kind);
+            // let state_flow = GameWorldStateFlow::Push(Box::new(next_state));
+            // world.push_state_flow(state_flow);
 
-            // 게임 월드에 참여한 모든 세션에 이벤트를 보냅니다.
-            for item in world.sessions.iter() {
-                item.key().push_event(SessionEvents::EnterFormation);
-            }
+            // // 게임 월드에 참여한 모든 세션에 이벤트를 보냅니다.
+            // for item in world.sessions.iter() {
+            //     item.key().push_event(SessionEvents::EnterFormation);
+            // }
         } else {
             let reason = StartFailedReason::PlayersNotReady;
             let packet = CustomGameStartFailedPacket::new(reason);

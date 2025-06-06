@@ -1,3 +1,7 @@
+//! 애플리케이션의 최초 진입 장면입니다.
+//! 게임에서 사용되는 필수 리소스를 로드합니다.
+//!
+
 mod init;
 
 use std::{
@@ -23,11 +27,11 @@ use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     asset::{
-        TexturePool, BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA,
-        BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA,
-        BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA,
-        BG_LOGIN_TITLE_5_URI, GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR,
-        USER_CONFIG,
+        TexturePool, BG_GROWTH_EFFECT_LABEL_DATA, BG_GROWTH_EFFECT_LABEL_URI,
+        BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI,
+        BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
+        BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
+        GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
     },
     component::{
         BulletRenderPipeline, BulletRenderPipelineTransparency, CharacterBakePipeline,
@@ -312,8 +316,8 @@ impl GameStartupScene {
         self.num_remaining_tasks += 1;
     }
 
-    /// 텍스처를 디코드하고, 텍스처 풀 객체에 등록합니다.
-    fn regist_texture(
+    /// 텍스처를 디코드하고, 텍스처 객체를 생성합니다.
+    fn create_texture(
         &mut self,
         thread_pool: &ThreadPool,
         device: &Arc<wgpu::Device>,
@@ -424,7 +428,7 @@ impl GameStartupScene {
         // 애플리케이션 창의 최대 크기를 구합니다.
         let max_window_size = window
             .current_monitor()
-            .map(|monitor| WindowSize::find_maximize_size(monitor))
+            .map(|monitor| WindowSize::find_maximize_size(monitor.size()))
             .flatten()
             .unwrap_or(WindowSize::MAX);
 
@@ -444,46 +448,53 @@ impl GameScene for GameStartupScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let device = app.render_device();
         let thread_pool = app.io_threads();
-        let root_dir = app.asset_manager().get_root_dir();
+        let mut root_dir = app.current_dir().to_path_buf();
+        root_dir.push("assets");
         self.init_render_pipeline(thread_pool, device);
-        self.load_notosans_regular_font(thread_pool, root_dir);
-        self.load_notosans_blod_font(thread_pool, root_dir);
-        self.regist_texture(thread_pool, device, GAME_LOGO_URI, GAME_LOGO_DATA);
-        self.regist_texture(
+        self.load_notosans_regular_font(thread_pool, &root_dir);
+        self.load_notosans_blod_font(thread_pool, &root_dir);
+        self.create_texture(thread_pool, device, GAME_LOGO_URI, GAME_LOGO_DATA);
+        self.create_texture(
             thread_pool,
             device,
             BG_LOGIN_TITLE_0_URI,
             BG_LOGIN_TITLE_0_DATA,
         );
-        self.regist_texture(
+        self.create_texture(
             thread_pool,
             device,
             BG_LOGIN_TITLE_1_URI,
             BG_LOGIN_TITLE_1_DATA,
         );
-        self.regist_texture(
+        self.create_texture(
             thread_pool,
             device,
             BG_LOGIN_TITLE_2_URI,
             BG_LOGIN_TITLE_2_DATA,
         );
-        self.regist_texture(
+        self.create_texture(
             thread_pool,
             device,
             BG_LOGIN_TITLE_3_URI,
             BG_LOGIN_TITLE_3_DATA,
         );
-        self.regist_texture(
+        self.create_texture(
             thread_pool,
             device,
             BG_LOGIN_TITLE_4_URI,
             BG_LOGIN_TITLE_4_DATA,
         );
-        self.regist_texture(
+        self.create_texture(
             thread_pool,
             device,
             BG_LOGIN_TITLE_5_URI,
             BG_LOGIN_TITLE_5_DATA,
+        );
+        self.create_texture(
+            thread_pool,
+            device,
+            BG_GROWTH_EFFECT_LABEL_URI,
+            BG_GROWTH_EFFECT_LABEL_DATA,
         );
         self.load_user_config(root_dir);
     }

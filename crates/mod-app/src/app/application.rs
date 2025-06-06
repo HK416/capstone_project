@@ -5,7 +5,9 @@ use std::{
     sync::Arc,
 };
 
-use mod_render::{config_swapchain, init_wgpu, ScreenDescriptor, UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{
+    config_swapchain, init_wgpu, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
+};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use winit::{
     application::ApplicationHandler,
@@ -17,9 +19,9 @@ use winit::{
 };
 
 use crate::{
-    asset::AssetManager,
+    app::render::FrameResource,
     error::{show_error_msg, Alert},
-    etc::{AppEvent, AppFlags, GameTimer, WindowSize},
+    etc::{AppEvent, AppFlags, GameTimer, Viewport, WindowSize},
     ext::AppWindowExt,
     net::NetManager,
     scene::{GameScene, GameSceneFlow},
@@ -44,9 +46,6 @@ pub struct Application {
     /// 애플리케이션 실행 디렉토리 경로입니다.
     current_dir: PathBuf,
 
-    /// 애플리케이션 에셋 관리자입니다.
-    asset_manager: AssetManager,
-
     /// 애플리케이션 네트워크 매니저입니다.
     net_manager: NetManager,
 
@@ -61,6 +60,9 @@ pub struct Application {
 
     /// 애플리케이션 창 크기입니다.
     window_size: WindowSize,
+
+    /// 애플리케이션 뷰포트 영역입니다.
+    viewport: Viewport,
 
     /// 애플리케이션 창의 전체화면 여부입니다.
     fullscreen: bool,
@@ -103,6 +105,9 @@ pub struct Application {
 
     /// 애플리케이션 창입니다.
     app_window: Option<AppWindow>,
+
+    /// 프레임 쉐이더 리소스입니다.
+    frame_resource: Option<FrameResource>,
 }
 
 impl Application {
@@ -140,19 +145,17 @@ impl Application {
         // 에셋 관리자를 생성합니다.
         let mut root_dir = unsafe { builder.current_dir.clone().unwrap_unchecked() }; // Safe: 빌더를 생성할 때 존재 유무를 확인함.
         root_dir.push("assets");
-        let bundle =
-            AssetManager::new(root_dir).map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
         Ok(Self {
             event_loop_proxy,
             io_threads,
             current_dir: unsafe { builder.current_dir.unwrap_unchecked() }, // Safe: 빌더 생성 중 확인함.
-            asset_manager: bundle,
             net_manager: network,
             flags: builder.flags,
             window_title: builder.title.unwrap_or("Hello to Halo".to_string()),
             window_icon: builder.icon,
             window_size: builder.size.unwrap_or(WindowSize::MAX),
+            viewport: Viewport::default(),
             fullscreen: builder.fullscreen,
             visible: builder.visible,
             modifier: Modifiers::default(),
@@ -167,16 +170,91 @@ impl Application {
             device,
             queue,
             app_window: None,
+            frame_resource: None,
         })
     }
 
+    /// 뷰포트 영역을 계산하고 설정합니다.
+    fn set_viewport_area(
+        &mut self,
+        window_width: f32,
+        window_height: f32,
+        content_aspect_ratio: f32,
+    ) {
+        let window_aspect_ratio = window_width / window_height;
+        if window_aspect_ratio > content_aspect_ratio {
+            // 창이 가로로 더 넓은 경우: 위-아래 레터박스
+            let content_height = window_height;
+            let content_width = content_height * content_aspect_ratio;
+            let x = ((window_width - content_width) * 0.5).max(0.0);
+            let y = 0.0;
+            self.viewport = Viewport::new(x, y, content_width, content_height, 0.0, 1.0);
+        } else {
+            // 창이 세로로 더 넓은 경우: 좌-우 레터박스
+            let content_width = window_width;
+            let content_height = content_width / content_aspect_ratio;
+            let x = 0.0;
+            let y = ((window_height - content_height) * 0.5).max(0.0);
+            self.viewport = Viewport::new(x, y, content_width, content_height, 0.0, 1.0);
+        }
+    }
+
     fn draw(
-        &self,
+        &mut self,
         app_window: AppWindow,
         mut scene_stack: VecDeque<Box<dyn GameScene>>,
         mut egui_renderer: UiRenderer,
         egui_raw_input: egui::RawInput,
     ) -> (AppWindow, VecDeque<Box<dyn GameScene>>, UiRenderer, bool) {
+        // 현재 프레임 버퍼를 가져옵니다.
+        let window = app_window.window.as_ref();
+        let surface = app_window.surface.as_ref();
+        let frame = match surface.get_current_texture() {
+            Ok(frame) => frame,
+            Err(wgpu::SurfaceError::Timeout) => {
+                log::info!("frame skip >> swapchin needs to be refreshed.");
+                return (app_window, scene_stack, egui_renderer, true);
+            }
+            Err(
+                wgpu::SurfaceError::Outdated
+                | wgpu::SurfaceError::Lost
+                | wgpu::SurfaceError::Other
+                | wgpu::SurfaceError::OutOfMemory,
+            ) => {
+                let vsync = !self.flags.contains(AppFlags::DISABLE_VSYNC);
+                let (width, height) = window.inner_size().into();
+                config_swapchain(width, height, &self.device, surface, vsync);
+                match surface.get_current_texture() {
+                    Ok(frame) => frame,
+                    Err(e) => {
+                        log::error!("failed to acquire next sufrace texture! (REASON:{})", &e);
+                        let title = "Runtime error".into();
+                        let message = "Failed to acquire next surface texture!".into();
+                        let alert = Alert { title, message };
+                        show_error_msg(alert, Some(window));
+                        return (app_window, scene_stack, egui_renderer, false);
+                    }
+                }
+            }
+        };
+
+        let (width, height): (u32, u32) = window.inner_size().into();
+        if width != frame.texture.width() || height != frame.texture.height() {
+            // 현재 스왑체인 텍스처 버퍼가 갱신이 필요한 경우 렌더링을 생략합니다.
+            log::info!("frame skip >> swapchin needs to be refreshed.");
+            return (app_window, scene_stack, egui_renderer, true);
+        }
+
+        // 프레임 쉐이더 리소스를 가져옵니다.
+        let frame_resource = match self.frame_resource.as_ref() {
+            Some(resource) => resource,
+            None => {
+                // 현재 콘텐츠 렌더 타겟 버퍼가 갱신이 필요한 경우 렌더링을 생략합니다.
+                log::info!("frame skip >> content render target buffer needs to be refreshed.");
+                return (app_window, scene_stack, egui_renderer, true);
+            }
+        };
+
         // 그려야 하는 게임 장면의 시작 인덱스를 계산합니다.
         let mut begin = scene_stack.len();
         for scene in scene_stack.iter().rev() {
@@ -188,14 +266,13 @@ impl Application {
         }
 
         // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
-        let window = app_window.window.as_ref();
         for i in begin..scene_stack.len() {
             scene_stack[i].on_prepare_draw(window, self);
         }
 
         // UI 그리기 준비를 합니다.
         let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: self.window_size.size().into(),
+            size_in_pixels: window.inner_size().into(),
             pixels_per_point: window.scale_factor() as f32,
         };
 
@@ -250,49 +327,6 @@ impl Application {
             }
         }
 
-        // 현재 프레임 버퍼를 가져옵니다.
-        let surface = app_window.surface.as_ref();
-        let frame = match surface.get_current_texture() {
-            Ok(frame) => frame,
-            Err(wgpu::SurfaceError::Timeout) => {
-                log::info!("frame skip >> swapchin needs to be refreshed.");
-                return (app_window, scene_stack, egui_renderer, true);
-            }
-            Err(
-                wgpu::SurfaceError::Outdated
-                | wgpu::SurfaceError::Lost
-                | wgpu::SurfaceError::Other
-                | wgpu::SurfaceError::OutOfMemory,
-            ) => {
-                let vsync = !self.flags.contains(AppFlags::DISABLE_VSYNC);
-                let (width, height) = window.inner_size().into();
-                config_swapchain(width, height, &self.device, surface, vsync);
-                match surface.get_current_texture() {
-                    Ok(frame) => frame,
-                    Err(e) => {
-                        log::error!("failed to acquire next sufrace texture! (REASON:{})", &e);
-                        let title = "Runtime error".into();
-                        let message = "Failed to acquire next surface texture!".into();
-                        let alert = Alert { title, message };
-                        show_error_msg(alert, Some(window));
-                        return (app_window, scene_stack, egui_renderer, false);
-                    }
-                }
-            }
-        };
-
-        let (width, height): (u32, u32) = window.inner_size().into();
-        if width != frame.texture.width() || height != frame.texture.height() {
-            // 현재 스왑체인 텍스처 버퍼가 갱신이 필요한 경우 렌더링을 생략합니다.
-            log::info!("frame skip >> swapchin needs to be refreshed.");
-            return (app_window, scene_stack, egui_renderer, true);
-        }
-
-        // 렌더 타겟 뷰를 가져옵니다.
-        let render_target_view = frame.texture.create_view(&wgpu::TextureViewDescriptor {
-            ..Default::default()
-        });
-
         // 현재 게임 장면에 그리기 콜백 함수를 호출합니다.
         // 현재 게임 장면의 그리기 준비 콜백 함수를 호출합니다.
         let mut encoder = self
@@ -302,24 +336,29 @@ impl Application {
             scene_stack[i].on_draw(
                 window,
                 &mut encoder,
-                &render_target_view,
-                &app_window.depth_buffer_view,
+                &frame_resource.get_render_target_view(),
+                &frame_resource.get_depth_buffer_view(),
                 self,
             );
         }
 
-        // UI 렌더 패스
-        encoder.push_debug_group("UI pass");
+        // 프레임 버퍼의 렌더 타겟 뷰를 가져옵니다.
+        let frame_render_target_view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Frame 렌더 패스
+        encoder.push_debug_group("frame pass");
         {
             let mut rpass = encoder
                 .begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("RenderPass(UI)"),
+                    label: Some("RenderPass(Frame)"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                             store: wgpu::StoreOp::Store,
                         },
-                        view: &render_target_view,
+                        view: &frame_render_target_view,
                         resolve_target: None,
                     })],
                     depth_stencil_attachment: None,
@@ -328,6 +367,15 @@ impl Application {
                 })
                 .forget_lifetime();
 
+            rpass.set_viewport(
+                self.viewport.x,
+                self.viewport.y,
+                self.viewport.width,
+                self.viewport.height,
+                0.0,
+                1.0,
+            );
+            frame_resource.process(&self.device, &mut rpass);
             egui_renderer.render(&mut rpass, &egui_primitive, &screen_descriptor);
         }
         encoder.pop_debug_group();
@@ -361,18 +409,28 @@ impl ApplicationHandler<AppEvent> for Application {
         // 따라서 이 콜백 함수에서 애플리케이션 창을 생성하고, 렌더러 표면을 생성해야 합니다.
         //
 
-        // 시스템에서 사용 가능한 창의 최대 크기를 가져옵니다.
-        let max_window_size = event_loop
-            .primary_monitor()
-            .map(|monitor| WindowSize::find_maximize_size(monitor))
-            .flatten();
-
-        let max_window_size = match max_window_size {
+        // 주 모니터의 크기를 가져옵니다.
+        let result = event_loop.primary_monitor().map(|monitor| monitor.size());
+        let screen_size = match result {
             Some(size) => size,
             None => {
-                log::error!("no suitable resolution found.");
+                log::error!("no available monitors found!");
                 let title = "Window creation failed".into();
-                let message = "No suitable resolution found.".into();
+                let message = "No available monitor found!".into();
+                let alert = Alert { title, message };
+                show_error_msg(alert, None);
+                return event_loop.exit();
+            }
+        };
+
+        // 최대 해상도를 계산합니다.
+        let result = WindowSize::find_maximize_size(screen_size);
+        let max_window_size = match result {
+            Some(size) => size,
+            None => {
+                log::error!("no suitable resolution found!");
+                let title = "Window creation failed".into();
+                let message = "No suitable resolution found!".into();
                 let alert = Alert { title, message };
                 show_error_msg(alert, None);
                 return event_loop.exit();
@@ -387,12 +445,21 @@ impl ApplicationHandler<AppEvent> for Application {
         let mut attributes = Window::default_attributes()
             .with_title(self.window_title.as_str())
             .with_window_icon(self.window_icon.clone())
-            .with_inner_size(self.window_size.size())
-            .with_fullscreen(self.fullscreen.then_some(Fullscreen::Borderless(None)))
             .with_enabled_buttons(WindowButtons::CLOSE | WindowButtons::MINIMIZE)
-            .with_resizable(false)
+            // .with_resizable(false)
+            .with_resizable(true)
             .with_visible(self.visible)
             .with_active(true);
+
+        if self.fullscreen {
+            attributes = attributes
+                .with_inner_size(screen_size)
+                .with_fullscreen(Some(Fullscreen::Borderless(None)));
+        } else {
+            attributes = attributes
+                .with_inner_size(self.window_size.size())
+                .with_fullscreen(None);
+        }
 
         #[cfg(target_os = "windows")]
         {
@@ -400,8 +467,14 @@ impl ApplicationHandler<AppEvent> for Application {
             use winit::platform::windows::WindowAttributesExtWindows;
             attributes = attributes.with_corner_preference(CornerPreference::DoNotRound);
         }
+        #[cfg(target_os = "macos")]
+        {
+            use winit::platform::macos::OptionAsAlt;
+            use winit::platform::macos::WindowAttributesExtMacOS;
+            attributes = attributes.with_option_as_alt(OptionAsAlt::Both);
+        }
 
-        self.app_window = match AppWindow::create(
+        let app_window = match AppWindow::create(
             event_loop,
             attributes,
             &self.flags,
@@ -410,7 +483,7 @@ impl ApplicationHandler<AppEvent> for Application {
             &self.adapter,
             &self.device,
         ) {
-            Ok(app_window) => Some(app_window),
+            Ok(app_window) => app_window,
             Err(e) => {
                 log::error!("{e}");
                 let title = "Window creation failed".into();
@@ -420,6 +493,24 @@ impl ApplicationHandler<AppEvent> for Application {
                 return event_loop.exit();
             }
         };
+
+        // 뷰포트 영역을 설정합니다.
+        let (window_width, window_height) = app_window.window.inner_size().into();
+        let content_aspect_ratio = self.window_size.aspect_ratio();
+        self.set_viewport_area(window_width, window_height, content_aspect_ratio);
+
+        // 프레임 쉐이더 리소스를 생성합니다.
+        let (content_width, content_height) = self.window_size.size().into();
+        self.frame_resource = Some(FrameResource::new(
+            &self.device,
+            content_width,
+            content_height,
+            SWAPCHAIN_FORMAT,
+            DEPTH_FORMAT,
+        ));
+
+        // 애플리케이션 윈도우를 설정합니다.
+        self.app_window = Some(app_window);
     }
 
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
@@ -603,6 +694,9 @@ impl ApplicationHandler<AppEvent> for Application {
         match event {
             WindowEvent::Resized(_) => {
                 app_window.on_resized(&self.instance, &self.device);
+                let (window_width, window_height) = app_window.window.inner_size().into();
+                let content_aspect_ratio = self.window_size.aspect_ratio();
+                self.set_viewport_area(window_width, window_height, content_aspect_ratio);
                 for scene in scene_stack.iter_mut().rev() {
                     scene.on_window_resized(&app_window.window, self);
                 }
@@ -774,10 +868,14 @@ impl ApplicationHandler<AppEvent> for Application {
     }
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
-        // 애플리케이션 창과 장면 스택의 `소유권`을 가져옵니다.
-        // 애플리케이션 창 또는 장면 스택이 존재하지 않는 경우 함수 실행을 생략합니다.
-        let zip = self.app_window.take().zip(self.scene_stack.take());
-        let (mut app_window, mut scene_stack) = match zip {
+        // 애플리케이션 창과 장면 스택, 그리고 프레임 쉐이더 리소스의 `소유권`을 가져옵니다.
+        // 애플리케이션 창 또는 장면 스택 또는 프레임 쉐이더 리소스가 존재하지 않는 경우 함수 실행을 생략합니다.
+        let zip = self
+            .app_window
+            .take()
+            .zip(self.scene_stack.take())
+            .zip(self.frame_resource.take());
+        let ((mut app_window, mut scene_stack), mut frame_resource) = match zip {
             Some(it) => it,
             None => {
                 log::debug!("window event ignored >> the current window or scene stack is empty.");
@@ -788,9 +886,10 @@ impl ApplicationHandler<AppEvent> for Application {
         // 게임 장면 스택이 비어있는 경우 함수 실행을 생략합니다.
         if scene_stack.is_empty() {
             log::debug!("window event ignored >> the current scene is empty.");
-            // 애플리케이션 창, 장면 스택의 `소유권`을 돌려 놓습니다.
+            // 애플리케이션 창, 장면 스택, 그리고 프레임 쉐이더 리소스의 `소유권`을 돌려 놓습니다.
             self.app_window = Some(app_window);
             self.scene_stack = Some(scene_stack);
+            self.frame_resource = Some(frame_resource);
             return;
         }
 
@@ -802,23 +901,43 @@ impl ApplicationHandler<AppEvent> for Application {
                 // 요청 해상도가 현재 해상도와 다른 경우
                 // 윈도우 크기 변경 이벤트를 수행합니다.
                 if self.window_size != request_size {
-                    self.window_size = request_size;
-                    match app_window.window.request_inner_size(request_size.size()) {
-                        Some(result_size) => {
-                            if request_size.size() == result_size {
-                                // 창의 크기가 즉시 적용됐습니다.
-                                app_window.on_resized(&self.instance, &self.device);
-                            } else {
-                                log::warn!(
-                                    "app event ignored >> the current system does not allow resizing the window!"
-                                );
+                    // 프레임 쉐이더 리소스의 크기를 변경합니다.
+                    let (content_width, content_height) = request_size.size().into();
+                    frame_resource = frame_resource.renew(
+                        &self.device,
+                        content_width,
+                        content_height,
+                        SWAPCHAIN_FORMAT,
+                        DEPTH_FORMAT,
+                    );
+
+                    // 애플리케이션 창이 전체 창이 아닌 경우
+                    // 애플리케이션 창을 조정합니다.
+                    if !self.fullscreen {
+                        match app_window.window.request_inner_size(request_size.size()) {
+                            Some(result_size) => {
+                                if request_size.size() == result_size {
+                                    // 창의 크기가 즉시 적용됐습니다.
+                                    app_window.on_resized(&self.instance, &self.device);
+                                    let (window_width, window_height) = result_size.into();
+                                    let content_aspect_ratio = self.window_size.aspect_ratio();
+                                    self.set_viewport_area(
+                                        window_width,
+                                        window_height,
+                                        content_aspect_ratio,
+                                    );
+                                } else {
+                                    log::warn!(
+                                        "app event ignored >> the current system does not allow resizing the window!"
+                                    );
+                                }
+                            }
+                            None => {
+                                // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
                             }
                         }
-                        None => {
-                            // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
-                        }
                     }
-                };
+                }
             }
             AppEvent::FullScreenRequest(fullscreen) => {
                 // 요청 전체 화면 여부가 현재 전체 화면 여부와 다른 경우
@@ -826,13 +945,78 @@ impl ApplicationHandler<AppEvent> for Application {
                 if self.fullscreen != fullscreen {
                     self.fullscreen = fullscreen;
 
-                    // 윈도우 크기를 최대 윈도우 크기로 설정합니다.
-                    let window = app_window.window.as_ref();
-                    self.window_size = window
-                        .current_monitor()
-                        .map(|monitor| WindowSize::find_maximize_size(monitor))
-                        .flatten()
-                        .unwrap_or(WindowSize::MAX);
+                    if self.fullscreen {
+                        // 전체 화면 요청인 경우 애플리케이션 창의 크기를 화면 크기로 변경합니다.
+                        let window = app_window.window.as_ref();
+                        let result = window.current_monitor().map(|monitor| monitor.size());
+                        let screen_size = match result {
+                            Some(size) => size,
+                            None => {
+                                log::error!("no available monitors found!");
+                                let title = "Window creation failed".into();
+                                let message = "No available monitor found!".into();
+                                let alert = Alert { title, message };
+                                show_error_msg(alert, None);
+
+                                // 장면 스택의 `소유권`을 돌려 놓습니다. (생성된 장면을 정리하기 위함)
+                                // 애플리케이션 창의 `소유권`은 돌려 놓지 않습니다. (현재 장면이 없는 경우 종료처리)
+                                self.scene_stack = Some(scene_stack);
+                                return;
+                            }
+                        };
+
+                        // 애플리케이션 창의 크기를 변경합니다.
+                        match app_window.window.request_inner_size(screen_size) {
+                            Some(result_size) => {
+                                if screen_size == result_size {
+                                    // 창의 크기가 즉시 적용됐습니다.
+                                    app_window.on_resized(&self.instance, &self.device);
+                                    let (window_width, window_height) = result_size.into();
+                                    let content_aspect_ratio = self.window_size.aspect_ratio();
+                                    self.set_viewport_area(
+                                        window_width,
+                                        window_height,
+                                        content_aspect_ratio,
+                                    );
+                                } else {
+                                    log::warn!(
+                                        "app event ignored >> the current system does not allow resizing the window!"
+                                    );
+                                }
+                            }
+                            None => {
+                                // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
+                            }
+                        }
+                    } else {
+                        // 전체 화면에서 창 화면으로 되돌아가는 경우
+                        // 프레임 쉐이더 리소스의 크기로 애플리케이션 창의 크기를 변경합니다.
+                        match app_window
+                            .window
+                            .request_inner_size(self.window_size.size())
+                        {
+                            Some(result_size) => {
+                                if self.window_size.size() == result_size {
+                                    // 창의 크기가 즉시 적용됐습니다.
+                                    app_window.on_resized(&self.instance, &self.device);
+                                    let (window_width, window_height) = result_size.into();
+                                    let content_aspect_ratio = self.window_size.aspect_ratio();
+                                    self.set_viewport_area(
+                                        window_width,
+                                        window_height,
+                                        content_aspect_ratio,
+                                    );
+                                } else {
+                                    log::warn!(
+                                        "app event ignored >> the current system does not allow resizing the window!"
+                                    );
+                                }
+                            }
+                            None => {
+                                // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
+                            }
+                        }
+                    }
 
                     #[cfg(target_os = "macos")]
                     {
@@ -896,9 +1080,10 @@ impl ApplicationHandler<AppEvent> for Application {
             }
         };
 
-        // 애플리케이션 창, 장면 스택의 `소유권`을 돌려 놓습니다.
+        // 애플리케이션 창, 장면 스택, 그리고 프레임 쉐이더 리소스의 `소유권`을 돌려 놓습니다.
         self.app_window = Some(app_window);
         self.scene_stack = Some(scene_stack);
+        self.frame_resource = Some(frame_resource);
     }
 }
 
@@ -915,10 +1100,6 @@ impl AppHandle for Application {
         &self.current_dir
     }
 
-    fn asset_manager(&self) -> &AssetManager {
-        &self.asset_manager
-    }
-
     fn net_manager(&self) -> &NetManager {
         &self.net_manager
     }
@@ -933,6 +1114,10 @@ impl AppHandle for Application {
 
     fn window_size(&self) -> WindowSize {
         self.window_size
+    }
+
+    fn viewport(&self) -> &Viewport {
+        &self.viewport
     }
 
     fn is_fullscreen(&self) -> bool {

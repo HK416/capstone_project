@@ -49,7 +49,7 @@ impl MessageSceneLayer {
             title: title.into(),
             message: message.into(),
             is_button_pressed: false,
-            delay_time_sec: 1.0,
+            delay_time_sec: 0.3,
         }
     }
 }
@@ -128,27 +128,31 @@ impl GameScene for MessageSceneLayer {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
-        let i = self.locale as usize;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 타이틀 텍스트
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(36.0 * scale, family);
-        let title = egui::RichText::new(&self.title)
+        let title_text = egui::RichText::new(&self.title)
             .font(font_id)
             .color(egui::Color32::BLACK);
 
         // 메시지 텍스트
-        let fmaily = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let font_id = egui::FontId::new(28.0 * scale, fmaily);
-        let main_text = egui::RichText::new(&self.message)
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(28.0 * scale, family);
+        let message_text = egui::RichText::new(&self.message)
             .font(font_id)
             .color(egui::Color32::BLACK);
 
-        // `확인 버튼` 텍스트
-        let text = OKAY_TEXTS[i];
+        // 확인 텍스트
+        let text = OKAY_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
         let okay_text = egui::RichText::new(text)
@@ -159,7 +163,6 @@ impl GameScene for MessageSceneLayer {
         let btn_width = 180.0 * scale;
         let btn_height = btn_width * 0.25;
         let okay_button = egui::Button::new(okay_text)
-            .corner_radius(3.0)
             .fill(egui::Color32::WHITE)
             .min_size((btn_width, btn_height).into())
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
@@ -170,24 +173,26 @@ impl GameScene for MessageSceneLayer {
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Message"))
             .frame(frame)
+            .backdrop_color(egui::Color32::from_black_alpha(64))
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_width(640.0 * scale);
                 ui.set_max_width(640.0 * scale);
+
                 ui.vertical_centered(|ui| {
                     ui.add_space(8.0 * scale);
-                    ui.label(title);
+                    ui.label(title_text);
                     ui.separator();
 
                     ui.add_space(8.0 * scale);
-                    ui.label(main_text);
+                    ui.label(message_text);
                     ui.add_space(16.0 * scale);
 
-                    if ui.add(okay_button).clicked() {
-                        // 이전 게임 장면으로 돌아갑니다.
-                        let scene_flow = GameSceneFlow::Pop;
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
+                    ui.add_enabled_ui(!self.is_button_pressed, |ui| {
+                        if ui.add(okay_button).clicked() && self.delay_time_sec <= 0.0 {
+                            self.is_button_pressed = true;
+                        }
+                    });
                     ui.add_space(16.0 * scale);
                 });
             });

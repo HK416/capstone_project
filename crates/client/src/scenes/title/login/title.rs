@@ -115,6 +115,18 @@ impl GameScene for GameLoginTitleScene {
         }
     }
 
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        for bg_texture in self.bg_texture_ids.iter() {
+            // egui 렌더러에 등록된 텍스처를 제거합니다.
+            ui_renderer.free_texture(&bg_texture.id);
+        }
+    }
+
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
         const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
@@ -177,26 +189,29 @@ impl GameScene for GameLoginTitleScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
-
-        // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let head_font_id = egui::FontId::new(32.0 * scale, head_font_family);
-        let head_font_color = self.get_font_color();
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 텍스트
-        let i = self.locale as usize;
-        let text = HEAD_TEXTS[i];
-        let head_text = egui::RichText::new(text)
-            .font(head_font_id)
-            .color(head_font_color);
+        let text = HEAD_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(32.0 * scale, family);
+        let font_color = self.get_font_color();
+        let head_text = egui::RichText::new(text).font(font_id).color(font_color);
 
         egui::Area::new(egui::Id::new("Layout_Enter"))
-            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -128.0 * scale])
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, (360.0 - 128.0) * scale])
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
                 ui.vertical_centered(|ui| {
+                    ui.set_min_width(1280.0 * scale);
+                    ui.set_max_width(1280.0 * scale);
                     ui.label(head_text);
                 })
             });
@@ -204,24 +219,26 @@ impl GameScene for GameLoginTitleScene {
         let index = (self.elapsed_time_sec / CUT_SWITCH_CYCLE).floor() as usize;
         let source = self.bg_texture_ids[index];
         let ratio = source.size.x / source.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width;
+        let center_x = 1280.0 * 0.5 * scale;
+        let center_y = 720.0 * 0.5 * scale;
+        let img_width = 1280.0 * scale;
         let img_height = img_width / ratio;
+
         let rect = egui::Rect {
             min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
+                clip_rect.min.x + center_x - 0.5 * img_width,
+                clip_rect.min.y + center_y - 0.5 * img_height,
             ),
             max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
+                clip_rect.min.x + center_x + 0.5 * img_width,
+                clip_rect.min.y + center_y + 0.5 * img_height,
             ),
         };
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new())
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
                 egui::Image::new(source).paint_at(ui, rect);
             });
     }

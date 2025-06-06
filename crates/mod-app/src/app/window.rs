@@ -1,11 +1,9 @@
-#![allow(dead_code)]
-
 use std::sync::{
     atomic::{AtomicBool, Ordering as MemOrdering},
     Arc,
 };
 
-use mod_render::{config_swapchain, create_surface, SurfaceInitError, DEPTH_FORMAT};
+use mod_render::{config_swapchain, create_surface, SurfaceInitError};
 use winit::{
     error::OsError,
     event_loop::ActiveEventLoop,
@@ -30,7 +28,6 @@ pub struct AppWindow {
     pub window: Arc<Window>,
     pub egui_state: egui_winit::State,
     pub surface: Arc<wgpu::Surface<'static>>,
-    pub depth_buffer_view: Arc<wgpu::TextureView>,
     pub disable_cursor: AtomicBool,
     pub disable_vsync: bool,
     pub focused: bool,
@@ -74,27 +71,6 @@ impl AppWindow {
         let vsync = !flags.contains(AppFlags::DISABLE_VSYNC);
         config_swapchain(width, height, device, &surface, vsync);
 
-        // 깊이 버퍼 뷰를 생성합니다.
-        let depth_buffer_view = Arc::new(
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Depth-Buffer"),
-                    dimension: wgpu::TextureDimension::D2,
-                    format: DEPTH_FORMAT,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    view_formats: &[],
-                })
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-        )
-        .into();
-
         // `egui` winit 상태를 생성합니다.
         let egui_state = egui_winit::State::new(
             egui_ctx.clone(),
@@ -110,7 +86,6 @@ impl AppWindow {
             window,
             egui_state,
             surface,
-            depth_buffer_view,
             disable_cursor: AtomicBool::new(false),
             disable_vsync: vsync,
             focused: false,
@@ -131,29 +106,10 @@ impl AppWindow {
 
         // 변경된 크기로 스왑체인을 재설정합니다.
         config_swapchain(width, height, device, &self.surface, self.disable_vsync);
-
-        // 변경된 크기로 깊이 버퍼를 재설정합니다.
-        self.depth_buffer_view = Arc::new(
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Depth-Buffer"),
-                    dimension: wgpu::TextureDimension::D2,
-                    format: DEPTH_FORMAT,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    size: wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    view_formats: &[],
-                })
-                .create_view(&wgpu::TextureViewDescriptor::default()),
-        );
     }
 
     /// 커서의 비활성화 여부를 반환합니다.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub fn get_cursor_disabled(&self) -> bool {
         self.disable_cursor.load(MemOrdering::Acquire)
     }

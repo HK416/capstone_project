@@ -27,7 +27,7 @@ impl Default for ControllerState {
 }
 
 /// 게임 입력의 수 입니다.
-pub const NUM_GAME_INPUTS: usize = 12;
+pub const NUM_GAME_INPUTS: usize = 11;
 
 /// 게임 입력 목록입니다.
 #[repr(u16)]
@@ -40,11 +40,10 @@ pub enum GameInput {
     Aiming = 0x0010,
     Attack = 0x0020,
     Skill = 0x0040,
-    ExSkill = 0x0080,
-    Jump = 0x0100,
-    Reload = 0x0200,
-    Status = 0x0400,
-    Emotion = 0x0800,
+    Jump = 0x0080,
+    Reload = 0x0100,
+    Status = 0x0200,
+    Emotion = 0x0400,
 }
 
 impl GameInput {
@@ -59,11 +58,10 @@ impl GameInput {
             0x0010 => Some(Self::Aiming),
             0x0020 => Some(Self::Attack),
             0x0040 => Some(Self::Skill),
-            0x0080 => Some(Self::ExSkill),
-            0x0100 => Some(Self::Jump),
-            0x0200 => Some(Self::Reload),
-            0x0400 => Some(Self::Status),
-            0x0800 => Some(Self::Emotion),
+            0x0080 => Some(Self::Jump),
+            0x0100 => Some(Self::Reload),
+            0x0200 => Some(Self::Status),
+            0x0400 => Some(Self::Emotion),
             _ => {
                 log::warn!(
                     "failed to convert `{}` to `{}`! (VALUE:{:?})",

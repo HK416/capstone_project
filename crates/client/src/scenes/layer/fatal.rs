@@ -5,7 +5,11 @@ use mod_app::{
 };
 use mod_network::protocol::RawPacket;
 use mod_render::UiRenderer;
-use winit::window::Window;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
     asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
@@ -28,6 +32,8 @@ pub struct FatalErrorSceneLayer {
 
     /// 버튼 눌림 여부입니다.
     is_button_pressed: bool,
+    /// 입력 지연 시간입니다.
+    delay_time_sec: f32,
 }
 
 impl FatalErrorSceneLayer {
@@ -42,6 +48,7 @@ impl FatalErrorSceneLayer {
             title: title.into(),
             message: message.into(),
             is_button_pressed: false,
+            delay_time_sec: 0.3,
         }
     }
 }
@@ -71,7 +78,26 @@ impl GameScene for FatalErrorSceneLayer {
         None
     }
 
-    fn on_update(&mut self, _: f32, _: &Window, app: &dyn AppHandle) {
+    fn on_keyboard_released(
+        &mut self,
+        code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        repeat: bool,
+        _window: &Window,
+        _app: &dyn AppHandle,
+    ) -> bool {
+        if !repeat && self.delay_time_sec <= 0.0 {
+            if code == KeyCode::Enter {
+                self.is_button_pressed = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, app: &dyn AppHandle) {
+        self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
         if self.is_button_pressed {
             let scene_flow = GameSceneFlow::Clear;
             let event = AppEvent::AddGameSceneFlow(scene_flow);
@@ -81,33 +107,36 @@ impl GameScene for FatalErrorSceneLayer {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
-        let i = self.locale as usize;
-
-        // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 타이틀 텍스트
-        let font_id = egui::FontId::new(36.0 * scale, head_font_family);
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(36.0 * scale, family);
         let title_text = egui::RichText::new(&self.title)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(egui::Color32::BLACK);
 
         // 메시지 텍스트
-        let font_id = egui::FontId::new(28.0 * scale, main_font_family.clone());
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(28.0 * scale, family);
         let message_text = egui::RichText::new(&self.message)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(egui::Color32::BLACK);
 
         // 확인 텍스트
-        let text = OKAY_TEXTS[i];
-        let font_id = egui::FontId::new(24.0 * scale, main_font_family.clone());
+        let text = OKAY_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
         let okay_text = egui::RichText::new(text)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(egui::Color32::BLACK);
 
         // 확인 버튼
         let btn_width = 180.0 * scale;
@@ -117,27 +146,29 @@ impl GameScene for FatalErrorSceneLayer {
             .min_size((btn_width, btn_height).into())
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
 
-        let wnd_width = 640.0 * scale;
-        let wnd_height = 480.0 * scale;
         let frame = egui::Frame::new()
             .corner_radius(3.0)
             .fill(egui::Color32::WHITE)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-        egui::Window::new(title_text)
-            .anchor(egui::Align2::CENTER_CENTER, (0.0, 0.0))
+        egui::Modal::new(egui::Id::new("Fatal"))
             .frame(frame)
-            .movable(false)
-            .collapsible(false)
-            .order(egui::Order::Foreground)
-            .max_size((wnd_width, wnd_height))
-            .resizable([false, false])
+            .backdrop_color(egui::Color32::from_black_alpha(64))
             .show(app.egui_ctx(), |ui| {
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.add_space(16.0 * scale);
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_width(640.0 * scale);
+                ui.set_max_width(640.0 * scale);
+
+                ui.vertical_centered(|ui| {
+                    ui.add_space(8.0 * scale);
+                    ui.label(title_text);
+                    ui.separator();
+
+                    ui.add_space(8.0 * scale);
                     ui.label(message_text);
                     ui.add_space(16.0 * scale);
+
                     ui.add_enabled_ui(!self.is_button_pressed, |ui| {
-                        if ui.add(okay_button).clicked() {
+                        if ui.add(okay_button).clicked() && self.delay_time_sec <= 0.0 {
                             self.is_button_pressed = true;
                         }
                     });

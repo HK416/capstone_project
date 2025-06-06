@@ -170,7 +170,8 @@ impl MainLobbyEnterScene {
 
 impl GameScene for MainLobbyEnterScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
-        let root_dir = app.asset_manager().get_root_dir();
+        let mut root_dir = app.current_dir().to_path_buf();
+        root_dir.push("assets");
         self.load_background_texture(root_dir, app.io_threads(), app.render_device());
     }
 
@@ -277,21 +278,29 @@ impl GameScene for MainLobbyEnterScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
 
         // 텍스트
-        let loading_text_id = egui::FontId::new(32.0 * scale, head_font_family);
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(32.0 * scale, family);
         let loading_text = egui::RichText::new("Now Loading")
-            .font(loading_text_id)
+            .font(font_id)
             .color(egui::Color32::WHITE);
 
+        let offset = clip_rect.max - egui::vec2(32.0, 32.0) * scale;
         egui::Area::new(egui::Id::new("Layout"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, (-32.0 * scale, -32.0 * scale))
-            .show(app.egui_ctx(), |ui| ui.label(loading_text));
+            .anchor(egui::Align2::RIGHT_BOTTOM, offset.to_vec2())
+            .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
+                ui.label(loading_text)
+            });
     }
 }

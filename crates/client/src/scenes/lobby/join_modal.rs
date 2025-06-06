@@ -169,13 +169,17 @@ impl GameScene for MainLobbyJoinModalScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
-        let i = self.locale as usize;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 타이틀 텍스트
-        let text = TITLE_TEXTS[i];
+        let text = TITLE_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(32.0 * scale, family);
         let title = egui::RichText::new(text)
@@ -183,7 +187,7 @@ impl GameScene for MainLobbyJoinModalScene {
             .color(egui::Color32::BLACK);
 
         // 안내 텍스트
-        let text = INFORMATION_TEXTS[i];
+        let text = INFORMATION_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
         let info_text = egui::RichText::new(text)
@@ -191,7 +195,7 @@ impl GameScene for MainLobbyJoinModalScene {
             .color(egui::Color32::BLACK);
 
         // `확인 버튼` 텍스트
-        let text = OKAY_TEXTS[i];
+        let text = OKAY_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
         let okay_text = egui::RichText::new(text)
@@ -199,7 +203,7 @@ impl GameScene for MainLobbyJoinModalScene {
             .color(egui::Color32::BLACK);
 
         // `취소 버튼` 텍스트
-        let text = CANCEL_TEXTS[i];
+        let text = CANCEL_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
         let cancel_text = egui::RichText::new(text)
@@ -238,8 +242,12 @@ impl GameScene for MainLobbyJoinModalScene {
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Join_Custom_Modal"))
             .frame(frame)
+            .backdrop_color(egui::Color32::from_black_alpha(64))
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_width(640.0 * scale);
                 ui.set_max_width(640.0 * scale);
+
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                     ui.add(egui::Label::new(title).sense(egui::Sense::empty()));
                     ui.separator();

@@ -24,11 +24,6 @@ pub struct GameLoginModalScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
 
-    /// 계정 이메일
-    email: Email,
-    /// 계정 비밀번호
-    passwd: Passwd,
-
     /// 로그인 요청 여부
     requested: bool,
 }
@@ -38,8 +33,6 @@ impl GameLoginModalScene {
     pub fn new(locale: Locale) -> Self {
         Self {
             locale,
-            email: Email::default(),
-            passwd: Passwd::default(),
             requested: false,
         }
     }
@@ -85,7 +78,7 @@ impl GameScene for GameLoginModalScene {
                 // 사용자 정보와 로그인 토큰을 저장합니다.
                 let packet = LoginSuccessPacket::from_raw(packet);
                 let mut config = UserConfig::get();
-                config.info = packet.account;
+                config.account = packet.account;
                 config.token = packet.token;
                 drop(config);
 
@@ -113,49 +106,59 @@ impl GameScene for GameLoginModalScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
-        // 텍스트 속성
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-
-        // 텍스트
-        let i = self.locale as usize;
-        let text = LOGIN_TEXTS[i];
-        let login_btn_font = egui::FontId::new(24.0 * scale, main_font_family);
+        // 로그인 버튼 텍스트
+        let text = LOGIN_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
         let login_btn_text = egui::RichText::new(text)
-            .font(login_btn_font)
+            .font(font_id)
             .color(egui::Color32::BLACK);
 
-        // 버튼
+        // 로그인 버튼
         let login_button = egui::Button::new(login_btn_text)
-            .fill(egui::Color32::LIGHT_GRAY)
+            .fill(egui::Color32::WHITE)
             .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
 
         let frame = egui::Frame::new()
             .fill(egui::Color32::WHITE)
             .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Login_Modal"))
             .frame(frame)
+            .backdrop_color(egui::Color32::from_black_alpha(128))
             .show(app.egui_ctx(), |ui| {
-                ui.set_width(640.0 * scale);
-                ui.set_height(480.0 * scale);
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_width(640.0 * scale);
+                ui.set_max_width(640.0 * scale);
+                ui.set_min_height(320.0 * scale);
+                ui.set_max_height(320.0 * scale);
 
                 ui.vertical_centered(|ui| {
                     ui.with_layout(
                         egui::Layout::centered_and_justified(egui::Direction::TopDown),
                         |ui| {
+                            ui.set_min_size(egui::vec2(512.0, 96.0) * scale);
+                            ui.set_max_size(egui::vec2(512.0, 96.0) * scale);
+
                             ui.add_enabled_ui(!self.requested, |ui| {
-                                ui.set_width(128.0 * scale);
-                                ui.set_height(96.0 * scale);
                                 if ui.add(login_button).clicked() {
                                     self.requested = true;
 
                                     // 로그인 요청 패킷을 생성합니다.
-                                    let packet = LoginRequestPacket::new(self.email, self.passwd);
+                                    let packet = LoginRequestPacket::new(
+                                        Email::default(),
+                                        Passwd::default(),
+                                    );
 
                                     // 패킷을 게임 서버에 전송합니다.
                                     let net_manager = app.net_manager();

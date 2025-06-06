@@ -33,6 +33,7 @@ pub const BG_LOGIN_TITLE_0_DATA: &'static [u8; 2744719] = include_bytes!(concat!
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/BG_Login_Title_0.png"
 ));
+
 /// 게임 로그인 타이틀 1번 배경화면 텍스처의 `Uri`입니다.
 pub const BG_LOGIN_TITLE_1_URI: &'static str = "ui/BG_Login_Title_1.png";
 /// 게임 로그인 타이틀 1번 배경화면 텍스처의 데이터입니다.
@@ -47,6 +48,7 @@ pub const BG_LOGIN_TITLE_2_DATA: &'static [u8; 3090166] = include_bytes!(concat!
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/BG_Login_Title_2.png"
 ));
+
 /// 게임 로그인 타이틀 3번 배경화면 텍스처의 `Uri`입니다.
 pub const BG_LOGIN_TITLE_3_URI: &'static str = "ui/BG_Login_Title_3.png";
 /// 게임 로그인 타이틀 3번 배경화면 텍스처의 데이터입니다.
@@ -54,6 +56,7 @@ pub const BG_LOGIN_TITLE_3_DATA: &'static [u8; 1793237] = include_bytes!(concat!
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/BG_Login_Title_3.png"
 ));
+
 /// 게임 로그인 타이틀 4번 배경화면 텍스처의 `Uri`입니다.
 pub const BG_LOGIN_TITLE_4_URI: &'static str = "ui/BG_Login_Title_4.png";
 /// 게임 로그인 타이틀 4번 배경화면 텍스처의 데이터입니다.
@@ -61,12 +64,21 @@ pub const BG_LOGIN_TITLE_4_DATA: &'static [u8; 3338929] = include_bytes!(concat!
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/BG_Login_Title_4.png"
 ));
+
 /// 게임 로그인 타이틀 5번 배경화면 텍스처의 `Uri`입니다.
 pub const BG_LOGIN_TITLE_5_URI: &'static str = "ui/BG_Login_Title_5.png";
 /// 게임 로그인 타이틀 5번 배경화면 텍스처의 데이터입니다.
 pub const BG_LOGIN_TITLE_5_DATA: &'static [u8; 3016216] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/BG_Login_Title_5.png"
+));
+
+/// 이팩트 라벨 배경 텍스처의 `Uri`입니다.
+pub const BG_GROWTH_EFFECT_LABEL_URI: &'static str = "ui/BG_Growth_Effect_Label.png";
+/// 이팩트 라벨 배경 텍스처의 데이터입니다.
+pub const BG_GROWTH_EFFECT_LABEL_DATA: &'static [u8; 107785] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/ui/BG_Growth_Effect_Label.png"
 ));
 
 /// 메인 로비 화면 배경화면 텍스처의 `Uri`입니다.
