@@ -13,9 +13,9 @@ use winit::{
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_URI,
-        BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_URI,
-        NOTOSANS_BOLD,
+        TexturePool, TextureViewPool, BG_GROWTH_EFFECT_LABEL_URI, BG_LOGIN_TITLE_0_URI,
+        BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_URI,
+        BG_LOGIN_TITLE_5_URI, NOTOSANS_BOLD,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
@@ -51,7 +51,9 @@ pub struct GameLoginTitleScene {
     is_pressed: bool,
 
     /// 게임 배경화면 텍스처의 텍스처 식별자입니다.
-    bg_texture_ids: Vec<egui::load::SizedTexture>,
+    bg_textures: Vec<egui::load::SizedTexture>,
+    /// 게임 라벨 배경 텍스처의 텍스처 식별자입니다.
+    bg_label_texture: egui::load::SizedTexture,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -70,23 +72,52 @@ impl GameLoginTitleScene {
             locale,
             elapsed_time_sec: 0.0,
             is_pressed: false,
-            bg_texture_ids: Vec::with_capacity(6),
+            bg_textures: Vec::with_capacity(6),
+            bg_label_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
             texture_pool,
             texture_view_pool,
         }
     }
 
-    /// 폰트 색상을 가져옵니다.
-    fn get_font_color(&self) -> egui::Color32 {
+    /// 알파 값을 반환합니다.
+    fn get_alpha_value(&self) -> u8 {
         use core::f32::consts::PI;
         let s = (self.elapsed_time_sec % FONT_APPEAR_CYCLE) / FONT_APPEAR_CYCLE;
-        let c = (s * PI).sin();
-        egui::Color32::from_black_alpha((255.0 * c) as u8)
+        let c = 0.5 * (2.0 * s * PI).sin() + 0.5;
+        (c * 255.0) as u8
     }
 }
 
 impl GameScene for GameLoginTitleScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+        // 라벨 배경 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .remove(BG_GROWTH_EFFECT_LABEL_URI)
+            .expect("BG_Growth_Effect_Label texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id = ui_renderer.register_native_texture(
+            app.render_device(),
+            &texture,
+            wgpu::FilterMode::Linear,
+        );
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.bg_label_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+
         for uri in BG_TEXTURE_URI {
             // 로그인 배경화면 텍스처를 가져옵니다.
             let texture = self
@@ -108,7 +139,7 @@ impl GameScene for GameLoginTitleScene {
             );
 
             // 등록된 텍스처 정보를 저장합니다.
-            self.bg_texture_ids.push(egui::load::SizedTexture {
+            self.bg_textures.push(egui::load::SizedTexture {
                 id: texture_id,
                 size: texture_size,
             });
@@ -121,8 +152,9 @@ impl GameScene for GameLoginTitleScene {
         _app: &dyn AppHandle,
         ui_renderer: &mut UiRenderer,
     ) {
-        for bg_texture in self.bg_texture_ids.iter() {
-            // egui 렌더러에 등록된 텍스처를 제거합니다.
+        // egui 렌더러에 등록된 텍스처를 제거합니다.
+        ui_renderer.free_texture(&self.bg_label_texture.id);
+        for bg_texture in self.bg_textures.iter() {
             ui_renderer.free_texture(&bg_texture.id);
         }
     }
@@ -199,25 +231,46 @@ impl GameScene for GameLoginTitleScene {
         );
 
         // 텍스트
+        let alpha = self.get_alpha_value();
         let text = HEAD_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(32.0 * scale, family);
-        let font_color = self.get_font_color();
-        let head_text = egui::RichText::new(text).font(font_id).color(font_color);
+        let enter_text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::from_black_alpha(alpha));
+        let enter_label = egui::Label::new(enter_text)
+            .halign(egui::Align::Center)
+            .sense(egui::Sense::empty());
+
+        // 라벨 배경 텍스처
+        let source = self.bg_label_texture;
+        let image_ratio = self.bg_label_texture.size.x / self.bg_label_texture.size.y;
+        let image_width = 1280.0 * scale;
+        let image_height = image_width / image_ratio;
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(clip_rect.min.x, clip_rect.max.y - 192.0 * scale),
+            egui::pos2(
+                clip_rect.max.x,
+                clip_rect.max.y - 192.0 * scale + image_height,
+            ),
+        );
 
         egui::Area::new(egui::Id::new("Layout_Enter"))
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, (360.0 - 128.0) * scale])
+            .fixed_pos(rect.min + egui::vec2(0.0, image_height * 0.25))
+            .default_size(rect.size())
             .show(app.egui_ctx(), |ui| {
                 ui.shrink_clip_rect(clip_rect);
+                egui::Image::new(source).paint_at(ui, rect);
+
                 ui.vertical_centered(|ui| {
                     ui.set_min_width(1280.0 * scale);
                     ui.set_max_width(1280.0 * scale);
-                    ui.label(head_text);
+                    ui.add(enter_label);
                 })
             });
 
         let index = (self.elapsed_time_sec / CUT_SWITCH_CYCLE).floor() as usize;
-        let source = self.bg_texture_ids[index];
+        let source = self.bg_textures[index];
         let ratio = source.size.x / source.size.y;
         let center_x = 1280.0 * 0.5 * scale;
         let center_y = 720.0 * 0.5 * scale;
