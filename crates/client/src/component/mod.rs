@@ -11,6 +11,7 @@ mod mesh;
 mod skybox;
 mod stage;
 mod transform;
+mod ui;
 
 use std::sync::Arc;
 
@@ -18,7 +19,7 @@ use ahash::HashMap;
 
 pub use self::{
     bullet::*, camera::*, character::*, control::*, damage_font::*, deferred::*, hierarchy::*,
-    light::*, material::*, mesh::*, skybox::*, stage::*, transform::*,
+    light::*, material::*, mesh::*, skybox::*, stage::*, transform::*, ui::*,
 };
 
 pub enum MeshFilter {

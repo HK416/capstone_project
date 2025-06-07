@@ -31,7 +31,8 @@ use crate::{
         BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI,
         BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
         BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
-        GAME_LOGO_DATA, GAME_LOGO_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
+        GAME_LOGO_DATA, GAME_LOGO_URI, HUD_CANCEL_ICON_DATA, HUD_CANCEL_ICON_URI,
+        HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
     },
     component::{
         BulletRenderPipeline, BulletRenderPipelineTransparency, CharacterBakePipeline,
@@ -454,6 +455,13 @@ impl GameScene for GameStartupScene {
         self.load_notosans_regular_font(thread_pool, &root_dir);
         self.load_notosans_blod_font(thread_pool, &root_dir);
         self.create_texture(thread_pool, device, GAME_LOGO_URI, GAME_LOGO_DATA);
+        self.create_texture(thread_pool, device, HUD_EXIT_ICON_URI, HUD_EXIT_ICON_DATA);
+        self.create_texture(
+            thread_pool,
+            device,
+            HUD_CANCEL_ICON_URI,
+            HUD_CANCEL_ICON_DATA,
+        );
         self.create_texture(
             thread_pool,
             device,

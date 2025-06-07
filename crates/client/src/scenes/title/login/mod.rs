@@ -1,4 +1,5 @@
+mod exit;
 mod modal;
 mod title;
 
-pub use self::{modal::*, title::*};
+pub use self::{exit::*, modal::*, title::*};

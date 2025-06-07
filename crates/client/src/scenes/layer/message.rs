@@ -14,11 +14,12 @@ use winit::{
 
 use crate::{
     asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
 
-/// 애플리케이션 표시 언어에 따른 `확인 버튼` 텍스트입니다.
+/// 애플리케이션 표시 언어에 따른 `확인` 버튼 텍스트입니다.
 const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
 
 /// 메시지를 출력하는 게임 장면입니다.
@@ -31,8 +32,8 @@ pub struct MessageSceneLayer {
     /// 모달 대화상자의 내용 문자열입니다.
     message: String,
 
-    /// 버튼 눌림 여부입니다.
-    is_button_pressed: bool,
+    /// `확인` 버튼 상태입니다.
+    okay_button_state: ButtonState,
     /// 입력 지연 시간입니다.
     delay_time_sec: f32,
 }
@@ -48,7 +49,7 @@ impl MessageSceneLayer {
             locale,
             title: title.into(),
             message: message.into(),
-            is_button_pressed: false,
+            okay_button_state: ButtonState::Idle,
             delay_time_sec: 0.3,
         }
     }
@@ -110,7 +111,7 @@ impl GameScene for MessageSceneLayer {
     ) -> bool {
         if !repeat && self.delay_time_sec <= 0.0 {
             if code == KeyCode::Enter {
-                self.is_button_pressed = true;
+                self.okay_button_state = ButtonState::Clicked;
                 return true;
             }
         }
@@ -119,7 +120,7 @@ impl GameScene for MessageSceneLayer {
 
     fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, app: &dyn AppHandle) {
         self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
-        if self.is_button_pressed {
+        if self.okay_button_state == ButtonState::Clicked {
             let scene_flow = GameSceneFlow::Pop;
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
@@ -162,8 +163,14 @@ impl GameScene for MessageSceneLayer {
         // 확인 버튼
         let btn_width = 180.0 * scale;
         let btn_height = btn_width * 0.25;
+        let fill = match self.okay_button_state {
+            ButtonState::Idle => egui::Color32::WHITE,
+            ButtonState::Hovered => egui::Color32::LIGHT_GRAY,
+            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::GRAY,
+        };
         let okay_button = egui::Button::new(okay_text)
-            .fill(egui::Color32::WHITE)
+            .fill(fill)
+            .sense(egui::Sense::all())
             .min_size((btn_width, btn_height).into())
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
 
@@ -173,7 +180,7 @@ impl GameScene for MessageSceneLayer {
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Message"))
             .frame(frame)
-            .backdrop_color(egui::Color32::from_black_alpha(64))
+            .backdrop_color(egui::Color32::from_black_alpha(96))
             .show(app.egui_ctx(), |ui| {
                 ui.shrink_clip_rect(clip_rect);
                 ui.set_min_width(640.0 * scale);
@@ -188,12 +195,20 @@ impl GameScene for MessageSceneLayer {
                     ui.label(message_text);
                     ui.add_space(16.0 * scale);
 
-                    ui.add_enabled_ui(!self.is_button_pressed, |ui| {
-                        if ui.add(okay_button).clicked() && self.delay_time_sec <= 0.0 {
-                            self.is_button_pressed = true;
+                    let enable = self.okay_button_state != ButtonState::Clicked;
+                    ui.add_enabled_ui(enable, |ui| {
+                        let response = ui.add(okay_button);
+                        if response.clicked() && self.delay_time_sec <= 0.0 {
+                            self.okay_button_state = ButtonState::Clicked;
+                        } else if response.is_pointer_button_down_on() {
+                            self.okay_button_state = ButtonState::Pressed;
+                        } else if response.hovered() || response.has_focus() {
+                            self.okay_button_state = ButtonState::Hovered;
+                        } else {
+                            self.okay_button_state = ButtonState::Idle;
                         }
                     });
-                    ui.add_space(16.0 * scale);
+                    ui.add_space(18.0 * scale);
                 });
             });
     }

@@ -81,6 +81,22 @@ pub const BG_GROWTH_EFFECT_LABEL_DATA: &'static [u8; 107785] = include_bytes!(co
     "assets/ui/BG_Growth_Effect_Label.png"
 ));
 
+/// 나가기 아이콘 텍스처의 `Uri`입니다.
+pub const HUD_EXIT_ICON_URI: &'static str = "ui/HUD_Exit_Icon.png";
+/// 나가기 아이콘 텍스처의 데이터입니다.
+pub const HUD_EXIT_ICON_DATA: &'static [u8; 1917] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/ui/HUD_Exit_Icon.png"
+));
+
+/// 취소 아이콘 텍스처의 `Uri`입니다.
+pub const HUD_CANCEL_ICON_URI: &'static str = "ui/HUD_Cancel_Icon.png";
+/// 취소 아이콘 텍스처의 `Uri`입니다.
+pub const HUD_CANCEL_ICON_DATA: &'static [u8; 1187] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/ui/HUD_Cancel_Icon.png"
+));
+
 /// 메인 로비 화면 배경화면 텍스처의 `Uri`입니다.
 pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby.png";
 
