@@ -2,12 +2,12 @@ use std::{fs::File, io::Read};
 
 use ahash::HashMap;
 use lazy_static::lazy_static;
-use mod_network::components::{CharacterAttributes, CharacterKind, NUM_CHARACTERS};
+use mod_network::components::{CharacterAttributes, CharacterKind};
 
 use crate::data::get_current_path;
 
 const ROOT_WORKSPACE: &'static str = "server_data/characters";
-const CHARACTERS: [(CharacterKind, &'static str); NUM_CHARACTERS] = [
+const CHARACTERS: [(CharacterKind, &'static str); 4] = [
     (CharacterKind::ArisOriginal, "aris_original"),
     (CharacterKind::MomoiOriginal, "momoi_original"),
     (CharacterKind::MidoriOriginal, "midori_original"),

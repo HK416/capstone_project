@@ -1,3 +1,5 @@
+//!
+
 use crate::{
     components::{BigEndian, Version},
     protocol::{Packet, PacketType, RawPacket},

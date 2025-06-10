@@ -113,7 +113,7 @@ impl GameWorldPool {
         println!("GameWorld({}) is allocated.", world.id());
 
         // 게임 월드를 실행합니다.
-        world.run_custom(uid, user_name, session);
+        // world.run_custom(uid, user_name, session);
 
         Some(world)
     }

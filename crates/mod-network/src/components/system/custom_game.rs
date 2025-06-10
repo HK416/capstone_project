@@ -4,13 +4,13 @@ use crate::components::{BigEndian, TryFromBigEndian};
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum JoinFailedReason {
-    /// 해당 (커스텀) 게임을 찾지 못했습니다.
+    /// 해당 커스텀 게임을 찾지 못했습니다.
     NotFound = 0,
-    /// (커스텀) 게임 수용 인원을 초과했습니다.
+    /// 커스텀 게임 수용 인원을 초과했습니다.
     FullCapacity = 1,
-    /// 현재 (커스텀) 게임이 진행 중 입니다.
+    /// 현재 커스텀 게임이 진행 중 입니다.
     InProgress = 2,
-    /// (커스텀) 게임 관리자에 의해 차단(퇴장)당했습니다.
+    /// 커스텀 게임 관리자에 의해 차단 또는 퇴장 당했습니다.
     Banned = 3,
 }
 

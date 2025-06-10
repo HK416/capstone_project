@@ -5,10 +5,9 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{JoinFailedReason, LoginToken, UserId, WorldId},
+    components::{LoginToken, UserId, WorldId},
     protocol::{
-        CustomGameJoinFailedPacket, CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket,
-        Packet, PacketType, RawPacket,
+        JoinFailedPacket, JoinFailedReason, JoinRequestPacket, Packet, PacketType, RawPacket
     },
 };
 use winit::window::Window;
@@ -16,7 +15,7 @@ use winit::window::Window;
 use crate::{
     asset::{TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::{CustomGameRoomScene, FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH},
+    scenes::{FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH},
     SERVER_TCP_ADDR,
 };
 
@@ -116,9 +115,9 @@ impl GameScene for MainLobbyJoinModalScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CustomGameJoinFailed => {
+            PacketType::JoinFailed => {
                 // 패킷을 생성합니다
-                let packet = CustomGameJoinFailedPacket::from_raw(packet);
+                let packet = JoinFailedPacket::from_raw(packet);
 
                 // 게임 장면을 변경합니다.
                 let i = self.locale as usize;
@@ -129,7 +128,8 @@ impl GameScene for MainLobbyJoinModalScene {
                         JoinFailedReason::NotFound => ERR_NOT_FOUND_TEXTS[i],
                         JoinFailedReason::FullCapacity => ERR_FULL_CAPACITY_TEXTS[i],
                         JoinFailedReason::InProgress => ERR_IN_PROGRASS_TEXTS[i],
-                        JoinFailedReason::Banned => ERR_BANNED_TEXTS[i],
+                        // JoinFailedReason::CreationLimited => ERR_BANNED_TEXTS[i],
+                        _ => unreachable!()
                     },
                 ));
                 let scene_flow = GameSceneFlow::Change(next_scene);
@@ -137,25 +137,25 @@ impl GameScene for MainLobbyJoinModalScene {
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }
-            PacketType::CustomGameJoinSuccess => {
-                // 패킷을 생성합니다
-                let packet = CustomGameJoinSuccessPacket::from_raw(packet);
+            // PacketType::JoinSuccess => {
+            //     // 패킷을 생성합니다
+            //     let packet = CustomGameJoinSuccessPacket::from_raw(packet);
 
-                // 게임 장면을 변경합니다.
-                let next_scene = Box::new(CustomGameRoomScene::new(
-                    self.locale,
-                    self.user_id,
-                    self.token,
-                    self.texture_pool.clone(),
-                    self.texture_view_pool.clone(),
-                    packet.world_id,
-                    packet.players,
-                ));
-                let scene_flow = GameSceneFlow::Change(next_scene);
-                let event = AppEvent::AddGameSceneFlow(scene_flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
-            }
+            //     // 게임 장면을 변경합니다.
+            //     let next_scene = Box::new(CustomGameRoomScene::new(
+            //         self.locale,
+            //         self.user_id,
+            //         self.token,
+            //         self.texture_pool.clone(),
+            //         self.texture_view_pool.clone(),
+            //         packet.world_id,
+            //         packet.players,
+            //     ));
+            //     let scene_flow = GameSceneFlow::Change(next_scene);
+            //     let event = AppEvent::AddGameSceneFlow(scene_flow);
+            //     let event_loop_proxy = app.event_loop_proxy();
+            //     event_loop_proxy.send_event(event).unwrap();
+            // }
             PacketType::LobbyPull => { /* IGNORED */ }
             _ => {
                 log::warn!(
@@ -293,7 +293,7 @@ impl GameScene for MainLobbyJoinModalScene {
 
                 // 패킷을 생성합니다.
                 let world_id = WorldId::new(val);
-                let packet = CustomGameJoinRequestPacket::new(world_id, self.user_id, self.token);
+                let packet = JoinRequestPacket::new(world_id, self.user_id, self.token);
 
                 // 패킷을 전송합니다.
                 let net_manager = app.net_manager();

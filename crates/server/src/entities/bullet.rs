@@ -1,4 +1,4 @@
-use mod_network::components::{Bullet, BulletKind, ObjectId, Team, UserId};
+use mod_network::components::{BulletKind, InGameBulletPullData, ObjectId, Team, UserId};
 
 /// 서버에서 관리하는 총알 데이터
 #[derive(Debug, Clone)]
@@ -24,8 +24,8 @@ pub struct BulletObject {
 }
 
 impl BulletObject {
-    pub fn as_bullet(&self) -> Bullet {
-        Bullet {
+    pub fn as_bullet(&self) -> InGameBulletPullData {
+        InGameBulletPullData {
             object_id: self.object_id,
             shooter_id: self.shooter_id,
             bullet_kind: self.bullet_kind,

@@ -13,7 +13,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{LoginToken, UserAccount};
+use mod_network::components::{CharacterKind, GameTier, LoginToken, UserId, UserName};
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
@@ -44,8 +44,14 @@ enum TaskResult {
 pub struct MainLobbyEnterScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
-    /// 사용자 계정 정보
-    user_info: UserAccount,
+    /// 사용자 식별자
+    uid: UserId,
+    /// 사용자 이름 (게임 장면이 유지되는 동안 존재합니다)
+    name: Option<UserName>,
+    /// 사용자 게임 티어
+    tier: GameTier,
+    /// 프로필 대표 캐릭터
+    profile_character: Option<CharacterKind>,
     /// 로그인 토큰
     token: LoginToken,
 
@@ -56,20 +62,34 @@ pub struct MainLobbyEnterScene {
     /// 남은 작업의 수
     num_remaining_tasks: usize,
 
+    /// 이전 텍스처 풀 객체
+    previous_texture_pool: TexturePool,
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
 }
 
 impl MainLobbyEnterScene {
     /// 새로운 `MainLobbyEnterScene`을 생성합니다.
-    pub fn new(locale: Locale, user_info: UserAccount, token: LoginToken) -> Self {
+    pub fn new(
+        locale: Locale,
+        uid: UserId,
+        name: UserName,
+        tier: GameTier,
+        profile_character: Option<CharacterKind>,
+        texture_pool: TexturePool,
+        token: LoginToken,
+    ) -> Self {
         Self {
             locale,
-            user_info,
+            uid,
+            name: Some(name),
+            tier,
+            profile_character,
             token,
             staging_buffers: Vec::default(),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
+            previous_texture_pool: texture_pool,
             texture_pool: TexturePool::new(),
         }
     }
@@ -237,10 +257,14 @@ impl GameScene for MainLobbyEnterScene {
         }
 
         // 다음 게임 장면으로 전환합니다.
-        if self.num_remaining_tasks == 0 {
+        if self.num_remaining_tasks == 0 && self.name.is_some() {
+            let name = self.name.take().unwrap();
             let next_scene = MainLobbyScene::new(
                 self.locale,
-                self.user_info,
+                self.uid,
+                name,
+                self.tier,
+                self.profile_character,
                 self.token,
                 self.texture_pool.clone(),
             );

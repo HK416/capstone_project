@@ -1,3 +1,5 @@
+//! 인게임 점령 데이터와 관련된 코드를 관리합니다.
+
 use crate::components::{BigEndian, Team, TryFromBigEndian};
 
 /// 최대 점령점수. capture_score가 이 값에 도달하면 게임이 종료됩니다.

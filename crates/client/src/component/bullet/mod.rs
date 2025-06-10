@@ -6,7 +6,7 @@ mod energy;
 
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
-use mod_network::components::{Bullet, NUM_BULLETS};
+use mod_network::components::{InGameBulletPullData, NUM_BULLETS};
 
 use crate::{
     asset::{ModelPool, ModelRoot, TextureDataPool, BULLET_URIS},
@@ -33,7 +33,7 @@ pub fn spawn_bullet(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    bullet: &Bullet,
+    bullet: &InGameBulletPullData,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,

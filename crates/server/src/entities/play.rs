@@ -1,7 +1,7 @@
 //! 플레이어의 인게임 플레이 데이터와 관련된 코드를 관리합니다.
 //!
 
-use mod_network::components::{CharacterKind, Team, UserAccount};
+use mod_network::components::{CharacterKind, Team, UserId, UserName};
 
 /// 플레이어의 게임 플레이 데이터입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,8 +10,10 @@ pub struct PlayData {
     pub connected: bool,
     /// 로드 완료 여부
     pub loaded: bool,
-    /// 사용자 계정 정보
-    pub account: UserAccount,
+    /// 사용자 식별자
+    pub uid: UserId,
+    /// 사용자 이름
+    pub name: UserName,
     /// 캐릭터 종류
     pub character_kind: CharacterKind,
     /// 플레이어 팀

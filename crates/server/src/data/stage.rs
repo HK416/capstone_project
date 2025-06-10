@@ -3,7 +3,8 @@ use std::{fs::File, io::Read};
 use ahash::HashMap;
 use lazy_static::lazy_static;
 use mod_network::components::{
-    LatLon, MAX_IN_GAME_PLAYERS, NUM_STAGES, StageHeight, StageKind, StageLayoutData, Team,
+    LatLon, MAX_IN_GAME_PLAYERS, NUM_STAGES, StageKind, StageLayoutAreaHeight,
+    StageLayoutAttributes, Team,
 };
 use mod_physics::collision::ColliderTree;
 
@@ -63,7 +64,7 @@ pub struct Spawn {
 pub struct Area {
     translation: glam::Vec3,
     inv_transform: glam::Mat4,
-    height: StageHeight,
+    height: StageLayoutAreaHeight,
 }
 
 /// 스테이지 속성 데이터를 초기화합니다.
@@ -94,7 +95,7 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         .map_err(|e| log::error!("failed to read file. (PATH:{}, REASON:{})", &path, &e))
         .expect("스테이지 속성 데이터 파일 읽기에 실패했습니다!");
 
-    let stage_layout: StageLayoutData = serde_json::from_slice(&buf)
+    let stage_layout: StageLayoutAttributes = serde_json::from_slice(&buf)
         .map_err(|e| log::error!("failed to parse file. (PATH:{}, REASON:{})", &path, &e))
         .expect("스테이지 속성 데이터 파일 구문 분석에 실패했습니다!");
 
@@ -127,7 +128,7 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
                 .map_err(|e| log::error!("failed to read file. (PATH:{}, REASON:{})", &path, &e))
                 .expect("Height 데이터 파일 읽기에 실패했습니다!");
 
-            let height: StageHeight = serde_json::from_slice(&buf)
+            let height: StageLayoutAreaHeight = serde_json::from_slice(&buf)
                 .map_err(|e| log::error!("failed to parse file. (PATH:{}, REASON:{})", &path, &e))
                 .expect("Height 데이터 파일 구문 분석에 실패했습니다!");
 
@@ -149,10 +150,10 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         .try_into()
         .expect("스폰 위치 데이터가 잘못되었습니다!");
     let dir: glam::Quat = stage_layout.blue_spawn_dir.into();
-    let view_dir = LatLon {
-        lat: 10f32.to_radians(),
-        lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
-    };
+    let view_dir = LatLon::new(
+        10f32.to_radians(),
+        glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
+    );
     let blue_team_spawn = Spawn { pos, dir, view_dir };
     let p0: glam::Vec2 = stage_layout.blue_safe_area_p0.into();
     let p1: glam::Vec2 = stage_layout.blue_safe_area_p1.into();
@@ -168,10 +169,10 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         .try_into()
         .expect("스폰 위치 데이터가 잘못되었습니다!");
     let dir: glam::Quat = stage_layout.red_spawn_dir.into();
-    let view_dir = LatLon {
-        lat: 10f32.to_radians(),
-        lon: glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
-    };
+    let view_dir = LatLon::new(
+        10f32.to_radians(),
+        glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
+    );
     let red_team_spawn = Spawn { pos, dir, view_dir };
     let p0: glam::Vec2 = stage_layout.red_safe_area_p0.into();
     let p1: glam::Vec2 = stage_layout.red_safe_area_p1.into();

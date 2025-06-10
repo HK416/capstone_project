@@ -5,20 +5,18 @@ use std::{
 
 use mod_network::{
     components::UserId,
-    protocol::{CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket},
+    protocol::{PacketType, RawPacket},
 };
 
 use crate::{
-    session::{Session, SessionEvents},
+    session::Session,
     token::UserTokenMap,
     world::{GameWorld, GameWorldEvent, GameWorldRoomStateEvent},
 };
 
-use super::{SessionState, SessionStateFlow, formation::SessionFormationState};
+use super::{SessionState, SessionStateFlow};
 
 pub struct SessionRoomState {
-    /// 세션 상태 실행 여부
-    is_running: bool,
     /// 사용자 식별자
     uid: UserId,
     /// 연결된 게임 월드
@@ -27,11 +25,10 @@ pub struct SessionRoomState {
 
 impl SessionRoomState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(uid: UserId, world: &Arc<GameWorld>) -> Self {
+    pub fn new(uid: UserId, world: Arc<GameWorld>) -> Self {
         Self {
-            is_running: true,
             uid,
-            world: Arc::downgrade(world),
+            world: Arc::downgrade(&world),
         }
     }
 

@@ -5,7 +5,8 @@ use hecs::{Entity, World};
 use mod_network::components::{CharacterKind, LatLon};
 
 use crate::component::{
-    create_third_person_camera_of_character, update_entity_hierarchy, ToParentTrans,
+    // create_third_person_camera_of_character, 
+    update_entity_hierarchy, ToParentTrans,
 };
 
 /// 삼인칭 카메라 요소입니다.
@@ -22,44 +23,46 @@ pub struct ThirdPersonCamera {
 impl ThirdPersonCamera {
     /// 캐릭터가 바라보는 방향으로 삼인칭 카메라를 생성합니다.
     pub fn new(character_kind: CharacterKind, rotation: LatLon) -> Self {
-        create_third_person_camera_of_character(character_kind, rotation)
+        // create_third_person_camera_of_character(character_kind, rotation)
+        todo!()
     }
 
     /// 삼인칭 카메라가 바라보는 방향 회전시킵니다.
     pub fn rotate(&mut self, dx: f32, dy: f32, offset: f32) {
-        use core::f32::consts::TAU;
+        // use core::f32::consts::TAU;
 
-        // Fov-y에 따른 카메라 이동 속도를 조절합니다.
-        const RANGE: f32 = 90f32.to_radians();
-        let speed = 0.1 + 0.9 * (self.fov_y / RANGE).min(1.0);
+        // // Fov-y에 따른 카메라 이동 속도를 조절합니다.
+        // const RANGE: f32 = 90f32.to_radians();
+        // let speed = 0.1 + 0.9 * (self.fov_y / RANGE).min(1.0);
 
-        // 삼인칭 카메라가 바라보는 방향을 갱신합니다.
-        let angle = (dx * offset * speed).to_radians();
-        self.rotation.lon = (self.rotation.lon + angle) % TAU;
+        // // 삼인칭 카메라가 바라보는 방향을 갱신합니다.
+        // let angle = (dx * offset * speed).to_radians();
+        // self.rotation.lon = (self.rotation.lon + angle) % TAU;
 
-        // 삼인칭 카메라의 바라보는 각도를 갱신합니다.
-        let angle = (dy * offset * speed).to_radians();
-        self.rotation.lat =
-            (self.rotation.lat + angle).clamp(LatLon::MIN_LATITUDE, LatLon::MAX_LATITUDE);
+        // // 삼인칭 카메라의 바라보는 각도를 갱신합니다.
+        // let angle = (dy * offset * speed).to_radians();
+        // self.rotation.lat =
+        //     (self.rotation.lat + angle).clamp(LatLon::MIN_LATITUDE, LatLon::MAX_LATITUDE);
     }
 
     /// 카메라의 바라보는 방향을 행렬로 반환합니다.
     pub fn to_matrix(&self) -> glam::Mat4 {
-        let distance = self.position.z;
-        let mut transform = glam::Mat4::from_translation(glam::vec3(0.0, 0.0, -distance));
-        let rotation = glam::Mat4::from_rotation_y(self.rotation.lon);
-        transform = rotation * transform;
+        // let distance = self.position.z;
+        // let mut transform = glam::Mat4::from_translation(glam::vec3(0.0, 0.0, -distance));
+        // let rotation = glam::Mat4::from_rotation_y(self.rotation.lon);
+        // transform = rotation * transform;
 
-        let z_axis = glam::Vec3A::from_vec4(transform.z_axis).normalize_or(glam::Vec3A::Z);
-        let x_axis = glam::Vec3A::Y.cross(z_axis);
-        let rotation = glam::Mat4::from_axis_angle(x_axis.into(), self.rotation.lat);
-        transform = rotation * transform;
+        // let z_axis = glam::Vec3A::from_vec4(transform.z_axis).normalize_or(glam::Vec3A::Z);
+        // let x_axis = glam::Vec3A::Y.cross(z_axis);
+        // let rotation = glam::Mat4::from_axis_angle(x_axis.into(), self.rotation.lat);
+        // transform = rotation * transform;
 
-        let offset = self.position.with_z(0.0);
-        let offset_mat = glam::Mat4::from_translation(offset.into());
-        transform = transform * offset_mat;
+        // let offset = self.position.with_z(0.0);
+        // let offset_mat = glam::Mat4::from_translation(offset.into());
+        // transform = transform * offset_mat;
 
-        transform
+        // transform
+        todo!()
     }
 }
 

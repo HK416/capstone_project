@@ -4,17 +4,23 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{
-    components::{Email, Passwd},
-    protocol::{LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket},
+use mod_network::protocol::{
+    LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket,
 };
-use winit::window::Window;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     component::ButtonState,
-    config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, GameExitModalScene, MainLobbyEnterScene, BASE_WIDTH},
+    config::{Locale, NUM_LOCALE},
+    scenes::{
+        FatalErrorSceneLayer, GameExitModalScene, LoginFailedModalScene, MainLobbyEnterScene,
+        BASE_WIDTH,
+    },
     SERVER_TCP_ADDR,
 };
 
@@ -38,17 +44,21 @@ pub struct GameLoginModalScene {
     exit_button_state: ButtonState,
     /// 입력 지연 시간입니다.
     delay_time_sec: f32,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl GameLoginModalScene {
     /// 새로운 `GameLoginModalScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
         Self {
             locale,
             requested: false,
             login_button_state: ButtonState::Idle,
             exit_button_state: ButtonState::Idle,
             delay_time_sec: 0.3,
+            texture_pool,
         }
     }
 }
@@ -86,21 +96,31 @@ impl GameScene for GameLoginModalScene {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::LoginFailed => {
-                self.requested = false;
-                // TODO 로그인 실패 처리
+                let packet = LoginFailedPacket::from_raw(packet);
+
+                // 다음 게임 장면으로 전환합니다.
+                let next_scene = Box::new(LoginFailedModalScene::new(
+                    self.locale,
+                    packet.reason,
+                    self.texture_pool.clone(),
+                ));
+                let scene_flow = GameSceneFlow::Change(next_scene);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
             }
             PacketType::LoginSuccess => {
                 // 사용자 정보와 로그인 토큰을 저장합니다.
                 let packet = LoginSuccessPacket::from_raw(packet);
-                let mut config = UserConfig::get();
-                config.account = packet.account;
-                config.token = packet.token;
-                drop(config);
 
                 // 다음 게임 장면으로 전환합니다.
                 let next_scene = Box::new(MainLobbyEnterScene::new(
                     self.locale,
-                    packet.account,
+                    packet.uid,
+                    packet.name,
+                    packet.tier(),
+                    packet.profile_character(),
+                    self.texture_pool.clone(),
                     packet.token,
                 ));
                 let scene_flow = GameSceneFlow::Reset(next_scene);
@@ -118,6 +138,35 @@ impl GameScene for GameLoginModalScene {
         }
 
         None
+    }
+
+    fn on_keyboard_released(
+        &mut self,
+        code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        repeat: bool,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> bool {
+        if !repeat && self.delay_time_sec <= 0.0 {
+            match code {
+                KeyCode::Escape => {
+                    // 게임 장면을 전환합니다.
+                    let next_scene = Box::new(GameExitModalScene::new(
+                        self.locale,
+                        self.texture_pool.clone(),
+                    ));
+                    let scene_flow = GameSceneFlow::Change(next_scene);
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
+                _ => {}
+            }
+        }
+
+        true
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
@@ -210,8 +259,7 @@ impl GameScene for GameLoginModalScene {
                             self.requested = true;
 
                             // 로그인 요청 패킷을 생성합니다.
-                            let packet =
-                                LoginRequestPacket::new(Email::default(), Passwd::default());
+                            let packet = LoginRequestPacket::new();
 
                             // 패킷을 게임 서버에 전송합니다.
                             let net_manager = app.net_manager();
@@ -233,7 +281,10 @@ impl GameScene for GameLoginModalScene {
                             self.exit_button_state = ButtonState::Clicked;
 
                             // 게임 장면을 전환합니다.
-                            let next_scene = Box::new(GameExitModalScene::new(self.locale));
+                            let next_scene = Box::new(GameExitModalScene::new(
+                                self.locale,
+                                self.texture_pool.clone(),
+                            ));
                             let scene_flow = GameSceneFlow::Change(next_scene);
                             let event = AppEvent::AddGameSceneFlow(scene_flow);
                             let event_loop_proxy = app.event_loop_proxy();

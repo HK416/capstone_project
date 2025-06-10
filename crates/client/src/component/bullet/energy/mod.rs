@@ -163,7 +163,7 @@ fn spawn_energy_bullet_model_recursive(
             mesh,
             transform_uniform,
             mesh_resource,
-            BulletKind::ArisOriginal,
+            BulletKind::EnergyBoll,
         ));
     }
 

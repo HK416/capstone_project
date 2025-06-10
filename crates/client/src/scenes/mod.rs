@@ -3,13 +3,13 @@
 // mod in_game;
 mod layer;
 mod lobby;
-mod room;
+// mod room;
 mod startup;
 mod title;
 
 use std::fmt;
 
-pub use self::{layer::*, lobby::*, room::*, startup::*, title::*};
+pub use self::{layer::*, lobby::*, startup::*, title::*};
 
 /// 인터페이스 배경 색상입니다.
 pub const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
@@ -89,6 +89,12 @@ impl fmt::Debug for GameExitModalScene {
     }
 }
 
+impl fmt::Debug for LoginFailedModalScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(LoginFailedModalScene))
+    }
+}
+
 impl fmt::Debug for MainLobbyEnterScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(MainLobbyEnterScene))
@@ -107,11 +113,11 @@ impl fmt::Debug for MainLobbyJoinModalScene {
     }
 }
 
-impl fmt::Debug for CustomGameRoomScene {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(CustomGameRoomScene))
-    }
-}
+// impl fmt::Debug for CustomGameRoomScene {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}", stringify!(CustomGameRoomScene))
+//     }
+// }
 
 // impl fmt::Debug for CharacterFormationScene {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

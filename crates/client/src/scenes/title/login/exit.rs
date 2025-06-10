@@ -5,10 +5,14 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::protocol::RawPacket;
-use winit::window::Window;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, GameLoginModalScene, BASE_WIDTH},
@@ -33,16 +37,20 @@ pub struct GameExitModalScene {
     cancal_button_state: ButtonState,
     /// 입력 지연 시간입니다.
     delay_time_sec: f32,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl GameExitModalScene {
     /// 새로운 `GameExitModalScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
         Self {
             locale,
             okay_button_state: ButtonState::Idle,
             cancal_button_state: ButtonState::Idle,
             delay_time_sec: 0.3,
+            texture_pool,
         }
     }
 }
@@ -78,6 +86,42 @@ impl GameScene for GameExitModalScene {
 
     fn on_received_packet(&mut self, _: RawPacket, _: &dyn AppHandle) -> Option<RawPacket> {
         None
+    }
+
+    fn on_keyboard_released(
+        &mut self,
+        code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        repeat: bool,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> bool {
+        if !repeat && self.delay_time_sec <= 0.0 {
+            match code {
+                KeyCode::Escape => {
+                    // 게임 장면을 전환합니다.
+                    let next_scene = Box::new(GameLoginModalScene::new(
+                        self.locale,
+                        self.texture_pool.clone(),
+                    ));
+                    let scene_flow = GameSceneFlow::Change(next_scene);
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
+                KeyCode::Enter => {
+                    // 모든 게임 장면을 제거합니다.
+                    let scene_flow = GameSceneFlow::Clear;
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
+                _ => {}
+            }
+        }
+
+        true
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
@@ -213,8 +257,10 @@ impl GameScene for GameExitModalScene {
                                             self.cancal_button_state = ButtonState::Clicked;
 
                                             // 게임 장면을 전환합니다.
-                                            let next_scene =
-                                                Box::new(GameLoginModalScene::new(self.locale));
+                                            let next_scene = Box::new(GameLoginModalScene::new(
+                                                self.locale,
+                                                self.texture_pool.clone(),
+                                            ));
                                             let scene_flow = GameSceneFlow::Change(next_scene);
                                             let event = AppEvent::AddGameSceneFlow(scene_flow);
                                             let event_loop_proxy = app.event_loop_proxy();

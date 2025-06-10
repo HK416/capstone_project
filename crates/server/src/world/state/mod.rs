@@ -2,11 +2,11 @@
 // mod in_game;
 // mod in_game_prepare;
 // mod in_game_sync;
-mod room;
+// mod room;
 
 use std::{fmt, sync::Arc};
 
-pub use self::room::*;
+// pub use self::room::*;
 
 use super::{GameWorld, GameWorldEvent};
 

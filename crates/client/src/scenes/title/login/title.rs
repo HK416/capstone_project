@@ -219,7 +219,10 @@ impl GameScene for GameLoginTitleScene {
 
         // 다음 게임 장면으로 전환합니다.
         if self.pressed_any_keys {
-            let next_scene = Box::new(GameLoginModalScene::new(self.locale));
+            let next_scene = Box::new(GameLoginModalScene::new(
+                self.locale,
+                self.texture_pool.clone(),
+            ));
             let scene_flow = GameSceneFlow::Push(next_scene);
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();

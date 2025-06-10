@@ -8,9 +8,9 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, UserAccount, WorldId},
+    components::{CharacterKind, GameTier, LoginToken, UserId, UserName, WorldId},
     protocol::{
-        CustomGameJoinRequestPacket, CustomGameJoinSuccessPacket, Packet, PacketType, RawPacket,
+        Packet, PacketType, RawPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -25,7 +25,7 @@ use crate::{
 
 pub use self::{enter::*, join_modal::*};
 
-use super::{CustomGameRoomScene, BASE_WIDTH};
+use super::{BASE_WIDTH};
 
 /// 애플리케이션 표시 언어에 따른 `커스텀 게임 생성` 버튼 텍스트입니다.
 const CREATE_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["게임 생성"];
@@ -36,8 +36,14 @@ const JOIN_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참가"];
 pub struct MainLobbyScene {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
-    /// 현재 클라이언트의 사용자 정보입니다.
-    user_info: UserAccount,
+    /// 사용자 식별자
+    uid: UserId,
+    /// 사용자 이름 (게임 장면이 유지되는 동안 존재합니다)
+    name: Option<UserName>,
+    /// 사용자 게임 티어
+    tier: GameTier,
+    /// 프로필 캐릭터
+    profile_character: Option<CharacterKind>,
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
@@ -57,13 +63,19 @@ impl MainLobbyScene {
     /// 새로운 `MainLobbyScene`을 생성합니다.
     pub fn new(
         locale: Locale,
-        user_info: UserAccount,
+        uid: UserId,
+        name: UserName,
+        tier: GameTier,
+        profile_character: Option<CharacterKind>,
         token: LoginToken,
         texture_pool: TexturePool,
     ) -> Self {
         Self {
             locale,
-            user_info,
+            uid,
+            name: Some(name),
+            tier,
+            profile_character,
             token,
             button_enabled: true,
             bg_texture_id: egui::load::SizedTexture {
@@ -131,25 +143,25 @@ impl GameScene for MainLobbyScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CustomGameJoinSuccess => {
-                // 패킷을 생성합니다
-                let packet = CustomGameJoinSuccessPacket::from_raw(packet);
+            // PacketType::JoinSuccess => {
+            //     // 패킷을 생성합니다
+            //     let packet = CustomGameJoinSuccessPacket::from_raw(packet);
 
-                // 게임 장면을 변경합니다.
-                let next_scene = CustomGameRoomScene::new(
-                    self.locale,
-                    self.user_info.uid,
-                    self.token,
-                    self.texture_pool.clone(),
-                    self.texture_view_pool.clone(),
-                    packet.world_id,
-                    packet.players,
-                );
-                let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-                let event = AppEvent::AddGameSceneFlow(scene_flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
-            }
+            //     // 게임 장면을 변경합니다.
+            //     let next_scene = CustomGameRoomScene::new(
+            //         self.locale,
+            //         self.user_info.uid,
+            //         self.token,
+            //         self.texture_pool.clone(),
+            //         self.texture_view_pool.clone(),
+            //         packet.world_id,
+            //         packet.players,
+            //     );
+            //     let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+            //     let event = AppEvent::AddGameSceneFlow(scene_flow);
+            //     let event_loop_proxy = app.event_loop_proxy();
+            //     event_loop_proxy.send_event(event).unwrap();
+            // }
             PacketType::LobbyPull => {}
             _ => {
                 log::warn!(
@@ -173,9 +185,10 @@ impl GameScene for MainLobbyScene {
         );
 
         // 플레이어 정보 텍스트
+        let name = self.name.as_ref().unwrap();
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(28.0 * scale, family);
-        let text = egui::RichText::new(self.user_info.name.to_string())
+        let text = egui::RichText::new(name.clone())
             .font(font_id)
             .color(egui::Color32::DARK_GRAY);
         let label_widget = egui::Label::new(text)
@@ -230,33 +243,33 @@ impl GameScene for MainLobbyScene {
                     ui.shrink_clip_rect(clip_rect);
 
                     if ui.put(create_rect, create_button).clicked() {
-                        // 커스텀 게임 생성 패킷을 생성합니다.
-                        let packet = CustomGameJoinRequestPacket::new(
-                            WorldId::NULL,
-                            self.user_info.uid,
-                            self.token,
-                        );
+                        // // 커스텀 게임 생성 패킷을 생성합니다.
+                        // let packet = CustomGameJoinRequestPacket::new(
+                        //     WorldId::NULL,
+                        //     self.user_info.uid,
+                        //     self.token,
+                        // );
 
-                        // 패킷을 전송합니다.
-                        let net_manager = app.net_manager();
-                        let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-                        socket.push_packet(packet.as_raw());
-                        return;
+                        // // 패킷을 전송합니다.
+                        // let net_manager = app.net_manager();
+                        // let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                        // socket.push_packet(packet.as_raw());
+                        // return;
                     }
 
                     if ui.put(join_rect, join_button).clicked() {
-                        // 다음 게임 장면으로 전환합니다.
-                        let next_scene = MainLobbyJoinModalScene::new(
-                            self.locale,
-                            self.user_info.uid,
-                            self.token,
-                            self.texture_pool.clone(),
-                            self.texture_view_pool.clone(),
-                        );
-                        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
+                        // // 다음 게임 장면으로 전환합니다.
+                        // let next_scene = MainLobbyJoinModalScene::new(
+                        //     self.locale,
+                        //     self.user_info.uid,
+                        //     self.token,
+                        //     self.texture_pool.clone(),
+                        //     self.texture_view_pool.clone(),
+                        // );
+                        // let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+                        // let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        // let event_loop_proxy = app.event_loop_proxy();
+                        // event_loop_proxy.send_event(event).unwrap();
                     }
                 });
             });

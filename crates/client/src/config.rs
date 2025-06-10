@@ -8,7 +8,7 @@ use std::{
 use ahash::{HashMap, HashSet};
 use lazy_static::lazy_static;
 use mod_app::etc::WindowSize;
-use mod_network::components::{GameInput, LoginToken, UserAccount, NUM_GAME_INPUTS};
+use mod_network::components::{GameInput, NUM_GAME_INPUTS};
 use serde::{Deserialize, Serialize};
 use spin::{Mutex, MutexGuard};
 use winit::{
@@ -58,15 +58,6 @@ pub enum UserConfigIOError {
 /// 사용자 구성 데이터입니다.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct UserConfig {
-    /// 현재 사용자의 계정 데이터입니다.  
-    /// 사용자의 식별자가 `UserId::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
-    #[serde(skip)]
-    pub account: UserAccount,
-    /// 현재 사용자의 로그인 토큰입니다.  
-    /// 로그인 토큰이 `LoginToken::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
-    #[serde(skip)]
-    pub token: LoginToken,
-
     /// 애플리케이션 표시 언어입니다.
     pub locale: Locale,
     /// 애플리케이션 창의 크기입니다.
@@ -245,8 +236,6 @@ impl UserConfig {
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
-            account: UserAccount::default(),
-            token: LoginToken::NULL,
             locale: Locale::KOR,
             window_size: WindowSize::MAX,
             is_fullscreen: true,

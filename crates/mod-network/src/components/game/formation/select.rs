@@ -1,10 +1,14 @@
+//! 캐릭터 선택과 관련된 코드를 관리합니다.
+//!
+
 use crate::components::{BigEndian, TryFromBigEndian};
 
 /// 캐릭터 선택 실패 사유 목록입니다.
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SelectResult {
     /// 캐릭터 선택에 성공했습니다.
+    #[default]
     Success = 0,
     /// 캐릭터가 중복됩니다.
     Duplicates = 1,
@@ -14,20 +18,15 @@ pub enum SelectResult {
 
 impl SelectResult {
     /// 주어진 정수로 `SelectResult`를 생성합니다.  
+    ///
     /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
+    ///
     pub fn new(val: u8) -> Option<Self> {
         match val {
             0 => Some(Self::Success),
             1 => Some(Self::Duplicates),
             2 => Some(Self::Banned),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(SelectResult),
-                    val
-                );
-                None
-            }
+            _ => None,
         }
     }
 }
@@ -43,12 +42,6 @@ impl BigEndian for SelectResult {
     }
 }
 
-impl Default for SelectResult {
-    fn default() -> Self {
-        Self::Success
-    }
-}
-
 impl TryFromBigEndian for SelectResult {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         Self::new(u8::from_big_endian_bytes(bytes))
@@ -61,8 +54,23 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_create_select_result() {
+    fn test_creation_select_result() {
         SelectResult::new(123).unwrap();
+    }
+
+    #[test]
+    fn test_select_result_success() {
+        let val = SelectResult::Success as u8;
+        let result = SelectResult::new(val).unwrap();
+        assert_eq!(SelectResult::Success, result);
+
+        let val = SelectResult::Duplicates as u8;
+        let result = SelectResult::new(val).unwrap();
+        assert_eq!(SelectResult::Duplicates, result);
+
+        let val = SelectResult::Banned as u8;
+        let result = SelectResult::new(val).unwrap();
+        assert_eq!(SelectResult::Banned, result);
     }
 
     #[test]
