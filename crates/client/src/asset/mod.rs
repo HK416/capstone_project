@@ -98,7 +98,7 @@ pub const HUD_CANCEL_ICON_DATA: &'static [u8; 1187] = include_bytes!(concat!(
 ));
 
 /// 메인 로비 화면 배경화면 텍스처의 `Uri`입니다.
-pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby.png";
+pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby";
 
 /// 데미지 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_DAMAGE_NORMAL_URI: &'static str = "ImgFont_Damage_Normal";
@@ -146,12 +146,15 @@ pub const CHARACTER_URIS: [&'static str; NUM_CHARACTERS] = [
     "yuuka_original",
 ];
 
+/// 더미 캐릭터 아이콘의 `Uri`입니다.
+pub const CHARACTER_ICON_DUMMY_URI: &'static str = "Character_Icon_Sensei";
+
 /// 캐릭터 아이콘의 `Uri`입니다.
 pub const CHARACTER_ICON_URIS: [&'static str; NUM_CHARACTERS] = [
-    "Student_Portrait_Aris",
-    "Student_Portrait_Momoi",
-    "Student_Portrait_Midori",
-    "Student_Portrait_Yuuka",
+    "Character_Icon_Aris",
+    "Character_Icon_Momoi",
+    "Character_Icon_Midori",
+    "Character_Icon_Yuuka",
 ];
 
 /// 무기 아이콘 `Uri`입니다.

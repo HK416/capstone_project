@@ -1,12 +1,5 @@
-use std::{
-    error::Error,
-    fs::OpenOptions,
-    io::{Cursor, Read},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{error::Error, path::Path, sync::Arc};
 
-use image::{ImageFormat, ImageReader};
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -20,7 +13,10 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD},
+    asset::{
+        SamplerPool, TextureDataPool, TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI,
+        CHARACTER_ICON_DUMMY_URI, CHARACTER_ICON_URIS, NOTOSANS_BOLD,
+    },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
 };
@@ -39,6 +35,7 @@ enum TaskResult {
         command: wgpu::CommandBuffer,
         staging_buffers: Vec<wgpu::Buffer>,
     },
+    Err(Box<dyn Error>),
 }
 
 pub struct MainLobbyEnterScene {
@@ -58,14 +55,20 @@ pub struct MainLobbyEnterScene {
     /// 스테이징(업로드) 버퍼 집합
     staging_buffers: Vec<wgpu::Buffer>,
     /// 작업 결과
-    task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
+    task_results: Arc<Queue<TaskResult>>,
     /// 남은 작업의 수
     num_remaining_tasks: usize,
 
     /// 이전 텍스처 풀 객체
     previous_texture_pool: TexturePool,
+    /// 텍스터 풀 객체
+    texture_data_pool: TextureDataPool,
+    /// 텍스처 뷰 풀 객체
+    texture_view_pool: TextureViewPool,
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 텍스처 샘플러 풀 객체입니다.
+    sampler_pool: SamplerPool,
 }
 
 impl MainLobbyEnterScene {
@@ -90,109 +93,135 @@ impl MainLobbyEnterScene {
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
             previous_texture_pool: texture_pool,
+            texture_data_pool: TextureDataPool::new(),
+            texture_view_pool: TextureViewPool::new(),
             texture_pool: TexturePool::new(),
+            sampler_pool: SamplerPool::new(),
         }
     }
 
-    /// `MainLobby`의 배경 텍스처를 풀 객체에 등록합니다.
-    fn load_background_texture<Dir>(
+    /// 파일로부터 텍스처를 생성합니다.
+    fn create_character_icon_textures<Dir>(
         &mut self,
         root_dir: Dir,
         thread_pool: &ThreadPool,
-        device: &Arc<wgpu::Device>,
+        device: Arc<wgpu::Device>,
     ) where
-        Dir: Into<PathBuf>,
+        Dir: AsRef<Path>,
     {
-        let mut path: PathBuf = root_dir.into();
-        path.push(format!("ui/{}", BG_MAIN_LOBBY_URI));
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push("ui");
 
-        // 스레드 풀에서 에셋을 로드합니다.
         let task_results = self.task_results.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
         let texture_pool = self.texture_pool.clone();
-        let device = device.clone();
+        let sampler_pool = self.sampler_pool.clone();
         thread_pool.spawn(move || {
-            log::debug!("open texture asset (PATH:{})", path.display());
-            let result = OpenOptions::new().read(true).write(false).open(&path);
-            let mut file = match result {
-                Ok(file) => file,
-                Err(e) => {
-                    log::error!(
-                        "failed to open font asset (PATH:{}, REASON:{})",
-                        path.display(),
-                        &e
-                    );
-                    task_results.push(Err(Box::new(e)));
-                    return;
-                }
-            };
-
-            log::debug!("read font asset (PATH:{})", path.display());
-            let mut buf = Vec::new();
-            if let Err(e) = file.read_to_end(&mut buf) {
-                log::error!(
-                    "failed to read font asset (PATH:{}, REASON:{})",
-                    path.display(),
-                    &e
-                );
-                task_results.push(Err(Box::new(e)));
-                return;
-            }
-
-            log::debug!("close font asset (PATH:{})", path.display());
-            drop(file);
-
-            // 이미지를 디코딩합니다.
-            let reader = Cursor::new(buf);
-            let mut reader = ImageReader::new(reader);
-            reader.set_format(ImageFormat::Png);
-
-            let image = match reader.decode() {
-                Ok(image) => image,
-                Err(e) => {
-                    log::error!("failed to load texture! (PATH:{BG_MAIN_LOBBY_URI}, REASON:{e}");
-                    task_results.push(Err(Box::new(e)));
-                    return;
-                }
-            };
-
-            let mut staging_buffers = Vec::new();
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let mut staging_buffers = Vec::with_capacity(CHARACTER_ICON_URIS.len());
 
-            // 텍스처를 생성합니다.
-            let texture = TexturePool::create_texture(
-                &format!("Texture({})", &BG_MAIN_LOBBY_URI),
+            let result = texture_data_pool.get_or_init(
+                &workspace,
+                CHARACTER_ICON_DUMMY_URI,
                 &device,
                 &mut encoder,
                 &mut staging_buffers,
-                image.width(),
-                image.height(),
-                1,
-                wgpu::TextureDimension::D2,
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-                1,
-                1,
-                image.to_rgba8().to_vec(),
+                &texture_pool,
+                &texture_view_pool,
+                &sampler_pool,
             );
 
-            // 텍스처 풀 객체에 등록합니다.
-            texture_pool.insert(BG_MAIN_LOBBY_URI, texture.into());
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
 
-            // 결과를 전송합니다.
-            task_results.push(Ok(TaskResult::Texture {
+            for uri in CHARACTER_ICON_URIS {
+                let result = texture_data_pool.get_or_init(
+                    &workspace,
+                    uri,
+                    &device,
+                    &mut encoder,
+                    &mut staging_buffers,
+                    &texture_pool,
+                    &texture_view_pool,
+                    &sampler_pool,
+                );
+
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Err(Box::new(e)));
+                    return;
+                }
+            }
+
+            task_results.push(TaskResult::Texture {
                 command: encoder.finish(),
                 staging_buffers,
-            }));
+            });
         });
+
+        self.num_remaining_tasks += 1;
+    }
+
+    /// `MainLobby`의 배경 텍스처를 풀 객체에 등록합니다.
+    fn create_background_texture<Dir>(
+        &mut self,
+        root_dir: Dir,
+        thread_pool: &ThreadPool,
+        device: Arc<wgpu::Device>,
+    ) where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push("ui");
+
+        let task_results = self.task_results.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        thread_pool.spawn(move || {
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let mut staging_buffers = Vec::new();
+
+            let result = texture_data_pool.get_or_init(
+                &workspace,
+                BG_MAIN_LOBBY_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                &texture_pool,
+                &texture_view_pool,
+                &sampler_pool,
+            );
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
+
+            task_results.push(TaskResult::Texture {
+                command: encoder.finish(),
+                staging_buffers,
+            });
+        });
+
         self.num_remaining_tasks += 1;
     }
 }
 
 impl GameScene for MainLobbyEnterScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
+        let device = app.render_device();
+        let io_thread_pool = app.io_threads();
         let mut root_dir = app.current_dir().to_path_buf();
         root_dir.push("assets");
-        self.load_background_texture(root_dir, app.io_threads(), app.render_device());
+
+        self.create_background_texture(&root_dir, io_thread_pool, device.clone());
+        self.create_character_icon_textures(&root_dir, io_thread_pool, device.clone());
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -222,25 +251,18 @@ impl GameScene for MainLobbyEnterScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_results.pop() {
-            match result {
-                Ok(task) => {
-                    self.num_remaining_tasks -= 1;
-                    log::info!(
-                        "task success (number of tasks remaining:{})",
-                        self.num_remaining_tasks
-                    );
+            self.num_remaining_tasks -= 1;
+            log::info!("number of remaining tasks: {}", self.num_remaining_tasks);
 
-                    match task {
-                        TaskResult::Texture {
-                            command,
-                            mut staging_buffers,
-                        } => {
-                            app.render_queue().submit(Some(command));
-                            self.staging_buffers.append(&mut staging_buffers);
-                        }
-                    }
+            match result {
+                TaskResult::Texture {
+                    command,
+                    mut staging_buffers,
+                } => {
+                    app.render_queue().submit(Some(command));
+                    self.staging_buffers.append(&mut staging_buffers);
                 }
-                Err(_) => {
+                TaskResult::Err(_e) => {
                     // 다음 게임 장면으로 전환합니다.
                     let i = self.locale as usize;
                     let next_scene = FatalErrorSceneLayer::new(

@@ -26,16 +26,26 @@ pub const NUM_LOCALE: usize = 1;
 
 /// 애플리케이션 표시 언어 목록입니다.
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
+)]
 pub enum Locale {
     // ENG,
     // JPN,
+    #[default]
     KOR,
 }
 
-impl Default for Locale {
-    fn default() -> Self {
-        Self::KOR
+impl Locale {
+    /// 주어진 정수로 애플리케이션 표시 언어를 생성합니다.
+    ///
+    /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
+    ///
+    pub const fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Locale::KOR),
+            _ => None,
+        }
     }
 }
 

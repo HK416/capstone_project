@@ -15,7 +15,10 @@ use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{
+        TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, CHARACTER_ICON_DUMMY_URI,
+        CHARACTER_ICON_URIS, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+    },
     config::{Locale, NUM_LOCALE},
     scenes::FatalErrorSceneLayer,
     SERVER_TCP_ADDR,
@@ -37,7 +40,7 @@ pub struct MainLobbyScene {
     /// 사용자 식별자
     uid: UserId,
     /// 사용자 이름 (게임 장면이 유지되는 동안 존재합니다)
-    name: Option<UserName>,
+    name: UserName,
     /// 사용자 게임 티어
     tier: GameTier,
     /// 프로필 캐릭터
@@ -48,8 +51,29 @@ pub struct MainLobbyScene {
     /// 버튼의 활성화 여부입니다.
     button_enabled: bool,
 
-    /// 배경화면 텍스처의 식별자입니다.
-    bg_texture_id: egui::load::SizedTexture,
+    /// Ui 배경화면 텍스처
+    bg_texture: egui::load::SizedTexture,
+    /// Ui 프로필 캐릭터 텍스처
+    profile_ch_texture: egui::load::SizedTexture,
+
+    /// Ui 스케일
+    ui_scale: f32,
+    /// 클립 영역 사각형
+    clip_rect: egui::Rect,
+    /// Ui - 콘텐츠 레이아웃 영역입니다.
+    content_layout_rect: egui::Rect,
+    /// Ui - 콘텐츠 레이아웃의 곡률입니다.
+    content_layout_corner: f32,
+    /// Ui - 플레이어 이름입니다.
+    player_name_text: egui::RichText,
+    /// Ui - 플레이어 정보 레이아웃 영역입니다.
+    player_info_layout_rect: egui::Rect,
+    /// Ui - 플레이어 정보 레이아웃의 곡률입니다.
+    player_info_layout_corner: f32,
+    /// Ui - 프로필 캐릭터 아이콘 영역입니다.
+    profile_character_rect: egui::Rect,
+    /// Ui - 배경화면 레이아웃 영역입니다.
+    background_rect: egui::Rect,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -71,23 +95,35 @@ impl MainLobbyScene {
         Self {
             locale,
             uid,
-            name: Some(name),
+            name,
             tier,
             profile_character,
             token,
             button_enabled: true,
-            bg_texture_id: egui::load::SizedTexture {
+            bg_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
+            profile_ch_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            ui_scale: 1.0,
+            clip_rect: egui::Rect::ZERO,
+            content_layout_rect: egui::Rect::ZERO,
+            content_layout_corner: 0.0,
+            player_name_text: egui::RichText::default(),
+            player_info_layout_rect: egui::Rect::ZERO,
+            player_info_layout_corner: 0.0,
+            profile_character_rect: egui::Rect::ZERO,
+            background_rect: egui::Rect::ZERO,
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
         }
     }
-}
 
-impl GameScene for MainLobbyScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+    /// 배경 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_background_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
         // 메인 로비 배경화면 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -101,17 +137,176 @@ impl GameScene for MainLobbyScene {
             .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id = ui_renderer.register_native_texture(
-            app.render_device(),
-            &texture,
-            wgpu::FilterMode::Linear,
-        );
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         // 등록된 텍스처 정보를 저장합니다.
-        self.bg_texture_id = egui::load::SizedTexture {
+        self.bg_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
+    }
+
+    /// 프로필 캐릭터 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_profile_character_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        let uri = match self.profile_character {
+            Some(kind) => CHARACTER_ICON_URIS[kind as usize],
+            None => CHARACTER_ICON_DUMMY_URI,
+        };
+
+        // 메인 로비 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(uri)
+            .expect("Profile character texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.profile_ch_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// Ui의 크기를 재설정합니다.
+    fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
+        // 클립 사각형을 재설정합니다.
+        let viewport = app.viewport();
+        let scale_factor = window.scale_factor() as f32;
+        self.ui_scale = viewport.width / scale_factor / BASE_WIDTH;
+        self.clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
+
+        // Ui 콘텐츠 레이아웃 사각형의 크기를 재조정합니다.
+        let min_y = self.clip_rect.min.y;
+        let max_x = self.clip_rect.max.x;
+        self.content_layout_rect = egui::Rect::from_min_max(
+            egui::pos2(max_x - 420.0 * self.ui_scale, min_y - 20.0),
+            egui::pos2(max_x + 20.0 * self.ui_scale, min_y + 72.0 * self.ui_scale),
+        );
+        self.content_layout_corner = 20.0 * self.ui_scale;
+
+        // Ui 플레이어 이름 폰트 크기를 재조정합니다.
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(22.0 * self.ui_scale, family);
+        self.player_name_text = egui::RichText::new(self.name)
+            .font(font_id)
+            .color(egui::Color32::DARK_GRAY);
+
+        // Ui 플레이어 정보 사각형의 크기를 재조정합니다.
+        let min_x = self.clip_rect.min.x;
+        let max_y = self.clip_rect.max.y;
+        self.player_info_layout_rect = egui::Rect::from_min_max(
+            egui::pos2(min_x + 48.0 * self.ui_scale, max_y - 100.0 * self.ui_scale),
+            egui::pos2(min_x + 468.0 * self.ui_scale, max_y - 24.0 * self.ui_scale),
+        );
+        self.player_info_layout_corner = 18.0 * self.ui_scale;
+
+        // Ui 프로필 캐릭터 사각형의 크기를 재조정합니다.
+        let source = &self.profile_ch_texture;
+        let image_ratio = source.size.x / source.size.y;
+        let image_height = self.player_info_layout_rect.height() - 0.75 * self.ui_scale;
+        let image_width = image_height * image_ratio;
+        let image_size = egui::vec2(image_width, image_height);
+        let min = self.player_info_layout_rect.min
+            + egui::vec2(self.player_info_layout_corner * 0.3, 0.75 * self.ui_scale);
+        self.profile_character_rect = egui::Rect::from_min_max(min, min + image_size);
+
+        // Ui 배경화면 영역을 재조정합니다.
+        let source = &self.bg_texture;
+        let center = self.clip_rect.center();
+        let image_ratio = source.size.x / source.size.y;
+        let image_width = self.clip_rect.width();
+        let image_height = image_width / image_ratio;
+        let image_size = egui::vec2(image_width, image_height);
+        self.background_rect =
+            egui::Rect::from_min_max(center - 0.5 * image_size, center + 0.5 * image_size);
+    }
+
+    /// Ui 콘텐츠를 그립니다.
+    fn draw_ui_content_layout(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Content_layout")).show(ctx, |ui| {
+            ui.shrink_clip_rect(self.clip_rect);
+            ui.painter().rect(
+                self.content_layout_rect,
+                self.content_layout_corner,
+                egui::Color32::WHITE,
+                egui::Stroke::new(1.5 * self.ui_scale, egui::Color32::from_rgb(124, 208, 255)),
+                egui::StrokeKind::Middle,
+            );
+        });
+    }
+
+    /// 플레이어 정보를 그립니다.
+    fn draw_ui_player_info_layout(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new(egui::Id::new("Player_Info_Layout"))).show(ctx, |ui| {
+            ui.shrink_clip_rect(self.clip_rect);
+
+            // 레이아웃
+            ui.painter().rect(
+                self.player_info_layout_rect,
+                self.player_info_layout_corner,
+                egui::Color32::WHITE,
+                egui::Stroke::new(1.5 * self.ui_scale, egui::Color32::from_rgb(124, 208, 255)),
+                egui::StrokeKind::Middle,
+            );
+
+            // 프로필 캐릭터
+            egui::Image::new(self.profile_ch_texture).paint_at(ui, self.profile_character_rect);
+
+            // 이름
+            let label = egui::Label::new(self.player_name_text.clone())
+                .wrap_mode(egui::TextWrapMode::Truncate)
+                .halign(egui::Align::Center)
+                .sense(egui::Sense::empty())
+                .selectable(false);
+            let label_rect = egui::Rect::from_min_max(
+                self.player_info_layout_rect.center_top()
+                    - egui::vec2(self.player_info_layout_rect.width() * 0.25, 0.0),
+                self.player_info_layout_rect.max,
+            );
+            ui.put(label_rect, label);
+        });
+    }
+
+    /// 배경화면을 그립니다.
+    fn draw_ui_background(&mut self, ctx: &egui::Context) {
+        let source = self.bg_texture;
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                egui::Image::new(source).paint_at(ui, self.background_rect);
+            });
+    }
+}
+
+impl GameScene for MainLobbyScene {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+        let device = app.render_device();
+        self.regist_background_texture(device, ui_renderer);
+        self.regist_profile_character_texture(device, ui_renderer);
+        self.resize_ui(window, app);
+    }
+
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        // Ui 레이아웃을 재조정합니다.
+        self.resize_ui(window, app);
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -173,6 +368,7 @@ impl GameScene for MainLobbyScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+        let ctx = app.egui_ctx();
         let locale = self.locale as usize;
         let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
@@ -182,26 +378,11 @@ impl GameScene for MainLobbyScene {
             egui::vec2(viewport.width, viewport.height) / scale_factor,
         );
 
-        // 플레이어 정보 텍스트
-        let name = self.name.as_ref().unwrap();
-        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let font_id = egui::FontId::new(28.0 * scale, family);
-        let text = egui::RichText::new(name.clone())
-            .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
-        let label_widget = egui::Label::new(text)
-            .halign(egui::Align::Min)
-            .wrap_mode(egui::TextWrapMode::Extend);
+        // 콘텐츠 레이아웃 그리기
+        self.draw_ui_content_layout(ctx);
 
-        // 플레이어 정보 텍스트 출력
-        egui::Area::new(egui::Id::new("Player_Info"))
-            .fixed_pos(clip_rect.min + egui::vec2(8.0, 8.0) * scale)
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                ui.set_min_width(1280.0 * scale);
-                ui.set_max_width(1280.0 * scale);
-                ui.add(label_widget);
-            });
+        // 플레이어 정보 그리기
+        self.draw_ui_player_info_layout(ctx);
 
         // 게임 생성 버튼
         let text = CREATE_GAME_BTN_TEXTS[locale];
@@ -274,28 +455,6 @@ impl GameScene for MainLobbyScene {
         });
 
         // 배경화면
-        let source = self.bg_texture_id;
-        let ratio = source.size.x / source.size.y;
-        let center_x = 1280.0 * 0.5 * scale;
-        let center_y = 720.0 * 0.5 * scale;
-        let img_width = 1280.0 * scale;
-        let img_height = img_width / ratio;
-        let rect = egui::Rect {
-            min: egui::pos2(
-                clip_rect.min.x + center_x - 0.5 * img_width,
-                clip_rect.min.y + center_y - 0.5 * img_height,
-            ),
-            max: egui::pos2(
-                clip_rect.min.x + center_x + 0.5 * img_width,
-                clip_rect.min.y + center_y + 0.5 * img_height,
-            ),
-        };
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new())
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                egui::Image::new(source).paint_at(ui, rect);
-            });
+        self.draw_ui_background(ctx);
     }
 }
