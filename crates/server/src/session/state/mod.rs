@@ -26,7 +26,7 @@ use std::{
     sync::{Arc, atomic::Ordering as MemOrdering},
 };
 
-use mod_network::protocol::{Packet, PacketType, PingPacket, RawPacket};
+use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
 use tokio::time::{Duration, Instant};
 
 use self::{lobby::*, login::*, verify::*};
@@ -48,7 +48,7 @@ pub trait SessionState: fmt::Debug + Send {
     /// 상태가 재개될 때 호출되는 콜백 함수입니다.
     fn on_resume(&mut self, session: &Arc<Session>) {}
 
-    /// 해당 상태에서 수신된 패킷을 처리합니다.
+    /// 수신된 패킷을 처리합니다.
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {}
 
     /// 상태를 갱신합니다.
@@ -91,7 +91,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
     let mut num_samples = 0;
     let mut elapsed_time_ms = 0;
     let mut epoch = 0;
-    let mut event = None;
+    let mut recent = None;
 
     while session.is_running() {
         let current_time_pt = interval.tick().await;
@@ -101,69 +101,77 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
         // 핑 측정 경과 시간을 갱신합니다.
         elapsed_time_ms += elapsed.as_millis().min(MAX_PING_TIME as u128) as u32;
         if elapsed_time_ms >= MAX_PING_TIME {
+            elapsed_time_ms = 0;
+
             // 250ms 이후에도 처리되지 않은 핑 측정 이벤트는 제거합니다.
-            if event.is_some() {
-                // 데이터 추가
-                samples.copy_within(1..MAX_SAMPLES, 1);
+            if recent.is_some() {
+                // 핑 측정 샘플에 최댓값을 추가합니다.
+                samples.copy_within(0..MAX_SAMPLES - 1, 1);
                 samples[0] = 250;
                 num_samples = (num_samples + 1).min(MAX_SAMPLES);
 
-                // 평균 핑 시간 계산
+                // 평균 핑 계산합니다.
                 let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
                 let ping = (total as f32 / num_samples as f32).round() as u32;
                 session.ping.store(ping, MemOrdering::Release);
             }
 
             // 핑 측정 이벤트를 전송합니다.
-            let packet = PingPacket::new(epoch);
+            let packet = PingTestPacket::new(epoch);
             session.tcp_write(packet.as_raw());
-            event = Some((epoch, current_time_pt));
+            recent = Some((epoch, current_time_pt));
             epoch += 1;
         }
 
         // 현재 세션 상태에 대한 소유권을 가져옵니다.
         if let Some(mut state) = states.pop_back() {
-            (state, session, samples, num_samples, event) =
+            (state, session, samples, num_samples, recent) =
                 tokio::task::spawn_blocking(move || {
                     // 현재 세션 상태에서 패킷을 처리합니다.
                     while let Some(packet) = session.received_packets.pop() {
                         // 세션이 종료된 경우 반복문을 탈출합니다.
                         if !session.is_running() {
-                            return (state, session, samples, num_samples, event);
+                            return (state, session, samples, num_samples, recent);
                         }
 
                         // 핑 측정 패킷을 처리합니다.
                         if packet.packet_type() == PacketType::Ping {
-                            if let Some((epoch, time_pt)) = event.take() {
-                                let packet = match PingPacket::try_from_raw(packet) {
+                            if let Some((epoch, time_pt)) = recent.take() {
+                                let packet = match PingTestPacket::try_from_raw(packet) {
                                     Some(packet) => packet,
                                     None => {
-                                        log::error!(
-                                            "{} failed to convert packet! (PACKET:{:?})",
-                                            &session,
-                                            &PacketType::Ping,
-                                        );
                                         session.close();
-                                        return (state, session, samples, num_samples, event);
+                                        return (state, session, samples, num_samples, recent);
                                     }
                                 };
 
-                                if packet.send_time == epoch {
+                                if packet.value == epoch {
+                                    // 경과 시간을 측정합니다.
                                     let elapsed_time_ms = current_time_pt
                                         .saturating_duration_since(time_pt)
                                         .as_millis()
                                         .min(MAX_PING_TIME as u128)
                                         as u32;
 
-                                    samples.copy_within(1..MAX_SAMPLES, 1);
+                                    // 핑 측정 샘플에 추가합니다.
+                                    samples.copy_within(0..MAX_SAMPLES - 1, 1);
                                     samples[0] = elapsed_time_ms;
                                     num_samples = (num_samples + 1).min(MAX_SAMPLES);
 
+                                    // 평균 핑을 계산합니다.
                                     let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
                                     let ping = (total as f32 / num_samples as f32).round() as u32;
                                     session.ping.store(ping, MemOrdering::Release);
+
+                                    log::debug!(
+                                        "{} ping:{}ms (num samples:{})",
+                                        &session,
+                                        &ping,
+                                        &num_samples
+                                    );
                                 } else {
-                                    event = Some((epoch, time_pt));
+                                    log::debug!("{} invalid epoch!", &session);
+                                    recent = Some((epoch, time_pt));
                                 }
                             }
 
@@ -181,7 +189,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
                     // 현재 상태를 갱신합니다.
                     state.on_advanced(&session, elapsed.as_secs_f32());
 
-                    (state, session, samples, num_samples, event)
+                    (state, session, samples, num_samples, recent)
                 })
                 .await
                 .unwrap();

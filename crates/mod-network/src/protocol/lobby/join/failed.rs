@@ -6,6 +6,9 @@ use crate::{
     protocol::{Packet, PacketType, RawPacket},
 };
 
+/// 커스텀 게임 참여 실패 사유 목록의 개수입니다.
+pub const NUM_JOIN_FAILED_REASONS: usize = 4;
+
 /// 커스텀 게임 참여 실패 사유 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -68,7 +71,7 @@ impl JoinFailedPacket {
 
 impl Packet for JoinFailedPacket {
     fn packet_type() -> PacketType {
-        PacketType::JoinFailed
+        PacketType::ResponseJoinFailed
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -87,7 +90,7 @@ impl Packet for JoinFailedPacket {
             )
         };
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     #[allow(unused_mut)]

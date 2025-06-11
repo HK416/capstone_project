@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// 로그인 실패 사유 개수입니다.
-pub const NUM_LOGIN_FAILED_REASONS: usize = 2;
+pub const NUM_LOGIN_FAILED_REASONS: usize = 3;
 
 /// 로그인 실패 사유 목록입니다.
 #[repr(u8)]
@@ -15,8 +15,10 @@ pub const NUM_LOGIN_FAILED_REASONS: usize = 2;
 pub enum LoginFailedReason {
     /// 이메일 또는 비밀번호가 잘못됐습니다.
     Invalid = 0,
+    /// 계정이 잠금처리 되었습니다.
+    Locked = 1,
     /// 계정이 서버 관리자에 의해 차단당했습니다.
-    Banned = 1,
+    Banned = 2,
 }
 
 impl LoginFailedReason {
@@ -27,7 +29,8 @@ impl LoginFailedReason {
     pub fn new(val: u8) -> Option<Self> {
         match val {
             0 => Some(Self::Invalid),
-            1 => Some(Self::Banned),
+            1 => Some(Self::Locked),
+            2 => Some(Self::Banned),
             _ => None,
         }
     }
@@ -65,7 +68,7 @@ impl LoginFailedPacket {
 
 impl Packet for LoginFailedPacket {
     fn packet_type() -> PacketType {
-        PacketType::LoginFailed
+        PacketType::ResponseLoginFailed
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -84,7 +87,7 @@ impl Packet for LoginFailedPacket {
             );
         }
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     #[allow(unused_mut)]
@@ -128,6 +131,13 @@ mod tests {
     }
 
     #[test]
+    fn test_login_failed_reason_locked() {
+        let val = LoginFailedReason::Locked as u8;
+        let reason = LoginFailedReason::new(val).unwrap();
+        assert_eq!(LoginFailedReason::Locked, reason);
+    }
+
+    #[test]
     fn test_login_failed_reason_banned() {
         let val = LoginFailedReason::Banned as u8;
         let reason = LoginFailedReason::new(val).unwrap();
@@ -137,7 +147,6 @@ mod tests {
     #[test]
     fn test_login_failed_packet() {
         let reason = LoginFailedReason::Banned;
-
         let origin = LoginFailedPacket::new(reason);
         let raw = origin.as_raw();
         let other = LoginFailedPacket::from_raw(raw);

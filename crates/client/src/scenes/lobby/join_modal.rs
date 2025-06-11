@@ -7,7 +7,7 @@ use mod_app::{
 use mod_network::{
     components::{LoginToken, UserId, WorldId},
     protocol::{
-        JoinFailedPacket, JoinFailedReason, JoinRequestPacket, Packet, PacketType, RawPacket
+        JoinFailedPacket, JoinFailedReason, JoinRequestPacket, Packet, PacketType, RawPacket,
     },
 };
 use winit::window::Window;
@@ -115,7 +115,7 @@ impl GameScene for MainLobbyJoinModalScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::JoinFailed => {
+            PacketType::ResponseJoinFailed => {
                 // 패킷을 생성합니다
                 let packet = JoinFailedPacket::from_raw(packet);
 
@@ -129,7 +129,7 @@ impl GameScene for MainLobbyJoinModalScene {
                         JoinFailedReason::FullCapacity => ERR_FULL_CAPACITY_TEXTS[i],
                         JoinFailedReason::InProgress => ERR_IN_PROGRASS_TEXTS[i],
                         // JoinFailedReason::CreationLimited => ERR_BANNED_TEXTS[i],
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     },
                 ));
                 let scene_flow = GameSceneFlow::Change(next_scene);
@@ -156,7 +156,7 @@ impl GameScene for MainLobbyJoinModalScene {
             //     let event_loop_proxy = app.event_loop_proxy();
             //     event_loop_proxy.send_event(event).unwrap();
             // }
-            PacketType::LobbyPull => { /* IGNORED */ }
+            PacketType::PullLobbyData => { /* IGNORED */ }
             _ => {
                 log::warn!(
                     "packet ignored: invalid packet received! (TYPE:{:?})",

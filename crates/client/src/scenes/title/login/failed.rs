@@ -25,7 +25,8 @@ const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
 /// 애플리케이션 표시 언어에 따른 실패 사유 텍스트입니다.
 const MESSAGE_TEXTS: [[&'static str; NUM_LOGIN_FAILED_REASONS]; NUM_LOCALE] = [[
     "로그인 정보가 잘못되었습니다!",
-    "서버에 접근할 수 없습니다!",
+    "계정이 보호 상태입니다!",
+    "운영정책 위반으로 비활성화된 계정입니다!",
 ]];
 
 /// 로그인 실패 메시지를 출력하는 게임 장면입니다.

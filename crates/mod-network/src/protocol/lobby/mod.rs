@@ -2,7 +2,6 @@
 //!
 
 mod join;
-mod query;
-mod update;
+mod pull;
 
-pub use self::{join::*, query::*, update::*};
+pub use self::{join::*, pull::*};

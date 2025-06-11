@@ -5,7 +5,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::protocol::{
-    LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket,
+    LoginFailedPacket, LoginSuccessPacket, Packet, PacketType, RawPacket, RequestLoginPacket,
 };
 use winit::{
     event::Modifiers,
@@ -95,7 +95,7 @@ impl GameScene for GameLoginModalScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::LoginFailed => {
+            PacketType::ResponseLoginFailed => {
                 let packet = LoginFailedPacket::from_raw(packet);
 
                 // 다음 게임 장면으로 전환합니다.
@@ -109,7 +109,7 @@ impl GameScene for GameLoginModalScene {
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }
-            PacketType::LoginSuccess => {
+            PacketType::ResponseLoginSuccess => {
                 // 사용자 정보와 로그인 토큰을 저장합니다.
                 let packet = LoginSuccessPacket::from_raw(packet);
 
@@ -259,7 +259,7 @@ impl GameScene for GameLoginModalScene {
                             self.requested = true;
 
                             // 로그인 요청 패킷을 생성합니다.
-                            let packet = LoginRequestPacket::new();
+                            let packet = RequestLoginPacket::new();
 
                             // 패킷을 게임 서버에 전송합니다.
                             let net_manager = app.net_manager();

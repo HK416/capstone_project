@@ -9,9 +9,7 @@ use mod_app::{
 };
 use mod_network::{
     components::{CharacterKind, GameTier, LoginToken, UserId, UserName, WorldId},
-    protocol::{
-        Packet, PacketType, RawPacket,
-    },
+    protocol::{Packet, PacketType, RawPacket},
 };
 use mod_render::UiRenderer;
 use winit::window::Window;
@@ -25,7 +23,7 @@ use crate::{
 
 pub use self::{enter::*, join_modal::*};
 
-use super::{BASE_WIDTH};
+use super::BASE_WIDTH;
 
 /// 애플리케이션 표시 언어에 따른 `커스텀 게임 생성` 버튼 텍스트입니다.
 const CREATE_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["게임 생성"];
@@ -162,7 +160,7 @@ impl GameScene for MainLobbyScene {
             //     let event_loop_proxy = app.event_loop_proxy();
             //     event_loop_proxy.send_event(event).unwrap();
             // }
-            PacketType::LobbyPull => {}
+            PacketType::PullLobbyData => {}
             _ => {
                 log::warn!(
                     "packet ignored: invalid packet received! (TYPE:{:?})",

@@ -11,7 +11,10 @@ use std::{
     },
 };
 
-use mod_network::protocol::{Packet, PacketParser, PacketType, PingPacket, RawPacket};
+use mod_network::{
+    components::NetworkState,
+    protocol::{PacketParser, RawPacket},
+};
 use mod_parallelism::collections::Queue;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -19,7 +22,7 @@ use tokio::{
         TcpStream,
         tcp::{OwnedReadHalf, OwnedWriteHalf},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 pub use self::{pool::*, state::*};
@@ -35,8 +38,6 @@ pub struct Session {
 
     /// 세션 패킷 전송 시간 (단위: ms)
     ping: AtomicU32,
-    /// 핑 측정 패킷 전송 대기열
-    ping_events: Queue<(u128, Instant)>,
 
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
@@ -61,7 +62,6 @@ impl Session {
         Self {
             addr,
             ping: AtomicU32::new(250),
-            ping_events: Queue::new(),
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
@@ -105,6 +105,17 @@ impl Session {
     /// 주의: 추가된 세션 상태 흐름은 바로 처리되지 않습니다.
     pub fn add_flows(&self, flow: SessionStateFlow) {
         self.flows.push(flow);
+    }
+
+    /// 네트워크 상태를 반환합니다.
+    pub fn network_state(&self) -> NetworkState {
+        let ping = self.ping.load(MemOrdering::Acquire);
+        match ping {
+            0..=50 => NetworkState::Good,
+            51..=100 => NetworkState::Fair,
+            101..=200 => NetworkState::Poor,
+            _ => NetworkState::Critical,
+        }
     }
 
     /// 수신된 패킷의 처리가 취소됐는지 여부를 반환합니다.
@@ -192,7 +203,7 @@ async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
                 break 'tcp;
             }
             Ok(n) => {
-                log::debug!("{} data received (SIZE:{}, BYTES:{:?})", &session, n, &buf);
+                log::trace!("{} data received (SIZE:{}, BYTES:{:?})", &session, n, &buf);
                 packet_parser.push(&buf[..n]);
             }
             Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
@@ -216,7 +227,7 @@ async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
             log::debug!("{} packet received (PACKET:{:?})", &session, &packet);
 
             // 수신된 패킷 데이터가 가득찼는지 확인합니다.
-            if session.received_packets.len() > MAX_QUEUE_CAPACITY {
+            if session.received_packets.len() >= MAX_QUEUE_CAPACITY {
                 // 큐를 비웁니다.
                 log::warn!("the number of received packets exceeded the allowed capacity!");
                 session.cancel_token.store(true, MemOrdering::Release);
@@ -255,15 +266,15 @@ async fn tcp_write_loop(mut tcp_writer: OwnedWriteHalf, session: Arc<Session>) {
             let result = tcp_writer.write_all(&bytes).await;
             match result {
                 Ok(_) => {
-                    log::trace!("{} packet sent (PACKET:{:?})", &session, &packet);
+                    log::debug!("{} packet sent (PACKET:{:?})", &session, &packet);
                 }
                 Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
-                    log::trace!("{} connection closed.", &session);
+                    log::debug!("{} connection closed.", &session);
                     session.close();
                     break 'tcp;
                 }
                 Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
-                    log::trace!("{} connection closed.", &session);
+                    log::debug!("{} connection closed.", &session);
                     session.close();
                     break 'tcp;
                 }

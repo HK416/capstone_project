@@ -13,7 +13,9 @@ use mod_network::{addr::Addr, protocol::RawPacket};
 use mod_parallelism::collections::Queue;
 use session::{Session, SessionManager, handle_connection};
 use tokio::net::{TcpListener, UdpSocket};
+use tracing::level_filters::LevelFilter;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
+use tracing_subscriber::EnvFilter;
 use world::GameWorldPool;
 
 /// 서버의 갱신 주기입니다. (1초에 60번 갱신)
@@ -226,14 +228,22 @@ fn init_log_system() -> Option<WorkerGuard> {
     dir.push("logs");
 
     // 매 시간 마다 새 파일을 생성하는 로그 시스템을 생성합니다.
-    let file_appender = rolling::hourly(dir, "service_log");
+    let formatted = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let file_name = format!("service_log-{}", formatted);
+    let file_appender = rolling::hourly(dir, file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
+    // 로그에 남길 오류 수준을 설정합니다.
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::DEBUG.into())
+        .from_env_lossy();
+
+    // 로그 시스템을 초기화합니다.
     tracing_subscriber::fmt()
+        .with_env_filter(filter)
         .with_ansi(false)
-        .with_thread_ids(true)
-        .with_thread_names(true)
         .with_writer(non_blocking)
+        .with_thread_names(true)
         .init();
 
     Some(guard)

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mod_network::protocol::{LoginRequestPacket, Packet, PacketType, RawPacket};
+use mod_network::protocol::{Packet, PacketType, RawPacket, RequestLoginPacket};
 
 use crate::{account::AccountManager, session::Session};
 
@@ -29,7 +29,7 @@ impl SessionLoginState {
     /// 현재는 로그인 데이터베이스가 없습니다.
     /// 로그인 요청 순서대로 사용자 계정을 할당 후 로그인 토큰을 발행합니다.
     ///
-    fn handle_login_request_packet(&mut self, session: &Arc<Session>, _packet: LoginRequestPacket) {
+    fn handle_login_request_packet(&mut self, session: &Arc<Session>, _packet: RequestLoginPacket) {
         // 사용자 계정을 할당합니다.
         let account = AccountManager::alloc();
 
@@ -44,15 +44,10 @@ impl SessionState for SessionLoginState {
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::LoginRequest => {
-                let packet = match LoginRequestPacket::try_from_raw(packet) {
+            PacketType::RequestLogin => {
+                let packet = match RequestLoginPacket::try_from_raw(packet) {
                     Some(packet) => packet,
                     None => {
-                        log::error!(
-                            "{} failed to convert packet! (PACKET:{:?})",
-                            &session,
-                            &packet_type,
-                        );
                         session.close();
                         return;
                     }

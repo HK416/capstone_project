@@ -11,7 +11,7 @@ use std::{
 
 use ahash::RandomState;
 use dashmap::DashMap;
-use mod_network::protocol::{PacketParser, RawPacket};
+use mod_network::protocol::{PacketParser, PacketType, RawPacket};
 use parking_lot::{Condvar, Mutex};
 use winit::event_loop::EventLoopProxy;
 
@@ -96,7 +96,7 @@ impl SocketStatus {
     pub fn push_packet(&self, packet: RawPacket) {
         let mut queue = self.queue.lock();
         queue.push_back(packet);
-        self.cvar.notify_all();
+        self.cvar.notify_one();
     }
 }
 
@@ -317,9 +317,16 @@ fn tcp_packet_receive_loop(
             }
         };
 
-        while let Some(raw_packet) = parser.pop() {
+        while let Some(packet) = parser.pop() {
+            if packet.packet_type() == PacketType::Ping {
+                let mut guard = status.queue.lock();
+                guard.push_back(packet);
+                status.cvar.notify_one();
+                continue;
+            }
+
             if event_loop_proxy
-                .send_event(AppEvent::PacketReceived(raw_packet))
+                .send_event(AppEvent::PacketReceived(packet))
                 .is_err()
             {
                 status.is_connected.store(false, MemOrdering::Release);

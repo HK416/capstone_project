@@ -26,7 +26,7 @@ impl JoinRequestPacket {
 
 impl Packet for JoinRequestPacket {
     fn packet_type() -> PacketType {
-        PacketType::JoinRequest
+        PacketType::RequestJoinRoom
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -47,7 +47,7 @@ impl Packet for JoinRequestPacket {
             )
         };
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     fn try_from_raw(raw: RawPacket) -> Option<Self> {

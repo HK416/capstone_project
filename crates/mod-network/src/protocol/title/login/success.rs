@@ -89,12 +89,20 @@ pub struct LoginSuccessPacket {
 
 impl LoginSuccessPacket {
     /// 새로운 로그인 성공 패킷을 생성합니다.
-    pub const fn new(uid: UserId, name: UserName, token: LoginToken) -> Self {
+    pub fn new(
+        uid: UserId,
+        name: UserName,
+        tier: GameTier,
+        profile_character: Option<CharacterKind>,
+        token: LoginToken,
+    ) -> Self {
         Self {
             uid,
             name,
-            character_kind: CharacterKind::ArisOriginal,
-            bitfield: Bitfield::new(),
+            character_kind: profile_character.unwrap_or(CharacterKind::ArisOriginal),
+            bitfield: Bitfield::new()
+                .with_tier(tier)
+                .with_use_profile_character(profile_character.is_some()),
             token,
         }
     }
@@ -106,39 +114,15 @@ impl LoginSuccessPacket {
             .then_some(self.character_kind)
     }
 
-    /// 프로필 캐릭터 종류를 설정합니다.
-    pub fn set_character_kind(&mut self, character_kind: CharacterKind) {
-        self.bitfield = self.bitfield.with_use_profile_character(true);
-        self.character_kind = character_kind;
-    }
-
-    /// 프로필 캐릭터 종류를 설정합니다.
-    pub fn with_character_kind(mut self, character_kind: CharacterKind) -> Self {
-        self.bitfield = self.bitfield.with_use_profile_character(true);
-        self.character_kind = character_kind;
-        self
-    }
-
     /// 게임 티어를 반환합니다.
     pub fn tier(&self) -> GameTier {
         self.bitfield.tier()
-    }
-
-    /// 게임 티어를 설정합니다.
-    pub fn set_tier(&mut self, tier: GameTier) {
-        self.bitfield = self.bitfield.with_tier(tier);
-    }
-
-    /// 게임 티어를 설정합니다.
-    pub fn with_tier(mut self, tier: GameTier) -> Self {
-        self.bitfield = self.bitfield.with_tier(tier);
-        self
     }
 }
 
 impl Packet for LoginSuccessPacket {
     fn packet_type() -> PacketType {
-        PacketType::LoginSuccess
+        PacketType::ResponseLoginSuccess
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -165,7 +149,7 @@ impl Packet for LoginSuccessPacket {
             )
         };
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     fn try_from_raw(raw: RawPacket) -> Option<Self> {
@@ -257,10 +241,10 @@ mod tests {
         let origin = LoginSuccessPacket::new(
             UserId::new(12345),
             UserName::from_str("유우카"),
+            GameTier::Silver,
+            Some(CharacterKind::YuukaOriginal),
             LoginToken::new(1351616161),
-        )
-        .with_character_kind(CharacterKind::YuukaOriginal)
-        .with_tier(GameTier::Bronze);
+        );
         let raw = origin.as_raw();
         let other = LoginSuccessPacket::from_raw(raw);
 

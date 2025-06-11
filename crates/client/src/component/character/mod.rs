@@ -498,7 +498,7 @@ pub use self::{animation::*, pipeline::*};
 //     FUNC_TABLE[i](action_state, action_state_timer, elapsed_time_sec);
 // }
 
-// /// `ActionState` 변경을 시도합니다.  
+// /// `ActionState` 변경을 시도합니다.
 // /// 해당 `ActionState`로 변경이 불가능할 경우 무시됩니다.
 // pub fn try_change_action_state(
 //     character_kind: CharacterKind,
@@ -990,7 +990,7 @@ pub use self::{animation::*, pipeline::*};
 //     timer_func(action_state_timer);
 // }
 
-// /// `MovementState` 변경을 시도합니다.  
+// /// `MovementState` 변경을 시도합니다.
 // /// `MovementState::Idle`로 변경이 불가능할 경우 무시됩니다.
 // pub fn try_reset_movement_state(
 //     movement_state: &mut MovementState,

@@ -5,8 +5,9 @@ use hecs::{Entity, World};
 use mod_network::components::{CharacterKind, LatLon};
 
 use crate::component::{
-    // create_third_person_camera_of_character, 
-    update_entity_hierarchy, ToParentTrans,
+    // create_third_person_camera_of_character,
+    update_entity_hierarchy,
+    ToParentTrans,
 };
 
 /// 삼인칭 카메라 요소입니다.

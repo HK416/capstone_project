@@ -8,23 +8,23 @@ use crate::{
 
 /// 클라이언트에서 서버로 보내는 접속 가능한 월드 리스트를 요청하는 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QueryAvailableWorldsPacket {
+pub struct QueryWorldListPacket {
     /// 사용자 식별자
     pub uid: UserId,
     /// 로그인 토큰
     pub token: LoginToken,
 }
 
-impl QueryAvailableWorldsPacket {
+impl QueryWorldListPacket {
     /// 새로운 패킷을 생성합니다.
     pub const fn new(uid: UserId, token: LoginToken) -> Self {
         Self { uid, token }
     }
 }
 
-impl Packet for QueryAvailableWorldsPacket {
+impl Packet for QueryWorldListPacket {
     fn packet_type() -> PacketType {
-        PacketType::QueryAvailableWorlds
+        PacketType::QueryWorldLists
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -40,11 +40,11 @@ impl Packet for QueryAvailableWorldsPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(QueryAvailableWorldsPacket)
+                stringify!(QueryWorldListPacket)
             )
         };
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     fn try_from_raw(raw: RawPacket) -> Option<Self> {
@@ -77,12 +77,12 @@ impl Packet for QueryAvailableWorldsPacket {
 
 /// 서버에서 클라이언트로 보내는 접속 가능한 월드 리스트 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResponseAvailableWorldsPacket {
+pub struct WorldListPacket {
     /// 월드 식별자 목록입니다.
     pub worlds: Vec<WorldId>,
 }
 
-impl ResponseAvailableWorldsPacket {
+impl WorldListPacket {
     /// 새로운 패킷을 생성합니다.
     pub const fn new(worlds: Vec<WorldId>) -> Self {
         Self { worlds }
@@ -98,9 +98,9 @@ impl ResponseAvailableWorldsPacket {
     }
 }
 
-impl Packet for ResponseAvailableWorldsPacket {
+impl Packet for WorldListPacket {
     fn packet_type() -> PacketType {
-        PacketType::ResponseAvailableWorlds
+        PacketType::ResponseWorldList
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -119,11 +119,11 @@ impl Packet for ResponseAvailableWorldsPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(ResponseAvailableWorldsPacket)
+                stringify!(WorldListPacket)
             )
         };
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     fn try_from_raw(raw: RawPacket) -> Option<Self> {
@@ -163,25 +163,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_query_available_world_packet() {
-        let origin =
-            QueryAvailableWorldsPacket::new(UserId::new(1235135), LoginToken::new(135415611));
+    fn test_query_world_list_packet() {
+        let origin = QueryWorldListPacket::new(UserId::new(1235135), LoginToken::new(135415611));
         let raw = origin.as_raw();
-        let other = QueryAvailableWorldsPacket::from_raw(raw);
+        let other = QueryWorldListPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);
     }
 
     #[test]
-    fn test_response_available_world_packet() {
-        let origin = ResponseAvailableWorldsPacket::from_iter([
-            WorldId::new(1),
-            WorldId::new(2),
-            WorldId::new(3),
-        ]);
+    fn test_world_list_packet() {
+        let origin =
+            WorldListPacket::from_iter([WorldId::new(1), WorldId::new(2), WorldId::new(3)]);
         let raw = origin.as_raw();
-        let other = ResponseAvailableWorldsPacket::from_raw(raw);
+        let other = WorldListPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);

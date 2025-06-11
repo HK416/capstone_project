@@ -2,6 +2,5 @@
 //!
 
 mod login;
-mod verify;
 
-pub use self::{login::*, verify::*};
+pub use self::login::*;

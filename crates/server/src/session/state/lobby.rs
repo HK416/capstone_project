@@ -3,8 +3,8 @@ use std::sync::Arc;
 use mod_network::{
     components::WorldId,
     protocol::{
-        JoinFailedPacket, JoinFailedReason, JoinRequestPacket, LoginSuccessPacket, Packet,
-        PacketType, QueryAvailableWorldsPacket, RawPacket, ResponseAvailableWorldsPacket,
+        JoinFailedPacket, JoinFailedReason, JoinRequestPacket, LobbyPullPacket, LoginSuccessPacket,
+        Packet, PacketType, QueryWorldListPacket, RawPacket, WorldListPacket,
     },
 };
 
@@ -12,19 +12,11 @@ use crate::{account::Account, session::Session, token::UserTokenMap, world::Game
 
 use super::{SessionState, SessionStateFlow};
 
-/// 핑 측정 샘플의 최대 개수입니다.
-const MAX_SAMPLES: usize = 30;
-
 pub struct SessionLobbyState {
-    /// 현재 시대 데이터
-    epoch: u64,
-    /// 핑 측정 샘플 데이터
-    samples: [f32; MAX_SAMPLES],
-    /// 샘플 개수입니다.
-    num_samples: usize,
-
     /// 사용자 계정 데이터
     account: Account,
+    /// 세션 상태 경과 시간
+    elapsed_time_sec: f32,
     /// 유효하지 않은 패킷 경고 횟수
     packet_warn_count: usize,
 }
@@ -33,10 +25,8 @@ impl SessionLobbyState {
     /// 새로운 `LobbyState`를 생성합니다.
     pub fn new(account: Account) -> Self {
         Self {
-            epoch: 0,
-            samples: [0.0; MAX_SAMPLES],
-            num_samples: 0,
             account,
+            elapsed_time_sec: 0.0,
             packet_warn_count: 0,
         }
     }
@@ -45,14 +35,14 @@ impl SessionLobbyState {
     fn handle_query_available_worlds_packet(
         &mut self,
         session: &Arc<Session>,
-        packet: QueryAvailableWorldsPacket,
+        packet: QueryWorldListPacket,
     ) {
         // 사용자의 로그인 토큰을 검증합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
                 "{} invalid token! (PACKET:{:?})",
                 &session,
-                &PacketType::QueryAvailableWorlds
+                &PacketType::QueryWorldLists
             );
             session.close();
             return;
@@ -60,7 +50,7 @@ impl SessionLobbyState {
 
         // 패킷을 생성하고 전송합니다.
         let worlds = GameWorldPool::get_available_world_ids();
-        let packet = ResponseAvailableWorldsPacket::new(worlds);
+        let packet = WorldListPacket::new(worlds);
         session.tcp_write(packet.as_raw());
     }
 
@@ -71,7 +61,7 @@ impl SessionLobbyState {
             log::error!(
                 "{} invalid token! (PACKET:{:?})",
                 &session,
-                &PacketType::JoinRequest
+                &PacketType::RequestJoinRoom
             );
             session.close();
             return;
@@ -134,9 +124,19 @@ impl SessionState for SessionLobbyState {
         let token = UserTokenMap::alloc((self.account.uid, session.addr));
 
         // 패킷을 생성하고 전송합니다.
-        let packet = LoginSuccessPacket::new(self.account.uid, self.account.name, token)
-            .with_tier(self.account.tier);
+        let packet = LoginSuccessPacket::new(
+            self.account.uid,
+            self.account.name,
+            self.account.tier,
+            self.account.profile_character,
+            token,
+        );
         session.tcp_write(packet.as_raw());
+    }
+
+    fn on_resume(&mut self, _session: &Arc<Session>) {
+        self.elapsed_time_sec = 0.0;
+        self.packet_warn_count = 0;
     }
 
     fn on_exit(&mut self, session: &Arc<Session>) {
@@ -147,15 +147,10 @@ impl SessionState for SessionLobbyState {
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::QueryAvailableWorlds => {
-                let packet = match QueryAvailableWorldsPacket::try_from_raw(packet) {
+            PacketType::QueryWorldLists => {
+                let packet = match QueryWorldListPacket::try_from_raw(packet) {
                     Some(packet) => packet,
                     None => {
-                        log::error!(
-                            "{} failed to convert packet! (PACKET:{:?})",
-                            &session,
-                            &packet_type,
-                        );
                         session.close();
                         return;
                     }
@@ -163,15 +158,10 @@ impl SessionState for SessionLobbyState {
 
                 self.handle_query_available_worlds_packet(session, packet);
             }
-            PacketType::JoinRequest => {
+            PacketType::RequestJoinRoom => {
                 let packet = match JoinRequestPacket::try_from_raw(packet) {
                     Some(packet) => packet,
                     None => {
-                        log::error!(
-                            "{} failed to convert packet! (PACKET:{:?})",
-                            &session,
-                            &packet_type,
-                        );
                         session.close();
                         return;
                     }
@@ -196,6 +186,20 @@ impl SessionState for SessionLobbyState {
                     session.close();
                 }
             }
+        }
+    }
+
+    fn on_advanced(&mut self, session: &Arc<Session>, elapsed_time_sec: f32) {
+        // 세션 상태 경과 시간을 갱신합니다.
+        self.elapsed_time_sec += elapsed_time_sec;
+
+        const TICK: f32 = 0.1;
+        if self.elapsed_time_sec >= TICK {
+            self.elapsed_time_sec = 0.0;
+
+            // 패킷을 생성하고 전송합니다.
+            let packet = LobbyPullPacket::new(session.network_state());
+            session.tcp_write(packet.as_raw());
         }
     }
 }
