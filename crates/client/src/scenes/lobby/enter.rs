@@ -6,7 +6,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{CharacterKind, GameTier, LoginToken, UserId, UserName};
+use mod_network::components::{GameTier, LoginToken, ProfileIcon, UserId, UserName};
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
@@ -15,7 +15,7 @@ use winit::window::Window;
 use crate::{
     asset::{
         SamplerPool, TextureDataPool, TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI,
-        CHARACTER_ICON_DUMMY_URI, CHARACTER_ICON_URIS, NOTOSANS_BOLD,
+        NOTOSANS_BOLD, PROFILE_BG_URI, PROFILE_ICON_URIS, RANK_ICON_URI,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{FatalErrorSceneLayer, BASE_WIDTH},
@@ -47,8 +47,8 @@ pub struct MainLobbyEnterScene {
     name: Option<UserName>,
     /// 사용자 게임 티어
     tier: GameTier,
-    /// 프로필 대표 캐릭터
-    profile_character: Option<CharacterKind>,
+    /// 프로필 아이콘
+    profile_icon: ProfileIcon,
     /// 로그인 토큰
     token: LoginToken,
 
@@ -78,7 +78,7 @@ impl MainLobbyEnterScene {
         uid: UserId,
         name: UserName,
         tier: GameTier,
-        profile_character: Option<CharacterKind>,
+        profile_icon: ProfileIcon,
         texture_pool: TexturePool,
         token: LoginToken,
     ) -> Self {
@@ -87,7 +87,7 @@ impl MainLobbyEnterScene {
             uid,
             name: Some(name),
             tier,
-            profile_character,
+            profile_icon,
             token,
             staging_buffers: Vec::default(),
             task_results: Arc::new(Queue::new()),
@@ -100,8 +100,8 @@ impl MainLobbyEnterScene {
         }
     }
 
-    /// 파일로부터 텍스처를 생성합니다.
-    fn create_character_icon_textures<Dir>(
+    /// 파일로부터 프로필 아이콘 텍스처를 생성합니다.
+    fn create_profile_bg_textures<Dir>(
         &mut self,
         root_dir: Dir,
         thread_pool: &ThreadPool,
@@ -120,11 +120,11 @@ impl MainLobbyEnterScene {
         thread_pool.spawn(move || {
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-            let mut staging_buffers = Vec::with_capacity(CHARACTER_ICON_URIS.len());
+            let mut staging_buffers = Vec::new();
 
             let result = texture_data_pool.get_or_init(
                 &workspace,
-                CHARACTER_ICON_DUMMY_URI,
+                PROFILE_BG_URI,
                 &device,
                 &mut encoder,
                 &mut staging_buffers,
@@ -138,22 +138,99 @@ impl MainLobbyEnterScene {
                 return;
             }
 
-            for uri in CHARACTER_ICON_URIS {
-                let result = texture_data_pool.get_or_init(
-                    &workspace,
-                    uri,
-                    &device,
-                    &mut encoder,
-                    &mut staging_buffers,
-                    &texture_pool,
-                    &texture_view_pool,
-                    &sampler_pool,
-                );
+            task_results.push(TaskResult::Texture {
+                command: encoder.finish(),
+                staging_buffers,
+            });
+        });
 
-                if let Err(e) = result {
-                    task_results.push(TaskResult::Err(Box::new(e)));
-                    return;
-                }
+        self.num_remaining_tasks += 1;
+    }
+
+    /// 파일로부터 프로필 아이콘 텍스처를 생성합니다.
+    fn create_profile_icon_textures<Dir>(
+        &mut self,
+        root_dir: Dir,
+        thread_pool: &ThreadPool,
+        device: Arc<wgpu::Device>,
+    ) where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push("ui");
+        let uri = PROFILE_ICON_URIS[self.profile_icon as usize];
+
+        let task_results = self.task_results.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        thread_pool.spawn(move || {
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let mut staging_buffers = Vec::new();
+
+            let result = texture_data_pool.get_or_init(
+                &workspace,
+                uri,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                &texture_pool,
+                &texture_view_pool,
+                &sampler_pool,
+            );
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
+
+            task_results.push(TaskResult::Texture {
+                command: encoder.finish(),
+                staging_buffers,
+            });
+        });
+
+        self.num_remaining_tasks += 1;
+    }
+
+    /// 파일로부터 프로필 아이콘 텍스처를 생성합니다.
+    fn create_rank_icon_textures<Dir>(
+        &mut self,
+        root_dir: Dir,
+        thread_pool: &ThreadPool,
+        device: Arc<wgpu::Device>,
+    ) where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push("ui");
+
+        let task_results = self.task_results.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        thread_pool.spawn(move || {
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let mut staging_buffers = Vec::new();
+
+            let result = texture_data_pool.get_or_init(
+                &workspace,
+                RANK_ICON_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                &texture_pool,
+                &texture_view_pool,
+                &sampler_pool,
+            );
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
             }
 
             task_results.push(TaskResult::Texture {
@@ -220,8 +297,10 @@ impl GameScene for MainLobbyEnterScene {
         let mut root_dir = app.current_dir().to_path_buf();
         root_dir.push("assets");
 
+        self.create_rank_icon_textures(&root_dir, io_thread_pool, device.clone());
         self.create_background_texture(&root_dir, io_thread_pool, device.clone());
-        self.create_character_icon_textures(&root_dir, io_thread_pool, device.clone());
+        self.create_profile_bg_textures(&root_dir, io_thread_pool, device.clone());
+        self.create_profile_icon_textures(&root_dir, io_thread_pool, device.clone());
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -286,7 +365,7 @@ impl GameScene for MainLobbyEnterScene {
                 self.uid,
                 name,
                 self.tier,
-                self.profile_character,
+                self.profile_icon,
                 self.token,
                 self.texture_pool.clone(),
             );

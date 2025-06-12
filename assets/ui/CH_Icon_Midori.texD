@@ -1,0 +1,14 @@
+{
+    "uri": "CH_Icon_Midori",
+    "width": 242,
+    "height": 90,
+    "depth_or_array_layers": 1,
+    "mip_level_count": 1,
+    "sample_count": 1,
+    "format": "Rgba8UnormSrgb",
+    "dimension": "D2",
+    "address_u": "ClampToEdge",
+    "address_v": "ClampToEdge",
+    "address_w": "ClampToEdge",
+    "filter_mode": "Linear"
+}

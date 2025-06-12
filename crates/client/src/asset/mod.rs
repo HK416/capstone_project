@@ -6,7 +6,7 @@ mod texture;
 
 use std::io;
 
-use mod_network::components::{NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES};
+use mod_network::components::{NUM_BULLETS, NUM_CHARACTERS, NUM_PROFILE_ICONS, NUM_STAGES};
 
 pub use self::{hierarchy::*, mesh::*, motion::*, stage::*, texture::*};
 
@@ -146,15 +146,27 @@ pub const CHARACTER_URIS: [&'static str; NUM_CHARACTERS] = [
     "yuuka_original",
 ];
 
-/// 더미 캐릭터 아이콘의 `Uri`입니다.
-pub const CHARACTER_ICON_DUMMY_URI: &'static str = "Character_Icon_Sensei";
+/// 엠블럼 배경의 `Uri`입니다.
+pub const PROFILE_BG_URI: &'static str = "Profile_BG";
 
-/// 캐릭터 아이콘의 `Uri`입니다.
-pub const CHARACTER_ICON_URIS: [&'static str; NUM_CHARACTERS] = [
-    "Character_Icon_Aris",
-    "Character_Icon_Momoi",
-    "Character_Icon_Midori",
-    "Character_Icon_Yuuka",
+/// 프로필 아이콘의 `Uri`입니다.
+pub const PROFILE_ICON_URIS: [&'static str; NUM_PROFILE_ICONS] = [
+    "CH_Icon_Sensei",
+    "CH_Icon_Aris",
+    "CH_Icon_Momoi",
+    "CH_Icon_Midori",
+    "CH_Icon_Yuuka",
+    "CH_Icon_Yuzu",
+    "Group_Icon_Schale",
+    "Group_Icon_Abydos",
+    "Group_Icon_Gehenna",
+    "Group_Icon_Hyakkiyako",
+    "Group_Icon_Millennium",
+    "Group_Icon_RedWinter",
+    "Group_Icon_Shanhaijing",
+    "Group_Icon_SRT",
+    "Group_Icon_Trinity",
+    "Group_Icon_Valkyrie",
 ];
 
 /// 무기 아이콘 `Uri`입니다.
@@ -178,6 +190,9 @@ pub const WEAPON_ICON_MASK_URIS: [&'static str; NUM_CHARACTERS] = [
     "Weapon_Icon_Midori_Mask",
     "Weapon_Icon_Yuuka_Mask",
 ];
+
+/// 랭킹(티어) 아이콘의 `Uri`입니다.
+pub const RANK_ICON_URI: &'static str = "Rank_Icons";
 
 /// 총알 모델의 작업 공간입니다.
 pub const BULLET_WORKSPACE: &'static str = "common";

@@ -128,7 +128,7 @@ impl SessionState for SessionLobbyState {
             self.account.uid,
             self.account.name,
             self.account.tier,
-            self.account.profile_character,
+            self.account.profile_icon,
             token,
         );
         session.tcp_write(packet.as_raw());

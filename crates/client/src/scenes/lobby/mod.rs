@@ -8,7 +8,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{CharacterKind, GameTier, LoginToken, UserId, UserName, WorldId},
+    components::{GameTier, LoginToken, ProfileIcon, UserId, UserName, WorldId},
     protocol::{Packet, PacketType, RawPacket},
 };
 use mod_render::UiRenderer;
@@ -16,8 +16,8 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, CHARACTER_ICON_DUMMY_URI,
-        CHARACTER_ICON_URIS, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        PROFILE_BG_URI, PROFILE_ICON_URIS, RANK_ICON_URI,
     },
     config::{Locale, NUM_LOCALE},
     scenes::FatalErrorSceneLayer,
@@ -43,8 +43,8 @@ pub struct MainLobbyScene {
     name: UserName,
     /// 사용자 게임 티어
     tier: GameTier,
-    /// 프로필 캐릭터
-    profile_character: Option<CharacterKind>,
+    /// 프로필 아이콘
+    profile_icon: ProfileIcon,
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
@@ -53,8 +53,12 @@ pub struct MainLobbyScene {
 
     /// Ui 배경화면 텍스처
     bg_texture: egui::load::SizedTexture,
-    /// Ui 프로필 캐릭터 텍스처
-    profile_ch_texture: egui::load::SizedTexture,
+    /// Ui 프로필 배경 텍스처
+    profile_bg_texture: egui::load::SizedTexture,
+    /// Ui 프로필 아이콘 텍스처
+    profile_icon_texture: egui::load::SizedTexture,
+    /// Ui 프로필 랭크(티어) 아이콘 텍스처
+    rank_texture: egui::load::SizedTexture,
 
     /// Ui 스케일
     ui_scale: f32,
@@ -66,12 +70,12 @@ pub struct MainLobbyScene {
     content_layout_corner: f32,
     /// Ui - 플레이어 이름입니다.
     player_name_text: egui::RichText,
-    /// Ui - 플레이어 정보 레이아웃 영역입니다.
-    player_info_layout_rect: egui::Rect,
-    /// Ui - 플레이어 정보 레이아웃의 곡률입니다.
-    player_info_layout_corner: f32,
+    /// Ui - 프로필 정보 레이아웃 영역입니다.
+    profile_layout_rect: egui::Rect,
     /// Ui - 프로필 캐릭터 아이콘 영역입니다.
     profile_character_rect: egui::Rect,
+    /// Ui - 프로필 랭킹 아이콘 영역입니다.
+    profile_rank_rect: egui::Rect,
     /// Ui - 배경화면 레이아웃 영역입니다.
     background_rect: egui::Rect,
 
@@ -88,7 +92,7 @@ impl MainLobbyScene {
         uid: UserId,
         name: UserName,
         tier: GameTier,
-        profile_character: Option<CharacterKind>,
+        profile_icon: ProfileIcon,
         token: LoginToken,
         texture_pool: TexturePool,
     ) -> Self {
@@ -97,14 +101,22 @@ impl MainLobbyScene {
             uid,
             name,
             tier,
-            profile_character,
+            profile_icon,
             token,
             button_enabled: true,
             bg_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
-            profile_ch_texture: egui::load::SizedTexture {
+            profile_bg_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            profile_icon_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            rank_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
@@ -113,9 +125,9 @@ impl MainLobbyScene {
             content_layout_rect: egui::Rect::ZERO,
             content_layout_corner: 0.0,
             player_name_text: egui::RichText::default(),
-            player_info_layout_rect: egui::Rect::ZERO,
-            player_info_layout_corner: 0.0,
+            profile_layout_rect: egui::Rect::ZERO,
             profile_character_rect: egui::Rect::ZERO,
+            profile_rank_rect: egui::Rect::ZERO,
             background_rect: egui::Rect::ZERO,
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
@@ -147,18 +159,70 @@ impl MainLobbyScene {
         };
     }
 
+    /// 프로필 배경 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_profile_bg_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 메인 로비 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(PROFILE_BG_URI)
+            .expect("Profile background texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.profile_bg_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// 프로필 랭크(티어) 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_profile_rank_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 메인 로비 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(RANK_ICON_URI)
+            .expect("Rank icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self.texture_view_pool.get_or_init(
+            &texture,
+            &wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: self.tier as u32,
+                array_layer_count: Some(1),
+                ..Default::default()
+            },
+        );
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.rank_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     /// 프로필 캐릭터 텍스처를 Ui 렌더러에 등록합니다.
     fn regist_profile_character_texture(
         &mut self,
         device: &wgpu::Device,
         ui_renderer: &mut UiRenderer,
     ) {
-        let uri = match self.profile_character {
-            Some(kind) => CHARACTER_ICON_URIS[kind as usize],
-            None => CHARACTER_ICON_DUMMY_URI,
-        };
-
         // 메인 로비 배경화면 텍스처를 가져옵니다.
+        let uri = PROFILE_ICON_URIS[self.profile_icon as usize];
         let texture = self
             .texture_pool
             .get(uri)
@@ -175,7 +239,7 @@ impl MainLobbyScene {
             ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         // 등록된 텍스처 정보를 저장합니다.
-        self.profile_ch_texture = egui::load::SizedTexture {
+        self.profile_icon_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
@@ -208,24 +272,51 @@ impl MainLobbyScene {
             .font(font_id)
             .color(egui::Color32::DARK_GRAY);
 
-        // Ui 플레이어 정보 사각형의 크기를 재조정합니다.
+        // Ui 프로필 정보 사각형의 크기를 재조정합니다.
+        const PROFILE_MARGIN: f32 = 32.0;
+        const PROFILE_WIDTH: f32 = 420.0;
+        static_assertions::const_assert!(0.0 < PROFILE_MARGIN);
+        static_assertions::const_assert!(0.0 < PROFILE_WIDTH);
+        static_assertions::const_assert!(PROFILE_WIDTH < BASE_WIDTH);
         let min_x = self.clip_rect.min.x;
         let max_y = self.clip_rect.max.y;
-        self.player_info_layout_rect = egui::Rect::from_min_max(
-            egui::pos2(min_x + 48.0 * self.ui_scale, max_y - 100.0 * self.ui_scale),
-            egui::pos2(min_x + 468.0 * self.ui_scale, max_y - 24.0 * self.ui_scale),
+        let source = &self.profile_bg_texture;
+        let image_ratio = source.size.x / source.size.y;
+        let image_width = PROFILE_WIDTH * self.ui_scale;
+        let image_height = image_width / image_ratio;
+        self.profile_layout_rect = egui::Rect::from_min_max(
+            egui::pos2(
+                min_x + PROFILE_MARGIN * self.ui_scale,
+                max_y - (PROFILE_MARGIN * self.ui_scale + image_height),
+            ),
+            egui::pos2(
+                min_x + PROFILE_MARGIN + PROFILE_WIDTH * self.ui_scale,
+                max_y - PROFILE_MARGIN * self.ui_scale,
+            ),
         );
-        self.player_info_layout_corner = 18.0 * self.ui_scale;
 
         // Ui 프로필 캐릭터 사각형의 크기를 재조정합니다.
-        let source = &self.profile_ch_texture;
+        let source = &self.profile_icon_texture;
         let image_ratio = source.size.x / source.size.y;
-        let image_height = self.player_info_layout_rect.height() - 0.75 * self.ui_scale;
+        let image_height = self.profile_layout_rect.height() * 0.8;
         let image_width = image_height * image_ratio;
         let image_size = egui::vec2(image_width, image_height);
-        let min = self.player_info_layout_rect.min
-            + egui::vec2(self.player_info_layout_corner * 0.3, 0.75 * self.ui_scale);
+        let min = self.profile_layout_rect.min
+            + egui::vec2(0.0, self.profile_layout_rect.height() * 0.05);
         self.profile_character_rect = egui::Rect::from_min_max(min, min + image_size);
+
+        // Ui 프로필 랭킹 사각형의 크기를 재조정합니다.
+        const HALF_RANK_WIDTH: f32 = 24.0;
+        const RANK_WIDTH: f32 = HALF_RANK_WIDTH * 2.0;
+        static_assertions::const_assert!(HALF_RANK_WIDTH <= PROFILE_MARGIN);
+        static_assertions::const_assert!(0.0 < HALF_RANK_WIDTH);
+        let source = &self.rank_texture;
+        let image_ratio = source.size.x / source.size.y;
+        let image_width = RANK_WIDTH * self.ui_scale;
+        let image_height = image_width / image_ratio;
+        let size = egui::vec2(image_width, image_height);
+        let center = self.profile_layout_rect.left_top() + egui::vec2(4.0 * self.ui_scale, 0.0);
+        self.profile_rank_rect = egui::Rect::from_center_size(center, size);
 
         // Ui 배경화면 영역을 재조정합니다.
         let source = &self.bg_texture;
@@ -258,16 +349,13 @@ impl MainLobbyScene {
             ui.shrink_clip_rect(self.clip_rect);
 
             // 레이아웃
-            ui.painter().rect(
-                self.player_info_layout_rect,
-                self.player_info_layout_corner,
-                egui::Color32::WHITE,
-                egui::Stroke::new(1.5 * self.ui_scale, egui::Color32::from_rgb(124, 208, 255)),
-                egui::StrokeKind::Middle,
-            );
+            egui::Image::new(self.profile_bg_texture).paint_at(ui, self.profile_layout_rect);
 
             // 프로필 캐릭터
-            egui::Image::new(self.profile_ch_texture).paint_at(ui, self.profile_character_rect);
+            egui::Image::new(self.profile_icon_texture).paint_at(ui, self.profile_character_rect);
+
+            // 랭크
+            egui::Image::new(self.rank_texture).paint_at(ui, self.profile_rank_rect);
 
             // 이름
             let label = egui::Label::new(self.player_name_text.clone())
@@ -276,9 +364,9 @@ impl MainLobbyScene {
                 .sense(egui::Sense::empty())
                 .selectable(false);
             let label_rect = egui::Rect::from_min_max(
-                self.player_info_layout_rect.center_top()
-                    - egui::vec2(self.player_info_layout_rect.width() * 0.25, 0.0),
-                self.player_info_layout_rect.max,
+                self.profile_layout_rect.center_top()
+                    - egui::vec2(self.profile_layout_rect.width() * 0.25, 0.0),
+                self.profile_layout_rect.max,
             );
             ui.put(label_rect, label);
         });
@@ -299,7 +387,9 @@ impl MainLobbyScene {
 impl GameScene for MainLobbyScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         let device = app.render_device();
+        self.regist_profile_rank_texture(device, ui_renderer);
         self.regist_background_texture(device, ui_renderer);
+        self.regist_profile_bg_texture(device, ui_renderer);
         self.regist_profile_character_texture(device, ui_renderer);
         self.resize_ui(window, app);
     }

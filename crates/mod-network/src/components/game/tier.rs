@@ -1,6 +1,8 @@
 //! 플레이어 티어와 관련된 코드를 관리합니다.
 //!
 
+use crate::components::{BigEndian, TryFromBigEndian};
+
 /// 게임 티어 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,6 +27,22 @@ impl GameTier {
             3 => Some(GameTier::Platinum),
             _ => None,
         }
+    }
+}
+
+impl BigEndian for GameTier {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data!")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        (*self as u8).to_big_endian_bytes()
+    }
+}
+
+impl TryFromBigEndian for GameTier {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::new(u8::from_big_endian_bytes(bytes))
     }
 }
 

@@ -118,8 +118,8 @@ impl GameScene for GameLoginModalScene {
                     self.locale,
                     packet.uid,
                     packet.name,
-                    packet.tier(),
-                    packet.profile_character(),
+                    packet.tier,
+                    packet.profile_icon,
                     self.texture_pool.clone(),
                     packet.token,
                 ));
