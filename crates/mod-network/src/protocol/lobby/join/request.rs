@@ -8,7 +8,7 @@ use crate::{
 
 /// 클라이언트가 서버로 보내는 커스텀 게임 참가 요청 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JoinRequestPacket {
+pub struct JoinRoomRequestPacket {
     /// 게임 월드 식별자
     pub id: WorldId,
     /// 사용자 식별자
@@ -17,16 +17,16 @@ pub struct JoinRequestPacket {
     pub token: LoginToken,
 }
 
-impl JoinRequestPacket {
+impl JoinRoomRequestPacket {
     /// 새로운 패킷을 생성합니다.
     pub const fn new(id: WorldId, uid: UserId, token: LoginToken) -> Self {
         Self { id, uid, token }
     }
 }
 
-impl Packet for JoinRequestPacket {
+impl Packet for JoinRoomRequestPacket {
     fn packet_type() -> PacketType {
-        PacketType::RequestJoinRoom
+        PacketType::JoinRoomRequest
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -43,7 +43,7 @@ impl Packet for JoinRequestPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(JoinRequestPacket)
+                stringify!(JoinRoomRequestPacket)
             )
         };
 
@@ -89,14 +89,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_join_request_packet() {
-        let origin = JoinRequestPacket::new(
+    fn test_join_room_request_packet() {
+        let origin = JoinRoomRequestPacket::new(
             WorldId::new(12345),
             UserId::new(131543561),
             LoginToken::new(25161643514),
         );
         let raw = origin.as_raw();
-        let other = JoinRequestPacket::from_raw(raw);
+        let other = JoinRoomRequestPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);

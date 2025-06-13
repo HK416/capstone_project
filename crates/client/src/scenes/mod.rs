@@ -3,13 +3,15 @@
 // mod in_game;
 mod layer;
 mod lobby;
-// mod room;
+mod room;
 mod startup;
 mod title;
 
 use std::fmt;
 
-pub use self::{layer::*, lobby::*, startup::*, title::*};
+use crate::config::NUM_LOCALE;
+
+pub use self::{layer::*, lobby::*, room::*, startup::*, title::*};
 
 /// 인터페이스 배경 색상입니다.
 pub const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
@@ -19,6 +21,13 @@ pub const TEAM_COLOR: [egui::Color32; 2] = [
     egui::Color32::from_rgb(0, 150, 255), // 블루팀 색상
     egui::Color32::from_rgb(255, 68, 51), // 레드 팀 색상
 ];
+
+/// 애플리케이션 표시 언어에 따른 네트워크 오류 타이틀 텍스트
+const ERR_NETWORK_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
+/// 애플리케이션 표시 언어에 따른 네트워크 연결 끊김 오류 메시지 텍스트
+const ERR_CLOSED_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
+/// 애플리케이션 표시 언어에 따른 네트워크 소켓 읽기 오류 메시지 텍스트
+const ERR_IO_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["패킷을 읽는 도중 오류가 발생했습니다!"];
 
 /// 기본 애플리케이션 창의 가로 길이 입니다.
 const BASE_WIDTH: f32 = 1280.0;
@@ -113,11 +122,17 @@ impl fmt::Debug for MainLobbyJoinModalScene {
     }
 }
 
-// impl fmt::Debug for CustomGameRoomScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(CustomGameRoomScene))
-//     }
-// }
+impl fmt::Debug for MainLobbyWaitLayer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(MainLobbyWaitLayer))
+    }
+}
+
+impl fmt::Debug for CustomGameRoomScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(CustomGameRoomScene))
+    }
+}
 
 // impl fmt::Debug for CharacterFormationScene {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

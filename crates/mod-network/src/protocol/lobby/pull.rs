@@ -8,21 +8,21 @@ use crate::{
 
 /// 클라이언트가 로비 장면에 있을 때 서버에서 클라이언트로 보내는 데이터 갱신 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LobbyPullPacket {
+pub struct LobbyDataUpdatePacket {
     /// 네트워크 통신 상태
     pub network_state: NetworkState,
 }
 
-impl LobbyPullPacket {
+impl LobbyDataUpdatePacket {
     /// 새로운 패킷을 생성합니다.
     pub const fn new(network_state: NetworkState) -> Self {
         Self { network_state }
     }
 }
 
-impl Packet for LobbyPullPacket {
+impl Packet for LobbyDataUpdatePacket {
     fn packet_type() -> PacketType {
-        PacketType::PullLobbyData
+        PacketType::LobbyDataUpdate
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -37,7 +37,7 @@ impl Packet for LobbyPullPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(LobbyPullPacket)
+                stringify!(LobbyDataUpdatePacket)
             )
         };
 
@@ -72,10 +72,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lobby_pull_packet() {
-        let origin = LobbyPullPacket::new(NetworkState::Good);
+    fn test_lobby_data_update_packet() {
+        let origin = LobbyDataUpdatePacket::new(NetworkState::Good);
         let raw = origin.as_raw();
-        let other = LobbyPullPacket::from_raw(raw);
+        let other = LobbyDataUpdatePacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

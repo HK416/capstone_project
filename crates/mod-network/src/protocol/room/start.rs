@@ -1,24 +1,73 @@
 use crate::{
-    components::{BigEndian, StartFailedReason, TryFromBigEndian},
+    components::{BigEndian, TryFromBigEndian},
     protocol::{Packet, PacketType, RawPacket},
 };
 
+/// 게임 시작 실패 사유 목록입니다.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StartFailedReason {
+    /// 플레이어 인원 수가 부족합니다.
+    NotEnoughPlayers = 0,
+    /// 블루 팀 인원이 비어있습니다.
+    EmptyBlueTeam = 1,
+    /// 레드 팀 인원이 비어있습니다.
+    EmptyRedTeam = 2,
+    /// 팀 균형이 맞지 않습니다.
+    UnbalancedTeams = 3,
+    /// 모든 플레이어가 준비되지 않았습니다.
+    PlayersNotReady = 4,
+}
+
+impl StartFailedReason {
+    /// 주어진 정수로 게임 시작 실패 사유를 생성합니다.
+    ///
+    /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
+    ///
+    pub const fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(StartFailedReason::NotEnoughPlayers),
+            1 => Some(StartFailedReason::EmptyBlueTeam),
+            2 => Some(StartFailedReason::EmptyRedTeam),
+            3 => Some(StartFailedReason::UnbalancedTeams),
+            4 => Some(StartFailedReason::PlayersNotReady),
+            _ => None,
+        }
+    }
+}
+
+impl BigEndian for StartFailedReason {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data!")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        (*self as u8).to_big_endian_bytes()
+    }
+}
+
+impl TryFromBigEndian for StartFailedReason {
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::new(u8::from_big_endian_bytes(bytes))
+    }
+}
+
 /// 커스텀 게임 시작에 실패했을 때 서버에서 클라이언트로 보내는 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CustomGameStartFailedPacket {
+pub struct StartGameFailedPacket {
     pub reason: StartFailedReason,
 }
 
-impl CustomGameStartFailedPacket {
+impl StartGameFailedPacket {
     /// 새로운 패킷을 생성합니다.
-    pub fn new(reason: StartFailedReason) -> Self {
+    pub const fn new(reason: StartFailedReason) -> Self {
         Self { reason }
     }
 }
 
-impl Packet for CustomGameStartFailedPacket {
+impl Packet for StartGameFailedPacket {
     fn packet_type() -> PacketType {
-        PacketType::CustomGameStartFailed
+        PacketType::StartGameFailed
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -34,19 +83,19 @@ impl Packet for CustomGameStartFailedPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(CustomGameStartFailedPacket)
+                stringify!(StartGameFailedPacket)
             );
         }
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     #[allow(unused_mut)]
     fn try_from_raw(raw: RawPacket) -> Option<Self> {
         // 패킷 종류가 일치하는지 확인합니다.
         if raw.packet_type() != Self::packet_type() {
-            log::warn!(
-                "invalid packet type. (RAW:{:?}, PACKET:{:?})",
+            log::error!(
+                "invalid packet type. (SRC:{:?}, DST:{:?})",
                 raw.packet_type(),
                 Self::packet_type(),
             );
@@ -64,17 +113,60 @@ impl Packet for CustomGameStartFailedPacket {
     }
 }
 
+#[allow(unused_macros)]
+macro_rules! test_start_failed_reason {
+    ($name: ident, $e: expr) => {
+        #[test]
+        fn $name() {
+            let val = $e as u8;
+            let reason = StartFailedReason::new(val).unwrap();
+            assert_eq!($e, reason);
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    #[should_panic]
+    fn test_creation_start_failed_reason() {
+        StartFailedReason::new(123).unwrap();
+    }
+
+    test_start_failed_reason!(
+        test_start_failed_reason_not_enough_player,
+        StartFailedReason::NotEnoughPlayers
+    );
+
+    test_start_failed_reason!(
+        test_start_failed_reason_empty_blue_team,
+        StartFailedReason::EmptyBlueTeam
+    );
+
+    test_start_failed_reason!(
+        test_start_failed_reason_empty_red_team,
+        StartFailedReason::EmptyRedTeam
+    );
+
+    test_start_failed_reason!(
+        test_start_failed_reason_unbalanced_team,
+        StartFailedReason::UnbalancedTeams
+    );
+
+    test_start_failed_reason!(
+        test_start_failed_reason_players_not_ready,
+        StartFailedReason::PlayersNotReady
+    );
+
+    #[test]
     fn test_custom_game_start_failed_packet() {
         let reason = StartFailedReason::PlayersNotReady;
 
-        let origin = CustomGameStartFailedPacket::new(reason);
+        let origin = StartGameFailedPacket::new(reason);
         let raw = origin.as_raw();
-        let other = CustomGameStartFailedPacket::from_raw(raw);
+        let other = StartGameFailedPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

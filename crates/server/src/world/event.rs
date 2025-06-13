@@ -61,5 +61,5 @@ pub enum GameWorldRoomStateEvent {
     /// 방장이 캐릭터 중복 옵션을 변경할 때 발생되는 이벤트입니다.
     ChangeDuplicateOption(bool),
     /// 방장이 팀 균형 옵션을 변경할 때 발생되는 이벤트입니다.
-    ChangeBalanceOption(bool),
+    ChangeUnbalanceOption(bool),
 }

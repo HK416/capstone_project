@@ -3,12 +3,17 @@ use std::sync::Arc;
 use mod_network::{
     components::WorldId,
     protocol::{
-        JoinFailedPacket, JoinFailedReason, JoinRequestPacket, LobbyPullPacket, LoginSuccessPacket,
-        Packet, PacketType, QueryWorldListPacket, RawPacket, WorldListPacket,
+        JoinFailedReason, JoinRoomFailedPacket, JoinRoomRequestPacket, LobbyDataUpdatePacket,
+        LoginSuccessPacket, Packet, PacketType, QueryWorldListPacket, RawPacket, WorldListPacket,
     },
 };
 
-use crate::{account::Account, session::Session, token::UserTokenMap, world::GameWorldPool};
+use crate::{
+    account::Account,
+    session::{Session, state::room::SessionRoomState},
+    token::UserTokenMap,
+    world::GameWorldPool,
+};
 
 use super::{SessionState, SessionStateFlow};
 
@@ -42,26 +47,30 @@ impl SessionLobbyState {
             log::error!(
                 "{} invalid token! (PACKET:{:?})",
                 &session,
-                &PacketType::QueryWorldLists
+                &PacketType::WorldListQuery
             );
             session.close();
             return;
         }
 
         // 패킷을 생성하고 전송합니다.
-        let worlds = GameWorldPool::get_available_world_ids();
+        let worlds = GameWorldPool::get_world_lists();
         let packet = WorldListPacket::new(worlds);
         session.tcp_write(packet.as_raw());
     }
 
     /// 커스텀 게임 참여 요청 패킷을 처리합니다.
-    fn handle_join_request_packet(&mut self, session: &Arc<Session>, packet: JoinRequestPacket) {
+    fn handle_join_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: JoinRoomRequestPacket,
+    ) {
         // 사용자의 로그인 토큰을 검증합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
                 "{} invalid token! (PACKET:{:?})",
                 &session,
-                &PacketType::RequestJoinRoom
+                &PacketType::JoinRoomRequest
             );
             session.close();
             return;
@@ -69,19 +78,24 @@ impl SessionLobbyState {
 
         if packet.id == WorldId::NULL {
             // 커스텀 게임 생성을 시도합니다.
-            let result =
-                GameWorldPool::create_custom(self.account.uid, self.account.name, session.clone());
+            let result = GameWorldPool::create_custom(
+                self.account.uid,
+                self.account.name,
+                self.account.tier,
+                self.account.profile_icon,
+                session.clone(),
+            );
             match result {
                 Some(world) => {
                     // 다음 세션 상태로 전환합니다.
-                    // let state = Box::new(SessionRoomState::new(self.account.uid, world));
-                    // let flow = SessionStateFlow::Push(state);
-                    // session.flows.push(flow);
+                    let state = Box::new(SessionRoomState::new(self.account.uid, world));
+                    let flow = SessionStateFlow::Push(state);
+                    session.flows.push(flow);
                 }
                 None => {
                     // 패킷을 생성하고 전송합니다.
                     let reason = JoinFailedReason::CreationLimited;
-                    let packet = JoinFailedPacket::new(reason);
+                    let packet = JoinRoomFailedPacket::new(reason);
                     session.tcp_write(packet.as_raw());
                 }
             }
@@ -93,27 +107,33 @@ impl SessionLobbyState {
                 None => {
                     // 패킷을 생성하고 전송합니다.
                     let reason = JoinFailedReason::NotFound;
-                    let packet = JoinFailedPacket::new(reason);
+                    let packet = JoinRoomFailedPacket::new(reason);
                     session.tcp_write(packet.as_raw());
                     return;
                 }
             };
 
             // 커스텀 게임 참여를 시도합니다.
-            // let result = world.try_join(self.account.uid, self.account.name, session.clone());
-            // match result {
-            //     Ok(_) => {
-            //         // 다음 세션 상태로 전환합니다.
-            //         // let state = Box::new(SessionRoomState::new(self.account.uid, world));
-            //         // let flow = SessionStateFlow::Push(state);
-            //         // session.flows.push(flow);
-            //     }
-            //     Err(reason) => {
-            //         // 패킷을 생성하고 전송합니다.
-            //         let packet = JoinFailedPacket::new(reason);
-            //         session.tcp_write(packet.as_raw());
-            //     }
-            // };
+            let result = world.try_join(
+                self.account.uid,
+                self.account.name,
+                self.account.tier,
+                self.account.profile_icon,
+                session.clone(),
+            );
+            match result {
+                Ok(_) => {
+                    // 다음 세션 상태로 전환합니다.
+                    let state = Box::new(SessionRoomState::new(self.account.uid, world));
+                    let flow = SessionStateFlow::Push(state);
+                    session.flows.push(flow);
+                }
+                Err(reason) => {
+                    // 패킷을 생성하고 전송합니다.
+                    let packet = JoinRoomFailedPacket::new(reason);
+                    session.tcp_write(packet.as_raw());
+                }
+            };
         }
     }
 }
@@ -147,7 +167,7 @@ impl SessionState for SessionLobbyState {
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::QueryWorldLists => {
+            PacketType::WorldListQuery => {
                 let packet = match QueryWorldListPacket::try_from_raw(packet) {
                     Some(packet) => packet,
                     None => {
@@ -158,8 +178,8 @@ impl SessionState for SessionLobbyState {
 
                 self.handle_query_available_worlds_packet(session, packet);
             }
-            PacketType::RequestJoinRoom => {
-                let packet = match JoinRequestPacket::try_from_raw(packet) {
+            PacketType::JoinRoomRequest => {
+                let packet = match JoinRoomRequestPacket::try_from_raw(packet) {
                     Some(packet) => packet,
                     None => {
                         session.close();
@@ -198,7 +218,7 @@ impl SessionState for SessionLobbyState {
             self.elapsed_time_sec = 0.0;
 
             // 패킷을 생성하고 전송합니다.
-            let packet = LobbyPullPacket::new(session.network_state());
+            let packet = LobbyDataUpdatePacket::new(session.network_state());
             session.tcp_write(packet.as_raw());
         }
     }

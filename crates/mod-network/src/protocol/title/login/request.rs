@@ -15,18 +15,18 @@ use crate::{
 /// 이 패킷은 암호화 후 전송되어야 합니다.
 ///
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RequestLoginPacket(u32);
+pub struct LoginRequestPacket(u32);
 
-impl RequestLoginPacket {
+impl LoginRequestPacket {
     /// 새로운 패킷을 생성합니다.
     pub fn new() -> Self {
         Self(0)
     }
 }
 
-impl Packet for RequestLoginPacket {
+impl Packet for LoginRequestPacket {
     fn packet_type() -> PacketType {
-        PacketType::RequestLogin
+        PacketType::LoginRequest
     }
 
     #[allow(unused_mut)]
@@ -42,7 +42,7 @@ impl Packet for RequestLoginPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(RequestLoginPacket)
+                stringify!(LoginRequestPacket)
             );
         }
 
@@ -77,10 +77,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_request_login_packet() {
-        let origin = RequestLoginPacket::new();
+    fn test_login_request_packet() {
+        let origin = LoginRequestPacket::new();
         let raw = origin.as_raw();
-        let other = RequestLoginPacket::from_raw(raw);
+        let other = LoginRequestPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

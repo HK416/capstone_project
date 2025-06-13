@@ -17,7 +17,7 @@
 // mod in_game_sync;
 mod lobby;
 mod login;
-// mod room;
+mod room;
 mod verify;
 
 use std::{
@@ -29,7 +29,7 @@ use std::{
 use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
 use tokio::time::{Duration, Instant};
 
-use self::{lobby::*, login::*, verify::*};
+use self::{lobby::*, login::*, room::*, verify::*};
 
 use super::Session;
 
@@ -178,8 +178,13 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
                             continue;
                         }
 
-                        // 취소되었거나, 세션 상태가 변경된 경우 패킷 처리를 생략합니다.
-                        if session.packet_canceled() || !session.flows.is_empty() {
+                        // 세션 상태가 변경된 경우 패킷 처리를 생략합니다.
+                        if !session.flows.is_empty() {
+                            return (state, session, samples, num_samples, recent);
+                        }
+
+                        // 패킷이 취소된 경우 처리를 생략합니다.
+                        if session.packet_canceled() {
                             continue;
                         }
 
@@ -313,5 +318,11 @@ impl fmt::Debug for SessionLoginState {
 impl fmt::Debug for SessionLobbyState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(SessionLobbyState))
+    }
+}
+
+impl fmt::Debug for SessionRoomState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(SessionRoomState))
     }
 }

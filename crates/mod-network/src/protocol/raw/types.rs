@@ -13,66 +13,66 @@ pub enum PacketType {
     /// 핑을 측정하기 위해 받은 패킷을 다시 전송하는 패킷
     Ping = 0x01,
     /// 클라이언트에서 서버로 보내는 참여 가능 월드 식별자 목록 질의 패킷
-    QueryWorldLists = 0x02,
+    WorldListQuery = 0x02,
     /// 서버에서 클라이언트로 보내는 참여 가능 월드 식별자 목록 응답 패킷
-    ResponseWorldList = 0x03,
+    WorldListResponse = 0x03,
 
     /// 클라이언트 유효성 검증을 위해 미리 예약된 패킷 유형
     ClientVerifyType = 0x10,
 
     /// 로그인에 사용되는 패킷 유형
-    LoginType = 0x20,
+    LoginGroup = 0x20,
     /// 클라이언트에서 서버로 보내는 로그인 요청 패킷
-    RequestLogin = 0x21,
+    LoginRequest = 0x21,
     /// 서버에서 클라이언트로 보내는 로그인 실패 응답 패킷
-    ResponseLoginFailed = 0x22,
+    LoginFailed = 0x22,
     /// 서버에서 클라이언트로 보내는 로그인 성공 응답 패킷
-    ResponseLoginSuccess = 0x23,
+    LoginSuccess = 0x23,
 
     /// 게임 로비에서 사용되는 패킷 유형
-    LobbyType = 0x30,
+    LobbyGroup = 0x30,
     /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    PullLobbyData = 0x31,
+    LobbyDataUpdate = 0x31,
     /// 클라이언트에서 서버로 보내는 커스텀 게임 참여 요청 패킷
-    RequestJoinRoom = 0x32,
+    JoinRoomRequest = 0x32,
     /// 서버에서 클라이언트로 보내는 커스텀 게임 참가 실패 응답 패킷
-    ResponseJoinFailed = 0x33,
+    JoinRoomFailed = 0x33,
 
     /// 커스텀 게임에서 사용되는 패킷 유형
-    RoomType = 0x40,
+    RoomGroup = 0x40,
     /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    PullRoomData = 0x41,
+    RoomDataUpdate = 0x41,
     /// 클라이언트에서 서버로 보내는 커스텀 게임 떠남 알림 패킷
-    NotifyRoomLeave = 0x42,
+    RoomLeaveNotify = 0x42,
     /// 클라이언트에서 서버로 보내는 커스텀 게임 준비 요청 패킷
-    RequestRoomReady = 0x43,
+    RoomReadyRequest = 0x43,
     /// 클라이언트에서 서버로 보내는 팀 변경 요청 패킷
-    RequestChangeTeam = 0x44,
+    ChangeTeamRequest = 0x44,
     /// 서버에서 클라이언트로 보내는 게임 시작 실패 응답 패킷
-    ResponseStartFailed = 0x45,
+    StartGameFailed = 0x45,
 
     /// 캐릭터 편성에서 사용되는 패킷 유형
-    FomationType = 0x50,
+    FormationGroup = 0x50,
     /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    PullFormationData = 0x51,
+    FormationDataUpdate = 0x51,
     /// 클라이언트에서 서버로 보내는 캐릭터 선택 요청 패킷
-    RequestCharacterSelect = 0x52,
+    CharacterSelectRequest = 0x52,
     /// 서버에서 클라이언트로 보내는 캐릭터 선택 응답 패킷
-    ResponseCharacterSelect = 0x53,
+    CharacterSelectResponse = 0x53,
     /// 서버에서 클라이언트로 보내는 인게임 진입 실패 알림 패킷
-    NotifyEnterFailed = 0x54,
+    EnterGameFailed = 0x54,
 
     /// 인게임 준비에서 사용되는 패킷 유형
-    PrepareType = 0x60,
+    PrepareGroup = 0x60,
     /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    PullPrepareData = 0x61,
+    PrepareDataPull = 0x61,
     /// 클라이언트에서 서버로 보내는 데이터 갱신 패킷
-    PushPrepareData = 0x62,
+    PrepareDataPush = 0x62,
 
     /// 인게임에서 사용되는 패킷 유형
-    InGameType = 0x70,
+    InGameGroup = 0x70,
     /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    PullInGameData = 0x71,
+    InGameDataUpdate = 0x71,
 }
 
 impl PacketType {
@@ -84,23 +84,23 @@ impl PacketType {
         match val {
             0x00 => Some(PacketType::Raw),
             0x01 => Some(PacketType::Ping),
-            0x02 => Some(PacketType::QueryWorldLists),
-            0x03 => Some(PacketType::ResponseWorldList),
-            0x21 => Some(PacketType::RequestLogin),
-            0x22 => Some(PacketType::ResponseLoginFailed),
-            0x23 => Some(PacketType::ResponseLoginSuccess),
-            0x31 => Some(PacketType::PullLobbyData),
-            0x32 => Some(PacketType::RequestJoinRoom),
-            0x33 => Some(PacketType::ResponseJoinFailed),
-            0x41 => Some(PacketType::PullRoomData),
-            0x42 => Some(PacketType::NotifyRoomLeave),
-            0x43 => Some(PacketType::RequestRoomReady),
-            0x44 => Some(PacketType::RequestChangeTeam),
-            0x45 => Some(PacketType::ResponseStartFailed),
-            0x51 => Some(PacketType::PullFormationData),
-            0x52 => Some(PacketType::RequestCharacterSelect),
-            0x53 => Some(PacketType::ResponseCharacterSelect),
-            0x54 => Some(PacketType::NotifyEnterFailed),
+            0x02 => Some(PacketType::WorldListQuery),
+            0x03 => Some(PacketType::WorldListResponse),
+            0x21 => Some(PacketType::LoginRequest),
+            0x22 => Some(PacketType::LoginFailed),
+            0x23 => Some(PacketType::LoginSuccess),
+            0x31 => Some(PacketType::LobbyDataUpdate),
+            0x32 => Some(PacketType::JoinRoomRequest),
+            0x33 => Some(PacketType::JoinRoomFailed),
+            0x41 => Some(PacketType::RoomDataUpdate),
+            0x42 => Some(PacketType::RoomLeaveNotify),
+            0x43 => Some(PacketType::RoomReadyRequest),
+            0x44 => Some(PacketType::ChangeTeamRequest),
+            0x45 => Some(PacketType::StartGameFailed),
+            0x51 => Some(PacketType::FormationDataUpdate),
+            0x52 => Some(PacketType::CharacterSelectRequest),
+            0x53 => Some(PacketType::CharacterSelectResponse),
+            0x54 => Some(PacketType::EnterGameFailed),
             _ => None,
         }
     }
@@ -143,37 +143,37 @@ mod tests {
 
     test_packet_type!(test_packet_type_ping, PacketType::Ping);
 
-    test_packet_type!(test_packet_type_query_world_list, PacketType::QueryWorldLists);
+    test_packet_type!(test_packet_type_world_list_query, PacketType::WorldListQuery);
 
-    test_packet_type!(test_packet_type_response_world_list, PacketType::ResponseWorldList);
+    test_packet_type!(test_packet_type_world_list_response, PacketType::WorldListResponse);
 
-    test_packet_type!(test_packet_type_request_login, PacketType::RequestLogin);
+    test_packet_type!(test_packet_type_login_request, PacketType::LoginRequest);
 
-    test_packet_type!(test_packet_type_response_login_failed, PacketType::ResponseLoginFailed);
+    test_packet_type!(test_packet_type_login_failed, PacketType::LoginFailed);
 
-    test_packet_type!(test_packet_type_response_login_success, PacketType::ResponseLoginSuccess);
+    test_packet_type!(test_packet_type_login_success, PacketType::LoginSuccess);
     
-    test_packet_type!(test_packet_type_pull_lobby_data, PacketType::PullLobbyData);
+    test_packet_type!(test_packet_type_lobby_data_update, PacketType::LobbyDataUpdate);
 
-    test_packet_type!(test_packet_type_request_join_room, PacketType::RequestJoinRoom);
+    test_packet_type!(test_packet_type_join_room_request, PacketType::JoinRoomRequest);
 
-    test_packet_type!(test_packet_type_response_join_failed, PacketType::ResponseJoinFailed);
+    test_packet_type!(test_packet_type_join_room_failed, PacketType::JoinRoomFailed);
 
-    test_packet_type!(test_packet_type_pull_room_data, PacketType::PullRoomData);
+    test_packet_type!(test_packet_type_room_data_update, PacketType::RoomDataUpdate);
 
-    test_packet_type!(test_packet_type_notify_room_leave, PacketType::NotifyRoomLeave);
+    test_packet_type!(test_packet_type_room_leave_notify, PacketType::RoomLeaveNotify);
 
-    test_packet_type!(test_packet_type_request_room_ready, PacketType::RequestRoomReady);
+    test_packet_type!(test_packet_type_room_ready_request, PacketType::RoomReadyRequest);
 
-    test_packet_type!(test_packet_type_request_change_team, PacketType::RequestChangeTeam);
+    test_packet_type!(test_packet_type_change_team_request, PacketType::ChangeTeamRequest);
 
-    test_packet_type!(test_packet_type_response_start_failed, PacketType::ResponseStartFailed);
+    test_packet_type!(test_packet_type_start_game_failed, PacketType::StartGameFailed);
 
-    test_packet_type!(test_packet_type_pull_formation_data, PacketType::PullFormationData);
+    test_packet_type!(test_packet_type_formation_data_update, PacketType::FormationDataUpdate);
 
-    test_packet_type!(test_packet_type_request_character_select, PacketType::RequestCharacterSelect);
+    test_packet_type!(test_packet_type_character_select_request, PacketType::CharacterSelectRequest);
 
-    test_packet_type!(test_packet_type_response_character_select, PacketType::ResponseCharacterSelect);
+    test_packet_type!(test_packet_type_character_select_response, PacketType::CharacterSelectResponse);
 
-    test_packet_type!(test_packet_type_notify_enter_failed, PacketType::NotifyEnterFailed);
+    test_packet_type!(test_packet_type_enter_game_failed, PacketType::EnterGameFailed);
 }

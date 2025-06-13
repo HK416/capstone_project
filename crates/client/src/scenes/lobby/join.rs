@@ -7,7 +7,8 @@ use mod_app::{
 use mod_network::{
     components::{LoginToken, UserId, WorldId},
     protocol::{
-        JoinFailedPacket, JoinFailedReason, JoinRequestPacket, Packet, PacketType, RawPacket,
+        JoinFailedReason, JoinRoomFailedPacket, JoinRoomRequestPacket, Packet, PacketType,
+        RawPacket, RoomDataUpdatePacket,
     },
 };
 use winit::window::Window;
@@ -15,7 +16,14 @@ use winit::window::Window;
 use crate::{
     asset::{TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH},
+    scenes::{
+        lobby::{
+            ERR_FULL_CAPACITY_TEXTS, ERR_IN_PROGRASS_TEXTS, ERR_LIMITS_TEXTS, ERR_NOT_FOUND_TEXTS,
+            MSG_MODAL_TEXTS,
+        },
+        CustomGameRoomScene, FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH,
+        ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+    },
     SERVER_TCP_ADDR,
 };
 
@@ -27,18 +35,6 @@ const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
 const CANCEL_TEXTS: [&'static str; NUM_LOCALE] = ["취소"];
 /// 애플리케이션 표시 언어에 따른 `방 번호 입력` 텍스트 입니다.
 const INFORMATION_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 방 번호를 입력해 주세요"];
-/// 애플리케이션 표시 언어에 따른 `모달 대화상자` 타이틀 텍스트입니다.
-const MSG_MODAL_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
-/// 애플리케이션 표시 언어에 따른 `모달 대화상자` 메시지 텍스트입니다.
-const ERR_NOT_FOUND_TEXTS: [&'static str; NUM_LOCALE] =
-    ["해당 커스텀 게임 대기실이 존재하지 않습니다!"];
-/// 애플리케이션 표시 언어에 따른 `모달 대화상자` 메시지 텍스트입니다.
-const ERR_FULL_CAPACITY_TEXTS: [&'static str; NUM_LOCALE] =
-    ["해당 커스텀 게임 대기실 인원이 가득찼습니다."];
-/// 애플리케이션 표시 언어에 따른 `모달 대화상자` 메시지 텍스트입니다.
-const ERR_IN_PROGRASS_TEXTS: [&'static str; NUM_LOCALE] = ["이미 게임이 진행 중 입니다."];
-/// 애플리케이션 표시 언어에 따른 `모달 대화상자` 메시지 텍스트입니다.
-const ERR_BANNED_TEXTS: [&'static str; NUM_LOCALE] = ["관리자로부터 차단당했습니다."];
 
 /// 게임의 메인 로비 화면입니다.
 /// 커스텀 게임에 참여하기 위한 모달 대화상자를 화면에 표시합니다.
@@ -46,7 +42,7 @@ pub struct MainLobbyJoinModalScene {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
     /// 현재 클라이언트의 사용자 식별자입니다.
-    user_id: UserId,
+    uid: UserId,
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
@@ -66,14 +62,14 @@ impl MainLobbyJoinModalScene {
     /// 새로운 `MainLobbyJoinModalScene`을 생성합니다.
     pub fn new(
         locale: Locale,
-        user_id: UserId,
+        uid: UserId,
         token: LoginToken,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
     ) -> Self {
         Self {
             locale,
-            user_id,
+            uid,
             token,
             input_enabled: true,
             input_number: String::with_capacity(16),
@@ -90,18 +86,10 @@ impl GameScene for MainLobbyJoinModalScene {
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
-        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
-        let title = ERR_TITLE_TEXTS[i];
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
-            NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
-            NetworkError::IO(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
-                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.
@@ -115,9 +103,30 @@ impl GameScene for MainLobbyJoinModalScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::ResponseJoinFailed => {
+            PacketType::RoomDataUpdate => {
+                let packet = RoomDataUpdatePacket::from_raw(packet);
+
+                // 게임 장면을 변경합니다.
+                let next_scene = CustomGameRoomScene::new(
+                    self.locale,
+                    self.uid,
+                    self.token,
+                    packet.id,
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
+                    packet.stage_kind(),
+                    packet.allow_duplicates(),
+                    packet.allow_unbalanced(),
+                    packet.players,
+                );
+                let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
+            PacketType::JoinRoomFailed => {
                 // 패킷을 생성합니다
-                let packet = JoinFailedPacket::from_raw(packet);
+                let packet = JoinRoomFailedPacket::from_raw(packet);
 
                 // 게임 장면을 변경합니다.
                 let i = self.locale as usize;
@@ -128,8 +137,7 @@ impl GameScene for MainLobbyJoinModalScene {
                         JoinFailedReason::NotFound => ERR_NOT_FOUND_TEXTS[i],
                         JoinFailedReason::FullCapacity => ERR_FULL_CAPACITY_TEXTS[i],
                         JoinFailedReason::InProgress => ERR_IN_PROGRASS_TEXTS[i],
-                        // JoinFailedReason::CreationLimited => ERR_BANNED_TEXTS[i],
-                        _ => unreachable!(),
+                        JoinFailedReason::CreationLimited => ERR_LIMITS_TEXTS[i],
                     },
                 ));
                 let scene_flow = GameSceneFlow::Change(next_scene);
@@ -137,26 +145,7 @@ impl GameScene for MainLobbyJoinModalScene {
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }
-            // PacketType::JoinSuccess => {
-            //     // 패킷을 생성합니다
-            //     let packet = CustomGameJoinSuccessPacket::from_raw(packet);
-
-            //     // 게임 장면을 변경합니다.
-            //     let next_scene = Box::new(CustomGameRoomScene::new(
-            //         self.locale,
-            //         self.user_id,
-            //         self.token,
-            //         self.texture_pool.clone(),
-            //         self.texture_view_pool.clone(),
-            //         packet.world_id,
-            //         packet.players,
-            //     ));
-            //     let scene_flow = GameSceneFlow::Change(next_scene);
-            //     let event = AppEvent::AddGameSceneFlow(scene_flow);
-            //     let event_loop_proxy = app.event_loop_proxy();
-            //     event_loop_proxy.send_event(event).unwrap();
-            // }
-            PacketType::PullLobbyData => { /* IGNORED */ }
+            PacketType::LobbyDataUpdate => return Some(packet),
             _ => {
                 log::warn!(
                     "packet ignored: invalid packet received! (TYPE:{:?})",
@@ -293,7 +282,7 @@ impl GameScene for MainLobbyJoinModalScene {
 
                 // 패킷을 생성합니다.
                 let world_id = WorldId::new(val);
-                let packet = JoinRequestPacket::new(world_id, self.user_id, self.token);
+                let packet = JoinRoomRequestPacket::new(world_id, self.uid, self.token);
 
                 // 패킷을 전송합니다.
                 let net_manager = app.net_manager();

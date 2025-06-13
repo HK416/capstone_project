@@ -44,7 +44,7 @@ impl LoginSuccessPacket {
 
 impl Packet for LoginSuccessPacket {
     fn packet_type() -> PacketType {
-        PacketType::ResponseLoginSuccess
+        PacketType::LoginSuccess
     }
 
     fn as_raw(&self) -> RawPacket {

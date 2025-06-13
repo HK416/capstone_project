@@ -2,7 +2,7 @@
 //!
 
 use crate::components::{
-    BigEndian, CharacterKind, GameTier, Permission, Team, TryFromBigEndian, UserId, UserName,
+    BigEndian, GameTier, Permission, ProfileIcon, Team, TryFromBigEndian, UserId, UserName,
 };
 
 /// 대기 상태에서 사용되는 비트 필드 데이터입니다.
@@ -11,7 +11,6 @@ use crate::components::{
 /// - permission            | 1bit | 권한
 /// - team                  | 1bit | 팀의 종류
 /// - is_ready_to_play      | 1bit | 준비 여부
-/// - use_profile_character | 1bit | 프로필 캐릭터 설정 여부
 /// - tier                  | 2bit | 게임 티어
 ///
 #[repr(transparent)]
@@ -25,10 +24,8 @@ impl Bitfield {
     const TEAM_SHIFT: usize = 1;
     const READY_BIT_MASK: u8 = 0x01;
     const READY_SHIFT: usize = 2;
-    const PROFILE_BIT_MASK: u8 = 0x01;
-    const PROFILE_SHIFT: usize = 3;
     const TIER_BIT_MASK: u8 = 0x03;
-    const TIER_SHIFT: usize = 4;
+    const TIER_SHIFT: usize = 3;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     const fn new() -> Self {
@@ -43,7 +40,7 @@ impl Bitfield {
     }
 
     /// 권한을 설정합니다.
-    fn with_permission(mut self, permission: Permission) -> Self {
+    const fn with_permission(mut self, permission: Permission) -> Self {
         self.0 &= !(Self::PERMISSION_BIT_MASK << Self::PERMISSION_SHIFT);
         self.0 |= ((permission as u8) & Self::PERMISSION_BIT_MASK) << Self::PERMISSION_SHIFT;
         self
@@ -57,7 +54,7 @@ impl Bitfield {
     }
 
     /// 팀 종류를 설정합니다.
-    fn with_team(mut self, team: Team) -> Self {
+    const fn with_team(mut self, team: Team) -> Self {
         self.0 &= !(Self::TEAM_BIT_MASK << Self::TEAM_SHIFT);
         self.0 |= ((team as u8) & Self::TEAM_BIT_MASK) << Self::TEAM_SHIFT;
         self
@@ -69,21 +66,9 @@ impl Bitfield {
     }
 
     /// 준비 여부를 설정합니다.
-    fn with_ready_to_play(mut self, ready: bool) -> Self {
+    const fn with_ready_to_play(mut self, ready: bool) -> Self {
         self.0 &= !(Self::READY_BIT_MASK << Self::READY_SHIFT);
         self.0 |= ((ready as u8) & Self::READY_BIT_MASK) << Self::READY_SHIFT;
-        self
-    }
-
-    /// 프로필 캐릭터 설정 여부를 반환합니다.
-    fn use_profile_character(&self) -> bool {
-        (self.0 >> Self::PROFILE_SHIFT) & Self::PROFILE_BIT_MASK == Self::PROFILE_BIT_MASK
-    }
-
-    /// 프로필 캐릭터 설정 여부를 설정합니다.
-    fn with_use_profile_character(mut self, use_profile_character: bool) -> Self {
-        self.0 &= !(Self::PROFILE_BIT_MASK << Self::PROFILE_SHIFT);
-        self.0 |= ((use_profile_character as u8) & Self::PROFILE_BIT_MASK) << Self::PROFILE_SHIFT;
         self
     }
 
@@ -95,7 +80,7 @@ impl Bitfield {
     }
 
     /// 게임 티어를 설정합니다.
-    fn with_tier(mut self, tier: GameTier) -> Self {
+    const fn with_tier(mut self, tier: GameTier) -> Self {
         self.0 &= !(Self::TIER_BIT_MASK << Self::TIER_SHIFT);
         self.0 |= ((tier as u8) & Self::TIER_BIT_MASK) << Self::TIER_SHIFT;
         self
@@ -120,25 +105,37 @@ impl Default for Bitfield {
 
 /// 대기 상태일 떄 플레이어의 정보를 갱신하기 위한 데이터입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RoomRoomPlayerData {
+pub struct CustomRoomPlayerData {
     /// 사용자 식별자입니다.
     pub uid: UserId,
     /// 사용자 이름입니다.
     pub name: UserName,
-    /// 사용자 대표 캐릭터 종류
-    character_kind: CharacterKind,
+    /// 사용자 프로필 아이콘 종류
+    pub profile_icon: ProfileIcon,
     /// 비트 필드 데이터입니다.
     bitfield: Bitfield,
 }
 
-impl RoomRoomPlayerData {
+impl CustomRoomPlayerData {
     /// 새로운 대기 상태 플레이어 데이터를 생성합니다.
-    pub const fn new(uid: UserId, name: UserName) -> Self {
+    pub const fn new(
+        uid: UserId,
+        name: UserName,
+        profile_icon: ProfileIcon,
+        permission: Permission,
+        team: Team,
+        tier: GameTier,
+        ready_to_play: bool,
+    ) -> Self {
         Self {
             uid,
             name,
-            character_kind: CharacterKind::ArisOriginal,
-            bitfield: Bitfield::new(),
+            profile_icon,
+            bitfield: Bitfield::new()
+                .with_permission(permission)
+                .with_team(team)
+                .with_ready_to_play(ready_to_play)
+                .with_tier(tier),
         }
     }
 
@@ -147,31 +144,9 @@ impl RoomRoomPlayerData {
         self.bitfield.permission()
     }
 
-    /// 권한을 설정합니다.
-    pub fn set_permission(&mut self, permission: Permission) {
-        self.bitfield = self.bitfield.with_permission(permission);
-    }
-
-    /// 권한을 설정합니다.
-    pub fn with_permission(mut self, permission: Permission) -> Self {
-        self.bitfield = self.bitfield.with_permission(permission);
-        self
-    }
-
     /// 팀 종류를 반환합니다.
     pub fn team(&self) -> Team {
         self.bitfield.team()
-    }
-
-    /// 팀 종류를 설정합니다.
-    pub fn set_team(&mut self, team: Team) {
-        self.bitfield = self.bitfield.with_team(team);
-    }
-
-    /// 팀 종류를 설정합니다.
-    pub fn with_team(mut self, team: Team) -> Self {
-        self.bitfield = self.bitfield.with_team(team);
-        self
     }
 
     /// 준비 여부를 반환합니다.
@@ -179,59 +154,17 @@ impl RoomRoomPlayerData {
         self.bitfield.is_ready_to_play()
     }
 
-    /// 준비 여부를 설정합니다.
-    pub fn set_ready_to_play(&mut self, ready: bool) {
-        self.bitfield = self.bitfield.with_ready_to_play(ready);
-    }
-
-    /// 준비 여부를 설정합니다.
-    pub fn with_ready_to_play(mut self, ready: bool) -> Self {
-        self.bitfield = self.bitfield.with_ready_to_play(ready);
-        self
-    }
-
-    /// 프로필 캐릭터 종류를 반환합니다.
-    pub fn character_kind(&self) -> Option<CharacterKind> {
-        self.bitfield
-            .use_profile_character()
-            .then_some(self.character_kind)
-    }
-
-    /// 프로필 캐릭터 종류를 설정합니다.
-    pub fn set_character_kind(&mut self, character_kind: CharacterKind) {
-        self.bitfield = self.bitfield.with_use_profile_character(true);
-        self.character_kind = character_kind;
-    }
-
-    /// 프로필 캐릭터 종류를 설정합니다.
-    pub fn with_character_kind(mut self, character_kind: CharacterKind) -> Self {
-        self.bitfield = self.bitfield.with_use_profile_character(true);
-        self.character_kind = character_kind;
-        self
-    }
-
     /// 게임 티어를 반환합니다.
     pub fn tier(&self) -> GameTier {
         self.bitfield.tier()
     }
-
-    /// 게임 티어를 설정합니다.
-    pub fn set_tier(&mut self, tier: GameTier) {
-        self.bitfield = self.bitfield.with_tier(tier);
-    }
-
-    /// 게임 티어를 설정합니다.
-    pub fn with_tier(mut self, tier: GameTier) -> Self {
-        self.bitfield = self.bitfield.with_tier(tier);
-        self
-    }
 }
 
-impl BigEndian for RoomRoomPlayerData {
+impl BigEndian for CustomRoomPlayerData {
     fn byte_size() -> usize {
         UserId::byte_size()
             + UserName::byte_size()
-            + CharacterKind::byte_size()
+            + ProfileIcon::byte_size()
             + Bitfield::byte_size()
     }
 
@@ -244,7 +177,7 @@ impl BigEndian for RoomRoomPlayerData {
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.uid.to_big_endian_bytes());
         bytes.extend_from_slice(&self.name.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.character_kind.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.profile_icon.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
 
         // 생성된 바이트가 유효한지 확인합니다.
@@ -261,7 +194,7 @@ impl BigEndian for RoomRoomPlayerData {
     }
 }
 
-impl TryFromBigEndian for RoomRoomPlayerData {
+impl TryFromBigEndian for CustomRoomPlayerData {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         // 주어진 바이트가 유효한지 확인합니다.
         if cfg!(feature = "check-validation") {
@@ -269,7 +202,7 @@ impl TryFromBigEndian for RoomRoomPlayerData {
                 bytes.len(),
                 Self::byte_size(),
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(RoomStatePlayerData),
+                stringify!(CustomRoomPlayerData),
             )
         };
 
@@ -287,9 +220,9 @@ impl TryFromBigEndian for RoomRoomPlayerData {
 
         // 캐릭터 종류를 가져옵니다.
         offset = offset + size;
-        size = CharacterKind::byte_size();
+        size = ProfileIcon::byte_size();
         data = &bytes[offset..offset + size];
-        let character_kind = CharacterKind::try_from_big_endian_bytes(data)?;
+        let profile_icon = ProfileIcon::try_from_big_endian_bytes(data)?;
 
         // 비트 필드 데이터를 가져옵니다.
         offset = offset + size;
@@ -300,7 +233,7 @@ impl TryFromBigEndian for RoomRoomPlayerData {
         Some(Self {
             uid,
             name,
-            character_kind,
+            profile_icon,
             bitfield,
         })
     }
@@ -342,15 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn test_bitfield_use_profile_character() {
-        let bitfield = Bitfield::new().with_use_profile_character(false);
-        assert_eq!(false, bitfield.use_profile_character());
-
-        let bitfield = Bitfield::new().with_use_profile_character(true);
-        assert_eq!(true, bitfield.use_profile_character());
-    }
-
-    #[test]
     fn test_bitfield_tier() {
         let val = GameTier::Bronze;
         let bitfield = Bitfield::new().with_tier(val);
@@ -371,15 +295,17 @@ mod tests {
 
     #[test]
     fn test_room_state_player_data() {
-        let origin =
-            RoomRoomPlayerData::new(UserId::new(12345), UserName::from_str("Aris Original"))
-                .with_permission(Permission::Admin)
-                .with_team(Team::Red)
-                .with_character_kind(CharacterKind::MomoiOriginal)
-                .with_tier(GameTier::Silver)
-                .with_ready_to_play(true);
+        let origin = CustomRoomPlayerData::new(
+            UserId::new(12345),
+            UserName::from_str("Aris Original"),
+            ProfileIcon::CharacterAris,
+            Permission::Admin,
+            Team::Blue,
+            GameTier::Platinum,
+            true,
+        );
         let bytes = origin.to_big_endian_bytes();
-        let other = RoomRoomPlayerData::from_big_endian_bytes(&bytes);
+        let other = CustomRoomPlayerData::from_big_endian_bytes(&bytes);
 
         // 원본과 일치하는지 비교
         assert_eq!(origin, other);

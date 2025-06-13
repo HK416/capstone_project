@@ -24,7 +24,7 @@ impl QueryWorldListPacket {
 
 impl Packet for QueryWorldListPacket {
     fn packet_type() -> PacketType {
-        PacketType::QueryWorldLists
+        PacketType::WorldListQuery
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -100,7 +100,7 @@ impl WorldListPacket {
 
 impl Packet for WorldListPacket {
     fn packet_type() -> PacketType {
-        PacketType::ResponseWorldList
+        PacketType::WorldListResponse
     }
 
     fn as_raw(&self) -> RawPacket {

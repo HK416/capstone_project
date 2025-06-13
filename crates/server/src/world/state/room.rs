@@ -1,45 +1,109 @@
-use std::{fmt, sync::Arc};
+use std::sync::Arc;
 
 use mod_network::{
-    components::{RecruitPhasePlayer, StageKind, StartFailedReason, Team, UserId},
-    protocol::{CustomGamePullPacket, CustomGameStartFailedPacket, Packet},
+    components::{CustomRoomPlayerData, Permission, StageKind, Team, UserId},
+    protocol::{Packet, RoomDataUpdatePacket, StartFailedReason, StartGameFailedPacket},
 };
+use rand::seq::SliceRandom;
 
 use crate::{
-    session::{Session, SessionEvents},
+    session::Session,
     world::{GameWorld, GameWorldEvent, GameWorldRoomStateEvent, GameWorldSystemEvent},
 };
 
-use super::{GameWorldState, GameWorldStateFlow};
+use super::GameWorldState;
 
 /// 커스텀 대기실 상태 게임 월드입니다.
 pub struct GameWorldRoomState {
     /// 팀 밸런스 옵션
-    is_balanced: bool,
+    allow_unbalanced: bool,
     /// 게임 캐릭터 중복 옵션
     allow_duplicates: bool,
     /// 게임 스테이지 종류
+    #[allow(dead_code)]
     stage_kind: StageKind,
+
+    /// 블루팀 플레이어 수
+    num_blue_players: usize,
+    /// 레드팀 플레이어 수
+    num_red_players: usize,
+    /// 경과 시간
+    elapsed_time_sec: f32,
 }
 
 impl GameWorldRoomState {
     /// 새로운 게임 월드 상태를 생성합니다.
     pub fn new() -> Self {
         Self {
-            is_balanced: true,
+            allow_unbalanced: false,
             allow_duplicates: true,
             stage_kind: StageKind::default(),
+            num_blue_players: 0,
+            num_red_players: 0,
+            elapsed_time_sec: 0.0,
         }
     }
 
     /// [`GameWorldSystemEvent::PlayerJoin`] 이벤트를 처리합니다.
     fn handle_player_join_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
-        /* TODO */
+        // 플레이어 데이터를 가져옵니다.
+        let mut player = match world.players.get_mut(&uid) {
+            Some(guard) => guard,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        // 플레이어의 팀을 설정합니다.
+        if self.num_red_players < self.num_blue_players {
+            player.set_team(Team::Red);
+            self.num_red_players += 1;
+        } else {
+            player.set_team(Team::Blue);
+            self.num_blue_players += 1;
+        }
     }
 
     /// [`GameWorldSystemEvent::PlayerLeave`] 이벤트를 처리합니다.
     fn handle_player_leave_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
-        /* TODO */
+        // 플레이어 데이터를 제거합니다.
+        let player = match world.players.remove(&uid) {
+            Some((_, player)) => player,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        // 제거된 플레이어의 권한이 관리자인 경우
+        // 남은 플레이어 중 무작위로 한 명을 선정하여 권한을 넘겨줍니다.
+        if player.permission() == Permission::Admin {
+            let mut remainings: Vec<_> = world
+                .sessions
+                .iter()
+                .map(|guard| guard.value().clone())
+                .collect();
+            remainings.shuffle(&mut rand::rng());
+
+            if let Some(uid) = remainings.pop() {
+                match world.players.get_mut(&uid) {
+                    Some(mut player) => {
+                        world.set_admin(uid);
+                        player.set_permission(Permission::Admin);
+                        player.set_ready_to_play(false);
+                    }
+                    None => {
+                        log::error!("Player({}) not found in {}!", &uid, &world);
+                        eprintln!("Player({}) not found in {}!", &uid, &world);
+                    }
+                }
+            }
+        }
     }
 
     /// [`GameWorldRoomStateEvent::Ready`] 이벤트를 처리합니다.
@@ -50,15 +114,23 @@ impl GameWorldRoomState {
         uid: UserId,
         ready: bool,
     ) {
+        // 게임 월드 관리자인지 확인합니다.
         if uid == world.admin() {
-            self.try_enter_next_state(&session, world);
+            self.try_enter_next_state(world, &session);
         } else {
-            if !world.access_mut(&session, |data| {
-                data.with_ready_to_play(ready);
-            }) {
-                log::warn!("{} accesses an invalid game player", session);
-                session.close();
-            }
+            // 플레이어 데이터를 가져옵니다.
+            let mut player = match world.players.get_mut(&uid) {
+                Some(guard) => guard,
+                None => {
+                    log::error!("Player({}) not found in {}!", &uid, &world);
+                    eprintln!("Player({}) not found in {}!", &uid, &world);
+                    session.close();
+                    return;
+                }
+            };
+
+            // 플레이어의 준비 상태를 설정합니다.
+            player.set_ready_to_play(ready);
         }
     }
 
@@ -70,7 +142,19 @@ impl GameWorldRoomState {
         uid: UserId,
         team: Team,
     ) {
-        /* TODO */
+        // 플레이어 데이터를 가져옵니다.
+        let mut player = match world.players.get_mut(&uid) {
+            Some(guard) => guard,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        // 플레이어의 팀을 설정합니다.
+        player.set_team(team);
     }
 
     /// [`GameWorldRoomStateEvent::ChangeDuplicateOption`] 이벤트를 처리합니다.
@@ -81,7 +165,14 @@ impl GameWorldRoomState {
         uid: UserId,
         duplicates: bool,
     ) {
-        /* TODO */
+        // 게임 월드 관리자인지 확인합니다.
+        if uid == world.admin() {
+            self.allow_duplicates = duplicates;
+        } else {
+            log::error!("{} lacks permission in the {}!", &session, &world);
+            eprintln!("{} lacks permission in the {}!", &session, &world);
+            session.close();
+        }
     }
 
     /// [`GameWorldRoomStateEvent::ChangeBalanceOption`] 이벤트를 처리합니다.
@@ -90,134 +181,126 @@ impl GameWorldRoomState {
         world: &GameWorld,
         session: Arc<Session>,
         uid: UserId,
-        balance: bool,
+        unbalanced: bool,
     ) {
-        /* TODO */
+        // 게임 월드 관리자인지 확인합니다.
+        if uid == world.admin() {
+            self.allow_unbalanced = unbalanced;
+        } else {
+            log::error!("{} lacks permission in the {}!", &session, &world);
+            eprintln!("{} lacks permission in the {}!", &session, &world);
+            session.close();
+        }
     }
-}
 
-//--------------------------------------------------------------------------------------------
-// 처리와 관련된 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl GameWorldRoomState {
     /// 다음 게임 월드 상태로 전환을 시도합니다.
-    fn try_enter_next_state(&mut self, session: &Session, world: &GameWorld) {
-        // 락을 획득합니다.
+    fn try_enter_next_state(&mut self, world: &GameWorld, session: &Arc<Session>) {
+        // 락을 획득합니다. 락은 함수 종료 시점에 해제됩니다.
+        // 주의: tokio에서 호출될 경우 스케쥴링 과정에서 데드락이 발생할 수 있습니다.
         let num_players = world.num_players.lock();
 
         // 인원 수가 부족한 경우
         if *num_players < 2 {
-            // 패킷을 전송합니다.
+            // 패킷을 생성 후 전송합니다.
             let reason = StartFailedReason::NotEnoughPlayers;
-            let packet = CustomGameStartFailedPacket::new(reason);
+            let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
             return;
-        }
-
-        // 각 팀에 속한 인원과 게임 관리자를 제외한 전원이 준비되었는지 확인합니다.
-        let admin = world.admin();
-        let mut num_reds = 0;
-        let mut num_blues = 0;
-        let mut other_player_readys = true;
-        for player in world.players.iter() {
-            if player.team() == Team::Blue {
-                num_blues += 1;
-            } else {
-                num_reds += 1;
-            }
-
-            if *player.key() != admin {
-                other_player_readys &= player.is_ready_to_play();
-            }
         }
 
         // 각 팀에 속한 인원이 1명 이상 존재하는지 확인합니다.
-        if num_reds == 0 {
-            let reason = StartFailedReason::EmptyRedTeam;
-            let packet = CustomGameStartFailedPacket::new(reason);
+        if self.num_blue_players == 0 {
+            let reason = StartFailedReason::EmptyBlueTeam;
+            let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
             return;
-        } else if num_blues == 0 {
-            let reason = StartFailedReason::EmptyBlueTeam;
-            let packet = CustomGameStartFailedPacket::new(reason);
+        } else if self.num_red_players == 0 {
+            let reason = StartFailedReason::EmptyRedTeam;
+            let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
             return;
         }
 
         // 팀 밸런스를 확인합니다.
-        if self.is_balanced && num_blues != num_reds {
+        if !self.allow_unbalanced && self.num_blue_players != self.num_red_players {
             let reason = StartFailedReason::UnbalancedTeams;
-            let packet = CustomGameStartFailedPacket::new(reason);
+            let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
             return;
         }
 
-        if other_player_readys {
-            // world.set_closed(true);
+        // 관리자를 제외한 모든 플레이어가 준비가 되었는지 확인합니다.
+        let all_player_readys: bool = world
+            .players
+            .iter()
+            .filter(|player| *player.key() != world.admin())
+            .all(|player| player.is_ready_to_play());
+        if all_player_readys {
+            // 게임 월드를 닫습니다.
+            world.set_closed(true);
 
-            // let next_state = GameWorldFormationState::new(self.allow_duplicates, self.stage_kind);
-            // let state_flow = GameWorldStateFlow::Push(Box::new(next_state));
-            // world.push_state_flow(state_flow);
-
-            // // 게임 월드에 참여한 모든 세션에 이벤트를 보냅니다.
-            // for item in world.sessions.iter() {
-            //     item.key().push_event(SessionEvents::EnterFormation);
-            // }
+            // TODO!
         } else {
             let reason = StartFailedReason::PlayersNotReady;
-            let packet = CustomGameStartFailedPacket::new(reason);
+            let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
         }
-    }
-}
 
-//--------------------------------------------------------------------------------------------
-// 패킷 전송과 관련된 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl GameWorldRoomState {
+        drop(num_players);
+    }
+
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
+        // 플레이어 데이터를 수집합니다.
         let players: Vec<_> = world
             .players
             .iter()
-            .map(|item| {
-                RecruitPhasePlayer::new(
-                    item.account().clone(),
-                    item.team(),
-                    item.is_ready_to_play(),
-                    item.permission(),
+            .map(|player| {
+                CustomRoomPlayerData::new(
+                    player.key().clone(),
+                    player.name,
+                    player.profile_icon,
+                    player.permission(),
+                    player.team(),
+                    player.tier(),
+                    player.is_ready_to_play(),
                 )
             })
             .collect();
 
         // 플레이어가 비어있는 경우 실행을 생략합니다.
-        if players.is_empty() {
+        if players.len() == 0 {
             return;
         }
 
         // 패킷을 생성합니다.
-        let packet = CustomGamePullPacket::new(self.allow_duplicates, self.stage_kind, players);
+        let packet = RoomDataUpdatePacket::from_iter(
+            world.world_id,
+            self.stage_kind,
+            self.allow_duplicates,
+            self.allow_unbalanced,
+            players,
+        );
 
         // 패킷을 각 세션에 전송합니다.
-        for session in world.sessions.iter() {
-            session.key().tcp_write(packet.as_raw());
+        for guard in world.sessions.iter() {
+            let session = guard.key().as_ref();
+            session.tcp_write(packet.as_raw());
         }
     }
 }
-
-//--------------------------------------------------------------------------------------------
 
 impl GameWorldState for GameWorldRoomState {
     fn on_resume(&mut self, world: &Arc<GameWorld>) {
         world.set_closed(false);
 
-        // 모든 플레이어의 부울 플래그를 `false`로 설정합니다.
+        // 모든 플레이어의 준비 상태를 `false`로 설정합니다.
         for mut player in world.players.iter_mut() {
-            player.with_ready_to_play(false);
+            player.set_ready_to_play(false);
         }
     }
 
-    fn handle_event(&mut self, event: GameWorldEvent, world: &Arc<GameWorld>) {
+    fn handle_event(&mut self, world: &Arc<GameWorld>, event: GameWorldEvent) {
         match event {
             GameWorldEvent::System {
                 session,
@@ -245,8 +328,8 @@ impl GameWorldState for GameWorldRoomState {
                 GameWorldRoomStateEvent::ChangeDuplicateOption(duplicates) => {
                     self.handle_change_duplicate_option_event(world, session, uid, duplicates);
                 }
-                GameWorldRoomStateEvent::ChangeBalanceOption(balance) => {
-                    self.handle_change_balance_option_event(world, session, uid, balance);
+                GameWorldRoomStateEvent::ChangeUnbalanceOption(unbalanced) => {
+                    self.handle_change_balance_option_event(world, session, uid, unbalanced);
                 }
             },
             _ => {
@@ -259,13 +342,15 @@ impl GameWorldState for GameWorldRoomState {
         }
     }
 
-    fn on_advanced(&mut self, world: &Arc<GameWorld>, _elapsed_time_sec: f32) {
-        self.broadcast(world);
-    }
-}
+    fn on_advanced(&mut self, world: &Arc<GameWorld>, elapsed_time_sec: f32) {
+        // 경과 시간을 갱신합니다.
+        self.elapsed_time_sec += elapsed_time_sec;
 
-impl fmt::Debug for GameWorldRoomState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(GameWorldRoomState))
+        // 일정 시각마다 패킷을 전송합니다.
+        const TICK: f32 = 1.0 / 30.0;
+        if self.elapsed_time_sec >= TICK {
+            self.elapsed_time_sec = 0.0;
+            self.broadcast(world);
+        }
     }
 }

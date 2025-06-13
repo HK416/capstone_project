@@ -1,9 +1,10 @@
 mod lobby;
 mod parser;
 mod raw;
+mod room;
 mod title;
 
-pub use self::{lobby::*, parser::*, raw::*, title::*};
+pub use self::{lobby::*, parser::*, raw::*, room::*, title::*};
 
 /// 모든 파생 패킷이 구현해야 하는 `triat`입니다.
 pub trait Packet: Sized {

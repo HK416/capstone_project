@@ -5,7 +5,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::protocol::{
-    LoginFailedPacket, LoginSuccessPacket, Packet, PacketType, RawPacket, RequestLoginPacket,
+    LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket,
 };
 use winit::{
     event::Modifiers,
@@ -19,7 +19,7 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, GameExitModalScene, LoginFailedModalScene, MainLobbyEnterScene,
-        BASE_WIDTH,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
     },
     SERVER_TCP_ADDR,
 };
@@ -70,18 +70,10 @@ impl GameScene for GameLoginModalScene {
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
-        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
-        let title = ERR_TITLE_TEXTS[i];
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
-            NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
-            NetworkError::IO(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
-                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.
@@ -95,7 +87,7 @@ impl GameScene for GameLoginModalScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::ResponseLoginFailed => {
+            PacketType::LoginFailed => {
                 let packet = LoginFailedPacket::from_raw(packet);
 
                 // 다음 게임 장면으로 전환합니다.
@@ -109,7 +101,7 @@ impl GameScene for GameLoginModalScene {
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }
-            PacketType::ResponseLoginSuccess => {
+            PacketType::LoginSuccess => {
                 // 사용자 정보와 로그인 토큰을 저장합니다.
                 let packet = LoginSuccessPacket::from_raw(packet);
 
@@ -259,7 +251,7 @@ impl GameScene for GameLoginModalScene {
                             self.requested = true;
 
                             // 로그인 요청 패킷을 생성합니다.
-                            let packet = RequestLoginPacket::new();
+                            let packet = LoginRequestPacket::new();
 
                             // 패킷을 게임 서버에 전송합니다.
                             let net_manager = app.net_manager();

@@ -58,20 +58,20 @@ impl TryFromBigEndian for JoinFailedReason {
 
 /// 서버가 클라이언트로 보내는 커스텀 게임 참여 실패 알림 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JoinFailedPacket {
+pub struct JoinRoomFailedPacket {
     pub reason: JoinFailedReason,
 }
 
-impl JoinFailedPacket {
+impl JoinRoomFailedPacket {
     /// 새로운 패킷을 생성합니다.
     pub const fn new(reason: JoinFailedReason) -> Self {
         Self { reason }
     }
 }
 
-impl Packet for JoinFailedPacket {
+impl Packet for JoinRoomFailedPacket {
     fn packet_type() -> PacketType {
-        PacketType::ResponseJoinFailed
+        PacketType::JoinRoomFailed
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -86,7 +86,7 @@ impl Packet for JoinFailedPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(JoinFailedPacket)
+                stringify!(JoinRoomFailedPacket)
             )
         };
 
@@ -165,10 +165,10 @@ mod tests {
     }
 
     #[test]
-    fn test_join_failed_packet() {
-        let origin = JoinFailedPacket::new(JoinFailedReason::InProgress);
+    fn test_join_room_failed_packet() {
+        let origin = JoinRoomFailedPacket::new(JoinFailedReason::InProgress);
         let raw = origin.as_raw();
-        let other = JoinFailedPacket::from_raw(raw);
+        let other = JoinRoomFailedPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);

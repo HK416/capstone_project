@@ -8,11 +8,12 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        LoginToken, Permission, RecruitPhasePlayer, Team, UserId, WorldId, MAX_IN_GAME_PLAYERS,
+        CustomRoomPlayerData, LoginToken, Permission, StageKind, Team, UserId, WorldId,
+        MAX_IN_GAME_PLAYERS,
     },
     protocol::{
-        CustomGameLeavePacket, CustomGamePullPacket, CustomGameReadyPacket,
-        CustomGameStartFailedPacket, FormationPullPacket, Packet, PacketType, RawPacket,
+        Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomLeaveNotifyPacket,
+        RoomReadyRequestPacket, StartFailedReason, StartGameFailedPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -21,7 +22,9 @@ use winit::window::Window;
 use crate::{
     asset::{TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::FatalErrorSceneLayer,
+    scenes::{
+        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+    },
     SERVER_TCP_ADDR,
 };
 
@@ -53,19 +56,23 @@ pub struct CustomGameRoomScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
     /// 현재 클라이언트의 사용자 식별자입니다.
-    user_id: UserId,
+    uid: UserId,
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
     /// 커스텀 게임 대기실의 월드 식별자입니다.
     world_id: WorldId,
+    /// 지형 종류입니다.
+    stage_kind: StageKind,
+    /// 캐릭터 중복 허용 여부
+    allow_duplicates: bool,
+    /// 팀 밸런스 불균형 허용 여부
+    allow_unbalanced: bool,
     /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.
-    players: Vec<RecruitPhasePlayer>,
+    players: Vec<CustomRoomPlayerData>,
 
     /// 배경화면 텍스처의 식별자입니다.
     bg_texture_id: egui::load::SizedTexture,
-    /// 다음 게임 장면 전환 여부입니다.
-    formation_packet: Option<FormationPullPacket>,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -79,33 +86,35 @@ impl CustomGameRoomScene {
     /// # Panics
     /// `UserId` 또는 `LoginToken`이 NULL인 경우 `panic!`을 호출합니다.
     ///
-    pub fn new<I>(
+    pub fn new(
         locale: Locale,
-        user_id: UserId,
+        uid: UserId,
         token: LoginToken,
+        world_id: WorldId,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
-        world_id: WorldId,
-        iter: I,
-    ) -> Self
-    where
-        I: IntoIterator<Item = RecruitPhasePlayer>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        assert_ne!(user_id, UserId::NULL, "invalid user identifier");
+        stage_kind: StageKind,
+        allow_duplicates: bool,
+        allow_unbalanced: bool,
+        players: Vec<CustomRoomPlayerData>,
+    ) -> Self {
+        assert_ne!(uid, UserId::NULL, "invalid user identifier");
+        assert_ne!(world_id, WorldId::NULL, "invalid world identifier");
         assert_ne!(token, LoginToken::NULL, "invalid login token");
 
         Self {
             locale,
-            user_id,
+            uid,
             token,
             world_id,
-            players: iter.into_iter().collect(),
+            players,
+            stage_kind,
+            allow_duplicates,
+            allow_unbalanced,
             bg_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
-            formation_packet: None,
             texture_pool,
             texture_view_pool,
         }
@@ -140,28 +149,16 @@ impl GameScene for CustomGameRoomScene {
         };
     }
 
-    fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        self.formation_packet = None;
-    }
+    fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {}
 
-    fn on_pause(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        self.formation_packet = None;
-    }
+    fn on_pause(&mut self, _window: &Window, _app: &dyn AppHandle) {}
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
-        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
-        let title = ERR_TITLE_TEXTS[i];
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
-            NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
-            NetworkError::IO(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
-                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.
@@ -175,15 +172,15 @@ impl GameScene for CustomGameRoomScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CustomGamePull => {
-                let packet = CustomGamePullPacket::from_raw(packet);
+            PacketType::RoomDataUpdate => {
+                let packet = RoomDataUpdatePacket::from_raw(packet);
+                self.stage_kind = packet.stage_kind();
+                self.allow_duplicates = packet.allow_duplicates();
+                self.allow_unbalanced = packet.allow_unbalanced();
                 self.players = packet.players;
             }
-            PacketType::FormationPull => {
-                self.formation_packet = Some(FormationPullPacket::from_raw(packet));
-            }
-            PacketType::CustomGameStartFailed => {
-                let packet = CustomGameStartFailedPacket::from_raw(packet);
+            PacketType::StartGameFailed => {
+                let packet = StartGameFailedPacket::from_raw(packet);
 
                 // 다음 게임 장면으로 전환합니다.
                 let i = self.locale as usize;
@@ -191,21 +188,11 @@ impl GameScene for CustomGameRoomScene {
                     self.locale,
                     ERR_TITLE_TEXTS[i],
                     match packet.reason {
-                        mod_network::components::StartFailedReason::NotEnoughPlayers => {
-                            NOT_ENOUGH_ERR_TEXTS[i]
-                        }
-                        mod_network::components::StartFailedReason::UnbalancedTeams => {
-                            UNBALANCED_ERR_TEXTS[i]
-                        }
-                        mod_network::components::StartFailedReason::PlayersNotReady => {
-                            PLAYER_NOT_READY_ERR_TEXTS[i]
-                        }
-                        mod_network::components::StartFailedReason::EmptyBlueTeam => {
-                            EMPTY_BLUE_ERR_TEXTS[i]
-                        }
-                        mod_network::components::StartFailedReason::EmptyRedTeam => {
-                            EMPTY_RED_ERR_TEXTS[i]
-                        }
+                        StartFailedReason::NotEnoughPlayers => NOT_ENOUGH_ERR_TEXTS[i],
+                        StartFailedReason::UnbalancedTeams => UNBALANCED_ERR_TEXTS[i],
+                        StartFailedReason::PlayersNotReady => PLAYER_NOT_READY_ERR_TEXTS[i],
+                        StartFailedReason::EmptyBlueTeam => EMPTY_BLUE_ERR_TEXTS[i],
+                        StartFailedReason::EmptyRedTeam => EMPTY_RED_ERR_TEXTS[i],
                     },
                 ));
                 let scene_flow = GameSceneFlow::Push(next_scene);
@@ -215,7 +202,7 @@ impl GameScene for CustomGameRoomScene {
             }
             _ => {
                 log::warn!(
-                    "ignored >> invalid packet received! (TYPE:{:?})",
+                    "packet ignored: invalid packet received! (TYPE:{:?})",
                     packet_type
                 );
             }
@@ -225,21 +212,21 @@ impl GameScene for CustomGameRoomScene {
     }
 
     fn on_update(&mut self, _: f32, _: &Window, app: &dyn AppHandle) {
-        if let Some(packet) = self.formation_packet.as_ref() {
-            // let next_scene = Box::new(CharacterFormationScene::new(
-            //     self.locale,
-            //     self.user_id,
-            //     self.token,
-            //     self.texture_pool.clone(),
-            //     self.texture_view_pool.clone(),
-            //     packet.remaining_time,
-            //     packet.players.clone(),
-            // ));
-            // let scene_flow = GameSceneFlow::Push(next_scene);
-            // let event = AppEvent::AddGameSceneFlow(scene_flow);
-            // let event_loop_proxy = app.event_loop_proxy();
-            // event_loop_proxy.send_event(event).unwrap();
-        }
+        // if let Some(packet) = self.formation_packet.as_ref() {
+        // let next_scene = Box::new(CharacterFormationScene::new(
+        //     self.locale,
+        //     self.user_id,
+        //     self.token,
+        //     self.texture_pool.clone(),
+        //     self.texture_view_pool.clone(),
+        //     packet.remaining_time,
+        //     packet.players.clone(),
+        // ));
+        // let scene_flow = GameSceneFlow::Push(next_scene);
+        // let event = AppEvent::AddGameSceneFlow(scene_flow);
+        // let event_loop_proxy = app.event_loop_proxy();
+        // event_loop_proxy.send_event(event).unwrap();
+        // }
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -265,11 +252,11 @@ impl GameScene for CustomGameRoomScene {
         let mut permission = Permission::User;
         let mut ready = false;
         for player in self.players.iter() {
-            if self.user_id == player.account.uid {
+            if self.uid == player.uid {
                 permission = player.permission();
-                ready = player.is_ready();
+                ready = player.is_ready_to_play();
             } else {
-                other_players_ready &= player.is_ready();
+                other_players_ready &= player.is_ready_to_play();
             }
         }
         let button_color = match ready {
@@ -328,7 +315,7 @@ impl GameScene for CustomGameRoomScene {
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     if ui.add(exit_button).clicked() {
                         // 패킷을 생성하고 전송합니다.
-                        let packet = CustomGameLeavePacket::new(self.user_id, self.token);
+                        let packet = RoomLeaveNotifyPacket::new(self.uid, self.token);
                         let net_manager = app.net_manager();
                         let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
                         socket.push_packet(packet.as_raw());
@@ -357,10 +344,10 @@ impl GameScene for CustomGameRoomScene {
                     for i in 0..MAX_IN_GAME_PLAYERS {
                         let ui = &mut cols[i % 2];
                         if let Some(player) = iter.next() {
-                            let text = if player.account.uid == self.user_id {
-                                &format!("*me* {}", &player.account.name.to_string())
+                            let text = if player.uid == self.uid {
+                                &format!("*me* {}", &player.name.to_string())
                             } else {
-                                &player.account.name.to_string()
+                                &player.name.to_string()
                             };
                             let text = egui::RichText::new(text)
                                 .font(font_id.clone())
@@ -371,11 +358,11 @@ impl GameScene for CustomGameRoomScene {
                                 .stroke(egui::Stroke::new(
                                     3.0 * scale,
                                     match player.team() {
-                                        Team::Blue => match player.is_ready() {
+                                        Team::Blue => match player.is_ready_to_play() {
                                             true => TEAM_COLOR[Team::Blue as usize],
                                             false => egui::Color32::DARK_BLUE,
                                         },
-                                        Team::Red => match player.is_ready() {
+                                        Team::Red => match player.is_ready_to_play() {
                                             true => TEAM_COLOR[Team::Red as usize],
                                             false => egui::Color32::DARK_RED,
                                         },
@@ -410,8 +397,7 @@ impl GameScene for CustomGameRoomScene {
                     ui.centered_and_justified(|ui| {
                         if ui.add(enter_button).clicked() {
                             // 패킷을 생성하고 전송합니다.
-                            let packet =
-                                CustomGameReadyPacket::new(self.user_id, self.token, !ready);
+                            let packet = RoomReadyRequestPacket::new(self.uid, self.token, !ready);
                             let net_manager = app.net_manager();
                             let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
                             socket.push_packet(packet.as_raw());

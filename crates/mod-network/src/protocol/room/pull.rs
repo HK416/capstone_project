@@ -1,41 +1,123 @@
 use crate::{
-    components::{BigEndian, RecruitPhasePlayer, StageKind, MAX_IN_GAME_PLAYERS},
+    components::{
+        BigEndian, CustomRoomPlayerData, StageKind, TryFromBigEndian, WorldId, MAX_IN_GAME_PLAYERS,
+    },
     protocol::{Packet, PacketType, RawPacket},
 };
 
-/// 서버에서 클라이언트로 보내는 커스텀 게임 갱신 요청 패킷입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CustomGamePullPacket {
-    /// 여러 자료형의 데이터로 이뤄진 비트 필드입니다.  
-    /// 아래 자료형이 포함됩니다.
-    /// - bool (1bit): 캐릭터 중복 허용 여부
-    /// - StageKind (4bit): 스테이지 종류
-    pub bitfield: u8,
-    /// 참여한 플레이어 목록입니다.
-    pub players: Vec<RecruitPhasePlayer>,
+/// 비트 필드 데이터입니다.
+///
+/// 아래 데이터가 포함되어있습니다.
+/// - stage_king       | 4bit | 스테이지 종류
+/// - allow_duplicates | 1bit | 캐릭터 중복 허용 여부
+/// - unbalanced       | 1bit | 팀 균형 여부
+///
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Bitfield(u8);
+
+impl Bitfield {
+    const STAGE_BIT_MASK: u8 = 0x0F;
+    const STAGE_SHIFT: usize = 0;
+    const DUPLICATE_BIT_MASK: u8 = 0x01;
+    const DUPLICATE_SHIFT: usize = 4;
+    const UNBALANCE_BIT_MASK: u8 = 0x01;
+    const UNBALANCE_SHIFT: usize = 5;
+
+    /// 새로운 비트 필드 데이터를 생성합니다.
+    pub const fn new() -> Self {
+        Self(0x00)
+    }
+
+    /// 스테이지 종류를 반환합니다.
+    pub fn stage_kind(&self) -> StageKind {
+        let val = ((self.0 >> Self::STAGE_SHIFT) & Self::STAGE_BIT_MASK) as u8;
+        StageKind::new(val).unwrap_or_default()
+    }
+
+    /// 스테이지 종류를 설정합니다.
+    pub const fn with_stage_kind(mut self, stage_kind: StageKind) -> Self {
+        self.0 &= !(Self::STAGE_BIT_MASK << Self::STAGE_SHIFT);
+        self.0 |= ((stage_kind as u8) & Self::STAGE_BIT_MASK) << Self::STAGE_SHIFT;
+        self
+    }
+
+    /// 캐릭터 중복 여부를 반환합니다.
+    pub fn allow_duplicates(&self) -> bool {
+        (self.0 >> Self::DUPLICATE_SHIFT) & Self::DUPLICATE_BIT_MASK == Self::DUPLICATE_BIT_MASK
+    }
+
+    /// 캐릭터 중복 여부를 설정합니다.
+    pub const fn with_allow_duplicates(mut self, duplicates: bool) -> Self {
+        self.0 &= !(Self::DUPLICATE_BIT_MASK << Self::DUPLICATE_SHIFT);
+        self.0 |= ((duplicates as u8) & Self::DUPLICATE_BIT_MASK) << Self::DUPLICATE_SHIFT;
+        self
+    }
+
+    /// 팀 불균형 허용 여부를 반환합니다.
+    pub fn allow_unbalanced(&self) -> bool {
+        (self.0 >> Self::UNBALANCE_SHIFT) & Self::UNBALANCE_BIT_MASK == Self::UNBALANCE_BIT_MASK
+    }
+
+    /// 팀 불균형 여부를 설정합니다.
+    pub const fn with_allow_unbalanced(mut self, unbalanced: bool) -> Self {
+        self.0 &= !(Self::UNBALANCE_BIT_MASK << Self::UNBALANCE_SHIFT);
+        self.0 |= ((unbalanced as u8) & Self::UNBALANCE_BIT_MASK) << Self::UNBALANCE_SHIFT;
+        self
+    }
 }
 
-impl CustomGamePullPacket {
+impl Default for Bitfield {
+    fn default() -> Self {
+        Self(0x00)
+    }
+}
+
+impl BigEndian for Bitfield {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self(u8::from_big_endian_bytes(bytes))
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.0.to_big_endian_bytes()
+    }
+}
+
+/// 서버에서 클라이언트로 보내는 커스텀 게임 갱신 요청 패킷입니다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoomDataUpdatePacket {
+    /// 게임 월드 식별자입니다.
+    pub id: WorldId,
+    /// 비트 필드 데이터입니다.
+    bitfield: Bitfield,
+    /// 참여한 플레이어 목록입니다.
+    pub players: Vec<CustomRoomPlayerData>,
+}
+
+impl RoomDataUpdatePacket {
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
     pub fn new(
-        allow_duplicates: bool,
+        id: WorldId,
         stage_kind: StageKind,
-        players: Vec<RecruitPhasePlayer>,
+        duplicates: bool,
+        unbalanced: bool,
+        players: Vec<CustomRoomPlayerData>,
     ) -> Self {
-        assert!(
-            0 < players.len() && players.len() <= MAX_IN_GAME_PLAYERS,
-            "There are more people participaing in the game than the capacity!"
-        );
+        assert!(!players.is_empty(), "the given data is empty!");
+        assert!(players.len() <= MAX_IN_GAME_PLAYERS, "Too many players!");
 
-        let allow_duplicates_bitfield = (allow_duplicates as u8) << 4;
-        let stage_kind_bitfield = (stage_kind as u8) << 0;
-        let bitfield = allow_duplicates_bitfield | stage_kind_bitfield;
-
-        Self { bitfield, players }
+        Self {
+            id,
+            players,
+            bitfield: Bitfield::new()
+                .with_stage_kind(stage_kind)
+                .with_allow_duplicates(duplicates)
+                .with_allow_unbalanced(unbalanced),
+        }
     }
 
     /// 새로운 패킷을 생성합니다.
@@ -43,41 +125,45 @@ impl CustomGamePullPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
-    pub fn from_iter<I>(allow_duplicates: bool, stage_kind: StageKind, iter: I) -> Self
+    pub fn from_iter<I>(
+        id: WorldId,
+        stage_kind: StageKind,
+        duplicates: bool,
+        unbalanced: bool,
+        iter: I,
+    ) -> Self
     where
-        I: IntoIterator<Item = RecruitPhasePlayer>,
+        I: IntoIterator<Item = CustomRoomPlayerData>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(allow_duplicates, stage_kind, iter.into_iter().collect())
+        Self::new(
+            id,
+            stage_kind,
+            duplicates,
+            unbalanced,
+            iter.into_iter().collect(),
+        )
     }
 
-    /// 캐릭터 중복 여부를 설정합니다.
-    pub fn with_allow_duplicates(&mut self, allow_duplicates: bool) -> &mut Self {
-        self.bitfield = (self.bitfield & (0x1 << 4)) | (allow_duplicates as u8) << 4;
-        self
-    }
-
-    /// 캐릭터 중복 여부를 가져옵니다.
+    /// 캐릭터 중복 여부를 반환합니다.
     pub fn allow_duplicates(&self) -> bool {
-        self.bitfield >> 4 & 0x1 == 0x1
+        self.bitfield.allow_duplicates()
     }
 
-    /// 스테이지 종류를 설정합니다.
-    pub fn with_stage_kind(&mut self, stage_kind: StageKind) -> &mut Self {
-        self.bitfield = (self.bitfield & (0xF << 0)) | (stage_kind as u8) << 0;
-        self
+    /// 팀 불균형 허용 여부를 반환합니다.
+    pub fn allow_unbalanced(&self) -> bool {
+        self.bitfield.allow_unbalanced()
     }
 
-    /// 스테이지 종류를 가져옵니다.
+    /// 스테이지 종류를 반환합니다.
     pub fn stage_kind(&self) -> StageKind {
-        let val = (self.bitfield >> 0) & 0xF;
-        StageKind::new(val).unwrap_or_default()
+        self.bitfield.stage_kind()
     }
 }
 
-impl Packet for CustomGamePullPacket {
+impl Packet for RoomDataUpdatePacket {
     fn packet_type() -> PacketType {
-        PacketType::CustomGamePull
+        PacketType::RoomDataUpdate
     }
 
     /// 패킷을 RawPacket으로 변환합니다.
@@ -86,25 +172,14 @@ impl Packet for CustomGamePullPacket {
     /// `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
     fn as_raw(&self) -> RawPacket {
-        // 바이트 스트림 레이아웃
-        // +-------------------+
-        // | 비트 필드 (1byte)   |
-        // +-------------------+
-        // | 참가 인원 수 (1byte) |
-        // +-------------------+
-        // | 사용자 정보          |
-        // +-------------------+
-        //
-        let num_players = self.players.len();
-        assert!(
-            num_players <= MAX_IN_GAME_PLAYERS,
-            "There are more people participaing in the game than the capacity!"
-        );
-        let data_size =
-            u8::byte_size() + u8::byte_size() + num_players * RecruitPhasePlayer::byte_size();
-
         // 바이트 스트림을 생성합니다.
+        let num_players = self.players.len();
+        let data_size = WorldId::byte_size()
+            + u8::byte_size()
+            + u8::byte_size()
+            + CustomRoomPlayerData::byte_size() * num_players;
         let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&self.id.to_big_endian_bytes());
         data.extend_from_slice(&self.bitfield.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
@@ -117,11 +192,11 @@ impl Packet for CustomGamePullPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(CustomGamePullPacket)
+                stringify!(RoomDataUpdatePacket)
             );
         }
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     fn try_from_raw(raw: RawPacket) -> Option<Self> {
@@ -135,19 +210,25 @@ impl Packet for CustomGamePullPacket {
             return None;
         }
 
-        // 비트 필드를 가져옵니다.
+        // 게임 월드 식별자를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = u8::byte_size();
+        let mut size = WorldId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let bitfield = u8::from_big_endian_bytes(data);
+        let id = WorldId::from_big_endian_bytes(data);
+
+        // 비트 필드를 가져옵니다.
+        offset = offset + size;
+        size = Bitfield::byte_size();
+        data = &bytes[offset..offset + size];
+        let bitfield = Bitfield::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
         offset = offset + size;
         size = u8::byte_size();
         data = &bytes[offset..offset + size];
         let num_players = u8::from_big_endian_bytes(data) as usize;
-        if num_players > MAX_IN_GAME_PLAYERS {
+        if num_players <= 0 || num_players > MAX_IN_GAME_PLAYERS {
             return None;
         }
 
@@ -155,52 +236,76 @@ impl Packet for CustomGamePullPacket {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
         for _ in 0..num_players {
             offset = offset + size;
-            size = RecruitPhasePlayer::byte_size();
+            size = CustomRoomPlayerData::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(RecruitPhasePlayer::from_big_endian_bytes(data));
+            players.push(CustomRoomPlayerData::try_from_big_endian_bytes(data)?);
         }
 
-        Some(Self { bitfield, players })
+        Some(Self {
+            id,
+            bitfield,
+            players,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{Permission, RecruitPhasePlayer, Team, UserAccount, UserId, UserName};
+    use crate::components::{
+        CustomRoomPlayerData, GameTier, Permission, ProfileIcon, Team, UserId, UserName,
+    };
 
     use super::*;
 
     #[test]
-    fn test_custom_game_pull_packet() {
-        let player_0 = RecruitPhasePlayer::new(
-            UserAccount::new(UserId::new(12341), UserName::from_str("Aris")),
-            Team::Blue,
-            false,
+    fn test_room_data_update_packet() {
+        let player_0 = CustomRoomPlayerData::new(
+            UserId::new(12341),
+            UserName::from_str("아리수"),
+            ProfileIcon::CharacterAris,
             Permission::Admin,
-        );
-        let player_1 = RecruitPhasePlayer::new(
-            UserAccount::new(UserId::new(21321), UserName::from_str("Yuzu")),
-            Team::Red,
-            true,
-            Permission::User,
-        );
-        let player_2 = RecruitPhasePlayer::new(
-            UserAccount::new(UserId::new(34121), UserName::from_str("Momoi")),
             Team::Blue,
+            GameTier::Silver,
             false,
-            Permission::User,
         );
-        let player_3 = RecruitPhasePlayer::new(
-            UserAccount::new(UserId::new(14211), UserName::from_str("Midori")),
-            Team::Red,
-            true,
+        let player_1 = CustomRoomPlayerData::new(
+            UserId::new(21321),
+            UserName::from_str("유즈퀸"),
+            ProfileIcon::CharacterYuzu,
             Permission::User,
+            Team::Red,
+            GameTier::Platinum,
+            true,
+        );
+        let player_2 = CustomRoomPlayerData::new(
+            UserId::new(34121),
+            UserName::from_str("데스모모이"),
+            ProfileIcon::CharacterMomoi,
+            Permission::User,
+            Team::Blue,
+            GameTier::Gold,
+            false,
+        );
+        let player_3 = CustomRoomPlayerData::new(
+            UserId::new(14211),
+            UserName::from_str("미도리"),
+            ProfileIcon::CharacterMidori,
+            Permission::User,
+            Team::Red,
+            GameTier::Bronze,
+            true,
         );
         let players = vec![player_0, player_1, player_2, player_3];
 
-        let origin = CustomGamePullPacket::new(true, StageKind::City, players);
+        let origin = RoomDataUpdatePacket::new(
+            WorldId::new(12312451),
+            StageKind::City,
+            true,
+            false,
+            players,
+        );
         let raw = origin.as_raw();
-        let other = CustomGamePullPacket::from_raw(raw);
+        let other = RoomDataUpdatePacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

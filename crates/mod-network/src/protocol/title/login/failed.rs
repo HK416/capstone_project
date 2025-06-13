@@ -68,7 +68,7 @@ impl LoginFailedPacket {
 
 impl Packet for LoginFailedPacket {
     fn packet_type() -> PacketType {
-        PacketType::ResponseLoginFailed
+        PacketType::LoginFailed
     }
 
     fn as_raw(&self) -> RawPacket {

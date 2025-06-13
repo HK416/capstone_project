@@ -101,12 +101,6 @@ impl Session {
         self.received_packets.push(packet);
     }
 
-    /// 세션 상태 흐름을 대기열에 추가합니다.   
-    /// 주의: 추가된 세션 상태 흐름은 바로 처리되지 않습니다.
-    pub fn add_flows(&self, flow: SessionStateFlow) {
-        self.flows.push(flow);
-    }
-
     /// 네트워크 상태를 반환합니다.
     pub fn network_state(&self) -> NetworkState {
         let ping = self.ping.load(MemOrdering::Acquire);
