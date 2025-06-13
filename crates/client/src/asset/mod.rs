@@ -147,27 +147,10 @@ pub const CHARACTER_URIS: [&'static str; NUM_CHARACTERS] = [
 ];
 
 /// 엠블럼 배경의 `Uri`입니다.
-pub const PROFILE_BG_URI: &'static str = "Profile_BG";
+pub const EMBLEM_BG_URI: &'static str = "Emblem_BG";
 
 /// 프로필 아이콘의 `Uri`입니다.
-pub const PROFILE_ICON_URIS: [&'static str; NUM_PROFILE_ICONS] = [
-    "CH_Icon_Sensei",
-    "CH_Icon_Aris",
-    "CH_Icon_Momoi",
-    "CH_Icon_Midori",
-    "CH_Icon_Yuuka",
-    "CH_Icon_Yuzu",
-    "Group_Icon_Schale",
-    "Group_Icon_Abydos",
-    "Group_Icon_Gehenna",
-    "Group_Icon_Hyakkiyako",
-    "Group_Icon_Millennium",
-    "Group_Icon_RedWinter",
-    "Group_Icon_Shanhaijing",
-    "Group_Icon_SRT",
-    "Group_Icon_Trinity",
-    "Group_Icon_Valkyrie",
-];
+pub const PROFILE_ICON_URI: &'static str = "Profile_Icon";
 
 /// 무기 아이콘 `Uri`입니다.
 pub const WEAPON_ICON_URI: &'static str = "Weapon_Icon";

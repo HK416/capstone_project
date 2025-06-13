@@ -15,7 +15,7 @@ use winit::window::Window;
 use crate::{
     asset::{
         SamplerPool, TextureDataPool, TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI,
-        NOTOSANS_BOLD, PROFILE_BG_URI, PROFILE_ICON_URIS, RANK_ICON_URI,
+        EMBLEM_BG_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -127,7 +127,7 @@ impl MainLobbyEnterScene {
 
             let result = texture_data_pool.get_or_init(
                 &workspace,
-                PROFILE_BG_URI,
+                EMBLEM_BG_URI,
                 &device,
                 &mut encoder,
                 &mut staging_buffers,
@@ -161,7 +161,6 @@ impl MainLobbyEnterScene {
     {
         let mut workspace = root_dir.as_ref().to_path_buf();
         workspace.push("ui");
-        let uri = PROFILE_ICON_URIS[self.profile_icon as usize];
 
         let task_results = self.task_results.clone();
         let texture_data_pool = self.texture_data_pool.clone();
@@ -175,7 +174,7 @@ impl MainLobbyEnterScene {
 
             let result = texture_data_pool.get_or_init(
                 &workspace,
-                uri,
+                PROFILE_ICON_URI,
                 &device,
                 &mut encoder,
                 &mut staging_buffers,
