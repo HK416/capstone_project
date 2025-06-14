@@ -128,6 +128,12 @@ impl fmt::Debug for MainLobbyWaitLayer {
     }
 }
 
+impl fmt::Debug for MainLobbyExitModalScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(MainLobbyExitModalScene))
+    }
+}
+
 impl fmt::Debug for CustomGameRoomScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(CustomGameRoomScene))

@@ -1,4 +1,5 @@
 mod enter;
+mod exit;
 mod join;
 mod layer;
 
@@ -15,7 +16,11 @@ use mod_network::{
     protocol::{PacketType, RawPacket},
 };
 use mod_render::UiRenderer;
-use winit::window::Window;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
     asset::{
@@ -29,7 +34,7 @@ use crate::{
     },
 };
 
-pub use self::{enter::*, join::*, layer::*};
+pub use self::{enter::*, exit::*, join::*, layer::*};
 
 use super::BASE_WIDTH;
 
@@ -109,6 +114,9 @@ pub struct MainLobbyScene {
     /// 옵션 버튼 상태
     option_btn_state: ButtonState,
 
+    /// 입력 지연 시간
+    delay_time_sec: f32,
+
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
@@ -169,6 +177,7 @@ impl MainLobbyScene {
             },
             option_btn_rect: egui::Rect::ZERO,
             option_btn_state: ButtonState::Idle,
+            delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
         }
@@ -524,13 +533,13 @@ impl MainLobbyScene {
     }
 
     /// 상단 패널을 그립니다.
-    fn draw_pannel(&mut self, ctx: &egui::Context) {
+    fn draw_pannel(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
         egui::Area::new(egui::Id::new("Pannel")).show(ctx, |ui| {
             ui.shrink_clip_rect(self.clip_rect);
 
             // 옵션 아이콘의 이벤트를 처리합니다.
             let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
-            self.option_btn_state = if response.clicked() {
+            self.option_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
                 ButtonState::Clicked
             } else if response.is_pointer_button_down_on() {
                 ButtonState::Pressed
@@ -542,7 +551,18 @@ impl MainLobbyScene {
 
             // 종료 아이콘의 이벤트를 처리합니다.
             let response = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
-            self.exit_btn_state = if response.clicked() {
+            self.exit_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                // 게임 장면을 전환합니다.
+                let next_scene = Box::new(MainLobbyExitModalScene::new(
+                    self.locale,
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
+                ));
+                let scene_flow = GameSceneFlow::Push(next_scene);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+
                 ButtonState::Clicked
             } else if response.is_pointer_button_down_on() {
                 ButtonState::Pressed
@@ -642,6 +662,10 @@ impl GameScene for MainLobbyScene {
         self.unregist_textures(ui_renderer);
     }
 
+    fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {
+        self.delay_time_sec = 0.0
+    }
+
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
         // Ui 레이아웃을 재조정합니다.
         self.resize_ui(window, app);
@@ -679,6 +703,40 @@ impl GameScene for MainLobbyScene {
         None
     }
 
+    fn on_keyboard_released(
+        &mut self,
+        code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        repeat: bool,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> bool {
+        if !repeat && self.delay_time_sec <= 0.0 {
+            match code {
+                KeyCode::Escape => {
+                    // 게임 장면을 전환합니다.
+                    let next_scene = Box::new(MainLobbyExitModalScene::new(
+                        self.locale,
+                        self.texture_pool.clone(),
+                        self.texture_view_pool.clone(),
+                    ));
+                    let scene_flow = GameSceneFlow::Push(next_scene);
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
+                _ => {}
+            }
+        }
+
+        true
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+        self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
+    }
+
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let ctx = app.egui_ctx();
         let locale = self.locale as usize;
@@ -694,7 +752,7 @@ impl GameScene for MainLobbyScene {
         self.draw_player_profile(ctx);
 
         // 패널 그리기
-        self.draw_pannel(ctx);
+        self.draw_pannel(ctx, app);
 
         // 게임 생성 버튼
         let text = CREATE_GAME_BTN_TEXTS[locale];

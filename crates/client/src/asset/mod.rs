@@ -18,6 +18,9 @@ pub const NOTOSANS_REGULAR: &'static str = "NotoSans_Regular.ttf";
 /// `NotoSans-Bold` 폰트 파일의 Uri입니다.
 pub const NOTOSANS_BOLD: &'static str = "NotoSans_Bold.ttf";
 
+/// A.R.O.N.A 캐릭터 텍스처의  `Uri`입니다.
+pub const ARONA_SAD_URI: &'static str = "Arona_Sad";
+
 /// 게임 로고 텍스처의 `Uri`입니다.
 pub const GAME_LOGO_URI: &'static str = "ui/Game_Logo.png";
 /// 게임 로고 텍스처의 데이터입니다.

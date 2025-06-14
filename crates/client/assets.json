@@ -304,6 +304,8 @@
         },
         "ui" : {
             "files" : [
+                "Arona_Sad.dds",
+                "Arona_Sad.texD",
                 "BG_Main_Lobby.dds",
                 "BG_Main_Lobby.texD",
                 "CH_Icon_Aris.dds",
