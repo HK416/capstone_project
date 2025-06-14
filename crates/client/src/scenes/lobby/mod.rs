@@ -20,7 +20,7 @@ use winit::window::Window;
 use crate::{
     asset::{
         TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, HUD_EXIT_ICON_URI,
-        HUD_LAYOUT_URI_02, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -102,6 +102,8 @@ pub struct MainLobbyScene {
     /// 종료 버튼 상태
     exit_btn_state: ButtonState,
 
+    /// 옵션 아이콘 텍스처
+    option_icon_texture: egui::load::SizedTexture,
     /// 옵션 버튼 레이아웃 영역
     option_btn_rect: egui::Rect,
     /// 옵션 버튼 상태
@@ -161,6 +163,10 @@ impl MainLobbyScene {
             },
             exit_btn_rect: egui::Rect::ZERO,
             exit_btn_state: ButtonState::Idle,
+            option_icon_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
             option_btn_rect: egui::Rect::ZERO,
             option_btn_state: ButtonState::Idle,
             texture_pool,
@@ -175,6 +181,7 @@ impl MainLobbyScene {
         self.regist_profile_icon_texture(device, ui_renderer);
         self.regist_pannel_bg_texture(device, ui_renderer);
         self.regist_exit_icon_texture(device, ui_renderer);
+        self.regist_option_icon_texture(device, ui_renderer);
     }
 
     /// Ui 렌더러에 등록된 텍스처를 해제합니다.
@@ -184,6 +191,7 @@ impl MainLobbyScene {
         ui_renderer.free_texture(&self.profile_icon_texture.id);
         ui_renderer.free_texture(&self.pannel_bg_texture.id);
         ui_renderer.free_texture(&self.exit_icon_texture.id);
+        ui_renderer.free_texture(&self.option_icon_texture.id);
     }
 
     /// 배경 텍스처를 Ui 렌더러에 등록합니다.
@@ -323,6 +331,31 @@ impl MainLobbyScene {
         };
     }
 
+    /// 옵션 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_option_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 패널 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_OPTION_ICON_URI)
+            .expect("HUD_Exit_Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.option_icon_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     /// 클립 사각형 영역의 크기를 재조정합니다.
     fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
         let scale = viewport.width / scale_factor / BASE_WIDTH;
@@ -394,9 +427,8 @@ impl MainLobbyScene {
         egui::Rect::from_min_size(min, size)
     }
 
-    /// 종료 아이콘 크기를 재조정합니다.
-    /// 주어지는 n은 0보다 커야 합니다. 그렇지 않은 경우 [`panic!`]을 호출합니다.
-    fn resize_exit_icon(
+    /// 패널의 아이콘 크기를 재조정합니다.
+    fn resize_pannel_icon(
         texture_size: &egui::Vec2,
         pannel_bg_rect: &egui::Rect,
         num_blocks: NonZeroU32,
@@ -446,10 +478,12 @@ impl MainLobbyScene {
         // Safety: 주어지는 정수는 0이 아님
         let num_blocks = unsafe { NonZeroU32::new_unchecked(2) };
 
-        // 종료 아이콘 영역을 재조정합니다.
+        // 패널의 아이콘 영역을 재조정합니다.
         let texture_size = &self.exit_icon_texture.size;
+        self.option_btn_rect =
+            Self::resize_pannel_icon(texture_size, &self.pannel_bg_rect, num_blocks, 0);
         self.exit_btn_rect =
-            Self::resize_exit_icon(texture_size, &self.pannel_bg_rect, num_blocks, 1);
+            Self::resize_pannel_icon(texture_size, &self.pannel_bg_rect, num_blocks, 1);
     }
 
     /// 배경화면을 그립니다.
@@ -494,13 +528,25 @@ impl MainLobbyScene {
         egui::Area::new(egui::Id::new("Pannel")).show(ctx, |ui| {
             ui.shrink_clip_rect(self.clip_rect);
 
-            // 종료 아이콘의 이벤트를 처리합니다.
-            let exit_area = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
-            self.exit_btn_state = if exit_area.clicked() {
+            // 옵션 아이콘의 이벤트를 처리합니다.
+            let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
+            self.option_btn_state = if response.clicked() {
                 ButtonState::Clicked
-            } else if exit_area.is_pointer_button_down_on() {
+            } else if response.is_pointer_button_down_on() {
                 ButtonState::Pressed
-            } else if exit_area.hovered() {
+            } else if response.hovered() {
+                ButtonState::Hovered
+            } else {
+                ButtonState::Idle
+            };
+
+            // 종료 아이콘의 이벤트를 처리합니다.
+            let response = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
+            self.exit_btn_state = if response.clicked() {
+                ButtonState::Clicked
+            } else if response.is_pointer_button_down_on() {
+                ButtonState::Pressed
+            } else if response.hovered() {
                 ButtonState::Hovered
             } else {
                 ButtonState::Idle
@@ -509,8 +555,21 @@ impl MainLobbyScene {
             // 배경
             self.draw_pannel_background(ui);
 
+            // 옵션 아이콘
+            self.draw_pannel_icon(
+                ui,
+                self.option_btn_state,
+                self.option_icon_texture,
+                self.option_btn_rect,
+            );
+
             // 종료 아이콘
-            self.draw_pannel_exit_icon(ui);
+            self.draw_pannel_icon(
+                ui,
+                self.exit_btn_state,
+                self.exit_icon_texture,
+                self.exit_btn_rect,
+            );
         });
     }
 
@@ -550,16 +609,20 @@ impl MainLobbyScene {
             .paint_at(ui, rect);
     }
 
-    /// 패널의 종료 아이콘을 그립니다.
-    fn draw_pannel_exit_icon(&self, ui: &mut egui::Ui) {
-        let tint = match self.exit_btn_state {
+    /// 패널 아이콘을 그립니다.
+    fn draw_pannel_icon(
+        &self,
+        ui: &mut egui::Ui,
+        state: ButtonState,
+        source: egui::load::SizedTexture,
+        rect: egui::Rect,
+    ) {
+        let tint = match state {
             ButtonState::Clicked | ButtonState::Pressed => egui::Color32::from_gray(96),
             ButtonState::Hovered => egui::Color32::from_gray(128),
             ButtonState::Idle => egui::Color32::from_gray(169),
         };
-        egui::Image::new(self.exit_icon_texture)
-            .tint(tint)
-            .paint_at(ui, self.exit_btn_rect);
+        egui::Image::new(source).tint(tint).paint_at(ui, rect);
     }
 }
 
