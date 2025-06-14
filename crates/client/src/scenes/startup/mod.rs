@@ -5,7 +5,6 @@
 mod init;
 
 use std::{
-    error::Error,
     fs::OpenOptions,
     io::{Cursor, Read},
     path::PathBuf,
@@ -32,7 +31,8 @@ use crate::{
         BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
         BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
         GAME_LOGO_DATA, GAME_LOGO_URI, HUD_CANCEL_ICON_DATA, HUD_CANCEL_ICON_URI,
-        HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
+        HUD_DETAIL_ICON_DATA, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI,
+        HUD_OPTION_ICON_DATA, HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
     },
     component::{
         BulletRenderPipeline, BulletRenderPipelineTransparency, CharacterBakePipeline,
@@ -59,6 +59,7 @@ enum TaskResult {
         staging_buffers: Vec<wgpu::Buffer>,
     },
     Pipeline,
+    Failed,
 }
 
 /// 클라이언트 실행시 가장 첫 번째로 진입하는 게임 장면입니다.  
@@ -72,7 +73,7 @@ pub struct GameStartupScene {
     /// 스테이징(업로드) 버퍼의 집합
     staging_buffers: Vec<wgpu::Buffer>,
     /// 작업 결과를 저장하는 대기열
-    task_results: Arc<Queue<Result<TaskResult, Box<dyn Error + Send>>>>,
+    task_results: Arc<Queue<TaskResult>>,
     /// 로드된 폰트 에셋 데이터 집합
     font_asset_data: HashMap<String, Vec<u8>>,
 
@@ -100,7 +101,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             BulletRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -109,7 +110,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             BulletRenderPipelineTransparency::get_or_init(&device_cloned, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -118,7 +119,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             EnergyBulletRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -127,7 +128,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             CharacterRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -136,7 +137,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             CharacterBakePipeline::get_or_init(&device_cloned, SHADOW_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -145,7 +146,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             EyeMouthRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -154,7 +155,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             EyeMouthBakePipeline::get_or_init(&device_cloned, SHADOW_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -163,7 +164,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             HaloRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -172,7 +173,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             DamageFontRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -181,7 +182,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             SkyboxRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -190,7 +191,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             StageRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -199,7 +200,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             TreeRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
 
@@ -208,7 +209,7 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             StageBakePipeline::get_or_init(&device_cloned, SHADOW_FORMAT);
-            task_results.push(Ok(TaskResult::Pipeline));
+            task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;
     }
@@ -234,7 +235,7 @@ impl GameStartupScene {
                         path.display(),
                         &e
                     );
-                    task_results.push(Err(Box::new(e)));
+                    task_results.push(TaskResult::Failed);
                     return;
                 }
             };
@@ -247,7 +248,7 @@ impl GameStartupScene {
                     path.display(),
                     &e
                 );
-                task_results.push(Err(Box::new(e)));
+                task_results.push(TaskResult::Failed);
                 return;
             }
 
@@ -255,10 +256,10 @@ impl GameStartupScene {
             drop(file);
 
             // 결과를 전송합니다.
-            task_results.push(Ok(TaskResult::Font {
+            task_results.push(TaskResult::Font {
                 uri: NOTOSANS_REGULAR.into(),
                 bytes: buf,
-            }));
+            });
         });
 
         // 남은 작업의 수를 증가시킵니다.
@@ -286,7 +287,7 @@ impl GameStartupScene {
                         path.display(),
                         &e
                     );
-                    task_results.push(Err(Box::new(e)));
+                    task_results.push(TaskResult::Failed);
                     return;
                 }
             };
@@ -299,7 +300,7 @@ impl GameStartupScene {
                     path.display(),
                     &e
                 );
-                task_results.push(Err(Box::new(e)));
+                task_results.push(TaskResult::Failed);
                 return;
             }
 
@@ -307,10 +308,10 @@ impl GameStartupScene {
             drop(file);
 
             // 결과를 전송합니다.
-            task_results.push(Ok(TaskResult::Font {
+            task_results.push(TaskResult::Font {
                 uri: NOTOSANS_BOLD.into(),
                 bytes: buf,
-            }));
+            });
         });
 
         // 남은 작업의 수를 증가시킵니다.
@@ -338,7 +339,7 @@ impl GameStartupScene {
                 Ok(image) => image,
                 Err(e) => {
                     log::error!("failed to load texture! (REASON:{e}");
-                    task_results.push(Err(Box::new(e)));
+                    task_results.push(TaskResult::Failed);
                     return;
                 }
             };
@@ -367,10 +368,10 @@ impl GameStartupScene {
             texture_pool.insert(uri, texture.into());
 
             // 결과를 전송합니다.
-            task_results.push(Ok(TaskResult::Texture {
+            task_results.push(TaskResult::Texture {
                 command: encoder.finish(),
                 staging_buffers,
-            }));
+            });
         });
         self.num_remaining_tasks += 1;
     }
@@ -446,64 +447,28 @@ impl GameStartupScene {
 }
 
 impl GameScene for GameStartupScene {
+    #[rustfmt::skip]
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
-        let device = app.render_device();
-        let thread_pool = app.io_threads();
         let mut root_dir = app.current_dir().to_path_buf();
         root_dir.push("assets");
+
+        let device = app.render_device();
+        let thread_pool = app.io_threads();
         self.init_render_pipeline(thread_pool, device);
         self.load_notosans_regular_font(thread_pool, &root_dir);
         self.load_notosans_blod_font(thread_pool, &root_dir);
         self.create_texture(thread_pool, device, GAME_LOGO_URI, GAME_LOGO_DATA);
         self.create_texture(thread_pool, device, HUD_EXIT_ICON_URI, HUD_EXIT_ICON_DATA);
-        self.create_texture(
-            thread_pool,
-            device,
-            HUD_CANCEL_ICON_URI,
-            HUD_CANCEL_ICON_DATA,
-        );
-        self.create_texture(
-            thread_pool,
-            device,
-            BG_LOGIN_TITLE_0_URI,
-            BG_LOGIN_TITLE_0_DATA,
-        );
-        self.create_texture(
-            thread_pool,
-            device,
-            BG_LOGIN_TITLE_1_URI,
-            BG_LOGIN_TITLE_1_DATA,
-        );
-        self.create_texture(
-            thread_pool,
-            device,
-            BG_LOGIN_TITLE_2_URI,
-            BG_LOGIN_TITLE_2_DATA,
-        );
-        self.create_texture(
-            thread_pool,
-            device,
-            BG_LOGIN_TITLE_3_URI,
-            BG_LOGIN_TITLE_3_DATA,
-        );
-        self.create_texture(
-            thread_pool,
-            device,
-            BG_LOGIN_TITLE_4_URI,
-            BG_LOGIN_TITLE_4_DATA,
-        );
-        self.create_texture(
-            thread_pool,
-            device,
-            BG_LOGIN_TITLE_5_URI,
-            BG_LOGIN_TITLE_5_DATA,
-        );
-        self.create_texture(
-            thread_pool,
-            device,
-            BG_GROWTH_EFFECT_LABEL_URI,
-            BG_GROWTH_EFFECT_LABEL_DATA,
-        );
+        self.create_texture(thread_pool, device, HUD_DETAIL_ICON_URI, HUD_DETAIL_ICON_DATA);
+        self.create_texture(thread_pool, device, HUD_OPTION_ICON_URI, HUD_OPTION_ICON_DATA);
+        self.create_texture(thread_pool, device, HUD_CANCEL_ICON_URI, HUD_CANCEL_ICON_DATA);
+        self.create_texture(thread_pool, device, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_0_DATA);
+        self.create_texture(thread_pool, device, BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_1_DATA);
+        self.create_texture(thread_pool, device, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_2_DATA);
+        self.create_texture(thread_pool, device, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_3_DATA);
+        self.create_texture(thread_pool, device, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_4_DATA);
+        self.create_texture(thread_pool, device, BG_LOGIN_TITLE_5_URI, BG_LOGIN_TITLE_5_DATA);
+        self.create_texture(thread_pool, device, BG_GROWTH_EFFECT_LABEL_URI, BG_GROWTH_EFFECT_LABEL_DATA);
         self.load_user_config(root_dir);
     }
 
@@ -522,29 +487,22 @@ impl GameScene for GameStartupScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 작업 결과를 확인합니다.
         if let Some(result) = self.task_results.pop() {
-            match result {
-                Ok(task) => {
-                    self.num_remaining_tasks -= 1;
-                    log::info!(
-                        "task success (number of tasks remaining: {})",
-                        self.num_remaining_tasks
-                    );
+            self.num_remaining_tasks -= 1;
+            log::info!("number of remaining tasks: {})", self.num_remaining_tasks);
 
-                    match task {
-                        TaskResult::Font { uri, bytes } => {
-                            self.font_asset_data.insert(uri, bytes);
-                        }
-                        TaskResult::Texture {
-                            command,
-                            mut staging_buffers,
-                        } => {
-                            app.render_queue().submit(Some(command));
-                            self.staging_buffers.append(&mut staging_buffers);
-                        }
-                        _ => {}
-                    };
+            match result {
+                TaskResult::Font { uri, bytes } => {
+                    self.font_asset_data.insert(uri, bytes);
                 }
-                Err(_) => {
+                TaskResult::Texture {
+                    command,
+                    mut staging_buffers,
+                } => {
+                    app.render_queue().submit(Some(command));
+                    self.staging_buffers.append(&mut staging_buffers);
+                }
+                TaskResult::Pipeline => { /* empty */ }
+                TaskResult::Failed => {
                     let title = "Initialize failed".into();
                     let message = "Failed to initialize game data.".into();
                     let alert = Alert { title, message };

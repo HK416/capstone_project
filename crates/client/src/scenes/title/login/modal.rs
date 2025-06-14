@@ -112,7 +112,6 @@ impl GameScene for GameLoginModalScene {
                     packet.name,
                     packet.tier,
                     packet.profile_icon,
-                    self.texture_pool.clone(),
                     packet.token,
                 ));
                 let scene_flow = GameSceneFlow::Reset(next_scene);

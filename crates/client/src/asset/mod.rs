@@ -6,7 +6,7 @@ mod texture;
 
 use std::io;
 
-use mod_network::components::{NUM_BULLETS, NUM_CHARACTERS, NUM_PROFILE_ICONS, NUM_STAGES};
+use mod_network::components::{NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES};
 
 pub use self::{hierarchy::*, mesh::*, motion::*, stage::*, texture::*};
 
@@ -89,12 +89,28 @@ pub const HUD_EXIT_ICON_DATA: &'static [u8; 1917] = include_bytes!(concat!(
     "assets/ui/HUD_Exit_Icon.png"
 ));
 
+/// 디테일 아이콘 텍스처의 `Uri`입니다.
+pub const HUD_DETAIL_ICON_URI: &'static str = "ui/HUD_Detail_Icon.png";
+/// 데테일 아이콘 텍스처의 데이터입니다.
+pub const HUD_DETAIL_ICON_DATA: &'static [u8; 5310] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/ui/HUD_Detail_Icon.png"
+));
+
 /// 취소 아이콘 텍스처의 `Uri`입니다.
 pub const HUD_CANCEL_ICON_URI: &'static str = "ui/HUD_Cancel_Icon.png";
-/// 취소 아이콘 텍스처의 `Uri`입니다.
+/// 취소 아이콘 텍스처의 데이터입니다.
 pub const HUD_CANCEL_ICON_DATA: &'static [u8; 1187] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/HUD_Cancel_Icon.png"
+));
+
+/// 옵션 아이콘 텍스처의 `Uri`입니다.
+pub const HUD_OPTION_ICON_URI: &'static str = "ui/HUD_Option_Icon.png";
+/// 옵션 아이콘 텍스처의 데이터입니다.
+pub const HUD_OPTION_ICON_DATA: &'static [u8; 2181] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/ui/HUD_Option_Icon.png"
 ));
 
 /// 메인 로비 화면 배경화면 텍스처의 `Uri`입니다.
@@ -151,6 +167,13 @@ pub const EMBLEM_BG_URI: &'static str = "Emblem_BG";
 
 /// 프로필 아이콘의 `Uri`입니다.
 pub const PROFILE_ICON_URI: &'static str = "Profile_Icon";
+
+/// Ui 0번 레이아웃 이미지의 `Uri`입니다.
+pub const HUD_LAYOUT_URI_00: &'static str = "HUD_Layout_00";
+/// Ui 1번 레이아웃 이미지의 `Uri`입니다.
+pub const HUD_LAYOUT_URI_01: &'static str = "HUD_Layout_01";
+/// Ui 2번 레이아웃 이미지의 `Uri`입니다.
+pub const HUD_LAYOUT_URI_02: &'static str = "HUD_Layout_02";
 
 /// 무기 아이콘 `Uri`입니다.
 pub const WEAPON_ICON_URI: &'static str = "Weapon_Icon";

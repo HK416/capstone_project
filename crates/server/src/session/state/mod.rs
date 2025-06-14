@@ -99,7 +99,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
         previous_time_pt = current_time_pt;
 
         // 핑 측정 경과 시간을 갱신합니다.
-        elapsed_time_ms += elapsed.as_millis().min(MAX_PING_TIME as u128) as u32;
+        elapsed_time_ms += elapsed.as_millis() as u32;
         if elapsed_time_ms >= MAX_PING_TIME {
             elapsed_time_ms = 0;
 
