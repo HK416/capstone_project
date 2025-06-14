@@ -85,7 +85,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
     session.flows.push(flow);
 
     // 핑 측정 초기화
-    const MAX_SAMPLES: usize = 50;
+    const MAX_SAMPLES: usize = 20;
     const MAX_PING_TIME: u32 = 250;
     let mut samples = vec![0; MAX_SAMPLES];
     let mut num_samples = 0;

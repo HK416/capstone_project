@@ -2,6 +2,8 @@ mod enter;
 mod join;
 mod layer;
 
+use std::num::NonZeroU32;
+
 use mod_app::{
     app::AppHandle,
     etc::{AppEvent, Viewport},
@@ -17,8 +19,8 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, HUD_LAYOUT_URI_02,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, HUD_EXIT_ICON_URI,
+        HUD_LAYOUT_URI_02, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -51,20 +53,20 @@ const ERR_LIMITS_TEXTS: [&'static str; NUM_LOCALE] = ["게임 월드 생성에 �
 
 /// 게임의 메인 로비 화면입니다.
 pub struct MainLobbyScene {
-    /// 애플리케이션 표시 언어입니다.
+    /// 애플리케이션 표시 언어
     locale: Locale,
     /// 사용자 식별자
     uid: UserId,
-    /// 사용자 이름 (게임 장면이 유지되는 동안 존재합니다)
+    /// 사용자 이름
     name: UserName,
     /// 사용자 게임 티어
     tier: GameTier,
     /// 프로필 아이콘
     profile_icon: ProfileIcon,
-    /// 현재 클라이언트의 로그인 토큰입니다.
+    /// 현재 클라이언트의 로그인 토큰
     token: LoginToken,
 
-    /// 버튼의 활성화 여부입니다.
+    /// 버튼의 활성화 여부
     button_enabled: bool,
 
     /// Ui 스케일
@@ -73,32 +75,34 @@ pub struct MainLobbyScene {
     clip_rect: egui::Rect,
     /// 배경화면 텍스처
     bg_texture: egui::load::SizedTexture,
-    /// 배경화면 레이아웃 영역입니다.
+    /// 배경화면 레이아웃 영역
     bg_rect: egui::Rect,
 
     /// 프로필 배경 텍스처
     profile_bg_texture: egui::load::SizedTexture,
-    /// 프로필 정보 레이아웃 영역입니다.
+    /// 프로필 정보 레이아웃 영역
     profile_bg_rect: egui::Rect,
 
     /// 프로필 아이콘 텍스처
     profile_icon_texture: egui::load::SizedTexture,
-    /// 프로필 아이콘 영역입니다.
+    /// 프로필 아이콘 영역
     profile_icon_rect: egui::Rect,
-    /// 플레이어 이름입니다.
+    /// 플레이어 이름 텍스트
     player_name_text: egui::RichText,
 
-    /// 상단 패널의 배경 텍스처입니다.
+    /// 상단 패널의 배경 텍스처
     pannel_bg_texture: egui::load::SizedTexture,
-    /// 상단 패널의 레이아웃 영역입니다.
+    /// 상단 패널의 레이아웃 영역
     pannel_bg_rect: egui::Rect,
 
-    /// 종료 버튼 레이아웃 영역입니다.
+    /// 종료 아이콘 텍스처
+    exit_icon_texture: egui::load::SizedTexture,
+    /// 종료 버튼 레이아웃 영역
     exit_btn_rect: egui::Rect,
     /// 종료 버튼 상태
     exit_btn_state: ButtonState,
 
-    /// 옵션 버튼 레이아웃 영역입니다.
+    /// 옵션 버튼 레이아웃 영역
     option_btn_rect: egui::Rect,
     /// 옵션 버튼 상태
     option_btn_state: ButtonState,
@@ -151,6 +155,10 @@ impl MainLobbyScene {
                 size: egui::Vec2::ZERO,
             },
             pannel_bg_rect: egui::Rect::ZERO,
+            exit_icon_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
             exit_btn_rect: egui::Rect::ZERO,
             exit_btn_state: ButtonState::Idle,
             option_btn_rect: egui::Rect::ZERO,
@@ -158,6 +166,24 @@ impl MainLobbyScene {
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
         }
+    }
+
+    /// 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_textures(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        self.regist_background_texture(device, ui_renderer);
+        self.regist_profile_bg_texture(device, ui_renderer);
+        self.regist_profile_icon_texture(device, ui_renderer);
+        self.regist_pannel_bg_texture(device, ui_renderer);
+        self.regist_exit_icon_texture(device, ui_renderer);
+    }
+
+    /// Ui 렌더러에 등록된 텍스처를 해제합니다.
+    fn unregist_textures(&mut self, ui_renderer: &mut UiRenderer) {
+        ui_renderer.free_texture(&self.bg_texture.id);
+        ui_renderer.free_texture(&self.profile_bg_texture.id);
+        ui_renderer.free_texture(&self.profile_icon_texture.id);
+        ui_renderer.free_texture(&self.pannel_bg_texture.id);
+        ui_renderer.free_texture(&self.exit_icon_texture.id);
     }
 
     /// 배경 텍스처를 Ui 렌더러에 등록합니다.
@@ -272,6 +298,31 @@ impl MainLobbyScene {
         };
     }
 
+    /// 종료 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_exit_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 패널 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_EXIT_ICON_URI)
+            .expect("HUD_Exit_Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.exit_icon_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     /// 클립 사각형 영역의 크기를 재조정합니다.
     fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
         let scale = viewport.width / scale_factor / BASE_WIDTH;
@@ -343,6 +394,26 @@ impl MainLobbyScene {
         egui::Rect::from_min_size(min, size)
     }
 
+    /// 종료 아이콘 크기를 재조정합니다.
+    /// 주어지는 n은 0보다 커야 합니다. 그렇지 않은 경우 [`panic!`]을 호출합니다.
+    fn resize_exit_icon(
+        texture_size: &egui::Vec2,
+        pannel_bg_rect: &egui::Rect,
+        num_blocks: NonZeroU32,
+        i: u32,
+    ) -> egui::Rect {
+        let block_width = pannel_bg_rect.width() / (num_blocks.get() as f32);
+        let half_block_width = 0.5 * block_width;
+
+        let ratio = texture_size.x / texture_size.y;
+        let height = pannel_bg_rect.height() * 0.6;
+        let width = height * ratio;
+        let size = egui::vec2(width, height);
+        let offset = egui::vec2(block_width * (i as f32) + half_block_width, 0.0);
+        let center = pannel_bg_rect.left_center() + offset;
+        egui::Rect::from_center_size(center, size)
+    }
+
     /// Ui의 크기를 재설정합니다.
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역의 크기를 재조정합니다.
@@ -372,6 +443,13 @@ impl MainLobbyScene {
 
         // 상단 패널 배경화면 영역을 재조정합니다.
         self.pannel_bg_rect = Self::resize_pannel_background(&self.clip_rect, self.ui_scale);
+        // Safety: 주어지는 정수는 0이 아님
+        let num_blocks = unsafe { NonZeroU32::new_unchecked(2) };
+
+        // 종료 아이콘 영역을 재조정합니다.
+        let texture_size = &self.exit_icon_texture.size;
+        self.exit_btn_rect =
+            Self::resize_exit_icon(texture_size, &self.pannel_bg_rect, num_blocks, 1);
     }
 
     /// 배경화면을 그립니다.
@@ -416,8 +494,23 @@ impl MainLobbyScene {
         egui::Area::new(egui::Id::new("Pannel")).show(ctx, |ui| {
             ui.shrink_clip_rect(self.clip_rect);
 
+            // 종료 아이콘의 이벤트를 처리합니다.
+            let exit_area = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
+            self.exit_btn_state = if exit_area.clicked() {
+                ButtonState::Clicked
+            } else if exit_area.is_pointer_button_down_on() {
+                ButtonState::Pressed
+            } else if exit_area.hovered() {
+                ButtonState::Hovered
+            } else {
+                ButtonState::Idle
+            };
+
             // 배경
             self.draw_pannel_background(ui);
+
+            // 종료 아이콘
+            self.draw_pannel_exit_icon(ui);
         });
     }
 
@@ -456,16 +549,34 @@ impl MainLobbyScene {
             .uv(uv)
             .paint_at(ui, rect);
     }
+
+    /// 패널의 종료 아이콘을 그립니다.
+    fn draw_pannel_exit_icon(&self, ui: &mut egui::Ui) {
+        let tint = match self.exit_btn_state {
+            ButtonState::Clicked | ButtonState::Pressed => egui::Color32::from_gray(96),
+            ButtonState::Hovered => egui::Color32::from_gray(128),
+            ButtonState::Idle => egui::Color32::from_gray(169),
+        };
+        egui::Image::new(self.exit_icon_texture)
+            .tint(tint)
+            .paint_at(ui, self.exit_btn_rect);
+    }
 }
 
 impl GameScene for MainLobbyScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         let device = app.render_device();
-        self.regist_background_texture(device, ui_renderer);
-        self.regist_profile_bg_texture(device, ui_renderer);
-        self.regist_profile_icon_texture(device, ui_renderer);
-        self.regist_pannel_bg_texture(device, ui_renderer);
+        self.regist_textures(device, ui_renderer);
         self.resize_ui(window, app);
+    }
+
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        self.unregist_textures(ui_renderer);
     }
 
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {

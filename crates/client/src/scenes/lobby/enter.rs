@@ -15,7 +15,8 @@ use winit::window::Window;
 use crate::{
     asset::{
         SamplerPool, TextureDataPool, TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI,
-        EMBLEM_BG_URI, HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
+        EMBLEM_BG_URI, GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI,
+        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI,
         NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
     },
     config::{Locale, NUM_LOCALE},
@@ -81,8 +82,42 @@ impl MainLobbyEnterScene {
         name: UserName,
         tier: GameTier,
         profile_icon: ProfileIcon,
+        previous_texture_pool: &TexturePool,
         token: LoginToken,
     ) -> Self {
+        // 새로운 텍스처 풀을 생성하고 이전 텍스처 풀에서 필요한 데이터를 취합니다.
+        let texture_pool = TexturePool::new();
+
+        // Game_Logo
+        let texture = previous_texture_pool
+            .remove(GAME_LOGO_URI)
+            .expect("Game_Logo texture must be preloaded!");
+        texture_pool.insert(GAME_LOGO_URI, texture);
+
+        // HUD_Exit_Icon
+        let texture = previous_texture_pool
+            .remove(HUD_EXIT_ICON_URI)
+            .expect("HUD_Exit_Icon texture must be preloaded!");
+        texture_pool.insert(HUD_EXIT_ICON_URI, texture);
+
+        // HUD_Detail_Icon
+        let texture = previous_texture_pool
+            .remove(HUD_DETAIL_ICON_URI)
+            .expect("HUD_Detail_Icon texture must be preloaded!");
+        texture_pool.insert(HUD_DETAIL_ICON_URI, texture);
+
+        // HUD_Option_Icon
+        let texture = previous_texture_pool
+            .remove(HUD_OPTION_ICON_URI)
+            .expect("HUD_Option_Icon texture must be preloaded!");
+        texture_pool.insert(HUD_OPTION_ICON_URI, texture);
+
+        // HUD_Cancel_Icon
+        let texture = previous_texture_pool
+            .remove(HUD_CANCEL_ICON_URI)
+            .expect("HUD_Cancel_Icon texture must be preloaded!");
+        texture_pool.insert(HUD_CANCEL_ICON_URI, texture);
+
         Self {
             locale,
             uid,
@@ -95,7 +130,7 @@ impl MainLobbyEnterScene {
             num_remaining_tasks: 0,
             texture_data_pool: TextureDataPool::new(),
             texture_view_pool: TextureViewPool::new(),
-            texture_pool: TexturePool::new(),
+            texture_pool,
             sampler_pool: SamplerPool::new(),
         }
     }
