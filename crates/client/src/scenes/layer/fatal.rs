@@ -15,7 +15,7 @@ use crate::{
     asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{BASE_WIDTH, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR},
 };
 
 /// 애플리케이션 표시 언어에 따른 `확인` 버튼 텍스트
@@ -86,25 +86,24 @@ impl GameScene for FatalErrorSceneLayer {
         _modifiers: Modifiers,
         repeat: bool,
         _window: &Window,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
     ) -> bool {
         if !repeat && self.delay_time_sec <= 0.0 {
             if code == KeyCode::Enter {
                 self.okay_button_state = ButtonState::Clicked;
-                return true;
+
+                let scene_flow = GameSceneFlow::Clear;
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
             }
         }
-        return false;
+
+        true
     }
 
-    fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, app: &dyn AppHandle) {
+    fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, _app: &dyn AppHandle) {
         self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
-        if self.okay_button_state == ButtonState::Clicked {
-            let scene_flow = GameSceneFlow::Clear;
-            let event = AppEvent::AddGameSceneFlow(scene_flow);
-            let event_loop_proxy = app.event_loop_proxy();
-            event_loop_proxy.send_event(event).unwrap();
-        }
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -122,39 +121,44 @@ impl GameScene for FatalErrorSceneLayer {
         let font_id = egui::FontId::new(36.0 * scale, family);
         let title_text = egui::RichText::new(&self.title)
             .font(font_id)
-            .color(egui::Color32::BLACK);
+            .color(FONT_COLOR);
+        let title_label = egui::Label::new(title_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // 메시지 텍스트
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(28.0 * scale, family);
         let message_text = egui::RichText::new(&self.message)
             .font(font_id)
-            .color(egui::Color32::BLACK);
+            .color(FONT_COLOR);
+        let message_label = egui::Label::new(message_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // 확인 텍스트
         let text = OKAY_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let okay_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let okay_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
         // 확인 버튼
         let btn_width = 180.0 * scale;
         let btn_height = btn_width * 0.25;
-        let fill = match self.okay_button_state {
-            ButtonState::Idle => egui::Color32::WHITE,
-            ButtonState::Hovered => egui::Color32::LIGHT_GRAY,
-            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::GRAY,
+        let (bg_color, line_color) = match self.okay_button_state {
+            ButtonState::Idle => (NORM_COLOR, egui::Color32::BLACK),
+            ButtonState::Hovered => (NORM_FOCUS_COLOR, egui::Color32::BLACK),
+            ButtonState::Pressed | ButtonState::Clicked => (NORM_EXP_COLOR, egui::Color32::BLACK),
         };
         let okay_button = egui::Button::new(okay_text)
-            .fill(fill)
+            .fill(bg_color)
             .sense(egui::Sense::all())
+            .corner_radius(5.0 * scale)
             .min_size((btn_width, btn_height).into())
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         let frame = egui::Frame::new()
-            .corner_radius(3.0)
+            .corner_radius(20.0 * scale)
             .fill(egui::Color32::WHITE)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Fatal"))
@@ -167,11 +171,11 @@ impl GameScene for FatalErrorSceneLayer {
 
                 ui.vertical_centered(|ui| {
                     ui.add_space(8.0 * scale);
-                    ui.label(title_text);
+                    ui.add(title_label);
                     ui.separator();
 
                     ui.add_space(8.0 * scale);
-                    ui.label(message_text);
+                    ui.add(message_label);
                     ui.add_space(16.0 * scale);
 
                     let enable = self.okay_button_state != ButtonState::Clicked;
@@ -179,6 +183,11 @@ impl GameScene for FatalErrorSceneLayer {
                         let response = ui.add(okay_button);
                         if response.clicked() && self.delay_time_sec <= 0.0 {
                             self.okay_button_state = ButtonState::Clicked;
+
+                            let scene_flow = GameSceneFlow::Clear;
+                            let event = AppEvent::AddGameSceneFlow(scene_flow);
+                            let event_loop_proxy = app.event_loop_proxy();
+                            event_loop_proxy.send_event(event).unwrap();
                         } else if response.is_pointer_button_down_on() {
                             self.okay_button_state = ButtonState::Pressed;
                         } else if response.hovered() | response.has_focus() {

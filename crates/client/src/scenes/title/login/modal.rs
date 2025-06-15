@@ -19,7 +19,8 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, GameExitModalScene, LoginFailedModalScene, MainLobbyEnterScene,
-        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        NEG_COLOR, NEG_FOCUS_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
     },
     SERVER_TCP_ADDR,
 };
@@ -179,55 +180,52 @@ impl GameScene for GameLoginModalScene {
         let text = TITLE_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(36.0 * scale, family);
-        let title_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let title_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let title_label = egui::Label::new(title_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // 로그인 버튼 텍스트
         let text = LOGIN_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let login_btn_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let login_btn_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
         // 로그인 버튼
-        let fill = match self.login_button_state {
-            ButtonState::Idle => egui::Color32::WHITE,
-            ButtonState::Hovered => egui::Color32::LIGHT_GRAY,
-            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::GRAY,
+        let (bg_color, line_color) = match self.login_button_state {
+            ButtonState::Idle => (NORM_COLOR, egui::Color32::BLACK),
+            ButtonState::Hovered => (NORM_FOCUS_COLOR, egui::Color32::BLACK),
+            ButtonState::Pressed | ButtonState::Clicked => (NORM_EXP_COLOR, egui::Color32::BLACK),
         };
         let login_button = egui::Button::new(login_btn_text)
             .sense(egui::Sense::all())
-            .fill(fill)
-            .corner_radius(3.0)
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
             .min_size((512.0 * scale, 72.0 * scale).into())
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         // 종료 버튼 텍스트
         let text = EXIT_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let login_btn_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let login_btn_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
         // 종료 버튼
-        let fill = match self.exit_button_state {
-            ButtonState::Idle => egui::Color32::WHITE,
-            ButtonState::Hovered => egui::Color32::LIGHT_GRAY,
-            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::GRAY,
+        let (bg_color, line_color) = match self.exit_button_state {
+            ButtonState::Idle => (NEG_COLOR, egui::Color32::TRANSPARENT),
+            ButtonState::Hovered => (NEG_COLOR, NEG_FOCUS_COLOR),
+            ButtonState::Pressed | ButtonState::Clicked => (NEG_FOCUS_COLOR, NEG_FOCUS_COLOR),
         };
         let exit_button = egui::Button::new(login_btn_text)
             .sense(egui::Sense::all())
-            .fill(fill)
-            .corner_radius(3.0)
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
             .min_size((512.0 * scale, 72.0 * scale).into())
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         let frame = egui::Frame::new()
             .fill(egui::Color32::WHITE)
-            .corner_radius(5.0)
+            .corner_radius(20.0 * scale)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Login_Modal"))
             .frame(frame)
@@ -239,7 +237,7 @@ impl GameScene for GameLoginModalScene {
 
                 ui.vertical_centered(|ui| {
                     ui.add_space(8.0 * scale);
-                    ui.label(title_text);
+                    ui.add(title_label);
                     ui.separator();
 
                     ui.add_space(8.0 * scale);

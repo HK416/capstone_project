@@ -135,16 +135,25 @@ impl GameScene for GameIntroNotifyScene {
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(64.0 * scale, family);
         let title_text = egui::RichText::new(text).font(font_id).color(font_color);
+        let title_label = egui::Label::new(title_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         let text = MAIN_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(48.0 * scale, family);
         let notify_main_text = egui::RichText::new(text).font(font_id).color(font_color);
+        let notify_main_label = egui::Label::new(notify_main_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         let text = SUB_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
         let notify_sub_text = egui::RichText::new(text).font(font_id).color(font_color);
+        let notify_sub_label = egui::Label::new(notify_sub_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         egui::Area::new(egui::Id::new("Layout"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -154,19 +163,19 @@ impl GameScene for GameIntroNotifyScene {
                 ui.vertical_centered(|ui| {
                     ui.set_min_width(BASE_WIDTH * scale);
                     ui.set_max_width(BASE_WIDTH * scale);
-                    ui.label(title_text);
+                    ui.add(title_label);
                 });
                 ui.add_space(48.0 * scale);
                 ui.vertical_centered(|ui| {
                     ui.set_min_width(BASE_WIDTH * scale);
                     ui.set_max_width(BASE_WIDTH * scale);
-                    ui.label(notify_main_text);
+                    ui.add(notify_main_label);
                 });
                 ui.add_space(12.0 * scale);
                 ui.vertical_centered(|ui| {
                     ui.set_min_width(BASE_WIDTH * scale);
                     ui.set_max_width(BASE_WIDTH * scale);
-                    ui.label(notify_sub_text);
+                    ui.add(notify_sub_label);
                 });
             });
     }

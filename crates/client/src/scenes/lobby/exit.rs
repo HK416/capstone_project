@@ -1,4 +1,3 @@
-use chrono::Local;
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -19,7 +18,8 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NEG_COLOR, NEG_FOCUS_COLOR, NORM_COLOR,
+        NORM_EXP_COLOR, NORM_FOCUS_COLOR,
     },
 };
 
@@ -141,7 +141,7 @@ impl GameScene for MainLobbyExitModalScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(&mut self, packet: RawPacket, _app: &dyn AppHandle) -> Option<RawPacket> {
         Some(packet)
     }
 
@@ -195,17 +195,19 @@ impl GameScene for MainLobbyExitModalScene {
         let text = TITLE_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(36.0 * scale, family);
-        let title_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let title_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let title_label = egui::Label::new(title_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // 메시지 텍스트
         let text = MESSAGE_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(28.0 * scale, family);
-        let message_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let message_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let message_label = egui::Label::new(message_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // `확인` 버튼 텍스트
         let text = OKAY_TEXTS[locale];
@@ -224,34 +226,34 @@ impl GameScene for MainLobbyExitModalScene {
             .color(egui::Color32::BLACK);
 
         // `예` 버튼
-        let fill = match self.okay_btn_state {
-            ButtonState::Idle => egui::Color32::WHITE,
-            ButtonState::Hovered => egui::Color32::LIGHT_GRAY,
-            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::GRAY,
+        let (bg_color, line_color) = match self.okay_btn_state {
+            ButtonState::Idle => (NEG_COLOR, egui::Color32::TRANSPARENT),
+            ButtonState::Hovered => (NEG_COLOR, NEG_FOCUS_COLOR),
+            ButtonState::Pressed | ButtonState::Clicked => (NEG_FOCUS_COLOR, NEG_FOCUS_COLOR),
         };
         let okay_button = egui::Button::new(okay_text)
             .sense(egui::Sense::all())
-            .fill(fill)
-            .corner_radius(3.0)
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
             .min_size((180.0 * scale, 45.0 * scale).into())
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         // `아니오` 버튼
-        let fill = match self.cancel_btn_state {
-            ButtonState::Idle => egui::Color32::WHITE,
-            ButtonState::Hovered => egui::Color32::LIGHT_GRAY,
-            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::GRAY,
+        let (bg_color, line_color) = match self.cancel_btn_state {
+            ButtonState::Idle => (NORM_COLOR, egui::Color32::BLACK),
+            ButtonState::Hovered => (NORM_FOCUS_COLOR, egui::Color32::BLACK),
+            ButtonState::Pressed | ButtonState::Clicked => (NORM_EXP_COLOR, egui::Color32::BLACK),
         };
         let cancel_button = egui::Button::new(cancel_text)
             .sense(egui::Sense::all())
-            .fill(fill)
-            .corner_radius(3.0)
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
             .min_size((180.0 * scale, 45.0 * scale).into())
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         let frame = egui::Frame::new()
             .fill(egui::Color32::WHITE)
-            .corner_radius(5.0 * scale)
+            .corner_radius(20.0 * scale)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Exit_Onemore"))
             .frame(frame)
@@ -263,7 +265,7 @@ impl GameScene for MainLobbyExitModalScene {
 
                 ui.vertical_centered(|ui| {
                     ui.add_space(8.0 * scale);
-                    ui.label(title_text);
+                    ui.add(title_label);
                     ui.separator();
 
                     let image = egui::Image::new(self.arona_img_texture)
@@ -271,7 +273,7 @@ impl GameScene for MainLobbyExitModalScene {
                     ui.add(image);
 
                     ui.add_space(8.0 * scale);
-                    ui.label(message_text);
+                    ui.add(message_label);
                     ui.add_space(16.0 * scale);
 
                     let enable = self.okay_btn_state != ButtonState::Clicked

@@ -16,6 +16,26 @@ pub use self::{layer::*, lobby::*, room::*, startup::*, title::*};
 /// 인터페이스 배경 색상입니다.
 pub const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
 
+/// 폰트의 색상입니다.
+pub const FONT_COLOR: egui::Color32 = egui::Color32::from_gray(43);
+
+/// 긍정 색상
+pub const POSI_COLOR: egui::Color32 = egui::Color32::from_rgb(124, 208, 255);
+/// 긍정 초점 색상
+pub const POSI_FOCUS_COLOR: egui::Color32 = egui::Color32::from_rgb(32, 50, 91);
+
+/// 부정 색상
+pub const NEG_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 124, 143);
+/// 부전 초점 색상
+pub const NEG_FOCUS_COLOR: egui::Color32 = egui::Color32::from_rgb(91, 42, 54);
+
+/// 일반 색상
+pub const NORM_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
+/// 일반 초점 색상
+pub const NORM_FOCUS_COLOR: egui::Color32 = egui::Color32::from_gray(244);
+/// 일반 경험 색상
+pub const NORM_EXP_COLOR: egui::Color32 = egui::Color32::from_gray(186);
+
 /// 팀의 색상입니다.
 pub const TEAM_COLOR: [egui::Color32; 2] = [
     egui::Color32::from_rgb(0, 150, 255), // 블루팀 색상

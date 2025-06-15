@@ -20,7 +20,7 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
     },
 };
 
@@ -242,10 +242,11 @@ impl GameScene for GameLoginTitleScene {
         let font_id = egui::FontId::new(32.0 * scale, family);
         let enter_text = egui::RichText::new(text)
             .font(font_id)
-            .color(egui::Color32::from_black_alpha(alpha));
+            .color(FONT_COLOR * egui::Color32::from_white_alpha(alpha));
         let enter_label = egui::Label::new(enter_text)
             .halign(egui::Align::Center)
-            .sense(egui::Sense::empty());
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // 라벨 배경 텍스처
         let hud_label_source = self.bg_label_texture;

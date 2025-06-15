@@ -11,10 +11,15 @@ use mod_network::{
         RawPacket, RoomDataUpdatePacket,
     },
 };
-use winit::window::Window;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
     asset::{TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
         lobby::{
@@ -22,7 +27,8 @@ use crate::{
             MSG_MODAL_TEXTS,
         },
         CustomGameRoomScene, FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH,
-        ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR,
+        NORM_EXP_COLOR, NORM_FOCUS_COLOR, POSI_COLOR, POSI_FOCUS_COLOR,
     },
     SERVER_TCP_ADDR,
 };
@@ -46,11 +52,17 @@ pub struct MainLobbyJoinModalScene {
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
 
-    /// 버튼의 활성화 여부입니다.
-    input_enabled: bool,
-
     /// 입력된 번호 데이터입니다.
     input_number: String,
+    /// 확인 버튼 상태
+    okay_btn_state: ButtonState,
+    /// 취소 버튼 상태
+    cancel_btn_state: ButtonState,
+
+    /// 응답 요청 기다리는 여부
+    wait_for_response: bool,
+    /// 지연 시간
+    delay_time_sec: f32,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -71,8 +83,11 @@ impl MainLobbyJoinModalScene {
             locale,
             uid,
             token,
-            input_enabled: true,
-            input_number: String::with_capacity(16),
+            input_number: String::with_capacity(9),
+            okay_btn_state: ButtonState::Idle,
+            cancel_btn_state: ButtonState::Idle,
+            wait_for_response: false,
+            delay_time_sec: 0.3,
             texture_pool,
             texture_view_pool,
         }
@@ -157,6 +172,50 @@ impl GameScene for MainLobbyJoinModalScene {
         None
     }
 
+    fn on_keyboard_released(
+        &mut self,
+        code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        repeat: bool,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> bool {
+        if !repeat && self.delay_time_sec <= 0.0 {
+            match code {
+                KeyCode::Enter => {
+                    if let Ok(val) = self.input_number.parse::<u32>() {
+                        // 패킷을 전송합니다.
+                        let val = if val == 0 { u32::MAX } else { val };
+                        let world_id = WorldId::new(val);
+                        let packet = JoinRoomRequestPacket::new(world_id, self.uid, self.token);
+
+                        // 패킷을 전송합니다.
+                        let net_manager = app.net_manager();
+                        let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                        socket.push_packet(packet.as_raw());
+
+                        self.wait_for_response = true;
+                    }
+                }
+                KeyCode::Escape => {
+                    // 게임 장면을 전환합니다.
+                    let scene_flow = GameSceneFlow::Pop;
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
+                _ => {}
+            }
+        };
+
+        true
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+        self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
+    }
+
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
         let locale = self.locale as usize;
         let viewport = app.viewport();
@@ -171,62 +230,72 @@ impl GameScene for MainLobbyJoinModalScene {
         let text = TITLE_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(32.0 * scale, family);
-        let title = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let title_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let title_label = egui::Label::new(title_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // 안내 텍스트
         let text = INFORMATION_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let info_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let info_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let info_label = egui::Label::new(info_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         // `확인 버튼` 텍스트
         let text = OKAY_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let okay_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let okay_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
         // `취소 버튼` 텍스트
         let text = CANCEL_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let cancel_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let cancel_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
         // 텍스트 입력기
         let mut input_changed = false;
+        let input_number = self.input_number.parse::<u32>();
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
         let editor = egui::TextEdit::singleline(&mut self.input_number)
             .font(font_id)
             .char_limit(8)
             .min_size(egui::vec2(272.0 * scale, 52.0 * scale))
-            .text_color(egui::Color32::BLACK)
-            .background_color(egui::Color32::LIGHT_GRAY);
+            .text_color(FONT_COLOR)
+            .background_color(NORM_FOCUS_COLOR);
 
         // 확인 버튼
-        let mut requested = false;
+        let (bg_color, line_color) = match self.okay_btn_state {
+            ButtonState::Idle => (POSI_COLOR, egui::Color32::TRANSPARENT),
+            ButtonState::Hovered => (POSI_COLOR, POSI_FOCUS_COLOR),
+            ButtonState::Clicked | ButtonState::Pressed => (POSI_FOCUS_COLOR, POSI_FOCUS_COLOR),
+        };
         let okay_button = egui::Button::new(okay_text)
-            .corner_radius(3.0)
-            .fill(egui::Color32::WHITE)
+            .sense(egui::Sense::all())
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
             .min_size((128.0 * scale, 72.0 * scale).into())
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         // 취소 버튼
+        let (bg_color, line_color) = match self.cancel_btn_state {
+            ButtonState::Idle => (NORM_COLOR, egui::Color32::BLACK),
+            ButtonState::Hovered => (NORM_FOCUS_COLOR, egui::Color32::BLACK),
+            ButtonState::Clicked | ButtonState::Pressed => (NORM_EXP_COLOR, egui::Color32::BLACK),
+        };
         let cancel_button = egui::Button::new(cancel_text)
-            .fill(egui::Color32::WHITE)
-            .corner_radius(3.0)
+            .sense(egui::Sense::all())
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
             .min_size((128.0 * scale, 72.0 * scale).into())
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         let frame = egui::Frame::new()
-            .corner_radius(3.0)
+            .corner_radius(20.0 * scale)
             .fill(egui::Color32::WHITE)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Join_Custom_Modal"))
@@ -237,58 +306,94 @@ impl GameScene for MainLobbyJoinModalScene {
                 ui.set_min_width(640.0 * scale);
                 ui.set_max_width(640.0 * scale);
 
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    ui.add(egui::Label::new(title).sense(egui::Sense::empty()));
+                ui.vertical_centered(|ui| {
+                    ui.add_space(8.0 * scale);
+                    ui.add(title_label);
                     ui.separator();
 
                     ui.add_space(8.0 * scale);
-                    ui.add(egui::Label::new(info_text).sense(egui::Sense::empty()));
+                    ui.add(info_label);
                     ui.add_space(8.0 * scale);
-                    ui.add_enabled_ui(self.input_enabled, |ui| {
-                        if ui
-                            .add_sized((272.0 * scale, 52.0 * scale), editor)
-                            .changed()
-                        {
+
+                    ui.add_enabled_ui(!self.wait_for_response, |ui| {
+                        const EDITOR_SIZE: egui::Vec2 = egui::vec2(272.0, 52.0);
+                        let response = ui.add_sized(EDITOR_SIZE * scale, editor);
+                        if response.changed() {
                             input_changed = true;
                         }
                     });
-                    ui.add_space(8.0 * scale);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.set_max_height(72.0 * scale);
-                        ui.add_space(16.0 * scale);
-                        if ui.add(okay_button).clicked() {
-                            requested = true;
-                        }
 
-                        if ui.add(cancel_button).clicked() {
-                            // 이전 게임 장면으로 복귀합니다.
-                            let scene_flow = GameSceneFlow::Pop;
-                            let event = AppEvent::AddGameSceneFlow(scene_flow);
-                            let event_loop_proxy = app.event_loop_proxy();
-                            event_loop_proxy.send_event(event).unwrap();
-                        };
-                    });
-                    ui.add_space(8.0 * scale);
+                    ui.add_space(16.0 * scale);
+                    egui::Grid::new(egui::Id::new("Button_Grid"))
+                        .min_col_width(640.0 * 0.5 * scale)
+                        .max_col_width(640.0 * 0.5 * scale)
+                        .show(ui, |ui| {
+                            ui.set_max_height(45.0 * scale);
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    // 예 버튼
+                                    let enable = !self.wait_for_response && input_number.is_ok();
+                                    let response = ui.add_enabled(enable, okay_button);
+                                    if response.clicked() && self.delay_time_sec <= 0.0 {
+                                        self.okay_btn_state = ButtonState::Clicked;
+
+                                        if let Ok(val) = input_number {
+                                            // 패킷을 전송합니다.
+                                            let val = if val == 0 { u32::MAX } else { val };
+                                            let world_id = WorldId::new(val);
+                                            let packet = JoinRoomRequestPacket::new(
+                                                world_id, self.uid, self.token,
+                                            );
+
+                                            // 패킷을 전송합니다.
+                                            let net_manager = app.net_manager();
+                                            let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                                            socket.push_packet(packet.as_raw());
+
+                                            self.wait_for_response = true;
+                                        }
+                                    } else if response.is_pointer_button_down_on() {
+                                        self.okay_btn_state = ButtonState::Pressed;
+                                    } else if response.hovered() | response.has_focus() {
+                                        self.okay_btn_state = ButtonState::Hovered;
+                                    } else {
+                                        self.okay_btn_state = ButtonState::Idle;
+                                    }
+                                },
+                            );
+
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    // 취소 버튼
+                                    let enable = !self.wait_for_response;
+                                    let response = ui.add_enabled(enable, cancel_button);
+                                    if response.clicked() && self.delay_time_sec <= 0.0 {
+                                        // 이전 게임 장면으로 복귀합니다.
+                                        let scene_flow = GameSceneFlow::Pop;
+                                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                                        let event_loop_proxy = app.event_loop_proxy();
+                                        event_loop_proxy.send_event(event).unwrap();
+
+                                        self.cancel_btn_state = ButtonState::Clicked;
+                                        self.wait_for_response = true;
+                                    } else if response.is_pointer_button_down_on() {
+                                        self.cancel_btn_state = ButtonState::Pressed;
+                                    } else if response.hovered() | response.has_focus() {
+                                        self.cancel_btn_state = ButtonState::Hovered;
+                                    } else {
+                                        self.cancel_btn_state = ButtonState::Idle;
+                                    }
+                                },
+                            );
+                        });
                 });
+                ui.add_space(18.0 * scale);
             });
 
         if input_changed {
             self.input_number.retain(|c| c.is_ascii_digit());
-        }
-
-        if requested {
-            if let Ok(val) = self.input_number.parse::<u32>() {
-                self.input_enabled = false;
-
-                // 패킷을 생성합니다.
-                let world_id = WorldId::new(val);
-                let packet = JoinRoomRequestPacket::new(world_id, self.uid, self.token);
-
-                // 패킷을 전송합니다.
-                let net_manager = app.net_manager();
-                let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-                socket.push_packet(packet.as_raw());
-            }
         }
     }
 }

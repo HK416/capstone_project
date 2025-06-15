@@ -148,13 +148,16 @@ impl GameScene for GameIntroConnectScene {
         let connect_text = egui::RichText::new(text)
             .font(font_id)
             .color(egui::Color32::BLACK);
+        let connect_label = egui::Label::new(connect_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         egui::Area::new(egui::Id::new("Layout"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, (360.0 - 18.0) * scale])
             .show(app.egui_ctx(), |ui| {
                 ui.shrink_clip_rect(clip_rect);
                 ui.vertical_centered(|ui| {
-                    ui.label(connect_text);
+                    ui.add(connect_label);
                 })
             });
     }
