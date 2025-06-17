@@ -95,9 +95,13 @@ impl LobbyGraphicsOptionModalLayer {
 
     /// 메뉴를 그립니다.
     fn draw_menu(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        ui.add_space(2.0 * scale);
         self.draw_common_opt_menu(ui, i, scale, app);
+        ui.add_space(2.0 * scale);
         self.draw_graphics_opt_menu(ui, i, scale, app);
+        ui.add_space(2.0 * scale);
         self.draw_control_opt_menu(ui, i, scale, app);
+        ui.add_space(2.0 * scale);
         self.draw_sound_opt_menu(ui, i, scale, app);
     }
 
@@ -109,9 +113,10 @@ impl LobbyGraphicsOptionModalLayer {
         scale: f32,
         app: &dyn AppHandle,
     ) {
-        let min = ui.next_widget_position();
-        let size = egui::vec2(MENU_WIDTH, MENU_HEIGHT) * scale;
+        let min = ui.cursor().min + egui::vec2(4.0, 0.0) * scale;
+        let size = egui::vec2(MENU_WIDTH - 8.0, MENU_HEIGHT) * scale;
         let rect = egui::Rect::from_min_size(min, size);
+
         let response = ui.allocate_rect(rect, egui::Sense::all());
         let color = if response.clicked() {
             // 다른 게임 장면으로 전환합니다.
@@ -166,8 +171,8 @@ impl LobbyGraphicsOptionModalLayer {
         scale: f32,
         _app: &dyn AppHandle,
     ) {
-        let min = ui.next_widget_position();
-        let size = egui::vec2(MENU_WIDTH, MENU_HEIGHT) * scale;
+        let min = ui.cursor().min + egui::vec2(4.0, 0.0) * scale;
+        let size = egui::vec2(MENU_WIDTH - 8.0, MENU_HEIGHT) * scale;
         let rect = egui::Rect::from_min_size(min, size);
 
         ui.painter().rect_filled(rect, 5.0 * scale, POSI_COLOR);
@@ -189,12 +194,36 @@ impl LobbyGraphicsOptionModalLayer {
         scale: f32,
         app: &dyn AppHandle,
     ) {
-        let min = ui.next_widget_position();
-        let size = egui::vec2(MENU_WIDTH, MENU_HEIGHT) * scale;
+        let min = ui.cursor().min + egui::vec2(4.0, 0.0) * scale;
+        let size = egui::vec2(MENU_WIDTH - 8.0, MENU_HEIGHT) * scale;
         let rect = egui::Rect::from_min_size(min, size);
+
         let response = ui.allocate_rect(rect, egui::Sense::all());
         let color = if response.clicked() {
-            // TODO: 장면 전환
+            // 다른 게임 장면으로 전환합니다.
+            let event_loop_proxy = app.event_loop_proxy();
+            let scene = LobbyControlOptionModalLayer::new(
+                self.locale,
+                self.num_remaining_tasks,
+                self.task_results.clone(),
+            );
+            let flow = GameSceneFlow::Change(Box::new(scene));
+            let event = if !self.is_changed() {
+                AppEvent::AddGameSceneFlow(flow)
+            } else {
+                let scene = LobbyOptionSaveGuardLayer::new(
+                    self.locale,
+                    ChangeOption::Graphics {
+                        window_size: self.window_size,
+                        is_fullscreen: self.fullscreen_flag,
+                    },
+                    flow,
+                );
+                let flow = GameSceneFlow::Push(Box::new(scene));
+                AppEvent::AddGameSceneFlow(flow)
+            };
+            event_loop_proxy.send_event(event).unwrap();
+
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
             POSI_FOCUS_COLOR
@@ -223,12 +252,36 @@ impl LobbyGraphicsOptionModalLayer {
         scale: f32,
         app: &dyn AppHandle,
     ) {
-        let min = ui.next_widget_position();
-        let size = egui::vec2(MENU_WIDTH, MENU_HEIGHT) * scale;
+        let min = ui.cursor().min + egui::vec2(4.0, 0.0) * scale;
+        let size = egui::vec2(MENU_WIDTH - 8.0, MENU_HEIGHT) * scale;
         let rect = egui::Rect::from_min_size(min, size);
+
         let response = ui.allocate_rect(rect, egui::Sense::all());
         let color = if response.clicked() {
-            // TODO: 장면 전환
+            // 다른 게임 장면으로 전환합니다.
+            let event_loop_proxy = app.event_loop_proxy();
+            let scene = LobbySoundOptionModalLayer::new(
+                self.locale,
+                self.num_remaining_tasks,
+                self.task_results.clone(),
+            );
+            let flow = GameSceneFlow::Change(Box::new(scene));
+            let event = if !self.is_changed() {
+                AppEvent::AddGameSceneFlow(flow)
+            } else {
+                let scene = LobbyOptionSaveGuardLayer::new(
+                    self.locale,
+                    ChangeOption::Graphics {
+                        window_size: self.window_size,
+                        is_fullscreen: self.fullscreen_flag,
+                    },
+                    flow,
+                );
+                let flow = GameSceneFlow::Push(Box::new(scene));
+                AppEvent::AddGameSceneFlow(flow)
+            };
+            event_loop_proxy.send_event(event).unwrap();
+
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
             POSI_FOCUS_COLOR
@@ -251,10 +304,14 @@ impl LobbyGraphicsOptionModalLayer {
 
     /// 설정을 그립니다.
     fn draw_options(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        ui.add_space(2.0 * scale);
         ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
             self.draw_window_mode_opt(ui, i, scale, app);
         });
+        ui.add_space(2.0 * scale);
         ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
             self.draw_window_size_opt(ui, i, scale, app);
         });
     }
@@ -276,8 +333,8 @@ impl LobbyGraphicsOptionModalLayer {
             .selectable(false);
 
         ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
-            ui.set_min_width(CONTENT_WIDTH * 0.5 * scale);
-            ui.set_max_width(CONTENT_WIDTH * 0.5 * scale);
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
             ui.set_min_width(SUB_HEIGHT * scale);
             ui.set_max_width(SUB_HEIGHT * scale);
             ui.add(wnd_mode_label);
@@ -285,7 +342,7 @@ impl LobbyGraphicsOptionModalLayer {
 
         // 창 모드 버튼을 그립니다.
         let min = ui.cursor().min;
-        let full_size = ui.available_size();
+        let full_size = (ui.available_size() - egui::vec2(4.0 * scale, 0.0)).max(egui::Vec2::ZERO);
         let size = full_size * egui::vec2(0.49, 1.0);
         let text = WND_MODE_OPT_TEXTS[i];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
@@ -413,15 +470,15 @@ impl LobbyGraphicsOptionModalLayer {
             .selectable(false);
 
         ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
-            ui.set_min_width(CONTENT_WIDTH * 0.5 * scale);
-            ui.set_max_width(CONTENT_WIDTH * 0.5 * scale);
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
             ui.set_min_width(SUB_HEIGHT * scale);
             ui.set_max_width(SUB_HEIGHT * scale);
             ui.add(wnd_size_label);
         });
 
         let pos = ui.cursor().min + egui::vec2(0.0, SUB_HEIGHT * 0.1 * scale);
-        let width = ui.available_width();
+        let width = (ui.available_width() - 4.0 * scale).max(0.0);
         let old_style = (*ui.ctx().style()).clone();
         let mut new_style = old_style.clone();
         new_style.spacing.interact_size.y = SUB_HEIGHT * 0.8 * scale;
@@ -745,50 +802,55 @@ impl GameScene for LobbyGraphicsOptionModalLayer {
 
                 ui.add_space(8.0 * scale);
                 ui.add(title_label);
-                ui.add_space(12.0 * scale);
+                ui.add_space(8.0 * scale);
 
-                let center = clip_rect.center();
+                let center_x = clip_rect.center().x;
                 let beg_y = ui.next_widget_position().y;
-                let beg = egui::pos2(center.x - 0.5 * MODAL_WIDTH * scale, beg_y);
-                let end = egui::pos2(center.x + 0.5 * MODAL_WIDTH * scale, beg_y);
+                let beg = egui::pos2(center_x - 0.5 * MODAL_WIDTH * scale, beg_y);
+                let end = egui::pos2(center_x + 0.5 * MODAL_WIDTH * scale, beg_y);
                 ui.painter().line_segment(
                     [beg, end],
                     egui::Stroke::new(2.0 * scale, egui::Color32::BLACK),
                 );
 
+                ui.add_space(4.0 * scale);
                 ui.horizontal(|ui| {
                     ui.set_min_height(CONTENT_HEIGHT * scale);
                     ui.set_max_height(CONTENT_HEIGHT * scale);
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.set_min_width(MENU_WIDTH * scale);
-                        ui.set_max_width(MENU_WIDTH * scale);
-                        ui.set_min_height(CONTENT_HEIGHT * scale);
-                        ui.set_max_height(CONTENT_HEIGHT * scale);
-                        ui.vertical(|ui| {
-                            self.draw_menu(ui, i, scale, app);
-                        })
-                    });
-
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.set_min_width(CONTENT_WIDTH * scale);
-                        ui.set_max_width(CONTENT_WIDTH * scale);
-                        ui.set_max_height(CONTENT_HEIGHT * scale);
-                        ui.set_max_height(CONTENT_HEIGHT * scale);
-                        ui.vertical(|ui| {
-                            self.draw_options(ui, i, scale, app);
+                    egui::ScrollArea::vertical()
+                        .id_salt(egui::Id::new("Menu_Scroll"))
+                        .show(ui, |ui| {
+                            ui.set_min_width(MENU_WIDTH * scale);
+                            ui.set_max_width(MENU_WIDTH * scale);
+                            ui.set_min_height(CONTENT_HEIGHT * scale);
+                            ui.set_max_height(CONTENT_HEIGHT * scale);
+                            ui.vertical(|ui| {
+                                self.draw_menu(ui, i, scale, app);
+                            })
                         });
-                    });
+
+                    egui::ScrollArea::vertical()
+                        .id_salt(egui::Id::new("Option_Scroll"))
+                        .show(ui, |ui| {
+                            ui.set_min_width(CONTENT_WIDTH * scale);
+                            ui.set_max_width(CONTENT_WIDTH * scale);
+                            ui.set_max_height(CONTENT_HEIGHT * scale);
+                            ui.set_max_height(CONTENT_HEIGHT * scale);
+                            ui.vertical(|ui| {
+                                self.draw_options(ui, i, scale, app);
+                            });
+                        });
                 });
 
                 let end_y = ui.next_widget_position().y;
-                let beg = egui::pos2(center.x + (MENU_WIDTH - 0.5 * MODAL_WIDTH) * scale, beg_y);
-                let end = egui::pos2(center.x + (MENU_WIDTH - 0.5 * MODAL_WIDTH) * scale, end_y);
+                let beg = egui::pos2(center_x + (MENU_WIDTH - 0.5 * MODAL_WIDTH) * scale, beg_y);
+                let end = egui::pos2(center_x + (MENU_WIDTH - 0.5 * MODAL_WIDTH) * scale, end_y);
                 ui.painter().line_segment(
                     [beg, end],
                     egui::Stroke::new(1.0 * scale, egui::Color32::BLACK),
                 );
-                let beg = egui::pos2(center.x - 0.5 * MODAL_WIDTH * scale, end_y);
-                let end = egui::pos2(center.x + 0.5 * MODAL_WIDTH * scale, end_y);
+                let beg = egui::pos2(center_x - 0.5 * MODAL_WIDTH * scale, end_y);
+                let end = egui::pos2(center_x + 0.5 * MODAL_WIDTH * scale, end_y);
                 ui.painter().line_segment(
                     [beg, end],
                     egui::Stroke::new(2.0 * scale, egui::Color32::BLACK),
