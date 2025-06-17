@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     fs::OpenOptions,
     io::{self, ErrorKind, Read, Write},
     ops::Deref,
@@ -46,6 +47,18 @@ impl Locale {
             0 => Some(Locale::KOR),
             _ => None,
         }
+    }
+}
+
+impl fmt::Display for Locale {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Locale::KOR => "한국어",
+            }
+        )
     }
 }
 
@@ -177,6 +190,7 @@ impl UserConfig {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(path)
             .map_err(|e| {
                 log::error!("failed to open user configuration file! (REASON:{})", &e);

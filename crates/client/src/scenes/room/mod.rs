@@ -194,6 +194,7 @@ impl GameScene for CustomGameRoomScene {
                         StartFailedReason::EmptyBlueTeam => EMPTY_BLUE_ERR_TEXTS[i],
                         StartFailedReason::EmptyRedTeam => EMPTY_RED_ERR_TEXTS[i],
                     },
+                    None,
                 ));
                 let scene_flow = GameSceneFlow::Push(next_scene);
                 let event = AppEvent::AddGameSceneFlow(scene_flow);

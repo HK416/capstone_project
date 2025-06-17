@@ -35,6 +35,9 @@ pub struct MessageSceneLayer {
     /// 모달 대화상자의 내용 문자열입니다.
     message: String,
 
+    /// 다음 게임 장면 흐름입니다.
+    flow: Option<GameSceneFlow>,
+
     /// `확인` 버튼 상태입니다.
     okay_button_state: ButtonState,
     /// 입력 지연 시간입니다.
@@ -43,7 +46,7 @@ pub struct MessageSceneLayer {
 
 impl MessageSceneLayer {
     /// 새로운 `MessageSceneLayer`을 생성합니다.
-    pub fn new<T, M>(locale: Locale, title: T, message: M) -> Self
+    pub fn new<T, M>(locale: Locale, title: T, message: M, flow: Option<GameSceneFlow>) -> Self
     where
         T: Into<String>,
         M: Into<String>,
@@ -52,6 +55,7 @@ impl MessageSceneLayer {
             locale,
             title: title.into(),
             message: message.into(),
+            flow,
             okay_button_state: ButtonState::Idle,
             delay_time_sec: 0.3,
         }
@@ -180,44 +184,50 @@ impl GameScene for MessageSceneLayer {
             .corner_radius(20.0 * scale)
             .fill(egui::Color32::WHITE)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-        egui::Modal::new(egui::Id::new("Message"))
+        let mut modal = egui::Modal::new(egui::Id::new("Message"))
             .frame(frame)
-            .backdrop_color(egui::Color32::from_black_alpha(96))
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                ui.set_min_width(640.0 * scale);
-                ui.set_max_width(640.0 * scale);
+            .backdrop_color(egui::Color32::from_black_alpha(96));
+        modal.area = modal.area.order(egui::Order::TOP);
+        modal.show(app.egui_ctx(), |ui| {
+            ui.shrink_clip_rect(clip_rect);
+            ui.set_min_width(640.0 * scale);
+            ui.set_max_width(640.0 * scale);
 
-                ui.vertical_centered(|ui| {
-                    ui.add_space(8.0 * scale);
-                    ui.add(title_label);
-                    ui.separator();
+            ui.vertical_centered(|ui| {
+                ui.add_space(8.0 * scale);
+                ui.add(title_label);
+                ui.separator();
 
-                    ui.add_space(8.0 * scale);
-                    ui.add(message_label);
-                    ui.add_space(16.0 * scale);
+                ui.add_space(8.0 * scale);
+                ui.add(message_label);
+                ui.add_space(16.0 * scale);
 
-                    let enable = self.okay_button_state != ButtonState::Clicked;
-                    ui.add_enabled_ui(enable, |ui| {
-                        let response = ui.add(okay_button);
-                        if response.clicked() && self.delay_time_sec <= 0.0 {
-                            self.okay_button_state = ButtonState::Clicked;
+                let enable = self.okay_button_state != ButtonState::Clicked;
+                ui.add_enabled_ui(enable, |ui| {
+                    let response = ui.add_enabled(self.flow.is_some(), okay_button);
+                    if response.clicked() && self.delay_time_sec <= 0.0 {
+                        self.okay_button_state = ButtonState::Clicked;
 
-                            // 게임 장면을 전환합니다.
-                            let scene_flow = GameSceneFlow::Pop;
-                            let event = AppEvent::AddGameSceneFlow(scene_flow);
-                            let event_loop_proxy = app.event_loop_proxy();
+                        // 게임 장면을 전환합니다.
+                        let event_loop_proxy = app.event_loop_proxy();
+                        let flow = GameSceneFlow::Pop;
+                        let event = AppEvent::AddGameSceneFlow(flow);
+                        event_loop_proxy.send_event(event).unwrap();
+
+                        if let Some(flow) = self.flow.take() {
+                            let event = AppEvent::AddGameSceneFlow(flow);
                             event_loop_proxy.send_event(event).unwrap();
-                        } else if response.is_pointer_button_down_on() {
-                            self.okay_button_state = ButtonState::Pressed;
-                        } else if response.hovered() || response.has_focus() {
-                            self.okay_button_state = ButtonState::Hovered;
-                        } else {
-                            self.okay_button_state = ButtonState::Idle;
                         }
-                    });
-                    ui.add_space(18.0 * scale);
+                    } else if response.is_pointer_button_down_on() {
+                        self.okay_button_state = ButtonState::Pressed;
+                    } else if response.hovered() || response.has_focus() {
+                        self.okay_button_state = ButtonState::Hovered;
+                    } else {
+                        self.okay_button_state = ButtonState::Idle;
+                    }
                 });
+                ui.add_space(18.0 * scale);
             });
+        });
     }
 }

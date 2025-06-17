@@ -161,43 +161,44 @@ impl GameScene for FatalErrorSceneLayer {
             .corner_radius(20.0 * scale)
             .fill(egui::Color32::WHITE)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-        egui::Modal::new(egui::Id::new("Fatal"))
+        let mut modal = egui::Modal::new(egui::Id::new("Fatal"))
             .frame(frame)
-            .backdrop_color(egui::Color32::from_black_alpha(96))
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                ui.set_min_width(640.0 * scale);
-                ui.set_max_width(640.0 * scale);
+            .backdrop_color(egui::Color32::from_black_alpha(96));
+        modal.area = modal.area.order(egui::Order::TOP);
+        modal.show(app.egui_ctx(), |ui| {
+            ui.shrink_clip_rect(clip_rect);
+            ui.set_min_width(640.0 * scale);
+            ui.set_max_width(640.0 * scale);
 
-                ui.vertical_centered(|ui| {
-                    ui.add_space(8.0 * scale);
-                    ui.add(title_label);
-                    ui.separator();
+            ui.vertical_centered(|ui| {
+                ui.add_space(8.0 * scale);
+                ui.add(title_label);
+                ui.separator();
 
-                    ui.add_space(8.0 * scale);
-                    ui.add(message_label);
-                    ui.add_space(16.0 * scale);
+                ui.add_space(8.0 * scale);
+                ui.add(message_label);
+                ui.add_space(16.0 * scale);
 
-                    let enable = self.okay_button_state != ButtonState::Clicked;
-                    ui.add_enabled_ui(enable, |ui| {
-                        let response = ui.add(okay_button);
-                        if response.clicked() && self.delay_time_sec <= 0.0 {
-                            self.okay_button_state = ButtonState::Clicked;
+                let enable = self.okay_button_state != ButtonState::Clicked;
+                ui.add_enabled_ui(enable, |ui| {
+                    let response = ui.add(okay_button);
+                    if response.clicked() && self.delay_time_sec <= 0.0 {
+                        self.okay_button_state = ButtonState::Clicked;
 
-                            let scene_flow = GameSceneFlow::Clear;
-                            let event = AppEvent::AddGameSceneFlow(scene_flow);
-                            let event_loop_proxy = app.event_loop_proxy();
-                            event_loop_proxy.send_event(event).unwrap();
-                        } else if response.is_pointer_button_down_on() {
-                            self.okay_button_state = ButtonState::Pressed;
-                        } else if response.hovered() | response.has_focus() {
-                            self.okay_button_state = ButtonState::Hovered;
-                        } else {
-                            self.okay_button_state = ButtonState::Idle;
-                        }
-                    });
-                    ui.add_space(18.0 * scale);
+                        let scene_flow = GameSceneFlow::Clear;
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
+                    } else if response.is_pointer_button_down_on() {
+                        self.okay_button_state = ButtonState::Pressed;
+                    } else if response.hovered() | response.has_focus() {
+                        self.okay_button_state = ButtonState::Hovered;
+                    } else {
+                        self.okay_button_state = ButtonState::Idle;
+                    }
                 });
+                ui.add_space(18.0 * scale);
             });
+        });
     }
 }

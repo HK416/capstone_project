@@ -213,17 +213,13 @@ impl GameScene for MainLobbyExitModalScene {
         let text = OKAY_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let okay_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let okay_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
         // `취소` 버튼 텍스트
         let text = CANCEL_TEXTS[locale];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(24.0 * scale, family);
-        let cancel_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
+        let cancel_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
         // `예` 버튼
         let (bg_color, line_color) = match self.okay_btn_state {
@@ -255,84 +251,85 @@ impl GameScene for MainLobbyExitModalScene {
             .fill(egui::Color32::WHITE)
             .corner_radius(20.0 * scale)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-        egui::Modal::new(egui::Id::new("Exit_Onemore"))
+        let mut modal = egui::Modal::new(egui::Id::new("Exit_Onemore"))
             .frame(frame)
-            .backdrop_color(egui::Color32::from_black_alpha(96))
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                ui.set_min_width(640.0 * scale);
-                ui.set_max_width(640.0 * scale);
+            .backdrop_color(egui::Color32::from_black_alpha(96));
+        modal.area = modal.area.order(egui::Order::Tooltip);
+        modal.show(app.egui_ctx(), |ui| {
+            ui.shrink_clip_rect(clip_rect);
+            ui.set_min_width(640.0 * scale);
+            ui.set_max_width(640.0 * scale);
 
-                ui.vertical_centered(|ui| {
-                    ui.add_space(8.0 * scale);
-                    ui.add(title_label);
-                    ui.separator();
+            ui.vertical_centered(|ui| {
+                ui.add_space(8.0 * scale);
+                ui.add(title_label);
+                ui.separator();
 
-                    let image = egui::Image::new(self.arona_img_texture)
-                        .max_size(egui::Vec2::splat(360.0) * scale);
-                    ui.add(image);
+                let image = egui::Image::new(self.arona_img_texture)
+                    .max_size(egui::Vec2::splat(360.0) * scale);
+                ui.add(image);
 
-                    ui.add_space(8.0 * scale);
-                    ui.add(message_label);
-                    ui.add_space(16.0 * scale);
+                ui.add_space(8.0 * scale);
+                ui.add(message_label);
+                ui.add_space(16.0 * scale);
 
-                    let enable = self.okay_btn_state != ButtonState::Clicked
-                        && self.cancel_btn_state != ButtonState::Clicked;
-                    ui.add_enabled_ui(enable, |ui| {
-                        egui::Grid::new(egui::Id::new("Button_Grid"))
-                            .min_col_width(640.0 * 0.5 * scale)
-                            .max_col_width(640.0 * 0.5 * scale)
-                            .show(ui, |ui| {
-                                ui.set_max_height(45.0 * scale);
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        // 예 버튼
-                                        let response = ui.add(okay_button);
-                                        if response.clicked() && self.delay_time_sec <= 0.0 {
-                                            self.okay_btn_state = ButtonState::Clicked;
+                let enable = self.okay_btn_state != ButtonState::Clicked
+                    && self.cancel_btn_state != ButtonState::Clicked;
+                ui.add_enabled_ui(enable, |ui| {
+                    egui::Grid::new(egui::Id::new("Button_Grid"))
+                        .min_col_width(640.0 * 0.5 * scale)
+                        .max_col_width(640.0 * 0.5 * scale)
+                        .show(ui, |ui| {
+                            ui.set_max_height(45.0 * scale);
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    // 예 버튼
+                                    let response = ui.add(okay_button);
+                                    if response.clicked() && self.delay_time_sec <= 0.0 {
+                                        self.okay_btn_state = ButtonState::Clicked;
 
-                                            // 모든 게임 장면을 제거합니다.
-                                            let scene_flow = GameSceneFlow::Clear;
-                                            let event = AppEvent::AddGameSceneFlow(scene_flow);
-                                            let event_loop_proxy = app.event_loop_proxy();
-                                            event_loop_proxy.send_event(event).unwrap();
-                                        } else if response.is_pointer_button_down_on() {
-                                            self.okay_btn_state = ButtonState::Pressed;
-                                        } else if response.hovered() | response.has_focus() {
-                                            self.okay_btn_state = ButtonState::Hovered;
-                                        } else {
-                                            self.okay_btn_state = ButtonState::Idle;
-                                        }
-                                    },
-                                );
+                                        // 모든 게임 장면을 제거합니다.
+                                        let scene_flow = GameSceneFlow::Clear;
+                                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                                        let event_loop_proxy = app.event_loop_proxy();
+                                        event_loop_proxy.send_event(event).unwrap();
+                                    } else if response.is_pointer_button_down_on() {
+                                        self.okay_btn_state = ButtonState::Pressed;
+                                    } else if response.hovered() | response.has_focus() {
+                                        self.okay_btn_state = ButtonState::Hovered;
+                                    } else {
+                                        self.okay_btn_state = ButtonState::Idle;
+                                    }
+                                },
+                            );
 
-                                ui.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |ui| {
-                                        // 취소 버튼
-                                        let response = ui.add(cancel_button);
-                                        if response.clicked() && self.delay_time_sec <= 0.0 {
-                                            self.cancel_btn_state = ButtonState::Clicked;
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    // 취소 버튼
+                                    let response = ui.add(cancel_button);
+                                    if response.clicked() && self.delay_time_sec <= 0.0 {
+                                        self.cancel_btn_state = ButtonState::Clicked;
 
-                                            // 게임 장면을 전환합니다.
-                                            let scene_flow = GameSceneFlow::Pop;
-                                            let event = AppEvent::AddGameSceneFlow(scene_flow);
-                                            let event_loop_proxy = app.event_loop_proxy();
-                                            event_loop_proxy.send_event(event).unwrap();
-                                        } else if response.is_pointer_button_down_on() {
-                                            self.cancel_btn_state = ButtonState::Pressed;
-                                        } else if response.hovered() | response.has_focus() {
-                                            self.cancel_btn_state = ButtonState::Hovered;
-                                        } else {
-                                            self.cancel_btn_state = ButtonState::Idle;
-                                        }
-                                    },
-                                );
-                            });
-                    });
+                                        // 게임 장면을 전환합니다.
+                                        let scene_flow = GameSceneFlow::Pop;
+                                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                                        let event_loop_proxy = app.event_loop_proxy();
+                                        event_loop_proxy.send_event(event).unwrap();
+                                    } else if response.is_pointer_button_down_on() {
+                                        self.cancel_btn_state = ButtonState::Pressed;
+                                    } else if response.hovered() | response.has_focus() {
+                                        self.cancel_btn_state = ButtonState::Hovered;
+                                    } else {
+                                        self.cancel_btn_state = ButtonState::Idle;
+                                    }
+                                },
+                            );
+                        });
                 });
-                ui.add_space(18.0 * scale);
             });
+            ui.add_space(18.0 * scale);
+        });
     }
 }

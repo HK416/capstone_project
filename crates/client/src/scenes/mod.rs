@@ -13,9 +13,6 @@ use crate::config::NUM_LOCALE;
 
 pub use self::{layer::*, lobby::*, room::*, startup::*, title::*};
 
-/// 인터페이스 배경 색상입니다.
-pub const UI_BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(128);
-
 /// 폰트의 색상입니다.
 pub const FONT_COLOR: egui::Color32 = egui::Color32::from_gray(43);
 

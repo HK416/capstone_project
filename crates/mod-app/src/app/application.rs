@@ -918,6 +918,7 @@ impl ApplicationHandler<AppEvent> for Application {
                             Some(result_size) => {
                                 if request_size.size() == result_size {
                                     // 창의 크기가 즉시 적용됐습니다.
+                                    self.window_size = request_size;
                                     app_window.on_resized(&self.instance, &self.device);
                                     let (window_width, window_height) = result_size.into();
                                     let content_aspect_ratio = self.window_size.aspect_ratio();
@@ -933,9 +934,11 @@ impl ApplicationHandler<AppEvent> for Application {
                                 }
                             }
                             None => {
-                                // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
+                                self.window_size = request_size;
                             }
                         }
+                    } else {
+                        self.window_size = request_size;
                     }
                 }
             }
@@ -988,7 +991,33 @@ impl ApplicationHandler<AppEvent> for Application {
                                 // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
                             }
                         }
+
+                        #[cfg(target_os = "macos")]
+                        {
+                            use winit::platform::macos::WindowExtMacOS;
+                            app_window.window.set_borderless_game(self.fullscreen);
+                            app_window.window.set_simple_fullscreen(self.fullscreen);
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            app_window.window.set_fullscreen(
+                                self.fullscreen.then_some(Fullscreen::Borderless(None)),
+                            );
+                        }
                     } else {
+                        #[cfg(target_os = "macos")]
+                        {
+                            use winit::platform::macos::WindowExtMacOS;
+                            app_window.window.set_borderless_game(self.fullscreen);
+                            app_window.window.set_simple_fullscreen(self.fullscreen);
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            app_window.window.set_fullscreen(
+                                self.fullscreen.then_some(Fullscreen::Borderless(None)),
+                            );
+                        }
+
                         // 전체 화면에서 창 화면으로 되돌아가는 경우
                         // 프레임 쉐이더 리소스의 크기로 애플리케이션 창의 크기를 변경합니다.
                         match app_window
@@ -1016,19 +1045,6 @@ impl ApplicationHandler<AppEvent> for Application {
                                 // 윈도우 이벤트를 통해 창의 크기가 조정됩니다.
                             }
                         }
-                    }
-
-                    #[cfg(target_os = "macos")]
-                    {
-                        use winit::platform::macos::WindowExtMacOS;
-                        app_window.window.set_borderless_game(self.fullscreen);
-                        app_window.window.set_simple_fullscreen(self.fullscreen);
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        app_window.window.set_fullscreen(
-                            self.fullscreen.then_some(Fullscreen::Borderless(None)),
-                        );
                     }
                 }
             }

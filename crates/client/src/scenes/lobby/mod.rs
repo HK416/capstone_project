@@ -2,8 +2,9 @@ mod enter;
 mod exit;
 mod join;
 mod layer;
+mod option;
 
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, sync::Arc};
 
 use mod_app::{
     app::AppHandle,
@@ -15,6 +16,7 @@ use mod_network::{
     components::{GameTier, LoginToken, ProfileIcon, UserId, UserName},
     protocol::{PacketType, RawPacket},
 };
+use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use winit::{
     event::Modifiers,
@@ -30,7 +32,8 @@ use crate::{
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        lobby::option::LobbyCommonOptionModalLayer, FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS,
+        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
     },
 };
 
@@ -508,89 +511,58 @@ impl MainLobbyScene {
 
     /// 플레이어 정보를 그립니다.
     fn draw_player_profile(&mut self, ctx: &egui::Context) {
-        egui::Area::new(egui::Id::new(egui::Id::new("Player_Info_Layout"))).show(ctx, |ui| {
-            ui.shrink_clip_rect(self.clip_rect);
+        egui::Area::new(egui::Id::new(egui::Id::new("Player_Info_Layout")))
+            .order(egui::Order::Background)
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
 
-            // 프로필 배경
-            egui::Image::new(self.profile_bg_texture).paint_at(ui, self.profile_bg_rect);
+                // 프로필 배경
+                egui::Image::new(self.profile_bg_texture).paint_at(ui, self.profile_bg_rect);
 
-            // 프로필 캐릭터
-            egui::Image::new(self.profile_icon_texture).paint_at(ui, self.profile_icon_rect);
+                // 프로필 캐릭터
+                egui::Image::new(self.profile_icon_texture).paint_at(ui, self.profile_icon_rect);
 
-            // 이름
-            let label = egui::Label::new(self.player_name_text.clone())
-                .wrap_mode(egui::TextWrapMode::Truncate)
-                .halign(egui::Align::Center)
-                .sense(egui::Sense::empty())
-                .selectable(false);
-            let label_rect = egui::Rect::from_min_max(
-                self.profile_bg_rect.center_top()
-                    - egui::vec2(self.profile_bg_rect.width() * 0.25, 0.0),
-                self.profile_bg_rect.max,
-            );
-            ui.put(label_rect, label);
-        });
+                // 이름
+                let label = egui::Label::new(self.player_name_text.clone())
+                    .wrap_mode(egui::TextWrapMode::Truncate)
+                    .halign(egui::Align::Center)
+                    .sense(egui::Sense::empty())
+                    .selectable(false);
+                let label_rect = egui::Rect::from_min_max(
+                    self.profile_bg_rect.center_top()
+                        - egui::vec2(self.profile_bg_rect.width() * 0.25, 0.0),
+                    self.profile_bg_rect.max,
+                );
+                ui.put(label_rect, label);
+            });
     }
 
     /// 상단 패널을 그립니다.
-    fn draw_pannel(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
-        egui::Area::new(egui::Id::new("Pannel")).show(ctx, |ui| {
-            ui.shrink_clip_rect(self.clip_rect);
+    fn draw_pannel(&mut self, ctx: &egui::Context, _app: &dyn AppHandle) {
+        egui::Area::new(egui::Id::new("Pannel"))
+            .order(egui::Order::Background)
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
 
-            // 옵션 아이콘의 이벤트를 처리합니다.
-            let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
-            self.option_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
-                ButtonState::Clicked
-            } else if response.is_pointer_button_down_on() {
-                ButtonState::Pressed
-            } else if response.hovered() {
-                ButtonState::Hovered
-            } else {
-                ButtonState::Idle
-            };
+                // 배경
+                self.draw_pannel_background(ui);
 
-            // 종료 아이콘의 이벤트를 처리합니다.
-            let response = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
-            self.exit_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
-                // 게임 장면을 전환합니다.
-                let next_scene = Box::new(MainLobbyExitModalScene::new(
-                    self.locale,
-                    self.texture_pool.clone(),
-                    self.texture_view_pool.clone(),
-                ));
-                let scene_flow = GameSceneFlow::Push(next_scene);
-                let event = AppEvent::AddGameSceneFlow(scene_flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
+                // 옵션 아이콘
+                self.draw_pannel_icon(
+                    ui,
+                    self.option_btn_state,
+                    self.option_icon_texture,
+                    self.option_btn_rect,
+                );
 
-                ButtonState::Clicked
-            } else if response.is_pointer_button_down_on() {
-                ButtonState::Pressed
-            } else if response.hovered() {
-                ButtonState::Hovered
-            } else {
-                ButtonState::Idle
-            };
-
-            // 배경
-            self.draw_pannel_background(ui);
-
-            // 옵션 아이콘
-            self.draw_pannel_icon(
-                ui,
-                self.option_btn_state,
-                self.option_icon_texture,
-                self.option_btn_rect,
-            );
-
-            // 종료 아이콘
-            self.draw_pannel_icon(
-                ui,
-                self.exit_btn_state,
-                self.exit_icon_texture,
-                self.exit_btn_rect,
-            );
-        });
+                // 종료 아이콘
+                self.draw_pannel_icon(
+                    ui,
+                    self.exit_btn_state,
+                    self.exit_icon_texture,
+                    self.exit_btn_rect,
+                );
+            });
     }
 
     /// 패널 배경화면을 그립니다.
@@ -643,6 +615,56 @@ impl MainLobbyScene {
             ButtonState::Idle => egui::Color32::from_gray(169),
         };
         egui::Image::new(source).tint(tint).paint_at(ui, rect);
+    }
+
+    /// Ui 입력을 처리합니다.
+    fn handle_ui_inputs(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+        egui::Area::new(egui::Id::new("Control")).show(ctx, |ui| {
+            ui.shrink_clip_rect(self.clip_rect);
+
+            // 옵션 아이콘의 이벤트를 처리합니다.
+            let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
+            self.option_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                // 게임 장면을 전환합니다.
+                let scene =
+                    LobbyCommonOptionModalLayer::new(self.locale, 0, Arc::new(Queue::new()));
+                let flow = GameSceneFlow::Push(Box::new(scene));
+                let event = AppEvent::AddGameSceneFlow(flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+
+                ButtonState::Clicked
+            } else if response.is_pointer_button_down_on() {
+                ButtonState::Pressed
+            } else if response.hovered() {
+                ButtonState::Hovered
+            } else {
+                ButtonState::Idle
+            };
+
+            // 종료 아이콘의 이벤트를 처리합니다.
+            let response = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
+            self.exit_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                // 게임 장면을 전환합니다.
+                let next_scene = Box::new(MainLobbyExitModalScene::new(
+                    self.locale,
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
+                ));
+                let scene_flow = GameSceneFlow::Push(next_scene);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+
+                ButtonState::Clicked
+            } else if response.is_pointer_button_down_on() {
+                ButtonState::Pressed
+            } else if response.hovered() {
+                ButtonState::Hovered
+            } else {
+                ButtonState::Idle
+            };
+        });
     }
 }
 
@@ -747,6 +769,9 @@ impl GameScene for MainLobbyScene {
             egui::pos2(viewport.x, viewport.y) / scale_factor,
             egui::vec2(viewport.width, viewport.height) / scale_factor,
         );
+
+        // 입력 처리
+        self.handle_ui_inputs(ctx, app);
 
         // 플레이어 정보 그리기
         self.draw_player_profile(ctx);

@@ -133,6 +133,7 @@ impl GameScene for MainLobbyWaitLayer {
                         JoinFailedReason::InProgress => ERR_IN_PROGRASS_TEXTS[i],
                         JoinFailedReason::CreationLimited => ERR_LIMITS_TEXTS[i],
                     },
+                    None,
                 ));
                 let scene_flow = GameSceneFlow::Change(next_scene);
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
