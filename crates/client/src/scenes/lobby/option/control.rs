@@ -25,6 +25,23 @@ use crate::{
 
 use super::*;
 
+/// 애플리케이션 표시 언어에 따른 앞키 설정 텍스트입니다.
+const KEY_FORWARD_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["앞 방향 이동"];
+/// 애플리케이션 표시 언어에 따른 왼쪽키 설정 텍스트입니다.
+const KEY_LEFT_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["뒷 방향 이동"];
+/// 애플리케이션 표시 언어에 따른 뒷키 설정 텍스트입니다.
+const KEY_BACKWARD_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["왼쪽 방향 이동"];
+/// 애플리케이션 표시 언어에 따른 오른쪽키 설정 텍스트입니다.
+const KEY_RIGHT_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["오른쪽 방향 이동"];
+/// 애플리케이션 표시 언어에 따른 점프키 설정 텍스트입니다.
+const KEY_JUMP_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["점프"];
+/// 애플리케이션 표시 언어에 따른 스킬키 설정 텍스트입니다.
+const KEY_SKILL_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["스킬"];
+/// 애플리케이션 표시 언어에 따른 재장전키 설정 텍스트입니다.
+const KEY_RELOAD_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["재장전"];
+/// 애플리케이션 표시 언어에 따른 상태창키 설정 텍스트입니다.
+const KEY_STATUS_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["상태창"];
+
 /// 일반 설정 모달 레이어
 pub struct LobbyControlOptionModalLayer {
     /// 현재 애플리케이션 언어
@@ -253,7 +270,224 @@ impl LobbyControlOptionModalLayer {
     }
 
     /// 옵션을 그립니다.
-    fn draw_options(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {}
+    fn draw_options(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_forward_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_left_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_backward_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_right_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_jump_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_skill_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_reload_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_key_status_opt(ui, i, scale, app);
+        });
+    }
+
+    /// 앞키 설정 옵션을 그립니다.
+    fn draw_key_forward_opt(
+        &mut self,
+        ui: &mut egui::Ui,
+        i: usize,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let text = KEY_FORWARD_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let forward_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let forward_label = egui::Label::new(forward_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(forward_label);
+        });
+    }
+
+    /// 왼쪽키 설정 옵션을 그립니다.
+    fn draw_key_left_opt(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        let text = KEY_LEFT_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let left_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let left_label = egui::Label::new(left_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(left_label);
+        });
+    }
+
+    /// 뒷키 설정 옵션을 그립니다.
+    fn draw_key_backward_opt(
+        &mut self,
+        ui: &mut egui::Ui,
+        i: usize,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let text = KEY_BACKWARD_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let backward_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let backward_label = egui::Label::new(backward_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(backward_label);
+        });
+    }
+
+    /// 오른쪽키 설정 옵션을 그립니다.
+    fn draw_key_right_opt(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        let text = KEY_RIGHT_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let right_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let right_label = egui::Label::new(right_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(right_label);
+        });
+    }
+
+    /// 점프키 설정 옵션을 그립니다.
+    fn draw_key_jump_opt(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        let text = KEY_JUMP_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let jump_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let jump_label = egui::Label::new(jump_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(jump_label);
+        });
+    }
+
+    /// 스킬키 설정 옵션을 그립니다.
+    fn draw_key_skill_opt(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        let text = KEY_SKILL_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let skill_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let skill_label = egui::Label::new(skill_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(skill_label);
+        });
+    }
+
+    /// 재장전키 설정 옵션을 그립니다.
+    fn draw_key_reload_opt(
+        &mut self,
+        ui: &mut egui::Ui,
+        i: usize,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let text = KEY_RELOAD_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let reload_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let reload_label = egui::Label::new(reload_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(reload_label);
+        });
+    }
+
+    /// 상태창키 설정 옵션을 그립니다.
+    fn draw_key_status_opt(
+        &mut self,
+        ui: &mut egui::Ui,
+        i: usize,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let text = KEY_STATUS_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let status_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let status_label = egui::Label::new(status_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(status_label);
+        });
+    }
 
     /// 설정의 변경 여부를 반환합니다.
     fn is_changed(&self) -> bool {
@@ -383,10 +617,10 @@ impl GameScene for LobbyControlOptionModalLayer {
     fn on_keyboard_released(
         &mut self,
         code: KeyCode,
-        location: KeyLocation,
-        modifiers: Modifiers,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
         repeat: bool,
-        window: &Window,
+        _window: &Window,
         app: &dyn AppHandle,
     ) -> bool {
         if !repeat && self.delay_time_sec <= 0.0 {

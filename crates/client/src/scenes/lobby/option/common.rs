@@ -277,7 +277,7 @@ impl LobbyCommonOptionModalLayer {
 
     /// 설정을 그립니다.
     fn draw_options(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
-        ui.add_space(2.0 * scale);
+        ui.add_space(4.0 * scale);
         ui.horizontal(|ui| {
             ui.add_space(4.0 * scale);
             self.draw_locale_opt(ui, i, scale, app);
@@ -325,6 +325,8 @@ impl LobbyCommonOptionModalLayer {
                     .wrap_mode(egui::TextWrapMode::Truncate)
                     .selected_text(locale_text)
                     .show_ui(ui, |ui| {
+                        ui.set_max_width(width);
+
                         let mut val = 0;
                         while let Some(locale) = Locale::new(val) {
                             let text = locale.to_string();

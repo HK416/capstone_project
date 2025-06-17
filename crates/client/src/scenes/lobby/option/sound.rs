@@ -25,6 +25,13 @@ use crate::{
 
 use super::*;
 
+/// 애플리케이션 표시 언어에 따른 배경 볼륨 설정 텍스트입니다.
+const BACKGROUND_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["배경음"];
+/// 애플리케이션 표시 언어에 따른 이팩트 볼륨 설정 텍스트입니다.
+const EFFECT_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["이팩트"];
+/// 애플리케이션 표시 언어에 따른 보이스 볼륨 설정 텍스트입니다.
+const VOICE_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["보이스"];
+
 /// 일반 설정 모달 레이어
 pub struct LobbySoundOptionModalLayer {
     /// 현재 애플리케이션 언어
@@ -253,7 +260,98 @@ impl LobbySoundOptionModalLayer {
     }
 
     /// 옵션을 그립니다.
-    fn draw_options(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {}
+    fn draw_options(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_background_volume_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_effect_volume_opt(ui, i, scale, app);
+        });
+        ui.add_space(4.0 * scale);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0 * scale);
+            self.draw_voice_colume_opt(ui, i, scale, app);
+        });
+    }
+
+    /// 배경 볼륨 설정 옵션을 그립니다.
+    fn draw_background_volume_opt(
+        &mut self,
+        ui: &mut egui::Ui,
+        i: usize,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let text = BACKGROUND_VOLUME_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let background_volume_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let background_volume_label = egui::Label::new(background_volume_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(background_volume_label);
+        });
+    }
+
+    /// 이팩트 볼륨 설정 옵션을 그립니다.
+    fn draw_effect_volume_opt(
+        &mut self,
+        ui: &mut egui::Ui,
+        i: usize,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let text = EFFECT_VOLUME_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let effect_volume_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let effect_volume_label = egui::Label::new(effect_volume_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(effect_volume_label);
+        });
+    }
+
+    /// 목소리 볼륨 설정 옵션을 그립니다.
+    fn draw_voice_colume_opt(
+        &mut self,
+        ui: &mut egui::Ui,
+        i: usize,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let text = VOICE_VOLUME_OPT_TEXTS[i];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(MAIN_FONT_SIZE * scale, family);
+        let voice_volume_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let voice_volume_label = egui::Label::new(voice_volume_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
+            ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+            ui.set_min_width(SUB_HEIGHT * scale);
+            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.add(voice_volume_label);
+        });
+    }
 
     /// 설정의 변경 여부를 반환합니다.
     fn is_changed(&self) -> bool {
@@ -383,19 +481,30 @@ impl GameScene for LobbySoundOptionModalLayer {
     fn on_keyboard_released(
         &mut self,
         code: KeyCode,
-        location: KeyLocation,
-        modifiers: Modifiers,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
         repeat: bool,
-        window: &Window,
+        _window: &Window,
         app: &dyn AppHandle,
     ) -> bool {
         if !repeat && self.delay_time_sec <= 0.0 {
             match code {
                 KeyCode::Escape => {
-                    // 게임 장면에서 빠져나옵니다.
-                    let scene_flow = GameSceneFlow::Pop;
-                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    // 다른 게임 장면으로 전환합니다.
                     let event_loop_proxy = app.event_loop_proxy();
+                    let flow = GameSceneFlow::Pop;
+                    let event = if !self.is_changed() {
+                        // 게임 장면에서 빠져나옵니다.
+                        AppEvent::AddGameSceneFlow(flow)
+                    } else {
+                        let scene = LobbyOptionSaveGuardLayer::new(
+                            self.locale,
+                            ChangeOption::Sound {},
+                            flow,
+                        );
+                        let flow = GameSceneFlow::Push(Box::new(scene));
+                        AppEvent::AddGameSceneFlow(flow)
+                    };
                     event_loop_proxy.send_event(event).unwrap();
                 }
                 _ => {}

@@ -304,12 +304,12 @@ impl LobbyGraphicsOptionModalLayer {
 
     /// 설정을 그립니다.
     fn draw_options(&mut self, ui: &mut egui::Ui, i: usize, scale: f32, app: &dyn AppHandle) {
-        ui.add_space(2.0 * scale);
+        ui.add_space(4.0 * scale);
         ui.horizontal(|ui| {
             ui.add_space(4.0 * scale);
             self.draw_window_mode_opt(ui, i, scale, app);
         });
-        ui.add_space(2.0 * scale);
+        ui.add_space(4.0 * scale);
         ui.horizontal(|ui| {
             ui.add_space(4.0 * scale);
             self.draw_window_size_opt(ui, i, scale, app);
@@ -417,13 +417,13 @@ impl LobbyGraphicsOptionModalLayer {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
 
-            self.window_mode_btn_state = ButtonState::Clicked;
+            self.fullscreen_mode_btn_state = ButtonState::Clicked;
         } else if response.is_pointer_button_down_on() {
-            self.window_mode_btn_state = ButtonState::Pressed;
+            self.fullscreen_mode_btn_state = ButtonState::Pressed;
         } else if response.hovered() | response.has_focus() {
-            self.window_mode_btn_state = ButtonState::Hovered;
+            self.fullscreen_mode_btn_state = ButtonState::Hovered;
         } else {
-            self.window_mode_btn_state = ButtonState::Idle;
+            self.fullscreen_mode_btn_state = ButtonState::Idle;
         }
 
         let (bg_color, line_color) = if self.fullscreen_flag {
@@ -501,6 +501,8 @@ impl LobbyGraphicsOptionModalLayer {
                     .wrap_mode(egui::TextWrapMode::Truncate)
                     .selected_text(size_text)
                     .show_ui(ui, |ui| {
+                        ui.set_max_width(width);
+
                         let mut val = self.max_window_size;
                         while let Some(size) = val.downgrade() {
                             let text = size.to_string();
