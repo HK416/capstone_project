@@ -27,7 +27,8 @@ use winit::{
 use crate::{
     asset::{
         TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, HUD_EXIT_ICON_URI,
-        HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -117,6 +118,24 @@ pub struct MainLobbyScene {
     /// 옵션 버튼 상태
     option_btn_state: ButtonState,
 
+    /// 게임 버튼 텍스처
+    game_button_texture: egui::load::SizedTexture,
+
+    /// 매칭 버튼 영역
+    matching_btn_rect: egui::Rect,
+    /// 매칭 버튼 상태
+    matching_btn_state: ButtonState,
+
+    /// 커스텀 게임 생성 버튼 영역
+    create_btn_rect: egui::Rect,
+    /// 커스텀 게임 생성 버튼 상태
+    create_btn_state: ButtonState,
+
+    /// 커스텀 게임 참가 버튼 영역
+    join_btn_rect: egui::Rect,
+    /// 커스텀 게임 참가 버튼 상태
+    join_btn_state: ButtonState,
+
     /// 입력 지연 시간
     delay_time_sec: f32,
 
@@ -180,6 +199,16 @@ impl MainLobbyScene {
             },
             option_btn_rect: egui::Rect::ZERO,
             option_btn_state: ButtonState::Idle,
+            game_button_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            matching_btn_rect: egui::Rect::ZERO,
+            matching_btn_state: ButtonState::Idle,
+            create_btn_rect: egui::Rect::ZERO,
+            create_btn_state: ButtonState::Idle,
+            join_btn_rect: egui::Rect::ZERO,
+            join_btn_state: ButtonState::Idle,
             delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
@@ -194,6 +223,7 @@ impl MainLobbyScene {
         self.regist_pannel_bg_texture(device, ui_renderer);
         self.regist_exit_icon_texture(device, ui_renderer);
         self.regist_option_icon_texture(device, ui_renderer);
+        self.regist_game_button_texture(device, ui_renderer);
     }
 
     /// Ui 렌더러에 등록된 텍스처를 해제합니다.
@@ -204,6 +234,7 @@ impl MainLobbyScene {
         ui_renderer.free_texture(&self.pannel_bg_texture.id);
         ui_renderer.free_texture(&self.exit_icon_texture.id);
         ui_renderer.free_texture(&self.option_icon_texture.id);
+        ui_renderer.free_texture(&self.game_button_texture.id);
     }
 
     /// 배경 텍스처를 Ui 렌더러에 등록합니다.
@@ -368,6 +399,31 @@ impl MainLobbyScene {
         };
     }
 
+    /// 게임 버튼 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_game_button_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 패널 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_LAYOUT_URI_01)
+            .expect("HUD_Layout_01 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.game_button_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     /// 클립 사각형 영역의 크기를 재조정합니다.
     fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
         let scale = viewport.width / scale_factor / BASE_WIDTH;
@@ -496,6 +552,27 @@ impl MainLobbyScene {
             Self::resize_pannel_icon(texture_size, &self.pannel_bg_rect, num_blocks, 0);
         self.exit_btn_rect =
             Self::resize_pannel_icon(texture_size, &self.pannel_bg_rect, num_blocks, 1);
+
+        // 매칭 버튼의 영역을 재조정합니다.
+        let texture_size = self.game_button_texture.size;
+        let ratio = texture_size.x / texture_size.y;
+        let width = 360.0 * self.ui_scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        let max = self.clip_rect.max - egui::Vec2::splat(8.0 * self.ui_scale);
+        let min = max - size;
+        self.matching_btn_rect = egui::Rect::from_min_max(min, max);
+
+        // 커스텀 게임 참가 버튼의 영역을 재조정합니다.
+        let width = 178.0 * self.ui_scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        let min = min - egui::vec2(0.0, 5.0 * self.ui_scale) - egui::vec2(0.0, height);
+        self.join_btn_rect = egui::Rect::from_min_size(min, size);
+
+        // 커스텀 게임 생성 버튼의 영역을 재조정합니다.
+        let min = min + egui::vec2(4.0 * self.ui_scale, 0.0) + egui::vec2(width, 0.0);
+        self.create_btn_rect = egui::Rect::from_min_size(min, size);
     }
 
     /// 배경화면을 그립니다.
@@ -619,52 +696,201 @@ impl MainLobbyScene {
 
     /// Ui 입력을 처리합니다.
     fn handle_ui_inputs(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
-        egui::Area::new(egui::Id::new("Control")).show(ctx, |ui| {
-            ui.shrink_clip_rect(self.clip_rect);
+        egui::Area::new(egui::Id::new("Control"))
+            .order(egui::Order::Middle)
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
 
-            // 옵션 아이콘의 이벤트를 처리합니다.
-            let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
-            self.option_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
-                // 게임 장면을 전환합니다.
-                let scene =
-                    LobbyCommonOptionModalLayer::new(self.locale, 0, Arc::new(Queue::new()));
-                let flow = GameSceneFlow::Push(Box::new(scene));
-                let event = AppEvent::AddGameSceneFlow(flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
+                // 옵션 아이콘의 이벤트를 처리합니다.
+                let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
+                self.option_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                    // 게임 장면을 전환합니다.
+                    let scene =
+                        LobbyCommonOptionModalLayer::new(self.locale, 0, Arc::new(Queue::new()));
+                    let flow = GameSceneFlow::Push(Box::new(scene));
+                    let event = AppEvent::AddGameSceneFlow(flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
 
-                ButtonState::Clicked
-            } else if response.is_pointer_button_down_on() {
-                ButtonState::Pressed
-            } else if response.hovered() {
-                ButtonState::Hovered
-            } else {
-                ButtonState::Idle
-            };
+                    ButtonState::Clicked
+                } else if response.is_pointer_button_down_on() {
+                    ButtonState::Pressed
+                } else if response.hovered() | response.has_focus() {
+                    ButtonState::Hovered
+                } else {
+                    ButtonState::Idle
+                };
 
-            // 종료 아이콘의 이벤트를 처리합니다.
-            let response = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
-            self.exit_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
-                // 게임 장면을 전환합니다.
-                let next_scene = Box::new(MainLobbyExitModalScene::new(
-                    self.locale,
-                    self.texture_pool.clone(),
-                    self.texture_view_pool.clone(),
-                ));
-                let scene_flow = GameSceneFlow::Push(next_scene);
-                let event = AppEvent::AddGameSceneFlow(scene_flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
+                // 종료 아이콘의 이벤트를 처리합니다.
+                let response = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
+                self.exit_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                    // 게임 장면을 전환합니다.
+                    let next_scene = Box::new(MainLobbyExitModalScene::new(
+                        self.locale,
+                        self.texture_pool.clone(),
+                        self.texture_view_pool.clone(),
+                    ));
+                    let scene_flow = GameSceneFlow::Push(next_scene);
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
 
-                ButtonState::Clicked
-            } else if response.is_pointer_button_down_on() {
-                ButtonState::Pressed
-            } else if response.hovered() {
-                ButtonState::Hovered
-            } else {
-                ButtonState::Idle
-            };
-        });
+                    ButtonState::Clicked
+                } else if response.is_pointer_button_down_on() {
+                    ButtonState::Pressed
+                } else if response.hovered() | response.has_focus() {
+                    ButtonState::Hovered
+                } else {
+                    ButtonState::Idle
+                };
+
+                // 게임 매칭 버튼의 이벤트를 처리합니다.
+                let response = ui.allocate_rect(self.matching_btn_rect, egui::Sense::all());
+                self.matching_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                    ButtonState::Clicked
+                } else if response.is_pointer_button_down_on() {
+                    ButtonState::Pressed
+                } else if response.hovered() | response.has_focus() {
+                    ButtonState::Hovered
+                } else {
+                    ButtonState::Idle
+                };
+
+                // 게임 생성 버튼의 이벤트를 처리합니다.
+                let response = ui.allocate_rect(self.create_btn_rect, egui::Sense::all());
+                self.create_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                    // 다음 게임 장면으로 전환합니다.
+                    let next_scene = MainLobbyWaitLayer::new(
+                        self.locale,
+                        self.uid,
+                        self.token,
+                        self.texture_pool.clone(),
+                        self.texture_view_pool.clone(),
+                    );
+                    let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+
+                    ButtonState::Clicked
+                } else if response.is_pointer_button_down_on() {
+                    ButtonState::Pressed
+                } else if response.hovered() | response.has_focus() {
+                    ButtonState::Hovered
+                } else {
+                    ButtonState::Idle
+                };
+
+                // 게임 참가 버튼의 이벤트를 처리합니다.
+                let response = ui.allocate_rect(self.join_btn_rect, egui::Sense::all());
+                self.join_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                    // 다음 게임 장면으로 전환합니다.
+                    let next_scene = MainLobbyJoinModalScene::new(
+                        self.locale,
+                        self.uid,
+                        self.token,
+                        self.texture_pool.clone(),
+                        self.texture_view_pool.clone(),
+                    );
+                    let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+
+                    ButtonState::Clicked
+                } else if response.is_pointer_button_down_on() {
+                    ButtonState::Pressed
+                } else if response.hovered() | response.has_focus() {
+                    ButtonState::Hovered
+                } else {
+                    ButtonState::Idle
+                };
+            });
+    }
+
+    /// 매칭을 시작하는 버튼을 그립니다.
+    fn draw_matching_button(&mut self, ctx: &egui::Context, _app: &dyn AppHandle) {
+        // let locale = self.locale as usize;
+        // let text = CREATE_GAME_BTN_TEXTS[locale];
+        // let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        // let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+        // let text = egui::RichText::new(text)
+        //     .font(font_id)
+        //     .color(egui::Color32::BLACK);
+        // let label = egui::Label::new(text).sense(egui::Sense::empty()).selectable(false);
+        let tint = match self.matching_btn_state {
+            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::from_gray(212),
+            ButtonState::Hovered => egui::Color32::from_gray(232),
+            ButtonState::Idle => egui::Color32::WHITE,
+        };
+
+        egui::Area::new(egui::Id::new("Matching_Button"))
+            .order(egui::Order::Background)
+            .show(ctx, |ui| {
+                egui::Image::new(self.game_button_texture)
+                    .sense(egui::Sense::empty())
+                    .tint(tint)
+                    .paint_at(ui, self.matching_btn_rect);
+                // ui.put(self.matching_btn_rect, label);
+            });
+    }
+
+    /// 커스텀 게임을 생성하는 버튼을 그립니다.
+    fn draw_room_create_button(&mut self, ctx: &egui::Context, _app: &dyn AppHandle) {
+        let locale = self.locale as usize;
+        let text = CREATE_GAME_BTN_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::BLACK);
+        let label = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+        let tint = match self.create_btn_state {
+            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::from_gray(212),
+            ButtonState::Hovered => egui::Color32::from_gray(232),
+            ButtonState::Idle => egui::Color32::WHITE,
+        };
+
+        egui::Area::new(egui::Id::new("Create_Button"))
+            .order(egui::Order::Background)
+            .show(ctx, |ui| {
+                egui::Image::new(self.game_button_texture)
+                    .sense(egui::Sense::empty())
+                    .tint(tint)
+                    .paint_at(ui, self.create_btn_rect);
+                ui.put(self.create_btn_rect, label);
+            });
+    }
+
+    /// 커스텀 게임을 참여하는 버튼을 그립니다.
+    fn draw_join_room_button(&mut self, ctx: &egui::Context, _app: &dyn AppHandle) {
+        let locale = self.locale as usize;
+        let text = JOIN_GAME_BTN_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::BLACK);
+        let label = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+        let tint = match self.join_btn_state {
+            ButtonState::Pressed | ButtonState::Clicked => egui::Color32::from_gray(212),
+            ButtonState::Hovered => egui::Color32::from_gray(232),
+            ButtonState::Idle => egui::Color32::WHITE,
+        };
+
+        egui::Area::new(egui::Id::new("Join_Button"))
+            .order(egui::Order::Background)
+            .show(ctx, |ui| {
+                egui::Image::new(self.game_button_texture)
+                    .sense(egui::Sense::empty())
+                    .tint(tint)
+                    .paint_at(ui, self.join_btn_rect);
+                ui.put(self.join_btn_rect, label);
+            });
     }
 }
 
@@ -779,74 +1005,10 @@ impl GameScene for MainLobbyScene {
         // 패널 그리기
         self.draw_pannel(ctx, app);
 
-        // 게임 생성 버튼
-        let text = CREATE_GAME_BTN_TEXTS[locale];
-        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let font_id = egui::FontId::new(48.0 * scale, family);
-        let text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
-        let create_button = egui::Button::new(text)
-            .fill(egui::Color32::WHITE)
-            .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-        let create_rect = egui::Rect::from_min_max(
-            clip_rect.min + egui::vec2(1004.0 * scale, 536.0 * scale),
-            clip_rect.min + egui::vec2(1264.0 * scale, 616.0 * scale),
-        );
-
-        // 게임 참가 버튼
-        let text = JOIN_GAME_BTN_TEXTS[locale];
-        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let font_id = egui::FontId::new(48.0 * scale, family);
-        let text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
-        let join_button = egui::Button::new(text)
-            .fill(egui::Color32::WHITE)
-            .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-        let join_rect = egui::Rect::from_min_max(
-            clip_rect.min + egui::vec2(1004.0 * scale, 624.0 * scale),
-            clip_rect.min + egui::vec2(1264.0 * scale, 704.0 * scale),
-        );
-
-        egui::Area::new(egui::Id::new("Game")).show(app.egui_ctx(), |ui| {
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
-                ui.add_enabled_ui(self.button_enabled, |ui| {
-                    ui.shrink_clip_rect(clip_rect);
-
-                    if ui.put(create_rect, create_button).clicked() {
-                        // 다음 게임 장면으로 전환합니다.
-                        let next_scene = MainLobbyWaitLayer::new(
-                            self.locale,
-                            self.uid,
-                            self.token,
-                            self.texture_pool.clone(),
-                            self.texture_view_pool.clone(),
-                        );
-                        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
-                    if ui.put(join_rect, join_button).clicked() {
-                        // 다음 게임 장면으로 전환합니다.
-                        let next_scene = MainLobbyJoinModalScene::new(
-                            self.locale,
-                            self.uid,
-                            self.token,
-                            self.texture_pool.clone(),
-                            self.texture_view_pool.clone(),
-                        );
-                        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
-                });
-            });
-        });
+        // 버튼 그리기
+        self.draw_matching_button(ctx, app);
+        self.draw_room_create_button(ctx, app);
+        self.draw_join_room_button(ctx, app);
 
         // 배경화면
         self.draw_background(ctx);
