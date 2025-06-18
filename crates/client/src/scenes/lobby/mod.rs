@@ -26,8 +26,8 @@ use winit::{
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, HUD_EXIT_ICON_URI,
-        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI,
+        TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
+        HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI,
         NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
@@ -75,9 +75,6 @@ pub struct MainLobbyScene {
     /// 현재 클라이언트의 로그인 토큰
     token: LoginToken,
 
-    /// 버튼의 활성화 여부
-    button_enabled: bool,
-
     /// Ui 스케일
     ui_scale: f32,
     /// 클립 영역 사각형
@@ -86,6 +83,11 @@ pub struct MainLobbyScene {
     bg_texture: egui::load::SizedTexture,
     /// 배경화면 레이아웃 영역
     bg_rect: egui::Rect,
+
+    /// 배경화면 꾸밈 텍스처
+    bg_deco_texture: egui::load::SizedTexture,
+    /// 배경화면 꾸밈 레이아웃 영역
+    bg_deco_rect: egui::Rect,
 
     /// 프로필 배경 텍스처
     profile_bg_texture: egui::load::SizedTexture,
@@ -163,7 +165,6 @@ impl MainLobbyScene {
             tier,
             profile_icon,
             token,
-            button_enabled: true,
             ui_scale: 1.0,
             clip_rect: egui::Rect::ZERO,
             bg_texture: egui::load::SizedTexture {
@@ -171,6 +172,11 @@ impl MainLobbyScene {
                 size: egui::Vec2::ZERO,
             },
             bg_rect: egui::Rect::ZERO,
+            bg_deco_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            bg_deco_rect: egui::Rect::ZERO,
             profile_bg_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
@@ -218,6 +224,7 @@ impl MainLobbyScene {
     /// 텍스처를 Ui 렌더러에 등록합니다.
     fn regist_textures(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
         self.regist_background_texture(device, ui_renderer);
+        self.regist_background_deco_texture(device, ui_renderer);
         self.regist_profile_bg_texture(device, ui_renderer);
         self.regist_profile_icon_texture(device, ui_renderer);
         self.regist_pannel_bg_texture(device, ui_renderer);
@@ -229,6 +236,7 @@ impl MainLobbyScene {
     /// Ui 렌더러에 등록된 텍스처를 해제합니다.
     fn unregist_textures(&mut self, ui_renderer: &mut UiRenderer) {
         ui_renderer.free_texture(&self.bg_texture.id);
+        ui_renderer.free_texture(&self.bg_deco_texture.id);
         ui_renderer.free_texture(&self.profile_bg_texture.id);
         ui_renderer.free_texture(&self.profile_icon_texture.id);
         ui_renderer.free_texture(&self.pannel_bg_texture.id);
@@ -257,6 +265,35 @@ impl MainLobbyScene {
 
         // 등록된 텍스처 정보를 저장합니다.
         self.bg_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// 배경 꾸밈 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_background_deco_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        // 메인 로비 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(BG_DECO_URI)
+            .expect("BG_Deco_00 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.bg_deco_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
@@ -445,6 +482,20 @@ impl MainLobbyScene {
         egui::Rect::from_center_size(center, size)
     }
 
+    /// 배경 꾸밈 사각형 영역의 크기를 재조정합니다.
+    fn resize_background_deco(
+        texture_size: &egui::Vec2,
+        clip_rect: &egui::Rect,
+        scale: f32,
+    ) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let width = 320.0 * scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        let min = clip_rect.right_center() - egui::vec2(1.0, 0.5) * size;
+        egui::Rect::from_min_size(min, size)
+    }
+
     /// 프로필 배경 사각형 영역의 크기를 재조정합니다.
     fn resize_profile_background(
         texture_size: &egui::Vec2,
@@ -525,6 +576,11 @@ impl MainLobbyScene {
         let texture_size = &self.bg_texture.size;
         self.bg_rect = Self::resize_background(texture_size, &self.clip_rect);
 
+        // 배경 꾸밈 사각형 영역의 크기를 재조정합니다.
+        let texture_size = &self.bg_deco_texture.size;
+        self.bg_deco_rect =
+            Self::resize_background_deco(texture_size, &self.clip_rect, self.ui_scale);
+
         // 프로필 배경 사각형 영역의 크기를 재조정합니다.
         let texture_size = &self.profile_bg_texture.size;
         self.profile_bg_rect =
@@ -556,7 +612,7 @@ impl MainLobbyScene {
         // 매칭 버튼의 영역을 재조정합니다.
         let texture_size = self.game_button_texture.size;
         let ratio = texture_size.x / texture_size.y;
-        let width = 360.0 * self.ui_scale;
+        let width = 260.0 * self.ui_scale;
         let height = width / ratio;
         let size = egui::vec2(width, height);
         let max = self.clip_rect.max - egui::Vec2::splat(8.0 * self.ui_scale);
@@ -564,25 +620,30 @@ impl MainLobbyScene {
         self.matching_btn_rect = egui::Rect::from_min_max(min, max);
 
         // 커스텀 게임 참가 버튼의 영역을 재조정합니다.
-        let width = 178.0 * self.ui_scale;
+        let width = 260.0 * self.ui_scale;
         let height = width / ratio;
-        let size = egui::vec2(width, height);
-        let min = min - egui::vec2(0.0, 5.0 * self.ui_scale) - egui::vec2(0.0, height);
-        self.join_btn_rect = egui::Rect::from_min_size(min, size);
+        let max = egui::pos2(max.x, min.y - 5.0 * self.ui_scale);
+        let min = egui::pos2(max.x - width, max.y - height);
+        self.join_btn_rect = egui::Rect::from_min_max(min, max);
 
         // 커스텀 게임 생성 버튼의 영역을 재조정합니다.
-        let min = min + egui::vec2(4.0 * self.ui_scale, 0.0) + egui::vec2(width, 0.0);
-        self.create_btn_rect = egui::Rect::from_min_size(min, size);
+        let max = egui::pos2(max.x, min.y - 5.0 * self.ui_scale);
+        let min = egui::pos2(max.x - width, max.y - height);
+        self.create_btn_rect = egui::Rect::from_min_max(min, max);
     }
 
     /// 배경화면을 그립니다.
     fn draw_background(&mut self, ctx: &egui::Context) {
-        let source = self.bg_texture;
         egui::CentralPanel::default()
             .frame(egui::Frame::new())
             .show(ctx, |ui| {
                 ui.shrink_clip_rect(self.clip_rect);
-                egui::Image::new(source).paint_at(ui, self.bg_rect);
+                egui::Image::new(self.bg_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.bg_rect);
+                egui::Image::new(self.bg_deco_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.bg_deco_rect);
             });
     }
 
@@ -594,10 +655,14 @@ impl MainLobbyScene {
                 ui.shrink_clip_rect(self.clip_rect);
 
                 // 프로필 배경
-                egui::Image::new(self.profile_bg_texture).paint_at(ui, self.profile_bg_rect);
+                egui::Image::new(self.profile_bg_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.profile_bg_rect);
 
                 // 프로필 캐릭터
-                egui::Image::new(self.profile_icon_texture).paint_at(ui, self.profile_icon_rect);
+                egui::Image::new(self.profile_icon_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.profile_icon_rect);
 
                 // 이름
                 let label = egui::Label::new(self.player_name_text.clone())
@@ -655,6 +720,7 @@ impl MainLobbyScene {
             self.pannel_bg_rect.left_bottom(),
         );
         egui::Image::new(self.pannel_bg_texture)
+            .sense(egui::Sense::empty())
             .uv(uv)
             .paint_at(ui, rect);
 
@@ -665,6 +731,7 @@ impl MainLobbyScene {
             self.pannel_bg_rect.right_bottom(),
         );
         egui::Image::new(self.pannel_bg_texture)
+            .sense(egui::Sense::empty())
             .uv(uv)
             .paint_at(ui, rect);
 
@@ -674,6 +741,7 @@ impl MainLobbyScene {
             self.pannel_bg_rect.right_bottom() + egui::vec2(DECO, 0.0) * self.ui_scale,
         );
         egui::Image::new(self.pannel_bg_texture)
+            .sense(egui::Sense::empty())
             .uv(uv)
             .paint_at(ui, rect);
     }
@@ -691,7 +759,10 @@ impl MainLobbyScene {
             ButtonState::Hovered => egui::Color32::from_gray(128),
             ButtonState::Idle => egui::Color32::from_gray(169),
         };
-        egui::Image::new(source).tint(tint).paint_at(ui, rect);
+        egui::Image::new(source)
+            .sense(egui::Sense::empty())
+            .tint(tint)
+            .paint_at(ui, rect);
     }
 
     /// Ui 입력을 처리합니다.
@@ -744,18 +815,6 @@ impl MainLobbyScene {
                     ButtonState::Idle
                 };
 
-                // 게임 매칭 버튼의 이벤트를 처리합니다.
-                let response = ui.allocate_rect(self.matching_btn_rect, egui::Sense::all());
-                self.matching_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
-                    ButtonState::Clicked
-                } else if response.is_pointer_button_down_on() {
-                    ButtonState::Pressed
-                } else if response.hovered() | response.has_focus() {
-                    ButtonState::Hovered
-                } else {
-                    ButtonState::Idle
-                };
-
                 // 게임 생성 버튼의 이벤트를 처리합니다.
                 let response = ui.allocate_rect(self.create_btn_rect, egui::Sense::all());
                 self.create_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
@@ -797,6 +856,18 @@ impl MainLobbyScene {
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
 
+                    ButtonState::Clicked
+                } else if response.is_pointer_button_down_on() {
+                    ButtonState::Pressed
+                } else if response.hovered() | response.has_focus() {
+                    ButtonState::Hovered
+                } else {
+                    ButtonState::Idle
+                };
+
+                // 게임 매칭 버튼의 이벤트를 처리합니다.
+                let response = ui.allocate_rect(self.matching_btn_rect, egui::Sense::all());
+                self.matching_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
                     ButtonState::Clicked
                 } else if response.is_pointer_button_down_on() {
                     ButtonState::Pressed
@@ -985,16 +1056,8 @@ impl GameScene for MainLobbyScene {
         self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
     }
 
-    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+    fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
         let ctx = app.egui_ctx();
-        let locale = self.locale as usize;
-        let viewport = app.viewport();
-        let scale_factor = window.scale_factor() as f32;
-        let scale = viewport.width / scale_factor / BASE_WIDTH;
-        let clip_rect = egui::Rect::from_min_size(
-            egui::pos2(viewport.x, viewport.y) / scale_factor,
-            egui::vec2(viewport.width, viewport.height) / scale_factor,
-        );
 
         // 입력 처리
         self.handle_ui_inputs(ctx, app);
@@ -1006,9 +1069,9 @@ impl GameScene for MainLobbyScene {
         self.draw_pannel(ctx, app);
 
         // 버튼 그리기
-        self.draw_matching_button(ctx, app);
         self.draw_room_create_button(ctx, app);
         self.draw_join_room_button(ctx, app);
+        self.draw_matching_button(ctx, app);
 
         // 배경화면
         self.draw_background(ctx);

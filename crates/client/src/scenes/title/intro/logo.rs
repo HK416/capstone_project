@@ -158,7 +158,9 @@ impl GameScene for GameIntroLogoScene {
             .frame(egui::Frame::new())
             .show(app.egui_ctx(), |ui| {
                 ui.shrink_clip_rect(clip_rect);
-                egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
+                egui::Image::new(self.game_logo_texture_id)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, rect);
             });
     }
 }

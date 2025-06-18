@@ -266,6 +266,7 @@ impl GameScene for MainLobbyExitModalScene {
                 ui.separator();
 
                 let image = egui::Image::new(self.arona_img_texture)
+                    .sense(egui::Sense::empty())
                     .max_size(egui::Vec2::splat(360.0) * scale);
                 ui.add(image);
 

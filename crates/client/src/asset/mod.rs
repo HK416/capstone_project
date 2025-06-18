@@ -29,6 +29,12 @@ pub const GAME_LOGO_DATA: &'static [u8; 26506] = include_bytes!(concat!(
     "assets/ui/Game_Logo.png",
 ));
 
+/// 배경화면 꾸밈 텍스처의 `Uri`입니다.
+pub const BG_DECO_URI: &'static str = "BG_Deco_00";
+
+/// 메인 로비 배경화면 텍스처의 `Uri`입니다.
+pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby";
+
 /// 게임 로그인 타이틀 0번 배경화면 텍스처의 `Uri`입니다.
 pub const BG_LOGIN_TITLE_0_URI: &'static str = "ui/BG_Login_Title_0.png";
 /// 게임 로그인 타이틀 0번 배경화면 텍스처의 데이터입니다.
@@ -115,9 +121,6 @@ pub const HUD_OPTION_ICON_DATA: &'static [u8; 2181] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/HUD_Option_Icon.png"
 ));
-
-/// 메인 로비 화면 배경화면 텍스처의 `Uri`입니다.
-pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby";
 
 /// 데미지 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_DAMAGE_NORMAL_URI: &'static str = "ImgFont_Damage_Normal";

@@ -282,7 +282,9 @@ impl GameScene for GameLoginTitleScene {
             ui.set_max_size(egui::vec2(1280.0, 720.0) * scale);
 
             ui.add_enabled_ui(!self.pressed_any_keys, |ui| {
-                egui::Image::new(bg_source).paint_at(ui, rect);
+                egui::Image::new(bg_source)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, rect);
                 let entire_respones = ui.allocate_rect(clip_rect, egui::Sense::CLICK);
                 if entire_respones.clicked() && self.delay_time_sec <= 0.0 {
                     self.pressed_any_keys = true;

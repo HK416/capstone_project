@@ -14,7 +14,7 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        SamplerPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI,
+        SamplerPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI, BG_DECO_URI,
         BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_DETAIL_ICON_URI,
         HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
         HUD_OPTION_ICON_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
@@ -372,6 +372,53 @@ impl MainLobbyEnterScene {
         self.num_remaining_tasks += 1;
     }
 
+    /// `MainLobby`의 배경 텍스처를 풀 객체에 등록합니다.
+    fn create_background_deco_texture<Dir>(
+        &mut self,
+        root_dir: Dir,
+        thread_pool: &ThreadPool,
+        device: Arc<wgpu::Device>,
+    ) where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push("ui");
+
+        let task_results = self.task_results.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        thread_pool.spawn(move || {
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let mut staging_buffers = Vec::new();
+
+            let result = texture_data_pool.get_or_init(
+                &workspace,
+                BG_DECO_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                &texture_pool,
+                &texture_view_pool,
+                &sampler_pool,
+            );
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
+
+            task_results.push(TaskResult::Texture {
+                command: encoder.finish(),
+                staging_buffers,
+            });
+        });
+
+        self.num_remaining_tasks += 1;
+    }
+
     /// 종료 대화상자 모달에 사용되는 텍스처를 풀 객체에 등록합니다.
     fn create_arona_sad_texture<Dir>(
         &mut self,
@@ -430,6 +477,7 @@ impl GameScene for MainLobbyEnterScene {
         self.create_layout_textures(&root_dir, io_thread_pool, device.clone());
         self.create_rank_icon_textures(&root_dir, io_thread_pool, device.clone());
         self.create_background_texture(&root_dir, io_thread_pool, device.clone());
+        self.create_background_deco_texture(&root_dir, io_thread_pool, device.clone());
         self.create_profile_bg_textures(&root_dir, io_thread_pool, device.clone());
         self.create_profile_icon_textures(&root_dir, io_thread_pool, device.clone());
         self.create_arona_sad_texture(&root_dir, io_thread_pool, device.clone());
