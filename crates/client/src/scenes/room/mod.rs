@@ -1,29 +1,35 @@
 //! 커스텀 게임 장면과 관련된 코드를 작성합니다.
 //!
+use ahash::{HashMap, HashSet, RandomState};
 use mod_app::{
     app::AppHandle,
-    etc::AppEvent,
+    etc::{AppEvent, Viewport},
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
     components::{
-        CustomRoomPlayerData, LoginToken, Permission, StageKind, Team, UserId, WorldId,
-        MAX_IN_GAME_PLAYERS,
+        CustomRoomPlayerData, GameTier, LoginToken, ProfileIcon, StageKind, UserId, WorldId,
+        MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, NUM_PROFILE_ICONS, NUM_TIER,
     },
     protocol::{
         Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomLeaveNotifyPacket,
-        RoomReadyRequestPacket, StartFailedReason, StartGameFailedPacket,
+        StartFailedReason, StartGameFailedPacket,
     },
 };
 use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{
+        TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
+        HUD_CANCEL_ICON_URI, HUD_LAYOUT_URI_02, NOTOSANS_BOLD, PROFILE_ICON_URI,
+    },
+    component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
     },
     SERVER_TCP_ADDR,
 };
@@ -31,7 +37,7 @@ use crate::{
 use super::{MessageSceneLayer, BASE_WIDTH, TEAM_COLOR};
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
-const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임 대기실"];
+const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임"];
 /// 애플리케이션 표시 언어에 따른 `준비 버튼` 텍스트
 const READY_TEXTS: [&'static str; NUM_LOCALE] = ["준비"];
 /// 애플리케이션 표시 언어에 따른 `시작 버튼` 텍스트
@@ -71,8 +77,45 @@ pub struct CustomGameRoomScene {
     /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.
     players: Vec<CustomRoomPlayerData>,
 
+    /// Ui 스케일
+    ui_scale: f32,
+    /// 클립 사각형 영역
+    clip_rect: egui::Rect,
+
+    /// 배경화면 사각형 영역
+    bg_rect: egui::Rect,
     /// 배경화면 텍스처의 식별자입니다.
-    bg_texture_id: egui::load::SizedTexture,
+    bg_texture: egui::load::SizedTexture,
+
+    /// 배경화면 꾸밈 텍스처
+    bg_deco_texture: egui::load::SizedTexture,
+    /// 왼쪽 꾸밈 영역
+    bg_deco_left_rect: egui::Rect,
+    /// 오른쪽 꾸밈 영역
+    bg_deco_right_rect: egui::Rect,
+
+    /// 프로필 배경 텍스처 크기
+    profile_bg_texture_size: egui::Vec2,
+    /// 프로필 배경 텍스처
+    profile_bg_textures: HashMap<GameTier, egui::load::SizedTexture>,
+    /// 프로필 아이콘 텍스처
+    profile_icon_textures: HashMap<ProfileIcon, egui::load::SizedTexture>,
+    /// 프로필 영역
+    profile_rects: Vec<egui::Rect>,
+
+    /// 패널 라벨 텍스트
+    pannel_label_text: String,
+    /// 패널 배경 텍스처
+    pannel_bg_texture: egui::load::SizedTexture,
+    /// 패널 배경 영역
+    pannel_bg_rect: egui::Rect,
+
+    /// 취소 아이콘 텍스처
+    cancel_icon_texture: egui::load::SizedTexture,
+    /// 취소 아이콘 영역
+    cancel_icon_rect: egui::Rect,
+    /// 취소 버튼 상태
+    cancel_btn_state: ButtonState,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -111,18 +154,45 @@ impl CustomGameRoomScene {
             stage_kind,
             allow_duplicates,
             allow_unbalanced,
-            bg_texture_id: egui::load::SizedTexture {
+            ui_scale: 1.0,
+            clip_rect: egui::Rect::ZERO,
+            bg_rect: egui::Rect::ZERO,
+            bg_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
+            bg_deco_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            bg_deco_left_rect: egui::Rect::ZERO,
+            bg_deco_right_rect: egui::Rect::ZERO,
+            profile_bg_texture_size: egui::Vec2::splat(1.0),
+            profile_bg_textures: HashMap::with_capacity_and_hasher(NUM_TIER, RandomState::new()),
+            profile_icon_textures: HashMap::with_capacity_and_hasher(
+                NUM_PROFILE_ICONS,
+                RandomState::new(),
+            ),
+            profile_rects: Vec::with_capacity(MAX_IN_GAME_PLAYERS),
+            pannel_label_text: format!("{} - {}", &HEAD_TEXTS[locale as usize], &world_id),
+            pannel_bg_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            pannel_bg_rect: egui::Rect::ZERO,
+            cancel_icon_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            cancel_icon_rect: egui::Rect::ZERO,
+            cancel_btn_state: ButtonState::Idle,
             texture_pool,
             texture_view_pool,
         }
     }
-}
 
-impl GameScene for CustomGameRoomScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+    /// 배경 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_background_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
         // 메인 로비 배경화면 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -136,22 +206,558 @@ impl GameScene for CustomGameRoomScene {
             .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id = ui_renderer.register_native_texture(
-            app.render_device(),
-            &texture,
-            wgpu::FilterMode::Linear,
-        );
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         // 등록된 텍스처 정보를 저장합니다.
-        self.bg_texture_id = egui::load::SizedTexture {
+        self.bg_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
     }
 
+    /// 배경화면 꾸밈 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_background_deco_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        // 배경화면 꾸밈 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(BG_DECO_URI)
+            .expect("BG_Deco_00 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 배경화면 꾸밈 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.bg_deco_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// 패널 배경 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_pannel_bg_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 패널 배경화면 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_LAYOUT_URI_02)
+            .expect("HUD_Layout_02 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.pannel_bg_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// 프로필 배경 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_profile_bg_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+        tier: GameTier,
+    ) {
+        // 프로필 배경 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(EMBLEM_BG_URI)
+            .expect("Emblem_BG texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+        self.profile_bg_texture_size = texture_size;
+
+        // 프로필 배경 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self.texture_view_pool.get_or_init(
+            &texture,
+            &wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: tier as u32,
+                array_layer_count: Some(1),
+                ..Default::default()
+            },
+        );
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.profile_bg_textures.insert(
+            tier,
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+    }
+
+    /// 프로필 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_profile_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+        icon: ProfileIcon,
+    ) {
+        // 프로필 아이콘 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(PROFILE_ICON_URI)
+            .expect("Profile_Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 프로필 아이콘 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self.texture_view_pool.get_or_init(
+            &texture,
+            &wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: icon as u32,
+                array_layer_count: Some(1),
+                ..Default::default()
+            },
+        );
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.profile_icon_textures.insert(
+            icon,
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
+    }
+
+    /// 취소 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_cancel_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 취소 아이콘 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_CANCEL_ICON_URI)
+            .expect("HUD_Cancel_Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 취소 아이콘 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.cancel_icon_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// Ui 크기를 재조정합니다.
+    fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
+        // 클립 사각형 영역을 재조정합니다.
+        let viewport = app.viewport();
+        let scale_factor = window.scale_factor() as f32;
+        (self.clip_rect, self.ui_scale) = Self::resize_clip_rect(viewport, scale_factor);
+
+        // 배경 사각형 영역을 재조정합니다.
+        let texture_size = &self.bg_texture.size;
+        self.bg_rect = Self::resize_background_rect(texture_size, &self.clip_rect);
+
+        // 배경 꾸밈 사각형 영역을 재조정합니다.
+        let texture_size = &self.bg_deco_texture.size;
+        (self.bg_deco_left_rect, self.bg_deco_right_rect) =
+            Self::resize_background_deco_rect(texture_size, &self.clip_rect, self.ui_scale);
+
+        // 패널 배경 영역을 재조정합니다.
+        self.pannel_bg_rect = Self::resize_pannel_bg_rect(&self.clip_rect, self.ui_scale);
+
+        // 프로필 영역을 재조정합니다.
+        let texture_size = &self.profile_bg_texture_size;
+        self.profile_rects =
+            Self::resize_profile_rects(texture_size, &self.clip_rect, self.ui_scale);
+
+        // 취소 아이콘 영역을 재조정합니다.
+        let texture_size = self.cancel_icon_texture.size;
+        self.cancel_icon_rect =
+            Self::resize_cancel_icon_rect(&texture_size, &self.clip_rect, self.ui_scale);
+    }
+
+    /// 클립 사각형 영역의 크기를 재조정합니다.
+    fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
+
+        (clip_rect, scale)
+    }
+
+    /// 배경 사각형 영역의 크기를 재조정합니다.
+    fn resize_background_rect(texture_size: &egui::Vec2, clip_rect: &egui::Rect) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let width = clip_rect.width();
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        egui::Rect::from_center_size(clip_rect.center(), size)
+    }
+
+    /// 배경 꾸밈 사각형 영역의 크기를 재조정합니다.
+    fn resize_background_deco_rect(
+        texture_size: &egui::Vec2,
+        clip_rect: &egui::Rect,
+        scale: f32,
+    ) -> (egui::Rect, egui::Rect) {
+        let ratio = texture_size.x / texture_size.y;
+        let width = 320.0 * scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+
+        let center = clip_rect.left_center() + egui::vec2(0.5 * width, 0.0);
+        let left = egui::Rect::from_center_size(center, size);
+
+        let center = clip_rect.right_center() - egui::vec2(0.5 * width, 0.0);
+        let right = egui::Rect::from_center_size(center, size);
+
+        (left, right)
+    }
+
+    /// 프로필 영역의 크기를 재조정합니다.
+    fn resize_profile_rects(
+        texture_size: &egui::Vec2,
+        clip_rect: &egui::Rect,
+        scale: f32,
+    ) -> Vec<egui::Rect> {
+        const OFFSET: egui::Vec2 = egui::vec2(240.0, 16.0);
+        const WIDTH: f32 = 360.0;
+        static_assertions::const_assert!(0.0 <= WIDTH);
+        static_assertions::const_assert!(WIDTH <= BASE_WIDTH);
+
+        let ratio = texture_size.x / texture_size.y;
+        let width = WIDTH * scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+
+        let mut rects = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        let mut pos = clip_rect.center_bottom() - egui::vec2(0.0, 168.0 * scale);
+        for _ in 0..MAX_IN_GAME_TEAM_PLAYERS {
+            // Left
+            let left_bottom = pos + OFFSET * egui::vec2(1.0, -1.0) * scale;
+            let right_top = left_bottom + size * egui::vec2(1.0, -1.0);
+            rects.push(egui::Rect::from_two_pos(left_bottom, right_top));
+
+            // Right
+            let right_bottom = pos + OFFSET * egui::vec2(-1.0, -1.0) * scale;
+            let left_top = right_bottom + size * egui::vec2(-1.0, -1.0);
+            rects.push(egui::Rect::from_two_pos(left_top, right_bottom));
+
+            pos = ((left_top.to_vec2() + right_top.to_vec2()) * 0.5).to_pos2();
+        }
+
+        rects.reverse();
+        rects
+    }
+
+    /// 패널 배경 영역의 크기를 재조정합니다.
+    fn resize_pannel_bg_rect(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+        const MARGIN: egui::Vec2 = egui::vec2(24.0, 16.0);
+        const WIDTH: f32 = 480.0;
+        const HEIGHT: f32 = 72.0;
+        static_assertions::const_assert!(0.0 <= MARGIN.x && 0.0 <= MARGIN.y);
+        static_assertions::const_assert!(0.0 <= WIDTH);
+        static_assertions::const_assert!(0.0 <= HEIGHT && HEIGHT <= WIDTH);
+        static_assertions::const_assert!(WIDTH <= BASE_WIDTH);
+
+        let width = WIDTH * scale;
+        let height = HEIGHT * scale;
+        let size = egui::vec2(width, height);
+        let min = clip_rect.right_top()
+            + MARGIN * egui::vec2(-1.0, 1.0) * scale
+            + size * egui::vec2(-1.0, 0.0);
+        egui::Rect::from_min_size(min, size)
+    }
+
+    /// 취소 아이콘 영역의 크기를 재조정합니다.
+    fn resize_cancel_icon_rect(
+        texture_size: &egui::Vec2,
+        clip_rect: &egui::Rect,
+        scale: f32,
+    ) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let width = 24.0 * scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        let offset = size * 1.5;
+        let min = clip_rect.min + offset;
+        egui::Rect::from_min_size(min, size)
+    }
+
+    /// Ui 입력을 처리합니다.
+    fn handle_ui_input(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+        egui::Area::new(egui::Id::new("Handle_Input"))
+            .order(egui::Order::Middle)
+            .show(ctx, |ui| {
+                // 취소 버튼 입력을 처리합니다.
+                let response = ui.allocate_rect(self.cancel_icon_rect, egui::Sense::all());
+                if response.clicked() {
+                    // 패킷을 전송합니다.
+                    let packet = RoomLeaveNotifyPacket::new(self.uid, self.token);
+                    let net = app.net_manager();
+                    let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                    socket.push_packet(packet.as_raw());
+
+                    // 장면을 전환합니다.
+                    let flow = GameSceneFlow::Pop;
+                    let event = AppEvent::AddGameSceneFlow(flow);
+                    let event_loop_event = app.event_loop_proxy();
+                    event_loop_event.send_event(event).unwrap();
+
+                    self.cancel_btn_state = ButtonState::Clicked;
+                } else if response.is_pointer_button_down_on() {
+                    self.cancel_btn_state = ButtonState::Pressed;
+                } else if response.hovered() | response.has_focus() {
+                    self.cancel_btn_state = ButtonState::Hovered;
+                } else {
+                    self.cancel_btn_state = ButtonState::Idle;
+                }
+            });
+    }
+
+    /// 배경을 그립니다.
+    fn draw_background(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                egui::Image::new(self.bg_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.bg_rect);
+                egui::Image::new(self.bg_deco_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.bg_deco_left_rect);
+                egui::Image::new(self.bg_deco_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.bg_deco_right_rect);
+            });
+    }
+
+    /// 프로필을 그립니다.
+    fn draw_profile(&mut self, ctx: &egui::Context) {
+        const BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(96);
+        const FOCUS_COLOR: egui::Color32 = egui::Color32::from_rgb(242, 201, 76);
+        let alpha = egui::Color32::from_white_alpha(192);
+
+        egui::Area::new(egui::Id::new("Profile"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                let mut iterator = self.players.iter();
+                for &rect in self.profile_rects.iter() {
+                    match iterator.next() {
+                        Some(data) => {
+                            let bg_color = TEAM_COLOR[data.team() as usize] * alpha;
+                            let line_color = match data.uid == self.uid {
+                                true => FOCUS_COLOR,
+                                false => BG_COLOR,
+                            } * alpha;
+                            ui.painter().rect(
+                                rect,
+                                12.0 * self.ui_scale,
+                                bg_color,
+                                egui::Stroke::new(4.0 * self.ui_scale, line_color),
+                                egui::StrokeKind::Middle,
+                            );
+
+                            let source =
+                                self.profile_bg_textures.get(&data.tier()).cloned().unwrap();
+                            egui::Image::new(source)
+                                .sense(egui::Sense::empty())
+                                .paint_at(ui, rect);
+                        }
+                        None => {
+                            let color = BG_COLOR * alpha;
+                            ui.painter().rect(
+                                rect,
+                                12.0 * self.ui_scale,
+                                color,
+                                egui::Stroke::new(4.0 * self.ui_scale, color),
+                                egui::StrokeKind::Middle,
+                            );
+                        }
+                    };
+                }
+            });
+    }
+
+    /// 패널을 그립니다.
+    fn draw_pannel(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Pannel"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_pannel_background(ui);
+                self.draw_pannel_label(ui);
+            });
+    }
+
+    /// 패널 배경화면을 그립니다.
+    fn draw_pannel_background(&self, ui: &mut egui::Ui) {
+        const SIZE: f32 = 256.0;
+        const LEFT: f32 = 65.0;
+        const RIGHT: f32 = 185.0;
+        const DECO: f32 = 36.0;
+
+        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(LEFT / SIZE, 1.0));
+        let rect = egui::Rect::from_min_max(
+            self.pannel_bg_rect.left_top() - egui::vec2(DECO, 0.0) * self.ui_scale,
+            self.pannel_bg_rect.left_bottom(),
+        );
+        egui::Image::new(self.pannel_bg_texture)
+            .sense(egui::Sense::empty())
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv =
+            egui::Rect::from_min_max(egui::pos2(LEFT / SIZE, 0.0), egui::pos2(RIGHT / SIZE, 1.0));
+        let rect = egui::Rect::from_min_max(
+            self.pannel_bg_rect.left_top(),
+            self.pannel_bg_rect.right_bottom(),
+        );
+        egui::Image::new(self.pannel_bg_texture)
+            .sense(egui::Sense::empty())
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(egui::pos2(RIGHT / SIZE, 0.0), egui::pos2(1.0, 1.0));
+        let rect = egui::Rect::from_min_max(
+            self.pannel_bg_rect.right_top(),
+            self.pannel_bg_rect.right_bottom() + egui::vec2(DECO, 0.0) * self.ui_scale,
+        );
+        egui::Image::new(self.pannel_bg_texture)
+            .sense(egui::Sense::empty())
+            .uv(uv)
+            .paint_at(ui, rect);
+    }
+
+    /// 패널 라벨을 그립니다.
+    fn draw_pannel_label(&self, ui: &mut egui::Ui) {
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+        let text = egui::RichText::new(&self.pannel_label_text)
+            .font(font_id)
+            .color(FONT_COLOR);
+        let label = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+
+        ui.put(self.pannel_bg_rect, label);
+    }
+
+    /// 취소 버튼을 그립니다.
+    fn draw_cancel_button(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Exit_Button"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                let center = self.cancel_icon_rect.center();
+                let radius = self.cancel_icon_rect.size().max_elem();
+                let (bg_color, line_color) = match self.cancel_btn_state {
+                    ButtonState::Idle => (NORM_COLOR, egui::Color32::BLACK),
+                    ButtonState::Hovered => (NORM_FOCUS_COLOR, egui::Color32::BLACK),
+                    ButtonState::Clicked | ButtonState::Pressed => {
+                        (NORM_EXP_COLOR, egui::Color32::BLACK)
+                    }
+                };
+
+                // 취소 아이콘 배경
+                ui.painter().circle(
+                    center,
+                    radius,
+                    bg_color,
+                    egui::Stroke::new(1.0 * self.ui_scale, line_color),
+                );
+
+                // 취소 아이콘
+                egui::Image::new(self.cancel_icon_texture)
+                    .tint(bg_color)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.cancel_icon_rect);
+            });
+    }
+}
+
+impl GameScene for CustomGameRoomScene {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+        let device = app.render_device();
+        self.regist_background_texture(device, ui_renderer);
+        self.regist_background_deco_texture(device, ui_renderer);
+        let (tier_set, icon_set): (HashSet<_>, HashSet<_>) = self
+            .players
+            .iter()
+            .map(|data| (data.tier(), data.profile_icon))
+            .unzip();
+        for tier in tier_set {
+            self.regist_profile_bg_texture(device, ui_renderer, tier);
+        }
+        for icon in icon_set {
+            self.regist_profile_icon_texture(device, ui_renderer, icon);
+        }
+        self.regist_pannel_bg_texture(device, ui_renderer);
+        self.regist_cancel_icon_texture(device, ui_renderer);
+        self.resize_ui(window, app);
+    }
+
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        ui_renderer.free_texture(&self.bg_texture.id);
+        ui_renderer.free_texture(&self.bg_deco_texture.id);
+        let iterator = self
+            .profile_bg_textures
+            .values()
+            .chain(self.profile_icon_textures.values());
+        for texture in iterator {
+            ui_renderer.free_texture(&texture.id);
+        }
+        ui_renderer.free_texture(&self.pannel_bg_texture.id);
+        ui_renderer.free_texture(&self.cancel_icon_texture.id);
+    }
+
     fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {}
 
     fn on_pause(&mut self, _window: &Window, _app: &dyn AppHandle) {}
+
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.resize_ui(window, app);
+    }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
@@ -230,188 +836,12 @@ impl GameScene for CustomGameRoomScene {
         // }
     }
 
-    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let locale = self.locale as usize;
-        let viewport = app.viewport();
-        let scale_factor = window.scale_factor() as f32;
-        let scale = viewport.width / scale_factor / BASE_WIDTH;
-        let clip_rect = egui::Rect::from_min_size(
-            egui::pos2(viewport.x, viewport.y) / scale_factor,
-            egui::vec2(viewport.width, viewport.height) / scale_factor,
-        );
-
-        // Head 텍스트
-        let text = format!("{} - {}", HEAD_TEXTS[locale], self.world_id);
-        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let font_id = egui::FontId::new(32.0 * scale, family);
-        let head_text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
-
-        // 준비/시작 버튼 텍스트
-        let mut other_players_ready = self.players.len() >= 2;
-        let mut permission = Permission::User;
-        let mut ready = false;
-        for player in self.players.iter() {
-            if self.uid == player.uid {
-                permission = player.permission();
-                ready = player.is_ready_to_play();
-            } else {
-                other_players_ready &= player.is_ready_to_play();
-            }
-        }
-        let button_color = match ready {
-            true => egui::Color32::YELLOW,
-            false => egui::Color32::WHITE,
-        };
-        let enable_enter_button = permission == Permission::User
-            || (permission == Permission::Admin && other_players_ready);
-        let text = match permission {
-            Permission::Admin => START_TEXTS[locale],
-            Permission::User => READY_TEXTS[locale],
-        };
-        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let font_id = egui::FontId::new(48.0 * scale, family);
-        let text = egui::RichText::new(text)
-            .font(font_id)
-            .color(egui::Color32::BLACK);
-        let enter_button = egui::Button::new(text)
-            .fill(button_color)
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK))
-            .corner_radius(1.5);
-
-        // 나가기 버튼
-        // TODO: 나중에 이미지 버튼으로 수정해야 함.
-        let exit_button = egui::Button::new("X")
-            .corner_radius(1.5)
-            .fill(egui::Color32::WHITE)
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-
-        // 배경화면
-        let source = self.bg_texture_id;
-        let ratio = source.size.x / source.size.y;
-        let center_x = 1280.0 * 0.5 * scale;
-        let center_y = 720.0 * 0.5 * scale;
-        let img_width = 1280.0 * scale;
-        let img_height = img_width / ratio;
-        let rect = egui::Rect {
-            min: egui::pos2(
-                clip_rect.min.x + center_x - 0.5 * img_width,
-                clip_rect.min.y + center_y - 0.5 * img_height,
-            ),
-            max: egui::pos2(
-                clip_rect.min.x + center_x + 0.5 * img_width,
-                clip_rect.min.y + center_y + 0.5 * img_height,
-            ),
-        };
-
-        let offset = clip_rect.min + egui::vec2(16.0, 16.0) * scale;
-        egui::Area::new(egui::Id::new("Head_Layout"))
-            .anchor(egui::Align2::LEFT_TOP, offset.to_vec2())
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                ui.set_min_size(egui::vec2(1212.0, 64.0) * scale);
-                ui.set_max_size(egui::vec2(1212.0, 64.0) * scale);
-
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    if ui.add(exit_button).clicked() {
-                        // 패킷을 생성하고 전송합니다.
-                        let packet = RoomLeaveNotifyPacket::new(self.uid, self.token);
-                        let net_manager = app.net_manager();
-                        let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-                        socket.push_packet(packet.as_raw());
-
-                        // 장면을 전환합니다.
-                        let scene_flow = GameSceneFlow::Pop;
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
-                    ui.label(head_text);
-                });
-            });
-
-        egui::Area::new(egui::Id::new("List_Layout"))
-            .anchor(egui::Align2::CENTER_CENTER, (-96.0 * scale, 48.0 * scale))
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                ui.set_min_size(egui::vec2(960.0, 500.0) * scale);
-                ui.set_max_size(egui::vec2(960.0, 500.0) * scale);
-
-                ui.columns(2, |cols| {
-                    let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-                    let font_id = egui::FontId::new(24.0 * scale, family);
-                    let mut iter = self.players.iter();
-                    for i in 0..MAX_IN_GAME_PLAYERS {
-                        let ui = &mut cols[i % 2];
-                        if let Some(player) = iter.next() {
-                            let text = if player.uid == self.uid {
-                                &format!("*me* {}", &player.name.to_string())
-                            } else {
-                                &player.name.to_string()
-                            };
-                            let text = egui::RichText::new(text)
-                                .font(font_id.clone())
-                                .color(egui::Color32::BLACK);
-                            let button = egui::Button::new(text)
-                                .corner_radius(1.0)
-                                .min_size((470.0 * scale, 80.0 * scale).into())
-                                .stroke(egui::Stroke::new(
-                                    3.0 * scale,
-                                    match player.team() {
-                                        Team::Blue => match player.is_ready_to_play() {
-                                            true => TEAM_COLOR[Team::Blue as usize],
-                                            false => egui::Color32::DARK_BLUE,
-                                        },
-                                        Team::Red => match player.is_ready_to_play() {
-                                            true => TEAM_COLOR[Team::Red as usize],
-                                            false => egui::Color32::DARK_RED,
-                                        },
-                                    },
-                                ))
-                                .fill(match player.permission() {
-                                    Permission::Admin => egui::Color32::YELLOW,
-                                    Permission::User => egui::Color32::WHITE,
-                                });
-                            ui.add(button);
-                        } else {
-                            let button = egui::Button::new("")
-                                .corner_radius(1.0)
-                                .min_size((470.0 * scale, 80.0 * scale).into())
-                                .stroke(egui::Stroke::new(3.0 * scale, egui::Color32::DARK_GRAY))
-                                .fill(egui::Color32::LIGHT_GRAY);
-                            ui.add(button);
-                        }
-                        ui.add_space(20.0 * scale);
-                    }
-                });
-            });
-
-        let offset = clip_rect.max - egui::vec2(16.0, 48.0) * scale;
-        egui::Area::new(egui::Id::new("Control_Pannel"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, offset.to_vec2())
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                ui.add_enabled_ui(enable_enter_button, |ui| {
-                    ui.set_min_size(egui::vec2(200.0, 140.0) * scale);
-                    ui.set_max_size(egui::vec2(200.0, 140.0) * scale);
-                    ui.centered_and_justified(|ui| {
-                        if ui.add(enter_button).clicked() {
-                            // 패킷을 생성하고 전송합니다.
-                            let packet = RoomReadyRequestPacket::new(self.uid, self.token, !ready);
-                            let net_manager = app.net_manager();
-                            let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-                            socket.push_packet(packet.as_raw());
-                        }
-                    });
-                })
-            });
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new())
-            .show(app.egui_ctx(), |ui| {
-                ui.shrink_clip_rect(clip_rect);
-                egui::Image::new(source).paint_at(ui, rect);
-            });
+    fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let ctx = app.egui_ctx();
+        self.handle_ui_input(ctx, app);
+        self.draw_cancel_button(ctx);
+        self.draw_pannel(ctx);
+        self.draw_profile(ctx);
+        self.draw_background(ctx);
     }
 }

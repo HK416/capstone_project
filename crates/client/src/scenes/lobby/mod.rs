@@ -712,7 +712,7 @@ impl MainLobbyScene {
         const SIZE: f32 = 256.0;
         const LEFT: f32 = 65.0;
         const RIGHT: f32 = 185.0;
-        const DECO: f32 = 6.0;
+        const DECO: f32 = 24.0;
 
         let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(LEFT / SIZE, 1.0));
         let rect = egui::Rect::from_min_max(

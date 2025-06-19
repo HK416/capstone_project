@@ -3,6 +3,9 @@
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
+/// 티어틔 개수입니다.
+pub const NUM_TIER: usize = 4;
+
 /// 게임 티어 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

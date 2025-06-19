@@ -109,7 +109,7 @@ pub const HUD_DETAIL_ICON_DATA: &'static [u8; 5310] = include_bytes!(concat!(
 /// 취소 아이콘 텍스처의 `Uri`입니다.
 pub const HUD_CANCEL_ICON_URI: &'static str = "ui/HUD_Cancel_Icon.png";
 /// 취소 아이콘 텍스처의 데이터입니다.
-pub const HUD_CANCEL_ICON_DATA: &'static [u8; 1187] = include_bytes!(concat!(
+pub const HUD_CANCEL_ICON_DATA: &'static [u8; 1436] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/ui/HUD_Cancel_Icon.png"
 ));
