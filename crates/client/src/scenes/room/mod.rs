@@ -14,7 +14,7 @@ use mod_network::{
     },
     protocol::{
         Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomLeaveNotifyPacket,
-        StartFailedReason, StartGameFailedPacket,
+        RoomReadyRequestPacket, StartFailedReason, StartGameFailedPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -23,7 +23,8 @@ use winit::window::Window;
 use crate::{
     asset::{
         TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
-        HUD_CANCEL_ICON_URI, HUD_LAYOUT_URI_02, NOTOSANS_BOLD, PROFILE_ICON_URI,
+        HUD_CANCEL_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02, IMG_FONT_READY_URI,
+        NOTOSANS_BOLD, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -67,6 +68,7 @@ pub struct CustomGameRoomScene {
     token: LoginToken,
 
     /// 커스텀 게임 대기실의 월드 식별자입니다.
+    #[allow(dead_code)]
     world_id: WorldId,
     /// 지형 종류입니다.
     stage_kind: StageKind,
@@ -117,6 +119,16 @@ pub struct CustomGameRoomScene {
     /// 취소 버튼 상태
     cancel_btn_state: ButtonState,
 
+    /// 준비 이미지 폰트 텍스처
+    img_font_ready_texture: egui::load::SizedTexture,
+
+    /// 버튼 텍스처
+    button_texture: egui::load::SizedTexture,
+    /// 준비 버튼 상태
+    ready_btn_state: ButtonState,
+    /// 준비 버튼 영역
+    ready_btn_rect: egui::Rect,
+
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
@@ -139,11 +151,14 @@ impl CustomGameRoomScene {
         stage_kind: StageKind,
         allow_duplicates: bool,
         allow_unbalanced: bool,
-        players: Vec<CustomRoomPlayerData>,
+        mut players: Vec<CustomRoomPlayerData>,
     ) -> Self {
         assert_ne!(uid, UserId::NULL, "invalid user identifier");
         assert_ne!(world_id, WorldId::NULL, "invalid world identifier");
         assert_ne!(token, LoginToken::NULL, "invalid login token");
+
+        // UID 순서로 정렬합니다.
+        players.sort_by_key(|data| data.uid);
 
         Self {
             locale,
@@ -186,6 +201,16 @@ impl CustomGameRoomScene {
             },
             cancel_icon_rect: egui::Rect::ZERO,
             cancel_btn_state: ButtonState::Idle,
+            img_font_ready_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            button_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            ready_btn_state: ButtonState::Idle,
+            ready_btn_rect: egui::Rect::ZERO,
             texture_pool,
             texture_view_pool,
         }
@@ -374,6 +399,60 @@ impl CustomGameRoomScene {
         };
     }
 
+    /// 준비 폰트 이미지 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_img_font_ready_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        // 준비 폰트 이미지 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_READY_URI)
+            .expect("ImgFont_Ready texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 준비 폰트 이미지 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.img_font_ready_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// 버튼 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_button_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 버튼 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_LAYOUT_URI_00)
+            .expect("HUD_Layout_00 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 준비 폰트 이미지 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.button_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     /// Ui 크기를 재조정합니다.
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역을 재조정합니다.
@@ -399,9 +478,14 @@ impl CustomGameRoomScene {
             Self::resize_profile_rects(texture_size, &self.clip_rect, self.ui_scale);
 
         // 취소 아이콘 영역을 재조정합니다.
-        let texture_size = self.cancel_icon_texture.size;
+        let texture_size = &self.cancel_icon_texture.size;
         self.cancel_icon_rect =
-            Self::resize_cancel_icon_rect(&texture_size, &self.clip_rect, self.ui_scale);
+            Self::resize_cancel_icon_rect(texture_size, &self.clip_rect, self.ui_scale);
+
+        // 준비 버튼 영역을 재조정합니다.
+        let texture_size = &self.button_texture.size;
+        self.ready_btn_rect =
+            Self::resize_ready_btn_rect(texture_size, &self.clip_rect, self.ui_scale);
     }
 
     /// 클립 사각형 영역의 크기를 재조정합니다.
@@ -514,6 +598,32 @@ impl CustomGameRoomScene {
         egui::Rect::from_min_size(min, size)
     }
 
+    /// 준비 이미지 폰트의 크기를 재조정합니다.
+    fn resize_ready_font_rect(texture_size: &egui::Vec2, profile_rect: &egui::Rect) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let width = profile_rect.width() * 0.3;
+        let height = width / ratio;
+        let center = profile_rect.min;
+        let size = egui::vec2(width, height);
+        egui::Rect::from_center_size(center, size)
+    }
+
+    /// 준비 버튼 영역의 크기를 재조정합니다.
+    fn resize_ready_btn_rect(
+        texture_size: &egui::Vec2,
+        clip_rect: &egui::Rect,
+        scale: f32,
+    ) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let width = 240.0 * scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        let center = clip_rect.center_bottom()
+            - egui::vec2(0.0, height * 0.5)
+            - egui::vec2(0.0, 28.0 * scale);
+        egui::Rect::from_center_size(center, size)
+    }
+
     /// Ui 입력을 처리합니다.
     fn handle_ui_input(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
         egui::Area::new(egui::Id::new("Handle_Input"))
@@ -541,6 +651,29 @@ impl CustomGameRoomScene {
                     self.cancel_btn_state = ButtonState::Hovered;
                 } else {
                     self.cancel_btn_state = ButtonState::Idle;
+                }
+
+                // 준비 버튼 입력을 처리합니다.
+                let response = ui.allocate_rect(self.ready_btn_rect, egui::Sense::all());
+                if response.clicked() {
+                    // 패킷을 전송합니다.
+                    let i = self
+                        .players
+                        .binary_search_by_key(&self.uid, |data| data.uid)
+                        .unwrap();
+                    let ready_to_play = self.players[i].is_ready_to_play();
+                    let packet = RoomReadyRequestPacket::new(self.uid, self.token, !ready_to_play);
+                    let net = app.net_manager();
+                    let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                    socket.push_packet(packet.as_raw());
+
+                    self.ready_btn_state = ButtonState::Clicked;
+                } else if response.is_pointer_button_down_on() {
+                    self.ready_btn_state = ButtonState::Pressed;
+                } else if response.hovered() | response.has_focus() {
+                    self.ready_btn_state = ButtonState::Hovered;
+                } else {
+                    self.ready_btn_state = ButtonState::Idle;
                 }
             });
     }
@@ -596,6 +729,16 @@ impl CustomGameRoomScene {
                             egui::Image::new(source)
                                 .sense(egui::Sense::empty())
                                 .paint_at(ui, rect);
+
+                            if data.is_ready_to_play() {
+                                let rect = Self::resize_ready_font_rect(
+                                    &self.img_font_ready_texture.size,
+                                    &rect,
+                                );
+                                egui::Image::new(self.img_font_ready_texture)
+                                    .sense(egui::Sense::empty())
+                                    .paint_at(ui, rect);
+                            }
                         }
                         None => {
                             let color = BG_COLOR * alpha;
@@ -677,6 +820,27 @@ impl CustomGameRoomScene {
         ui.put(self.pannel_bg_rect, label);
     }
 
+    /// 준비 버튼을 그립니다.
+    fn draw_ready_button(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Ready_Button"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                let tint = match self.ready_btn_state {
+                    ButtonState::Idle => NORM_COLOR,
+                    ButtonState::Hovered => NORM_FOCUS_COLOR,
+                    ButtonState::Clicked | ButtonState::Pressed => NORM_EXP_COLOR,
+                };
+
+                // 준비 버튼
+                egui::Image::new(self.button_texture)
+                    .tint(tint)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.ready_btn_rect);
+            });
+    }
+
     /// 취소 버튼을 그립니다.
     fn draw_cancel_button(&mut self, ctx: &egui::Context) {
         egui::Area::new(egui::Id::new("Exit_Button"))
@@ -729,6 +893,8 @@ impl GameScene for CustomGameRoomScene {
         }
         self.regist_pannel_bg_texture(device, ui_renderer);
         self.regist_cancel_icon_texture(device, ui_renderer);
+        self.regist_img_font_ready_texture(device, ui_renderer);
+        self.regist_button_texture(device, ui_renderer);
         self.resize_ui(window, app);
     }
 
@@ -749,6 +915,8 @@ impl GameScene for CustomGameRoomScene {
         }
         ui_renderer.free_texture(&self.pannel_bg_texture.id);
         ui_renderer.free_texture(&self.cancel_icon_texture.id);
+        ui_renderer.free_texture(&self.button_texture.id);
+        ui_renderer.free_texture(&self.img_font_ready_texture.id);
     }
 
     fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {}
@@ -784,6 +952,7 @@ impl GameScene for CustomGameRoomScene {
                 self.allow_duplicates = packet.allow_duplicates();
                 self.allow_unbalanced = packet.allow_unbalanced();
                 self.players = packet.players;
+                self.players.sort_by_key(|data| data.uid);
             }
             PacketType::StartGameFailed => {
                 let packet = StartGameFailedPacket::from_raw(packet);
@@ -842,6 +1011,7 @@ impl GameScene for CustomGameRoomScene {
         self.draw_cancel_button(ctx);
         self.draw_pannel(ctx);
         self.draw_profile(ctx);
+        self.draw_ready_button(ctx);
         self.draw_background(ctx);
     }
 }

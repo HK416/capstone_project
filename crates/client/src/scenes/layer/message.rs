@@ -204,7 +204,7 @@ impl GameScene for MessageSceneLayer {
 
                 let enable = self.okay_button_state != ButtonState::Clicked;
                 ui.add_enabled_ui(enable, |ui| {
-                    let response = ui.add_enabled(self.flow.is_some(), okay_button);
+                    let response = ui.add_enabled(enable, okay_button);
                     if response.clicked() && self.delay_time_sec <= 0.0 {
                         self.okay_button_state = ButtonState::Clicked;
 

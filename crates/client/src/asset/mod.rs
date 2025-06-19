@@ -137,6 +137,9 @@ pub const IMG_FONT_START_URI: &'static str = "ImgFont_Start";
 /// Win 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_WIN_URI: &'static str = "ImgFont_Win";
 
+/// Ready 이미지 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_READY_URI: &'static str = "ImgFont_Ready";
+
 /// 0번 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
 pub const FIELD_DECO_00_URI: &'static str = "Field_Deco_00";
 

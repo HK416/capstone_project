@@ -333,6 +333,8 @@
                 "ImgFont_Damage_Normal.dds",
                 "ImgFont_Lose.dds",
                 "ImgFont_Mission.dds",
+                "ImgFont_Ready.dds",
+                "ImgFont_Ready.texD",
                 "ImgFont_Start.dds",
                 "ImgFont_Win.dds",
                 "Profile_Icon.dds",
