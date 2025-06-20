@@ -1,5 +1,7 @@
 //! 커스텀 게임 장면과 관련된 코드를 작성합니다.
 //!
+use std::cmp;
+
 use ahash::{HashMap, HashSet, RandomState};
 use mod_app::{
     app::AppHandle,
@@ -25,8 +27,8 @@ use winit::window::Window;
 use crate::{
     asset::{
         TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
-        HUD_CANCEL_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02, IMG_FONT_HOST_URI,
-        IMG_FONT_READY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02,
+        IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -128,6 +130,13 @@ pub struct CustomGameRoomScene {
     /// 취소 버튼 상태
     cancel_btn_state: ButtonState,
 
+    /// 팀 변경 아이콘 텍스처
+    team_change_icon_texture: egui::load::SizedTexture,
+    /// 팀 변경 버튼 상태
+    team_change_btn_state: ButtonState,
+    /// 팀 변경 버튼 영역
+    team_change_btn_rect: egui::Rect,
+
     /// Host 이미지 폰트 텍스처
     img_font_host_texture: egui::load::SizedTexture,
     /// 준비 이미지 폰트 텍스처
@@ -139,11 +148,6 @@ pub struct CustomGameRoomScene {
     ready_btn_state: ButtonState,
     /// 준비 버튼 영역
     ready_btn_rect: egui::Rect,
-
-    /// 팀 변경 버튼 상태
-    team_change_btn_state: ButtonState,
-    /// 팀 변경 버튼 영역
-    team_change_btn_rect: egui::Rect,
 
     /// 지연 시간
     delay_time_sec: f32,
@@ -220,6 +224,12 @@ impl CustomGameRoomScene {
             },
             cancel_icon_rect: egui::Rect::ZERO,
             cancel_btn_state: ButtonState::Idle,
+            team_change_icon_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            team_change_btn_state: ButtonState::Idle,
+            team_change_btn_rect: egui::Rect::ZERO,
             img_font_host_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
@@ -234,8 +244,6 @@ impl CustomGameRoomScene {
             },
             ready_btn_state: ButtonState::Idle,
             ready_btn_rect: egui::Rect::ZERO,
-            team_change_btn_state: ButtonState::Idle,
-            team_change_btn_rect: egui::Rect::ZERO,
             delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool,
@@ -508,6 +516,35 @@ impl CustomGameRoomScene {
         };
     }
 
+    /// 팀 교체 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_team_change_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        // 버튼 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_CHANGE_ICON_URI)
+            .expect("HUD_Change_Icon texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 준비 폰트 이미지 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.team_change_icon_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     /// Ui 크기를 재조정합니다.
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역을 재조정합니다.
@@ -718,7 +755,12 @@ impl CustomGameRoomScene {
     }
 
     /// Ui 입력을 처리합니다.
-    fn handle_ui_input(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+    fn handle_ui_input(
+        &mut self,
+        ctx: &egui::Context,
+        app: &dyn AppHandle,
+        is_ready_to_play: bool,
+    ) {
         egui::Area::new(egui::Id::new("Handle_Input"))
             .order(egui::Order::Middle)
             .show(ctx, |ui| {
@@ -769,26 +811,28 @@ impl CustomGameRoomScene {
                 }
 
                 // 팀 변경 버튼 입력을 처리합니다.
-                let response = ui.allocate_rect(self.team_change_btn_rect, egui::Sense::all());
-                if response.clicked() {
-                    if self.delay_time_sec <= 0.0 {
-                        self.delay_time_sec = DELAY_TIME;
+                if !is_ready_to_play {
+                    let response = ui.allocate_rect(self.team_change_btn_rect, egui::Sense::all());
+                    if response.clicked() {
+                        if self.delay_time_sec <= 0.0 {
+                            self.delay_time_sec = DELAY_TIME;
 
-                        // 패킷을 전송합니다.
-                        let packet =
-                            RoomTeamChangeRequestPacket::new(self.uid, self.token, self.uid);
-                        let net = app.net_manager();
-                        let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-                        socket.push_packet(packet.as_raw());
+                            // 패킷을 전송합니다.
+                            let packet =
+                                RoomTeamChangeRequestPacket::new(self.uid, self.token, self.uid);
+                            let net = app.net_manager();
+                            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+                        }
+
+                        self.team_change_btn_state = ButtonState::Clicked;
+                    } else if response.is_pointer_button_down_on() {
+                        self.team_change_btn_state = ButtonState::Pressed;
+                    } else if response.hovered() | response.has_focus() {
+                        self.team_change_btn_state = ButtonState::Hovered;
+                    } else {
+                        self.team_change_btn_state = ButtonState::Idle;
                     }
-
-                    self.team_change_btn_state = ButtonState::Clicked;
-                } else if response.is_pointer_button_down_on() {
-                    self.team_change_btn_state = ButtonState::Pressed;
-                } else if response.hovered() | response.has_focus() {
-                    self.team_change_btn_state = ButtonState::Hovered;
-                } else {
-                    self.team_change_btn_state = ButtonState::Idle;
                 }
             });
     }
@@ -826,8 +870,8 @@ impl CustomGameRoomScene {
                     .players
                     .iter()
                     .partition(|data| data.team() == Team::Blue);
-                blue_team.sort_by_key(|data| data.index);
-                red_team.sort_by_key(|data| data.index);
+                blue_team.sort_by_key(|data| cmp::Reverse(data.index));
+                red_team.sort_by_key(|data| cmp::Reverse(data.index));
 
                 let mut flags = true;
                 let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
@@ -994,7 +1038,12 @@ impl CustomGameRoomScene {
     }
 
     /// 준비 버튼을 그립니다.
-    fn draw_ready_button(&mut self, ctx: &egui::Context) {
+    fn draw_ready_button(
+        &mut self,
+        ctx: &egui::Context,
+        is_ready_to_play: bool,
+        permission: Permission,
+    ) {
         egui::Area::new(egui::Id::new("Ready_Button"))
             .order(egui::Order::Background)
             .sense(egui::Sense::empty())
@@ -1007,19 +1056,17 @@ impl CustomGameRoomScene {
                 };
 
                 // 준비 버튼
+                let color = match is_ready_to_play {
+                    true => egui::Color32::from_rgb(255, 255, 76),
+                    false => egui::Color32::WHITE,
+                };
                 egui::Image::new(self.button_texture)
-                    .tint(tint)
+                    .tint(color * tint)
                     .sense(egui::Sense::empty())
                     .paint_at(ui, self.ready_btn_rect);
 
-                let index = self
-                    .players
-                    .binary_search_by_key(&self.uid, |data| data.uid)
-                    .unwrap();
-                let data = self.players.get(index).unwrap();
-
                 let i = self.locale as usize;
-                let text = match data.permission() {
+                let text = match permission {
                     Permission::Admin => START_TEXTS[i],
                     Permission::User => READY_TEXTS[i],
                 };
@@ -1033,23 +1080,42 @@ impl CustomGameRoomScene {
             });
     }
 
-    fn draw_team_change_button(&mut self, ctx: &egui::Context) {
+    fn draw_team_change_button(&mut self, ctx: &egui::Context, is_ready_to_play: bool, team: Team) {
         egui::Area::new(egui::Id::new("Team_Change_Button"))
             .order(egui::Order::Background)
             .sense(egui::Sense::empty())
             .show(ctx, |ui| {
                 ui.shrink_clip_rect(self.clip_rect);
-                let tint = match self.team_change_btn_state {
-                    ButtonState::Idle => NORM_COLOR,
-                    ButtonState::Hovered => NORM_FOCUS_COLOR,
-                    ButtonState::Clicked | ButtonState::Pressed => NORM_EXP_COLOR,
+                let tint = if is_ready_to_play {
+                    NORM_EXP_COLOR
+                } else {
+                    match self.team_change_btn_state {
+                        ButtonState::Idle => NORM_COLOR,
+                        ButtonState::Hovered => NORM_FOCUS_COLOR,
+                        ButtonState::Clicked | ButtonState::Pressed => NORM_EXP_COLOR,
+                    }
                 };
 
                 // 팀 변경 버튼
+                let color = match team {
+                    Team::Blue => egui::Color32::WHITE,
+                    Team::Red => egui::Color32::from_rgb(255, 127, 127),
+                };
                 egui::Image::new(self.button_texture)
-                    .tint(tint)
+                    .tint(color * tint)
                     .sense(egui::Sense::empty())
                     .paint_at(ui, self.team_change_btn_rect);
+
+                let texture_size = self.team_change_icon_texture.size;
+                let ratio = texture_size.x / texture_size.y;
+                let height = self.team_change_btn_rect.height() * 0.8;
+                let width = height * ratio;
+                let size = egui::vec2(width, height);
+                let rect = egui::Rect::from_center_size(self.team_change_btn_rect.center(), size);
+                egui::Image::new(self.team_change_icon_texture)
+                    .tint(egui::Color32::DARK_GRAY * tint)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, rect);
             });
     }
 
@@ -1105,6 +1171,7 @@ impl GameScene for CustomGameRoomScene {
         }
         self.regist_pannel_bg_texture(device, ui_renderer);
         self.regist_cancel_icon_texture(device, ui_renderer);
+        self.regist_team_change_icon_texture(device, ui_renderer);
         self.regist_img_font_ready_texture(device, ui_renderer);
         self.regist_img_font_host_texture(device, ui_renderer);
         self.regist_button_texture(device, ui_renderer);
@@ -1128,6 +1195,7 @@ impl GameScene for CustomGameRoomScene {
         }
         ui_renderer.free_texture(&self.pannel_bg_texture.id);
         ui_renderer.free_texture(&self.cancel_icon_texture.id);
+        ui_renderer.free_texture(&self.team_change_icon_texture.id);
         ui_renderer.free_texture(&self.img_font_ready_texture.id);
         ui_renderer.free_texture(&self.img_font_host_texture.id);
         ui_renderer.free_texture(&self.button_texture.id);
@@ -1225,12 +1293,21 @@ impl GameScene for CustomGameRoomScene {
 
     fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
         let ctx = app.egui_ctx();
-        self.handle_ui_input(ctx, app);
+        let index = self
+            .players
+            .binary_search_by_key(&self.uid, |data| data.uid)
+            .unwrap();
+        let data = self.players.get(index).unwrap();
+        let ready_to_play = data.is_ready_to_play();
+        let permission = data.permission();
+        let team = data.team();
+
+        self.handle_ui_input(ctx, app, ready_to_play);
         self.draw_cancel_button(ctx);
         self.draw_pannel(ctx);
         self.draw_profile(ctx);
-        self.draw_ready_button(ctx);
-        self.draw_team_change_button(ctx);
+        self.draw_ready_button(ctx, ready_to_play, permission);
+        self.draw_team_change_button(ctx, ready_to_play, team);
         self.draw_background(ctx);
     }
 }

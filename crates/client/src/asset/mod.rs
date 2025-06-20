@@ -114,6 +114,14 @@ pub const HUD_CANCEL_ICON_DATA: &'static [u8; 1436] = include_bytes!(concat!(
     "assets/ui/HUD_Cancel_Icon.png"
 ));
 
+/// 교체 아이콘 텍스처의 `Uri`입니다.
+pub const HUD_CHANGE_ICON_URI: &'static str = "ui/HUD_Change_Icon.png";
+/// 교체 아이콘 텍스처의 데이터입니다.
+pub const HUD_CHANGE_ICON_DATA: &'static [u8; 2147] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/ui/HUD_Change_Icon.png"
+));
+
 /// 옵션 아이콘 텍스처의 `Uri`입니다.
 pub const HUD_OPTION_ICON_URI: &'static str = "ui/HUD_Option_Icon.png";
 /// 옵션 아이콘 텍스처의 데이터입니다.

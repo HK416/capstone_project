@@ -15,10 +15,10 @@ use winit::window::Window;
 use crate::{
     asset::{
         SamplerPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI, BG_DECO_URI,
-        BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_DETAIL_ICON_URI,
-        HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
-        HUD_OPTION_ICON_URI, IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD,
-        PROFILE_ICON_URI, RANK_ICON_URI,
+        BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI,
+        HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01,
+        HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI, IMG_FONT_HOST_URI, IMG_FONT_READY_URI,
+        NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -112,6 +112,12 @@ impl MainLobbyEnterScene {
             .remove(HUD_OPTION_ICON_URI)
             .expect("HUD_Option_Icon texture must be preloaded!");
         texture_pool.insert(HUD_OPTION_ICON_URI, texture);
+
+        // HUD_Change_Icon
+        let texture = previous_texture_pool
+            .remove(HUD_CHANGE_ICON_URI)
+            .expect("HUD_Change_Icon texture must be preloaded!");
+        texture_pool.insert(HUD_CHANGE_ICON_URI, texture);
 
         // HUD_Cancel_Icon
         let texture = previous_texture_pool

@@ -31,8 +31,9 @@ use crate::{
         BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
         BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
         GAME_LOGO_DATA, GAME_LOGO_URI, HUD_CANCEL_ICON_DATA, HUD_CANCEL_ICON_URI,
-        HUD_DETAIL_ICON_DATA, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI,
-        HUD_OPTION_ICON_DATA, HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
+        HUD_CHANGE_ICON_DATA, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_DATA, HUD_DETAIL_ICON_URI,
+        HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI, HUD_OPTION_ICON_DATA, HUD_OPTION_ICON_URI,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
     },
     component::{
         BulletRenderPipeline, BulletRenderPipelineTransparency, CharacterBakePipeline,
@@ -461,6 +462,7 @@ impl GameScene for GameStartupScene {
         self.create_texture(thread_pool, device, HUD_EXIT_ICON_URI, HUD_EXIT_ICON_DATA);
         self.create_texture(thread_pool, device, HUD_DETAIL_ICON_URI, HUD_DETAIL_ICON_DATA);
         self.create_texture(thread_pool, device, HUD_OPTION_ICON_URI, HUD_OPTION_ICON_DATA);
+        self.create_texture(thread_pool, device, HUD_CHANGE_ICON_URI, HUD_CHANGE_ICON_DATA);
         self.create_texture(thread_pool, device, HUD_CANCEL_ICON_URI, HUD_CANCEL_ICON_DATA);
         self.create_texture(thread_pool, device, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_0_DATA);
         self.create_texture(thread_pool, device, BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_1_DATA);
