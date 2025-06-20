@@ -135,13 +135,7 @@ impl GameWorldRoomState {
     }
 
     /// [`GameWorldRoomStateEvent::Ready`] 이벤트를 처리합니다.
-    fn handle_ready_event(
-        &mut self,
-        world: &GameWorld,
-        session: Arc<Session>,
-        uid: UserId,
-        ready: bool,
-    ) {
+    fn handle_ready_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
         // 게임 월드 관리자인지 확인합니다.
         if uid == world.admin() {
             self.try_enter_next_state(world, &session);
@@ -158,6 +152,7 @@ impl GameWorldRoomState {
             };
 
             // 플레이어의 준비 상태를 설정합니다.
+            let ready = !player.is_ready_to_play();
             player.set_ready_to_play(ready);
         }
     }
@@ -168,8 +163,16 @@ impl GameWorldRoomState {
         world: &GameWorld,
         session: Arc<Session>,
         uid: UserId,
-        team: Team,
+        target: UserId,
     ) {
+        // 게임 월드 관리자 또는 자기 자신이 팀 변경 이벤트를 요청한 것이 아닌 경우
+        if !(uid == world.admin() || uid == target) {
+            log::error!("{} lacks permission in the {}!", &session, &world);
+            eprintln!("{} lacks permission in the {}!", &session, &world);
+            session.close();
+            return;
+        }
+
         // 플레이어 데이터를 가져옵니다.
         let mut player = match world.players.get_mut(&uid) {
             Some(guard) => guard,
@@ -181,8 +184,28 @@ impl GameWorldRoomState {
             }
         };
 
-        // 플레이어의 팀을 설정합니다.
-        player.set_team(team);
+        // 현재 팀 인덱스를 제거합니다.
+        let team = player.team();
+        match team {
+            Team::Blue => {
+                self.blue_players.remove(&target);
+
+                let index = self.cnt_red_players;
+                self.red_players.insert(target, index);
+                self.cnt_red_players += 1;
+
+                player.set_team(Team::Red);
+            }
+            Team::Red => {
+                self.red_players.remove(&target);
+
+                let index = self.cnt_blue_players;
+                self.blue_players.insert(target, index);
+                self.cnt_blue_players += 1;
+
+                player.set_team(Team::Blue);
+            }
+        }
     }
 
     /// [`GameWorldRoomStateEvent::ChangeDuplicateOption`] 이벤트를 처리합니다.
@@ -191,11 +214,10 @@ impl GameWorldRoomState {
         world: &GameWorld,
         session: Arc<Session>,
         uid: UserId,
-        duplicates: bool,
     ) {
         // 게임 월드 관리자인지 확인합니다.
         if uid == world.admin() {
-            self.allow_duplicates = duplicates;
+            self.allow_duplicates = !self.allow_duplicates;
         } else {
             log::error!("{} lacks permission in the {}!", &session, &world);
             eprintln!("{} lacks permission in the {}!", &session, &world);
@@ -209,11 +231,10 @@ impl GameWorldRoomState {
         world: &GameWorld,
         session: Arc<Session>,
         uid: UserId,
-        unbalanced: bool,
     ) {
         // 게임 월드 관리자인지 확인합니다.
         if uid == world.admin() {
-            self.allow_unbalanced = unbalanced;
+            self.allow_unbalanced = !self.allow_unbalanced;
         } else {
             log::error!("{} lacks permission in the {}!", &session, &world);
             eprintln!("{} lacks permission in the {}!", &session, &world);
@@ -298,15 +319,20 @@ impl GameWorldRoomState {
         let players: Vec<_> = world
             .players
             .iter()
-            .map(|player| {
+            .filter_map(|player| {
+                let index = match player.team() {
+                    Team::Blue => self.blue_players.get(player.key()).cloned(),
+                    Team::Red => self.red_players.get(player.key()).cloned(),
+                };
+
+                index.map(|index| (index, player))
+            })
+            .map(|(index, player)| {
                 CustomRoomPlayerData::new(
                     player.key().clone(),
                     player.name,
                     player.profile_icon,
-                    match player.team() {
-                        Team::Blue => self.blue_players.get(player.key()).cloned().unwrap(),
-                        Team::Red => self.red_players.get(player.key()).cloned().unwrap(),
-                    },
+                    index,
                     player.permission(),
                     player.team(),
                     player.tier(),
@@ -366,17 +392,17 @@ impl GameWorldState for GameWorldRoomState {
                 uid,
                 event,
             } => match event {
-                GameWorldRoomStateEvent::Ready(ready) => {
-                    self.handle_ready_event(world, session, uid, ready);
+                GameWorldRoomStateEvent::Ready => {
+                    self.handle_ready_event(world, session, uid);
                 }
-                GameWorldRoomStateEvent::ChangeTeam(team) => {
-                    self.handle_change_team_event(world, session, uid, team);
+                GameWorldRoomStateEvent::ChangeTeam(target) => {
+                    self.handle_change_team_event(world, session, uid, target);
                 }
-                GameWorldRoomStateEvent::ChangeDuplicateOption(duplicates) => {
-                    self.handle_change_duplicate_option_event(world, session, uid, duplicates);
+                GameWorldRoomStateEvent::ChangeDuplicateOption => {
+                    self.handle_change_duplicate_option_event(world, session, uid);
                 }
-                GameWorldRoomStateEvent::ChangeUnbalanceOption(unbalanced) => {
-                    self.handle_change_balance_option_event(world, session, uid, unbalanced);
+                GameWorldRoomStateEvent::ChangeUnbalanceOption => {
+                    self.handle_change_balance_option_event(world, session, uid);
                 }
             },
             _ => {

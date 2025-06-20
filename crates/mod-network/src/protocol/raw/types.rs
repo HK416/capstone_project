@@ -47,7 +47,7 @@ pub enum PacketType {
     /// 클라이언트에서 서버로 보내는 커스텀 게임 준비 요청 패킷
     RoomReadyRequest = 0x43,
     /// 클라이언트에서 서버로 보내는 팀 변경 요청 패킷
-    ChangeTeamRequest = 0x44,
+    TeamChangeRequest = 0x44,
     /// 서버에서 클라이언트로 보내는 게임 시작 실패 응답 패킷
     StartGameFailed = 0x45,
 
@@ -95,7 +95,7 @@ impl PacketType {
             0x41 => Some(PacketType::RoomDataUpdate),
             0x42 => Some(PacketType::RoomLeaveNotify),
             0x43 => Some(PacketType::RoomReadyRequest),
-            0x44 => Some(PacketType::ChangeTeamRequest),
+            0x44 => Some(PacketType::TeamChangeRequest),
             0x45 => Some(PacketType::StartGameFailed),
             0x51 => Some(PacketType::FormationDataUpdate),
             0x52 => Some(PacketType::CharacterSelectRequest),
@@ -165,7 +165,7 @@ mod tests {
 
     test_packet_type!(test_packet_type_room_ready_request, PacketType::RoomReadyRequest);
 
-    test_packet_type!(test_packet_type_change_team_request, PacketType::ChangeTeamRequest);
+    test_packet_type!(test_packet_type_change_team_request, PacketType::TeamChangeRequest);
 
     test_packet_type!(test_packet_type_start_game_failed, PacketType::StartGameFailed);
 

@@ -55,11 +55,11 @@ pub enum GameWorldSystemEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameWorldRoomStateEvent {
     /// 플레이어가 커스텀 게임 대기실에서 준비를 요청할 때 발생되는 이벤트입니다.
-    Ready(bool),
+    Ready,
     /// 플레이어가 커스텀 게임 대기실에서 팀을 변경할 때 발생되는 이벤트입니다.
-    ChangeTeam(Team),
+    ChangeTeam(UserId),
     /// 방장이 캐릭터 중복 옵션을 변경할 때 발생되는 이벤트입니다.
-    ChangeDuplicateOption(bool),
+    ChangeDuplicateOption,
     /// 방장이 팀 균형 옵션을 변경할 때 발생되는 이벤트입니다.
-    ChangeUnbalanceOption(bool),
+    ChangeUnbalanceOption,
 }

@@ -15,7 +15,8 @@ use mod_network::{
     },
     protocol::{
         Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomLeaveNotifyPacket,
-        RoomReadyRequestPacket, StartFailedReason, StartGameFailedPacket,
+        RoomReadyRequestPacket, RoomTeamChangeRequestPacket, StartFailedReason,
+        StartGameFailedPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -64,7 +65,7 @@ const LIMIT_BLUE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["블루 팀 인원이 
 const LIMIT_RED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 정원을 초과했습니다"];
 
 /// 준비 전환 대기 시간
-const READY_DELAY: f32 = 0.5;
+const DELAY_TIME: f32 = 0.5;
 
 /// 커스텀 게임 대기실 장면입니다.
 pub struct CustomGameRoomScene {
@@ -139,8 +140,13 @@ pub struct CustomGameRoomScene {
     /// 준비 버튼 영역
     ready_btn_rect: egui::Rect,
 
+    /// 팀 변경 버튼 상태
+    team_change_btn_state: ButtonState,
+    /// 팀 변경 버튼 영역
+    team_change_btn_rect: egui::Rect,
+
     /// 지연 시간
-    ready_delay_time_sec: f32,
+    delay_time_sec: f32,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -228,7 +234,9 @@ impl CustomGameRoomScene {
             },
             ready_btn_state: ButtonState::Idle,
             ready_btn_rect: egui::Rect::ZERO,
-            ready_delay_time_sec: 0.0,
+            team_change_btn_state: ButtonState::Idle,
+            team_change_btn_rect: egui::Rect::ZERO,
+            delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool,
         }
@@ -533,6 +541,11 @@ impl CustomGameRoomScene {
         let texture_size = &self.button_texture.size;
         self.ready_btn_rect =
             Self::resize_ready_btn_rect(texture_size, &self.clip_rect, self.ui_scale);
+
+        // 팀 변경 버튼 영역을 재조정합니다.
+        let texture_size = &self.button_texture.size;
+        self.team_change_btn_rect =
+            Self::resize_team_change_btn_rect(texture_size, &self.clip_rect, self.ui_scale);
     }
 
     /// 클립 사각형 영역의 크기를 재조정합니다.
@@ -689,6 +702,21 @@ impl CustomGameRoomScene {
         egui::Rect::from_center_size(center, size)
     }
 
+    /// 팀 변경 버튼 영역의 크기를 재조정합니다.
+    fn resize_team_change_btn_rect(
+        texture_size: &egui::Vec2,
+        clip_rect: &egui::Rect,
+        scale: f32,
+    ) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let width = 160.0 * scale;
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        let left_bottom = clip_rect.center_bottom() + egui::vec2(132.0, -28.0) * scale;
+        let right_top = left_bottom + size * egui::vec2(1.0, -1.0);
+        egui::Rect::from_two_pos(left_bottom, right_top)
+    }
+
     /// Ui 입력을 처리합니다.
     fn handle_ui_input(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
         egui::Area::new(egui::Id::new("Handle_Input"))
@@ -721,17 +749,11 @@ impl CustomGameRoomScene {
                 // 준비 버튼 입력을 처리합니다.
                 let response = ui.allocate_rect(self.ready_btn_rect, egui::Sense::all());
                 if response.clicked() {
-                    if self.ready_delay_time_sec <= 0.0 {
-                        self.ready_delay_time_sec = READY_DELAY;
+                    if self.delay_time_sec <= 0.0 {
+                        self.delay_time_sec = DELAY_TIME;
 
                         // 패킷을 전송합니다.
-                        let i = self
-                            .players
-                            .binary_search_by_key(&self.uid, |data| data.uid)
-                            .unwrap();
-                        let ready_to_play = self.players[i].is_ready_to_play();
-                        let packet =
-                            RoomReadyRequestPacket::new(self.uid, self.token, !ready_to_play);
+                        let packet = RoomReadyRequestPacket::new(self.uid, self.token);
                         let net = app.net_manager();
                         let socket = net.get(&SERVER_TCP_ADDR).unwrap();
                         socket.push_packet(packet.as_raw());
@@ -744,6 +766,29 @@ impl CustomGameRoomScene {
                     self.ready_btn_state = ButtonState::Hovered;
                 } else {
                     self.ready_btn_state = ButtonState::Idle;
+                }
+
+                // 팀 변경 버튼 입력을 처리합니다.
+                let response = ui.allocate_rect(self.team_change_btn_rect, egui::Sense::all());
+                if response.clicked() {
+                    if self.delay_time_sec <= 0.0 {
+                        self.delay_time_sec = DELAY_TIME;
+
+                        // 패킷을 전송합니다.
+                        let packet =
+                            RoomTeamChangeRequestPacket::new(self.uid, self.token, self.uid);
+                        let net = app.net_manager();
+                        let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                        socket.push_packet(packet.as_raw());
+                    }
+
+                    self.team_change_btn_state = ButtonState::Clicked;
+                } else if response.is_pointer_button_down_on() {
+                    self.team_change_btn_state = ButtonState::Pressed;
+                } else if response.hovered() | response.has_focus() {
+                    self.team_change_btn_state = ButtonState::Hovered;
+                } else {
+                    self.team_change_btn_state = ButtonState::Idle;
                 }
             });
     }
@@ -988,6 +1033,26 @@ impl CustomGameRoomScene {
             });
     }
 
+    fn draw_team_change_button(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Team_Change_Button"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                let tint = match self.team_change_btn_state {
+                    ButtonState::Idle => NORM_COLOR,
+                    ButtonState::Hovered => NORM_FOCUS_COLOR,
+                    ButtonState::Clicked | ButtonState::Pressed => NORM_EXP_COLOR,
+                };
+
+                // 팀 변경 버튼
+                egui::Image::new(self.button_texture)
+                    .tint(tint)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.team_change_btn_rect);
+            });
+    }
+
     /// 취소 버튼을 그립니다.
     fn draw_cancel_button(&mut self, ctx: &egui::Context) {
         egui::Area::new(egui::Id::new("Exit_Button"))
@@ -1139,7 +1204,7 @@ impl GameScene for CustomGameRoomScene {
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, app: &dyn AppHandle) {
-        self.ready_delay_time_sec = (self.ready_delay_time_sec - elapsed_time_sec).max(0.0);
+        self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
 
         // if let Some(packet) = self.formation_packet.as_ref() {
         // let next_scene = Box::new(CharacterFormationScene::new(
@@ -1165,6 +1230,7 @@ impl GameScene for CustomGameRoomScene {
         self.draw_pannel(ctx);
         self.draw_profile(ctx);
         self.draw_ready_button(ctx);
+        self.draw_team_change_button(ctx);
         self.draw_background(ctx);
     }
 }
