@@ -1,5 +1,8 @@
 //! 커스텀 게임 장면과 관련된 코드를 작성합니다.
 //!
+
+mod ban;
+
 use std::cmp;
 
 use ahash::{HashMap, HashSet, RandomState};
@@ -38,6 +41,8 @@ use crate::{
     },
     SERVER_TCP_ADDR,
 };
+
+pub use self::ban::*;
 
 use super::{MessageSceneLayer, BASE_WIDTH, TEAM_COLOR};
 
@@ -856,13 +861,13 @@ impl CustomGameRoomScene {
     }
 
     /// 프로필을 그립니다.
-    fn draw_profile(&mut self, ctx: &egui::Context) {
+    fn draw_profile(&mut self, ctx: &egui::Context, permission: Permission, app: &dyn AppHandle) {
         const BG_COLOR: egui::Color32 = egui::Color32::from_black_alpha(96);
         const FOCUS_COLOR: egui::Color32 = egui::Color32::from_rgb(242, 201, 76);
         let alpha = egui::Color32::from_white_alpha(192);
 
         egui::Area::new(egui::Id::new("Profile"))
-            .order(egui::Order::Background)
+            .order(egui::Order::Middle)
             .sense(egui::Sense::empty())
             .show(ctx, |ui| {
                 ui.shrink_clip_rect(self.clip_rect);
@@ -891,6 +896,7 @@ impl CustomGameRoomScene {
                 for &rect in self.profile_rects.iter() {
                     match iterator.next() {
                         Some(data) => {
+                            // 배경
                             let bg_color = TEAM_COLOR[data.team() as usize] * alpha;
                             let line_color = match data.uid == self.uid {
                                 true => FOCUS_COLOR,
@@ -904,12 +910,14 @@ impl CustomGameRoomScene {
                                 egui::StrokeKind::Middle,
                             );
 
+                            // 프로필 배경
                             let source =
                                 self.profile_bg_textures.get(&data.tier()).cloned().unwrap();
                             egui::Image::new(source)
                                 .sense(egui::Sense::empty())
                                 .paint_at(ui, rect);
 
+                            // 프로필 아이콘
                             let profile_icon_texture = self
                                 .profile_icon_textures
                                 .get(&data.profile_icon)
@@ -921,6 +929,7 @@ impl CustomGameRoomScene {
                                 .sense(egui::Sense::empty())
                                 .paint_at(ui, icon_rect);
 
+                            // 이름
                             let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
                             let font_id = egui::FontId::new(18.0 * self.ui_scale, family);
                             let text = egui::RichText::new(data.name)
@@ -937,6 +946,7 @@ impl CustomGameRoomScene {
                             );
                             ui.put(label_rect, label);
 
+                            // 호스트 표시 OR 준비 상태 여부
                             if data.permission() == Permission::Admin {
                                 let font_rect = Self::resize_profile_font_rect(
                                     &self.img_font_host_texture.size,
@@ -955,6 +965,53 @@ impl CustomGameRoomScene {
                                 egui::Image::new(self.img_font_ready_texture)
                                     .sense(egui::Sense::empty())
                                     .paint_at(ui, font_rect);
+                            }
+
+                            // 강퇴 버튼
+                            if permission == Permission::Admin && data.uid != self.uid {
+                                let radius = rect.height() * 0.2;
+                                let center = rect.right_top();
+                                let size = egui::vec2(radius, radius);
+                                let btn_rect = egui::Rect::from_center_size(center, size);
+                                let response = ui.allocate_rect(btn_rect, egui::Sense::all());
+                                let state = if response.clicked() {
+                                    // 다음 게임 장면을 추가합니다.
+                                    let scene = RoomPlayerBanOnemoreLayer::new(
+                                        self.locale,
+                                        self.uid,
+                                        self.token,
+                                        data.uid,
+                                        data.name,
+                                    );
+                                    let flow = GameSceneFlow::Push(Box::new(scene));
+                                    let event = AppEvent::AddGameSceneFlow(flow);
+                                    let event_loop_proxy = app.event_loop_proxy();
+                                    event_loop_proxy.send_event(event).unwrap();
+
+                                    ButtonState::Clicked
+                                } else if response.is_pointer_button_down_on() {
+                                    ButtonState::Pressed
+                                } else if response.hovered() | response.has_focus() {
+                                    ButtonState::Hovered
+                                } else {
+                                    ButtonState::Idle
+                                };
+
+                                let color = match state {
+                                    ButtonState::Idle => NORM_COLOR,
+                                    ButtonState::Hovered => NORM_FOCUS_COLOR,
+                                    ButtonState::Pressed | ButtonState::Clicked => NORM_EXP_COLOR,
+                                };
+
+                                ui.painter().circle(
+                                    center,
+                                    radius,
+                                    color,
+                                    egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::BLACK),
+                                );
+                                egui::Image::new(self.cancel_icon_texture)
+                                    .tint(color)
+                                    .paint_at(ui, btn_rect);
                             }
                         }
                         None => {
@@ -1228,6 +1285,14 @@ impl GameScene for CustomGameRoomScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
+            PacketType::JoinRoomFailed => {
+                // 이전 게임 장면으로 전환합니다.
+                let scene_flow = GameSceneFlow::Pop;
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+                return Some(packet);
+            }
             PacketType::RoomDataUpdate => {
                 let packet = RoomDataUpdatePacket::from_raw(packet);
                 self.stage_kind = packet.stage_kind();
@@ -1305,7 +1370,7 @@ impl GameScene for CustomGameRoomScene {
         self.handle_ui_input(ctx, app, ready_to_play);
         self.draw_cancel_button(ctx);
         self.draw_pannel(ctx);
-        self.draw_profile(ctx);
+        self.draw_profile(ctx, permission, app);
         self.draw_ready_button(ctx, ready_to_play, permission);
         self.draw_team_change_button(ctx, ready_to_play, team);
         self.draw_background(ctx);

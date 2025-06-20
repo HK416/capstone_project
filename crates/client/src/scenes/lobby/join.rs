@@ -23,8 +23,8 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::{
         lobby::{
-            ERR_FULL_CAPACITY_TEXTS, ERR_IN_PROGRASS_TEXTS, ERR_LIMITS_TEXTS, ERR_NOT_FOUND_TEXTS,
-            MSG_MODAL_TEXTS,
+            ERR_BANNED_TEXTS, ERR_FULL_CAPACITY_TEXTS, ERR_IN_PROGRASS_TEXTS, ERR_LIMITS_TEXTS,
+            ERR_NOT_FOUND_TEXTS, MSG_MODAL_TEXTS,
         },
         CustomGameRoomScene, FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH,
         ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR,
@@ -153,6 +153,7 @@ impl GameScene for MainLobbyJoinModalScene {
                         JoinFailedReason::FullCapacity => ERR_FULL_CAPACITY_TEXTS[i],
                         JoinFailedReason::InProgress => ERR_IN_PROGRASS_TEXTS[i],
                         JoinFailedReason::CreationLimited => ERR_LIMITS_TEXTS[i],
+                        JoinFailedReason::Banned => ERR_BANNED_TEXTS[i],
                     },
                     None,
                 ));

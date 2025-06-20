@@ -48,8 +48,14 @@ pub enum PacketType {
     RoomReadyRequest = 0x43,
     /// 클라이언트에서 서버로 보내는 팀 변경 요청 패킷
     TeamChangeRequest = 0x44,
+    /// 클라이언트에서 서버로 보내는 캐릭터 중복 허용 옵션 변경 요청 패킷
+    DuplicateOptChangeRequest = 0x45,
+    /// 클라이언트에서 서버로 보내는 팀 불균형 허용 옵션 변경 요청 패킷
+    UnBalanceOptChangeRequest = 0x46,
+    /// 클라이언트에서 서버로 보내는 플레이어 강제 퇴장 요청 패킷
+    RoomPlayerBanRequest = 0x47,
     /// 서버에서 클라이언트로 보내는 게임 시작 실패 응답 패킷
-    StartGameFailed = 0x45,
+    StartGameFailed = 0x48,
 
     /// 캐릭터 편성에서 사용되는 패킷 유형
     FormationGroup = 0x50,
@@ -96,7 +102,10 @@ impl PacketType {
             0x42 => Some(PacketType::RoomLeaveNotify),
             0x43 => Some(PacketType::RoomReadyRequest),
             0x44 => Some(PacketType::TeamChangeRequest),
-            0x45 => Some(PacketType::StartGameFailed),
+            0x45 => Some(PacketType::DuplicateOptChangeRequest),
+            0x46 => Some(PacketType::UnBalanceOptChangeRequest),
+            0x47 => Some(PacketType::RoomPlayerBanRequest),
+            0x48 => Some(PacketType::StartGameFailed),
             0x51 => Some(PacketType::FormationDataUpdate),
             0x52 => Some(PacketType::CharacterSelectRequest),
             0x53 => Some(PacketType::CharacterSelectResponse),
@@ -165,7 +174,13 @@ mod tests {
 
     test_packet_type!(test_packet_type_room_ready_request, PacketType::RoomReadyRequest);
 
-    test_packet_type!(test_packet_type_change_team_request, PacketType::TeamChangeRequest);
+    test_packet_type!(test_packet_type_team_change_request, PacketType::TeamChangeRequest);
+
+    test_packet_type!(test_packet_type_duplicate_opt_change_request, PacketType::DuplicateOptChangeRequest);
+
+    test_packet_type!(test_packet_type_unbalance_opt_change_request, PacketType::UnBalanceOptChangeRequest);
+
+    test_packet_type!(test_packet_type_room_player_ban_request, PacketType::RoomPlayerBanRequest);
 
     test_packet_type!(test_packet_type_start_game_failed, PacketType::StartGameFailed);
 

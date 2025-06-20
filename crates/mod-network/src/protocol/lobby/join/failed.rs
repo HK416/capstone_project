@@ -21,6 +21,8 @@ pub enum JoinFailedReason {
     InProgress = 2,
     /// 커스텀 게임 생성이 제한됐습니다.
     CreationLimited = 3,
+    /// 커스텀 게임 관리자에 의해 차단되었습니다.
+    Banned = 4,
 }
 
 impl JoinFailedReason {
@@ -34,6 +36,7 @@ impl JoinFailedReason {
             1 => Some(Self::FullCapacity),
             2 => Some(Self::InProgress),
             3 => Some(Self::CreationLimited),
+            4 => Some(Self::Banned),
             _ => None,
         }
     }

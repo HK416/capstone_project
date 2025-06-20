@@ -44,7 +44,7 @@ pub struct GameWorld {
     /// 커스텀 게임 대기실에 참여한 플레이어 수 (동기화를 위해 Mutex를 사용함)
     num_players: FairMutex<usize>,
 
-    /// 게임 월드에 참여한 세션 집합입니다.
+    // 게임 월드에 참여한 세션 집합입니다.
     sessions: DashMap<Arc<Session>, UserId, RandomState>,
     /// 플레이어 오브젝트 집합입니다.
     players: DashMap<UserId, Player, RandomState>,

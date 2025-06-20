@@ -73,7 +73,7 @@ async fn udp_packet_receive_loop(socket: Arc<UdpSocket>) {
                         // 3. SESSIONS에 클라이언트 주소에 해당하는 세션이 존재할 경우
                         //    - 해당 세션으로 RawPacket을 전송한다.
                         if let Some(session) = SessionManager::get(&addr) {
-                            session.push_received_packet(packet);
+                            session.add_received_packet(packet);
                         }
                     }
                     Err(e) => {

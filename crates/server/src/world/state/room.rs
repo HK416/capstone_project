@@ -6,12 +6,15 @@ use mod_network::{
         CustomRoomPlayerData, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, Permission, StageKind,
         Team, UserId,
     },
-    protocol::{Packet, RoomDataUpdatePacket, StartFailedReason, StartGameFailedPacket},
+    protocol::{
+        JoinFailedReason, JoinRoomFailedPacket, Packet, RoomDataUpdatePacket, StartFailedReason,
+        StartGameFailedPacket,
+    },
 };
 use rand::seq::SliceRandom;
 
 use crate::{
-    session::Session,
+    session::{Session, SessionStateFlow},
     world::{GameWorld, GameWorldEvent, GameWorldRoomStateEvent, GameWorldSystemEvent},
 };
 
@@ -184,6 +187,11 @@ impl GameWorldRoomState {
             }
         };
 
+        // 커스텀 게임 관리자가 아니고, 플레이어가 준비상태인 경우 해당 이벤트를 무시합니다.
+        if uid != world.admin() && player.is_ready_to_play() {
+            return;
+        }
+
         // 현재 팀 인덱스를 제거합니다.
         let team = player.team();
         match team {
@@ -225,7 +233,7 @@ impl GameWorldRoomState {
         }
     }
 
-    /// [`GameWorldRoomStateEvent::ChangeBalanceOption`] 이벤트를 처리합니다.
+    /// [`GameWorldRoomStateEvent::ChangeUnbalanceOption`] 이벤트를 처리합니다.
     fn handle_change_balance_option_event(
         &mut self,
         world: &GameWorld,
@@ -235,6 +243,51 @@ impl GameWorldRoomState {
         // 게임 월드 관리자인지 확인합니다.
         if uid == world.admin() {
             self.allow_unbalanced = !self.allow_unbalanced;
+        } else {
+            log::error!("{} lacks permission in the {}!", &session, &world);
+            eprintln!("{} lacks permission in the {}!", &session, &world);
+            session.close();
+        }
+    }
+
+    /// [`GameWorldRoomStateEvent::PlayerBan`] 이벤트를 처리합니다.
+    fn handle_player_ban_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        target: UserId,
+    ) {
+        // 게임 월드 관리자인지 확인합니다.
+        if uid == world.admin() {
+            if uid == target {
+                log::warn!("ignored >> invalid data received!");
+                return;
+            };
+
+            // 락을 획득합니다.
+            let lock = world.num_players.lock();
+
+            // 식별자에 해당하는 세션을 찾습니다.
+            for guard in world.sessions.iter() {
+                let session = guard.key();
+                let uid = guard.value();
+
+                if *uid == target {
+                    // 패킷을 전송합니다.
+                    let reason = JoinFailedReason::Banned;
+                    let packet = JoinRoomFailedPacket::new(reason);
+                    session.tcp_write(packet.as_raw());
+
+                    // 세션 상태를 변경합니다.
+                    session.add_flow(SessionStateFlow::Pop);
+                    return;
+                }
+            }
+            drop(lock);
+
+            log::info!("Player({}) not found in {}", &target, &world);
+            println!("Player({}) not found in {}", &target, &world);
         } else {
             log::error!("{} lacks permission in the {}!", &session, &world);
             eprintln!("{} lacks permission in the {}!", &session, &world);
@@ -403,6 +456,9 @@ impl GameWorldState for GameWorldRoomState {
                 }
                 GameWorldRoomStateEvent::ChangeUnbalanceOption => {
                     self.handle_change_balance_option_event(world, session, uid);
+                }
+                GameWorldRoomStateEvent::PlayerBan(target) => {
+                    self.handle_player_ban_event(world, session, uid, target);
                 }
             },
             _ => {

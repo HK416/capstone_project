@@ -97,8 +97,12 @@ impl Session {
 
     /// 수신된 패킷 데이터를 세션에 추가합니다.  
     /// 추가된 패킷 데이터는 바로 처리되지 않습니다.
-    pub fn push_received_packet(&self, packet: RawPacket) {
+    pub fn add_received_packet(&self, packet: RawPacket) {
         self.received_packets.push(packet);
+    }
+
+    pub fn add_flow(&self, flow: SessionStateFlow) {
+        self.flows.push(flow);
     }
 
     /// 네트워크 상태를 반환합니다.

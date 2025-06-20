@@ -3,8 +3,8 @@ use std::sync::{Arc, Weak};
 use mod_network::{
     components::UserId,
     protocol::{
-        Packet, PacketType, RawPacket, RoomLeaveNotifyPacket, RoomReadyRequestPacket,
-        RoomTeamChangeRequestPacket,
+        Packet, PacketType, RawPacket, RoomLeaveNotifyPacket, RoomPlayerBanRequestPacket,
+        RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
     },
 };
 
@@ -118,7 +118,7 @@ impl SessionRoomState {
             log::error!(
                 "{} invalid token (PACKET:{:?})",
                 &session,
-                &PacketType::RoomReadyRequest
+                &PacketType::TeamChangeRequest
             );
             session.close();
             return;
@@ -135,6 +135,39 @@ impl SessionRoomState {
             };
             world.push_event(event);
             self.request_delay_time = DELAY_TIME;
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    fn handle_room_player_ban_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomPlayerBanRequestPacket,
+    ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::RoomPlayerBanRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 팀 변경 요청을 보냅니다.
+            let event = GameWorldRoomStateEvent::PlayerBan(packet.target);
+            let event = GameWorldEvent::RoomState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
         } else {
             log::error!("{} accesses an invalid custom game", session);
             session.close();
@@ -190,6 +223,17 @@ impl SessionState for SessionRoomState {
                 };
 
                 self.handle_room_team_change_request_packet(session, packet);
+            }
+            PacketType::RoomPlayerBanRequest => {
+                let packet = match RoomPlayerBanRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_room_player_ban_request_packet(session, packet);
             }
             _ => {
                 log::warn!(

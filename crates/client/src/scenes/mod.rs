@@ -157,6 +157,12 @@ impl fmt::Debug for CustomGameRoomScene {
     }
 }
 
+impl fmt::Debug for RoomPlayerBanOnemoreLayer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(RoomPlayerBanOnemoreLayer))
+    }
+}
+
 // impl fmt::Debug for CharacterFormationScene {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 //         write!(f, "{}", stringify!(CharacterFormationScene))

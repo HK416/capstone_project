@@ -189,6 +189,9 @@ impl SessionState for SessionLobbyState {
 
                 self.handle_join_request_packet(session, packet);
             }
+            PacketType::RoomLeaveNotify
+            | PacketType::RoomReadyRequest
+            | PacketType::TeamChangeRequest => { /* empty */ }
             _ => {
                 log::warn!(
                     "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
