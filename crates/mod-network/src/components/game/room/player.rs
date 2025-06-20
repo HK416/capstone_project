@@ -112,6 +112,8 @@ pub struct CustomRoomPlayerData {
     pub name: UserName,
     /// 사용자 프로필 아이콘 종류
     pub profile_icon: ProfileIcon,
+    /// 정렬을 위한 인덱스
+    pub index: u32,
     /// 비트 필드 데이터입니다.
     bitfield: Bitfield,
 }
@@ -122,6 +124,7 @@ impl CustomRoomPlayerData {
         uid: UserId,
         name: UserName,
         profile_icon: ProfileIcon,
+        index: u32,
         permission: Permission,
         team: Team,
         tier: GameTier,
@@ -131,6 +134,7 @@ impl CustomRoomPlayerData {
             uid,
             name,
             profile_icon,
+            index,
             bitfield: Bitfield::new()
                 .with_permission(permission)
                 .with_team(team)
@@ -165,6 +169,7 @@ impl BigEndian for CustomRoomPlayerData {
         UserId::byte_size()
             + UserName::byte_size()
             + ProfileIcon::byte_size()
+            + u32::byte_size()
             + Bitfield::byte_size()
     }
 
@@ -178,6 +183,7 @@ impl BigEndian for CustomRoomPlayerData {
         bytes.extend_from_slice(&self.uid.to_big_endian_bytes());
         bytes.extend_from_slice(&self.name.to_big_endian_bytes());
         bytes.extend_from_slice(&self.profile_icon.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.index.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
 
         // 생성된 바이트가 유효한지 확인합니다.
@@ -218,11 +224,17 @@ impl TryFromBigEndian for CustomRoomPlayerData {
         data = &bytes[offset..offset + size];
         let name = UserName::from_big_endian_bytes(data);
 
-        // 캐릭터 종류를 가져옵니다.
+        // 프로필 아이콘을 가져옵니다.
         offset = offset + size;
         size = ProfileIcon::byte_size();
         data = &bytes[offset..offset + size];
         let profile_icon = ProfileIcon::try_from_big_endian_bytes(data)?;
+
+        // 정렬을 위한 인덱스를 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let index = u32::from_big_endian_bytes(data);
 
         // 비트 필드 데이터를 가져옵니다.
         offset = offset + size;
@@ -234,6 +246,7 @@ impl TryFromBigEndian for CustomRoomPlayerData {
             uid,
             name,
             profile_icon,
+            index,
             bitfield,
         })
     }
@@ -299,6 +312,7 @@ mod tests {
             UserId::new(12345),
             UserName::from_str("Aris Original"),
             ProfileIcon::CharacterAris,
+            123,
             Permission::Admin,
             Team::Blue,
             GameTier::Platinum,

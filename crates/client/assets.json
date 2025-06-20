@@ -331,6 +331,8 @@
                 "HUD_Layout_02.dds",
                 "HUD_Layout_02.texD",
                 "ImgFont_Damage_Normal.dds",
+                "ImgFont_Host.dds",
+                "ImgFont_Host.texD",
                 "ImgFont_Lose.dds",
                 "ImgFont_Mission.dds",
                 "ImgFont_Ready.dds",

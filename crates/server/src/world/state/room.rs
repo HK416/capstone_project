@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
+use ahash::{HashMap, RandomState};
 use mod_network::{
-    components::{CustomRoomPlayerData, Permission, StageKind, Team, UserId},
+    components::{
+        CustomRoomPlayerData, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, Permission, StageKind,
+        Team, UserId,
+    },
     protocol::{Packet, RoomDataUpdatePacket, StartFailedReason, StartGameFailedPacket},
 };
 use rand::seq::SliceRandom;
@@ -23,10 +27,16 @@ pub struct GameWorldRoomState {
     #[allow(dead_code)]
     stage_kind: StageKind,
 
-    /// 블루팀 플레이어 수
-    num_blue_players: usize,
-    /// 레드팀 플레이어 수
-    num_red_players: usize,
+    /// 블루 팀 플레이어 카운터
+    cnt_blue_players: u32,
+    /// 블루 팀 플레이어
+    blue_players: HashMap<UserId, u32>,
+
+    /// 레드 팀 플레이어 카운터
+    cnt_red_players: u32,
+    /// 레드 팀 플레이어
+    red_players: HashMap<UserId, u32>,
+
     /// 경과 시간
     elapsed_time_sec: f32,
 }
@@ -38,8 +48,13 @@ impl GameWorldRoomState {
             allow_unbalanced: false,
             allow_duplicates: true,
             stage_kind: StageKind::default(),
-            num_blue_players: 0,
-            num_red_players: 0,
+            cnt_blue_players: 0,
+            blue_players: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
+            cnt_red_players: 0,
+            red_players: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             elapsed_time_sec: 0.0,
         }
     }
@@ -58,12 +73,18 @@ impl GameWorldRoomState {
         };
 
         // 플레이어의 팀을 설정합니다.
-        if self.num_red_players < self.num_blue_players {
+        if self.red_players.len() < self.blue_players.len() {
+            let index = self.cnt_red_players;
+            self.red_players.insert(uid, index);
+            self.cnt_red_players += 1;
+
             player.set_team(Team::Red);
-            self.num_red_players += 1;
         } else {
+            let index = self.cnt_blue_players;
+            self.blue_players.insert(uid, index);
+            self.cnt_blue_players += 1;
+
             player.set_team(Team::Blue);
-            self.num_blue_players += 1;
         }
     }
 
@@ -79,6 +100,13 @@ impl GameWorldRoomState {
                 return;
             }
         };
+
+        // 플레이어가 속한 팀의 인원 수를 갱신합니다.
+        if player.team() == Team::Blue {
+            self.blue_players.remove(&uid);
+        } else {
+            self.red_players.remove(&uid);
+        }
 
         // 제거된 플레이어의 권한이 관리자인 경우
         // 남은 플레이어 중 무작위로 한 명을 선정하여 권한을 넘겨줍니다.
@@ -209,12 +237,14 @@ impl GameWorldRoomState {
         }
 
         // 각 팀에 속한 인원이 1명 이상 존재하는지 확인합니다.
-        if self.num_blue_players == 0 {
+        let num_blue_players = self.blue_players.len();
+        let num_red_players = self.red_players.len();
+        if num_blue_players == 0 {
             let reason = StartFailedReason::EmptyBlueTeam;
             let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
             return;
-        } else if self.num_red_players == 0 {
+        } else if num_red_players == 0 {
             let reason = StartFailedReason::EmptyRedTeam;
             let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
@@ -222,8 +252,21 @@ impl GameWorldRoomState {
         }
 
         // 팀 밸런스를 확인합니다.
-        if !self.allow_unbalanced && self.num_blue_players != self.num_red_players {
+        if !self.allow_unbalanced && num_blue_players != num_red_players {
             let reason = StartFailedReason::UnbalancedTeams;
+            let packet = StartGameFailedPacket::new(reason);
+            session.tcp_write(packet.as_raw());
+            return;
+        }
+
+        // 팀 정원을 초과했는지 확인합니다.
+        if num_blue_players > MAX_IN_GAME_TEAM_PLAYERS {
+            let reason = StartFailedReason::LimitExceededBlueTeam;
+            let packet = StartGameFailedPacket::new(reason);
+            session.tcp_write(packet.as_raw());
+            return;
+        } else if num_red_players > MAX_IN_GAME_TEAM_PLAYERS {
+            let reason = StartFailedReason::LimitExceededRedTeam;
             let packet = StartGameFailedPacket::new(reason);
             session.tcp_write(packet.as_raw());
             return;
@@ -260,6 +303,10 @@ impl GameWorldRoomState {
                     player.key().clone(),
                     player.name,
                     player.profile_icon,
+                    match player.team() {
+                        Team::Blue => self.blue_players.get(player.key()).cloned().unwrap(),
+                        Team::Red => self.red_players.get(player.key()).cloned().unwrap(),
+                    },
                     player.permission(),
                     player.team(),
                     player.tier(),

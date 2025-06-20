@@ -17,6 +17,10 @@ pub enum StartFailedReason {
     UnbalancedTeams = 3,
     /// 모든 플레이어가 준비되지 않았습니다.
     PlayersNotReady = 4,
+    /// 블루 팀 인원이 정원을 초과했습니다.
+    LimitExceededBlueTeam = 5,
+    /// 레드 팀 인원이 정원을 초과했습니다.
+    LimitExceededRedTeam = 6,
 }
 
 impl StartFailedReason {
@@ -31,6 +35,8 @@ impl StartFailedReason {
             2 => Some(StartFailedReason::EmptyRedTeam),
             3 => Some(StartFailedReason::UnbalancedTeams),
             4 => Some(StartFailedReason::PlayersNotReady),
+            5 => Some(StartFailedReason::LimitExceededBlueTeam),
+            6 => Some(StartFailedReason::LimitExceededRedTeam),
             _ => None,
         }
     }
@@ -158,6 +164,16 @@ mod tests {
     test_start_failed_reason!(
         test_start_failed_reason_players_not_ready,
         StartFailedReason::PlayersNotReady
+    );
+
+    test_start_failed_reason!(
+        test_start_failed_reason_limit_exceeded_blue_team,
+        StartFailedReason::LimitExceededBlueTeam
+    );
+
+    test_start_failed_reason!(
+        test_start_failed_reason_limit_exceeded_red_team,
+        StartFailedReason::LimitExceededRedTeam
     );
 
     #[test]

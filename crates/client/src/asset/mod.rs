@@ -125,6 +125,9 @@ pub const HUD_OPTION_ICON_DATA: &'static [u8; 2181] = include_bytes!(concat!(
 /// 데미지 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_DAMAGE_NORMAL_URI: &'static str = "ImgFont_Damage_Normal";
 
+/// Host 이미지 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_HOST_URI: &'static str = "ImgFont_Host";
+
 /// Lose 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_LOSE_URI: &'static str = "ImgFont_Lose";
 

@@ -17,7 +17,8 @@ use crate::{
         SamplerPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI, BG_DECO_URI,
         BG_MAIN_LOBBY_URI, EMBLEM_BG_URI, GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_DETAIL_ICON_URI,
         HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
-        HUD_OPTION_ICON_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
+        HUD_OPTION_ICON_URI, IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD,
+        PROFILE_ICON_URI, RANK_ICON_URI,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -185,7 +186,7 @@ impl MainLobbyEnterScene {
     }
 
     /// 준비 이미지 폰트 텍스처를 생성합니다.
-    fn create_ready_img_font_textures<Dir>(
+    fn create_img_font_ready_textures<Dir>(
         &mut self,
         root_dir: Dir,
         thread_pool: &ThreadPool,
@@ -209,6 +210,53 @@ impl MainLobbyEnterScene {
             let result = texture_data_pool.get_or_init(
                 &workspace,
                 IMG_FONT_READY_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                &texture_pool,
+                &texture_view_pool,
+                &sampler_pool,
+            );
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
+
+            task_results.push(TaskResult::Texture {
+                command: encoder.finish(),
+                staging_buffers,
+            });
+        });
+
+        self.num_remaining_tasks += 1;
+    }
+
+    /// Host 이미지 폰트 텍스처를 생성합니다.
+    fn create_img_font_host_textures<Dir>(
+        &mut self,
+        root_dir: Dir,
+        thread_pool: &ThreadPool,
+        device: Arc<wgpu::Device>,
+    ) where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push("ui");
+
+        let task_results = self.task_results.clone();
+        let texture_data_pool = self.texture_data_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let texture_pool = self.texture_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
+        thread_pool.spawn(move || {
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let mut staging_buffers = Vec::new();
+
+            let result = texture_data_pool.get_or_init(
+                &workspace,
+                IMG_FONT_HOST_URI,
                 &device,
                 &mut encoder,
                 &mut staging_buffers,
@@ -527,7 +575,8 @@ impl GameScene for MainLobbyEnterScene {
         self.create_background_deco_texture(&root_dir, io_thread_pool, device.clone());
         self.create_profile_bg_textures(&root_dir, io_thread_pool, device.clone());
         self.create_profile_icon_textures(&root_dir, io_thread_pool, device.clone());
-        self.create_ready_img_font_textures(&root_dir, io_thread_pool, device.clone());
+        self.create_img_font_ready_textures(&root_dir, io_thread_pool, device.clone());
+        self.create_img_font_host_textures(&root_dir, io_thread_pool, device.clone());
         self.create_arona_sad_texture(&root_dir, io_thread_pool, device.clone());
     }
 

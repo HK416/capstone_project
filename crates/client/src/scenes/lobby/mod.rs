@@ -34,7 +34,7 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::{
         lobby::option::LobbyCommonOptionModalLayer, FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS,
-        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
     },
 };
 
@@ -595,7 +595,7 @@ impl MainLobbyScene {
         let font_id = egui::FontId::new(22.0 * self.ui_scale, family);
         self.player_name_text = egui::RichText::new(self.name)
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(FONT_COLOR);
 
         // 상단 패널 배경화면 영역을 재조정합니다.
         self.pannel_bg_rect = Self::resize_pannel_background(&self.clip_rect, self.ui_scale);

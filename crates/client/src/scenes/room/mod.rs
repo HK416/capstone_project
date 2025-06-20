@@ -9,8 +9,9 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        CustomRoomPlayerData, GameTier, LoginToken, ProfileIcon, StageKind, UserId, WorldId,
-        MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, NUM_PROFILE_ICONS, NUM_TIER,
+        CustomRoomPlayerData, GameTier, LoginToken, Permission, ProfileIcon, StageKind, Team,
+        UserId, WorldId, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, NUM_PROFILE_ICONS,
+        NUM_TIER,
     },
     protocol::{
         Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomLeaveNotifyPacket,
@@ -23,8 +24,8 @@ use winit::window::Window;
 use crate::{
     asset::{
         TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
-        HUD_CANCEL_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02, IMG_FONT_READY_URI,
-        NOTOSANS_BOLD, PROFILE_ICON_URI,
+        HUD_CANCEL_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02, IMG_FONT_HOST_URI,
+        IMG_FONT_READY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -57,6 +58,13 @@ const PLAYER_NOT_READY_ERR_TEXTS: [&'static str; NUM_LOCALE] =
 const EMPTY_BLUE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["블루 팀 인원이 비어있습니다"];
 /// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
 const EMPTY_RED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 비어있습니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const LIMIT_BLUE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["블루 팀 인원이 정원을 초과했습니다"];
+/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
+const LIMIT_RED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 정원을 초과했습니다"];
+
+/// 준비 전환 대기 시간
+const READY_DELAY: f32 = 0.5;
 
 /// 커스텀 게임 대기실 장면입니다.
 pub struct CustomGameRoomScene {
@@ -119,6 +127,8 @@ pub struct CustomGameRoomScene {
     /// 취소 버튼 상태
     cancel_btn_state: ButtonState,
 
+    /// Host 이미지 폰트 텍스처
+    img_font_host_texture: egui::load::SizedTexture,
     /// 준비 이미지 폰트 텍스처
     img_font_ready_texture: egui::load::SizedTexture,
 
@@ -128,6 +138,9 @@ pub struct CustomGameRoomScene {
     ready_btn_state: ButtonState,
     /// 준비 버튼 영역
     ready_btn_rect: egui::Rect,
+
+    /// 지연 시간
+    ready_delay_time_sec: f32,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -201,6 +214,10 @@ impl CustomGameRoomScene {
             },
             cancel_icon_rect: egui::Rect::ZERO,
             cancel_btn_state: ButtonState::Idle,
+            img_font_host_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
             img_font_ready_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
@@ -211,6 +228,7 @@ impl CustomGameRoomScene {
             },
             ready_btn_state: ButtonState::Idle,
             ready_btn_rect: egui::Rect::ZERO,
+            ready_delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool,
         }
@@ -394,6 +412,35 @@ impl CustomGameRoomScene {
 
         // 등록된 텍스처 정보를 저장합니다.
         self.cancel_icon_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// Host 폰트 이미지 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_img_font_host_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        // 준비 폰트 이미지 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_HOST_URI)
+            .expect("ImgFont_Host texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 준비 폰트 이미지 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.img_font_host_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
@@ -598,14 +645,32 @@ impl CustomGameRoomScene {
         egui::Rect::from_min_size(min, size)
     }
 
-    /// 준비 이미지 폰트의 크기를 재조정합니다.
-    fn resize_ready_font_rect(texture_size: &egui::Vec2, profile_rect: &egui::Rect) -> egui::Rect {
+    /// 프로필 이미지 폰트의 크기를 재조정합니다.
+    fn resize_profile_font_rect(
+        texture_size: &egui::Vec2,
+        profile_rect: &egui::Rect,
+        offset: f32,
+    ) -> egui::Rect {
         let ratio = texture_size.x / texture_size.y;
-        let width = profile_rect.width() * 0.3;
+        let width = profile_rect.width() * offset;
         let height = width / ratio;
         let center = profile_rect.min;
         let size = egui::vec2(width, height);
         egui::Rect::from_center_size(center, size)
+    }
+
+    /// 프로필 아이콘 영역의 크기를 재조정합니다.
+    fn resize_profile_icon_rect(
+        texture_size: &egui::Vec2,
+        profile_rect: &egui::Rect,
+    ) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let height = profile_rect.height() * 0.85;
+        let width = height * ratio;
+        let margin = egui::vec2(0.0, profile_rect.height() * 0.05);
+        let min = profile_rect.min + margin;
+        let size = egui::vec2(width, height);
+        egui::Rect::from_min_size(min, size)
     }
 
     /// 준비 버튼 영역의 크기를 재조정합니다.
@@ -656,16 +721,21 @@ impl CustomGameRoomScene {
                 // 준비 버튼 입력을 처리합니다.
                 let response = ui.allocate_rect(self.ready_btn_rect, egui::Sense::all());
                 if response.clicked() {
-                    // 패킷을 전송합니다.
-                    let i = self
-                        .players
-                        .binary_search_by_key(&self.uid, |data| data.uid)
-                        .unwrap();
-                    let ready_to_play = self.players[i].is_ready_to_play();
-                    let packet = RoomReadyRequestPacket::new(self.uid, self.token, !ready_to_play);
-                    let net = app.net_manager();
-                    let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-                    socket.push_packet(packet.as_raw());
+                    if self.ready_delay_time_sec <= 0.0 {
+                        self.ready_delay_time_sec = READY_DELAY;
+
+                        // 패킷을 전송합니다.
+                        let i = self
+                            .players
+                            .binary_search_by_key(&self.uid, |data| data.uid)
+                            .unwrap();
+                        let ready_to_play = self.players[i].is_ready_to_play();
+                        let packet =
+                            RoomReadyRequestPacket::new(self.uid, self.token, !ready_to_play);
+                        let net = app.net_manager();
+                        let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                        socket.push_packet(packet.as_raw());
+                    }
 
                     self.ready_btn_state = ButtonState::Clicked;
                 } else if response.is_pointer_button_down_on() {
@@ -707,7 +777,28 @@ impl CustomGameRoomScene {
             .sense(egui::Sense::empty())
             .show(ctx, |ui| {
                 ui.shrink_clip_rect(self.clip_rect);
-                let mut iterator = self.players.iter();
+                let (mut blue_team, mut red_team): (Vec<_>, Vec<_>) = self
+                    .players
+                    .iter()
+                    .partition(|data| data.team() == Team::Blue);
+                blue_team.sort_by_key(|data| data.index);
+                red_team.sort_by_key(|data| data.index);
+
+                let mut flags = true;
+                let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+                while !blue_team.is_empty() || !red_team.is_empty() {
+                    let result = if flags {
+                        blue_team.pop()
+                    } else {
+                        red_team.pop()
+                    };
+                    if let Some(data) = result {
+                        players.push(data);
+                    }
+                    flags = !flags;
+                }
+
+                let mut iterator = players.iter();
                 for &rect in self.profile_rects.iter() {
                     match iterator.next() {
                         Some(data) => {
@@ -730,14 +821,51 @@ impl CustomGameRoomScene {
                                 .sense(egui::Sense::empty())
                                 .paint_at(ui, rect);
 
-                            if data.is_ready_to_play() {
-                                let rect = Self::resize_ready_font_rect(
+                            let profile_icon_texture = self
+                                .profile_icon_textures
+                                .get(&data.profile_icon)
+                                .cloned()
+                                .unwrap();
+                            let icon_rect =
+                                Self::resize_profile_icon_rect(&profile_icon_texture.size, &rect);
+                            egui::Image::new(profile_icon_texture)
+                                .sense(egui::Sense::empty())
+                                .paint_at(ui, icon_rect);
+
+                            let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+                            let font_id = egui::FontId::new(18.0 * self.ui_scale, family);
+                            let text = egui::RichText::new(data.name)
+                                .font(font_id)
+                                .color(FONT_COLOR);
+                            let label = egui::Label::new(text)
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .halign(egui::Align::Center)
+                                .sense(egui::Sense::empty())
+                                .selectable(false);
+                            let label_rect = egui::Rect::from_min_max(
+                                rect.center_top() - egui::vec2(rect.width() * 0.25, 0.0),
+                                rect.max,
+                            );
+                            ui.put(label_rect, label);
+
+                            if data.permission() == Permission::Admin {
+                                let font_rect = Self::resize_profile_font_rect(
+                                    &self.img_font_host_texture.size,
+                                    &rect,
+                                    0.15,
+                                );
+                                egui::Image::new(self.img_font_host_texture)
+                                    .sense(egui::Sense::empty())
+                                    .paint_at(ui, font_rect);
+                            } else if data.is_ready_to_play() {
+                                let font_rect = Self::resize_profile_font_rect(
                                     &self.img_font_ready_texture.size,
                                     &rect,
+                                    0.2,
                                 );
                                 egui::Image::new(self.img_font_ready_texture)
                                     .sense(egui::Sense::empty())
-                                    .paint_at(ui, rect);
+                                    .paint_at(ui, font_rect);
                             }
                         }
                         None => {
@@ -838,6 +966,25 @@ impl CustomGameRoomScene {
                     .tint(tint)
                     .sense(egui::Sense::empty())
                     .paint_at(ui, self.ready_btn_rect);
+
+                let index = self
+                    .players
+                    .binary_search_by_key(&self.uid, |data| data.uid)
+                    .unwrap();
+                let data = self.players.get(index).unwrap();
+
+                let i = self.locale as usize;
+                let text = match data.permission() {
+                    Permission::Admin => START_TEXTS[i],
+                    Permission::User => READY_TEXTS[i],
+                };
+                let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+                let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+                let label = egui::Label::new(text)
+                    .sense(egui::Sense::empty())
+                    .selectable(false);
+                ui.put(self.ready_btn_rect, label);
             });
     }
 
@@ -894,6 +1041,7 @@ impl GameScene for CustomGameRoomScene {
         self.regist_pannel_bg_texture(device, ui_renderer);
         self.regist_cancel_icon_texture(device, ui_renderer);
         self.regist_img_font_ready_texture(device, ui_renderer);
+        self.regist_img_font_host_texture(device, ui_renderer);
         self.regist_button_texture(device, ui_renderer);
         self.resize_ui(window, app);
     }
@@ -915,8 +1063,9 @@ impl GameScene for CustomGameRoomScene {
         }
         ui_renderer.free_texture(&self.pannel_bg_texture.id);
         ui_renderer.free_texture(&self.cancel_icon_texture.id);
-        ui_renderer.free_texture(&self.button_texture.id);
         ui_renderer.free_texture(&self.img_font_ready_texture.id);
+        ui_renderer.free_texture(&self.img_font_host_texture.id);
+        ui_renderer.free_texture(&self.button_texture.id);
     }
 
     fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {}
@@ -968,6 +1117,8 @@ impl GameScene for CustomGameRoomScene {
                         StartFailedReason::PlayersNotReady => PLAYER_NOT_READY_ERR_TEXTS[i],
                         StartFailedReason::EmptyBlueTeam => EMPTY_BLUE_ERR_TEXTS[i],
                         StartFailedReason::EmptyRedTeam => EMPTY_RED_ERR_TEXTS[i],
+                        StartFailedReason::LimitExceededBlueTeam => LIMIT_BLUE_ERR_TEXTS[i],
+                        StartFailedReason::LimitExceededRedTeam => LIMIT_RED_ERR_TEXTS[i],
                     },
                     None,
                 ));
@@ -987,7 +1138,9 @@ impl GameScene for CustomGameRoomScene {
         None
     }
 
-    fn on_update(&mut self, _: f32, _: &Window, app: &dyn AppHandle) {
+    fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, app: &dyn AppHandle) {
+        self.ready_delay_time_sec = (self.ready_delay_time_sec - elapsed_time_sec).max(0.0);
+
         // if let Some(packet) = self.formation_packet.as_ref() {
         // let next_scene = Box::new(CharacterFormationScene::new(
         //     self.locale,
