@@ -1,3 +1,6 @@
+//! 클라이언트가 커스텀 게임 대기실 장면에 있을 때 플레이어 강제 퇴장 패킷과 관련된 코드를 관리합니다.
+//!
+
 use crate::{
     components::{BigEndian, LoginToken, UserId},
     protocol::{Packet, PacketType, RawPacket},

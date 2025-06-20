@@ -3,9 +3,10 @@
 
 mod ban;
 mod leave;
+mod option;
 mod pull;
 mod ready;
 mod start;
 mod team;
 
-pub use self::{ban::*, leave::*, pull::*, ready::*, start::*, team::*};
+pub use self::{ban::*, leave::*, option::*, pull::*, ready::*, start::*, team::*};

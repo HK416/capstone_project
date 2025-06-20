@@ -3,8 +3,9 @@ use std::sync::{Arc, Weak};
 use mod_network::{
     components::UserId,
     protocol::{
-        Packet, PacketType, RawPacket, RoomLeaveNotifyPacket, RoomPlayerBanRequestPacket,
-        RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
+        Packet, PacketType, RawPacket, RoomDuplicateOptChangeRequestPacket, RoomLeaveNotifyPacket,
+        RoomPlayerBanRequestPacket, RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
+        RoomUnbalancedOptChangeRequestPacket,
     },
 };
 
@@ -142,6 +143,7 @@ impl SessionRoomState {
         }
     }
 
+    /// [`RoomPlayerBanRequestPacket`]을 처리합니다.
     fn handle_room_player_ban_request_packet(
         &mut self,
         session: &Arc<Session>,
@@ -162,6 +164,74 @@ impl SessionRoomState {
         if let Some(world) = self.world.upgrade() {
             // 팀 변경 요청을 보냅니다.
             let event = GameWorldRoomStateEvent::PlayerBan(packet.target);
+            let event = GameWorldEvent::RoomState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    /// [`RoomDuplicateOptChangeRequestPacket`]을 처리합니다.
+    fn handle_room_duplicate_opt_change_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomDuplicateOptChangeRequestPacket,
+    ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::DuplicateOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 팀 변경 요청을 보냅니다.
+            let event = GameWorldRoomStateEvent::ChangeDuplicateOption;
+            let event = GameWorldEvent::RoomState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    /// [`RoomDuplicateOptChangeRequestPacket`]을 처리합니다.
+    fn handle_room_unbalanced_opt_change_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomUnbalancedOptChangeRequestPacket,
+    ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::UnBalanceOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 팀 변경 요청을 보냅니다.
+            let event = GameWorldRoomStateEvent::ChangeUnbalanceOption;
             let event = GameWorldEvent::RoomState {
                 session: session.clone(),
                 uid: packet.uid,
@@ -223,6 +293,27 @@ impl SessionState for SessionRoomState {
                 };
 
                 self.handle_room_team_change_request_packet(session, packet);
+            }
+            PacketType::DuplicateOptChangeRequest => {
+                let packet = match RoomDuplicateOptChangeRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+                self.handle_room_duplicate_opt_change_request_packet(session, packet);
+            }
+            PacketType::UnBalanceOptChangeRequest => {
+                let packet = match RoomUnbalancedOptChangeRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_room_unbalanced_opt_change_request_packet(session, packet);
             }
             PacketType::RoomPlayerBanRequest => {
                 let packet = match RoomPlayerBanRequestPacket::try_from_raw(packet) {

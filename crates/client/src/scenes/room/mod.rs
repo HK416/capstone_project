@@ -19,9 +19,9 @@ use mod_network::{
         NUM_TIER,
     },
     protocol::{
-        Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomLeaveNotifyPacket,
-        RoomReadyRequestPacket, RoomTeamChangeRequestPacket, StartFailedReason,
-        StartGameFailedPacket,
+        Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomDuplicateOptChangeRequestPacket,
+        RoomLeaveNotifyPacket, RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
+        RoomUnbalancedOptChangeRequestPacket, StartFailedReason, StartGameFailedPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -70,9 +70,15 @@ const EMPTY_RED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 �
 const LIMIT_BLUE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["블루 팀 인원이 정원을 초과했습니다"];
 /// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
 const LIMIT_RED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 정원을 초과했습니다"];
+/// 애플리케이션 표시 언어에 따른 옵션 텍스트
+const DUPLICATE_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 중복 허용"];
+/// 애플리케이션 표시 언어에 따른 옵션 텍스트
+const UNBALANCE_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["팀 불균형 허용"];
 
 /// 준비 전환 대기 시간
 const DELAY_TIME: f32 = 0.5;
+/// 토글 버튼의 전환 시간
+const SWITCH_TIME: f32 = 0.2;
 
 /// 커스텀 게임 대기실 장면입니다.
 pub struct CustomGameRoomScene {
@@ -90,8 +96,16 @@ pub struct CustomGameRoomScene {
     stage_kind: StageKind,
     /// 캐릭터 중복 허용 여부
     allow_duplicates: bool,
+    /// 캐릭터 중복 허용 여부 변환 시간
+    duplicate_switch_time: f32,
+    /// 캐릭터 중복 허용 여부 영역
+    duplicate_rect: egui::Rect,
     /// 팀 밸런스 불균형 허용 여부
     allow_unbalanced: bool,
+    /// 팀 밸런스 불균형 허용 여부 변환 시간
+    unbalance_switch_time: f32,
+    /// 팀 밸런스 불균형 허용 여부 영역
+    unbalance_rect: egui::Rect,
     /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.
     players: Vec<CustomRoomPlayerData>,
 
@@ -196,7 +210,11 @@ impl CustomGameRoomScene {
             players,
             stage_kind,
             allow_duplicates,
+            duplicate_switch_time: if allow_duplicates { SWITCH_TIME } else { 0.0 },
+            duplicate_rect: egui::Rect::ZERO,
             allow_unbalanced,
+            unbalance_switch_time: if allow_unbalanced { SWITCH_TIME } else { 0.0 },
+            unbalance_rect: egui::Rect::ZERO,
             ui_scale: 1.0,
             clip_rect: egui::Rect::ZERO,
             bg_rect: egui::Rect::ZERO,
@@ -588,6 +606,12 @@ impl CustomGameRoomScene {
         let texture_size = &self.button_texture.size;
         self.team_change_btn_rect =
             Self::resize_team_change_btn_rect(texture_size, &self.clip_rect, self.ui_scale);
+
+        // 캐릭터 중복 여부 허용 영역을 재조정합니다.
+        self.duplicate_rect = Self::resize_duplicate_rect(&self.clip_rect, self.ui_scale);
+
+        // 팀 불균형 여부 허용 영역을 재조정합니다.
+        self.unbalance_rect = Self::resize_unbalance_rect(&self.clip_rect, self.ui_scale);
     }
 
     /// 클립 사각형 영역의 크기를 재조정합니다.
@@ -617,7 +641,7 @@ impl CustomGameRoomScene {
         scale: f32,
     ) -> (egui::Rect, egui::Rect) {
         let ratio = texture_size.x / texture_size.y;
-        let width = 320.0 * scale;
+        let width = 340.0 * scale;
         let height = width / ratio;
         let size = egui::vec2(width, height);
 
@@ -669,7 +693,7 @@ impl CustomGameRoomScene {
     /// 패널 배경 영역의 크기를 재조정합니다.
     fn resize_pannel_bg_rect(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
         const MARGIN: egui::Vec2 = egui::vec2(24.0, 16.0);
-        const WIDTH: f32 = 480.0;
+        const WIDTH: f32 = 440.0;
         const HEIGHT: f32 = 72.0;
         static_assertions::const_assert!(0.0 <= MARGIN.x && 0.0 <= MARGIN.y);
         static_assertions::const_assert!(0.0 <= WIDTH);
@@ -759,12 +783,39 @@ impl CustomGameRoomScene {
         egui::Rect::from_two_pos(left_bottom, right_top)
     }
 
+    /// 캐릭터 중복 허용 여부 영역의 크기를 재조정합니다.
+    fn resize_duplicate_rect(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+        let width = 320.0 * scale;
+        let height = 40.0 * scale;
+        let size = egui::vec2(width, height);
+
+        let margin = egui::vec2(10.0, -32.0) * scale;
+        let left_bottom = clip_rect.left_bottom() + margin;
+        let right_top = left_bottom + size * egui::vec2(1.0, -1.0);
+
+        egui::Rect::from_two_pos(left_bottom, right_top)
+    }
+
+    /// 팀 불균형 허용 여부 영역의 크기를 재조정합니다.
+    fn resize_unbalance_rect(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+        let width = 320.0 * scale;
+        let height = 40.0 * scale;
+        let size = egui::vec2(width, height);
+
+        let margin = egui::vec2(10.0, -78.0) * scale;
+        let left_bottom = clip_rect.left_bottom() + margin;
+        let right_top = left_bottom + size * egui::vec2(1.0, -1.0);
+
+        egui::Rect::from_two_pos(left_bottom, right_top)
+    }
+
     /// Ui 입력을 처리합니다.
     fn handle_ui_input(
         &mut self,
         ctx: &egui::Context,
-        app: &dyn AppHandle,
         is_ready_to_play: bool,
+        permission: Permission,
+        app: &dyn AppHandle,
     ) {
         egui::Area::new(egui::Id::new("Handle_Input"))
             .order(egui::Order::Middle)
@@ -837,6 +888,48 @@ impl CustomGameRoomScene {
                         self.team_change_btn_state = ButtonState::Hovered;
                     } else {
                         self.team_change_btn_state = ButtonState::Idle;
+                    }
+                }
+
+                // 캐릭터 중복 허용 옵션 입력을 처리합니다.
+                if permission == Permission::Admin {
+                    let min = self.duplicate_rect.min
+                        + self.duplicate_rect.size() * egui::vec2(0.75, 0.0);
+                    let size = self.duplicate_rect.size() * egui::vec2(0.25, 1.0);
+                    let rect = egui::Rect::from_min_size(min, size);
+                    let response = ui.allocate_rect(rect, egui::Sense::all());
+                    if response.clicked() {
+                        if self.delay_time_sec <= 0.0 {
+                            self.delay_time_sec = DELAY_TIME;
+
+                            // 패킷을 전송합니다.
+                            let packet =
+                                RoomDuplicateOptChangeRequestPacket::new(self.uid, self.token);
+                            let net = app.net_manager();
+                            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+                        }
+                    }
+                }
+
+                // 팀 불균형 허용 옵션 입력을 처리합니다.
+                if permission == Permission::Admin {
+                    let min = self.unbalance_rect.min
+                        + self.unbalance_rect.size() * egui::vec2(0.75, 0.0);
+                    let size = self.unbalance_rect.size() * egui::vec2(0.25, 1.0);
+                    let rect = egui::Rect::from_min_size(min, size);
+                    let response = ui.allocate_rect(rect, egui::Sense::all());
+                    if response.clicked() {
+                        if self.delay_time_sec <= 0.0 {
+                            self.delay_time_sec = DELAY_TIME;
+
+                            // 패킷을 전송합니다.
+                            let packet =
+                                RoomUnbalancedOptChangeRequestPacket::new(self.uid, self.token);
+                            let net = app.net_manager();
+                            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+                        }
                     }
                 }
             });
@@ -1208,6 +1301,104 @@ impl CustomGameRoomScene {
                     .paint_at(ui, self.cancel_icon_rect);
             });
     }
+
+    /// 중복 허용 옵션을 그립니다.
+    fn draw_duplicate_option(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+        egui::Area::new(egui::Id::new("Allow_Duplicate_Label"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .fixed_pos(self.duplicate_rect.min)
+            .default_size(self.duplicate_rect.size() * egui::vec2(0.75, 1.0))
+            .show(ctx, |ui| {
+                // 라벨 출력
+                let i = self.locale as usize;
+                let text = DUPLICATE_OPT_TEXTS[i];
+                let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+                let font_id = egui::FontId::new(22.0 * self.ui_scale, family);
+                let text = egui::RichText::new(text)
+                    .font(font_id)
+                    .color(egui::Color32::WHITE);
+                let label = egui::Label::new(text)
+                    .sense(egui::Sense::empty())
+                    .selectable(false);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(12.0 * self.ui_scale);
+                    ui.add(label);
+                });
+
+                // 토글 버튼 배경
+                let min =
+                    self.duplicate_rect.min + self.duplicate_rect.size() * egui::vec2(0.75, 0.0);
+                let height = self.duplicate_rect.height();
+                let rect = egui::Rect::from_two_pos(min, self.duplicate_rect.max);
+                let delta = self.duplicate_switch_time / SWITCH_TIME;
+                let color = egui::Color32::GRAY
+                    * egui::Color32::from_gray(((1.0 - delta) * 255.0) as u8)
+                    + egui::Color32::LIGHT_GREEN * egui::Color32::from_gray((delta * 255.0) as u8);
+                ui.painter().rect_filled(rect, height * 0.5, color);
+
+                // 토글 버튼
+                let radius = rect.height() * 0.4;
+                let beg = rect.left_center() + egui::vec2(rect.height() * 0.5, 0.0);
+                let end = rect.right_center() - egui::vec2(rect.height() * 0.5, 0.0);
+                let center = beg.to_vec2() * (1.0 - delta) + end.to_vec2() * delta;
+                ui.painter().circle(
+                    center.to_pos2(),
+                    radius,
+                    egui::Color32::WHITE,
+                    egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::BLACK),
+                );
+            });
+    }
+
+    /// 팀 불균형 옵션을 그립니다.
+    fn draw_unbalance_option(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+        egui::Area::new(egui::Id::new("Allow_Unbalanced_Label"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .fixed_pos(self.unbalance_rect.min)
+            .default_size(self.unbalance_rect.size() * egui::vec2(0.75, 1.0))
+            .show(ctx, |ui| {
+                // 라벨 출력
+                let i = self.locale as usize;
+                let text = UNBALANCE_OPT_TEXTS[i];
+                let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+                let font_id = egui::FontId::new(22.0 * self.ui_scale, family);
+                let text = egui::RichText::new(text)
+                    .font(font_id)
+                    .color(egui::Color32::WHITE);
+                let label = egui::Label::new(text)
+                    .sense(egui::Sense::empty())
+                    .selectable(false);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(12.0 * self.ui_scale);
+                    ui.add(label);
+                });
+
+                // 토글 버튼 배경
+                let min =
+                    self.unbalance_rect.min + self.unbalance_rect.size() * egui::vec2(0.75, 0.0);
+                let height = self.unbalance_rect.height();
+                let rect = egui::Rect::from_two_pos(min, self.unbalance_rect.max);
+                let delta = self.unbalance_switch_time / SWITCH_TIME;
+                let color = egui::Color32::GRAY
+                    * egui::Color32::from_gray(((1.0 - delta) * 255.0) as u8)
+                    + egui::Color32::LIGHT_GREEN * egui::Color32::from_gray((delta * 255.0) as u8);
+                ui.painter().rect_filled(rect, height * 0.5, color);
+
+                // 토글 버튼
+                let radius = rect.height() * 0.4;
+                let beg = rect.left_center() + egui::vec2(rect.height() * 0.5, 0.0);
+                let end = rect.right_center() - egui::vec2(rect.height() * 0.5, 0.0);
+                let center = beg.to_vec2() * (1.0 - delta) + end.to_vec2() * delta;
+                ui.painter().circle(
+                    center.to_pos2(),
+                    radius,
+                    egui::Color32::WHITE,
+                    egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::BLACK),
+                );
+            });
+    }
 }
 
 impl GameScene for CustomGameRoomScene {
@@ -1336,24 +1527,18 @@ impl GameScene for CustomGameRoomScene {
         None
     }
 
-    fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, app: &dyn AppHandle) {
+    fn on_update(&mut self, elapsed_time_sec: f32, _: &Window, _app: &dyn AppHandle) {
         self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
-
-        // if let Some(packet) = self.formation_packet.as_ref() {
-        // let next_scene = Box::new(CharacterFormationScene::new(
-        //     self.locale,
-        //     self.user_id,
-        //     self.token,
-        //     self.texture_pool.clone(),
-        //     self.texture_view_pool.clone(),
-        //     packet.remaining_time,
-        //     packet.players.clone(),
-        // ));
-        // let scene_flow = GameSceneFlow::Push(next_scene);
-        // let event = AppEvent::AddGameSceneFlow(scene_flow);
-        // let event_loop_proxy = app.event_loop_proxy();
-        // event_loop_proxy.send_event(event).unwrap();
-        // }
+        self.duplicate_switch_time = if self.allow_duplicates {
+            (self.duplicate_switch_time + elapsed_time_sec).min(SWITCH_TIME)
+        } else {
+            (self.duplicate_switch_time - elapsed_time_sec).max(0.0)
+        };
+        self.unbalance_switch_time = if self.allow_unbalanced {
+            (self.unbalance_switch_time + elapsed_time_sec).min(SWITCH_TIME)
+        } else {
+            (self.unbalance_switch_time - elapsed_time_sec).max(0.0)
+        };
     }
 
     fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1367,12 +1552,14 @@ impl GameScene for CustomGameRoomScene {
         let permission = data.permission();
         let team = data.team();
 
-        self.handle_ui_input(ctx, app, ready_to_play);
+        self.handle_ui_input(ctx, ready_to_play, permission, app);
         self.draw_cancel_button(ctx);
         self.draw_pannel(ctx);
         self.draw_profile(ctx, permission, app);
         self.draw_ready_button(ctx, ready_to_play, permission);
         self.draw_team_change_button(ctx, ready_to_play, team);
+        self.draw_duplicate_option(ctx, app);
+        self.draw_unbalance_option(ctx, app);
         self.draw_background(ctx);
     }
 }
