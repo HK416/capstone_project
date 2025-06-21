@@ -19,9 +19,10 @@ use mod_network::{
         NUM_TIER,
     },
     protocol::{
-        Packet, PacketType, RawPacket, RoomDataUpdatePacket, RoomDuplicateOptChangeRequestPacket,
-        RoomLeaveNotifyPacket, RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
-        RoomUnbalancedOptChangeRequestPacket, StartFailedReason, StartGameFailedPacket,
+        FormationDataInitPacket, Packet, PacketType, RawPacket, RoomDataUpdatePacket,
+        RoomDuplicateOptChangeRequestPacket, RoomLeaveNotifyPacket, RoomReadyRequestPacket,
+        RoomTeamChangeRequestPacket, RoomUnbalancedOptChangeRequestPacket, StartFailedReason,
+        StartGameFailedPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -36,8 +37,9 @@ use crate::{
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
-        FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        CharacterFormationScene, FatalErrorSceneLayer, FormationPlayerData, ERR_CLOSED_MSG_TEXTS,
+        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR,
+        NORM_FOCUS_COLOR,
     },
     SERVER_TCP_ADDR,
 };
@@ -1303,7 +1305,7 @@ impl CustomGameRoomScene {
     }
 
     /// 중복 허용 옵션을 그립니다.
-    fn draw_duplicate_option(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+    fn draw_duplicate_option(&mut self, ctx: &egui::Context) {
         egui::Area::new(egui::Id::new("Allow_Duplicate_Label"))
             .order(egui::Order::Background)
             .sense(egui::Sense::empty())
@@ -1352,7 +1354,7 @@ impl CustomGameRoomScene {
     }
 
     /// 팀 불균형 옵션을 그립니다.
-    fn draw_unbalance_option(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+    fn draw_unbalance_option(&mut self, ctx: &egui::Context) {
         egui::Area::new(egui::Id::new("Allow_Unbalanced_Label"))
             .order(egui::Order::Background)
             .sense(egui::Sense::empty())
@@ -1516,6 +1518,41 @@ impl GameScene for CustomGameRoomScene {
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }
+            PacketType::FormationDataInit => {
+                let packet = FormationDataInitPacket::from_raw(packet);
+
+                // 플레이어 데이터를 생성합니다.
+                let players = packet
+                    .players
+                    .iter()
+                    .map(|data| {
+                        (
+                            data.uid,
+                            FormationPlayerData::new(
+                                data.uid,
+                                data.name,
+                                data.team(),
+                                data.team_index(),
+                            ),
+                        )
+                    })
+                    .collect();
+
+                // 다음 게임 장면으로 전환합니다.
+                let scene = CharacterFormationScene::new(
+                    self.locale,
+                    self.uid,
+                    self.token,
+                    packet.remaining_time_sec,
+                    players,
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
+                );
+                let flow = GameSceneFlow::Push(Box::new(scene));
+                let event = AppEvent::AddGameSceneFlow(flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
             _ => {
                 log::warn!(
                     "packet ignored: invalid packet received! (TYPE:{:?})",
@@ -1558,8 +1595,8 @@ impl GameScene for CustomGameRoomScene {
         self.draw_profile(ctx, permission, app);
         self.draw_ready_button(ctx, ready_to_play, permission);
         self.draw_team_change_button(ctx, ready_to_play, team);
-        self.draw_duplicate_option(ctx, app);
-        self.draw_unbalance_option(ctx, app);
+        self.draw_duplicate_option(ctx);
+        self.draw_unbalance_option(ctx);
         self.draw_background(ctx);
     }
 }

@@ -1,7 +1,9 @@
 //! 게임 월드의 플레이어 데이터와 관련된 코드를 관리합니다.
 //!
 
-use mod_network::components::{GameTier, Permission, ProfileIcon, Team, UserName};
+use mod_network::components::{
+    CharacterKind, GameTier, NetworkState, Permission, ProfileIcon, Team, UserName,
+};
 
 /// 비트 필드 데이터입니다.
 ///
@@ -11,6 +13,7 @@ use mod_network::components::{GameTier, Permission, ProfileIcon, Team, UserName}
 /// - ready_to_play | 1bit | 게임 준비 여부
 /// - permission    | 1bit | 권한
 /// - tier          | 2bit | 티어
+/// - network_state | 2bit | 네트워크 상태
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -27,6 +30,8 @@ impl Bitfield {
     const PERMISSION_SHIFT: usize = 5;
     const TIER_BIT_MASK: u16 = 0x0007;
     const TIER_SHIFT: usize = 6;
+    const STATE_BIT_MASK: u16 = 0x0003;
+    const STATE_SHIFT: usize = 8;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     pub const fn new() -> Self {
@@ -132,6 +137,25 @@ impl Bitfield {
         self.set_tier(tier);
         self
     }
+
+    /// 네트워크 상태를 반환합니다.
+    pub fn network_state(&self) -> NetworkState {
+        let val = ((self.0 >> Self::STATE_SHIFT) & Self::STATE_BIT_MASK) as u8;
+        // Safety: 주어진 정수는 범위를 벗어나지 않음
+        unsafe { NetworkState::new(val).unwrap_unchecked() }
+    }
+
+    /// 네트워크 상태를 설정합니다.
+    pub const fn set_network_state(&mut self, state: NetworkState) {
+        self.0 &= !(Self::STATE_BIT_MASK << Self::STATE_SHIFT);
+        self.0 |= ((state as u16) & Self::STATE_BIT_MASK) << Self::STATE_SHIFT;
+    }
+
+    /// 네트워크 상태를 설정합니다.
+    pub const fn with_network_state(mut self, state: NetworkState) -> Self {
+        self.set_network_state(state);
+        self
+    }
 }
 
 impl Default for Bitfield {
@@ -148,6 +172,8 @@ pub struct Player {
     pub name: UserName,
     /// 사용자 프로필 아이콘
     pub profile_icon: ProfileIcon,
+    /// 캐릭터 종류
+    pub character_kind: CharacterKind,
     /// 비트 필드 데이터입니다.
     bitfield: Bitfield,
 }
@@ -158,6 +184,7 @@ impl Player {
         Self {
             name,
             profile_icon: ProfileIcon::GroupSchale,
+            character_kind: CharacterKind::ArisOriginal,
             bitfield: Bitfield::new(),
         }
     }
@@ -165,6 +192,12 @@ impl Player {
     /// 프로필 아이콘을 설정합니다.
     pub const fn with_profile_icon(mut self, profile_icon: ProfileIcon) -> Self {
         self.profile_icon = profile_icon;
+        self
+    }
+
+    /// 캐릭터 종류를 설정합니다.
+    pub const fn with_character_kind(mut self, character_kind: CharacterKind) -> Self {
+        self.character_kind = character_kind;
         self
     }
 
@@ -253,6 +286,22 @@ impl Player {
     /// 게임 티어를 설정합니다.
     pub const fn with_tier(mut self, tier: GameTier) -> Self {
         self.set_tier(tier);
+        self
+    }
+
+    /// 네트워크 상태를 반환합니다.
+    pub fn network_state(&self) -> NetworkState {
+        self.bitfield.network_state()
+    }
+
+    /// 네트워크 상태를 설정합니다.
+    pub const fn set_network_state(&mut self, state: NetworkState) {
+        self.bitfield.set_network_state(state);
+    }
+
+    /// 네트워크 상태를 설정합니다.
+    pub const fn with_network_state(mut self, state: NetworkState) -> Self {
+        self.set_network_state(state);
         self
     }
 }

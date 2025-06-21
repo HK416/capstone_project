@@ -12,8 +12,6 @@ pub enum SelectResult {
     Success = 0,
     /// 캐릭터가 중복됩니다.
     Duplicates = 1,
-    /// 캐릭터가 금지됬습니다.
-    Banned = 2,
 }
 
 impl SelectResult {
@@ -25,7 +23,6 @@ impl SelectResult {
         match val {
             0 => Some(Self::Success),
             1 => Some(Self::Duplicates),
-            2 => Some(Self::Banned),
             _ => None,
         }
     }
@@ -67,10 +64,6 @@ mod tests {
         let val = SelectResult::Duplicates as u8;
         let result = SelectResult::new(val).unwrap();
         assert_eq!(SelectResult::Duplicates, result);
-
-        let val = SelectResult::Banned as u8;
-        let result = SelectResult::new(val).unwrap();
-        assert_eq!(SelectResult::Banned, result);
     }
 
     #[test]

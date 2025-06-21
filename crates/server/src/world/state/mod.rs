@@ -1,7 +1,4 @@
-// mod formation;
-// mod in_game;
-// mod in_game_prepare;
-// mod in_game_sync;
+mod formation;
 mod room;
 
 use std::{collections::VecDeque, fmt, sync::Arc};
@@ -10,7 +7,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::world::get_retires;
 
-pub use self::room::*;
+pub use self::{formation::*, room::*};
 
 use super::{GameWorld, GameWorldEvent};
 
@@ -209,5 +206,11 @@ fn handle_reset_session_state_flow(
 impl fmt::Debug for GameWorldRoomState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(GameWorldRoomState))
+    }
+}
+
+impl fmt::Debug for GameWorldFormationState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldFormationState))
     }
 }

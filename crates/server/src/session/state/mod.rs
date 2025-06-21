@@ -10,11 +10,8 @@
 //! - InGameEnter: 클라이언트가 인게임 장면에 진입하고 있는 상태입니다.
 //! - InGame: 클라이언트가 인게임 장면에 있는 상태입니다.
 //!
-// mod finish;
-// mod formation;
-// mod in_game;
-// mod in_game_prepare;
-// mod in_game_sync;
+
+mod formation;
 mod lobby;
 mod login;
 mod room;
@@ -29,7 +26,7 @@ use std::{
 use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
 use tokio::time::{Duration, Instant};
 
-use self::{lobby::*, login::*, room::*, verify::*};
+pub use self::{formation::*, lobby::*, login::*, room::*, verify::*};
 
 use super::Session;
 
@@ -324,5 +321,11 @@ impl fmt::Debug for SessionLobbyState {
 impl fmt::Debug for SessionRoomState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(SessionRoomState))
+    }
+}
+
+impl fmt::Debug for SessionFormationState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(SessionFormationState))
     }
 }

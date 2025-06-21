@@ -18,7 +18,7 @@ use crate::{
 use super::{SessionState, SessionStateFlow};
 
 /// 지연 시간 (초)
-const DELAY_TIME: f32 = 0.5;
+const DELAY_TIME: f32 = 0.3;
 
 pub struct SessionRoomState {
     /// 사용자 식별자
@@ -49,6 +49,17 @@ impl SessionRoomState {
         packet: RoomLeaveNotifyPacket,
     ) {
         // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::RoomLeaveNotify
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
                 "{} invalid token (PACKET:{:?})",
@@ -71,6 +82,17 @@ impl SessionRoomState {
     ) {
         // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
         if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::RoomReadyRequest
+            );
+            session.close();
             return;
         }
 
@@ -115,6 +137,17 @@ impl SessionRoomState {
         }
 
         // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::TeamChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
                 "{} invalid token (PACKET:{:?})",
@@ -149,6 +182,22 @@ impl SessionRoomState {
         session: &Arc<Session>,
         packet: RoomPlayerBanRequestPacket,
     ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::RoomPlayerBanRequest
+            );
+            session.close();
+            return;
+        }
+
         // 수신한 패킷이 올바른지 검사합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
@@ -170,6 +219,7 @@ impl SessionRoomState {
                 event,
             };
             world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
         } else {
             log::error!("{} accesses an invalid custom game", session);
             session.close();
@@ -183,6 +233,22 @@ impl SessionRoomState {
         session: &Arc<Session>,
         packet: RoomDuplicateOptChangeRequestPacket,
     ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::DuplicateOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
         // 수신한 패킷이 올바른지 검사합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
@@ -204,6 +270,7 @@ impl SessionRoomState {
                 event,
             };
             world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
         } else {
             log::error!("{} accesses an invalid custom game", session);
             session.close();
@@ -217,6 +284,22 @@ impl SessionRoomState {
         session: &Arc<Session>,
         packet: RoomUnbalancedOptChangeRequestPacket,
     ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::UnBalanceOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
         // 수신한 패킷이 올바른지 검사합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
@@ -238,6 +321,7 @@ impl SessionRoomState {
                 event,
             };
             world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
         } else {
             log::error!("{} accesses an invalid custom game", session);
             session.close();
@@ -248,6 +332,7 @@ impl SessionRoomState {
 
 impl SessionState for SessionRoomState {
     fn on_resume(&mut self, _session: &Arc<Session>) {
+        self.request_delay_time = 0.0;
         self.packet_warn_count = 0;
     }
 
@@ -326,6 +411,7 @@ impl SessionState for SessionRoomState {
 
                 self.handle_room_player_ban_request_packet(session, packet);
             }
+            PacketType::CharacterSelectRequest => { /* empty */ }
             _ => {
                 log::warn!(
                     "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

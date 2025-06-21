@@ -1,16 +1,16 @@
+//! 클라이언트가 캐릭터 편성 장면에 있을 때 참여한 플레이어 데이터 초기화 패킷과 관련된 코드를 관리합니다.
+//!
+
 use crate::{
-    components::{
-        BigEndian, CustomRoomPlayerData, StageKind, TryFromBigEndian, WorldId, MAX_IN_GAME_PLAYERS,
-    },
+    components::{BigEndian, FormationPlayerInitData, StageKind, MAX_IN_GAME_PLAYERS},
     protocol::{Packet, PacketType, RawPacket},
 };
 
 /// 비트 필드 데이터입니다.
 ///
 /// 아래 데이터가 포함되어있습니다.
-/// - stage_king       | 4bit | 스테이지 종류
+/// - stage_kind       | 4bit | 스테이지 종류
 /// - allow_duplicates | 1bit | 캐릭터 중복 허용 여부
-/// - unbalanced       | 1bit | 팀 균형 여부
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -21,8 +21,6 @@ impl Bitfield {
     const STAGE_SHIFT: usize = 0;
     const DUPLICATE_BIT_MASK: u8 = 0x01;
     const DUPLICATE_SHIFT: usize = 4;
-    const UNBALANCE_BIT_MASK: u8 = 0x01;
-    const UNBALANCE_SHIFT: usize = 5;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     pub const fn new() -> Self {
@@ -53,18 +51,6 @@ impl Bitfield {
         self.0 |= ((duplicates as u8) & Self::DUPLICATE_BIT_MASK) << Self::DUPLICATE_SHIFT;
         self
     }
-
-    /// 팀 불균형 허용 여부를 반환합니다.
-    pub fn allow_unbalanced(&self) -> bool {
-        (self.0 >> Self::UNBALANCE_SHIFT) & Self::UNBALANCE_BIT_MASK == Self::UNBALANCE_BIT_MASK
-    }
-
-    /// 팀 불균형 여부를 설정합니다.
-    pub const fn with_allow_unbalanced(mut self, unbalanced: bool) -> Self {
-        self.0 &= !(Self::UNBALANCE_BIT_MASK << Self::UNBALANCE_SHIFT);
-        self.0 |= ((unbalanced as u8) & Self::UNBALANCE_BIT_MASK) << Self::UNBALANCE_SHIFT;
-        self
-    }
 }
 
 impl Default for Bitfield {
@@ -83,64 +69,60 @@ impl BigEndian for Bitfield {
     }
 }
 
-/// 서버에서 클라이언트로 보내는 커스텀 게임 갱신 요청 패킷입니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RoomDataUpdatePacket {
-    /// 게임 월드 식별자입니다.
-    pub id: WorldId,
+/// 서버에서 클라이언트로 보내는 캐릭터 편성 장면 초기화 패킷입니다.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FormationDataInitPacket {
+    // 총 남은 시간입니다.
+    pub remaining_time_sec: f32,
     /// 비트 필드 데이터입니다.
     bitfield: Bitfield,
-    /// 참여한 플레이어 목록입니다.
-    pub players: Vec<CustomRoomPlayerData>,
+    /// 플레이어 초기화 데이터
+    pub players: Vec<FormationPlayerInitData>,
 }
 
-impl RoomDataUpdatePacket {
+impl FormationDataInitPacket {
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
-    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
+    /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
-    pub const fn new(
-        id: WorldId,
+    pub fn new(
+        remaining_time_sec: f32,
         stage_kind: StageKind,
         duplicates: bool,
-        unbalanced: bool,
-        players: Vec<CustomRoomPlayerData>,
+        players: Vec<FormationPlayerInitData>,
     ) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
-        assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
+        assert!(players.len() <= MAX_IN_GAME_PLAYERS, "Too many players!");
 
         Self {
-            id,
+            remaining_time_sec,
             players,
             bitfield: Bitfield::new()
                 .with_stage_kind(stage_kind)
-                .with_allow_duplicates(duplicates)
-                .with_allow_unbalanced(unbalanced),
+                .with_allow_duplicates(duplicates),
         }
     }
 
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
-    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
+    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
     ///
     pub fn from_iter<I>(
-        id: WorldId,
+        remaining_time_sec: f32,
         stage_kind: StageKind,
         duplicates: bool,
-        unbalanced: bool,
         iter: I,
     ) -> Self
     where
-        I: IntoIterator<Item = CustomRoomPlayerData>,
+        I: IntoIterator<Item = FormationPlayerInitData>,
         I::IntoIter: ExactSizeIterator,
     {
         Self::new(
-            id,
+            remaining_time_sec,
             stage_kind,
             duplicates,
-            unbalanced,
             iter.into_iter().collect(),
         )
     }
@@ -150,31 +132,26 @@ impl RoomDataUpdatePacket {
         self.bitfield.allow_duplicates()
     }
 
-    /// 팀 불균형 허용 여부를 반환합니다.
-    pub fn allow_unbalanced(&self) -> bool {
-        self.bitfield.allow_unbalanced()
-    }
-
     /// 스테이지 종류를 반환합니다.
     pub fn stage_kind(&self) -> StageKind {
         self.bitfield.stage_kind()
     }
 }
 
-impl Packet for RoomDataUpdatePacket {
+impl Packet for FormationDataInitPacket {
     fn packet_type() -> PacketType {
-        PacketType::RoomDataUpdate
+        PacketType::FormationDataInit
     }
 
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
-        let data_size = WorldId::byte_size()
+        let data_size = f32::byte_size()
             + u8::byte_size()
             + u8::byte_size()
-            + CustomRoomPlayerData::byte_size() * num_players;
+            + FormationPlayerInitData::byte_size() * num_players;
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.id.to_big_endian_bytes());
+        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes());
         data.extend_from_slice(&self.bitfield.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
@@ -187,7 +164,7 @@ impl Packet for RoomDataUpdatePacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(RoomDataUpdatePacket)
+                stringify!(FormationDataInitPacket)
             );
         }
 
@@ -208,9 +185,9 @@ impl Packet for RoomDataUpdatePacket {
         // 게임 월드 식별자를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = WorldId::byte_size();
+        let mut size = f32::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let id = WorldId::from_big_endian_bytes(data);
+        let remaining_time_sec = f32::from_big_endian_bytes(data);
 
         // 비트 필드를 가져옵니다.
         offset = offset + size;
@@ -222,23 +199,22 @@ impl Packet for RoomDataUpdatePacket {
         offset = offset + size;
         size = u8::byte_size();
         data = &bytes[offset..offset + size];
-        let mut num_players = u8::from_big_endian_bytes(data) as usize;
+        let num_players = u8::from_big_endian_bytes(data) as usize;
         if num_players <= 0 || num_players > MAX_IN_GAME_PLAYERS {
             return None;
         }
 
         // 커스텀 게임 플레이어 정보를 가져옵니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        while num_players > 0 {
+        for _ in 0..num_players {
             offset = offset + size;
-            size = CustomRoomPlayerData::byte_size();
+            size = FormationPlayerInitData::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(CustomRoomPlayerData::try_from_big_endian_bytes(data)?);
-            num_players -= 1;
+            players.push(FormationPlayerInitData::from_big_endian_bytes(data));
         }
 
         Some(Self {
-            id,
+            remaining_time_sec,
             bitfield,
             players,
         })
@@ -247,65 +223,47 @@ impl Packet for RoomDataUpdatePacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{
-        CustomRoomPlayerData, GameTier, Permission, ProfileIcon, Team, UserId, UserName,
-    };
+    use crate::components::{Team, UserId, UserName};
 
     use super::*;
 
     #[test]
-    fn test_room_data_update_packet() {
-        let player_0 = CustomRoomPlayerData::new(
-            UserId::new(12341),
-            UserName::from_str("아리수"),
-            ProfileIcon::CharacterAris,
-            12,
-            Permission::Admin,
-            Team::Blue,
-            GameTier::Silver,
-            false,
-        );
-        let player_1 = CustomRoomPlayerData::new(
-            UserId::new(21321),
-            UserName::from_str("유즈퀸"),
-            ProfileIcon::CharacterYuzu,
-            23,
-            Permission::User,
-            Team::Red,
-            GameTier::Platinum,
-            true,
-        );
-        let player_2 = CustomRoomPlayerData::new(
-            UserId::new(34121),
-            UserName::from_str("데스모모이"),
-            ProfileIcon::CharacterMomoi,
-            34,
-            Permission::User,
-            Team::Blue,
-            GameTier::Gold,
-            false,
-        );
-        let player_3 = CustomRoomPlayerData::new(
-            UserId::new(14211),
-            UserName::from_str("미도리"),
-            ProfileIcon::CharacterMidori,
-            45,
-            Permission::User,
-            Team::Red,
-            GameTier::Bronze,
-            true,
-        );
-        let players = vec![player_0, player_1, player_2, player_3];
+    #[should_panic]
+    fn test_creation_formation_data_init_packet() {
+        FormationDataInitPacket::new(60.0, StageKind::City, true, vec![]);
+    }
 
-        let origin = RoomDataUpdatePacket::new(
-            WorldId::new(12312451),
-            StageKind::City,
-            true,
-            false,
-            players,
+    #[test]
+    fn test_formation_data_init_packet() {
+        let player_0 = FormationPlayerInitData::new(
+            UserId::new(13415),
+            UserName::from_str("로봇청소기"),
+            Team::Blue,
+            0,
         );
+        let player_1 = FormationPlayerInitData::new(
+            UserId::new(6423651),
+            UserName::from_str("모모이"),
+            Team::Blue,
+            1,
+        );
+        let player_2 = FormationPlayerInitData::new(
+            UserId::new(845141),
+            UserName::from_str("유즈유즈"),
+            Team::Red,
+            0,
+        );
+        let player_3 = FormationPlayerInitData::new(
+            UserId::new(213415),
+            UserName::from_str("미도리"),
+            Team::Blue,
+            2,
+        );
+
+        let players = vec![player_0, player_1, player_2, player_3];
+        let origin = FormationDataInitPacket::new(50.0, StageKind::City, true, players);
         let raw = origin.as_raw();
-        let other = RoomDataUpdatePacket::from_raw(raw);
+        let other = FormationDataInitPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인
         assert_eq!(origin, other);

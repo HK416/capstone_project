@@ -1,30 +1,34 @@
+mod player;
+
+use ahash::HashMap;
 use mod_app::{
     app::AppHandle,
-    etc::AppEvent,
+    etc::{AppEvent, Viewport},
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{
-        CharacterKind, FormationPhasePlayer, GamePlayStopReason, LoginToken, SelectResult, UserId,
-        NUM_CHARACTERS,
-    },
-    protocol::{
-        FormationPullPacket, FormationSelectPacket, FormationSelectResponsePacket,
-        GamePlayStopPacket, InitStagePacket, Packet, PacketType, RawPacket,
-    },
+    components::{CharacterKind, LoginToken, UserId, NUM_CHARACTERS},
+    protocol::{FormationDataUpdatePacket, Packet, PacketType, RawPacket},
 };
 use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, TextureViewPool, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{
+        TexturePool, TextureViewPool, BG_FORMATION_URI, BG_MAIN_LOBBY_URI, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR,
+    },
     config::{Locale, NUM_LOCALE},
-    scenes::FatalErrorSceneLayer,
+    scenes::{
+        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+    },
     SERVER_TCP_ADDR,
 };
 
-use super::{InGameLoadScene, MessageSceneLayer, BASE_WIDTH};
+pub use self::player::*;
+
+use super::{MessageSceneLayer, BASE_WIDTH};
 
 /// 애플리케이션 표시 언어에 따른 Title 텍스트
 const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 편성"];
@@ -41,15 +45,13 @@ const NOT_ENOUGH_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참여 인원�
 const EMPTY_TEAM_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["한쪽 팀 인원이 비어있습니다"];
 /// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
 const DUPLICATE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["이미 사용중인 캐릭터입니다"];
-/// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
-const BANNED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["사용이 금지된 캐릭터입니다"];
 
 /// 인 게임 장면에 진입하기 전 캐릭터를 편성하는 장면입니다.  
 pub struct CharacterFormationScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
     /// 현재 사용자 식별자
-    user_id: UserId,
+    uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
 
@@ -57,10 +59,17 @@ pub struct CharacterFormationScene {
     remaining_time_sec: f32,
 
     /// 플레이어 집합
-    players: Vec<FormationPhasePlayer>,
+    players: HashMap<UserId, FormationPlayerData>,
 
-    /// 배경화면 텍스처의 식별자입니다.
-    bg_texture_id: egui::load::SizedTexture,
+    /// Ui 스케일
+    ui_scale: f32,
+    /// 클립 영역 사각형
+    clip_rect: egui::Rect,
+    /// 배경화면 텍스처
+    bg_texture: egui::load::SizedTexture,
+    /// 배경화면 영역
+    bg_rect: egui::Rect,
+
     /// 현재 선택한 캐릭터 종류
     select_character: Option<CharacterKind>,
     /// 캐릭터 선택 여부
@@ -76,38 +85,40 @@ impl CharacterFormationScene {
     /// 새로운 게임 장면을 생성합니다.
     pub fn new(
         locale: Locale,
-        user_id: UserId,
+        uid: UserId,
         token: LoginToken,
+        remaining_time_sec: f32,
+        players: HashMap<UserId, FormationPlayerData>,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
-        remaining_time_sec: f32,
-        players: Vec<FormationPhasePlayer>,
     ) -> Self {
         Self {
             locale,
-            user_id,
+            uid,
             token,
             remaining_time_sec,
             players,
-            bg_texture_id: egui::load::SizedTexture {
+            ui_scale: 1.0,
+            clip_rect: egui::Rect::ZERO,
+            bg_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
+            bg_rect: egui::Rect::ZERO,
             select_character: None,
             is_selected: false,
             texture_pool,
             texture_view_pool,
         }
     }
-}
 
-impl GameScene for CharacterFormationScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
-        // 메인 로비 배경화면 텍스처를 가져옵니다.
+    /// 배경 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_background_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 캐릭터 편성 배경화면 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
-            .get(BG_MAIN_LOBBY_URI)
-            .expect("BG_Main_Lobby texture must be preloaded!");
+            .get(BG_FORMATION_URI)
+            .expect("BG_Formation texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
         // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
@@ -116,17 +127,81 @@ impl GameScene for CharacterFormationScene {
             .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
 
         // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id = ui_renderer.register_native_texture(
-            app.render_device(),
-            &texture,
-            wgpu::FilterMode::Linear,
-        );
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         // 등록된 텍스처 정보를 저장합니다.
-        self.bg_texture_id = egui::load::SizedTexture {
+        self.bg_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
+    }
+
+    /// 클립 사각형 영역의 크기를 재조정합니다.
+    fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
+
+        (clip_rect, scale)
+    }
+
+    /// 배경 사각형 영역의 크기를 재조정합니다.
+    fn resize_background(texture_size: &egui::Vec2, clip_rect: &egui::Rect) -> egui::Rect {
+        let center = clip_rect.center();
+        let ratio = texture_size.x / texture_size.y;
+        let width = clip_rect.width();
+        let height = width / ratio;
+        let size = egui::vec2(width, height);
+        egui::Rect::from_center_size(center, size)
+    }
+
+    /// Ui의 크기를 재설정합니다.
+    fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
+        // 클립 사각형 영역의 크기를 재조정합니다.
+        let viewport = app.viewport();
+        let scale_factor = window.scale_factor() as f32;
+        (self.clip_rect, self.ui_scale) = Self::resize_clip_rect(viewport, scale_factor);
+
+        // 배경 사각형 영역의 크기를 재조정합니다.
+        let texture_size = &self.bg_texture.size;
+        self.bg_rect = Self::resize_background(texture_size, &self.clip_rect);
+    }
+
+    /// 배경화면을 그립니다.
+    fn draw_background(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                egui::Image::new(self.bg_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, self.bg_rect);
+            });
+    }
+}
+
+impl GameScene for CharacterFormationScene {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+        let device = app.render_device();
+        self.regist_background_texture(device, ui_renderer);
+        self.resize_ui(window, app);
+    }
+
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        ui_renderer.free_texture(&self.bg_texture.id);
+    }
+
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+        // Ui 레이아웃을 재조정합니다.
+        self.resize_ui(window, app);
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -134,7 +209,7 @@ impl GameScene for CharacterFormationScene {
         let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
-            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i]
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.
@@ -148,90 +223,26 @@ impl GameScene for CharacterFormationScene {
     fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::FormationSelectResponse => {
-                let packet = FormationSelectResponsePacket::from_raw(packet);
-                match packet.result {
-                    SelectResult::Success => self.is_selected = true,
-                    SelectResult::Duplicates => {
-                        // 다음 게임 장면으로 전환합니다.
-                        let i = self.locale as usize;
-                        let next_scene = Box::new(MessageSceneLayer::new(
-                            self.locale,
-                            ERR_TITLE_TEXTS[i],
-                            DUPLICATE_ERR_TEXTS[i],
-                        ));
-                        let scene_flow = GameSceneFlow::Push(next_scene);
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
-                    SelectResult::Banned => {
-                        // 다음 게임 장면으로 전환합니다.
-                        let i = self.locale as usize;
-                        let next_scene = Box::new(MessageSceneLayer::new(
-                            self.locale,
-                            ERR_TITLE_TEXTS[i],
-                            BANNED_ERR_TEXTS[i],
-                        ));
-                        let scene_flow = GameSceneFlow::Push(next_scene);
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
+            PacketType::FormationDataUpdate => {
+                let packet = FormationDataUpdatePacket::from_raw(packet);
+
+                // 남은 시간을 갱신합니다.
+                const TIME_EPSILON: f32 = 0.5;
+                if (self.remaining_time_sec - packet.remaining_time_sec).abs() > TIME_EPSILON {
+                    self.remaining_time_sec = packet.remaining_time_sec;
+                }
+
+                // 플레이어 데이터를 갱신합니다.
+                for pull_data in packet.players.iter() {
+                    let data = self.players.get_mut(&pull_data.uid).unwrap();
+                    data.set_connected(pull_data.is_connected());
+                    data.set_network_state(pull_data.network_state());
+                    data.set_permission_state(pull_data.permission());
+                    data.character_kind = pull_data.character_kind();
                 }
             }
-            PacketType::FormationPull => {
-                let packet = FormationPullPacket::from_raw(packet);
-                self.remaining_time_sec = packet.remaining_time;
-                self.players = packet.players;
-            }
-            PacketType::GamePlayStop => {
-                // 게임 장면을 변경합니다.
-                let scene_flow = GameSceneFlow::Pop;
-                let event = AppEvent::AddGameSceneFlow(scene_flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
-
-                let packet = GamePlayStopPacket::from_raw(packet);
-                match packet.reason {
-                    GamePlayStopReason::NotEnughPlayers => {
-                        // 다음 게임 장면으로 전환합니다.
-                        let i = self.locale as usize;
-                        let next_scene = Box::new(MessageSceneLayer::new(
-                            self.locale,
-                            ERR_TITLE_TEXTS[i],
-                            NOT_ENOUGH_ERR_TEXTS[i],
-                        ));
-                        let scene_flow = GameSceneFlow::Push(next_scene);
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
-                    GamePlayStopReason::OneTeamEmpty => {
-                        // 다음 게임 장면으로 전환합니다.
-                        let i = self.locale as usize;
-                        let next_scene = Box::new(MessageSceneLayer::new(
-                            self.locale,
-                            ERR_TITLE_TEXTS[i],
-                            EMPTY_TEAM_ERR_TEXTS[i],
-                        ));
-                        let scene_flow = GameSceneFlow::Push(next_scene);
-                        let event = AppEvent::AddGameSceneFlow(scene_flow);
-                        let event_loop_proxy = app.event_loop_proxy();
-                        event_loop_proxy.send_event(event).unwrap();
-                    }
-                };
-            }
-            PacketType::InitStage => {
-                let packet = InitStagePacket::from_raw(packet);
-
-                // 게임 장면을 변경합니다.
-                let next_scene =
-                    InGameLoadScene::new(self.locale, self.user_id, self.token, packet);
-                let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
-                let event = AppEvent::AddGameSceneFlow(scene_flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
+            PacketType::CharacterSelectResponse => {
+                // TODO
             }
             _ => {
                 log::warn!(
@@ -341,24 +352,6 @@ impl GameScene for CharacterFormationScene {
             })
             .collect();
 
-        // 배경화면
-        let source = self.bg_texture_id;
-        let ratio = source.size.x / source.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width;
-        let img_height = img_width / ratio;
-        let rect = egui::Rect {
-            min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
-            ),
-            max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
-            ),
-        };
-
         egui::Area::new(egui::Id::new("Title_Layout"))
             .anchor(egui::Align2::LEFT_TOP, (16.0 * scale, 16.0 * scale))
             .show(app.egui_ctx(), |ui| {
@@ -400,25 +393,22 @@ impl GameScene for CharacterFormationScene {
                         if ui.add(select_button).clicked() {
                             if !self.is_selected {
                                 // 패킷을 전송합니다.
-                                let packet = FormationSelectPacket::new(
-                                    self.user_id,
-                                    self.token,
-                                    self.select_character
-                                        .expect("there are no selected character!"),
-                                );
-                                let net_manager = app.net_manager();
-                                let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-                                socket.push_packet(packet.as_raw());
+                                // let packet = FormationSelectPacket::new(
+                                //     self.user_id,
+                                //     self.token,
+                                //     self.select_character
+                                //         .expect("there are no selected character!"),
+                                // );
+                                // let net_manager = app.net_manager();
+                                // let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                                // socket.push_packet(packet.as_raw());
                             }
                         }
                     });
                 })
             });
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new())
-            .show(app.egui_ctx(), |ui| {
-                egui::Image::new(source).paint_at(ui, rect);
-            });
+        let ctx = app.egui_ctx();
+        self.draw_background(ctx);
     }
 }

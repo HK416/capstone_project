@@ -14,7 +14,8 @@ use ahash::RandomState;
 use dashmap::DashMap;
 use mod_network::{
     components::{
-        GameTier, MAX_IN_GAME_PLAYERS, Permission, ProfileIcon, UserId, UserName, WorldId,
+        GameTier, MAX_IN_GAME_PLAYERS, NetworkState, Permission, ProfileIcon, UserId, UserName,
+        WorldId,
     },
     protocol::JoinFailedReason,
 };
@@ -32,7 +33,7 @@ const NULL_ID: u32 = UserId::NULL.into_inner();
 #[derive(Debug)]
 pub struct GameWorld {
     /// 게임 월드 식별자입니다.
-    world_id: WorldId,
+    id: WorldId,
     /// 게임 월드의 실행 여부입니다.
     is_running: AtomicBool,
     /// 외부 플레이어 출입의 제한 여부입니다.
@@ -59,7 +60,7 @@ impl GameWorld {
     /// 새로운 게임 월드를 생성합니다.
     pub fn new(world_id: WorldId) -> Self {
         Self {
-            world_id,
+            id: world_id,
             is_running: AtomicBool::new(false),
             is_closed: AtomicBool::new(true),
             admin: AtomicU32::new(NULL_ID),
@@ -225,10 +226,22 @@ impl GameWorld {
             self.received_events.push(event);
         }
     }
+
+    /// 네트워크 상태를 갱신합니다.
+    pub fn update_network_state(&self, uid: UserId, session: Arc<Session>, state: NetworkState) {
+        match self.players.get_mut(&uid) {
+            Some(mut data) => data.set_network_state(state),
+            None => {
+                log::error!("{} attempted unauthorized access in {}!", &session, &self,);
+                eprintln!("{} attempted unauthorized access in {}!", &session, &self,);
+                session.close();
+            }
+        };
+    }
 }
 
 impl fmt::Display for GameWorld {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GameWorld({})", self.world_id)
+        write!(f, "GameWorld({})", self.id)
     }
 }

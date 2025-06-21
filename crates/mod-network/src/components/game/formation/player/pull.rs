@@ -103,7 +103,7 @@ impl Default for Bitfield {
 
 /// 캐릭터 편성 단계에서 사용되는 플레이어 갱신 데이터입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FormationPlayerPullData {
+pub struct FormationPlayerUpdateData {
     /// 사용자 식별자
     pub uid: UserId,
     /// 캐릭터 종류
@@ -112,13 +112,23 @@ pub struct FormationPlayerPullData {
     bitfield: Bitfield,
 }
 
-impl FormationPlayerPullData {
+impl FormationPlayerUpdateData {
     /// 새로운 캐릭터 편성 단계 플레이어 갱신 데이터를 생성합니다.
-    pub const fn new(uid: UserId) -> Self {
+    pub fn new(
+        uid: UserId,
+        connected: bool,
+        permission: Permission,
+        network_state: NetworkState,
+        character_kind: Option<CharacterKind>,
+    ) -> Self {
         Self {
             uid,
-            character_kind: CharacterKind::ArisOriginal,
-            bitfield: Bitfield::new(),
+            character_kind: character_kind.unwrap_or_default(),
+            bitfield: Bitfield::new()
+                .with_connected(connected)
+                .with_permission(permission)
+                .with_network_state(network_state)
+                .with_selected(character_kind.is_some()),
         }
     }
 
@@ -127,33 +137,9 @@ impl FormationPlayerPullData {
         self.bitfield.is_connected()
     }
 
-    /// 서버 연결 여부를 설정합니다.
-    pub fn set_connected(&mut self, connected: bool) {
-        self.bitfield = self.bitfield.with_connected(connected);
-    }
-
-    /// 서버 연결 여부를 설정합니다.
-    pub fn with_connected(mut self, connected: bool) -> Self {
-        self.bitfield = self.bitfield.with_connected(connected);
-        self
-    }
-
     /// 선택한 캐릭터를 반환합니다.
     pub fn character_kind(&self) -> Option<CharacterKind> {
         self.bitfield.is_selected().then_some(self.character_kind)
-    }
-
-    /// 선택한 캐릭터를 설정합니다.
-    pub fn set_character_kind(&mut self, character_kind: CharacterKind) {
-        self.bitfield = self.bitfield.with_selected(true);
-        self.character_kind = character_kind;
-    }
-
-    /// 선택한 캐릭터를 설정합니다.
-    pub fn with_character_kind(mut self, character_kind: CharacterKind) -> Self {
-        self.bitfield = self.bitfield.with_selected(true);
-        self.character_kind = character_kind;
-        self
     }
 
     /// 네트워크 상태를 반환합니다.
@@ -161,35 +147,13 @@ impl FormationPlayerPullData {
         self.bitfield.network_state()
     }
 
-    /// 네트워크 상태를 설정합니다.
-    pub fn set_network_state(&mut self, state: NetworkState) {
-        self.bitfield = self.bitfield.with_network_state(state);
-    }
-
-    /// 네트워크 상태를 설정합니다.
-    pub fn with_network_state(mut self, state: NetworkState) -> Self {
-        self.bitfield = self.bitfield.with_network_state(state);
-        self
-    }
-
     /// 권한을 반환합니다.
     pub fn permission(&self) -> Permission {
         self.bitfield.permission()
     }
-
-    /// 권한을 설정합니다.
-    pub fn set_permission(&mut self, permission: Permission) {
-        self.bitfield = self.bitfield.with_permission(permission);
-    }
-
-    /// 권한을 설정합니다.
-    pub fn with_permission(mut self, permission: Permission) -> Self {
-        self.bitfield = self.bitfield.with_permission(permission);
-        self
-    }
 }
 
-impl BigEndian for FormationPlayerPullData {
+impl BigEndian for FormationPlayerUpdateData {
     fn byte_size() -> usize {
         UserId::byte_size() + CharacterKind::byte_size() + Bitfield::byte_size()
     }
@@ -219,7 +183,7 @@ impl BigEndian for FormationPlayerPullData {
     }
 }
 
-impl TryFromBigEndian for FormationPlayerPullData {
+impl TryFromBigEndian for FormationPlayerUpdateData {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         // 주어진 바이트가 유효한지 확인합니다.
         if cfg!(feature = "check-validation") {
@@ -262,15 +226,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bitfield_connected() {
-        let bitfield = Bitfield::new().with_connected(false);
-        assert_eq!(false, bitfield.is_connected());
-
-        let bitfield = Bitfield::new().with_connected(true);
-        assert_eq!(true, bitfield.is_connected());
-    }
-
-    #[test]
     fn test_bitfield_selected() {
         let bitfield = Bitfield::new().with_selected(false);
         assert_eq!(false, bitfield.is_selected());
@@ -311,12 +266,15 @@ mod tests {
 
     #[test]
     fn test_formation_player_pull_data() {
-        let origin = FormationPlayerPullData::new(UserId::new(1234515))
-            .with_character_kind(CharacterKind::YuukaOriginal)
-            .with_connected(true)
-            .with_network_state(NetworkState::Fair);
+        let origin = FormationPlayerUpdateData::new(
+            UserId::new(1234515),
+            true,
+            Permission::Admin,
+            NetworkState::Fair,
+            Some(CharacterKind::YuukaOriginal),
+        );
         let bytes = origin.to_big_endian_bytes();
-        let other = FormationPlayerPullData::from_big_endian_bytes(&bytes);
+        let other = FormationPlayerUpdateData::from_big_endian_bytes(&bytes);
 
         // 원본과 일치하는지 비교
         assert_eq!(origin, other);

@@ -1,91 +1,117 @@
-use std::{
-    fmt,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
-use mod_network::protocol::{FormationSelectPacket, Packet, PacketType, RawPacket};
+use mod_network::{
+    components::UserId,
+    protocol::{
+        CharacterSelectRequestPacket, Packet, PacketType, RawPacket, RoomLeaveNotifyPacket,
+    },
+};
 
 use crate::{
-    session::{Session, SessionEvents},
+    session::{Session, SessionState, SessionStateFlow},
     token::UserTokenMap,
-    world::{GameWorld, GameWorldEvent},
+    world::{GameWorld, GameWorldEvent, GameWorldFormationStateEvent},
 };
 
-use super::{SessionState, SessionStateFlow, in_game_sync::SessionInGameSyncState};
+/// 지연 시간 (초)
+const DELAY_TIME: f32 = 0.4;
 
 pub struct SessionFormationState {
-    /// 세션 상태 실행 여부
-    is_running: bool,
-    /// 연결된 게임 월드
-    world: Option<Weak<GameWorld>>,
+    /// 사용자 식별자
+    uid: UserId,
+    /// 참가한 게임 월드
+    world: Weak<GameWorld>,
+    /// 요청 지연 시간
+    request_delay_time: f32,
+    /// 유효하지 않은 패킷 경고 횟수
+    packet_warn_count: usize,
 }
 
 impl SessionFormationState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(world: Weak<GameWorld>) -> Self {
+    pub fn new(uid: UserId, world: Arc<GameWorld>) -> Self {
         Self {
-            is_running: true,
-            world: Some(world),
+            uid,
+            world: Arc::downgrade(&world),
+            request_delay_time: 0.0,
+            packet_warn_count: 0,
         }
     }
-}
 
-//--------------------------------------------------------------------------------------------
-// 처리와 관련된 코드를 작성합니다.
-//--------------------------------------------------------------------------------------------
-impl SessionFormationState {
-    /// `EnterInGameSync`이벤트를 처리합니다.
-    fn handle_enter_in_game_sync_event(&mut self, session: &Arc<Session>) {
-        // 다음 세션 상태로 전환합니다.
-        self.is_running = false;
-        let world = self.world.take().unwrap();
-        let next_state = Box::new(SessionInGameSyncState::new(world));
-        let control_flow = SessionStateFlow::Change(next_state);
-        let event = SessionEvents::SetControlFlow(control_flow);
-        session.push_event(event);
-    }
-
-    fn handle_exit_formation_event(&mut self, session: &Arc<Session>) {
-        // 다음 세션 상태로 전환합니다.
-        self.is_running = false;
-        let control_flow = SessionStateFlow::Pop;
-        let event = SessionEvents::SetControlFlow(control_flow);
-        session.push_event(event);
-    }
-
-    /// `FormationSelectPacket`을 처리합니다.
-    fn handle_formation_select_packet(&mut self, session: &Arc<Session>, packet: RawPacket) {
-        let packet = match FormationSelectPacket::try_from_raw(packet) {
-            Some(packet) => packet,
-            None => {
-                log::warn!("{} failed to convert packet!", session);
-                session.close();
-                return;
-            }
-        };
+    /// [`RoomLeaveNotifyPacket`]을 처리합니다.
+    fn handle_room_leave_notify_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomLeaveNotifyPacket,
+    ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::RoomLeaveNotify
+            );
+            session.close();
+            return;
+        }
 
         // 수신한 패킷이 올바른지 검사합니다.
-        let user_id = packet.user_id;
-        let addr = session.addr;
-        let token = packet.token;
-        if !UserTokenMap::is_valid(&(user_id, addr), token) {
-            log::warn!("{} invalid token (PACKET:{:?})", &session, &packet,);
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::RoomLeaveNotify
+            );
+            session.close();
+            return;
+        }
+
+        // 로비 세션 상태로 되돌아갑니다.
+        session.flows.push(SessionStateFlow::Pop);
+        session.flows.push(SessionStateFlow::Pop);
+    }
+
+    /// [`CharacterSelectRequestPacket`]을 처리합니다.
+    fn handle_character_select_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: CharacterSelectRequestPacket,
+    ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::CharacterSelectRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::CharacterSelectRequest
+            );
             session.close();
             return;
         }
 
         // 커스텀 게임 대기실 객체를 가져옵니다.
-        let world = self.world.as_ref().unwrap();
-        if let Some(world) = world.upgrade() {
-            // 캐릭터 선택 이벤트를 추가합니다.
-            let event = GameWorldEvent::SelectCharacter {
+        if let Some(world) = self.world.upgrade() {
+            // 캐릭터 선택 요청을 보냅니다.
+            let event = GameWorldFormationStateEvent::CharacterSelect(packet.character_kind);
+            let event = GameWorldEvent::FormationState {
                 session: session.clone(),
-                uid: packet.user_id,
-                kind: packet.character_kind,
+                uid: packet.uid,
+                event,
             };
             world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
         } else {
-            log::warn!("{} accesses an invalid world", session);
+            log::error!("{} accesses an invalid custom game", session);
             session.close();
             return;
         }
@@ -93,62 +119,57 @@ impl SessionFormationState {
 }
 
 impl SessionState for SessionFormationState {
-    fn handle_event(&mut self, event: SessionEvents, session: &Arc<Session>) {
-        // 세션 상태가 실행 중이 아닌 경우 함수 실행을 생략합니다.
-        if !self.is_running {
-            return;
-        }
+    fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::RoomLeaveNotify => {
+                let packet = match RoomLeaveNotifyPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
 
-        match event {
-            SessionEvents::EnterInGameSync => {
-                self.handle_enter_in_game_sync_event(session);
+                self.handle_room_leave_notify_packet(session, packet);
             }
-            SessionEvents::ExitFormation => {
-                self.handle_exit_formation_event(session);
+            PacketType::CharacterSelectRequest => {
+                let packet = match CharacterSelectRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_character_select_request_packet(session, packet);
             }
+            PacketType::RoomReadyRequest
+            | PacketType::TeamChangeRequest
+            | PacketType::DuplicateOptChangeRequest
+            | PacketType::UnBalanceOptChangeRequest
+            | PacketType::RoomPlayerBanRequest => { /* empty */ }
             _ => {
                 log::warn!(
-                    "ignored >> unused session event (EVENT:{:?} STATE:{:?})",
-                    &event,
-                    &self
+                    "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
+                    &session,
+                    &self,
+                    &packet_type,
                 );
-            }
-        }
-    }
 
-    fn handle_packets(&mut self, session: &Arc<Session>) {
-        while let Some(packet) = session.received_packets.pop() {
-            // 세션 상태가 실행 중이 아닌 경우 스킵합니다
-            // 취소된 패킷의 경우 스킵합니다.
-            if !self.is_running && session.packet_canceled() {
-                continue;
-            }
-
-            let packet_type = packet.packet_type();
-            match packet_type {
-                PacketType::FormationSelect => {
-                    self.handle_formation_select_packet(session, packet);
-                }
-                PacketType::CustomGameReady => {
-                    // 뒤늦게 도착할수있음
-                }
-                _ => {
-                    log::warn!(
-                        "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
-                        &session,
-                        &self,
-                        &packet
-                    );
+                // 유효하지 않은 패킷 경고 횟수를 증가시킵니다.
+                self.packet_warn_count += 1;
+                // 일정 횟수를 초과한 경우 세션을 종료시킵니다.
+                const MAX_WARN_COUNT: usize = 0;
+                if self.packet_warn_count > MAX_WARN_COUNT {
+                    log::info!("{} closed after exceeding warning limit.", &session);
                     session.close();
-                    return;
                 }
             }
         }
     }
-}
 
-impl fmt::Debug for SessionFormationState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(SessionFormationState))
+    fn on_advanced(&mut self, _session: &Arc<Session>, elapsed_time_sec: f32) {
+        self.request_delay_time = (self.request_delay_time - elapsed_time_sec).max(0.0);
     }
 }

@@ -11,9 +11,10 @@ pub const NUM_JOIN_FAILED_REASONS: usize = 4;
 
 /// 커스텀 게임 참여 실패 사유 목록입니다.
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum JoinFailedReason {
     /// 해당 커스텀 게임을 찾지 못했습니다.
+    #[default]
     NotFound = 0,
     /// 커스텀 게임 수용 인원을 초과했습니다.
     FullCapacity = 1,

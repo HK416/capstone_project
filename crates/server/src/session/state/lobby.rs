@@ -42,6 +42,17 @@ impl SessionLobbyState {
         session: &Arc<Session>,
         packet: QueryWorldListPacket,
     ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.account.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::WorldListQuery
+            );
+            session.close();
+            return;
+        }
+
         // 사용자의 로그인 토큰을 검증합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(
@@ -65,6 +76,17 @@ impl SessionLobbyState {
         session: &Arc<Session>,
         packet: JoinRoomRequestPacket,
     ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.account.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::JoinRoomRequest
+            );
+            session.close();
+            return;
+        }
+
         // 사용자의 로그인 토큰을 검증합니다.
         if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
             log::error!(

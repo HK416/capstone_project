@@ -59,14 +59,16 @@ pub enum PacketType {
 
     /// 캐릭터 편성에서 사용되는 패킷 유형
     FormationGroup = 0x50,
+    /// 서버에서 클라이언트로 보내는 데이터 초기화 패킷
+    FormationDataInit = 0x51,
     /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    FormationDataUpdate = 0x51,
+    FormationDataUpdate = 0x52,
     /// 클라이언트에서 서버로 보내는 캐릭터 선택 요청 패킷
-    CharacterSelectRequest = 0x52,
+    CharacterSelectRequest = 0x53,
     /// 서버에서 클라이언트로 보내는 캐릭터 선택 응답 패킷
-    CharacterSelectResponse = 0x53,
+    CharacterSelectResponse = 0x54,
     /// 서버에서 클라이언트로 보내는 인게임 진입 실패 알림 패킷
-    EnterGameFailed = 0x54,
+    EnterGameFailed = 0x55,
 
     /// 인게임 준비에서 사용되는 패킷 유형
     PrepareGroup = 0x60,
@@ -106,10 +108,11 @@ impl PacketType {
             0x46 => Some(PacketType::UnBalanceOptChangeRequest),
             0x47 => Some(PacketType::RoomPlayerBanRequest),
             0x48 => Some(PacketType::StartGameFailed),
-            0x51 => Some(PacketType::FormationDataUpdate),
-            0x52 => Some(PacketType::CharacterSelectRequest),
-            0x53 => Some(PacketType::CharacterSelectResponse),
-            0x54 => Some(PacketType::EnterGameFailed),
+            0x51 => Some(PacketType::FormationDataInit),
+            0x52 => Some(PacketType::FormationDataUpdate),
+            0x53 => Some(PacketType::CharacterSelectRequest),
+            0x54 => Some(PacketType::CharacterSelectResponse),
+            0x55 => Some(PacketType::EnterGameFailed),
             _ => None,
         }
     }
@@ -183,6 +186,8 @@ mod tests {
     test_packet_type!(test_packet_type_room_player_ban_request, PacketType::RoomPlayerBanRequest);
 
     test_packet_type!(test_packet_type_start_game_failed, PacketType::StartGameFailed);
+    
+    test_packet_type!(test_packet_type_formation_data_init, PacketType::FormationDataInit);
 
     test_packet_type!(test_packet_type_formation_data_update, PacketType::FormationDataUpdate);
 

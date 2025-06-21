@@ -32,7 +32,7 @@ impl Bitfield {
     }
 
     /// 팀 종류를 설정합니다.
-    fn with_team(mut self, team: Team) -> Self {
+    const fn with_team(mut self, team: Team) -> Self {
         self.0 &= !(Self::TEAM_BIT_MASK << Self::TEAM_SHIFT);
         self.0 |= ((team as u8) & Self::TEAM_BIT_MASK) << Self::TEAM_SHIFT;
         self
@@ -48,7 +48,7 @@ impl Bitfield {
     /// # Panics
     /// 주어진 인덱스가 5이상인 경우 [`panic!`]을 호출합니다.
     ///
-    fn with_team_index(mut self, index: usize) -> Self {
+    const fn with_team_index(mut self, index: usize) -> Self {
         assert!(index < 5, "index out of ranges!");
         self.0 &= !(Self::INDEX_BIT_MASK << Self::INDEX_SHIFT);
         self.0 |= ((index as u8) & Self::INDEX_BIT_MASK) << Self::INDEX_SHIFT;
@@ -85,11 +85,11 @@ pub struct FormationPlayerInitData {
 
 impl FormationPlayerInitData {
     /// 새로운 플레이어 초기화 데이터를 생성합니다.
-    pub const fn new(uid: UserId, name: UserName) -> Self {
+    pub const fn new(uid: UserId, name: UserName, team: Team, index: usize) -> Self {
         Self {
             uid,
             name,
-            bitfield: Bitfield::new(),
+            bitfield: Bitfield::new().with_team(team).with_team_index(index),
         }
     }
 
@@ -243,10 +243,12 @@ mod tests {
 
     #[test]
     fn test_formation_player_init_data() {
-        let origin =
-            FormationPlayerInitData::new(UserId::new(12345), UserName::from_str("Aris Original"))
-                .with_team(Team::Red)
-                .with_team_index(2);
+        let origin = FormationPlayerInitData::new(
+            UserId::new(12345),
+            UserName::from_str("Aris Original"),
+            Team::Red,
+            2,
+        );
         let bytes = origin.to_big_endian_bytes();
         let other = FormationPlayerInitData::from_big_endian_bytes(&bytes);
 

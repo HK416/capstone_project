@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mod_network::components::{CharacterKind, ObjectId, Team, UserId};
+use mod_network::components::{CharacterKind, ObjectId, UserId};
 
 use crate::session::Session;
 
@@ -21,12 +21,11 @@ pub enum GameWorldEvent {
         event: GameWorldRoomStateEvent,
     },
 
-    /// 캐릭터 편성에서 사용되는
-    /// 플레이어의 캐릭터 선택 요청입니다.
-    SelectCharacter {
+    /// 캐릭터 편성 이벤트
+    FormationState {
         session: Arc<Session>,
         uid: UserId,
-        kind: CharacterKind,
+        event: GameWorldFormationStateEvent,
     },
 
     /// 인게임 진입에서 사용되는
@@ -51,7 +50,7 @@ pub enum GameWorldSystemEvent {
     PlayerLeave,
 }
 
-/// 커스텀 게임 대기실의 이벤트 목록입니다.
+/// 커스텀 게임 대기실 상태의 이벤트 목록입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameWorldRoomStateEvent {
     /// 플레이어가 커스텀 게임 대기실에서 준비를 요청할 때 발생되는 이벤트입니다.
@@ -64,4 +63,11 @@ pub enum GameWorldRoomStateEvent {
     ChangeUnbalanceOption,
     /// 방장이 커스텀 게임 대기실에서 플레이어를 차단할 때 발생되는 이벤트입니다.
     PlayerBan(UserId),
+}
+
+/// 캐릭터 편성 상태의 이벤트 목록입니다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameWorldFormationStateEvent {
+    /// 플레이어가 캐릭터 편성 장면에서 캐릭터를 선택할 때 발생되는 이벤트입니다.
+    CharacterSelect(CharacterKind),
 }

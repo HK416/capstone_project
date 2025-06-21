@@ -35,6 +35,9 @@ pub const BG_DECO_URI: &'static str = "BG_Deco_00";
 /// 메인 로비 배경화면 텍스처의 `Uri`입니다.
 pub const BG_MAIN_LOBBY_URI: &'static str = "BG_Main_Lobby";
 
+/// 캐릭터 편성 장면 배경화면 텍스처의 `Uri`입니다.
+pub const BG_FORMATION_URI: &'static str = "BG_Formation";
+
 /// 게임 로그인 타이틀 0번 배경화면 텍스처의 `Uri`입니다.
 pub const BG_LOGIN_TITLE_0_URI: &'static str = "ui/BG_Login_Title_0.png";
 /// 게임 로그인 타이틀 0번 배경화면 텍스처의 데이터입니다.
