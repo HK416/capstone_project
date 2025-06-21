@@ -1531,6 +1531,8 @@ impl GameScene for CustomGameRoomScene {
                             FormationPlayerData::new(
                                 data.uid,
                                 data.name,
+                                data.profile_icon,
+                                data.tier(),
                                 data.team(),
                                 data.team_index(),
                             ),

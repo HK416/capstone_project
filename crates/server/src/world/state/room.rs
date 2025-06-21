@@ -385,6 +385,8 @@ impl GameWorldRoomState {
                 players.push(FormationPlayerInitData::new(
                     uid,
                     data.name,
+                    data.profile_icon,
+                    data.tier(),
                     data.team(),
                     data.team_index(),
                 ));

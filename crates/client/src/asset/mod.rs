@@ -185,6 +185,9 @@ pub const CHARACTER_URIS: [&'static str; NUM_CHARACTERS] = [
     "yuuka_original",
 ];
 
+/// 캐릭터 이미지의 `Uri`입니다.
+pub const CHARACTER_IMG_URI: &'static str = "Character_Img";
+
 /// 엠블럼 배경의 `Uri`입니다.
 pub const EMBLEM_BG_URI: &'static str = "Emblem_BG";
 

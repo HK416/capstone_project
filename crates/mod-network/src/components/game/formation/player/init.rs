@@ -1,13 +1,16 @@
 //! 각 팀의 캐릭터를 편성하는 단계에 진입할 때 플레이어 데이터 초기화와 관련된 코드를 관리합니다.
 //!
 
-use crate::components::{BigEndian, Team, TryFromBigEndian, UserId, UserName};
+use crate::components::{
+    BigEndian, GameTier, ProfileIcon, Team, TryFromBigEndian, UserId, UserName,
+};
 
 /// 플레이어 비트 필드 데이터입니다.
 ///
 /// 아래 데이터가 포함됩니다.
 /// - team       | 1bit | 팀 종류
 /// - team_index | 3bit | 팀 인덱스
+/// - tier       | 2bit | 게임 티어
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -18,6 +21,8 @@ impl Bitfield {
     const TEAM_SHIFT: usize = 0;
     const INDEX_BIT_MASK: u8 = 0x07;
     const INDEX_SHIFT: usize = 1;
+    const TIER_BIT_MASK: u8 = 0x03;
+    const TIER_SHIFT: usize = 4;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     const fn new() -> Self {
@@ -54,6 +59,20 @@ impl Bitfield {
         self.0 |= ((index as u8) & Self::INDEX_BIT_MASK) << Self::INDEX_SHIFT;
         self
     }
+
+    /// 게임 티어를 반환합니다.
+    fn tier(&self) -> GameTier {
+        let val = (self.0 >> Self::TIER_SHIFT) & Self::TIER_BIT_MASK;
+        // Safety: 주어진 정수는 범위를 벗어나지 않음
+        unsafe { GameTier::new(val).unwrap_unchecked() }
+    }
+
+    /// 게임 티어를 설정합니다.
+    const fn with_tier(mut self, tier: GameTier) -> Self {
+        self.0 &= !(Self::TIER_BIT_MASK << Self::TIER_SHIFT);
+        self.0 |= ((tier as u8) & Self::TIER_BIT_MASK) << Self::TIER_SHIFT;
+        self
+    }
 }
 
 impl BigEndian for Bitfield {
@@ -79,17 +98,30 @@ pub struct FormationPlayerInitData {
     pub uid: UserId,
     /// 사용자 이름
     pub name: UserName,
+    /// 프로필 아이콘
+    pub profile_icon: ProfileIcon,
     /// 플레이어 비트 필드 데이터
     bitfield: Bitfield,
 }
 
 impl FormationPlayerInitData {
     /// 새로운 플레이어 초기화 데이터를 생성합니다.
-    pub const fn new(uid: UserId, name: UserName, team: Team, index: usize) -> Self {
+    pub const fn new(
+        uid: UserId,
+        name: UserName,
+        profile_icon: ProfileIcon,
+        tier: GameTier,
+        team: Team,
+        index: usize,
+    ) -> Self {
         Self {
             uid,
             name,
-            bitfield: Bitfield::new().with_team(team).with_team_index(index),
+            profile_icon,
+            bitfield: Bitfield::new()
+                .with_tier(tier)
+                .with_team(team)
+                .with_team_index(index),
         }
     }
 
@@ -132,11 +164,30 @@ impl FormationPlayerInitData {
         self.bitfield = self.bitfield.with_team_index(index);
         self
     }
+
+    /// 게임 티어를 반환합니다.
+    pub fn tier(&self) -> GameTier {
+        self.bitfield.tier()
+    }
+
+    /// 게임 티어를 설정합니다.
+    pub fn set_tier(&mut self, tier: GameTier) {
+        self.bitfield = self.bitfield.with_tier(tier);
+    }
+
+    /// 게임 티어를 설정합니다.
+    pub fn with_tier(mut self, tier: GameTier) -> Self {
+        self.set_tier(tier);
+        self
+    }
 }
 
 impl BigEndian for FormationPlayerInitData {
     fn byte_size() -> usize {
-        UserId::byte_size() + UserName::byte_size() + Bitfield::byte_size()
+        UserId::byte_size()
+            + UserName::byte_size()
+            + ProfileIcon::byte_size()
+            + Bitfield::byte_size()
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -148,6 +199,7 @@ impl BigEndian for FormationPlayerInitData {
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.uid.to_big_endian_bytes());
         bytes.extend_from_slice(&self.name.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.profile_icon.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
 
         // 생성된 바이트가 유효한지 확인합니다.
@@ -188,6 +240,12 @@ impl TryFromBigEndian for FormationPlayerInitData {
         data = &bytes[offset..offset + size];
         let name = UserName::from_big_endian_bytes(data);
 
+        // 프로필 아이콘을 가져옵니다.
+        offset = offset + size;
+        size = ProfileIcon::byte_size();
+        data = &bytes[offset..offset + size];
+        let profile_icon = ProfileIcon::try_from_big_endian_bytes(data)?;
+
         // 비트 필드 데이터를 가져옵니다.
         offset = offset + size;
         size = Bitfield::byte_size();
@@ -197,6 +255,7 @@ impl TryFromBigEndian for FormationPlayerInitData {
         Some(Self {
             uid,
             name,
+            profile_icon,
             bitfield,
         })
     }
@@ -246,6 +305,8 @@ mod tests {
         let origin = FormationPlayerInitData::new(
             UserId::new(12345),
             UserName::from_str("Aris Original"),
+            ProfileIcon::GroupMillennium,
+            GameTier::Platinum,
             Team::Red,
             2,
         );

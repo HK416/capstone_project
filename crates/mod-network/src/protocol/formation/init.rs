@@ -223,7 +223,7 @@ impl Packet for FormationDataInitPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{Team, UserId, UserName};
+    use crate::components::{GameTier, ProfileIcon, Team, UserId, UserName};
 
     use super::*;
 
@@ -238,24 +238,32 @@ mod tests {
         let player_0 = FormationPlayerInitData::new(
             UserId::new(13415),
             UserName::from_str("로봇청소기"),
+            ProfileIcon::CharacterAris,
+            GameTier::Gold,
             Team::Blue,
             0,
         );
         let player_1 = FormationPlayerInitData::new(
             UserId::new(6423651),
             UserName::from_str("모모이"),
+            ProfileIcon::CharacterMomoi,
+            GameTier::Bronze,
             Team::Blue,
             1,
         );
         let player_2 = FormationPlayerInitData::new(
             UserId::new(845141),
             UserName::from_str("유즈유즈"),
+            ProfileIcon::CharacterYuzu,
+            GameTier::Platinum,
             Team::Red,
             0,
         );
         let player_3 = FormationPlayerInitData::new(
             UserId::new(213415),
             UserName::from_str("미도리"),
+            ProfileIcon::CharacterMidori,
+            GameTier::Silver,
             Team::Blue,
             2,
         );
