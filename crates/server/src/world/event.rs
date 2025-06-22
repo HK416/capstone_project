@@ -70,4 +70,6 @@ pub enum GameWorldRoomStateEvent {
 pub enum GameWorldFormationStateEvent {
     /// 플레이어가 캐릭터 편성 장면에서 캐릭터를 선택할 때 발생되는 이벤트입니다.
     CharacterSelect(CharacterKind),
+    /// 플레이어가 캐릭터 편성 장면에서 캐릭터 선택을 해제 할 때 발생되는 이벤트입니다.
+    CharacterRelease,
 }

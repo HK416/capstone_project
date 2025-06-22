@@ -65,10 +65,12 @@ pub enum PacketType {
     FormationDataUpdate = 0x52,
     /// 클라이언트에서 서버로 보내는 캐릭터 선택 요청 패킷
     CharacterSelectRequest = 0x53,
+    /// 클라이언트에서 서버로 보내는 캐릭터 선택 해제 알림 패킷
+    CharacterReleaseNotify = 0x54,
     /// 서버에서 클라이언트로 보내는 캐릭터 선택 응답 패킷
-    CharacterSelectResponse = 0x54,
+    CharacterSelectResponse = 0x55,
     /// 서버에서 클라이언트로 보내는 인게임 진입 실패 알림 패킷
-    EnterGameFailed = 0x55,
+    EnterGameFailed = 0x56,
 
     /// 인게임 준비에서 사용되는 패킷 유형
     PrepareGroup = 0x60,
@@ -111,8 +113,9 @@ impl PacketType {
             0x51 => Some(PacketType::FormationDataInit),
             0x52 => Some(PacketType::FormationDataUpdate),
             0x53 => Some(PacketType::CharacterSelectRequest),
-            0x54 => Some(PacketType::CharacterSelectResponse),
-            0x55 => Some(PacketType::EnterGameFailed),
+            0x54 => Some(PacketType::CharacterReleaseNotify),
+            0x55 => Some(PacketType::CharacterSelectResponse),
+            0x56 => Some(PacketType::EnterGameFailed),
             _ => None,
         }
     }

@@ -4,9 +4,9 @@ use ahash::{HashSet, RandomState};
 use mod_network::{
     components::{
         CharacterKind, FormationPlayerUpdateData, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS,
-        Permission, StageKind, Team, UserId,
+        Permission, SelectResult, StageKind, Team, UserId,
     },
-    protocol::{FormationDataUpdatePacket, Packet},
+    protocol::{CharacterSelectResponsePacket, FormationDataUpdatePacket, Packet},
 };
 use rand::seq::SliceRandom;
 
@@ -27,6 +27,7 @@ pub struct GameWorldFormationState {
     /// 게임 캐릭터 중복 옵션
     allow_duplicates: bool,
     /// 게임 스테이지 종류
+    #[allow(dead_code)]
     stage_kind: StageKind,
 
     /// 경과 시간
@@ -131,6 +132,104 @@ impl GameWorldFormationState {
         }
     }
 
+    /// [`GameWorldFormationStateEvent::CharacterSelect`] 이벤트를 처리합니다.
+    fn handle_character_select_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        character_kind: CharacterKind,
+    ) {
+        // 플레이어 데이터를 가져옵니다.
+        let mut player = match world.players.get_mut(&uid) {
+            Some(guard) => guard,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        // 플레이어 캐릭터와 선택한 캐릭터가 같은 경우 생략합니다.
+        if player.is_ready_to_play() && player.character_kind == character_kind {
+            return;
+        }
+
+        let result = if self.allow_duplicates {
+            // 캐릭터 중복을 허용하는 경우 항상 성공을 전송합니다.
+            player.character_kind = character_kind;
+            player.set_ready_to_play(true);
+            SelectResult::Success
+        } else {
+            // 캐릭터 중복을 허용하지 않는 경우
+            // 현재 사용 중인 캐릭터를 해제합니다.
+            // 해당 캐릭터가 사용 중인지 판단합니다.
+            let available = match player.team() {
+                Team::Blue => self.blue_characters.insert(character_kind),
+                Team::Red => self.red_characters.insert(character_kind),
+            };
+
+            if available {
+                // 이미 선택한 캐릭터가 존재하는 경우 선택한 캐릭터를 해제합니다.
+                if player.is_ready_to_play() {
+                    match player.team() {
+                        Team::Blue => self.blue_characters.remove(&player.character_kind),
+                        Team::Red => self.red_characters.remove(&player.character_kind),
+                    };
+                }
+
+                // 새로 선택한 캐릭터를 등록합니다.
+                player.character_kind = character_kind;
+                player.set_ready_to_play(true);
+                SelectResult::Success
+            } else {
+                SelectResult::Duplicates
+            }
+        };
+
+        // 패킷을 전송합니다.
+        let packet = CharacterSelectResponsePacket::new(result);
+        session.tcp_write(packet.as_raw());
+    }
+
+    /// [`GameWorldFormationStateEvent::CharacterRelease`] 이벤트를 처리합니다.
+    fn handle_character_release_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+    ) {
+        // 플레이어 데이터를 가져옵니다.
+        let mut player = match world.players.get_mut(&uid) {
+            Some(guard) => guard,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        // 플레이어 캐릭터와 선택한 캐릭터가 없는 경우 생략합니다.
+        if !player.is_ready_to_play() {
+            return;
+        }
+
+        if self.allow_duplicates {
+            player.character_kind = CharacterKind::default();
+            player.set_ready_to_play(false);
+        } else {
+            match player.team() {
+                Team::Blue => self.blue_characters.remove(&player.character_kind),
+                Team::Red => self.red_characters.remove(&player.character_kind),
+            };
+
+            player.character_kind = CharacterKind::default();
+            player.set_ready_to_play(false);
+        };
+    }
+
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
@@ -188,7 +287,12 @@ impl GameWorldState for GameWorldFormationState {
                 uid,
                 event,
             } => match event {
-                GameWorldFormationStateEvent::CharacterSelect(character_kind) => todo!(),
+                GameWorldFormationStateEvent::CharacterSelect(character_kind) => {
+                    self.handle_character_select_event(world, session, uid, character_kind);
+                }
+                GameWorldFormationStateEvent::CharacterRelease => {
+                    self.handle_character_release_event(world, session, uid);
+                }
             },
             _ => {
                 log::warn!(

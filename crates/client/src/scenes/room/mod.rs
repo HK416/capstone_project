@@ -1312,6 +1312,10 @@ impl CustomGameRoomScene {
             .fixed_pos(self.duplicate_rect.min)
             .default_size(self.duplicate_rect.size() * egui::vec2(0.75, 1.0))
             .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                ui.set_min_size(self.duplicate_rect.size() * egui::vec2(0.75, 1.0));
+                ui.set_max_size(self.duplicate_rect.size() * egui::vec2(0.75, 1.0));
+
                 // 라벨 출력
                 let i = self.locale as usize;
                 let text = DUPLICATE_OPT_TEXTS[i];
@@ -1324,6 +1328,8 @@ impl CustomGameRoomScene {
                     .sense(egui::Sense::empty())
                     .selectable(false);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.set_min_size(self.duplicate_rect.size() * egui::vec2(0.75, 1.0));
+                    ui.set_max_size(self.duplicate_rect.size() * egui::vec2(0.75, 1.0));
                     ui.add_space(12.0 * self.ui_scale);
                     ui.add(label);
                 });
@@ -1361,6 +1367,10 @@ impl CustomGameRoomScene {
             .fixed_pos(self.unbalance_rect.min)
             .default_size(self.unbalance_rect.size() * egui::vec2(0.75, 1.0))
             .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                ui.set_min_size(self.unbalance_rect.size() * egui::vec2(0.75, 1.0));
+                ui.set_max_size(self.unbalance_rect.size() * egui::vec2(0.75, 1.0));
+
                 // 라벨 출력
                 let i = self.locale as usize;
                 let text = UNBALANCE_OPT_TEXTS[i];
@@ -1373,6 +1383,8 @@ impl CustomGameRoomScene {
                     .sense(egui::Sense::empty())
                     .selectable(false);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.set_min_size(self.unbalance_rect.size() * egui::vec2(0.75, 1.0));
+                    ui.set_max_size(self.unbalance_rect.size() * egui::vec2(0.75, 1.0));
                     ui.add_space(12.0 * self.ui_scale);
                     ui.add(label);
                 });

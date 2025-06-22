@@ -11,10 +11,13 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        CharacterKind, GameTier, LoginToken, ProfileIcon, Team, UserId, MAX_IN_GAME_PLAYERS,
-        MAX_IN_GAME_TEAM_PLAYERS, NUM_CHARACTERS,
+        CharacterKind, GameTier, LoginToken, ProfileIcon, SelectResult, Team, UserId,
+        MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, NUM_CHARACTERS,
     },
-    protocol::{FormationDataUpdatePacket, Packet, PacketType, RawPacket},
+    protocol::{
+        CharacterReleaseNotifyPacket, CharacterSelectRequestPacket, CharacterSelectResponsePacket,
+        FormationDataUpdatePacket, Packet, PacketType, RawPacket,
+    },
 };
 use mod_render::UiRenderer;
 use winit::window::Window;
@@ -22,7 +25,7 @@ use winit::window::Window;
 use crate::{
     asset::{
         TexturePool, TextureViewPool, BG_FORMATION_URI, CHARACTER_IMG_URI, EMBLEM_BG_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        HUD_LAYOUT_URI_02, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -52,6 +55,14 @@ const NOT_ENOUGH_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참여 인원�
 const EMPTY_TEAM_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["한쪽 팀 인원이 비어있습니다"];
 /// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
 const DUPLICATE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["이미 사용중인 캐릭터입니다"];
+
+/// 애플리케이션 표시 언어에 따른 캐릭터 선택 텍스트
+const SELECT_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 선택"];
+/// 애플리케이션 표시 언어에 따른 캐릭터 선택 해제 텍스트
+const RELEASE_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["선택 해제"];
+
+/// 지연 시간
+const DEALY_TIME: f32 = 0.2;
 
 /// 인 게임 장면에 진입하기 전 캐릭터를 편성하는 장면입니다.  
 pub struct CharacterFormationScene {
@@ -93,10 +104,22 @@ pub struct CharacterFormationScene {
     /// 캐릭터 이미지 버튼
     character_btn_states: Vec<ButtonState>,
 
+    /// 선택 버튼 상태
+    select_btn_state: ButtonState,
+    /// 선택 버튼 영역
+    select_btn_rect: egui::Rect,
     /// 현재 선택한 캐릭터 종류
     select_character: Option<CharacterKind>,
-    /// 캐릭터 선택 여부
-    is_selected: bool,
+    /// 최근 전달 받은 선택 결과
+    received_select_result: Option<SelectResult>,
+
+    /// 타이머 배경 텍스처
+    timer_bg_texture: egui::load::SizedTexture,
+    /// 타이머 배경 영역
+    timer_bg_rect: egui::Rect,
+
+    /// 지연 시간
+    delay_time_sec: f32,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
@@ -141,8 +164,16 @@ impl CharacterFormationScene {
             red_team_profile_rects: Vec::with_capacity(MAX_IN_GAME_TEAM_PLAYERS),
             character_textures: Vec::with_capacity(NUM_CHARACTERS),
             character_btn_states: vec![ButtonState::Idle; NUM_CHARACTERS],
+            select_btn_state: ButtonState::Idle,
             select_character: None,
-            is_selected: false,
+            select_btn_rect: egui::Rect::ZERO,
+            received_select_result: None,
+            timer_bg_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            timer_bg_rect: egui::Rect::ZERO,
+            delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool,
         }
@@ -288,6 +319,35 @@ impl CharacterFormationScene {
         );
     }
 
+    /// 타이머 배경 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_timer_background_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        // 타이머 배경 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_LAYOUT_URI_02)
+            .expect("HUD_Layout_02 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 타이머 배경 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.timer_bg_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     /// 클립 사각형 영역의 크기를 재조정합니다.
     fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
         let scale = viewport.width / scale_factor / BASE_WIDTH;
@@ -416,6 +476,26 @@ impl CharacterFormationScene {
         egui::Rect::from_center_size(center, size)
     }
 
+    /// 선택 버튼 영역의 크기를 재조정합니다.
+    fn resize_select_btn_rect(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+        let width = 240.0 * scale;
+        let height = 42.0 * scale;
+        let size = egui::vec2(width, height);
+        let offset = egui::vec2(0.0, 152.0 + 72.0) * scale;
+        let center = clip_rect.center_bottom() - (size * egui::vec2(0.0, 0.5) + offset);
+        egui::Rect::from_center_size(center, size)
+    }
+
+    /// 타이머 배경 영역의 크기를 재조정합니다.
+    fn resize_timer_background_rect(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+        let width = 440.0 * scale;
+        let height = 72.0 * scale;
+        let size = egui::vec2(width, height);
+        let center =
+            clip_rect.center_top() + egui::vec2(0.0, 24.0 * scale) + size * egui::vec2(0.0, 0.5);
+        egui::Rect::from_center_size(center, size)
+    }
+
     /// Ui의 크기를 재설정합니다.
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역의 크기를 재조정합니다.
@@ -433,6 +513,59 @@ impl CharacterFormationScene {
             Self::resize_blue_team_profile_rects(texture_size, &self.clip_rect, self.ui_scale);
         self.red_team_profile_rects =
             Self::resize_red_team_profile_rects(texture_size, &self.clip_rect, self.ui_scale);
+
+        // 선택 버튼 영역을 재조정합니다.
+        self.select_btn_rect = Self::resize_select_btn_rect(&self.clip_rect, self.ui_scale);
+
+        // 타이머 배경 영역을 재조정합니다.
+        self.timer_bg_rect = Self::resize_timer_background_rect(&self.clip_rect, self.ui_scale);
+    }
+
+    /// Ui 입력을 처리합니다.
+    fn handle_ui_input(&mut self, ctx: &egui::Context, app: &dyn AppHandle) {
+        egui::Area::new(egui::Id::new("Handle_Input"))
+            .order(egui::Order::Middle)
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+
+                // 현재 플레이어가 선택한 캐릭터를 가져옵니다.
+                let current = self
+                    .players
+                    .get(&self.uid)
+                    .map(|data| data.character_kind)
+                    .flatten();
+
+                // 선택 버튼의 입력을 처리합니다.
+                if let Some(select) = self.select_character {
+                    let response = ui.allocate_rect(self.select_btn_rect, egui::Sense::all());
+                    if response.clicked() && self.delay_time_sec <= 0.0 {
+                        self.delay_time_sec = DEALY_TIME;
+
+                        if current.is_some_and(|curr| curr == select) {
+                            // 현재 플레이어 선택 캐릭터와 선택한 캐릭터가 동일한 경우 선택 해제 처리
+                            let packet = CharacterReleaseNotifyPacket::new(self.uid, self.token);
+                            let net = app.net_manager();
+                            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+                        } else {
+                            // 현재 플레이어 선택 캐릭터와 선택한 캐릭터가 다른 경우 선택 요청 처리
+                            let packet =
+                                CharacterSelectRequestPacket::new(self.uid, self.token, select);
+                            let net = app.net_manager();
+                            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+                        }
+
+                        self.select_btn_state = ButtonState::Clicked;
+                    } else if response.is_pointer_button_down_on() {
+                        self.select_btn_state = ButtonState::Pressed;
+                    } else if response.hovered() | response.has_focus() {
+                        self.select_btn_state = ButtonState::Hovered;
+                    } else {
+                        self.select_btn_state = ButtonState::Idle;
+                    }
+                }
+            });
     }
 
     /// 배경화면을 그립니다.
@@ -453,7 +586,7 @@ impl CharacterFormationScene {
         let alpha = egui::Color32::from_white_alpha(192);
 
         egui::Area::new(egui::Id::new("Profile"))
-            .order(egui::Order::Middle)
+            .order(egui::Order::Background)
             .sense(egui::Sense::empty())
             .show(ctx, |ui| {
                 ui.shrink_clip_rect(self.clip_rect);
@@ -666,87 +799,244 @@ impl CharacterFormationScene {
 
     /// 캐릭터를 그립니다.
     fn draw_characters(&mut self, ctx: &egui::Context) {
-        const WIDTH: f32 = 1280.0;
+        const FOCUS_COLOR: egui::Color32 = egui::Color32::from_rgb(242, 201, 76);
         const HEIGHT: f32 = 152.0;
         let pos = self.clip_rect.left_bottom() + egui::vec2(0.0, -HEIGHT * self.ui_scale);
-        let size = egui::vec2(WIDTH, HEIGHT) * self.ui_scale;
+        let size = egui::vec2(self.clip_rect.width(), HEIGHT * self.ui_scale);
         egui::Area::new(egui::Id::new("Character_Select"))
             .fixed_pos(pos)
-            .default_size(size)
+            .order(egui::Order::Middle)
             .show(ctx, |ui| {
-                egui::ScrollArea::horizontal()
-                    .auto_shrink(false)
-                    .max_width(WIDTH * self.ui_scale)
-                    .max_height(HEIGHT * self.ui_scale)
-                    .show(ui, |ui| {
-                        ui.set_min_size(size);
+                ui.shrink_clip_rect(self.clip_rect);
+                ui.set_min_size(size);
+                ui.set_max_size(size);
+                egui::ScrollArea::horizontal().show(ui, |ui| {
+                    ui.set_min_size(size);
+                    ui.set_max_size(size);
 
-                        // 캐릭터 수를 세기 위해 임시로 계산
+                    // 캐릭터 수를 세기 위해 임시로 계산
+                    let mut val = 0;
+                    let mut total_width = 0.0f32;
+                    let spacing = 8.0 * self.ui_scale;
+                    while let Some(kind) = CharacterKind::new(val) {
+                        let texture = self.character_textures[kind as usize];
+                        let ratio = texture.size.x / texture.size.y;
+                        let height = HEIGHT * 0.8 * self.ui_scale;
+                        let width = height * ratio;
+                        total_width += width + spacing;
+                        val += 1;
+                    }
+                    if val > 0 {
+                        total_width -= spacing; // 마지막 spacing 제외
+                    }
+
+                    // 중앙 정렬을 위한 좌측 padding
+                    let available_width = ui.available_width();
+                    let offset_x = if total_width < available_width {
+                        (available_width - total_width) / 2.0
+                    } else {
+                        0.0
+                    };
+
+                    ui.horizontal(|ui| {
+                        ui.add_space(offset_x);
+
                         let mut val = 0;
-                        let mut total_width = 0.0f32;
-                        let spacing = 8.0 * self.ui_scale;
                         while let Some(kind) = CharacterKind::new(val) {
                             let texture = self.character_textures[kind as usize];
                             let ratio = texture.size.x / texture.size.y;
                             let height = HEIGHT * 0.8 * self.ui_scale;
                             let width = height * ratio;
-                            total_width += width + spacing;
+                            let size = egui::vec2(width, height);
+
+                            let state = &mut self.character_btn_states[kind as usize];
+                            let tint = if self.select_character.is_some_and(|select| select == kind)
+                            {
+                                let min = ui.cursor().min;
+                                let rect = egui::Rect::from_min_size(min, size);
+                                ui.painter().rect_stroke(
+                                    rect,
+                                    4.0 * self.ui_scale,
+                                    egui::Stroke::new(8.0 * self.ui_scale, FOCUS_COLOR),
+                                    egui::StrokeKind::Middle,
+                                );
+
+                                NORM_COLOR
+                            } else {
+                                match state {
+                                    ButtonState::Pressed | ButtonState::Clicked => NORM_COLOR,
+                                    ButtonState::Hovered => NORM_FOCUS_COLOR,
+                                    ButtonState::Idle => NORM_EXP_COLOR,
+                                }
+                            };
+                            let image = egui::Image::new(texture)
+                                .tint(tint)
+                                .sense(egui::Sense::all())
+                                .fit_to_exact_size(size);
+                            let response = ui.add(image);
+                            *state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                                self.delay_time_sec = DEALY_TIME;
+                                self.select_character = Some(kind);
+                                self.received_select_result = None;
+                                ButtonState::Clicked
+                            } else if response.is_pointer_button_down_on() {
+                                ButtonState::Pressed
+                            } else if response.hovered() | response.has_focus() {
+                                ButtonState::Hovered
+                            } else {
+                                ButtonState::Idle
+                            };
+
+                            if CharacterKind::new(val + 1).is_some() {
+                                ui.add_space(spacing);
+                            }
                             val += 1;
                         }
-                        if val > 0 {
-                            total_width -= spacing; // 마지막 spacing 제외
-                        }
-
-                        // 중앙 정렬을 위한 좌측 padding
-                        let available_width = WIDTH * self.ui_scale;
-                        let offset_x = if total_width < available_width {
-                            (available_width - total_width) / 2.0
-                        } else {
-                            0.0
-                        };
-
-                        ui.horizontal(|ui| {
-                            ui.add_space(offset_x);
-
-                            let mut val = 0;
-                            while let Some(kind) = CharacterKind::new(val) {
-                                let texture = self.character_textures[kind as usize];
-                                let ratio = texture.size.x / texture.size.y;
-                                let height = HEIGHT * 0.8 * self.ui_scale;
-                                let width = height * ratio;
-                                let size = egui::vec2(width, height);
-
-                                let state = &mut self.character_btn_states[kind as usize];
-                                let tint = match state {
-                                    ButtonState::Pressed | ButtonState::Clicked => {
-                                        egui::Color32::from_gray(128)
-                                    }
-                                    ButtonState::Hovered => egui::Color32::from_gray(192),
-                                    ButtonState::Idle => egui::Color32::from_gray(255),
-                                };
-                                let image = egui::Image::new(texture)
-                                    .tint(tint)
-                                    .sense(egui::Sense::all())
-                                    .fit_to_exact_size(size);
-                                let response = ui.add(image);
-                                *state = if response.clicked() {
-                                    ButtonState::Clicked
-                                } else if response.is_pointer_button_down_on() {
-                                    ButtonState::Pressed
-                                } else if response.hovered() | response.has_focus() {
-                                    ButtonState::Hovered
-                                } else {
-                                    ButtonState::Idle
-                                };
-
-                                if CharacterKind::new(val + 1).is_some() {
-                                    ui.add_space(spacing);
-                                }
-                                val += 1;
-                            }
-                        });
                     });
+                });
             });
+    }
+
+    /// 선택 버튼을 그립니다.
+    fn draw_select_button(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Select_Button"))
+            .order(egui::Order::Background)
+            .show(ctx, |ui| {
+                // 현재 플레이어가 선택한 캐릭터를 가져옵니다.
+                let current = self
+                    .players
+                    .get(&self.uid)
+                    .map(|data| data.character_kind)
+                    .flatten();
+
+                let fill_color = match self.select_btn_state {
+                    ButtonState::Idle => NORM_COLOR,
+                    ButtonState::Hovered => NORM_FOCUS_COLOR,
+                    ButtonState::Pressed | ButtonState::Clicked => NORM_EXP_COLOR,
+                };
+                ui.painter().rect(
+                    self.select_btn_rect,
+                    16.0 * self.ui_scale,
+                    fill_color,
+                    egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::BLACK),
+                    egui::StrokeKind::Middle,
+                );
+
+                let text = if current
+                    .is_some_and(|curr| self.select_character.is_some_and(|select| select == curr))
+                {
+                    RELEASE_BTN_TEXTS[self.locale as usize]
+                } else {
+                    SELECT_BTN_TEXTS[self.locale as usize]
+                };
+                let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                let font_id = egui::FontId::new(22.0 * self.ui_scale, family);
+                let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+                let label = egui::Label::new(text)
+                    .sense(egui::Sense::empty())
+                    .selectable(false);
+                ui.put(self.select_btn_rect, label);
+            });
+    }
+
+    /// 경고 메시지를 화면에 표시합니다.
+    fn draw_warning_message(&mut self, ctx: &egui::Context) {
+        if let Some(select_result) = self.received_select_result {
+            match select_result {
+                SelectResult::Duplicates => {
+                    egui::Area::new(egui::Id::new("Warning_Message"))
+                        .order(egui::Order::Background)
+                        .sense(egui::Sense::empty())
+                        .show(ctx, |ui| {
+                            ui.shrink_clip_rect(self.clip_rect);
+
+                            let text = DUPLICATE_ERR_TEXTS[self.locale as usize];
+                            let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                            let font_id = egui::FontId::new(18.0 * self.ui_scale, family);
+                            let text = egui::RichText::new(text)
+                                .font(font_id)
+                                .color(egui::Color32::DARK_RED);
+                            let label = egui::Label::new(text)
+                                .sense(egui::Sense::empty())
+                                .selectable(false);
+
+                            let center = self.select_btn_rect.center_bottom()
+                                + egui::vec2(0.0, 72.0) * 0.5 * self.ui_scale;
+                            let size = self.select_btn_rect.size() * egui::vec2(1.5, 1.0);
+                            let rect = egui::Rect::from_center_size(center, size);
+                            ui.put(rect, label)
+                        });
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 남은 시간을 출력합니다.
+    fn draw_remaining_time(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Remaining_Timer"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                self.draw_timer_background(ui);
+                self.draw_timer_label(ui);
+            });
+    }
+
+    /// 타이머 배경화면을 그립니다.
+    fn draw_timer_background(&self, ui: &mut egui::Ui) {
+        const SIZE: f32 = 256.0;
+        const LEFT: f32 = 65.0;
+        const RIGHT: f32 = 185.0;
+        const DECO: f32 = 36.0;
+
+        let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(LEFT / SIZE, 1.0));
+        let rect = egui::Rect::from_min_max(
+            self.timer_bg_rect.left_top() - egui::vec2(DECO, 0.0) * self.ui_scale,
+            self.timer_bg_rect.left_bottom(),
+        );
+        egui::Image::new(self.timer_bg_texture)
+            .sense(egui::Sense::empty())
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv =
+            egui::Rect::from_min_max(egui::pos2(LEFT / SIZE, 0.0), egui::pos2(RIGHT / SIZE, 1.0));
+        let rect = egui::Rect::from_min_max(
+            self.timer_bg_rect.left_top(),
+            self.timer_bg_rect.right_bottom(),
+        );
+        egui::Image::new(self.timer_bg_texture)
+            .sense(egui::Sense::empty())
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(egui::pos2(RIGHT / SIZE, 0.0), egui::pos2(1.0, 1.0));
+        let rect = egui::Rect::from_min_max(
+            self.timer_bg_rect.right_top(),
+            self.timer_bg_rect.right_bottom() + egui::vec2(DECO, 0.0) * self.ui_scale,
+        );
+        egui::Image::new(self.timer_bg_texture)
+            .sense(egui::Sense::empty())
+            .uv(uv)
+            .paint_at(ui, rect);
+    }
+
+    /// 타이머 텍스트를 그립니다.
+    fn draw_timer_label(&self, ui: &mut egui::Ui) {
+        let text = match self.locale {
+            Locale::KOR => format!(
+                "남은 편성 시간: {}초",
+                self.remaining_time_sec.round() as u32
+            ),
+        };
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+        let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let label = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+        ui.put(self.timer_bg_rect, label);
     }
 }
 
@@ -754,6 +1044,7 @@ impl GameScene for CharacterFormationScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         let device = app.render_device();
         self.regist_background_texture(device, ui_renderer);
+        self.regist_timer_background_texture(device, ui_renderer);
         let (tier_set, icon_set): (HashSet<_>, HashSet<_>) = self
             .players
             .values()
@@ -781,6 +1072,7 @@ impl GameScene for CharacterFormationScene {
         ui_renderer: &mut UiRenderer,
     ) {
         ui_renderer.free_texture(&self.bg_texture.id);
+        ui_renderer.free_texture(&self.timer_bg_texture.id);
         let iterator = self
             .profile_bg_textures
             .values()
@@ -834,7 +1126,8 @@ impl GameScene for CharacterFormationScene {
                 }
             }
             PacketType::CharacterSelectResponse => {
-                // TODO
+                let packet = CharacterSelectResponsePacket::from_raw(packet);
+                self.received_select_result = Some(packet.result);
             }
             _ => {
                 log::warn!(
@@ -845,6 +1138,10 @@ impl GameScene for CharacterFormationScene {
         }
 
         None
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+        self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
     }
 
     fn on_draw(
@@ -876,10 +1173,14 @@ impl GameScene for CharacterFormationScene {
         }
     }
 
-    fn ui_callback(&mut self, window: &Window, app: &dyn mod_app::app::AppHandle) {
+    fn ui_callback(&mut self, _window: &Window, app: &dyn mod_app::app::AppHandle) {
         let ctx = app.egui_ctx();
+        self.handle_ui_input(ctx, app);
         self.draw_background(ctx);
         self.draw_profile(ctx);
         self.draw_characters(ctx);
+        self.draw_select_button(ctx);
+        self.draw_warning_message(ctx);
+        self.draw_remaining_time(ctx);
     }
 }

@@ -3,7 +3,8 @@ use std::sync::{Arc, Weak};
 use mod_network::{
     components::UserId,
     protocol::{
-        CharacterSelectRequestPacket, Packet, PacketType, RawPacket, RoomLeaveNotifyPacket,
+        CharacterReleaseNotifyPacket, CharacterSelectRequestPacket, Packet, PacketType, RawPacket,
+        RoomLeaveNotifyPacket,
     },
 };
 
@@ -77,6 +78,11 @@ impl SessionFormationState {
         session: &Arc<Session>,
         packet: CharacterSelectRequestPacket,
     ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
         // 수신한 패킷이 올바른지 검사합니다.
         if self.uid != packet.uid {
             log::error!(
@@ -103,6 +109,57 @@ impl SessionFormationState {
         if let Some(world) = self.world.upgrade() {
             // 캐릭터 선택 요청을 보냅니다.
             let event = GameWorldFormationStateEvent::CharacterSelect(packet.character_kind);
+            let event = GameWorldEvent::FormationState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    /// [`CharacterReleaseNotifyPacket`]을 처리합니다.
+    fn handle_character_release_notify_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: CharacterReleaseNotifyPacket,
+    ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::CharacterReleaseNotify
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::CharacterReleaseNotify
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 캐릭터 선택 요청을 보냅니다.
+            let event = GameWorldFormationStateEvent::CharacterRelease;
             let event = GameWorldEvent::FormationState {
                 session: session.clone(),
                 uid: packet.uid,
@@ -143,6 +200,17 @@ impl SessionState for SessionFormationState {
                 };
 
                 self.handle_character_select_request_packet(session, packet);
+            }
+            PacketType::CharacterReleaseNotify => {
+                let packet = match CharacterReleaseNotifyPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_character_release_notify_packet(session, packet);
             }
             PacketType::RoomReadyRequest
             | PacketType::TeamChangeRequest
