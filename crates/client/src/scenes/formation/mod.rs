@@ -16,7 +16,8 @@ use mod_network::{
     },
     protocol::{
         CharacterReleaseNotifyPacket, CharacterSelectRequestPacket, CharacterSelectResponsePacket,
-        FormationDataUpdatePacket, Packet, PacketType, RawPacket,
+        EnterGameFailedPacket, EnterGameFailedResson, FormationDataUpdatePacket, Packet,
+        PacketType, RawPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -50,9 +51,9 @@ const SELECT_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 선택"];
 /// 애플리케이션 표시 언어에 따른 오류 타이틀 텍스트
 const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
 /// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
-const NOT_ENOUGH_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참여 인원이 적습니다"];
+const EMPTY_BLUE_TEAM_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["블루 팀 인원이 비어있습니다"];
 /// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
-const EMPTY_TEAM_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["한쪽 팀 인원이 비어있습니다"];
+const EMPTY_RED_TEAM_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 비어있습니다"];
 /// 애플리케이션 표시 언어에 따른 오류 메시지 텍스트
 const DUPLICATE_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["이미 사용중인 캐릭터입니다"];
 
@@ -1128,6 +1129,21 @@ impl GameScene for CharacterFormationScene {
             PacketType::CharacterSelectResponse => {
                 let packet = CharacterSelectResponsePacket::from_raw(packet);
                 self.received_select_result = Some(packet.result);
+            }
+            PacketType::EnterGameFailed => {
+                let packet = EnterGameFailedPacket::from_raw(packet);
+
+                let i = self.locale as usize;
+                let title = ERR_TITLE_TEXTS[i];
+                let message = match packet.reason {
+                    EnterGameFailedResson::BlueTeamEmpty => EMPTY_BLUE_TEAM_ERR_TEXTS[i],
+                    EnterGameFailedResson::RedTeamEmpty => EMPTY_RED_TEAM_ERR_TEXTS[i],
+                };
+                let scene = MessageSceneLayer::new(self.locale, title, message, None);
+                let flow = GameSceneFlow::Change(Box::new(scene));
+                let event = AppEvent::AddGameSceneFlow(flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
             }
             _ => {
                 log::warn!(

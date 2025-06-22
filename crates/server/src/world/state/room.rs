@@ -411,7 +411,12 @@ impl GameWorldRoomState {
             }
 
             // 게임 월드 상태를 변경합니다.
-            let state = GameWorldFormationState::new(self.allow_duplicates, self.stage_kind);
+            let state = GameWorldFormationState::new(
+                self.allow_duplicates,
+                self.stage_kind,
+                self.blue_players.len(),
+                self.red_players.len(),
+            );
             let flow = GameWorldStateFlow::Push(Box::new(state));
             world.flows.push(flow);
         } else {

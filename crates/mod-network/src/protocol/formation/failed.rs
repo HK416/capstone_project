@@ -10,9 +10,11 @@ use crate::{
 #[repr(u8)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EnterGameFailedResson {
-    /// 한 팀이 비어있습니다.
+    /// 블루 팀이 비어있습니다.
     #[default]
-    OneTeamEmpty = 0,
+    BlueTeamEmpty = 0,
+    /// 레드 팀이 비어있습니다.
+    RedTeamEmpty = 1,
 }
 
 impl EnterGameFailedResson {
@@ -22,7 +24,8 @@ impl EnterGameFailedResson {
     ///
     pub fn new(val: u8) -> Option<Self> {
         match val {
-            0 => Some(Self::OneTeamEmpty),
+            0 => Some(Self::BlueTeamEmpty),
+            1 => Some(Self::RedTeamEmpty),
             _ => None,
         }
     }
@@ -116,14 +119,18 @@ mod tests {
 
     #[test]
     fn test_enter_game_failed_reason_one_team_empty() {
-        let val = EnterGameFailedResson::OneTeamEmpty as u8;
+        let val = EnterGameFailedResson::BlueTeamEmpty as u8;
         let reason = EnterGameFailedResson::new(val).unwrap();
-        assert_eq!(EnterGameFailedResson::OneTeamEmpty, reason);
+        assert_eq!(EnterGameFailedResson::BlueTeamEmpty, reason);
+
+        let val = EnterGameFailedResson::RedTeamEmpty as u8;
+        let reason = EnterGameFailedResson::new(val).unwrap();
+        assert_eq!(EnterGameFailedResson::RedTeamEmpty, reason);
     }
 
     #[test]
     fn test_enter_game_failed_packet() {
-        let origin = EnterGameFailedPacket::new(EnterGameFailedResson::OneTeamEmpty);
+        let origin = EnterGameFailedPacket::new(EnterGameFailedResson::RedTeamEmpty);
         let raw = origin.as_raw();
         let other = EnterGameFailedPacket::from_raw(raw);
 

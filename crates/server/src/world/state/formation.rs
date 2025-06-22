@@ -4,14 +4,17 @@ use ahash::{HashSet, RandomState};
 use mod_network::{
     components::{
         CharacterKind, FormationPlayerUpdateData, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS,
-        Permission, SelectResult, StageKind, Team, UserId,
+        NUM_CHARACTERS, Permission, SelectResult, StageKind, Team, UserId,
     },
-    protocol::{CharacterSelectResponsePacket, FormationDataUpdatePacket, Packet},
+    protocol::{
+        CharacterSelectResponsePacket, EnterGameFailedPacket, EnterGameFailedResson,
+        FormationDataUpdatePacket, Packet,
+    },
 };
 use rand::seq::SliceRandom;
 
 use crate::{
-    session::Session,
+    session::{Session, SessionStateFlow},
     world::{
         GameWorld, GameWorldEvent, GameWorldFormationStateEvent, GameWorldState,
         GameWorldSystemEvent,
@@ -33,8 +36,13 @@ pub struct GameWorldFormationState {
     /// 경과 시간
     elapsed_time_sec: f32,
 
+    /// 블루 팀 플레이어 수
+    num_blue_players: usize,
     /// 블루 팀 캐릭터 집합
     blue_characters: HashSet<CharacterKind>,
+
+    /// 레드 팀 플레이어 수
+    num_red_players: usize,
     /// 레드 팀 캐릭터 집합
     red_characters: HashSet<CharacterKind>,
 
@@ -44,16 +52,23 @@ pub struct GameWorldFormationState {
 
 impl GameWorldFormationState {
     /// 새로운 게임 월드 상태를 생성합니다.
-    pub fn new(allow_duplicates: bool, stage_kind: StageKind) -> Self {
+    pub fn new(
+        allow_duplicates: bool,
+        stage_kind: StageKind,
+        num_blue_players: usize,
+        num_red_players: usize,
+    ) -> Self {
         Self {
             remaining_time_sec: MAX_FORMATION_TIME,
             allow_duplicates,
             stage_kind,
             elapsed_time_sec: 0.0,
+            num_blue_players,
             blue_characters: HashSet::with_capacity_and_hasher(
                 MAX_IN_GAME_TEAM_PLAYERS,
                 RandomState::new(),
             ),
+            num_red_players,
             red_characters: HashSet::with_capacity_and_hasher(
                 MAX_IN_GAME_TEAM_PLAYERS,
                 RandomState::new(),
@@ -89,6 +104,17 @@ impl GameWorldFormationState {
         // 플레이어의 권한을 해제합니다.
         let permission = data.permission();
         data.set_permission(Permission::User);
+
+        // 플레이어가 속한 팀의 인원 수를 감소시킵니다.
+        let team = data.team();
+        match team {
+            Team::Blue => {
+                self.num_blue_players -= 1;
+            }
+            Team::Red => {
+                self.num_red_players -= 1;
+            }
+        }
 
         // 캐릭터 중복을 허용하지 않고, 플레이어가 캐릭터를 선택한 경우
         // 플레이어가 선택한 캐릭터를 해제합니다.
@@ -230,6 +256,102 @@ impl GameWorldFormationState {
         };
     }
 
+    /// 다음 게임 월드 상태로 전환을 시도합니다.
+    fn try_enter_next_state(&mut self, world: &Arc<GameWorld>) {
+        // 락을 획득합니다. 락은 함수 종료 시점에 해제됩니다.
+        // 주의: tokio에서 호출될 경우 스케쥴링 과정에서 데드락이 발생할 수 있습니다.
+        let num_players = world.num_players.lock();
+
+        // 각 팀에 속한 인원이 1명 이상 존재하는지 확인합니다.
+        if self.num_blue_players == 0 {
+            // 패킷을 생성 후 모든 세션에 전송합니다.
+            let reason = EnterGameFailedResson::BlueTeamEmpty;
+            let packet = EnterGameFailedPacket::new(reason);
+            for data in world.sessions.iter() {
+                let session = data.key();
+                session.tcp_write(packet.as_raw());
+
+                // 이전 세션 상태로 전환합니다.
+                session.add_flow(SessionStateFlow::Pop);
+            }
+
+            // 이전 월드 상태로 돌아갑니다.
+            world.flows.push(super::GameWorldStateFlow::Pop);
+            return;
+        } else if self.num_red_players == 0 {
+            // 패킷을 생성 후 모든 세션에 전송합니다.
+            let reason = EnterGameFailedResson::RedTeamEmpty;
+            let packet = EnterGameFailedPacket::new(reason);
+            for data in world.sessions.iter() {
+                let session = data.key();
+                session.tcp_write(packet.as_raw());
+
+                // 이전 세션 상태로 전환합니다.
+                session.add_flow(SessionStateFlow::Pop);
+            }
+
+            // 이전 월드 상태로 돌아갑니다.
+            world.flows.push(super::GameWorldStateFlow::Pop);
+            return;
+        }
+
+        // 남은 시간이 없는 경우
+        if self.remaining_time_sec <= 0.0 {
+            if self.allow_duplicates {
+                // 서버에 연결되어 있고, 캐릭터를 선택하지 않은 플레이어의 캐릭터를 무작위로 지정합니다.
+                for mut data in world.players.iter_mut() {
+                    let uid = data.key().clone();
+                    let leaved = self.leaved_players.contains(&uid);
+                    if !leaved && data.is_ready_to_play() {
+                        data.character_kind = rand::random();
+                        data.set_ready_to_play(true);
+                    }
+                }
+            } else {
+                // 서버에 연결되어 있고, 캐릭터를 선택하지 않은 플레이어의 캐릭터를 남은 캐릭터에서 무작위로 지정합니다.
+                let mut val = 0;
+                let mut total =
+                    HashSet::with_capacity_and_hasher(NUM_CHARACTERS, RandomState::new());
+                while let Some(character_kind) = CharacterKind::new(val) {
+                    total.insert(character_kind);
+                    val += 1;
+                }
+
+                let mut blue_diff: Vec<_> =
+                    total.difference(&self.blue_characters).cloned().collect();
+                let mut red_diff: Vec<_> =
+                    total.difference(&self.red_characters).cloned().collect();
+                for mut data in world.players.iter_mut() {
+                    let uid = data.key().clone();
+                    let leaved = self.leaved_players.contains(&uid);
+                    if !leaved && data.is_ready_to_play() {
+                        let character_kind = match data.team() {
+                            Team::Blue => blue_diff.pop().unwrap_or(CharacterKind::default()),
+                            Team::Red => red_diff.pop().unwrap_or(CharacterKind::default()),
+                        };
+                        data.character_kind = character_kind;
+                        data.set_ready_to_play(true);
+                    }
+                }
+            }
+        }
+
+        // 모든 플레이어가 준비되었는지 확인합니다.
+        let all_player_readys: bool = world
+            .players
+            .iter()
+            .filter(|data| {
+                let uid = data.key().clone();
+                !self.leaved_players.contains(&uid)
+            })
+            .all(|data| data.is_ready_to_play());
+        if all_player_readys {
+            todo!()
+        }
+
+        drop(num_players);
+    }
+
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
@@ -267,6 +389,13 @@ impl GameWorldState for GameWorldFormationState {
         }
     }
 
+    fn on_exit(&mut self, world: &Arc<GameWorld>) {
+        // 떠난 플레이어 데이터를 정리합니다.
+        for uid in self.leaved_players.iter() {
+            world.players.remove(uid);
+        }
+    }
+
     fn handle_event(&mut self, world: &Arc<GameWorld>, event: GameWorldEvent) {
         match event {
             GameWorldEvent::System {
@@ -281,7 +410,7 @@ impl GameWorldState for GameWorldFormationState {
                     self.handle_player_leave_event(world, session, uid);
                 }
             },
-            GameWorldEvent::RoomState { .. } => { /* empty */ }
+            GameWorldEvent::RoomState { .. } => {}
             GameWorldEvent::FormationState {
                 session,
                 uid,
@@ -316,5 +445,7 @@ impl GameWorldState for GameWorldFormationState {
             self.elapsed_time_sec = 0.0;
             self.broadcast(world);
         }
+
+        self.try_enter_next_state(world);
     }
 }

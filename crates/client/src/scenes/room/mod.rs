@@ -1463,10 +1463,6 @@ impl GameScene for CustomGameRoomScene {
         ui_renderer.free_texture(&self.button_texture.id);
     }
 
-    fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {}
-
-    fn on_pause(&mut self, _window: &Window, _app: &dyn AppHandle) {}
-
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
         self.resize_ui(window, app);
     }
