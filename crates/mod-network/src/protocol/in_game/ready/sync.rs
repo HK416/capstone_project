@@ -395,30 +395,13 @@ mod tests {
 
     #[test]
     fn test_in_game_ready_status_packet() {
-        let player_0 = PlayerReadyStatus::new(
-            UserId::new(153141), 
-            true, 
-            NetworkState::Good, 
-            true
-        );
-        let player_1 = PlayerReadyStatus::new(
-            UserId::new(4511341), 
-            true, 
-            NetworkState::Good, 
-            false
-        );
-        let player_2 = PlayerReadyStatus::new(
-            UserId::new(2153141), 
-            true, 
-            NetworkState::Fair, 
-            false
-        );
-        let player_3 = PlayerReadyStatus::new(
-            UserId::new(9153141), 
-            false, 
-            NetworkState::Critical, 
-            true
-        );
+        let player_0 = PlayerReadyStatus::new(UserId::new(153141), true, NetworkState::Good, true);
+        let player_1 =
+            PlayerReadyStatus::new(UserId::new(4511341), true, NetworkState::Good, false);
+        let player_2 =
+            PlayerReadyStatus::new(UserId::new(2153141), true, NetworkState::Fair, false);
+        let player_3 =
+            PlayerReadyStatus::new(UserId::new(9153141), false, NetworkState::Critical, true);
 
         let players = vec![player_0, player_1, player_2, player_3];
         let origin = InGameReadyStatusPacket::new(43.013413, players);

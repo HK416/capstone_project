@@ -9,8 +9,8 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, StageLayoutData, UserId, MAX_IN_GAME_PLAYERS},
-    protocol::{InitStagePacket, Packet, PacketType, PushSyncPacket, RawPacket},
+    components::{LoginToken, StageLayoutAttributes, UserId, MAX_IN_GAME_PLAYERS},
+    protocol::{InGameDataInitPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
@@ -28,8 +28,6 @@ use crate::{
     PACKET_DELAY, SERVER_TCP_ADDR,
 };
 
-use super::InGameDominationModePrepareScene;
-
 /// 애플리케이션 표시 언어에 따른 로드 텍스트
 const LOAD_TEXTS: [&'static str; NUM_LOCALE] = ["Now Loading"];
 /// 애플리케이션 표시 언어에 따른 로드 텍스트
@@ -45,9 +43,9 @@ pub struct InGameBuildScene {
     token: LoginToken,
 
     /// 초기화 패킷
-    packet: Option<InitStagePacket>,
+    packet: Option<InGameDataInitPacket>,
     /// 스테이지 레이아웃 데이터
-    stage_layout_data: Arc<OnceLock<StageLayoutData>>,
+    stage_layout_data: Arc<OnceLock<StageLayoutAttributes>>,
 
     /// 완료된 드로우 콜 명령어입니다.
     commands: Arc<Queue<(wgpu::CommandBuffer, Vec<wgpu::Buffer>)>>,
@@ -339,7 +337,7 @@ impl GameScene for InGameBuildScene {
         let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
-            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i]
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.

@@ -133,41 +133,33 @@ pub const HUD_OPTION_ICON_DATA: &'static [u8; 2181] = include_bytes!(concat!(
     "assets/ui/HUD_Option_Icon.png"
 ));
 
-/// 데미지 폰트 텍스처의 `Uri`입니다.
-pub const IMG_FONT_DAMAGE_NORMAL_URI: &'static str = "ImgFont_Damage_Normal";
-
+/// 이미지 폰트의 작업공간입니다.
+pub const IMG_FONT_WORKSPACE: &'static str = "font";
 /// Host 이미지 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_HOST_URI: &'static str = "ImgFont_Host";
-
+/// Lose(Small) 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_LOSE_SMALL_URI: &'static str = "ImgFont_Lose_Small";
 /// Lose 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_LOSE_URI: &'static str = "ImgFont_Lose";
-
+/// Miss 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_MISS_URI: &'static str = "ImgFont_Miss";
 /// Mission 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_MISSION_URI: &'static str = "ImgFont_Mission";
-
+/// 숫자 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_NUMBER_URI: &'static str = "ImgFont_Number";
+/// Ready 이미지 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_READY_URI: &'static str = "ImgFont_Ready";
 /// Start 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_START_URI: &'static str = "ImgFont_Start";
-
+/// Win(Small) 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_WIN_SMALL_URI: &'static str = "ImgFont_Win_Small";
 /// Win 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_WIN_URI: &'static str = "ImgFont_Win";
 
-/// Ready 이미지 폰트 텍스처의 `Uri`입니다.
-pub const IMG_FONT_READY_URI: &'static str = "ImgFont_Ready";
-
-/// 0번 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
-pub const FIELD_DECO_00_URI: &'static str = "Field_Deco_00";
-
-/// 1번 인게임 인터페이스 레이아웃 텍스처의 `Uri`입니다.
-pub const FIELD_DECO_01_URI: &'static str = "Field_Deco_01";
-
-/// 인게임 타이머 아이콘 텍스처의 `Uri`입니다.
-pub const TIMER_ICON_URI: &'static str = "Timer_Icon";
-
-/// 인게임 schale 아이콘 텍스처의 `Uri`입니다.
-pub const SCHALE_ICON_URI: &'static str = "Schale_Icon";
-
+/// 스카이박스 텍스처의 작업공간입니다.
+pub const BG_SKY_WORKSPACE: &'static str = "stage";
 /// 스카이박스 텍스처의 `Uri`입니다.
-pub const SKYBOX_URI: &'static str = "Sky";
+pub const BG_SKY_URI: &'static str = "BG_Sky";
 
 /// 캐릭터 모델의 작업 공간입니다.
 pub const CHARACTER_WORKSPACES: [&'static str; NUM_CHARACTERS] = [
@@ -187,12 +179,11 @@ pub const CHARACTER_URIS: [&'static str; NUM_CHARACTERS] = [
 
 /// 캐릭터 이미지의 `Uri`입니다.
 pub const CHARACTER_IMG_URI: &'static str = "Character_Img";
+/// 캐릭터 이미지의 `Uri`입니다.
+pub const CHARACTER_IMG_SMALL_URI: &'static str = "Character_Img_Small";
 
 /// 엠블럼 배경의 `Uri`입니다.
 pub const EMBLEM_BG_URI: &'static str = "Emblem_BG";
-
-/// 프로필 아이콘의 `Uri`입니다.
-pub const PROFILE_ICON_URI: &'static str = "Profile_Icon";
 
 /// Ui 0번 레이아웃 이미지의 `Uri`입니다.
 pub const HUD_LAYOUT_URI_00: &'static str = "HUD_Layout_00";
@@ -200,31 +191,19 @@ pub const HUD_LAYOUT_URI_00: &'static str = "HUD_Layout_00";
 pub const HUD_LAYOUT_URI_01: &'static str = "HUD_Layout_01";
 /// Ui 2번 레이아웃 이미지의 `Uri`입니다.
 pub const HUD_LAYOUT_URI_02: &'static str = "HUD_Layout_02";
+/// Ui 3번 레이아웃 이미지의 `Uri`입니다.
+pub const HUD_LAYOUT_URI_03: &'static str = "HUD_Layout_03";
 
-/// 무기 아이콘 `Uri`입니다.
-pub const WEAPON_ICON_URI: &'static str = "Weapon_Icon";
-
+/// 아이콘의 작업공간입니다.
+pub const ICON_WORKSPACE: &'static str = "ui";
 /// 무기 아이콘의 `Uri`입니다.
-pub const WEAPON_ICON_URIS: [&'static str; NUM_CHARACTERS] = [
-    "Weapon_Icon_Aris",
-    "Weapon_Icon_Momoi",
-    "Weapon_Icon_Midori",
-    "Weapon_Icon_Yuuka",
-];
-
-/// 무기 아이콘 마스크의 `Uri`입니다.
-pub const WEAPON_ICON_MASK_URI: &'static str = "Weapon_Icon_Mask";
-
-/// 무기 아이콘의 마스크의 `Uri`입니다.
-pub const WEAPON_ICON_MASK_URIS: [&'static str; NUM_CHARACTERS] = [
-    "Weapon_Icon_Aris_Mask",
-    "Weapon_Icon_Momoi_Mask",
-    "Weapon_Icon_Midori_Mask",
-    "Weapon_Icon_Yuuka_Mask",
-];
-
+pub const WEAPON_ICON_URI: &'static str = "Weapon_Icon";
 /// 랭킹(티어) 아이콘의 `Uri`입니다.
 pub const RANK_ICON_URI: &'static str = "Rank_Icons";
+/// 프로필 아이콘의 `Uri`입니다.
+pub const PROFILE_ICON_URI: &'static str = "Profile_Icon";
+/// 인게임 schale 아이콘 텍스처의 `Uri`입니다.
+pub const SCHALE_ICON_URI: &'static str = "Schale_Icon";
 
 /// 총알 모델의 작업 공간입니다.
 pub const BULLET_WORKSPACE: &'static str = "common";

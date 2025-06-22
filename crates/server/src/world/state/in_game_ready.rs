@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{self, Ordering as MemOrdering},
+};
 
 use ahash::HashSet;
 use mod_network::{
@@ -220,6 +223,7 @@ impl GameWorldState for GameWorldInGameReadyState {
         for mut player in world.players.iter_mut() {
             player.set_ready_to_play(false);
         }
+        atomic::fence(MemOrdering::SeqCst);
     }
 
     fn on_exit(&mut self, world: &Arc<GameWorld>) {
@@ -227,6 +231,7 @@ impl GameWorldState for GameWorldInGameReadyState {
         for uid in self.leaved_players.iter() {
             world.players.remove(uid);
         }
+        atomic::fence(MemOrdering::SeqCst);
     }
 
     fn handle_event(&mut self, world: &Arc<GameWorld>, event: GameWorldEvent) {

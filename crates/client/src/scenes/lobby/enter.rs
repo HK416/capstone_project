@@ -17,8 +17,9 @@ use crate::{
         SamplerPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI, BG_DECO_URI,
         BG_FORMATION_URI, BG_MAIN_LOBBY_URI, CHARACTER_IMG_URI, EMBLEM_BG_URI, GAME_LOGO_URI,
         HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI,
-        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI,
-        IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
+        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03,
+        HUD_OPTION_ICON_URI, ICON_WORKSPACE, IMG_FONT_HOST_URI, IMG_FONT_READY_URI,
+        IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -151,6 +152,12 @@ impl MainLobbyEnterScene {
     ) where
         Dir: AsRef<Path>,
     {
+        let uris = vec![
+            HUD_LAYOUT_URI_00,
+            HUD_LAYOUT_URI_01,
+            HUD_LAYOUT_URI_02,
+            HUD_LAYOUT_URI_03,
+        ];
         let mut workspace = root_dir.as_ref().to_path_buf();
         workspace.push("ui");
 
@@ -164,7 +171,7 @@ impl MainLobbyEnterScene {
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
             let mut staging_buffers = Vec::new();
 
-            for uri in [HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02] {
+            for uri in uris {
                 let result = texture_data_pool.get_or_init(
                     &workspace,
                     uri,
@@ -201,7 +208,7 @@ impl MainLobbyEnterScene {
         Dir: AsRef<Path>,
     {
         let mut workspace = root_dir.as_ref().to_path_buf();
-        workspace.push("ui");
+        workspace.push(IMG_FONT_WORKSPACE);
 
         let task_results = self.task_results.clone();
         let texture_data_pool = self.texture_data_pool.clone();
@@ -248,7 +255,7 @@ impl MainLobbyEnterScene {
         Dir: AsRef<Path>,
     {
         let mut workspace = root_dir.as_ref().to_path_buf();
-        workspace.push("ui");
+        workspace.push(IMG_FONT_WORKSPACE);
 
         let task_results = self.task_results.clone();
         let texture_data_pool = self.texture_data_pool.clone();
@@ -342,7 +349,7 @@ impl MainLobbyEnterScene {
         Dir: AsRef<Path>,
     {
         let mut workspace = root_dir.as_ref().to_path_buf();
-        workspace.push("ui");
+        workspace.push(ICON_WORKSPACE);
 
         let task_results = self.task_results.clone();
         let texture_data_pool = self.texture_data_pool.clone();
@@ -389,7 +396,7 @@ impl MainLobbyEnterScene {
         Dir: AsRef<Path>,
     {
         let mut workspace = root_dir.as_ref().to_path_buf();
-        workspace.push("ui");
+        workspace.push(ICON_WORKSPACE);
 
         let task_results = self.task_results.clone();
         let texture_data_pool = self.texture_data_pool.clone();

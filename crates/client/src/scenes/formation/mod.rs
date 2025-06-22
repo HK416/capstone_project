@@ -31,8 +31,9 @@ use crate::{
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
-        FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR, TEAM_COLOR,
+        FatalErrorSceneLayer, InGameLoadScene, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        TEAM_COLOR,
     },
     SERVER_TCP_ADDR,
 };
@@ -40,13 +41,6 @@ use crate::{
 pub use self::player::*;
 
 use super::{MessageSceneLayer, BASE_WIDTH};
-
-/// 애플리케이션 표시 언어에 따른 Title 텍스트
-const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 편성"];
-/// 애플리케이션 표시 언어에 따른 `남은 시간` 텍스트
-const TIMER_TEXTS: [&'static str; NUM_LOCALE] = ["남은 시간"];
-/// 애플리케이션 표시 언어에 따른 `캐릭터 선택` 텍스트
-const SELECT_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 선택"];
 
 /// 애플리케이션 표시 언어에 따른 오류 타이틀 텍스트
 const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
@@ -1149,7 +1143,17 @@ impl GameScene for CharacterFormationScene {
                 let packet = InGameDataInitPacket::from_raw(packet);
 
                 // 다음 게임 장면으로 전환합니다.
-                todo!()
+                let scene = InGameLoadScene::new(
+                    self.locale,
+                    self.uid,
+                    self.token,
+                    packet,
+                    &self.texture_pool,
+                );
+                let flow = GameSceneFlow::Change(Box::new(scene));
+                let event = AppEvent::AddGameSceneFlow(flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
             }
             _ => {
                 log::warn!(

@@ -1,6 +1,6 @@
 // mod finish;
 mod formation;
-// mod in_game;
+mod in_game;
 mod layer;
 mod lobby;
 mod room;
@@ -11,7 +11,7 @@ use std::fmt;
 
 use crate::config::NUM_LOCALE;
 
-pub use self::{formation::*, layer::*, lobby::*, room::*, startup::*, title::*};
+pub use self::{formation::*, in_game::*, layer::*, lobby::*, room::*, startup::*, title::*};
 
 /// 폰트의 색상입니다.
 pub const FONT_COLOR: egui::Color32 = egui::Color32::from_gray(43);
@@ -169,11 +169,11 @@ impl fmt::Debug for CharacterFormationScene {
     }
 }
 
-// impl fmt::Debug for InGameLoadScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameLoadScene))
-//     }
-// }
+impl fmt::Debug for InGameLoadScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameLoadScene))
+    }
+}
 
 // impl fmt::Debug for InGameBuildScene {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

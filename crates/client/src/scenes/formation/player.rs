@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use mod_network::components::{
     CharacterKind, GameTier, NetworkState, Permission, ProfileIcon, Team, UserId, UserName,
 };
