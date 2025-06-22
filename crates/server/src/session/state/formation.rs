@@ -17,6 +17,7 @@ use crate::{
 /// 지연 시간 (초)
 const DELAY_TIME: f32 = 0.4;
 
+/// 클라이언트가 캐릭터 편성 장면에 위치하고 있는 상태입니다.
 pub struct SessionFormationState {
     /// 사용자 식별자
     uid: UserId,
@@ -24,17 +25,20 @@ pub struct SessionFormationState {
     world: Weak<GameWorld>,
     /// 요청 지연 시간
     request_delay_time: f32,
+    // 네트워크 상태 갱신을 위한 경과 시간
+    elapsed_time_sec: f32,
     /// 유효하지 않은 패킷 경고 횟수
     packet_warn_count: usize,
 }
 
 impl SessionFormationState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(uid: UserId, world: Arc<GameWorld>) -> Self {
+    pub fn new(uid: UserId, world: &Arc<GameWorld>) -> Self {
         Self {
             uid,
-            world: Arc::downgrade(&world),
+            world: Arc::downgrade(world),
             request_delay_time: 0.0,
+            elapsed_time_sec: 0.0,
             packet_warn_count: 0,
         }
     }
@@ -237,7 +241,16 @@ impl SessionState for SessionFormationState {
         }
     }
 
-    fn on_advanced(&mut self, _session: &Arc<Session>, elapsed_time_sec: f32) {
+    fn on_advanced(&mut self, session: &Arc<Session>, elapsed_time_sec: f32) {
         self.request_delay_time = (self.request_delay_time - elapsed_time_sec).max(0.0);
+        self.elapsed_time_sec += elapsed_time_sec;
+
+        const TICK: f32 = 1.0;
+        if self.elapsed_time_sec >= TICK {
+            self.elapsed_time_sec = 0.0;
+            if let Some(world) = self.world.upgrade() {
+                world.update_network_state(self.uid, session.clone(), session.network_state());
+            }
+        }
     }
 }

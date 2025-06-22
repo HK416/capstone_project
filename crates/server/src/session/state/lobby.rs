@@ -17,6 +17,7 @@ use crate::{
 
 use super::{SessionState, SessionStateFlow};
 
+/// 클라이언트가 게임 로비 장면에 위치하고 있는 상태입니다.
 pub struct SessionLobbyState {
     /// 사용자 계정 데이터
     account: Account,

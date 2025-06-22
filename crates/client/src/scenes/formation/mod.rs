@@ -16,8 +16,8 @@ use mod_network::{
     },
     protocol::{
         CharacterReleaseNotifyPacket, CharacterSelectRequestPacket, CharacterSelectResponsePacket,
-        EnterGameFailedPacket, EnterGameFailedResson, FormationDataUpdatePacket, Packet,
-        PacketType, RawPacket,
+        EnterGameFailedPacket, EnterGameFailedResson, FormationDataUpdatePacket,
+        InGameDataInitPacket, Packet, PacketType, RawPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -1144,6 +1144,12 @@ impl GameScene for CharacterFormationScene {
                 let event = AppEvent::AddGameSceneFlow(flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+            }
+            PacketType::InGameDataInit => {
+                let packet = InGameDataInitPacket::from_raw(packet);
+
+                // 다음 게임 장면으로 전환합니다.
+                todo!()
             }
             _ => {
                 log::warn!(

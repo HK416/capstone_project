@@ -2,8 +2,11 @@
 //!
 
 use mod_network::components::{
-    CharacterKind, GameTier, NetworkState, Permission, ProfileIcon, Team, UserName,
+    CharacterAttributes, CharacterKind, GameTier, LatLon, NetworkState, Permission, ProfileIcon,
+    Team, UserName,
 };
+
+use crate::data::get_character_attributes;
 
 /// 비트 필드 데이터입니다.
 ///
@@ -173,19 +176,36 @@ pub struct Player {
     /// 사용자 프로필 아이콘
     pub profile_icon: ProfileIcon,
     /// 캐릭터 종류
-    pub character_kind: CharacterKind,
+    character_kind: CharacterKind,
     /// 비트 필드 데이터입니다.
     bitfield: Bitfield,
+
+    /// 캐릭터 속성 데이터
+    attributes: &'static CharacterAttributes,
+
+    /// 플레이어 월드 공간 위치
+    pub translation: glam::Vec3A,
+    /// 플레이어 월드 공간 방향
+    pub rotation: glam::Quat,
+    /// 플레이어 월드 공간 이동 방향
+    pub velocity: glam::Vec3A,
+    /// 플레이어 시야 방향
+    pub latlon: LatLon,
 }
 
 impl Player {
     /// 플레이어 데이터를 생성합니다.
-    pub const fn new(name: UserName) -> Self {
+    pub fn new(name: UserName) -> Self {
         Self {
             name,
             profile_icon: ProfileIcon::GroupSchale,
             character_kind: CharacterKind::ArisOriginal,
             bitfield: Bitfield::new(),
+            attributes: get_character_attributes(CharacterKind::ArisOriginal),
+            translation: glam::Vec3A::ZERO,
+            rotation: glam::Quat::IDENTITY,
+            velocity: glam::Vec3A::ZERO,
+            latlon: LatLon::default(),
         }
     }
 
@@ -196,9 +216,20 @@ impl Player {
     }
 
     /// 캐릭터 종류를 설정합니다.
-    pub const fn with_character_kind(mut self, character_kind: CharacterKind) -> Self {
+    pub fn set_character_kind(&mut self, character_kind: CharacterKind) {
         self.character_kind = character_kind;
+        self.attributes = get_character_attributes(self.character_kind);
+    }
+
+    /// 캐릭터 종류를 설정합니다.
+    pub fn with_character_kind(mut self, character_kind: CharacterKind) -> Self {
+        self.set_character_kind(character_kind);
         self
+    }
+
+    /// 캐릭터 종류를 반환합니다.
+    pub fn character_kind(&self) -> CharacterKind {
+        self.character_kind
     }
 
     /// 팀 종류를 반환합니다.
@@ -303,5 +334,20 @@ impl Player {
     pub const fn with_network_state(mut self, state: NetworkState) -> Self {
         self.set_network_state(state);
         self
+    }
+
+    /// 플레이어 캐릭터의 최대 체력을 반환합니다.
+    pub fn maximum_health(&self) -> u16 {
+        self.attributes.max_health_point
+    }
+
+    /// 플레이어 캐릭터의 최대 총알 개수를 반환합니다.
+    pub fn maximum_bullet(&self) -> u16 {
+        self.attributes.max_bullets
+    }
+
+    /// 플레이어 캐릭터의 최대 스킬 코스트를 반환합니다.
+    pub fn maximum_skill_cost(&self) -> u16 {
+        self.attributes.max_skill_cost
     }
 }

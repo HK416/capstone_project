@@ -72,17 +72,14 @@ pub enum PacketType {
     /// 서버에서 클라이언트로 보내는 인게임 진입 실패 알림 패킷
     EnterGameFailed = 0x56,
 
-    /// 인게임 준비에서 사용되는 패킷 유형
-    PrepareGroup = 0x60,
-    /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    PrepareDataPull = 0x61,
-    /// 클라이언트에서 서버로 보내는 데이터 갱신 패킷
-    PrepareDataPush = 0x62,
-
     /// 인게임에서 사용되는 패킷 유형
-    InGameGroup = 0x70,
-    /// 서버에서 클라이언트로 보내는 데이터 갱신 패킷
-    InGameDataUpdate = 0x71,
+    InGameGroup = 0x60,
+    /// 서버에서 클라이언트로 보내는 인게임 데이터 초기화 데이터 패킷
+    InGameDataInit = 0x61,
+    /// 클라이언트에서 서버로 보내는 준비 완료 알림 패킷
+    InGameReadyNotify = 0x62,
+    /// 서버에서 클라이언트로 보내는 각 플레이어의 준비 상태 패킷
+    InGameReadyStatus = 0x63,
 }
 
 impl PacketType {
@@ -116,6 +113,9 @@ impl PacketType {
             0x54 => Some(PacketType::CharacterReleaseNotify),
             0x55 => Some(PacketType::CharacterSelectResponse),
             0x56 => Some(PacketType::EnterGameFailed),
+            0x61 => Some(PacketType::InGameDataInit),
+            0x62 => Some(PacketType::InGameReadyNotify),
+            0x63 => Some(PacketType::InGameReadyStatus),
             _ => None,
         }
     }
@@ -199,4 +199,10 @@ mod tests {
     test_packet_type!(test_packet_type_character_select_response, PacketType::CharacterSelectResponse);
 
     test_packet_type!(test_packet_type_enter_game_failed, PacketType::EnterGameFailed);
+
+    test_packet_type!(test_packet_type_in_game_data_init, PacketType::InGameDataInit);
+
+    test_packet_type!(test_packet_type_in_game_ready_notify, PacketType::InGameReadyNotify);
+
+    test_packet_type!(test_packet_type_in_game_ready_status, PacketType::InGameReadyStatus);
 }

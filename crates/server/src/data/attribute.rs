@@ -62,7 +62,7 @@ fn load_character_attribute(path: &str) -> CharacterAttributes {
         .expect("캐릭터 속성 데이터 파일 구문 분석에 실패했습니다!");
 
     assert_ne!(
-        attribute.health_point, 0,
+        attribute.max_health_point, 0,
         "캐릭터의 최대 체력은 0이 될 수 없습니다!"
     );
 

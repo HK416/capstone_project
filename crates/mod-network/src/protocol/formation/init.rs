@@ -84,7 +84,7 @@ impl FormationDataInitPacket {
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
-    /// 주어진 `players`의 요소 수가 `MAX_CUSTOM_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
     pub fn new(
         remaining_time_sec: f32,
@@ -93,7 +93,7 @@ impl FormationDataInitPacket {
         players: Vec<FormationPlayerInitData>,
     ) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
-        assert!(players.len() <= MAX_IN_GAME_PLAYERS, "Too many players!");
+        assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
 
         Self {
             remaining_time_sec,
@@ -107,7 +107,7 @@ impl FormationDataInitPacket {
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
-    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 `panic!`을 호출합니다.
+    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
     pub fn from_iter<I>(
         remaining_time_sec: f32,

@@ -46,7 +46,7 @@ pub struct CharacterAttributes {
     /// 총알의 최대 개수
     pub max_bullets: u16,
     /// 캐릭터의 최대 체력
-    pub health_point: u16,
+    pub max_health_point: u16,
     /// 캐릭터의 공격력
     pub attack_power: u16,
     /// 캐릭터의 방어력
@@ -59,8 +59,8 @@ pub struct CharacterAttributes {
     pub critical_rate: u16,
     /// 캐릭터의 치명 데미지
     pub critical_damage: u16,
-    /// 캐릭터의 코스트 회복력
-    pub cost_recovery_rate: f32,
+    /// 캐릭터의 최대 스킬 코스트
+    pub max_skill_cost: u16,
     /// 캐릭터의 공격 사거리
     pub attack_range: u16,
     /// 캐릭터 총알의 반지름

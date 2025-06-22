@@ -2,7 +2,8 @@
 //!
 
 use crate::components::{
-    BigEndian, CharacterKind, LatLon, Team, TryFromBigEndian, UserId, UserName,
+    BigEndian, CharacterKind, LatLon, NetworkState, Permission, Team, TryFromBigEndian, UserId,
+    UserName,
 };
 
 /// 플레이어 비트 필드 데이터입니다.
@@ -10,6 +11,9 @@ use crate::components::{
 /// 아래 데이터가 포함됩니다.
 /// - team          | 1bit | 팀 종류
 /// - team_index    | 3bit | 팀 인덱스
+/// - permission    | 1bit | 권한
+/// - connected     | 1bit | 서버 연결 여부
+/// - network_state | 2bit | 네트워크 상태
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -20,6 +24,12 @@ impl Bitfield {
     const TEAM_SHIFT: usize = 0;
     const INDEX_BIT_MASK: u8 = 0x07;
     const INDEX_SHIFT: usize = 1;
+    const PERMISSION_BIT_MASK: u8 = 0x01;
+    const PERMISSION_SHIFT: usize = 4;
+    const CONNECT_BIT_MASK: u8 = 0x01;
+    const CONNECT_SHIFT: usize = 5;
+    const STATE_BIT_MASK: u8 = 0x03;
+    const STATE_SHIFT: usize = 6;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     const fn new() -> Self {
@@ -34,7 +44,7 @@ impl Bitfield {
     }
 
     /// 팀 종류를 설정합니다.
-    fn with_team(mut self, team: Team) -> Self {
+    const fn with_team(mut self, team: Team) -> Self {
         self.0 &= !(Self::TEAM_BIT_MASK << Self::TEAM_SHIFT);
         self.0 |= ((team as u8) & Self::TEAM_BIT_MASK) << Self::TEAM_SHIFT;
         self
@@ -50,10 +60,50 @@ impl Bitfield {
     /// # Panics
     /// 주어진 인덱스가 5이상인 경우 [`panic!`]을 호출합니다.
     ///
-    fn with_team_index(mut self, index: usize) -> Self {
+    const fn with_team_index(mut self, index: usize) -> Self {
         assert!(index < 5, "index out of ranges!");
         self.0 &= !(Self::INDEX_BIT_MASK << Self::INDEX_SHIFT);
         self.0 |= ((index as u8) & Self::INDEX_BIT_MASK) << Self::INDEX_SHIFT;
+        self
+    }
+
+    /// 권한을 반환합니다.
+    fn permission(&self) -> Permission {
+        let val = (self.0 >> Self::PERMISSION_SHIFT) & Self::PERMISSION_BIT_MASK;
+        // Safety: 주어지는 값은 범위를 벗어나지 않음
+        unsafe { Permission::new(val).unwrap_unchecked() }
+    }
+
+    /// 권한을 설정합니다.
+    const fn with_permission(mut self, permission: Permission) -> Self {
+        self.0 &= !(Self::PERMISSION_BIT_MASK << Self::PERMISSION_SHIFT);
+        self.0 |= ((permission as u8) & Self::PERMISSION_BIT_MASK) << Self::PERMISSION_SHIFT;
+        self
+    }
+
+    /// 서버 연결 여부를 반환합니다.
+    fn is_connected(&self) -> bool {
+        (self.0 >> Self::CONNECT_SHIFT) & Self::CONNECT_BIT_MASK == Self::CONNECT_BIT_MASK
+    }
+
+    /// 서버 연결 여부를 설정합니다.
+    const fn with_connected(mut self, connected: bool) -> Self {
+        self.0 &= !(Self::CONNECT_BIT_MASK << Self::CONNECT_SHIFT);
+        self.0 |= ((connected as u8) & Self::CONNECT_BIT_MASK) << Self::CONNECT_SHIFT;
+        self
+    }
+
+    /// 네트워크 상태를 반환합니다.
+    fn network_state(&self) -> NetworkState {
+        let val = (self.0 >> Self::STATE_SHIFT) & Self::STATE_BIT_MASK;
+        // Safety: 주어지는 값은 범위를 벗어나지 않음
+        unsafe { NetworkState::new(val).unwrap_unchecked() }
+    }
+
+    /// 네트워크 상태를 설정합니다.
+    const fn with_network_state(mut self, state: NetworkState) -> Self {
+        self.0 &= !(Self::STATE_BIT_MASK << Self::STATE_SHIFT);
+        self.0 |= ((state as u8) & Self::STATE_BIT_MASK) << Self::STATE_SHIFT;
         self
     }
 }
@@ -102,6 +152,46 @@ pub struct InGamePlayerInitData {
 }
 
 impl InGamePlayerInitData {
+    /// 새로운 플레이어 초기화 데이터를 생성합니다.
+    ///
+    /// # Panics
+    /// 주어진 팀 인덱스가 5이상인 경우 [`panic!`]을 호출합니다.
+    ///
+    pub const fn new(
+        uid: UserId,
+        name: UserName,
+        character_kind: CharacterKind,
+        team: Team,
+        team_index: usize,
+        permission: Permission,
+        connected: bool,
+        network_state: NetworkState,
+        maximum_health: u16,
+        maximum_bullet: u16,
+        maximum_skill_cost: u16,
+        translation: [f32; 3],
+        rotation: [f32; 4],
+        latlon: LatLon,
+    ) -> Self {
+        Self {
+            uid,
+            name,
+            character_kind,
+            bitfield: Bitfield::new()
+                .with_team(team)
+                .with_team_index(team_index)
+                .with_permission(permission)
+                .with_connected(connected)
+                .with_network_state(network_state),
+            maximum_health,
+            maximum_bullet,
+            maximum_skill_cost,
+            translation,
+            rotation,
+            latlon,
+        }
+    }
+
     /// 팀 종류를 반환합니다.
     pub fn team(&self) -> Team {
         self.bitfield.team()
@@ -110,6 +200,21 @@ impl InGamePlayerInitData {
     /// 팀 인덱스를 반환합니다.
     pub fn team_index(&self) -> usize {
         self.bitfield.team_index()
+    }
+
+    /// 권한을 반환합니다.
+    pub fn permission(&self) -> Permission {
+        self.bitfield.permission()
+    }
+
+    /// 서버 연결 여부를 반환합니다.
+    pub fn is_connected(&self) -> bool {
+        self.bitfield.is_connected()
+    }
+
+    /// 네트워크 상태를 반환합니다.
+    pub fn network_state(&self) -> NetworkState {
+        self.bitfield.network_state()
     }
 }
 
@@ -246,131 +351,6 @@ impl TryFromBigEndian for InGamePlayerInitData {
     }
 }
 
-/// 인게임 플레이어 초기화 데이터의 빌더입니다.
-#[derive(Debug, Clone, PartialEq)]
-pub struct InGamePlayerInitDataBuilder {
-    /// 사용자 식별자
-    pub uid: UserId,
-    /// 사용자 이름
-    pub name: UserName,
-    /// 캐릭터 종류
-    pub character_kind: CharacterKind,
-    /// 비트 필드 데이터
-    bitfield: Bitfield,
-
-    /// 체력 데이터
-    pub maximum_health: u16,
-    /// 총알 데이터
-    pub maximum_bullet: u16,
-    /// 스킬 코스트 데이터
-    pub maximum_skill_cost: u16,
-
-    /// 월드 공간 위치 (플레이어 캐릭터 스폰 위치)
-    pub translation: [f32; 3],
-    /// 월드 공간 방향 (플레이어 캐릭터 스폰 방향)
-    pub rotation: [f32; 4],
-    /// 카메라 방향 (플레이어 카메라 스폰 방향)
-    pub latlon: LatLon,
-}
-
-impl InGamePlayerInitDataBuilder {
-    /// 새로운 빌더를 생성합니다.
-    pub const fn new(uid: UserId, name: UserName) -> Self {
-        Self {
-            uid,
-            name,
-            character_kind: CharacterKind::ArisOriginal,
-            bitfield: Bitfield::new(),
-            maximum_health: 0,
-            maximum_bullet: 0,
-            maximum_skill_cost: 0,
-            translation: [0.0, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            latlon: LatLon::new(0.0, 0.0),
-        }
-    }
-
-    /// 캐릭터 종류를 설정합니다.
-    pub fn with_character_kind(mut self, character_kind: CharacterKind) -> Self {
-        self.character_kind = character_kind;
-        self
-    }
-
-    /// 팀을 설정합니다.
-    pub fn with_team(mut self, team: Team) -> Self {
-        self.bitfield = self.bitfield.with_team(team);
-        self
-    }
-
-    /// 팀 인덱스를 설정합니다.
-    ///
-    /// # Panics
-    /// 주어진 인덱스가 5이상인 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn with_team_index(mut self, index: usize) -> Self {
-        self.bitfield = self.bitfield.with_team_index(index);
-        self
-    }
-
-    /// 최대 체력을 설정합니다.
-    pub fn with_maximum_health(mut self, maximum: u16) -> Self {
-        self.maximum_health = maximum;
-        self
-    }
-
-    /// 최대 총알을 설정합니다.
-    pub fn with_maximum_bullet(mut self, maximum: u16) -> Self {
-        self.maximum_bullet = maximum;
-        self
-    }
-
-    /// 최대 스킬 코스트를 설정합니다.
-    pub fn with_maximum_skill_cost(mut self, maximum: u16) -> Self {
-        self.maximum_skill_cost = maximum;
-        self
-    }
-
-    /// 월드 공간 위치를 설정합니다.
-    pub fn with_translation<T>(mut self, translation: T) -> Self
-    where
-        T: Into<[f32; 3]>,
-    {
-        self.translation = translation.into();
-        self
-    }
-
-    /// 월드 공간 방향을 설정합니다.
-    pub fn with_rotation<T>(mut self, rotation: T) -> Self
-    where
-        T: Into<[f32; 4]>,
-    {
-        self.rotation = rotation.into();
-        self
-    }
-
-    /// 카메라 방향을 설정합니다.
-    pub fn with_latlon(mut self, latlon: LatLon) -> Self {
-        self.latlon = latlon;
-        self
-    }
-
-    /// 플레이어 초기화 데이터를 생성합니다.
-    pub fn build(self) -> InGamePlayerInitData {
-        InGamePlayerInitData {
-            uid: self.uid,
-            name: self.name,
-            character_kind: self.character_kind,
-            bitfield: self.bitfield,
-            maximum_health: self.maximum_health,
-            maximum_bullet: self.maximum_bullet,
-            maximum_skill_cost: self.maximum_skill_cost,
-            translation: self.translation,
-            rotation: self.rotation,
-            latlon: self.latlon,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,19 +391,34 @@ mod tests {
     }
 
     #[test]
+    fn test_bitfield_permission() {
+        let val = Permission::Admin;
+        let bitfield = Bitfield::new().with_permission(val);
+        assert_eq!(Permission::Admin, bitfield.permission());
+
+        let val = Permission::User;
+        let bitfield = Bitfield::new().with_permission(val);
+        assert_eq!(Permission::User, bitfield.permission());
+    }
+
+    #[test]
     fn test_in_game_player_init_data() {
-        let origin =
-            InGamePlayerInitDataBuilder::new(UserId::new(123515), UserName::from_str("블붕이"))
-                .with_character_kind(CharacterKind::MomoiOriginal)
-                .with_maximum_bullet(123)
-                .with_maximum_health(12354)
-                .with_maximum_skill_cost(1234)
-                .with_team(Team::Red)
-                .with_team_index(2)
-                .with_translation([0.14532151, 3.134151, -1.02515614])
-                .with_rotation([0.00013412, 0.00134141, 0.91413541, 0.004312451])
-                .with_latlon(LatLon::new(0.00034115, 1.024111))
-                .build();
+        let origin = InGamePlayerInitData::new(
+            UserId::new(123515),
+            UserName::from_str("블붕이"),
+            CharacterKind::MomoiOriginal,
+            Team::Red,
+            2,
+            Permission::Admin,
+            true,
+            NetworkState::Good,
+            12354,
+            123,
+            1234,
+            [0.14532151, 3.134151, -1.02515614],
+            [0.00013412, 0.00134141, 0.91413541, 0.004312451],
+            LatLon::new(0.00034115, 1.024111),
+        );
         let bytes = origin.to_big_endian_bytes();
         let other = InGamePlayerInitData::from_big_endian_bytes(&bytes);
 

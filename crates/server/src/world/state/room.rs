@@ -17,6 +17,7 @@ use mod_network::{
 use rand::seq::SliceRandom;
 
 use crate::{
+    data::get_stage_attributes,
     session::{Session, SessionFormationState, SessionStateFlow},
     world::{
         GameWorld, GameWorldEvent, GameWorldFormationState, GameWorldRoomStateEvent,
@@ -362,25 +363,42 @@ impl GameWorldRoomState {
             // 게임 월드를 닫습니다.
             world.set_closed(true);
 
-            // 플레이어 인덱스를 설정합니다.
+            // 스테이지 속성 정보를 가져옵니다.
+            let attribute = get_stage_attributes(self.stage_kind);
+
             let mut num_blue = 0;
             let mut num_red = 0;
             let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
             for mut data in world.players.iter_mut() {
-                let index = match data.team() {
+                // 플레이어 데이터를 설정합니다.
+                let (index, translation, roataion, latlon) = match data.team() {
                     Team::Blue => {
-                        let temp = num_blue;
+                        let index = num_blue;
                         num_blue += 1;
-                        temp
+
+                        let translation = attribute.blue_team_spawn.pos[index];
+                        let rotation = attribute.blue_team_spawn.dir;
+                        let latlon = attribute.blue_team_spawn.latlon;
+
+                        (index, translation, rotation, latlon)
                     }
                     Team::Red => {
-                        let temp = num_red;
+                        let index = num_red;
                         num_red += 1;
-                        temp
+
+                        let translation = attribute.red_team_spawn.pos[index];
+                        let rotation = attribute.red_team_spawn.dir;
+                        let latlon = attribute.red_team_spawn.latlon;
+
+                        (index, translation, rotation, latlon)
                     }
                 };
                 data.set_team_index(index);
+                data.translation = translation;
+                data.rotation = roataion;
+                data.latlon = latlon;
 
+                // 플레이어 초기화 데이터를 생성합니다.
                 let uid = data.key().clone();
                 players.push(FormationPlayerInitData::new(
                     uid,
@@ -406,7 +424,7 @@ impl GameWorldRoomState {
                 let session = guard.key();
                 session.tcp_write(packet.as_raw());
 
-                let state = SessionFormationState::new(uid, world.clone());
+                let state = SessionFormationState::new(uid, world);
                 session.add_flow(SessionStateFlow::Push(Box::new(state)));
             }
 

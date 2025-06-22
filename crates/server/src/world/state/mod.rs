@@ -1,4 +1,5 @@
 mod formation;
+mod in_game_ready;
 mod room;
 
 use std::{collections::VecDeque, fmt, sync::Arc};
@@ -7,7 +8,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::world::get_retires;
 
-pub use self::{formation::*, room::*};
+pub use self::{formation::*, in_game_ready::*, room::*};
 
 use super::{GameWorld, GameWorldEvent};
 
@@ -212,5 +213,11 @@ impl fmt::Debug for GameWorldRoomState {
 impl fmt::Debug for GameWorldFormationState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(GameWorldFormationState))
+    }
+}
+
+impl fmt::Debug for GameWorldInGameReadyState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldInGameReadyState))
     }
 }

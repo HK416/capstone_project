@@ -3,27 +3,30 @@ use std::sync::Arc;
 use ahash::{HashSet, RandomState};
 use mod_network::{
     components::{
-        CharacterKind, FormationPlayerUpdateData, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS,
-        NUM_CHARACTERS, Permission, SelectResult, StageKind, Team, UserId,
+        CharacterKind, FormationPlayerUpdateData, InGamePlayerInitData, MAX_IN_GAME_PLAYERS,
+        MAX_IN_GAME_TEAM_PLAYERS, NUM_CHARACTERS, NetworkState, Permission, SelectResult,
+        StageKind, Team, UserId,
     },
     protocol::{
         CharacterSelectResponsePacket, EnterGameFailedPacket, EnterGameFailedResson,
-        FormationDataUpdatePacket, Packet,
+        FormationDataUpdatePacket, InGameDataInitPacket, Packet,
     },
 };
 use rand::seq::SliceRandom;
 
 use crate::{
-    session::{Session, SessionStateFlow},
+    session::{Session, SessionInGameReadyState, SessionStateFlow},
     world::{
-        GameWorld, GameWorldEvent, GameWorldFormationStateEvent, GameWorldState,
-        GameWorldSystemEvent,
+        GameWorld, GameWorldEvent, GameWorldFormationStateEvent, GameWorldInGameReadyState,
+        GameWorldState, GameWorldStateFlow, GameWorldSystemEvent,
     },
 };
 
 /// 최대 장면 지속 시간(초)
 pub const MAX_FORMATION_TIME: f32 = 60.0;
 
+/// 캐릭터 편성 상태 게임 월드입니다.
+/// 모든 플레이어의 캐릭터 선택이 완료될 때 까지 대기합니다.
 pub struct GameWorldFormationState {
     /// 캐릭터 편성 완료까지 남은 시간
     remaining_time_sec: f32,
@@ -33,7 +36,7 @@ pub struct GameWorldFormationState {
     #[allow(dead_code)]
     stage_kind: StageKind,
 
-    /// 경과 시간
+    /// 패킷을 보낸 후 경과 시간
     elapsed_time_sec: f32,
 
     /// 블루 팀 플레이어 수
@@ -101,6 +104,9 @@ impl GameWorldFormationState {
             }
         };
 
+        // 플레이어 네트워크 상태를 변경합니다.
+        data.set_network_state(NetworkState::Critical);
+
         // 플레이어의 권한을 해제합니다.
         let permission = data.permission();
         data.set_permission(Permission::User);
@@ -119,8 +125,8 @@ impl GameWorldFormationState {
         // 캐릭터 중복을 허용하지 않고, 플레이어가 캐릭터를 선택한 경우
         // 플레이어가 선택한 캐릭터를 해제합니다.
         if !self.allow_duplicates && data.is_ready_to_play() {
-            let character_kind = data.character_kind;
-            data.character_kind = CharacterKind::ArisOriginal;
+            let character_kind = data.character_kind();
+            data.set_character_kind(CharacterKind::ArisOriginal);
             data.set_ready_to_play(false);
             match data.team() {
                 Team::Blue => self.blue_characters.remove(&character_kind),
@@ -178,13 +184,13 @@ impl GameWorldFormationState {
         };
 
         // 플레이어 캐릭터와 선택한 캐릭터가 같은 경우 생략합니다.
-        if player.is_ready_to_play() && player.character_kind == character_kind {
+        if player.is_ready_to_play() && player.character_kind() == character_kind {
             return;
         }
 
         let result = if self.allow_duplicates {
             // 캐릭터 중복을 허용하는 경우 항상 성공을 전송합니다.
-            player.character_kind = character_kind;
+            player.set_character_kind(character_kind);
             player.set_ready_to_play(true);
             SelectResult::Success
         } else {
@@ -200,13 +206,13 @@ impl GameWorldFormationState {
                 // 이미 선택한 캐릭터가 존재하는 경우 선택한 캐릭터를 해제합니다.
                 if player.is_ready_to_play() {
                     match player.team() {
-                        Team::Blue => self.blue_characters.remove(&player.character_kind),
-                        Team::Red => self.red_characters.remove(&player.character_kind),
+                        Team::Blue => self.blue_characters.remove(&player.character_kind()),
+                        Team::Red => self.red_characters.remove(&player.character_kind()),
                     };
                 }
 
                 // 새로 선택한 캐릭터를 등록합니다.
-                player.character_kind = character_kind;
+                player.set_character_kind(character_kind);
                 player.set_ready_to_play(true);
                 SelectResult::Success
             } else {
@@ -243,15 +249,15 @@ impl GameWorldFormationState {
         }
 
         if self.allow_duplicates {
-            player.character_kind = CharacterKind::default();
+            player.set_character_kind(CharacterKind::default());
             player.set_ready_to_play(false);
         } else {
             match player.team() {
-                Team::Blue => self.blue_characters.remove(&player.character_kind),
-                Team::Red => self.red_characters.remove(&player.character_kind),
+                Team::Blue => self.blue_characters.remove(&player.character_kind()),
+                Team::Red => self.red_characters.remove(&player.character_kind()),
             };
 
-            player.character_kind = CharacterKind::default();
+            player.set_character_kind(CharacterKind::default());
             player.set_ready_to_play(false);
         };
     }
@@ -303,7 +309,7 @@ impl GameWorldFormationState {
                     let uid = data.key().clone();
                     let leaved = self.leaved_players.contains(&uid);
                     if !leaved && data.is_ready_to_play() {
-                        data.character_kind = rand::random();
+                        data.set_character_kind(rand::random());
                         data.set_ready_to_play(true);
                     }
                 }
@@ -329,7 +335,7 @@ impl GameWorldFormationState {
                             Team::Blue => blue_diff.pop().unwrap_or(CharacterKind::default()),
                             Team::Red => red_diff.pop().unwrap_or(CharacterKind::default()),
                         };
-                        data.character_kind = character_kind;
+                        data.set_character_kind(character_kind);
                         data.set_ready_to_play(true);
                     }
                 }
@@ -346,7 +352,52 @@ impl GameWorldFormationState {
             })
             .all(|data| data.is_ready_to_play());
         if all_player_readys {
-            todo!()
+            // 인게임 초기화 패킷을 생성 후 각 세션에 패킷을 전송합니다.
+            let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+            for data in world.players.iter() {
+                let uid = data.key().clone();
+                let connected = !self.leaved_players.contains(&uid);
+                let character_kind = data.character_kind();
+                players.push(InGamePlayerInitData::new(
+                    uid,
+                    data.name,
+                    character_kind,
+                    data.team(),
+                    data.team_index(),
+                    data.permission(),
+                    connected,
+                    data.network_state(),
+                    data.maximum_health(),
+                    data.maximum_bullet(),
+                    data.maximum_skill_cost(),
+                    data.translation.to_array(),
+                    data.rotation.to_array(),
+                    data.latlon,
+                ));
+            }
+
+            let packet = InGameDataInitPacket::new(self.stage_kind, players);
+            for data in world.sessions.iter() {
+                let uid = data.value().clone();
+                let session = data.key();
+                session.tcp_write(packet.as_raw());
+
+                // 다음 세션 상태로 전환합니다.
+                let state = SessionInGameReadyState::new(uid, world);
+                let flow = SessionStateFlow::Change(Box::new(state));
+                session.add_flow(flow);
+            }
+
+            // 다음 게임 월드 상태로 전환합니다.
+            let leaved_players = self.leaved_players.clone();
+            self.leaved_players.clear();
+            let state = GameWorldInGameReadyState::new(
+                self.num_blue_players,
+                self.num_red_players,
+                leaved_players,
+            );
+            let flow = GameWorldStateFlow::Change(Box::new(state));
+            world.flows.push(flow);
         }
 
         drop(num_players);
@@ -358,7 +409,7 @@ impl GameWorldFormationState {
         for data in world.players.iter() {
             let uid = data.key().clone();
             let connected = !self.leaved_players.contains(&uid);
-            let character_kind = data.is_ready_to_play().then_some(data.character_kind);
+            let character_kind = data.is_ready_to_play().then_some(data.character_kind());
             players.push(FormationPlayerUpdateData::new(
                 uid,
                 connected,
@@ -410,7 +461,7 @@ impl GameWorldState for GameWorldFormationState {
                     self.handle_player_leave_event(world, session, uid);
                 }
             },
-            GameWorldEvent::RoomState { .. } => {}
+            GameWorldEvent::RoomState { .. } => { /* empty */ }
             GameWorldEvent::FormationState {
                 session,
                 uid,

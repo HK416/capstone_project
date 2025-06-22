@@ -28,9 +28,12 @@ pub enum GameWorldEvent {
         event: GameWorldFormationStateEvent,
     },
 
-    /// 인게임 진입에서 사용되는
-    /// 플레이어 인게임 로드 완료 요청입니다.
-    GameLoadFinish { session: Arc<Session>, uid: UserId },
+    /// 인게임 준비 이벤트
+    InGameReadyState {
+        session: Arc<Session>,
+        uid: UserId,
+        event: GameWorldInGameReadyStateEvent,
+    },
 
     /// 총알 오브젝트를 추가합니다.
     AddBullet { shooter_id: UserId, delay: f32 },
@@ -72,4 +75,11 @@ pub enum GameWorldFormationStateEvent {
     CharacterSelect(CharacterKind),
     /// 플레이어가 캐릭터 편성 장면에서 캐릭터 선택을 해제 할 때 발생되는 이벤트입니다.
     CharacterRelease,
+}
+
+/// 인게임 준비 상태의 이벤트 목록입니다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameWorldInGameReadyStateEvent {
+    /// 클라이언트가 게임 준비를 마쳤을 때 발생되는 이벤트입니다.
+    ReadyToPlay,
 }
