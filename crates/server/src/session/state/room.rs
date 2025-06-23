@@ -1,90 +1,112 @@
-use std::{
-    fmt,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
-use mod_network::protocol::{
-    CustomGameLeavePacket, CustomGameReadyPacket, Packet, PacketType, RawPacket,
+use mod_network::{
+    components::UserId,
+    protocol::{
+        Packet, PacketType, RawPacket, RoomDuplicateOptChangeRequestPacket, RoomLeaveNotifyPacket,
+        RoomPlayerBanRequestPacket, RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
+        RoomUnbalancedOptChangeRequestPacket,
+    },
 };
 
 use crate::{
-    session::{Session, SessionEvents},
+    session::Session,
     token::UserTokenMap,
-    world::{GameWorld, GameWorldEvent},
+    world::{GameWorld, GameWorldEvent, GameWorldRoomStateEvent},
 };
 
-use super::{SessionState, SessionStateFlow, formation::SessionFormationState};
+use super::{SessionState, SessionStateFlow};
 
+/// 지연 시간 (초)
+const DELAY_TIME: f32 = 0.3;
+
+/// 클라이언트가 커스텀 게임 대기실 장면에 위치하고 있는 상태입니다.
 pub struct SessionRoomState {
-    /// 세션 상태 실행 여부
-    is_running: bool,
-    /// 연결된 게임 월드
+    /// 사용자 식별자
+    uid: UserId,
+    /// 참가한 게임 월드
     world: Weak<GameWorld>,
+    /// 요청 지연 시간
+    request_delay_time: f32,
+    // 네트워크 상태 갱신을 위한 경과 시간
+    elapsed_time_sec: f32,
+    /// 유효하지 않은 패킷 경고 횟수
+    packet_warn_count: usize,
 }
 
 impl SessionRoomState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(world: &Arc<GameWorld>) -> Self {
+    pub fn new(uid: UserId, world: Arc<GameWorld>) -> Self {
         Self {
-            is_running: true,
-            world: Arc::downgrade(world),
+            uid,
+            world: Arc::downgrade(&world),
+            request_delay_time: 0.0,
+            elapsed_time_sec: 0.0,
+            packet_warn_count: 0,
         }
     }
 
-    /// `CustomGameLeavePacket`을 처리합니다.
-    fn handle_custom_game_leave_packet(&mut self, session: &Arc<Session>, packet: RawPacket) {
-        let packet = match CustomGameLeavePacket::try_from_raw(packet) {
-            Some(packet) => packet,
-            None => {
-                log::warn!("{} failed to convert packet!", session);
-                session.close();
-                return;
-            }
-        };
-
+    /// [`RoomLeaveNotifyPacket`]을 처리합니다.
+    fn handle_room_leave_notify_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomLeaveNotifyPacket,
+    ) {
         // 수신한 패킷이 올바른지 검사합니다.
-        let user_id = packet.user_id;
-        let addr = session.addr;
-        let token = packet.token;
-        if !UserTokenMap::is_valid(&(user_id, addr), token) {
-            log::warn!("{} invalid token (PACKET:{:?})", &session, &packet,);
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::RoomLeaveNotify
+            );
             session.close();
             return;
         }
 
-        // 커스텀 게임 대기실 객체를 가져옵니다.
-        if let Some(world) = self.world.upgrade() {
-            // 커스텀 게임 대기실에서 플레이어 정보를 제거합니다.
-            world.exit(session);
-
-            // 다음 세션 상태로 전환합니다.
-            let control_flow = SessionStateFlow::Pop;
-            let event = SessionEvents::SetControlFlow(control_flow);
-            session.push_event(event);
-        } else {
-            log::warn!("{} accesses an invalid custom game", session);
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::RoomLeaveNotify
+            );
             session.close();
             return;
         }
+
+        // 이전 세션 상태로 되돌아갑니다.
+        session.flows.push(SessionStateFlow::Pop);
     }
 
-    /// `CustomGameReadyPacket`을 처리합니다.
-    fn handle_custom_game_ready_packet(&mut self, session: &Arc<Session>, packet: RawPacket) {
-        let packet = match CustomGameReadyPacket::try_from_raw(packet) {
-            Some(packet) => packet,
-            None => {
-                log::warn!("{} failed to convert packet!", session);
-                session.close();
-                return;
-            }
-        };
+    /// [`RoomReadyRequestPacket`]을 처리합니다.
+    fn handle_room_ready_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomReadyRequestPacket,
+    ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
 
         // 수신한 패킷이 올바른지 검사합니다.
-        let user_id = packet.user_id;
-        let addr = session.addr;
-        let token = packet.token;
-        if !UserTokenMap::is_valid(&(user_id, addr), token) {
-            log::warn!("{} invalid token (PACKET:{:?})", &session, &packet,);
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::RoomReadyRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::RoomReadyRequest
+            );
             session.close();
             return;
         }
@@ -92,14 +114,220 @@ impl SessionRoomState {
         // 커스텀 게임 대기실 객체를 가져옵니다.
         if let Some(world) = self.world.upgrade() {
             // 게임 준비 요청을 보냅니다.
-            let event = GameWorldEvent::CustomRoomReady {
+            let event = GameWorldRoomStateEvent::Ready;
+            let event = GameWorldEvent::RoomState {
                 session: session.clone(),
-                uid: packet.user_id,
-                ready: packet.ready,
+                uid: packet.uid,
+                event,
             };
             world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
         } else {
-            log::warn!("{} accesses an invalid custom game", session);
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    /// [`RoomTeamChangeRequestPacket`]을 처리합니다.
+    fn handle_room_team_change_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomTeamChangeRequestPacket,
+    ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::TeamChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::TeamChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 팀 변경 요청을 보냅니다.
+            let event = GameWorldRoomStateEvent::ChangeTeam(packet.target);
+            let event = GameWorldEvent::RoomState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    /// [`RoomPlayerBanRequestPacket`]을 처리합니다.
+    fn handle_room_player_ban_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomPlayerBanRequestPacket,
+    ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::RoomPlayerBanRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::RoomPlayerBanRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 팀 변경 요청을 보냅니다.
+            let event = GameWorldRoomStateEvent::PlayerBan(packet.target);
+            let event = GameWorldEvent::RoomState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    /// [`RoomDuplicateOptChangeRequestPacket`]을 처리합니다.
+    fn handle_room_duplicate_opt_change_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomDuplicateOptChangeRequestPacket,
+    ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::DuplicateOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::DuplicateOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 팀 변경 요청을 보냅니다.
+            let event = GameWorldRoomStateEvent::ChangeDuplicateOption;
+            let event = GameWorldEvent::RoomState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
+            session.close();
+            return;
+        }
+    }
+
+    /// [`RoomDuplicateOptChangeRequestPacket`]을 처리합니다.
+    fn handle_room_unbalanced_opt_change_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: RoomUnbalancedOptChangeRequestPacket,
+    ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::UnBalanceOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::UnBalanceOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 커스텀 게임 대기실 객체를 가져옵니다.
+        if let Some(world) = self.world.upgrade() {
+            // 팀 변경 요청을 보냅니다.
+            let event = GameWorldRoomStateEvent::ChangeUnbalanceOption;
+            let event = GameWorldEvent::RoomState {
+                session: session.clone(),
+                uid: packet.uid,
+                event,
+            };
+            world.push_event(event);
+            self.request_delay_time = DELAY_TIME;
+        } else {
+            log::error!("{} accesses an invalid custom game", session);
             session.close();
             return;
         }
@@ -108,68 +336,116 @@ impl SessionRoomState {
 
 impl SessionState for SessionRoomState {
     fn on_resume(&mut self, _session: &Arc<Session>) {
-        self.is_running = true;
-    }
-
-    fn handle_event(&mut self, event: SessionEvents, session: &Arc<Session>) {
-        match event {
-            SessionEvents::EnterFormation => {
-                // 다음 세션 상태로 전환합니다.
-                self.is_running = false;
-                let next_state = Box::new(SessionFormationState::new(self.world.clone()));
-                let control_flow = SessionStateFlow::Push(next_state);
-                let event = SessionEvents::SetControlFlow(control_flow);
-                session.push_event(event);
-            }
-            _ => {
-                log::warn!("ignored >> unused session event (STATE:{:?})", &self);
-            }
-        }
-    }
-
-    fn handle_packets(&mut self, session: &Arc<Session>) {
-        while let Some(packet) = session.received_packets.pop() {
-            // 세션 상태가 실행 중이 아닌 경우 스킵합니다
-            // 취소된 패킷의 경우 스킵합니다.
-            if !self.is_running && session.packet_canceled() {
-                continue;
-            }
-
-            let packet_type = packet.packet_type();
-            match packet_type {
-                PacketType::CustomGameLeave => {
-                    self.handle_custom_game_leave_packet(session, packet);
-                }
-                PacketType::CustomGameReady => {
-                    self.handle_custom_game_ready_packet(session, packet);
-                }
-                PacketType::FormationSelect => {
-                    // FormationState에서 돌아온 후 뒤늦게 도착할수있음
-                }
-                _ => {
-                    log::warn!(
-                        "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
-                        &session,
-                        &self,
-                        &packet
-                    );
-                    session.close();
-                    return;
-                }
-            }
-        }
+        self.request_delay_time = 0.0;
+        self.packet_warn_count = 0;
     }
 
     fn on_exit(&mut self, session: &Arc<Session>) {
         // 커스텀 게임 대기실에서 플레이어를 제거합니다.
         if let Some(world) = self.world.upgrade() {
-            world.exit(session);
+            world.exit(self.uid, session.clone());
         }
     }
-}
 
-impl fmt::Debug for SessionRoomState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", stringify!(SessionRoomState))
+    fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::RoomLeaveNotify => {
+                let packet = match RoomLeaveNotifyPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_room_leave_notify_packet(session, packet);
+            }
+            PacketType::RoomReadyRequest => {
+                let packet = match RoomReadyRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_room_ready_request_packet(session, packet);
+            }
+            PacketType::TeamChangeRequest => {
+                let packet = match RoomTeamChangeRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_room_team_change_request_packet(session, packet);
+            }
+            PacketType::DuplicateOptChangeRequest => {
+                let packet = match RoomDuplicateOptChangeRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+                self.handle_room_duplicate_opt_change_request_packet(session, packet);
+            }
+            PacketType::UnBalanceOptChangeRequest => {
+                let packet = match RoomUnbalancedOptChangeRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_room_unbalanced_opt_change_request_packet(session, packet);
+            }
+            PacketType::RoomPlayerBanRequest => {
+                let packet = match RoomPlayerBanRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_room_player_ban_request_packet(session, packet);
+            }
+            PacketType::CharacterSelectRequest => { /* empty */ }
+            _ => {
+                log::warn!(
+                    "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
+                    &session,
+                    &self,
+                    &packet_type
+                );
+
+                // 유효하지 않은 패킷 경고 횟수를 증가시킵니다.
+                self.packet_warn_count += 1;
+                // 일정 횟수를 초과한 경우 세션을 종료시킵니다.
+                const MAX_WARN_COUNT: usize = 0;
+                if self.packet_warn_count > MAX_WARN_COUNT {
+                    log::info!("{} closed after exceeding warning limit.", &session);
+                    session.close();
+                }
+            }
+        }
+    }
+
+    fn on_advanced(&mut self, session: &Arc<Session>, elapsed_time_sec: f32) {
+        self.request_delay_time = (self.request_delay_time - elapsed_time_sec).max(0.0);
+        self.elapsed_time_sec += elapsed_time_sec;
+
+        const TICK: f32 = 1.0;
+        if self.elapsed_time_sec >= TICK {
+            self.elapsed_time_sec = 0.0;
+            if let Some(world) = self.world.upgrade() {
+                world.update_network_state(self.uid, session.clone(), session.network_state());
+            }
+        }
     }
 }

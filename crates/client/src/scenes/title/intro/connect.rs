@@ -14,7 +14,10 @@ use winit::window::Window;
 use crate::{
     asset::{TexturePool, TextureViewPool, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
+    scenes::{
+        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS,
+    },
     SERVER_TCP_ADDR,
 };
 
@@ -114,18 +117,10 @@ impl GameScene for GameIntroConnectScene {
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
-        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
-        let title = ERR_TITLE_TEXTS[i];
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
-            NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
-            NetworkError::IO(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
-                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.
@@ -137,26 +132,32 @@ impl GameScene for GameIntroConnectScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
-
-        // 폰트 속성
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let main_font_id = egui::FontId::new(18.0 * scale, main_font_family);
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 텍스트
-        let i = self.locale as usize;
-        let text = CONNECT_TEXTS[i];
+        let text = CONNECT_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(18.0 * scale, family);
         let connect_text = egui::RichText::new(text)
-            .font(main_font_id)
+            .font(font_id)
             .color(egui::Color32::BLACK);
+        let connect_label = egui::Label::new(connect_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
         egui::Area::new(egui::Id::new("Layout"))
-            .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -18.0 * scale])
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, (360.0 - 18.0) * scale])
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
                 ui.vertical_centered(|ui| {
-                    ui.label(connect_text);
+                    ui.add(connect_label);
                 })
             });
     }

@@ -1,6 +1,7 @@
 use std::{
-    fs::{self, File},
-    io::{self, ErrorKind, Read},
+    fmt,
+    fs::OpenOptions,
+    io::{self, ErrorKind, Read, Write},
     ops::Deref,
     path::Path,
 };
@@ -8,7 +9,7 @@ use std::{
 use ahash::{HashMap, HashSet};
 use lazy_static::lazy_static;
 use mod_app::etc::WindowSize;
-use mod_network::components::{GameInput, LoginToken, UserAccount, NUM_GAME_INPUTS};
+use mod_network::components::{GameInput, NUM_GAME_INPUTS};
 use serde::{Deserialize, Serialize};
 use spin::{Mutex, MutexGuard};
 use winit::{
@@ -26,43 +27,60 @@ pub const NUM_LOCALE: usize = 1;
 
 /// 애플리케이션 표시 언어 목록입니다.
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
+)]
 pub enum Locale {
     // ENG,
     // JPN,
+    #[default]
     KOR,
 }
 
-impl Default for Locale {
-    fn default() -> Self {
-        Self::KOR
+impl Locale {
+    /// 주어진 정수로 애플리케이션 표시 언어를 생성합니다.
+    ///
+    /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
+    ///
+    pub const fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Locale::KOR),
+            _ => None,
+        }
     }
 }
 
+impl fmt::Display for Locale {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Locale::KOR => "한국어",
+            }
+        )
+    }
+}
+
+/// 사용자 설정 파일 읽기/쓰기 오류 목록입니다.
 #[derive(Debug, thiserror::Error)]
-pub enum UserConfigError {
-    #[error("could not find user configuration file")]
+pub enum UserConfigIOError {
+    #[error("could not find user configuration file!")]
     NotFound,
 
     #[error("failed to open user configuration file! (REASON:{0})")]
     IO(#[from] io::Error),
 
-    #[error("invalid user configuration data file")]
-    InvalidData,
+    #[error("invalid user configuration format!")]
+    InvalidFormat(#[from] serde_json::Error),
+
+    #[error("some user configuration settings are missing!")]
+    MissionData,
 }
 
 /// 사용자 구성 데이터입니다.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct UserConfig {
-    /// 현재 사용자의 계정 데이터입니다.  
-    /// 사용자의 식별자가 `UserId::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
-    #[serde(skip)]
-    pub info: UserAccount,
-    /// 현재 사용자의 로그인 토큰입니다.  
-    /// 로그인 토큰이 `LoginToken::NULL`인 경우 클라이언트에서 로그인 하지 않았음을 의미합니다.
-    #[serde(skip)]
-    pub token: LoginToken,
-
     /// 애플리케이션 표시 언어입니다.
     pub locale: Locale,
     /// 애플리케이션 창의 크기입니다.
@@ -95,33 +113,46 @@ impl UserConfig {
     /// 파일에서 사용자 구성을 로드합니다.
     pub fn load_from_file<P: AsRef<Path>>(
         path: P,
-    ) -> Result<MutexGuard<'static, UserConfig>, UserConfigError> {
-        // 파일에서 데이터를 읽습니다.
-        let mut file = File::open(path).map_err(|e| {
-            if e.kind() == ErrorKind::NotFound {
-                log::warn!("could not find user configuration file.");
-                UserConfigError::NotFound
-            } else {
-                log::warn!("failed to open user configuration file! (REASON:{})", &e);
-                UserConfigError::IO(e)
+    ) -> Result<MutexGuard<'static, UserConfig>, UserConfigIOError> {
+        // 파일에서 엽니다.
+        let result = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .create(false)
+            .open(path);
+        let mut file = match result {
+            Ok(file) => file,
+            Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                    log::warn!("user configuration file not found!");
+                    return Err(UserConfigIOError::NotFound);
+                } else {
+                    log::error!("failed to open user configuration file! (REASON:{})", &e);
+                    return Err(UserConfigIOError::IO(e));
+                }
             }
-        })?;
+        };
+
+        // 파일 내용을 읽습니다.
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).map_err(|e| {
-            log::warn!("failed to read user configuration file! (REASON:{})", &e);
-            UserConfigError::IO(e)
+            log::error!("failed to read user configuration file! (REASON:{})", &e);
+            UserConfigIOError::IO(e)
         })?;
+
+        // 파일을 닫습니다.
+        drop(file);
 
         // 사용자 구성 파일을 구문 분석합니다.
         let mut config: Self = serde_json::from_slice(&buf).map_err(|e| {
-            log::warn!("failed to parse user configuration file! (REASON:{})", &e);
-            UserConfigError::InvalidData
+            log::warn!("failed to decode user configuration file! (REASON:{})", &e);
+            UserConfigIOError::InvalidFormat(e)
         })?;
 
         // 로드한 사용자 구성 데이터가 유효하지 않은지 확인합니다.
         if !config.check_pc_input_config() {
-            log::warn!("invalid user configuration data file");
-            return Err(UserConfigError::InvalidData);
+            log::warn!("some user configuration settings are missing!");
+            return Err(UserConfigIOError::MissionData);
         }
 
         // 로드한 사용자 구성 데이터를 저장합니다.
@@ -144,21 +175,31 @@ impl UserConfig {
     ///
     pub fn store_from_file<P: AsRef<Path>>(
         path: P,
-    ) -> Result<MutexGuard<'static, UserConfig>, UserConfigError> {
+    ) -> Result<MutexGuard<'static, UserConfig>, UserConfigIOError> {
         // 사용자 구성 데이터를 가져옵니다.
         let config = Self::get();
+
+        // 데이터를 JSON 포맷으로 인코딩합니다.
         let data = serde_json::to_vec_pretty(config.deref()).map_err(|e| {
-            log::warn!(
-                "failed to serialize user configuration data. (REASON:{})",
-                &e
-            );
-            UserConfigError::InvalidData
+            log::warn!("failed to encode user configuration data. (REASON:{})", &e);
+            UserConfigIOError::InvalidFormat(e)
         })?;
 
-        // 파일을 씁니다.
-        fs::write(path, data).map_err(|e| {
-            log::warn!("failed to write user configuration data. (REASON:{})", &e);
-            UserConfigError::IO(e)
+        // 파일을 엽니다.
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(|e| {
+                log::error!("failed to open user configuration file! (REASON:{})", &e);
+                UserConfigIOError::IO(e)
+            })?;
+
+        file.write_all(&data).map_err(|e| {
+            log::error!("failed to write user configuration data. (REASON:{})", &e);
+            UserConfigIOError::IO(e)
         })?;
 
         Ok(config)
@@ -219,8 +260,6 @@ impl UserConfig {
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
-            info: UserAccount::default(),
-            token: LoginToken::NULL,
             locale: Locale::KOR,
             window_size: WindowSize::MAX,
             is_fullscreen: true,
@@ -231,15 +270,11 @@ impl Default for UserConfig {
                 (GameInput::Right, (KeyCode::KeyD, KeyLocation::Standard)),
                 (GameInput::Forward, (KeyCode::KeyW, KeyLocation::Standard)),
                 (GameInput::Backward, (KeyCode::KeyS, KeyLocation::Standard)),
-                (GameInput::Skill, (KeyCode::KeyE, KeyLocation::Standard)),
-                (GameInput::ExSkill, (KeyCode::KeyQ, KeyLocation::Standard)),
+                (GameInput::Skill, (KeyCode::ShiftLeft, KeyLocation::Left)),
                 (GameInput::Jump, (KeyCode::Space, KeyLocation::Standard)),
                 (GameInput::Reload, (KeyCode::KeyR, KeyLocation::Standard)),
                 (GameInput::Status, (KeyCode::Tab, KeyLocation::Standard)),
-                (
-                    GameInput::Emotion,
-                    (KeyCode::ShiftLeft, KeyLocation::Standard),
-                ),
+                (GameInput::Emotion, (KeyCode::AltLeft, KeyLocation::Left)),
             ]),
             input_mouse_map: HashMap::from_iter([
                 (GameInput::Aiming, MouseButton::Right),
@@ -250,15 +285,11 @@ impl Default for UserConfig {
                 ((KeyCode::KeyD, KeyLocation::Standard), GameInput::Right),
                 ((KeyCode::KeyW, KeyLocation::Standard), GameInput::Forward),
                 ((KeyCode::KeyS, KeyLocation::Standard), GameInput::Backward),
-                ((KeyCode::KeyE, KeyLocation::Standard), GameInput::Skill),
-                ((KeyCode::KeyQ, KeyLocation::Standard), GameInput::ExSkill),
+                ((KeyCode::ShiftLeft, KeyLocation::Left), GameInput::Skill),
                 ((KeyCode::Space, KeyLocation::Standard), GameInput::Jump),
                 ((KeyCode::KeyR, KeyLocation::Standard), GameInput::Reload),
                 ((KeyCode::Tab, KeyLocation::Standard), GameInput::Status),
-                (
-                    (KeyCode::ShiftLeft, KeyLocation::Standard),
-                    GameInput::Emotion,
-                ),
+                ((KeyCode::AltLeft, KeyLocation::Left), GameInput::Emotion),
             ]),
             mouse_input_map: HashMap::from_iter([
                 (MouseButton::Right, GameInput::Aiming),

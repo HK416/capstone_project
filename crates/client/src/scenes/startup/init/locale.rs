@@ -92,9 +92,13 @@ impl GameScene for InitLocaleScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         // 폰트 속성
         let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
@@ -127,6 +131,8 @@ impl GameScene for InitLocaleScene {
         egui::Area::new(egui::Id::new("Locale_Layout"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(app.egui_ctx(), |ui| {
+                ui.shrink_clip_rect(clip_rect);
+
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                     ui.add_enabled_ui(!self.selected, |ui| {
                         // if ui.add(eng_btn).clicked() && !self.selected {

@@ -4,43 +4,62 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{
-    components::{Email, Passwd},
-    protocol::{LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket},
+use mod_network::protocol::{
+    LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket,
 };
-use winit::window::Window;
+use winit::{
+    event::Modifiers,
+    keyboard::{KeyCode, KeyLocation},
+    window::Window,
+};
 
 use crate::{
-    asset::NOTOSANS_REGULAR,
-    config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, MainLobbyEnterScene, BASE_WIDTH},
+    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    component::ButtonState,
+    config::{Locale, NUM_LOCALE},
+    scenes::{
+        FatalErrorSceneLayer, GameExitModalScene, LoginFailedModalScene, MainLobbyEnterScene,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        NEG_COLOR, NEG_FOCUS_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+    },
     SERVER_TCP_ADDR,
 };
 
-/// 애플리케이션 표시 언어에 따른 로그인 텍스트
-const LOGIN_TEXTS: [&'static str; NUM_LOCALE] = ["로그인"];
+/// 애플리케이션 표시 언어에 따른 타이틀 텍스트
+const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["로그인 방법 선택"];
+/// 애플리케이션 표시 언어에 따른 `로그인` 버튼 텍스트
+const LOGIN_TEXTS: [&'static str; NUM_LOCALE] = ["테스트 로그인"];
+/// 애플리케이션 표시 언어에 따른 `종료` 버튼 텍스트
+const EXIT_TEXTS: [&'static str; NUM_LOCALE] = ["게임 종료"];
 
 pub struct GameLoginModalScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
 
-    /// 계정 이메일
-    email: Email,
-    /// 계정 비밀번호
-    passwd: Passwd,
-
     /// 로그인 요청 여부
     requested: bool,
+
+    /// 로그인 버튼 상태
+    login_button_state: ButtonState,
+    /// 종료 버튼 상태
+    exit_button_state: ButtonState,
+    /// 입력 지연 시간입니다.
+    delay_time_sec: f32,
+
+    /// 텍스처 풀 객체
+    texture_pool: TexturePool,
 }
 
 impl GameLoginModalScene {
     /// 새로운 `GameLoginModalScene`을 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
         Self {
             locale,
-            email: Email::default(),
-            passwd: Passwd::default(),
             requested: false,
+            login_button_state: ButtonState::Idle,
+            exit_button_state: ButtonState::Idle,
+            delay_time_sec: 0.3,
+            texture_pool,
         }
     }
 }
@@ -52,18 +71,10 @@ impl GameScene for GameLoginModalScene {
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
-        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
-        let title = ERR_TITLE_TEXTS[i];
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
-            NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
-            NetworkError::IO(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
-                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.
@@ -78,21 +89,31 @@ impl GameScene for GameLoginModalScene {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::LoginFailed => {
-                self.requested = false;
-                // TODO 로그인 실패 처리
+                let packet = LoginFailedPacket::from_raw(packet);
+
+                // 다음 게임 장면으로 전환합니다.
+                let next_scene = Box::new(LoginFailedModalScene::new(
+                    self.locale,
+                    packet.reason,
+                    self.texture_pool.clone(),
+                ));
+                let scene_flow = GameSceneFlow::Change(next_scene);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
             }
             PacketType::LoginSuccess => {
                 // 사용자 정보와 로그인 토큰을 저장합니다.
                 let packet = LoginSuccessPacket::from_raw(packet);
-                let mut config = UserConfig::get();
-                config.info = packet.account;
-                config.token = packet.token;
-                drop(config);
 
                 // 다음 게임 장면으로 전환합니다.
                 let next_scene = Box::new(MainLobbyEnterScene::new(
                     self.locale,
-                    packet.account,
+                    packet.uid,
+                    packet.name,
+                    packet.tier,
+                    packet.profile_icon,
+                    &self.texture_pool,
                     packet.token,
                 ));
                 let scene_flow = GameSceneFlow::Reset(next_scene);
@@ -112,59 +133,161 @@ impl GameScene for GameLoginModalScene {
         None
     }
 
+    fn on_keyboard_released(
+        &mut self,
+        code: KeyCode,
+        _location: KeyLocation,
+        _modifiers: Modifiers,
+        repeat: bool,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> bool {
+        if !repeat && self.delay_time_sec <= 0.0 {
+            match code {
+                KeyCode::Escape => {
+                    // 게임 장면을 전환합니다.
+                    let next_scene = Box::new(GameExitModalScene::new(
+                        self.locale,
+                        self.texture_pool.clone(),
+                    ));
+                    let scene_flow = GameSceneFlow::Change(next_scene);
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+                }
+                _ => {}
+            }
+        }
+
+        true
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+        self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
+    }
+
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _height): (f32, f32) = window.inner_size().into();
+        let locale = self.locale as usize;
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
-        // 텍스트 속성
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        // 로그인 타이틀 텍스트
+        let text = TITLE_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(36.0 * scale, family);
+        let title_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+        let title_label = egui::Label::new(title_text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
-        // 텍스트
-        let i = self.locale as usize;
-        let text = LOGIN_TEXTS[i];
-        let login_btn_font = egui::FontId::new(24.0 * scale, main_font_family);
-        let login_btn_text = egui::RichText::new(text)
-            .font(login_btn_font)
-            .color(egui::Color32::BLACK);
+        // 로그인 버튼 텍스트
+        let text = LOGIN_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
+        let login_btn_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
 
-        // 버튼
+        // 로그인 버튼
+        let (bg_color, line_color) = match self.login_button_state {
+            ButtonState::Idle => (NORM_COLOR, egui::Color32::BLACK),
+            ButtonState::Hovered => (NORM_FOCUS_COLOR, egui::Color32::BLACK),
+            ButtonState::Pressed | ButtonState::Clicked => (NORM_EXP_COLOR, egui::Color32::BLACK),
+        };
         let login_button = egui::Button::new(login_btn_text)
-            .fill(egui::Color32::LIGHT_GRAY)
-            .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK));
+            .sense(egui::Sense::all())
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
+            .min_size((512.0 * scale, 72.0 * scale).into())
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
+
+        // 종료 버튼 텍스트
+        let text = EXIT_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0 * scale, family);
+        let login_btn_text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+
+        // 종료 버튼
+        let (bg_color, line_color) = match self.exit_button_state {
+            ButtonState::Idle => (NEG_COLOR, egui::Color32::TRANSPARENT),
+            ButtonState::Hovered => (NEG_COLOR, NEG_FOCUS_COLOR),
+            ButtonState::Pressed | ButtonState::Clicked => (NEG_FOCUS_COLOR, NEG_FOCUS_COLOR),
+        };
+        let exit_button = egui::Button::new(login_btn_text)
+            .sense(egui::Sense::all())
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
+            .min_size((512.0 * scale, 72.0 * scale).into())
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
         let frame = egui::Frame::new()
             .fill(egui::Color32::WHITE)
-            .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0, egui::Color32::BLACK));
+            .corner_radius(20.0 * scale)
+            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
         egui::Modal::new(egui::Id::new("Login_Modal"))
             .frame(frame)
+            .backdrop_color(egui::Color32::from_black_alpha(96))
             .show(app.egui_ctx(), |ui| {
-                ui.set_width(640.0 * scale);
-                ui.set_height(480.0 * scale);
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_width(640.0 * scale);
+                ui.set_max_width(640.0 * scale);
 
                 ui.vertical_centered(|ui| {
-                    ui.with_layout(
-                        egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                        |ui| {
-                            ui.add_enabled_ui(!self.requested, |ui| {
-                                ui.set_width(128.0 * scale);
-                                ui.set_height(96.0 * scale);
-                                if ui.add(login_button).clicked() {
-                                    self.requested = true;
+                    ui.add_space(8.0 * scale);
+                    ui.add(title_label);
+                    ui.separator();
 
-                                    // 로그인 요청 패킷을 생성합니다.
-                                    let packet = LoginRequestPacket::new(self.email, self.passwd);
+                    ui.add_space(8.0 * scale);
+                    ui.add_enabled_ui(!self.requested, |ui| {
+                        // 로그인 버튼
+                        let response = ui.add(login_button);
+                        if response.clicked() && self.delay_time_sec <= 0.0 {
+                            self.login_button_state = ButtonState::Clicked;
+                            self.requested = true;
 
-                                    // 패킷을 게임 서버에 전송합니다.
-                                    let net_manager = app.net_manager();
-                                    let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-                                    socket.push_packet(packet.as_raw());
-                                }
-                            });
-                        },
-                    );
+                            // 로그인 요청 패킷을 생성합니다.
+                            let packet = LoginRequestPacket::new();
+
+                            // 패킷을 게임 서버에 전송합니다.
+                            let net_manager = app.net_manager();
+                            let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+                        } else if response.is_pointer_button_down_on() {
+                            self.login_button_state = ButtonState::Pressed;
+                        } else if response.hovered() | response.has_focus() {
+                            self.login_button_state = ButtonState::Hovered;
+                        } else {
+                            self.login_button_state = ButtonState::Idle;
+                        }
+
+                        ui.add_space(4.0 * scale);
+
+                        // 종료 버튼
+                        let response = ui.add(exit_button);
+                        if response.clicked() && self.delay_time_sec <= 0.0 {
+                            self.exit_button_state = ButtonState::Clicked;
+
+                            // 게임 장면을 전환합니다.
+                            let next_scene = Box::new(GameExitModalScene::new(
+                                self.locale,
+                                self.texture_pool.clone(),
+                            ));
+                            let scene_flow = GameSceneFlow::Change(next_scene);
+                            let event = AppEvent::AddGameSceneFlow(scene_flow);
+                            let event_loop_proxy = app.event_loop_proxy();
+                            event_loop_proxy.send_event(event).unwrap();
+                        } else if response.is_pointer_button_down_on() {
+                            self.exit_button_state = ButtonState::Pressed;
+                        } else if response.hovered() | response.has_focus() {
+                            self.exit_button_state = ButtonState::Hovered;
+                        } else {
+                            self.exit_button_state = ButtonState::Idle;
+                        }
+                    });
+                    ui.add_space(18.0 * scale);
                 });
             });
     }

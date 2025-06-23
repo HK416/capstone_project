@@ -13,9 +13,9 @@ default-run = "client"
 name = "client"
 path = "src/main.rs"
 
-[[bin]]
-name = "shadow_tool"
-path = "src/shadow_tool.rs"
+# [[bin]]
+# name = "shadow_tool"
+# path = "src/shadow_tool.rs"
 
 
 [dependencies]
@@ -27,6 +27,7 @@ constcat = { workspace = true }
 dashmap = { workspace = true }
 egui = { workspace = true }
 glam = { workspace = true }
+half = { workspace = true }
 hecs = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }

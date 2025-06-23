@@ -9,8 +9,11 @@ use winit::window::Window;
 
 use crate::{
     asset::{TexturePool, TextureViewPool},
-    config::{Locale, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, GameLoginTitleScene},
+    config::Locale,
+    scenes::{
+        FatalErrorSceneLayer, GameLoginTitleScene, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS,
+    },
 };
 
 /// 게임 인트로 화면을 보여주는 장면입니다.  
@@ -57,18 +60,10 @@ impl GameScene for GameIntroVerifyScene {
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
-        const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["네트워크 연결 오류"];
-        let title = ERR_TITLE_TEXTS[i];
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
-            NetworkError::ClosedSocket(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["서버와 연결이 끊어졌습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
-            NetworkError::IO(_) => {
-                const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] =
-                    ["패킷을 읽는 도중 오류가 발생했습니다!"];
-                ERR_MSG_TEXTS[i]
-            }
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.

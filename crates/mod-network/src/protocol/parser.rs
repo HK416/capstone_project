@@ -41,12 +41,12 @@ impl PacketParser {
             }
 
             let mut size = PacketSize::from_be_bytes([data[0], data[1]]) as usize; // size가 변하면 이 코드 수정
-            
+
             if len < size {
                 self.queue.push_back(Parsed::Incomplete(data));
                 break;
             }
-            
+
             if size == 0 {
                 // size가 0이면 패킷이 없으므로 버림
                 size = size_of::<PacketSize>();

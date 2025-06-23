@@ -1,72 +1,11 @@
-use crate::components::{BigEndian, CharacterKind, ObjectId, TryFromBigEndian, UserId};
+//! 인게임 단계에서 총알 오브젝트 데이터 갱신과 관련된 코드를 관리합니다.
+//!
 
-/// 총알 모델의 수 입니다.
-pub const NUM_BULLETS: usize = 2;
+use crate::components::{BigEndian, BulletKind, ObjectId, TryFromBigEndian, UserId};
 
-/// 총알 모델 종류입니다.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BulletKind {
-    Common = 0,
-    ArisOriginal = 1,
-}
-
-impl BulletKind {
-    /// 주어진 정수로 `BulletKind`를 생성합니다.
-    /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
-    pub fn new(val: u8) -> Option<Self> {
-        match val {
-            0 => Some(Self::Common),
-            1 => Some(Self::ArisOriginal),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(BulletKind),
-                    val
-                );
-                None
-            }
-        }
-    }
-}
-
-impl BigEndian for BulletKind {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self::try_from_big_endian_bytes(bytes).expect("out of bounds")
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        let index = *self as u8;
-        index.to_big_endian_bytes()
-    }
-}
-
-impl Default for BulletKind {
-    fn default() -> Self {
-        Self::Common
-    }
-}
-
-impl From<CharacterKind> for BulletKind {
-    fn from(value: CharacterKind) -> Self {
-        match value {
-            CharacterKind::ArisOriginal => BulletKind::ArisOriginal,
-            CharacterKind::MomoiOriginal => BulletKind::Common,
-            CharacterKind::MidoriOriginal => BulletKind::Common,
-            CharacterKind::YuukaOriginal => BulletKind::Common,
-        }
-    }
-}
-
-impl TryFromBigEndian for BulletKind {
-    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        Self::new(u8::from_big_endian_bytes(bytes))
-    }
-}
-
-/// 서버에서 클라이언트로 총알 정보를 보내는데 사용되는 구조체
+/// 인게임 총알 오브젝트 갱신 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Bullet {
+pub struct InGameBulletPullData {
     /// 총알의 오브젝트 식별자
     pub object_id: ObjectId,
     /// 총알을 발사한 클라이언트 식별자
@@ -83,15 +22,15 @@ pub struct Bullet {
     pub remaining_distance: f32,
 }
 
-impl BigEndian for Bullet {
+impl BigEndian for InGameBulletPullData {
     fn byte_size() -> usize {
-        ObjectId::byte_size()
-            + UserId::byte_size()
-            + BulletKind::byte_size()
-            + <[f32; 3]>::byte_size()
-            + <[f32; 4]>::byte_size()
-            + <[f32; 3]>::byte_size()
-            + f32::byte_size()
+        ObjectId::byte_size()    // 4byte
+            + UserId::byte_size()    // 8byte
+            + BulletKind::byte_size()    // 9byte
+            + <[f32; 3]>::byte_size()    // 21byte
+            + <[f32; 4]>::byte_size()    // 37byte
+            + <[f32; 3]>::byte_size()    // 49byte
+            + f32::byte_size() // 53byte
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -99,6 +38,7 @@ impl BigEndian for Bullet {
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
+        // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.object_id.to_big_endian_bytes());
         bytes.extend_from_slice(&self.shooter_id.to_big_endian_bytes());
@@ -108,13 +48,13 @@ impl BigEndian for Bullet {
         bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
         bytes.extend_from_slice(&self.remaining_distance.to_big_endian_bytes());
 
-        // 바이트 배열 유효성 검증
+        // 바이트 배열 유효성을 검증합니다.
         if cfg!(feature = "check-validation") {
             assert_eq!(
                 bytes.len(),
                 Self::byte_size(),
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(Bullet)
+                stringify!(InGameBulletData)
             );
         }
 
@@ -122,30 +62,17 @@ impl BigEndian for Bullet {
     }
 }
 
-impl Default for Bullet {
-    fn default() -> Self {
-        // object_id, shooter_id의 기본 값은 NULL이어야 합니다.
-        Self {
-            object_id: ObjectId::default(),
-            shooter_id: UserId::default(),
-            bullet_kind: BulletKind::default(),
-            translation: [0.0, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            velocity: [0.0, 0.0, 0.0],
-            remaining_distance: 0.0,
-        }
-    }
-}
-
-impl TryFromBigEndian for Bullet {
+impl TryFromBigEndian for InGameBulletPullData {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
-        // 바이트 배열의 크기가 다른지 확인한다.
-        assert_eq!(
-            bytes.len(),
-            Self::byte_size(),
-            "the size of the byte array and the size of the `{}` are different!",
-            stringify!(Bullet)
-        );
+        // 바이트 배열의 크기가 다른지 확인합니다.
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                bytes.len(),
+                Self::byte_size(),
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(InGameBulletData)
+            )
+        };
 
         // 오브젝트 식별자를 가져옵니다.
         let mut offset = 0;
@@ -224,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_bullet() {
-        let origin = Bullet {
+        let origin = InGameBulletPullData {
             object_id: ObjectId::new(3141592),
             shooter_id: UserId::new(577888),
             bullet_kind: BulletKind::Common,
@@ -232,14 +159,11 @@ mod tests {
             rotation: [0.1234, 1.99992, 0.08843, 1.0],
             velocity: [0.0, -0.1334, 0.5887],
             remaining_distance: 700.0,
-            ..Default::default()
         };
         let bytes = origin.to_big_endian_bytes();
-        let other = Bullet::from_big_endian_bytes(&bytes);
+        let other = InGameBulletPullData::from_big_endian_bytes(&bytes);
 
-        // 바이트 배열 크기가 같은지 확인
-        assert_eq!(Bullet::byte_size(), bytes.len());
-        // 원본과 일치하는지 확인
+        // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);
     }
 }

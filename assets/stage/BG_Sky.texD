@@ -1,0 +1,14 @@
+{
+    "uri": "BG_Sky",
+    "width": 512,
+    "height": 512,
+    "depth_or_array_layers": 6,
+    "mip_level_count": 10,
+    "sample_count": 1,
+    "format": "Bc7RgbaUnorm",
+    "dimension": "Cube",
+    "address_u": "ClampToEdge",
+    "address_v": "ClampToEdge",
+    "address_w": "ClampToEdge",
+    "filter_mode": "Linear"
+}

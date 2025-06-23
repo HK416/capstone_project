@@ -2,7 +2,7 @@ use core::f32;
 use std::{fs::OpenOptions, io::Read, path::PathBuf};
 
 use hecs::Entity;
-use mod_network::components::{StageHeight, StageLayoutData};
+use mod_network::components::{StageLayoutAreaHeight, StageLayoutAttributes};
 use mod_physics::{collision::ColliderTree, object3d::Sphere};
 
 use super::AssetError;
@@ -12,7 +12,7 @@ use super::AssetError;
 struct AreaAttribute {
     translation: glam::Vec3A,
     inv_transform: glam::Mat4,
-    height_map: StageHeight,
+    height_map: StageLayoutAreaHeight,
 }
 
 /// 스테이지의 속성 데이터입니다.
@@ -75,7 +75,7 @@ impl StageAttributes {
         drop(file);
 
         log::debug!("encode stage layout asset (PATH:{})", path.display());
-        let layout: StageLayoutData = serde_json::from_slice(&buf).map_err(|e| {
+        let layout: Box<StageLayoutAttributes> = serde_json::from_slice(&buf).map_err(|e| {
             log::error!(
                 "failed to encode stage layout asset (PATH:{}, REASON:{})",
                 path.display(),
@@ -136,14 +136,15 @@ impl StageAttributes {
                 drop(file);
 
                 log::debug!("encode height map asset (PATH:{})", path.display());
-                let height_map: StageHeight = serde_json::from_slice(&buf).map_err(|e| {
-                    log::error!(
-                        "failed to encode height map asset (PATH:{}, REASON:{})",
-                        path.display(),
-                        &e
-                    );
-                    AssetError::ParsingFailed(e)
-                })?;
+                let height_map: StageLayoutAreaHeight =
+                    serde_json::from_slice(&buf).map_err(|e| {
+                        log::error!(
+                            "failed to encode height map asset (PATH:{}, REASON:{})",
+                            path.display(),
+                            &e
+                        );
+                        AssetError::ParsingFailed(e)
+                    })?;
 
                 area[i][j] = Some(AreaAttribute {
                     translation: data.translation.into(),

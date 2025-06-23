@@ -2,12 +2,12 @@ use std::{fs::File, io::Read};
 
 use ahash::HashMap;
 use lazy_static::lazy_static;
-use mod_network::components::{CharacterAttributes, CharacterKind, NUM_CHARACTERS};
+use mod_network::components::{CharacterAttributes, CharacterKind};
 
 use crate::data::get_current_path;
 
 const ROOT_WORKSPACE: &'static str = "server_data/characters";
-const CHARACTERS: [(CharacterKind, &'static str); NUM_CHARACTERS] = [
+const CHARACTERS: [(CharacterKind, &'static str); 4] = [
     (CharacterKind::ArisOriginal, "aris_original"),
     (CharacterKind::MomoiOriginal, "momoi_original"),
     (CharacterKind::MidoriOriginal, "midori_original"),
@@ -62,7 +62,7 @@ fn load_character_attribute(path: &str) -> CharacterAttributes {
         .expect("캐릭터 속성 데이터 파일 구문 분석에 실패했습니다!");
 
     assert_ne!(
-        attribute.health_point, 0,
+        attribute.max_health_point, 0,
         "캐릭터의 최대 체력은 0이 될 수 없습니다!"
     );
 

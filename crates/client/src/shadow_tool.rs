@@ -21,7 +21,7 @@ use component::{
 };
 use hecs::{Entity, World};
 use image::{GrayImage, Luma};
-use mod_network::components::{StageKind, StageLayoutData};
+use mod_network::components::{StageKind, StageLayoutAttributes};
 use mod_render::init_wgpu;
 
 mod asset;
@@ -368,7 +368,7 @@ fn main() {
     println!("완료!");
 }
 
-fn load_stage_layout_from_file<Dir, Uri>(workspace: Dir, uri: Uri) -> StageLayoutData
+fn load_stage_layout_from_file<Dir, Uri>(workspace: Dir, uri: Uri) -> StageLayoutAttributes
 where
     Dir: AsRef<Path>,
     Uri: AsRef<str>,

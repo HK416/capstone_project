@@ -52,6 +52,10 @@ egui-winit = "0.31"
 # License: MIT OR Apache-2.0
 glam = { version = "0.30", features = ["bytemuck", "rand"] }
 
+# Half-precision floating point f16 and bf16 types for Rust implementing the IEEE 754-2008 standard binary16 and bfloat16 types.
+# License: MIT OR Apache-2.0
+half = "2.6"
+
 # A fast, minimal, and ergonomic entity-component-system library
 # License: MIT OR Apache-2.0
 hecs = "0.10"

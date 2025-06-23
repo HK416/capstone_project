@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use winit::{dpi::PhysicalSize, monitor::MonitorHandle};
+use winit::dpi::PhysicalSize;
 
 /// ## No Suitable Window Size Error
 /// 적합한 윈도우 크기를 찾지 못한 경우 발생하는 오류입니다.
@@ -37,14 +37,12 @@ impl WindowSize {
 
     /// 현재 시스템에서 사용가능한 최대 창 크기를 반환합니다.  
     /// 출력 장치가 없거나, 출력 장치의 창 크기가 호환되지 않는 경우 `None`을 반환합니다.
-    pub fn find_maximize_size(monitor: MonitorHandle) -> Option<WindowSize> {
-        let px_size = monitor.size();
-
+    pub fn find_maximize_size(screen_size: PhysicalSize<u32>) -> Option<WindowSize> {
         // 가장 큰 창 크기부터 모니터의 물리적 창 크기보다 작은지 확인합니다.
         let mut target = Some(WindowSize::MAX);
         while let Some(dpi) = target {
             let dpi_size = dpi.size();
-            if dpi_size.width <= px_size.width && dpi_size.height <= px_size.height {
+            if dpi_size.width <= screen_size.width && dpi_size.height <= screen_size.height {
                 return target;
             }
             target = dpi.downgrade();
@@ -109,6 +107,23 @@ impl WindowSize {
             WindowSize::W3840H2160 => (3840, 2160),
         }
         .into()
+    }
+
+    pub const fn aspect_ratio(self) -> f32 {
+        match self {
+            WindowSize::W960H540 => 960.0 / 540.0,
+            WindowSize::W1024H576 => 1024.0 / 576.0,
+            WindowSize::W1152H648 => 1152.0 / 648.0,
+            WindowSize::W1280H720 => 1280.0 / 720.0,
+            WindowSize::W1366H768 => 1366.0 / 768.0,
+            WindowSize::W1600H900 => 1600.0 / 900.0,
+            WindowSize::W1920H1080 => 1920.0 / 1080.0,
+            WindowSize::W2048H1152 => 2048.0 / 1152.0,
+            WindowSize::W2560H1440 => 2560.0 / 1440.0,
+            WindowSize::W2880H1620 => 2880.0 / 1620.0,
+            WindowSize::W3200H1800 => 3200.0 / 1800.0,
+            WindowSize::W3840H2160 => 3840.0 / 2160.0,
+        }
     }
 }
 

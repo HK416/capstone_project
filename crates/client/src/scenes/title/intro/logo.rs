@@ -9,6 +9,7 @@ use winit::window::Window;
 use crate::{
     asset::{TexturePool, TextureViewPool, GAME_LOGO_URI},
     config::Locale,
+    scenes::BASE_WIDTH,
 };
 
 use super::GameIntroConnectScene;
@@ -133,29 +134,33 @@ impl GameScene for GameIntroLogoScene {
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, height): (f32, f32) = window.inner_size().into();
+        let viewport = app.viewport();
         let scale_factor = window.scale_factor() as f32;
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
 
         let ratio = self.game_logo_texture_id.size.x / self.game_logo_texture_id.size.y;
-        let center_x = width * 0.5;
-        let center_y = height * 0.5;
-        let img_width = width * 0.3;
-        let img_height = img_width / ratio;
-        let rect = egui::Rect {
-            min: egui::pos2(
-                (center_x - 0.5 * img_width) / scale_factor,
-                (center_y - 0.5 * img_height) / scale_factor,
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(
+                clip_rect.min.x + (1280.0 - 512.0) * 0.5 * scale,
+                clip_rect.min.y + (720.0 - 512.0 / ratio) * 0.5 * scale,
             ),
-            max: egui::pos2(
-                (center_x + 0.5 * img_width) / scale_factor,
-                (center_y + 0.5 * img_height) / scale_factor,
+            egui::pos2(
+                clip_rect.min.x + (1280.0 + 512.0) * 0.5 * scale,
+                clip_rect.min.y + (720.0 + 512.0 / ratio) * 0.5 * scale,
             ),
-        };
+        );
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new())
             .show(app.egui_ctx(), |ui| {
-                egui::Image::new(self.game_logo_texture_id).paint_at(ui, rect);
+                ui.shrink_clip_rect(clip_rect);
+                egui::Image::new(self.game_logo_texture_id)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, rect);
             });
     }
 }

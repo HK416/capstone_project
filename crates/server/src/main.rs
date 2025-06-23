@@ -13,7 +13,9 @@ use mod_network::{addr::Addr, protocol::RawPacket};
 use mod_parallelism::collections::Queue;
 use session::{Session, SessionManager, handle_connection};
 use tokio::net::{TcpListener, UdpSocket};
+use tracing::level_filters::LevelFilter;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
+use tracing_subscriber::EnvFilter;
 use world::GameWorldPool;
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
@@ -50,11 +52,6 @@ pub async fn run_server(addr: &str) {
 
     // 클라이언트 연결 관리
     wait_for_players(listener, udp_sender).await;
-
-    // 게임 월드 업데이트
-    // TODO: 나중에 여러 개의 게임 월드를 실행해야함.
-    // let world = GameWorld::get_instance();
-    // update_game_world(world).await;
 }
 
 /// UDP 통신으로 수신된 패킷을 각 세션에 전달하는 루프 함수입니다.
@@ -76,7 +73,7 @@ async fn udp_packet_receive_loop(socket: Arc<UdpSocket>) {
                         // 3. SESSIONS에 클라이언트 주소에 해당하는 세션이 존재할 경우
                         //    - 해당 세션으로 RawPacket을 전송한다.
                         if let Some(session) = SessionManager::get(&addr) {
-                            session.push_received_packet(packet);
+                            session.add_received_packet(packet);
                         }
                     }
                     Err(e) => {
@@ -202,7 +199,6 @@ fn main() {
     }
 
     println!("num_threads: {}", num_threads);
-
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_threads)
         .enable_all()
@@ -216,21 +212,36 @@ fn main() {
 /// # Note
 /// 반환되는 `WorkerGuard`를 유지해야 로그가 정상적으로 저장됩니다.
 ///
-fn init_log_system() -> WorkerGuard {
+fn init_log_system() -> Option<WorkerGuard> {
+    #[cfg(feature = "console")]
+    {
+        use console_subscriber;
+        console_subscriber::init();
+        return None;
+    }
+
     // 현재 실행 파일의 디렉토리 경로에 로그 디렉토리 경로를 생성합니다.
     let mut dir = get_current_path().to_path_buf();
     dir.push("logs");
 
     // 매 시간 마다 새 파일을 생성하는 로그 시스템을 생성합니다.
-    let file_appender = rolling::hourly(dir, "service_log");
+    let formatted = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let file_name = format!("service_log-{}", formatted);
+    let file_appender = rolling::hourly(dir, file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
+    // 로그에 남길 오류 수준을 설정합니다.
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::DEBUG.into())
+        .from_env_lossy();
+
+    // 로그 시스템을 초기화합니다.
     tracing_subscriber::fmt()
+        .with_env_filter(filter)
         .with_ansi(false)
-        .with_thread_ids(true)
-        .with_thread_names(true)
         .with_writer(non_blocking)
+        .with_thread_names(true)
         .init();
 
-    guard
+    Some(guard)
 }

@@ -1,14 +1,16 @@
 mod locale;
 mod window;
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering as MemOrdering},
-    Arc,
+use std::{
+    path::Path,
+    sync::{
+        atomic::{AtomicBool, Ordering as MemOrdering},
+        Arc,
+    },
 };
 
 use mod_app::{
     app::AppHandle,
-    asset::AssetManager,
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
@@ -51,13 +53,11 @@ impl InitFinishScene {
     }
 
     /// 사용자 구성을 저장합니다.
-    fn store_user_config(&self, thread_pool: &ThreadPool, asset_manager: &AssetManager) {
-        let asset_manager = asset_manager.clone();
+    fn store_user_config(&self, thread_pool: &ThreadPool, path: &Path) {
         let completed = self.completed.clone();
+        let mut path = path.to_path_buf();
+        path.push(format!("assets/{}", USER_CONFIG));
         thread_pool.spawn(move || {
-            let mut path = asset_manager.get_root_dir().to_path_buf();
-            path.push(USER_CONFIG);
-
             let _ = UserConfig::store_from_file(path);
             completed.store(true, MemOrdering::Release);
         });
@@ -66,7 +66,7 @@ impl InitFinishScene {
 
 impl GameScene for InitFinishScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
-        self.store_user_config(app.io_threads(), app.asset_manager());
+        self.store_user_config(app.io_threads(), app.current_dir());
     }
 
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
@@ -107,16 +107,13 @@ impl GameScene for InitFinishScene {
     }
 
     fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
-        // 폰트 속성
-        let font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        let font_id = egui::FontId::new(24.0, font_family);
-        let font_color = egui::Color32::WHITE;
-
         // 텍스트
         let text = LOAD_TEXTS[self.locale as usize];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(24.0, family);
         let loading_text = egui::RichText::new(text)
             .font(font_id.clone())
-            .color(font_color.clone());
+            .color(egui::Color32::WHITE);
 
         egui::Area::new(egui::Id::new("Layout_Loading"))
             .anchor(egui::Align2::RIGHT_BOTTOM, [0.0, 0.0])

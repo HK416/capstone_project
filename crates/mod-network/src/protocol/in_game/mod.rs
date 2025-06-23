@@ -1,9 +1,6 @@
-mod damage;
-mod enter;
-mod finish;
-mod prepare;
-mod pull;
-mod push;
-mod sync;
+//! 클라이언트가 인게임 장면에 있을 때 사용되는 패킷을 관리합니다.
+//!
 
-pub use self::{damage::*, enter::*, finish::*, prepare::*, pull::*, push::*, sync::*};
+mod ready;
+
+pub use self::ready::*;

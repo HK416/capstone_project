@@ -1,25 +1,31 @@
+//! 클라이언트가 커스텀 게임 대기실 장면에 있을 때 게임 떠남 알림 패킷과 관련된 코드를 관리합니다.
+//!
+
 use crate::{
     components::{BigEndian, LoginToken, UserId},
     protocol::{Packet, PacketType, RawPacket},
 };
 
-/// 클라이언트가 서버로 보내는 커스텀 게임 대기실 나가기 알림 패킷입니다.
+/// 클라이언트에서 서버로 보내는 커스텀 게임 떠남 알림 패킷입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CustomGameLeavePacket {
-    pub user_id: UserId,
+pub struct RoomLeaveNotifyPacket {
+    /// 사용자 식별자
+    pub uid: UserId,
+
+    /// 로그인 토큰
     pub token: LoginToken,
 }
 
-impl CustomGameLeavePacket {
+impl RoomLeaveNotifyPacket {
     /// 새로운 패킷을 생성합니다.
-    pub fn new(user_id: UserId, token: LoginToken) -> Self {
-        Self { user_id, token }
+    pub const fn new(uid: UserId, token: LoginToken) -> Self {
+        Self { uid, token }
     }
 }
 
-impl Packet for CustomGameLeavePacket {
+impl Packet for RoomLeaveNotifyPacket {
     fn packet_type() -> PacketType {
-        PacketType::CustomGameLeave
+        PacketType::RoomLeaveNotify
     }
 
     fn as_raw(&self) -> RawPacket {
@@ -27,7 +33,7 @@ impl Packet for CustomGameLeavePacket {
 
         // 바이트 스트림을 생성합니다.
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.user_id.to_big_endian_bytes());
+        data.extend_from_slice(&self.uid.to_big_endian_bytes());
         data.extend_from_slice(&self.token.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
@@ -36,17 +42,17 @@ impl Packet for CustomGameLeavePacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(CustomGameLeavePacket)
+                stringify!(RoomLeaveNotifyPacket)
             );
         }
 
-        RawPacket::new(Self::packet_type(), &data)
+        RawPacket::new(Self::packet_type(), data)
     }
 
     fn try_from_raw(raw: RawPacket) -> Option<Self> {
         // 패킷 종류가 일치하는지 확인합니다.
         if raw.packet_type() != Self::packet_type() {
-            log::warn!(
+            log::error!(
                 "invalid packet type. (RAW:{:?}, PACKET:{:?})",
                 raw.packet_type(),
                 Self::packet_type(),
@@ -59,14 +65,14 @@ impl Packet for CustomGameLeavePacket {
         let mut offset = 0;
         let mut size = UserId::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let user_id = UserId::from_big_endian_bytes(data);
+        let uid = UserId::from_big_endian_bytes(data);
 
         offset = offset + size;
         size = LoginToken::byte_size();
         data = &bytes[offset..offset + size];
         let token = LoginToken::from_big_endian_bytes(data);
 
-        Some(Self { user_id, token })
+        Some(Self { uid, token })
     }
 }
 
@@ -75,15 +81,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_custom_game_leave_packet() {
-        let user_id = UserId::new(851351);
-        let token = LoginToken::new(501859034151);
-
-        let origin = CustomGameLeavePacket::new(user_id, token);
+    fn test_room_leave_notify_packet() {
+        let origin = RoomLeaveNotifyPacket::new(UserId::new(851351), LoginToken::new(501859034151));
         let raw = origin.as_raw();
-        let other = CustomGameLeavePacket::from_raw(raw);
+        let other = RoomLeaveNotifyPacket::from_raw(raw);
 
-        // 원본과 일치하는지 확인
+        // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);
     }
 }

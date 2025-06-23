@@ -3,7 +3,7 @@
 use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path};
 
 use hecs::{Entity, EntityBuilder, World};
-use mod_network::components::{StageAreaData, StageLayoutData, StagePropData};
+use mod_network::components::{StageLayoutAreaData, StageLayoutAttributes, StageLayoutPropData};
 use mod_physics::object3d::Sphere;
 
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
 pub fn load_stage_layout_from_file<Dir, Uri>(
     workspace: Dir,
     uri: Uri,
-) -> Result<StageLayoutData, AssetError>
+) -> Result<StageLayoutAttributes, AssetError>
 where
     Dir: AsRef<Path>,
     Uri: AsRef<str>,
@@ -76,7 +76,7 @@ pub fn build_stage(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    layout: &StageLayoutData,
+    layout: &StageLayoutAttributes,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -121,7 +121,7 @@ fn build_stage_area(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    area_data: &StageAreaData,
+    area_data: &StageLayoutAreaData,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -145,7 +145,7 @@ fn build_stage_prop(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    prop_data: &StagePropData,
+    prop_data: &StageLayoutPropData,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -206,7 +206,7 @@ pub fn spawn_stage_area(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    data: &StageAreaData,
+    data: &StageLayoutAreaData,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -262,7 +262,7 @@ fn spawn_stage_prop(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    data: &StagePropData,
+    data: &StageLayoutPropData,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,

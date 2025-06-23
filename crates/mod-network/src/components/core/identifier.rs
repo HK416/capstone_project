@@ -57,7 +57,7 @@ impl UserId {
     }
 
     /// 내부 정수 값을 반환합니다.
-    pub fn into_inner(self) -> u32 {
+    pub const fn into_inner(self) -> u32 {
         self.0
     }
 }

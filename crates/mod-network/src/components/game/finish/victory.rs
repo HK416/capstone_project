@@ -3,6 +3,7 @@
 
 use crate::components::{BigEndian, TryFromBigEndian};
 
+/// 승리 유형입니다.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum VictoryType {
@@ -19,14 +20,7 @@ impl VictoryType {
         match val {
             0 => Some(VictoryType::DefaultWin),
             1 => Some(VictoryType::JudgmentWin),
-            _ => {
-                log::error!(
-                    "the value is out of range for `{}`, (VALUE:{})",
-                    stringify!(VictoryType),
-                    val
-                );
-                None
-            }
+            _ => None,
         }
     }
 }
@@ -51,12 +45,14 @@ impl Default for VictoryType {
 impl TryFromBigEndian for VictoryType {
     fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
         // 바이트 배열의 크기가 다른지 확인한다.
-        assert_eq!(
-            bytes.len(),
-            Self::byte_size(),
-            "the size of the byte array and the size of the `{}` are different!",
-            stringify!(VictoryType),
-        );
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                bytes.len(),
+                Self::byte_size(),
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(VictoryType),
+            )
+        };
 
         Self::new(u8::from_big_endian_bytes(bytes))
     }

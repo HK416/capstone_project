@@ -12,6 +12,7 @@ publish.workspace = true
 [dependencies]
 ahash = { workspace = true }
 bitflags = { workspace = true }
+bytemuck = { workspace = true }
 dashmap = { workspace = true }
 egui = { workspace = true }
 egui-winit = { workspace = true }
@@ -64,7 +65,9 @@ pollster = "0.4"
 default = ["dev"]
 
 # 개발자 옵션
-dev = ["command-line-args"]
+dev = ["command-line-args", "enable-shader-validation"]
 
 # 명령줄 인수를 허용합니다.
 command-line-args = []
+# 쉐이더 생성시 유효성 검사를 활성화합니다.
+enable-shader-validation = []
