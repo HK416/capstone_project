@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use mod_network::components::{CharacterKind, ObjectId, UserId};
+use mod_network::components::{
+    CharacterKind, GameTier, NetworkState, ObjectId, ProfileIcon, UserId, UserName,
+};
 
 use crate::session::Session;
 
@@ -48,9 +50,14 @@ pub enum GameWorldEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameWorldSystemEvent {
     /// 플레이어가 게임 월드에 참여할 때 발생되는 이벤트입니다.
-    PlayerJoin,
+    PlayerJoin {
+        name: UserName,
+        tier: GameTier,
+        profile_icon: ProfileIcon,
+    },
     /// 플레이어가 게임 월드에서 떠날 때 발생되는 이벤트입니다.
     PlayerLeave,
+    UpdatePing(NetworkState),
 }
 
 /// 커스텀 게임 대기실 상태의 이벤트 목록입니다.

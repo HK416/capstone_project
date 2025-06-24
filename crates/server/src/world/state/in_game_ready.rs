@@ -1,12 +1,11 @@
-use std::sync::{
-    Arc,
-    atomic::{self, Ordering as MemOrdering},
-};
+use std::sync::Arc;
 
 use ahash::HashSet;
 use mod_network::{
     components::{MAX_IN_GAME_PLAYERS, NetworkState, Permission, Team, UserId},
-    protocol::{InGameReadyStatusPacket, Packet, PlayerReadyStatus},
+    protocol::{
+        InGameReadyStatusPacket, JoinFailedReason, JoinRoomFailedPacket, Packet, PlayerReadyStatus,
+    },
 };
 use rand::seq::SliceRandom;
 
@@ -55,17 +54,37 @@ impl GameWorldInGameReadyState {
     }
 
     /// [`GameWorldSystemEvent::PlayerJoin`] 이벤트를 처리합니다.
-    fn handle_player_join_event(&mut self, world: &GameWorld, session: Arc<Session>, _uid: UserId) {
-        log::error!("{} attempted unauthorized access in {}", &session, &world,);
-        eprintln!("{} attempted unauthorized access in {}", &session, &world,);
-        session.close();
+    fn handle_player_join_event(&mut self, session: Arc<Session>, _uid: UserId) {
+        // 패킷을 전송합니다.
+        let reason = JoinFailedReason::InProgress;
+        let packet = JoinRoomFailedPacket::new(reason);
+        session.tcp_write(packet.as_raw());
     }
 
     /// [`GameWorldSystemEvent::PlayerLeave`] 이벤트를 처리합니다.
-    fn handle_player_leave_event(&mut self, world: &GameWorld, session: Arc<Session>, uid: UserId) {
+    fn handle_player_leave_event(
+        &mut self,
+        world: &mut GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+    ) {
+        // 세션을 제거합니다.
+        if world.sessions.remove(&session).is_none() {
+            log::error!("{} not found in {}!", &session, &world);
+            eprintln!("{} not found in {}!", &session, &world);
+            session.close();
+            return;
+        }
+
+        // 게임 월드에 플레이어가 없는 경우 게임 월드를 비활성화합니다.
+        if world.sessions.is_empty() {
+            world.disabled();
+            return;
+        }
+
         // 플레이어 데이터를 가져옵니다.
         // 현재 상태에서 플레이어 데이터를 제거하지 않습니다.
-        let mut data = match world.players.get_mut(&uid) {
+        let data = match world.players.get_mut(&uid) {
             Some(data) => data,
             None => {
                 log::error!("Player({}) not found in {}!", &uid, &world);
@@ -94,24 +113,18 @@ impl GameWorldInGameReadyState {
         }
 
         // 떠난 플레이어 식별자를 추가합니다.
-        let uid = data.key().clone();
         self.leaved_players.insert(uid);
-        drop(data);
 
         // 제거된 플레이어의 권한이 관리자인 경우
         // 남은 플레이어 중 무작위로 한 명을 선정하여 권한을 넘겨줍니다.
         if permission == Permission::Admin {
-            let mut remainings: Vec<_> = world
-                .sessions
-                .iter()
-                .map(|data| data.value().clone())
-                .collect();
+            let mut remainings: Vec<_> = world.sessions.values().cloned().collect();
             remainings.shuffle(&mut rand::rng());
 
             if let Some(uid) = remainings.pop() {
                 match world.players.get_mut(&uid) {
-                    Some(mut data) => {
-                        world.set_admin(uid);
+                    Some(data) => {
+                        world.admin = uid;
                         data.set_permission(Permission::Admin);
                     }
                     None => {
@@ -123,16 +136,39 @@ impl GameWorldInGameReadyState {
         }
     }
 
+    /// [`GameWorldSystemEvent::UpdatePing`] 이벤트를 처리합니다.
+    fn handle_update_ping_event(
+        &mut self,
+        world: &mut GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        state: NetworkState,
+    ) {
+        // 플레이어 데이터를 가져옵니다.
+        let data = match world.players.get_mut(&uid) {
+            Some(data) => data,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        // 네트워크 상태를 설정합니다.
+        data.set_network_state(state);
+    }
+
     /// [`GameWorldInGameReadyStateEvent::ReadyToPlay`] 이벤트를 처리합니다.
     fn handle_ready_to_play_event(
         &mut self,
-        world: &GameWorld,
+        world: &mut GameWorld,
         session: Arc<Session>,
         uid: UserId,
     ) {
         // 플레이어 데이터를 가져옵니다.
-        let mut player = match world.players.get_mut(&uid) {
-            Some(guard) => guard,
+        let data = match world.players.get_mut(&uid) {
+            Some(data) => data,
             None => {
                 log::error!("Player({}) not found in {}!", &uid, &world);
                 eprintln!("Player({}) not found in {}!", &uid, &world);
@@ -142,21 +178,15 @@ impl GameWorldInGameReadyState {
         };
 
         // 플레이어를 준비 상태로 전환합니다.
-        player.set_ready_to_play(true);
+        data.set_ready_to_play(true);
     }
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
-    fn try_enter_next_state(&mut self, world: &Arc<GameWorld>) {
-        // 락을 획득합니다. 락은 함수 종료 시점에 해제됩니다.
-        // 주의: tokio에서 호출될 경우 스케쥴링 과정에서 데드락이 발생할 수 있습니다.
-        let num_players = world.num_players.lock();
-
+    fn try_enter_next_state(&mut self, world: &mut GameWorld) {
         // 남은 시간이 없는 경우
         if self.remaining_time_sec <= 0.0 {
             // 준비되지 않은 플레이어의 서버 연결을 해제합니다.
-            for data in world.sessions.iter() {
-                let session = data.key();
-                let uid = data.value().clone();
+            for (session, &uid) in world.sessions.iter() {
                 match world.players.get_mut(&uid) {
                     Some(data) => {
                         if !data.is_ready_to_play() {
@@ -174,27 +204,26 @@ impl GameWorldInGameReadyState {
             }
         }
 
+        // 플레이어가 없는 경우 함수 실행을 생략합니다.
+        if world.sessions.is_empty() {
+            return;
+        }
+
         // 모든 플레이어가 준비되었는지 확인합니다.
         let all_player_readys: bool = world
             .players
             .iter()
-            .filter(|data| {
-                let uid = data.key().clone();
-                !self.leaved_players.contains(&uid)
-            })
-            .all(|data| data.is_ready_to_play());
+            .filter(|(uid, _data)| !self.leaved_players.contains(&uid))
+            .all(|(_uid, data)| data.is_ready_to_play());
         if all_player_readys {
             todo!()
         }
-
-        drop(num_players);
     }
 
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        for data in world.players.iter() {
-            let uid = data.key().clone();
+        for (&uid, data) in world.players.iter() {
             let connected = !self.leaved_players.contains(&uid);
             players.push(PlayerReadyStatus::new(
                 uid,
@@ -210,42 +239,42 @@ impl GameWorldInGameReadyState {
         }
 
         let packet = InGameReadyStatusPacket::new(self.remaining_time_sec, players);
-        for data in world.sessions.iter() {
-            let session = data.key();
+        for session in world.sessions.keys() {
             session.tcp_write(packet.as_raw());
         }
     }
 }
 
 impl GameWorldState for GameWorldInGameReadyState {
-    fn on_enter(&mut self, world: &Arc<GameWorld>) {
+    fn on_enter(&mut self, world: &mut GameWorld) {
         // 모든 플레이어의 준비 상태를 `false`로 설정합니다.
-        for mut player in world.players.iter_mut() {
-            player.set_ready_to_play(false);
+        for data in world.players.values_mut() {
+            data.set_ready_to_play(false);
         }
-        atomic::fence(MemOrdering::SeqCst);
     }
 
-    fn on_exit(&mut self, world: &Arc<GameWorld>) {
+    fn on_exit(&mut self, world: &mut GameWorld) {
         // 떠난 플레이어 데이터를 정리합니다.
         for uid in self.leaved_players.iter() {
             world.players.remove(uid);
         }
-        atomic::fence(MemOrdering::SeqCst);
     }
 
-    fn handle_event(&mut self, world: &Arc<GameWorld>, event: GameWorldEvent) {
+    fn handle_event(&mut self, world: &mut GameWorld, event: GameWorldEvent) {
         match event {
             GameWorldEvent::System {
                 session,
                 uid,
                 event,
             } => match event {
-                GameWorldSystemEvent::PlayerJoin => {
-                    self.handle_player_join_event(world, session, uid);
+                GameWorldSystemEvent::PlayerJoin { .. } => {
+                    self.handle_player_join_event(session, uid);
                 }
                 GameWorldSystemEvent::PlayerLeave => {
                     self.handle_player_leave_event(world, session, uid);
+                }
+                GameWorldSystemEvent::UpdatePing(state) => {
+                    self.handle_update_ping_event(world, session, uid, state);
                 }
             },
             GameWorldEvent::FormationState { .. } => { /* empty */ }
@@ -268,7 +297,7 @@ impl GameWorldState for GameWorldInGameReadyState {
         }
     }
 
-    fn on_advanced(&mut self, world: &Arc<GameWorld>, elapsed_time_sec: f32) {
+    fn on_advanced(&mut self, world: &mut GameWorld, elapsed_time_sec: f32) {
         // 남은 시간을 갱신합니다.
         self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
         // 경과 시간을 갱신합니다.

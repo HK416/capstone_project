@@ -195,12 +195,17 @@ pub struct Player {
 
 impl Player {
     /// 플레이어 데이터를 생성합니다.
-    pub fn new(name: UserName) -> Self {
+    pub fn new(
+        permission: Permission,
+        name: UserName,
+        tier: GameTier,
+        profile_icon: ProfileIcon,
+    ) -> Self {
         Self {
             name,
-            profile_icon: ProfileIcon::GroupSchale,
+            profile_icon,
             character_kind: CharacterKind::ArisOriginal,
-            bitfield: Bitfield::new(),
+            bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
             attributes: get_character_attributes(CharacterKind::ArisOriginal),
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,

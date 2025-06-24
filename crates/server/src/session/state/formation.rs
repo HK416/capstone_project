@@ -1,4 +1,4 @@
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use mod_network::{
     components::UserId,
@@ -7,11 +7,12 @@ use mod_network::{
         RoomLeaveNotifyPacket,
     },
 };
+use mod_parallelism::collections::Queue;
 
 use crate::{
     session::{Session, SessionState, SessionStateFlow},
     token::UserTokenMap,
-    world::{GameWorld, GameWorldEvent, GameWorldFormationStateEvent},
+    world::{GameWorldEvent, GameWorldFormationStateEvent, GameWorldSystemEvent},
 };
 
 /// 지연 시간 (초)
@@ -21,8 +22,8 @@ const DELAY_TIME: f32 = 0.4;
 pub struct SessionFormationState {
     /// 사용자 식별자
     uid: UserId,
-    /// 참가한 게임 월드
-    world: Weak<GameWorld>,
+    /// 게임 월드 이벤트 전송자
+    sender: Arc<Queue<GameWorldEvent>>,
     /// 요청 지연 시간
     request_delay_time: f32,
     // 네트워크 상태 갱신을 위한 경과 시간
@@ -33,10 +34,10 @@ pub struct SessionFormationState {
 
 impl SessionFormationState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(uid: UserId, world: &Arc<GameWorld>) -> Self {
+    pub fn new(uid: UserId, sender: Arc<Queue<GameWorldEvent>>) -> Self {
         Self {
             uid,
-            world: Arc::downgrade(world),
+            sender,
             request_delay_time: 0.0,
             elapsed_time_sec: 0.0,
             packet_warn_count: 0,
@@ -109,22 +110,15 @@ impl SessionFormationState {
             return;
         }
 
-        // 커스텀 게임 대기실 객체를 가져옵니다.
-        if let Some(world) = self.world.upgrade() {
-            // 캐릭터 선택 요청을 보냅니다.
-            let event = GameWorldFormationStateEvent::CharacterSelect(packet.character_kind);
-            let event = GameWorldEvent::FormationState {
-                session: session.clone(),
-                uid: packet.uid,
-                event,
-            };
-            world.push_event(event);
-            self.request_delay_time = DELAY_TIME;
-        } else {
-            log::error!("{} accesses an invalid custom game", session);
-            session.close();
-            return;
-        }
+        // 캐릭터 선택 요청을 보냅니다.
+        let event = GameWorldFormationStateEvent::CharacterSelect(packet.character_kind);
+        let event = GameWorldEvent::FormationState {
+            session: session.clone(),
+            uid: packet.uid,
+            event,
+        };
+        self.sender.push(event);
+        self.request_delay_time = DELAY_TIME;
     }
 
     /// [`CharacterReleaseNotifyPacket`]을 처리합니다.
@@ -160,22 +154,15 @@ impl SessionFormationState {
             return;
         }
 
-        // 커스텀 게임 대기실 객체를 가져옵니다.
-        if let Some(world) = self.world.upgrade() {
-            // 캐릭터 선택 요청을 보냅니다.
-            let event = GameWorldFormationStateEvent::CharacterRelease;
-            let event = GameWorldEvent::FormationState {
-                session: session.clone(),
-                uid: packet.uid,
-                event,
-            };
-            world.push_event(event);
-            self.request_delay_time = DELAY_TIME;
-        } else {
-            log::error!("{} accesses an invalid custom game", session);
-            session.close();
-            return;
-        }
+        // 캐릭터 선택 해제 요청을 보냅니다.
+        let event = GameWorldFormationStateEvent::CharacterRelease;
+        let event = GameWorldEvent::FormationState {
+            session: session.clone(),
+            uid: packet.uid,
+            event,
+        };
+        self.sender.push(event);
+        self.request_delay_time = DELAY_TIME;
     }
 }
 
@@ -247,10 +234,15 @@ impl SessionState for SessionFormationState {
 
         const TICK: f32 = 1.0;
         if self.elapsed_time_sec >= TICK {
+            // 핑 갱신 요청을 보냅니다.
             self.elapsed_time_sec = 0.0;
-            if let Some(world) = self.world.upgrade() {
-                world.update_network_state(self.uid, session.clone(), session.network_state());
-            }
+            let event = GameWorldSystemEvent::UpdatePing(session.network_state());
+            let event = GameWorldEvent::System {
+                session: session.clone(),
+                uid: self.uid,
+                event,
+            };
+            self.sender.push(event);
         }
     }
 }
