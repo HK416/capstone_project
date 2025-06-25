@@ -23,26 +23,54 @@ use super::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CharacterMaterialData {
     pub uri: String,
-    pub threshold: f32,
     pub main_color: String,
     pub detail_mask: String,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+    pub rim_strength: f32,
+    pub rim_power: f32,
+}
+
+impl CharacterMaterialData {
+    pub fn as_layout(&self) -> CharacterMaterialDataLayout {
+        CharacterMaterialDataLayout {
+            metallic: self.metallic,
+            roughness: self.roughness,
+            diffuse_steps: self.diffuse_steps,
+            specular_steps: self.specular_steps,
+            rim_strength: self.rim_strength,
+            rim_power: self.rim_power,
+            ..Default::default()
+        }
+    }
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct CharacterMaterialDataLayout {
-    /// 윤곽선의 색깔 (팀을 구분할 때 사용)
-    pub line_color: [f32; 3],
-    /// 카툰 쉐이더 그림자를 결정
-    pub threshold: f32,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+
+    pub rim_strength: f32,
+    pub rim_power: f32,
+    pub _padding0: [u8; 8],
 }
 
 impl Default for CharacterMaterialDataLayout {
     fn default() -> Self {
         Self {
-            line_color: [1.0, 1.0, 1.0],
-            threshold: 0.5,
+            metallic: 0.0,
+            roughness: 0.5527864,
+            diffuse_steps: 4.2,
+            specular_steps: 2.2,
+            rim_strength: 0.8,
+            rim_power: 4.0,
+            _padding0: [0; 8],
         }
     }
 }

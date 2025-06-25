@@ -175,11 +175,11 @@ impl fmt::Debug for InGameLoadScene {
     }
 }
 
-// impl fmt::Debug for InGameBuildScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameBuildScene))
-//     }
-// }
+impl fmt::Debug for InGameBuildScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameBuildScene))
+    }
+}
 
 // impl fmt::Debug for InGameDominationModePrepareScene {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

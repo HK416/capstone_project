@@ -11,17 +11,15 @@ use mod_network::components::{
 };
 
 use crate::{
-    asset::{ModelNode, ModelRoot, TextureDataPool},
+    asset::{ModelNode, ModelPool, ModelRoot, TextureDataPool, CHARACTER_URIS},
     component::{
-        BoneCollection, BoneTransformUniform, CharacterMaterialDataLayout,
-        CharacterMaterialResource, CharacterMaterialUniform, Child, EyeMouthMaterialDataLayout,
-        EyeMouthMaterialResource, EyeMouthMaterialUniform, HaloMaterialDataLayout,
-        HaloMaterialResource, HaloMaterialUniform, MaterialData, MaterialResource, MaterialUniform,
-        MeshResource, Parent, Sibling, SkinnedMeshResource, SkinningAnimation, ToParentTrans,
-        TransformUniform, WorldTransform, MAX_BONES, MODEL_BONE_HEAD, MODEL_BONE_L_CALF,
-        MODEL_BONE_L_FOOT, MODEL_BONE_L_THIGH, MODEL_BONE_ROOT, MODEL_BONE_R_CALF,
-        MODEL_BONE_R_FOOT, MODEL_BONE_R_HAND, MODEL_BONE_R_THIGH, MODEL_BONE_SPINE,
-        MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON,
+        BoneCollection, BoneTransformUniform, CharacterMaterialResource, CharacterMaterialUniform,
+        Child, EyeMouthMaterialResource, EyeMouthMaterialUniform, HaloMaterialResource,
+        MaterialData, MaterialResource, MaterialUniform, MeshResource, Parent, Sibling,
+        SkinnedMeshResource, SkinningAnimation, ToParentTrans, TransformUniform, WorldTransform,
+        MAX_BONES, MODEL_BONE_HEAD, MODEL_BONE_L_CALF, MODEL_BONE_L_FOOT, MODEL_BONE_L_THIGH,
+        MODEL_BONE_ROOT, MODEL_BONE_R_CALF, MODEL_BONE_R_FOOT, MODEL_BONE_R_HAND,
+        MODEL_BONE_R_THIGH, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1, MODEL_BONE_WEAPON,
     },
 };
 
@@ -33,7 +31,7 @@ pub fn spawn_player<Tag: Copy + Component>(
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
     texture_data_pool: &TextureDataPool,
-    root: &ModelRoot,
+    model_pool: &ModelPool,
     data: InGamePlayerInitData,
 ) -> (Entity, Vec<(Entity, EntityBuilder)>) {
     // 엔터티를 하나 할당받습니다.
@@ -67,11 +65,16 @@ pub fn spawn_player<Tag: Copy + Component>(
         data.latlon,
     ));
 
+    // 캐릭터 모델을 가져옵니다.
+    let root = model_pool
+        .get(CHARACTER_URIS[data.character_kind as usize])
+        .expect("the character model must be preloaded!");
+
     // 캐릭터 모델의 엔터티를 생성합니다.
     let (skinning_animation, child_entity, mut batch_commands) = spawn_character_model(
         tag,
         Some(&format!("Player({})", data.uid)),
-        root,
+        &root,
         world,
         entity,
         device,
@@ -238,6 +241,8 @@ fn spawn_character_model_recursive<Tag: Copy + Component>(
     texture_data_pool: &TextureDataPool,
     is_animation_mixing_bone: bool,
 ) -> Entity {
+    // log::debug!("travel character model node:{}", &current.name);
+
     // 엔터티를 하나 할당받습니다.
     let entity = world.reserve_entity();
     let mut builder = EntityBuilder::new();
@@ -398,10 +403,7 @@ fn create_material_resources(
         match material.deref() {
             MaterialData::Character(character_material_data) => {
                 // 재질 유니폼 버퍼를 생성합니다.
-                let data = CharacterMaterialDataLayout {
-                    threshold: character_material_data.threshold,
-                    ..Default::default()
-                };
+                let data = character_material_data.as_layout();
                 let material_uniform = CharacterMaterialUniform::new(
                     Some(&format!(
                         "CharacterMaterial({})",
@@ -439,11 +441,7 @@ fn create_material_resources(
             }
             MaterialData::CharacterEyeMouth(eye_mouth_material_data) => {
                 // 재질 유니폼 버퍼를 생성합니다.
-                let data = EyeMouthMaterialDataLayout {
-                    threshold: eye_mouth_material_data.threshold,
-                    sprite_index: eye_mouth_material_data.sprite_index,
-                    ..Default::default()
-                };
+                let data = eye_mouth_material_data.as_layout();
                 let material_uniform = EyeMouthMaterialUniform::new(
                     Some(&format!("EyeMouthMaterial({})", label.unwrap_or("Unknown"))),
                     device,
@@ -477,35 +475,16 @@ fn create_material_resources(
                 material_resources.push(resource);
             }
             MaterialData::CharacterHalo(halo_material_data) => {
-                // 재질 유니폼 버퍼를 생성합니다.
-                let data = HaloMaterialDataLayout::default();
-                let material_uniform = HaloMaterialUniform::new(
-                    Some(&format!(
-                        "CharacterHaloMaterial({})",
-                        label.unwrap_or("Unknown")
-                    )),
-                    device,
-                    data,
-                );
-
                 // 캐릭터 메인 컬러 텍스처를 가져옵니다.
                 let (main_color_view, main_color_sampler) = texture_data_pool
                     .get(&halo_material_data.main_color)
                     .expect("the texture data must be preloaded!");
 
                 // 재질 쉐이더 리소스를 생성합니다.
-                let resource = HaloMaterialResource::new(
-                    label,
-                    device,
-                    &material_uniform,
-                    &main_color_view,
-                    &main_color_sampler,
-                );
+                let resource =
+                    HaloMaterialResource::new(label, device, &main_color_view, &main_color_sampler);
 
-                material_uniforms.push(MaterialUniform::CharacterHalo {
-                    data,
-                    material_uniform,
-                });
+                material_uniforms.push(MaterialUniform::CharacterHalo);
                 material_resources.push(resource);
             }
             _ => panic!("invalid material data!"),

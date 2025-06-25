@@ -24,10 +24,12 @@ pub struct CharacterAttributes {
 
     /// `ActionState::Idle` 애니메이션 시간 (단위: 초)
     pub normal_idle_duration: f32,
-    /// `MovementState::Moving` 애니메이션 시간 (단위: 초)
-    pub move_ing_duration: f32,
     /// 걷기 애니메이션 시간 (단위: 초)
     pub cafe_walk_duration: f32,
+    /// `MovementState::Moving` 애니메이션 시간 (단위: 초)
+    pub move_ing_duration: f32,
+    /// `MovementState::MoveToEnd` 애니메이션 시간 (단위: 초)
+    pub move_end_normal_duration: f32,
     /// `ActionState::Aiming` 애니메이션 시간 (단위: 초)
     pub normal_attack_start_duration: f32,
     /// `ActionState::AimOff` 애니메이션 시간 (단위: 초)
@@ -39,7 +41,7 @@ pub struct CharacterAttributes {
     /// `ActionState::Reload` 애니메이션 시간 (단위: 초)
     pub normal_reload_duration: f32,
     /// `ActionState::Skill` 애니메이션 시간 (단위: 초)
-    pub skill_duaration: f32,
+    pub skill_duration: f32,
     /// `AcstionState::Callsign` 애니메이션 시간 (단위: 초)
     pub normal_callsign_duration: f32,
     /// `ActionState::VictoryStart` 애니메이션 시간 (단위: 초)

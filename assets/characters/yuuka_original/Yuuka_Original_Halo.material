@@ -1,1 +1,6 @@
-{ "CharacterHalo": { "uri": "Yuuka_Original_Halo", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "emissive": { "x": 0, "y": 0, "z": 0, "w": 0 }, "main_color": "Yuuka_Original_Halo" } }
+{
+    "CharacterHalo": {
+        "uri": "Yuuka_Original_Halo",
+        "main_color": "Yuuka_Original_Halo"
+    }
+}

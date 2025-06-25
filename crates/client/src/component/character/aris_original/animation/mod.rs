@@ -18,6 +18,7 @@ mod idle_to_aim;
 mod jumping;
 mod landing;
 mod move_to_aim_move;
+mod move_to_end;
 mod moving;
 mod reload;
 mod reload_move;
@@ -50,9 +51,9 @@ use crate::{
 use self::{
     aim::*, aim_jumping::*, aim_landing::*, aim_move::*, aim_move_to_move::*, aim_to_idle::*,
     attack_jumping::*, attack_landing::*, attack_move::*, attacking::*, callsign::*, death::*,
-    idle::*, idle_to_aim::*, jumping::*, landing::*, move_to_aim_move::*, moving::*, reload::*,
-    reload_move::*, skill::*, skill_jumping::*, skill_landing::*, skill_move::*, victory_end::*,
-    victory_start::*,
+    idle::*, idle_to_aim::*, jumping::*, landing::*, move_to_aim_move::*, move_to_end::*,
+    moving::*, reload::*, reload_move::*, skill::*, skill_jumping::*, skill_landing::*,
+    skill_move::*, victory_end::*, victory_start::*,
 };
 
 /// 캐릭터 모델의 이름입니다.
@@ -376,6 +377,18 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
+            MovementState::MoveToEnd => {
+                animate_character_when_move_to_end(
+                    motions,
+                    skinning_animation,
+                    character_attribute,
+                    action_state_timer,
+                    movement_state_timer,
+                    latlon,
+                    collection_view,
+                    transform_view,
+                );
+            }
             MovementState::Jumping => {
                 animate_character_when_jumping(
                     motions,
@@ -402,7 +415,7 @@ pub fn animate_character<Tag: Copy + Component>(
             }
         },
         ActionState::Aiming => match movement_state {
-            MovementState::Idle => {
+            MovementState::Idle | MovementState::MoveToEnd => {
                 animate_character_when_aiming(
                     motions,
                     skinning_animation,
@@ -452,7 +465,7 @@ pub fn animate_character<Tag: Copy + Component>(
             }
         },
         ActionState::AimAt => match movement_state {
-            MovementState::Idle => {
+            MovementState::Idle | MovementState::MoveToEnd => {
                 animate_character_when_idle_to_aim(
                     motions,
                     skinning_animation,
@@ -502,7 +515,7 @@ pub fn animate_character<Tag: Copy + Component>(
             }
         },
         ActionState::AimOff => match movement_state {
-            MovementState::Idle => {
+            MovementState::Idle | MovementState::MoveToEnd => {
                 animate_character_when_aim_to_idle(
                     motions,
                     skinning_animation,
@@ -552,7 +565,7 @@ pub fn animate_character<Tag: Copy + Component>(
             }
         },
         ActionState::Attack => match movement_state {
-            MovementState::Idle => {
+            MovementState::Idle | MovementState::MoveToEnd => {
                 animate_character_when_attacking(
                     motions,
                     skinning_animation,
@@ -614,7 +627,7 @@ pub fn animate_character<Tag: Copy + Component>(
             );
         }
         ActionState::Reload => match movement_state {
-            MovementState::Idle => {
+            MovementState::Idle | MovementState::MoveToEnd => {
                 animate_character_when_reload(
                     motions,
                     skinning_animation,
@@ -641,7 +654,7 @@ pub fn animate_character<Tag: Copy + Component>(
             _ => unreachable!("invalid game logic!"),
         },
         ActionState::Skill => match movement_state {
-            MovementState::Idle => {
+            MovementState::Idle | MovementState::MoveToEnd => {
                 animate_character_when_skill(
                     motions,
                     skinning_animation,

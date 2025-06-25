@@ -57,3 +57,41 @@ pub type SkinnedMeshRenderer<'a> = (
     &'a mut Vec<MaterialUniform>,
     &'a Vec<MaterialResource>,
 );
+
+macro_rules! define_tags {
+    ( $( $name:ident ),* ) => {
+        $(
+            #[derive(Debug, Clone, Copy)]
+            pub struct $name;
+
+            impl $name {
+                pub fn name() -> &'static str {
+                    stringify!($name)
+                }
+            }
+        )*
+    }
+}
+
+define_tags!(
+    Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
+    Bullet, Stage, Other
+);
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum DataArchetype {
+    Player0,
+    Player1,
+    Player2,
+    Player3,
+    Player4,
+    Player5,
+    Player6,
+    Player7,
+    Player8,
+    Player9,
+    Bullet,
+    Stage,
+    Other,
+}

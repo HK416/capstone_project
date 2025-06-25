@@ -18,29 +18,57 @@ use crate::component::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EyeMouthMaterialData {
     pub uri: String,
-    pub threshold: f32,
-    pub sprite_index: u32,
     pub main_color: String,
     pub eye_mouth: String,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+    pub rim_strength: f32,
+    pub rim_power: f32,
+    pub sprite_index: u32,
+}
+
+impl EyeMouthMaterialData {
+    pub fn as_layout(&self) -> EyeMouthMaterialDataLayout {
+        EyeMouthMaterialDataLayout {
+            metallic: self.metallic,
+            roughness: self.roughness,
+            diffuse_steps: self.diffuse_steps,
+            specular_steps: self.specular_steps,
+            rim_strength: self.rim_strength,
+            rim_power: self.rim_power,
+            sprite_index: self.sprite_index,
+            ..Default::default()
+        }
+    }
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct EyeMouthMaterialDataLayout {
-    /// 카툰 쉐이더 그림자를 결정
-    pub threshold: f32,
-    /// 캐릭터 입 스프라이트를 결정
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+    pub rim_strength: f32,
+    pub rim_power: f32,
     pub sprite_index: u32,
-    pub _padding0: [u8; 8],
+    pub _padding0: [u8; 4],
 }
 
 impl Default for EyeMouthMaterialDataLayout {
     fn default() -> Self {
         Self {
-            threshold: 0.5,
-            sprite_index: 0,
-            _padding0: [0; 8],
+            metallic: 0.0,
+            roughness: 0.5527864,
+            diffuse_steps: 4.2,
+            specular_steps: 2.2,
+            rim_strength: 0.8,
+            rim_power: 4.0,
+            sprite_index: 25,
+            _padding0: [0; 4],
         }
     }
 }

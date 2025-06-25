@@ -204,17 +204,18 @@ impl GameWorldInGameReadyState {
             }
         }
 
-        // 플레이어가 없는 경우 함수 실행을 생략합니다.
-        if world.sessions.is_empty() {
-            return;
-        }
-
         // 모든 플레이어가 준비되었는지 확인합니다.
         let all_player_readys: bool = world
             .players
             .iter()
             .filter(|(uid, _data)| !self.leaved_players.contains(&uid))
             .all(|(_uid, data)| data.is_ready_to_play());
+
+        // 플레이어가 없는 경우 함수 실행을 생략합니다.
+        if world.sessions.is_empty() {
+            return;
+        }
+        
         if all_player_readys {
             todo!()
         }

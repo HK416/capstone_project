@@ -39,7 +39,7 @@ pub fn animate_character_when_skill_landing<Tag: Copy + Component>(
     // 애니메이션 키 프레임을 샘플링합니다.
     let time_point_0 = action_state_timer
         .get()
-        .min(character_attribute.skill_duaration);
+        .min(character_attribute.skill_duration);
     let keyframe = motion.linear_sampling(time_point_0);
 
     // 최상위 엔터티의 로컬 변환 행렬을 갱신합니다.

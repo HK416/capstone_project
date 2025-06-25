@@ -70,10 +70,12 @@ pub enum MovementState {
     Idle = 0,
     /// 움직이는 중인 상태
     Moving = 1,
+    /// 움직이다가 멈춘 상태
+    MoveToEnd = 2,
     /// 점프하는 상태
-    Jumping = 2,
+    Jumping = 3,
     /// 착지하는 상태
-    Landing = 3,
+    Landing = 4,
 }
 
 impl MovementState {
@@ -85,8 +87,9 @@ impl MovementState {
         match val {
             0 => Some(MovementState::Idle),
             1 => Some(MovementState::Moving),
-            2 => Some(MovementState::Jumping),
-            3 => Some(MovementState::Landing),
+            2 => Some(MovementState::MoveToEnd),
+            3 => Some(MovementState::Jumping),
+            4 => Some(MovementState::Landing),
             _ => None,
         }
     }
@@ -130,7 +133,7 @@ impl ViewState {
 ///
 /// 아래와 같은 데이터가 포함되어있습니다.
 /// - action_state   | 3bit | 행동 상태
-/// - movement_state | 2bit | 움직임 상태
+/// - movement_state | 3bit | 움직임 상태
 /// - view_state     | 2bit | 시야 상태
 ///
 #[repr(transparent)]
@@ -140,7 +143,7 @@ pub struct PlayerStateData(u8);
 impl PlayerStateData {
     const ACTION_BIT_MASK: u8 = 0x7;
     const ACTION_SHIFT: usize = 0;
-    const MOVEMENT_BIT_MASK: u8 = 0x3;
+    const MOVEMENT_BIT_MASK: u8 = 0x7;
     const MOVEMENT_SHIFT: usize = 3;
     const VIEW_BIT_MASK: u8 = 0x3;
     const VIEW_SHIFT: usize = 6;
@@ -167,8 +170,7 @@ impl PlayerStateData {
     /// 움직임 상태를 반환합니다.
     pub fn movement_state(&self) -> MovementState {
         let val = (self.0 >> Self::MOVEMENT_SHIFT) & Self::MOVEMENT_BIT_MASK;
-        // Safety: 주어지는 값은 범위를 넘지 않음
-        unsafe { MovementState::new(val).unwrap_unchecked() }
+        MovementState::new(val).unwrap_or_default()
     }
 
     /// 움직임 상태를 설정합니다.

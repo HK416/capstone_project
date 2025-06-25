@@ -32,7 +32,7 @@ use crate::{
     component::{load_stage_layout_from_file, MaterialDataPool},
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        FatalErrorSceneLayer, InGameBuildScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
         ERR_NETWORK_TITLE_TEXTS,
     },
 };
@@ -74,7 +74,7 @@ pub struct InGameLoadScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
     /// 클라이언트 사용자 식별자
-    user_id: UserId,
+    uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
 
@@ -135,7 +135,7 @@ impl InGameLoadScene {
 
         Self {
             locale,
-            user_id,
+            uid: user_id,
             token,
             packet: Some(packet),
             task_results: Arc::new(Queue::new()),
@@ -500,6 +500,16 @@ impl GameScene for InGameLoadScene {
         self.load_stage_models(&root_dir, io_thread_pool, device.clone(), stage_kind);
     }
 
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        app: &dyn AppHandle,
+        _ui_renderer: &mut UiRenderer,
+    ) {
+        let device = app.render_device();
+        device.poll(wgpu::MaintainBase::Wait).unwrap();
+    }
+
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
         let i = self.locale as usize;
         let title = ERR_NETWORK_TITLE_TEXTS[i];
@@ -526,7 +536,6 @@ impl GameScene for InGameLoadScene {
 
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         // 작업 결과를 확인합니다.
-        let device = app.render_device();
         let queue = app.render_queue();
         if let Some(result) = self.task_results.pop() {
             self.num_remaining_tasks -= 1;
@@ -575,30 +584,28 @@ impl GameScene for InGameLoadScene {
         }
 
         // 모든 작업이 끝난 경우 다음 장면으로 전환합니다.
-        if self.num_remaining_tasks == 0
-            && device
-                .poll(wgpu::PollType::Poll)
-                .is_ok_and(|status| status.is_queue_empty())
-        {
-            //     let next_scene = Box::new(InGameBuildScene::new(
-            //         self.locale,
-            //         self.user_id,
-            //         self.token,
-            //         self.packet.take(),
-            //         self.stage_layout_data.clone(),
-            //         self.mesh_pool.clone(),
-            //         self.model_pool.clone(),
-            //         self.motion_pool.clone(),
-            //         self.texture_data_pool.clone(),
-            //         self.texture_pool.clone(),
-            //         self.texture_view_pool.clone(),
-            //         self.sampler_pool.clone(),
-            //     ));
-            //     let scene_flow = GameSceneFlow::Change(next_scene);
-            //     let event = AppEvent::AddGameSceneFlow(scene_flow);
-            //     let event_loop_proxy = app.event_loop_proxy();
-            //     event_loop_proxy.send_event(event).unwrap();
-            // }
+        if self.num_remaining_tasks == 0 {
+            // 다음 게임 장면으로 전환합니다.
+            if let Some(packet) = self.packet.take() {
+                let next_scene = Box::new(InGameBuildScene::new(
+                    self.locale,
+                    self.uid,
+                    self.token,
+                    packet,
+                    self.stage_layout_data.clone(),
+                    self.mesh_pool.clone(),
+                    self.model_pool.clone(),
+                    self.motion_pool.clone(),
+                    self.texture_data_pool.clone(),
+                    self.texture_pool.clone(),
+                    self.texture_view_pool.clone(),
+                    self.sampler_pool.clone(),
+                ));
+                let scene_flow = GameSceneFlow::Change(next_scene);
+                let event = AppEvent::AddGameSceneFlow(scene_flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
         }
     }
 

@@ -6,7 +6,7 @@ mod bullet;
 mod character;
 mod stage;
 
-use std::{fs::OpenOptions, io::Read, ops::RangeBounds, path::Path, sync::Arc};
+use std::{fs::OpenOptions, io::Read, path::Path, sync::Arc};
 
 use ahash::{HashMap, RandomState};
 use parking_lot::{FairMutex, FairMutexGuard};
@@ -174,11 +174,11 @@ impl MaterialDataPool {
 pub enum MaterialUniform {
     Bullet {
         data: BulletMaterialDataLayout,
-        buffer: BulletMaterialUniform,
+        material_uniform: BulletMaterialUniform,
     },
     EnergyBullet {
         data: EnergyBulletMaterialDataLayout,
-        buffer: EnergyBulletMaterialUniform,
+        material_uniform: EnergyBulletMaterialUniform,
     },
     Character {
         data: CharacterMaterialDataLayout,
@@ -188,61 +188,19 @@ pub enum MaterialUniform {
         data: EyeMouthMaterialDataLayout,
         material_uniform: EyeMouthMaterialUniform,
     },
-    CharacterHalo {
-        data: HaloMaterialDataLayout,
-        material_uniform: HaloMaterialUniform,
-    },
+    CharacterHalo,
     CaptureZone {
         data: CaptureZoneMaterialDataLayout,
-        buffer: CaptureZoneMaterialUniform,
+        material_uniform: CaptureZoneMaterialUniform,
     },
-    Stage(StageMaterialUniform),
-    Tree(TreeMaterialUniform),
-}
-
-impl MaterialUniform {
-    /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.
-    pub fn slice<S>(&self, bounds: S) -> wgpu::BufferSlice
-    where
-        S: RangeBounds<wgpu::BufferAddress>,
-    {
-        match self {
-            MaterialUniform::Bullet { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::EnergyBullet { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::Character {
-                material_uniform, ..
-            } => material_uniform.slice(bounds),
-            MaterialUniform::CharacterEyeMouth {
-                material_uniform, ..
-            } => material_uniform.slice(bounds),
-            MaterialUniform::CharacterHalo {
-                material_uniform, ..
-            } => material_uniform.slice(bounds),
-            MaterialUniform::CaptureZone { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::Stage(uniform) => uniform.slice(bounds),
-            MaterialUniform::Tree(uniform) => uniform.slice(bounds),
-        }
-    }
-
-    /// 유니폼 버퍼의 [`wgpu::BindingResource`]를 반환합니다.
-    pub fn as_entire_binding(&self) -> wgpu::BindingResource<'_> {
-        match self {
-            MaterialUniform::Bullet { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::EnergyBullet { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::Character {
-                material_uniform, ..
-            } => material_uniform.as_entire_binding(),
-            MaterialUniform::CharacterEyeMouth {
-                material_uniform, ..
-            } => material_uniform.as_entire_binding(),
-            MaterialUniform::CharacterHalo {
-                material_uniform, ..
-            } => material_uniform.as_entire_binding(),
-            MaterialUniform::CaptureZone { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::Stage(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::Tree(uniform) => uniform.as_entire_binding(),
-        }
-    }
+    Stage {
+        data: StageMaterialDataLayout,
+        material_uniform: StageMaterialUniform,
+    },
+    Tree {
+        data: TreeMaterialDataLayout,
+        material_uniform: TreeMaterialUniform,
+    },
 }
 
 /// 재질 쉐이더 리소스입니다.

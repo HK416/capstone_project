@@ -23,29 +23,41 @@ use super::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StageMaterialData {
     pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
     pub main_color: String,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+}
+
+impl StageMaterialData {
+    pub fn as_layout(&self) -> StageMaterialDataLayout {
+        StageMaterialDataLayout {
+            metallic: self.metallic,
+            roughness: self.roughness,
+            diffuse_steps: self.diffuse_steps,
+            specular_steps: self.specular_steps,
+        }
+    }
 }
 
 /// 지형 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct StageMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
     pub metallic: f32,
-    pub _padding0: [u8; 4],
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
 }
 
 impl Default for StageMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
-            metallic: 0.0,
-            _padding0: [0; 4],
+            metallic: 0.22,
+            roughness: 0.62,
+            diffuse_steps: 4.2,
+            specular_steps: 2.2,
         }
     }
 }

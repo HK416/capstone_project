@@ -1,1 +1,6 @@
-{ "CharacterHalo": { "uri": "Momoi_Original_Halo", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "emissive": { "x": 0.8784313725, "y": 0.3921568627, "z": 0.5882352941, "w": 1 }, "main_color": "Momoi_Original_Halo" } }
+{
+    "CharacterHalo": {
+        "uri": "Momoi_Original_Halo",
+        "main_color": "Momoi_Original_Halo"
+    }
+}
