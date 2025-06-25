@@ -108,8 +108,8 @@ pub struct SkinningAnimation {
     pub right_calf: Entity,
     pub left_foot: Entity,
     pub right_foot: Entity,
-    pub meshes: HashMap<String, Entity>,
-    pub animation_mixing_bones: HashSet<Entity>,
+    pub mesh_entity_list: HashMap<String, Entity>,
+    pub mixing_bone_list: HashSet<Entity>,
 }
 
 impl Default for SkinningAnimation {
@@ -128,8 +128,8 @@ impl Default for SkinningAnimation {
             right_foot: Entity::DANGLING,
             left_calf: Entity::DANGLING,
             right_calf: Entity::DANGLING,
-            meshes: HashMap::default(),
-            animation_mixing_bones: HashSet::default(),
+            mesh_entity_list: HashMap::default(),
+            mixing_bone_list: HashSet::default(),
         }
     }
 }

@@ -18,10 +18,8 @@ use crate::component::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EyeMouthMaterialData {
     pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub index: u32,
+    pub threshold: f32,
+    pub sprite_index: u32,
     pub main_color: String,
     pub eye_mouth: String,
 }
@@ -30,19 +28,19 @@ pub struct EyeMouthMaterialData {
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct EyeMouthMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub index: u32,
+    /// 카툰 쉐이더 그림자를 결정
+    pub threshold: f32,
+    /// 캐릭터 입 스프라이트를 결정
+    pub sprite_index: u32,
+    pub _padding0: [u8; 8],
 }
 
 impl Default for EyeMouthMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
-            metallic: 0.0,
-            index: 0,
+            threshold: 0.5,
+            sprite_index: 0,
+            _padding0: [0; 8],
         }
     }
 }
@@ -230,7 +228,7 @@ impl EyeMouthMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        character_uniform: &EyeMouthMaterialUniform,
+        material_uniform: &EyeMouthMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
         eye_mouth_view: &wgpu::TextureView,
@@ -244,7 +242,7 @@ impl EyeMouthMaterialResource {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: character_uniform.as_entire_binding(),
+                        resource: material_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

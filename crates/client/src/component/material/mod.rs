@@ -180,12 +180,18 @@ pub enum MaterialUniform {
         data: EnergyBulletMaterialDataLayout,
         buffer: EnergyBulletMaterialUniform,
     },
-    Character(CharacterMaterialUniform),
+    Character {
+        data: CharacterMaterialDataLayout,
+        material_uniform: CharacterMaterialUniform,
+    },
     CharacterEyeMouth {
         data: EyeMouthMaterialDataLayout,
-        buffer: EyeMouthMaterialUniform,
+        material_uniform: EyeMouthMaterialUniform,
     },
-    CharacterHalo(HaloMaterialUniform),
+    CharacterHalo {
+        data: HaloMaterialDataLayout,
+        material_uniform: HaloMaterialUniform,
+    },
     CaptureZone {
         data: CaptureZoneMaterialDataLayout,
         buffer: CaptureZoneMaterialUniform,
@@ -203,9 +209,15 @@ impl MaterialUniform {
         match self {
             MaterialUniform::Bullet { buffer, .. } => buffer.slice(bounds),
             MaterialUniform::EnergyBullet { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::Character(uniform) => uniform.slice(bounds),
-            MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::CharacterHalo(uniform) => uniform.slice(bounds),
+            MaterialUniform::Character {
+                material_uniform, ..
+            } => material_uniform.slice(bounds),
+            MaterialUniform::CharacterEyeMouth {
+                material_uniform, ..
+            } => material_uniform.slice(bounds),
+            MaterialUniform::CharacterHalo {
+                material_uniform, ..
+            } => material_uniform.slice(bounds),
             MaterialUniform::CaptureZone { buffer, .. } => buffer.slice(bounds),
             MaterialUniform::Stage(uniform) => uniform.slice(bounds),
             MaterialUniform::Tree(uniform) => uniform.slice(bounds),
@@ -217,9 +229,15 @@ impl MaterialUniform {
         match self {
             MaterialUniform::Bullet { buffer, .. } => buffer.as_entire_binding(),
             MaterialUniform::EnergyBullet { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::Character(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::CharacterHalo(uniform) => uniform.as_entire_binding(),
+            MaterialUniform::Character {
+                material_uniform, ..
+            } => material_uniform.as_entire_binding(),
+            MaterialUniform::CharacterEyeMouth {
+                material_uniform, ..
+            } => material_uniform.as_entire_binding(),
+            MaterialUniform::CharacterHalo {
+                material_uniform, ..
+            } => material_uniform.as_entire_binding(),
             MaterialUniform::CaptureZone { buffer, .. } => buffer.as_entire_binding(),
             MaterialUniform::Stage(uniform) => uniform.as_entire_binding(),
             MaterialUniform::Tree(uniform) => uniform.as_entire_binding(),

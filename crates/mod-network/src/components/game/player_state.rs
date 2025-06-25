@@ -22,7 +22,7 @@ pub enum ActionState {
     /// 공격 동작 상태
     Attack = 4,
     /// 사망 상태
-    Dead = 5,
+    Death = 5,
     /// 재장전 상태
     Reload = 6,
     /// 일반 스킬을 사용하는 상태
@@ -47,7 +47,7 @@ impl ActionState {
             2 => Some(ActionState::AimAt),
             3 => Some(ActionState::AimOff),
             4 => Some(ActionState::Attack),
-            5 => Some(ActionState::Dead),
+            5 => Some(ActionState::Death),
             6 => Some(ActionState::Reload),
             7 => Some(ActionState::Skill),
             8 => Some(ActionState::Callsign),
@@ -256,9 +256,9 @@ mod tests {
 
     #[test]
     fn test_creation_action_state_dead() {
-        let val = ActionState::Dead as u8;
+        let val = ActionState::Death as u8;
         let state = ActionState::new(val).unwrap();
-        assert_eq!(ActionState::Dead, state);
+        assert_eq!(ActionState::Death, state);
     }
 
     #[test]
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn test_player_state_data() {
         let origin = PlayerStateData::new()
-            .with_action_state(ActionState::Dead)
+            .with_action_state(ActionState::Death)
             .with_movement_state(MovementState::Jumping)
             .with_view_state(ViewState::ZoomIn);
         let bytes = origin.to_big_endian_bytes();

@@ -23,9 +23,7 @@ use super::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CharacterMaterialData {
     pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
+    pub threshold: f32,
     pub main_color: String,
     pub detail_mask: String,
 }
@@ -34,19 +32,17 @@ pub struct CharacterMaterialData {
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct CharacterMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub _padding0: [u8; 4],
+    /// 윤곽선의 색깔 (팀을 구분할 때 사용)
+    pub line_color: [f32; 3],
+    /// 카툰 쉐이더 그림자를 결정
+    pub threshold: f32,
 }
 
 impl Default for CharacterMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
-            metallic: 0.0,
-            _padding0: [0; 4],
+            line_color: [1.0, 1.0, 1.0],
+            threshold: 0.5,
         }
     }
 }
@@ -234,7 +230,7 @@ impl CharacterMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        character_uniform: &CharacterMaterialUniform,
+        material_uniform: &CharacterMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
         detail_mask_view: &wgpu::TextureView,
@@ -248,7 +244,7 @@ impl CharacterMaterialResource {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: character_uniform.as_entire_binding(),
+                        resource: material_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

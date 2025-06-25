@@ -19,31 +19,21 @@ use crate::component::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HaloMaterialData {
     pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub emissive: Float4,
     pub main_color: String,
 }
 
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct HaloMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
+    pub line_color: [f32; 3],
     pub _padding0: [u8; 4],
-    pub emissive: [f32; 4],
 }
 
 impl Default for HaloMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
-            metallic: 0.0,
+            line_color: [1.0, 1.0, 1.0],
             _padding0: [0; 4],
-            emissive: [0.0; 4],
         }
     }
 }
@@ -200,7 +190,7 @@ impl HaloMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        character_uniform: &HaloMaterialUniform,
+        material_uniform: &HaloMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
@@ -212,7 +202,7 @@ impl HaloMaterialResource {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: character_uniform.as_entire_binding(),
+                        resource: material_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

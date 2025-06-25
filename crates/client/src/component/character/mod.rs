@@ -1,8 +1,10 @@
 mod animation;
-// mod aris_original;
+
+mod aris_original;
 // mod midori_original;
 // mod momoi_original;
 mod pipeline;
+mod spawn;
 // mod yuuka_original;
 
 // use ahash::HashMap;
@@ -18,7 +20,7 @@ mod pipeline;
 //     component::{Child, Sibling, ToParentTrans, WorldTransform},
 // };
 
-pub use self::{animation::*, pipeline::*};
+pub use self::{animation::*, pipeline::*, spawn::*};
 
 // use super::{
 //     AttributeKind, CameraResource, LightSetResource, MaterialKind, MaterialResource, Mesh,
