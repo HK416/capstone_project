@@ -9,7 +9,7 @@ mod stage;
 use std::{fs::OpenOptions, io::Read, path::Path, sync::Arc};
 
 use ahash::{HashMap, RandomState};
-use parking_lot::{FairMutex, FairMutexGuard};
+use parking_lot::{FairMutex, FairMutexGuard, Mutex};
 use serde::{Deserialize, Serialize};
 
 use crate::asset::AssetError;
@@ -28,6 +28,21 @@ pub enum MaterialKind {
     CaptureZone,
     Stage,
     Tree,
+}
+
+impl MaterialKind {
+    pub fn is_opaque(&self) -> bool {
+        match self {
+            MaterialKind::Bullet => true,
+            MaterialKind::EnergyBullet => false,
+            MaterialKind::Character => true,
+            MaterialKind::CharacterEyeMouth => true,
+            MaterialKind::CharacterHalo => false,
+            MaterialKind::CaptureZone => false,
+            MaterialKind::Stage => true,
+            MaterialKind::Tree => true,
+        }
+    }
 }
 
 /// 재질 데이터입니다.
@@ -170,35 +185,35 @@ impl MaterialDataPool {
 }
 
 /// 재질 유니폼 버퍼입니다.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum MaterialUniform {
     Bullet {
-        data: BulletMaterialDataLayout,
+        data: Mutex<BulletMaterialDataLayout>,
         material_uniform: BulletMaterialUniform,
     },
     EnergyBullet {
-        data: EnergyBulletMaterialDataLayout,
+        data: Mutex<EnergyBulletMaterialDataLayout>,
         material_uniform: EnergyBulletMaterialUniform,
     },
     Character {
-        data: CharacterMaterialDataLayout,
+        data: Mutex<CharacterMaterialDataLayout>,
         material_uniform: CharacterMaterialUniform,
     },
     CharacterEyeMouth {
-        data: EyeMouthMaterialDataLayout,
+        data: Mutex<EyeMouthMaterialDataLayout>,
         material_uniform: EyeMouthMaterialUniform,
     },
     CharacterHalo,
     CaptureZone {
-        data: CaptureZoneMaterialDataLayout,
+        data: Mutex<CaptureZoneMaterialDataLayout>,
         material_uniform: CaptureZoneMaterialUniform,
     },
     Stage {
-        data: StageMaterialDataLayout,
+        data: Mutex<StageMaterialDataLayout>,
         material_uniform: StageMaterialUniform,
     },
     Tree {
-        data: TreeMaterialDataLayout,
+        data: Mutex<TreeMaterialDataLayout>,
         material_uniform: TreeMaterialUniform,
     },
 }

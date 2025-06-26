@@ -1,6 +1,3 @@
-mod domination;
-mod pause;
-mod prepare;
-mod status;
+mod enter;
 
-pub use self::{domination::*, pause::*, prepare::*, status::*};
+pub use self::enter::*;

@@ -9,7 +9,7 @@ use mod_app::{
 };
 use mod_network::{
     components::{InGamePlayerInitData, LoginToken, StageKind, StageLayoutAttributes, UserId},
-    protocol::{InGameDataInitPacket, RawPacket},
+    protocol::{InGameDataInitPacket, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
@@ -168,11 +168,17 @@ impl GameScene for InGameBuildScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(
-        &mut self,
-        _packet: RawPacket,
-        _app: &dyn AppHandle,
-    ) -> Option<RawPacket> {
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::InGameEnterNotify => {
+                let event = AppEvent::PacketReceived(packet);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
+            _ => {}
+        }
+
         None
     }
 

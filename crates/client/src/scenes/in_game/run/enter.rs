@@ -1,0 +1,644 @@
+use ahash::HashMap;
+use hecs::{Entity, With, World};
+use mod_app::{
+    app::AppHandle,
+    etc::{AppEvent, WindowSize},
+    net::NetworkError,
+    scene::{GameScene, GameSceneFlow},
+};
+use mod_network::components::{
+    ActionState, ActionStateTimer, CharacterKind, GameInputBits, LoginToken, PlayerStateData,
+    StageKind, UserId,
+};
+use mod_physics::object3d::Frustum;
+use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use winit::window::Window;
+
+use crate::{
+    asset::{
+        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumn,
+        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
+        HUD_LAYOUT_URI_03,
+    },
+    component::{
+        clear_render_target_with_skybox, local_transform_query_mut, update_action_state_timer,
+        update_character_hierarchy, update_character_resource, AccumRenderTarget,
+        AlphaBlendPipeline, BakeList, BloomPipeline, BrightRenderTarget, Camera, CameraDataLayout,
+        CameraResource, CameraUniform, Child, DirectionLight, GaussianBlurPipeline,
+        LightSetResource, MaterialKind, MeshRenderer, OpaqueMap, PlayerArchetype, Projection,
+        RevealRenderTarget, Sibling, SkinnedMeshRenderer, Skybox, SkyboxDataLayout,
+        SkyboxRenderPipeline, ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+    },
+    config::Locale,
+    scenes::{
+        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+    },
+};
+
+/// 게임 시작 전 대기하는 장면입니다.
+pub struct InGameEnterScene {
+    /// 애플리케이션 표시 언어
+    locale: Locale,
+    /// 사용자 식별자
+    uid: UserId,
+    /// 로그인 토큰
+    token: LoginToken,
+    /// 게임 스테이지 종류
+    stage_kind: StageKind,
+    /// 남은 대기 시간입니다.
+    remaining_time_ms: u16,
+
+    /// 게임 월드
+    world: Option<World>,
+    /// 카메라 엔터티
+    camera: Entity,
+    /// 플레이어 엔터티
+    players: HashMap<UserId, (Entity, PlayerArchetype)>,
+    /// 스테이지 엔터티
+    stage: Option<StageBoundingVolumnHierarchy>,
+
+    /// 누적 값 렌더 타겟
+    accum_render_target: Option<AccumRenderTarget>,
+    /// 노출 값 렌더 타겟
+    reveal_render_target: Option<RevealRenderTarget>,
+    /// 발광체 렌더 타겟
+    bright_render_target: Option<BrightRenderTarget>,
+
+    /// 알파 블렌딩을 수행하는 파이프라인
+    alpha_blend_pipeline: Option<AlphaBlendPipeline>,
+    /// 가우시안 블러를 수행하는 파이프라인
+    gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
+    /// Bloom 효과를 구현하는 파이프라인
+    bloom_pipeline: Option<BloomPipeline>,
+
+    /// 스테이지 스카이박스
+    skybox: Option<Skybox>,
+    /// 스테이지 방향 조명
+    direction_light: Option<DirectionLight>,
+    /// 조명 쉐이더 리소스
+    light_resource: Option<LightSetResource>,
+
+    /// 카메라 뷰 프러스텀 컬링된 엔터티 목록
+    culling_stage_entities: Vec<Entity>,
+    /// 조명 렌더링 리소스 집합입니다.
+    bake_list: BakeList,
+    /// 불투명 메쉬 렌더링 리소스 집합입니다.
+    opaque_resources: OpaqueMap,
+    /// 투명 메쉬 렌더링 리소스 집합입니다.
+    transparent_resources: TransparentMap,
+
+    /// 폰트 배경 텍스처
+    font_bg: egui::load::SizedTexture,
+
+    /// 메쉬 풀 객체입니다.
+    mesh_pool: MeshPool,
+    /// 모델 풀 객체입니다.
+    model_pool: ModelPool,
+    /// 애니메이션 데이터 풀 객체입니다.
+    motion_pool: MotionPool,
+    /// 텍스처 풀 객체입니다.
+    texture_pool: TexturePool,
+    /// 텍스처 데이터 풀 객체입니다.
+    texture_data_pool: TextureDataPool,
+    /// 텍스처 뷰 풀 객체입니다.
+    texture_view_pool: TextureViewPool,
+    /// 텍스처 샘플러 풀 객체입니다.
+    sampler_pool: SamplerPool,
+}
+
+impl InGameEnterScene {
+    /// 새로운 `InGameEnterScene`을 생성합니다.
+    pub fn new(
+        locale: Locale,
+        uid: UserId,
+        token: LoginToken,
+        stage_kind: StageKind,
+        remaining_time_ms: u16,
+        world: World,
+        players: HashMap<UserId, (Entity, PlayerArchetype)>,
+        stage: StageBoundingVolumnHierarchy,
+        accum_render_target: AccumRenderTarget,
+        reveal_render_target: RevealRenderTarget,
+        bright_render_target: BrightRenderTarget,
+        alpha_blend_pipeline: AlphaBlendPipeline,
+        gaussian_blur_pipeline: GaussianBlurPipeline,
+        bloom_pipeline: BloomPipeline,
+        skybox: Skybox,
+        direction_light: DirectionLight,
+        light_resource: LightSetResource,
+        mesh_pool: MeshPool,
+        model_pool: ModelPool,
+        motion_pool: MotionPool,
+        texture_pool: TexturePool,
+        texture_data_pool: TextureDataPool,
+        texture_view_pool: TextureViewPool,
+        sampler_pool: SamplerPool,
+    ) -> Self {
+        Self {
+            locale,
+            uid,
+            token,
+            stage_kind,
+            remaining_time_ms,
+            world: Some(world),
+            camera: Entity::DANGLING,
+            players,
+            stage: Some(stage),
+            accum_render_target: Some(accum_render_target),
+            reveal_render_target: Some(reveal_render_target),
+            bright_render_target: Some(bright_render_target),
+            alpha_blend_pipeline: Some(alpha_blend_pipeline),
+            gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
+            bloom_pipeline: Some(bloom_pipeline),
+            skybox: Some(skybox),
+            direction_light: Some(direction_light),
+            light_resource: Some(light_resource),
+            culling_stage_entities: Vec::default(),
+            bake_list: BakeList::default(),
+            opaque_resources: OpaqueMap::default(),
+            transparent_resources: TransparentMap::default(),
+            font_bg: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            mesh_pool,
+            model_pool,
+            motion_pool,
+            texture_pool,
+            texture_data_pool,
+            texture_view_pool,
+            sampler_pool,
+        }
+    }
+
+    /// 플레이어 엔터티를 반환합니다.
+    fn player_entity(&self) -> (Entity, PlayerArchetype) {
+        self.players
+            .get(&self.uid)
+            .cloned()
+            .expect("no such entity!")
+    }
+
+    /// 플레이어 캐릭터를 설정합니다.
+    fn setup_player(&mut self) {
+        // 플레이어 캐릭터를 초기화 설정합니다.
+        let (entity, _archetype) = self.player_entity();
+        let world = self.world.as_mut().expect("the world must be exists!");
+        let player_states = world
+            .query_one_mut::<&mut PlayerStateData>(entity)
+            .expect("invalid entity or invalid entity component!");
+
+        player_states.set_action_state(ActionState::Callsign);
+    }
+
+    /// 카메라 엔터티를 생성합니다.
+    fn create_camera(&mut self, size: WindowSize, device: &wgpu::Device) {
+        // 플레이어 캐릭터의 위치를 가져옵니다.
+        let (entity, archetype) = self.player_entity();
+        let world = self.world.as_mut().expect("the world must be exists!");
+        let transform = local_transform_query_mut(world, entity, archetype);
+
+        // 카메라의 위치와 방향을 설정합니다.
+        let pivot = transform.get_translation() + glam::Vec3A::Y * 0.6;
+        let translation = pivot
+            + transform.get_right_vector() * 1.0
+            + transform.get_look_vector() * 1.0
+            + glam::Vec3A::Y * 0.05;
+        let look = (pivot - translation).normalize();
+        let right = glam::Vec3A::Y.cross(look);
+        let up = look.cross(right);
+        let transform = glam::Mat4::from_mat3_translation(
+            glam::mat3(right.into(), up.into(), look.into()),
+            translation.into(),
+        );
+
+        // 카메라 컴포넌트 데이터를 생성합니다.
+        let local_transform = ToParentTrans(transform);
+        let world_transform = WorldTransform(transform);
+        let (width, height): (f32, f32) = size.size().into();
+        let aspect_ratio = width / height;
+        let projection = Projection::perspective(60f32.to_radians(), aspect_ratio, 0.1, 50.0);
+        let proj_view = projection.0 * world_transform.to_view_trans();
+        let frustum = Frustum::from_mat4(proj_view);
+
+        // 카메라 쉐이더 리소스를 생성합니다.
+        let camera_uniform = CameraUniform::uninit(Some("Enter"), device);
+        let camera_resource = CameraResource::new(Some("Enter"), device, &camera_uniform);
+
+        // 엔터티를 생성합니다.
+        self.camera = world.spawn((
+            (Camera, local_transform),
+            (Camera, world_transform),
+            projection,
+            frustum,
+            camera_uniform,
+            camera_resource,
+        ));
+    }
+
+    /// 스테이지 엔터티에 대해 카메라 뷰 프러스텀 컬링을 수행합니다.
+    ///
+    /// # Note
+    /// 이 함수는 카메라의 월드 변환 행렬을 갱신한 후 호출되어야 합니다.
+    ///
+    fn cull_stage_entities(&mut self) {
+        // 카메라의 뷰 프러스텀을 가져옵니다.
+        let world = self.world.as_mut().expect("the world must be exists!");
+        let frustum = world
+            .query_one_mut::<&Frustum>(self.camera)
+            .expect("invalid entity or invalid entity component!");
+
+        // 엔터티를 수집합니다.
+        if let Some(stage) = &self.stage {
+            let mut entity_list = stage.area.clone();
+            if let Some(current) = &stage.root {
+                Self::cull_state_entity(frustum, current, &mut entity_list);
+            }
+            self.culling_stage_entities = entity_list;
+        }
+    }
+
+    /// 스테이지 엔터티에 대해 카메라 뷰 프러스텀 컬링을 수행합니다.
+    fn cull_state_entity(
+        frustum: &Frustum,
+        current: &StageBoundingVolumn,
+        entity_list: &mut Vec<Entity>,
+    ) {
+        if frustum.sphere_test(&current.sphere) {
+            entity_list.push(current.entity);
+        }
+        if let Some(current) = &current.left {
+            Self::cull_state_entity(frustum, current, entity_list);
+        }
+        if let Some(current) = &current.right {
+            Self::cull_state_entity(frustum, current, entity_list);
+        }
+    }
+
+    /// 배경 레이아웃 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_hud_layout_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_LAYOUT_URI_03)
+            .expect("HUD_Layout_03 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.font_bg = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// Weighted-Blended OIT에 사용되는 렌더 타겟과 파이프라인을 생성합니다.
+    fn create_weighted_blend_oit_resource(&mut self, size: WindowSize, device: &wgpu::Device) {
+        // 해상도의 크기를 가져옵니다.
+        let (width, height): (u32, u32) = size.size().into();
+
+        // 렌더 타겟을 생성합니다.
+        let accum_render_target = AccumRenderTarget::new(width, height, device);
+        let reveal_render_target = RevealRenderTarget::new(width, height, device);
+
+        // 알파 블렌드 파이프라인을 생성합니다.
+        let alpha_blend_pipeline = match self.alpha_blend_pipeline.take() {
+            Some(pipeline) => pipeline.renew(device, &accum_render_target, &reveal_render_target),
+            None => AlphaBlendPipeline::new(
+                device,
+                &accum_render_target,
+                &reveal_render_target,
+                SWAPCHAIN_FORMAT,
+            ),
+        };
+
+        // 저장
+        self.accum_render_target = Some(accum_render_target);
+        self.reveal_render_target = Some(reveal_render_target);
+        self.alpha_blend_pipeline = Some(alpha_blend_pipeline);
+    }
+
+    /// Bloom에 사용되는 렌더 타겟과 렌더/컴퓨트 파이프라인을 생성합니다.
+    fn create_bloom_resource(&mut self, size: WindowSize, device: &wgpu::Device) {
+        // 해상도의 크기를 가져옵니다.
+        let (width, height): (u32, u32) = size.size().into();
+
+        // 렌더 타겟과 파이프라인을 생성합니다.
+        let zip = self
+            .gaussian_blur_pipeline
+            .take()
+            .zip(self.bloom_pipeline.take());
+        let (gaussian_blur_pipeline, bright_render_target, bloom_pipeline) = match zip {
+            Some((gaussian_blur_pipeline, bloom_pipeline)) => {
+                gaussian_blur_pipeline.renew(width, height, device, bloom_pipeline)
+            }
+            None => GaussianBlurPipeline::new(width, height, device, SWAPCHAIN_FORMAT),
+        };
+
+        // 저장
+        self.bright_render_target = Some(bright_render_target);
+        self.gaussian_blur_pipeline = Some(gaussian_blur_pipeline);
+        self.bloom_pipeline = Some(bloom_pipeline);
+    }
+
+    /// 카메라와 스카이박스를 갱신합니다.
+    fn update_camera_and_skybox(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+    ) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 카메라 엔터티의 요소를 가져옵니다.
+        type Q<'a> = (
+            &'a CameraUniform,
+            &'a (Camera, WorldTransform),
+            &'a Projection,
+            &'a mut Frustum,
+        );
+        let mut query = world.query_one::<Q>(self.camera).expect("invalid entity!");
+        let (camera_uniform, (_, world_transform), projection, frustum) =
+            query.get().expect("invalid entity component!");
+
+        // 카메라 유니폼 버퍼를 갱신합니다.
+        let position_w = world_transform.get_translation();
+        let proj_view = projection.0 * world_transform.to_view_trans();
+        let data = CameraDataLayout {
+            position_w: position_w.to_array(),
+            proj_view: proj_view.to_cols_array(),
+            ..Default::default()
+        };
+        camera_uniform.update(device, encoder, staging_buffers, data);
+
+        // 카메라 절두체를 갱신합니다.
+        *frustum = Frustum::from_mat4(proj_view);
+
+        // 스카이박스 유니폼 버퍼를 갱신합니다.
+        let skybox = self.skybox.as_ref().expect("the skybox must be exists!");
+        let data = SkyboxDataLayout {
+            proj_view: proj_view.to_cols_array(),
+            color: [1.0, 1.0, 1.0],
+            ..Default::default()
+        };
+        skybox
+            .uniform
+            .update(device, encoder, staging_buffers, data);
+    }
+
+    /// 캐릭터 애니메이션을 재생합니다.
+    fn update_player_character(&self, elapsed_time_ms: u16) {
+        type Q<'a> = (
+            &'a CharacterKind,
+            &'a mut PlayerStateData,
+            &'a mut ActionStateTimer,
+        );
+
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+        let (entity, _archetype) = self.player_entity();
+        let mut query = world.query_one::<Q>(entity).expect("invalid entity!");
+        let (&character_kind, player_states, action_state_timer) =
+            query.get().expect("invalid entity component!");
+
+        // 플레이어 엔터티의 행동 상태를 갱신합니다.
+        let i = character_kind as usize;
+        let character_attributes = CHARACTER_ATTRIBUTES[i];
+        update_action_state_timer(
+            GameInputBits::empty(),
+            player_states,
+            action_state_timer,
+            character_attributes,
+            elapsed_time_ms,
+        );
+    }
+}
+
+impl GameScene for InGameEnterScene {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+        self.on_enter_foreground(window, app);
+
+        let size = app.window_size();
+        let device = app.render_device();
+        let mut staging_buffers = Vec::new();
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+        self.setup_player();
+        self.create_camera(size, device);
+        self.update_camera_and_skybox(device, &mut encoder, &mut staging_buffers);
+        self.cull_stage_entities();
+        self.regist_hud_layout_texture(device, ui_renderer);
+
+        let queue = app.render_queue();
+        queue.submit(Some(encoder.finish()));
+        drop(staging_buffers);
+    }
+
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        // Ui 렌더러에 등록된 텍스처를 해제합니다.
+        ui_renderer.free_texture(&self.font_bg.id);
+    }
+
+    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorDisable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let event = AppEvent::CursorEnable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_window_resized(&mut self, _window: &Window, app: &dyn AppHandle) {
+        if self.world.is_some() {
+            let size = app.window_size();
+            let device = app.render_device();
+            self.create_weighted_blend_oit_resource(size, device);
+            self.create_bloom_resource(size, device);
+        }
+    }
+
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::AddGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+        let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u16;
+        self.update_player_character(elapsed_time_ms);
+    }
+
+    fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        let child_view = world.view::<&Child>();
+        let sibling_view = world.view::<&Sibling>();
+        let mesh_filter_view = world.view::<MeshRenderer>();
+        let skinned_mesh_filter_view = world.view::<SkinnedMeshRenderer>();
+
+        // 캐릭터 계층 구조를 갱신합니다.
+        let (entity, archetype) = self.player_entity();
+        update_character_hierarchy(world, entity, archetype, &child_view, &sibling_view);
+
+        let device = app.render_device();
+        let mut staging_buffers = Vec::new();
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+        // 캐릭터 쉐이더 리소스를 갱신합니다.
+        let (shadow_resource, opaque_resources, transparent_resources) = update_character_resource(
+            world,
+            entity,
+            archetype,
+            device,
+            &mut encoder,
+            &mut staging_buffers,
+            &child_view,
+            &sibling_view,
+            &mesh_filter_view,
+            &skinned_mesh_filter_view,
+        );
+        self.opaque_resources = opaque_resources;
+        self.transparent_resources = transparent_resources;
+
+        let queue = app.render_queue();
+        queue.submit(Some(encoder.finish()));
+        drop(staging_buffers);
+    }
+
+    fn on_draw(
+        &mut self,
+        window: &Window,
+        encoder: &mut wgpu::CommandEncoder,
+        render_target_view: &wgpu::TextureView,
+        depth_buffer_view: &wgpu::TextureView,
+        app: &dyn AppHandle,
+    ) {
+        let device = app.render_device();
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 카메라 쉐이더 리소스를 가져옵니다.
+        let mut query = world
+            .query_one::<&CameraResource>(self.camera)
+            .expect("invalid entity!");
+        let camera_resource = query.get().expect("invalid entity component!");
+
+        // 쉐이더 리소스를 가져옵니다.
+        let skybox = self.skybox.as_ref().expect("the skybox must be exists!");
+        let light_resource = self
+            .light_resource
+            .as_ref()
+            .expect("the light shader resource must be exists!");
+        let accum_render_target = self
+            .accum_render_target
+            .as_ref()
+            .expect("the accumulate render target must be exists!");
+        let reveal_render_target = self
+            .reveal_render_target
+            .as_ref()
+            .expect("the revealage render target must be exists!");
+        let bright_render_target = self
+            .bright_render_target
+            .as_ref()
+            .expect("the brightness render target must be exists!");
+        let alpha_blend_pipeline = self
+            .alpha_blend_pipeline
+            .as_ref()
+            .expect("the alpha blending render pipeline must be exists!");
+        let gaussian_blur_pipeline = self
+            .gaussian_blur_pipeline
+            .as_ref()
+            .expect("the gaussian blur compute pipeline must be exists!");
+        let bloom_pipeline = self
+            .bloom_pipeline
+            .as_ref()
+            .expect("the bloom render pipeline must be exists!");
+
+        encoder.push_debug_group("opaque pass");
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(OpaquePass))"),
+                color_attachments: &[
+                    // 0번 렌더 타겟: 색상
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: render_target_view,
+                        resolve_target: None,
+                    }),
+                    // 1번 렌더 타겟: bloom
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.0,
+                                g: 0.0,
+                                b: 0.0,
+                                a: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: bright_render_target.view(),
+                        resolve_target: None,
+                    }),
+                ],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            for ((mesh, kind), material_resources) in self.opaque_resources.iter() {}
+
+            clear_render_target_with_skybox(
+                &skybox,
+                SkyboxRenderPipeline::get_or_init(&device, SWAPCHAIN_FORMAT, DEPTH_FORMAT),
+                &mut rpass,
+            );
+        }
+        encoder.pop_debug_group();
+    }
+}

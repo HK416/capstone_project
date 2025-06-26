@@ -1,4 +1,5 @@
 mod formation;
+mod in_game_enter;
 mod in_game_ready;
 mod room;
 
@@ -8,7 +9,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::world::{get_pool, get_retires};
 
-pub use self::{formation::*, in_game_ready::*, room::*};
+pub use self::{formation::*, in_game_enter::*, in_game_ready::*, room::*};
 
 use super::{GameWorld, GameWorldEvent};
 
@@ -214,5 +215,11 @@ impl fmt::Debug for GameWorldFormationState {
 impl fmt::Debug for GameWorldInGameReadyState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(GameWorldInGameReadyState))
+    }
+}
+
+impl fmt::Debug for GameWorldInGameEnterState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldInGameEnterState))
     }
 }

@@ -9,6 +9,7 @@ use std::{ops::Deref, sync::Arc};
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, ViewBorrow, World};
 use mod_network::components::InGameBulletPullData;
+use parking_lot::Mutex;
 
 use crate::{
     asset::{ModelNode, ModelPool, ModelRoot, TextureDataPool, BULLET_URIS},
@@ -307,7 +308,7 @@ fn create_material_resources(
                 let resource = BulletMaterialResource::new(label, device, &material_uniform);
 
                 material_uniforms.push(MaterialUniform::Bullet {
-                    data,
+                    data: Mutex::new(data),
                     material_uniform,
                 });
                 material_resources.push(resource);
@@ -328,7 +329,7 @@ fn create_material_resources(
                 let resource = EnergyBulletMaterialResource::new(label, device, &material_uniform);
 
                 material_uniforms.push(MaterialUniform::EnergyBullet {
-                    data,
+                    data: Mutex::new(data),
                     material_uniform,
                 });
                 material_resources.push(resource);

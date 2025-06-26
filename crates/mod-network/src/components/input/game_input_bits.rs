@@ -16,11 +16,10 @@ bitflags! {
         const Aiming = 0x0010;
         const Attack = 0x0020;
         const Skill = 0x0040;
-        const ExSkill = 0x0080;
-        const Jump = 0x0100;
-        const Reload = 0x0200;
-        const Status = 0x0400;
-        const Emotion = 0x1000;
+        const Jump = 0x0080;
+        const Reload = 0x0100;
+        const Status = 0x0200;
+        const Emotion = 0x0400;
     }
 }
 

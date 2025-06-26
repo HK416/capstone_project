@@ -6,6 +6,7 @@ use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::{StageLayoutAreaData, StageLayoutAttributes, StageLayoutPropData};
 use mod_physics::object3d::Sphere;
+use parking_lot::Mutex;
 
 use crate::{
     asset::{
@@ -553,7 +554,7 @@ fn create_material_resources(
                 );
 
                 material_uniforms.push(MaterialUniform::Stage {
-                    data,
+                    data: Mutex::new(data),
                     material_uniform,
                 });
                 material_resources.push(resource);
@@ -585,7 +586,7 @@ fn create_material_resources(
                 );
 
                 material_uniforms.push(MaterialUniform::Tree {
-                    data,
+                    data: Mutex::new(data),
                     material_uniform,
                 });
                 material_resources.push(resource);

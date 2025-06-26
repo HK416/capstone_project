@@ -22,7 +22,7 @@ impl InGameEnterNotifyPacket {
 
 impl Packet for InGameEnterNotifyPacket {
     fn packet_type() -> PacketType {
-        PacketType::InGameReadyNotify
+        PacketType::InGameEnterNotify
     }
 
     fn as_raw(&self) -> crate::protocol::RawPacket {

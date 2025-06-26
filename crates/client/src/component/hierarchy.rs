@@ -4,7 +4,7 @@
 
 use std::ops::{Deref, DerefMut};
 
-use hecs::{Entity, QueryOneError, ViewBorrow, World};
+use hecs::{Component, Entity, QueryOneError, ViewBorrow, World};
 
 use super::{ToParentTrans, WorldTransform};
 

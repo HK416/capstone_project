@@ -3,7 +3,20 @@
 
 mod spawn;
 
+use lazy_static::lazy_static;
+use mod_network::components::CharacterAttributes;
+
 pub use self::spawn::*;
 
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Momoi_Original";
+
+lazy_static! {
+    pub static ref CHARACTER_ATTRIBUTE: CharacterAttributes = {
+        let json = include_str!(concat!(
+            env!("CARGO_WORKSPACE_DIR"),
+            "/assets/characters/momoi_original/attribute.json"
+        ));
+        serde_json::from_str(json).unwrap()
+    };
+}

@@ -31,10 +31,9 @@ mod victory_start;
 
 use ahash::HashMap;
 use hecs::{Component, ViewBorrow};
-use lazy_static::lazy_static;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterAttributes, LatLon, MovementState, MovementStateTimer,
-    PlayerStateData, MAX_JUMP_DURATION,
+    ActionState, ActionStateTimer, LatLon, MovementState, MovementStateTimer, PlayerStateData,
+    MAX_JUMP_DURATION,
 };
 
 use crate::{
@@ -194,16 +193,6 @@ const R_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
     glam::vec4(-0.3873239, 0.2264145, 0.8937094, 0.0),
     glam::vec4(-0.1460184, 0.00000001192093, -0.00000001907349, 1.0),
 );
-
-lazy_static! {
-    static ref CHARACTER_ATTRIBUTE: CharacterAttributes = {
-        let json = include_str!(concat!(
-            env!("CARGO_WORKSPACE_DIR"),
-            "/assets/characters/aris_original/attribute.json"
-        ));
-        serde_json::from_str(json).unwrap()
-    };
-}
 
 /// 캐릭터가 카메라가 바라보는 방향을 바라보도록 로컬 변환 행렬을 수정합니다.
 fn look_to_camera_direction<Tag: Copy + Component>(

@@ -1,3 +1,5 @@
+use std::sync::atomic;
+
 use ahash::{HashMap, RandomState};
 use hecs::{Entity, World};
 use mod_app::{
@@ -8,7 +10,7 @@ use mod_app::{
 };
 use mod_network::{
     components::{LoginToken, StageKind, UserId, MAX_IN_GAME_PLAYERS},
-    protocol::{InGameReadyNotifyPacket, Packet},
+    protocol::{InGameEnterNotifyPacket, InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
 use winit::window::Window;
@@ -25,7 +27,7 @@ use crate::{
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        FatalErrorSceneLayer, InGameEnterScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
         ERR_NETWORK_TITLE_TEXTS,
     },
     SERVER_TCP_ADDR,
@@ -319,6 +321,95 @@ impl GameScene for InGameReadyScene {
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+    }
+
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::InGameEnterNotify => {
+                println!("!");
+                let packet = InGameEnterNotifyPacket::from_raw(packet);
+
+                // 다음 게임 장면으로 전환합니다.
+                let world = match self.world.take() {
+                    Some(world) => world,
+                    None => return None,
+                };
+                let players = self.players.clone();
+                let stage = self.stage.take().expect("the stage must be exists!");
+                let accum_render_target = self
+                    .accum_render_target
+                    .take()
+                    .expect("the accumulate render target must be exists!");
+                let reveal_render_target = self
+                    .reveal_render_target
+                    .take()
+                    .expect("the revealage render target must be exists!");
+                let bright_render_target = self
+                    .bright_render_target
+                    .take()
+                    .expect("the brightness render target must be exists!");
+                let alpha_blend_pipeline = self
+                    .alpha_blend_pipeline
+                    .take()
+                    .expect("the alpha blending render pipeline must be exists!");
+                let gaussian_blur_pipeline = self
+                    .gaussian_blur_pipeline
+                    .take()
+                    .expect("the gaussian blur compute pipeline must be exists!");
+                let bloom_pipeline = self
+                    .bloom_pipeline
+                    .take()
+                    .expect("the bloom render pipeline must be exists!");
+                let skybox = self.skybox.take().expect("the skybox must be exists!");
+                let direction_light = self
+                    .direction_light
+                    .take()
+                    .expect("the direction light must be exists!");
+                let light_resource = self
+                    .light_resource
+                    .take()
+                    .expect("the light shader resource must be exists!");
+                let scene = InGameEnterScene::new(
+                    self.locale,
+                    self.uid,
+                    self.token,
+                    self.stage_kind,
+                    packet.remaining_time_ms,
+                    world,
+                    players,
+                    stage,
+                    accum_render_target,
+                    reveal_render_target,
+                    bright_render_target,
+                    alpha_blend_pipeline,
+                    gaussian_blur_pipeline,
+                    bloom_pipeline,
+                    skybox,
+                    direction_light,
+                    light_resource,
+                    self.mesh_pool.clone(),
+                    self.model_pool.clone(),
+                    self.motion_pool.clone(),
+                    self.texture_pool.clone(),
+                    self.texture_data_pool.clone(),
+                    self.texture_view_pool.clone(),
+                    self.sampler_pool.clone(),
+                );
+                let flow = GameSceneFlow::Change(Box::new(scene));
+                let event = AppEvent::AddGameSceneFlow(flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
+            _ => {
+                log::warn!(
+                    "ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type,
+                );
+            }
+        };
+
+        None
     }
 
     fn on_draw(

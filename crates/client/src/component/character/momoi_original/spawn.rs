@@ -9,6 +9,7 @@ use mod_network::components::{
     ActionStateTimer, BulletData, HealthData, InGamePlayerInitData, MovementStateTimer,
     PlayerStateData, SkillCostData, ViewStateTimer,
 };
+use parking_lot::Mutex;
 
 use crate::{
     asset::{ModelNode, ModelPool, ModelRoot, TextureDataPool, CHARACTER_URIS},
@@ -434,7 +435,7 @@ fn create_material_resources(
                 );
 
                 material_uniforms.push(MaterialUniform::Character {
-                    data,
+                    data: Mutex::new(data),
                     material_uniform,
                 });
                 material_resources.push(resource);
@@ -469,7 +470,7 @@ fn create_material_resources(
                 );
 
                 material_uniforms.push(MaterialUniform::CharacterEyeMouth {
-                    data,
+                    data: Mutex::new(data),
                     material_uniform,
                 });
                 material_resources.push(resource);
