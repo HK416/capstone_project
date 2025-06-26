@@ -75,12 +75,12 @@ macro_rules! define_tags {
 
 define_tags!(
     Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
-    Bullet, Stage, Other
+    Bullet, Stage
 );
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum DataArchetype {
+pub enum PlayerArchetype {
     Player0,
     Player1,
     Player2,
@@ -91,7 +91,4 @@ pub enum DataArchetype {
     Player7,
     Player8,
     Player9,
-    Bullet,
-    Stage,
-    Other,
 }

@@ -38,7 +38,7 @@ pub fn animate_character_when_aim_to_idle<Tag: Copy + Component>(
 
     // 애니메이션 키 프레임을 샘플링합니다.
     let time_point_0 = action_state_timer
-        .get()
+        .0
         .min(character_attribute.normal_attack_end_duration);
     let keyframe = motion.linear_sampling(time_point_0);
 
@@ -72,6 +72,6 @@ pub fn animate_character_when_aim_to_idle<Tag: Copy + Component>(
         }
     }
 
-    let offset = 1.0 - time_point_0 / character_attribute.normal_attack_end_duration;
+    let offset = 1.0 - time_point_0 as f32 / character_attribute.normal_attack_end_duration as f32;
     look_to_camera_direction(offset, latlon, skinning_animation, transform_view);
 }

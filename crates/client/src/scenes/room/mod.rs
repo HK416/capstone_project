@@ -1553,7 +1553,7 @@ impl GameScene for CustomGameRoomScene {
                     self.locale,
                     self.uid,
                     self.token,
-                    packet.remaining_time_sec,
+                    packet.remaining_time_ms,
                     players,
                     self.texture_pool.clone(),
                     self.texture_view_pool.clone(),

@@ -1,6 +1,5 @@
 use std::sync::{Arc, OnceLock};
 
-use ahash::{HashMap, RandomState};
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::{
     app::AppHandle,
@@ -9,32 +8,27 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{
-        InGamePlayerInitData, LoginToken, StageKind, StageLayoutAttributes, UserId,
-        MAX_IN_GAME_PLAYERS,
-    },
+    components::{InGamePlayerInitData, LoginToken, StageKind, StageLayoutAttributes, UserId},
     protocol::{InGameDataInitPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::Scope;
-use serde::de;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     asset::{
-        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumn,
-        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool, BG_SKY_URI,
-        NOTOSANS_BOLD,
+        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumnHierarchy,
+        TextureDataPool, TexturePool, TextureViewPool, BG_SKY_URI, NOTOSANS_BOLD,
     },
     component::{
-        build_stage, spawn_player, DataArchetype, GlobalLight, Other, Player0, Player1, Player2,
-        Player3, Player4, Player5, Player6, Player7, Player8, Player9, Skybox,
+        build_stage, spawn_player, DirectionLight, Player0, Player1, Player2, Player3, Player4,
+        Player5, Player6, Player7, Player8, Player9, PlayerArchetype, Skybox,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        FatalErrorSceneLayer, InGameReadySceneBuilder, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
+        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
     },
 };
 
@@ -46,20 +40,15 @@ enum TaskResult {
     Players {
         uid: UserId,
         entity: Entity,
-        archetype: DataArchetype,
+        archetype: PlayerArchetype,
         batch_commands: Vec<(Entity, EntityBuilder)>,
     },
     Stage {
-        bvh: StageBoundingVolumnHierarchy,
-        archetype: DataArchetype,
+        stage: StageBoundingVolumnHierarchy,
         batch_commands: Vec<(Entity, EntityBuilder)>,
     },
-    Skybox {
-        skybox: Skybox,
-    },
-    GlobalLight {
-        light: GlobalLight,
-    },
+    Skybox(Skybox),
+    DirectionLight(DirectionLight),
     Graphics {
         command_buffer: wgpu::CommandBuffer,
         staging_buffers: Vec<wgpu::Buffer>,
@@ -86,10 +75,10 @@ pub struct InGameBuildScene {
     model_pool: ModelPool,
     /// 애니메이션 데이터 풀 객체입니다.
     motion_pool: MotionPool,
-    /// 텍스처 데이터 풀 객체입니다.
-    texture_data_pool: TextureDataPool,
     /// 텍스처 풀 객체입니다.
     texture_pool: TexturePool,
+    /// 텍스처 데이터 풀 객체입니다.
+    texture_data_pool: TextureDataPool,
     /// 텍스처 뷰 풀 객체입니다.
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
@@ -107,8 +96,8 @@ impl InGameBuildScene {
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
-        texture_data_pool: TextureDataPool,
         texture_pool: TexturePool,
+        texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
     ) -> Self {
@@ -130,12 +119,17 @@ impl InGameBuildScene {
 }
 
 impl GameScene for InGameBuildScene {
-    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let packet = self.packet.take().expect("the packet must be exists!");
         let device = app.render_device().clone();
         let queue = app.render_queue().clone();
+        let mesh_pool = self.mesh_pool.clone();
         let model_pool = self.model_pool.clone();
+        let motion_pool = self.motion_pool.clone();
+        let texture_pool = self.texture_pool.clone();
         let texture_data_pool = self.texture_data_pool.clone();
+        let texture_view_pool = self.texture_view_pool.clone();
+        let sampler_pool = self.sampler_pool.clone();
         let stage_attributes = self.stage_layout_data.clone();
         let event_loop_proxy = app.event_loop_proxy().clone();
 
@@ -146,8 +140,13 @@ impl GameScene for InGameBuildScene {
             packet,
             device,
             queue,
+            mesh_pool,
             model_pool,
+            motion_pool,
+            texture_pool,
             texture_data_pool,
+            texture_view_pool,
+            sampler_pool,
             stage_attributes,
             event_loop_proxy,
         );
@@ -249,8 +248,13 @@ fn build_next_scene(
     packet: InGameDataInitPacket,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
+    mesh_pool: MeshPool,
     model_pool: ModelPool,
+    motion_pool: MotionPool,
+    texture_pool: TexturePool,
     texture_data_pool: TextureDataPool,
+    texture_view_pool: TextureViewPool,
+    sampler_pool: SamplerPool,
     stage_attributes: Arc<OnceLock<StageLayoutAttributes>>,
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
 ) {
@@ -307,7 +311,32 @@ fn build_next_scene(
                 texture_data_pool_cloned,
                 task_result,
             );
+
+            // 조명을 생성합니다.
+            let texture_data_pool_cloned = texture_data_pool.clone();
+            let task_result: Arc<Queue<TaskResult>> = task_result_cloned.clone();
+            create_stage_lights(
+                scope,
+                texture_data_pool_cloned,
+                task_result,
+                stage_attributes,
+            )
         });
+
+        // 빌더를 생성합니다.
+        let mut builder = InGameReadySceneBuilder::new(
+            locale,
+            uid,
+            token,
+            packet.stage_kind,
+            mesh_pool,
+            model_pool,
+            motion_pool,
+            texture_pool,
+            texture_data_pool,
+            texture_view_pool,
+            sampler_pool,
+        );
 
         // 결과를 확인합니다.
         while let Some(result) = task_result.pop() {
@@ -317,22 +346,46 @@ fn build_next_scene(
                     entity,
                     archetype,
                     batch_commands,
-                } => {}
+                } => {
+                    builder.insert_player(uid, entity, archetype);
+                    for (entity, mut builder) in batch_commands {
+                        world
+                            .insert(entity, builder.build())
+                            .expect("no such entity!");
+                    }
+                }
                 TaskResult::Stage {
-                    bvh,
-                    archetype,
+                    stage,
                     batch_commands,
-                } => {}
-                TaskResult::Skybox { skybox } => {}
-                TaskResult::GlobalLight { light } => {}
+                } => {
+                    builder.set_stage(stage);
+                    for (entity, mut builder) in batch_commands {
+                        world
+                            .insert(entity, builder.build())
+                            .expect("no such entity!");
+                    }
+                }
+                TaskResult::Skybox(skybox) => {
+                    builder.set_skybox(skybox);
+                }
+                TaskResult::DirectionLight(direction_light) => {
+                    builder.set_direction_light(direction_light);
+                }
                 TaskResult::Graphics {
                     command_buffer,
                     staging_buffers,
-                } => {}
+                } => {
+                    queue.submit(Some(command_buffer));
+                    drop(staging_buffers);
+                }
             }
         }
 
-        println!("!");
+        // 다음 게임 장면으로 전환합니다.
+        let scene = builder.build(world);
+        let flow = GameSceneFlow::Change(Box::new(scene));
+        let event = AppEvent::AddGameSceneFlow(flow);
+        event_loop_proxy.send_event(event).unwrap();
     });
 }
 
@@ -354,7 +407,7 @@ fn create_player_entities<'a>(
             let uid = data.uid;
             let (archetype, (entity, batch_commands)) = match i {
                 0 => (
-                    DataArchetype::Player0,
+                    PlayerArchetype::Player0,
                     spawn_player(
                         Player0,
                         world,
@@ -367,7 +420,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 1 => (
-                    DataArchetype::Player1,
+                    PlayerArchetype::Player1,
                     spawn_player(
                         Player1,
                         world,
@@ -380,7 +433,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 2 => (
-                    DataArchetype::Player2,
+                    PlayerArchetype::Player2,
                     spawn_player(
                         Player2,
                         world,
@@ -393,7 +446,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 3 => (
-                    DataArchetype::Player3,
+                    PlayerArchetype::Player3,
                     spawn_player(
                         Player3,
                         world,
@@ -406,7 +459,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 4 => (
-                    DataArchetype::Player4,
+                    PlayerArchetype::Player4,
                     spawn_player(
                         Player4,
                         world,
@@ -419,7 +472,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 5 => (
-                    DataArchetype::Player5,
+                    PlayerArchetype::Player5,
                     spawn_player(
                         Player5,
                         world,
@@ -432,7 +485,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 6 => (
-                    DataArchetype::Player6,
+                    PlayerArchetype::Player6,
                     spawn_player(
                         Player6,
                         world,
@@ -445,7 +498,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 7 => (
-                    DataArchetype::Player7,
+                    PlayerArchetype::Player7,
                     spawn_player(
                         Player7,
                         world,
@@ -458,7 +511,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 8 => (
-                    DataArchetype::Player8,
+                    PlayerArchetype::Player8,
                     spawn_player(
                         Player8,
                         world,
@@ -471,7 +524,7 @@ fn create_player_entities<'a>(
                     ),
                 ),
                 9 => (
-                    DataArchetype::Player9,
+                    PlayerArchetype::Player9,
                     spawn_player(
                         Player9,
                         world,
@@ -530,8 +583,7 @@ fn create_stage_entities<'a>(
 
         // 스테이지 빌드 결과를 전송합니다.
         task_result.push(TaskResult::Stage {
-            bvh,
-            archetype: DataArchetype::Stage,
+            stage: bvh,
             batch_commands,
         });
 
@@ -546,7 +598,7 @@ fn create_stage_entities<'a>(
 /// 스카이박스를 생성합니다.
 fn create_skybox<'a>(
     scope: &Scope<'a>,
-    _stage_kind: StageKind,
+    stage_kind: StageKind,
     device: Arc<wgpu::Device>,
     texture_data_pool: TextureDataPool,
     task_result: Arc<Queue<TaskResult>>,
@@ -559,17 +611,15 @@ fn create_skybox<'a>(
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let mut staging_buffers = Vec::default();
 
-        let skybox = Skybox::new(
-            Some("Skybox"),
+        // 스카이박스 생성 결과를 전송합니다
+        task_result.push(TaskResult::Skybox(Skybox::new(
+            Some(&format!("Skybox({:?})", &stage_kind)),
             &device,
             &texture,
             &sampler,
             &mut encoder,
             &mut staging_buffers,
-        );
-
-        // 스카이박스 생성 결과를 전송합니다
-        task_result.push(TaskResult::Skybox { skybox });
+        )));
 
         // 그래픽스 처리 결과를 전송합니다.
         task_result.push(TaskResult::Graphics {
@@ -579,9 +629,31 @@ fn create_skybox<'a>(
     });
 }
 
-// fn spawn_global_light<'a>(
-//     scope: &Scope<'a>,
-//     texture_data_pool: TextureDataPool,
-//     stage_attributes: &'a StageLayoutAttributes,
-// ) {
-// }
+fn create_stage_lights<'a>(
+    scope: &Scope<'a>,
+    texture_data_pool: TextureDataPool,
+    task_result: Arc<Queue<TaskResult>>,
+    stage_attributes: &'a StageLayoutAttributes,
+) {
+    scope.spawn(move |_| {
+        // 전역 조명 데이터를 가져옵니다.
+        let data = match &stage_attributes.global_light {
+            Some(light) => light,
+            None => return, // 전역 조명 데이터가 없는 경우 조명을 처리하지 않습니다.
+        };
+
+        // 그림자 맵 텍스처를 가져옵니다.
+        let (shadow_map_view, shadow_sampler) = texture_data_pool
+            .get(&data.shadow_map)
+            .expect("the shadow map texture must be preloaded!");
+
+        // 스테이지 정적 조명 생성 결과를 전송합니다.
+        task_result.push(TaskResult::DirectionLight(DirectionLight {
+            shadow_map_view,
+            shadow_sampler,
+            light_proj_view: data.light_proj_view.into(),
+            direction_w: data.direction_w.into(),
+            color: data.color.into(),
+        }));
+    });
+}

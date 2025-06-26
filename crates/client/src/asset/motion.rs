@@ -172,16 +172,19 @@ impl MotionPool {
 /// 애니메이션 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MotionData {
+    /// 애니메이션 이름
     pub name: String,
-    pub length: f32,
-    pub frame_rate: f32,
+    /// 애니메이션 길이 (단위: ms)
+    pub length: u16,
+    /// 프레임 레이트
+    pub frame_rate: u16,
+    /// 키 프레임 데이터
     pub keyframes: Vec<KeyFrameData>,
 }
 
 /// 애니메이션의 키 프레임 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KeyFrameData {
-    pub time_point: f32,
     /// NOTE: 스키닝된 메쉬의 최상위 뼈 노드가 아닌 모델의 최상위 뼈 노드 변환 행렬
     pub root_matrix: Matrix,
     pub meshes: Vec<KeyFrameMeshBlob>,
@@ -197,23 +200,23 @@ pub struct KeyFrameMeshBlob {
 /// 애니메이션 데이터입니다.
 #[derive(Debug, Clone)]
 pub struct Motion {
-    pub length: f32,
-    pub frame_rate: f32,
+    pub length: u16,
+    pub frame_rate: u16,
     pub keyframes: Vec<KeyFrame>,
 }
 
 impl Motion {
-    pub fn linear_sampling(&self, time_point: f32) -> KeyFrame {
+    pub fn linear_sampling(&self, time_point: u16) -> KeyFrame {
         debug_assert!(!self.keyframes.is_empty(), "invalid animation data");
 
         let time_point = time_point.min(self.length);
-        let delta_time = 1.0 / self.frame_rate; // 애니메이션 키 프레임 간격
+        let delta_time = 1000 / self.frame_rate; // 애니메이션 키 프레임 간격
         let max_keyframe_index = self.keyframes.len() - 1;
 
-        let prev = ((time_point / delta_time).floor() as usize).min(max_keyframe_index);
+        let prev = ((time_point / delta_time) as usize).min(max_keyframe_index);
         let next = (prev + 1).min(max_keyframe_index);
 
-        let t = (time_point % delta_time) / delta_time; // 두 키 프레임의 선형 보간을 위한 오프셋
+        let t = (time_point % delta_time) as f32 / delta_time as f32; // 두 키 프레임의 선형 보간을 위한 오프셋
         let prev = &self.keyframes[prev];
         let next = &self.keyframes[next];
 

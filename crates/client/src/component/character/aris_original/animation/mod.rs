@@ -56,8 +56,7 @@ use self::{
     skill_move::*, victory_end::*, victory_start::*,
 };
 
-/// 캐릭터 모델의 이름입니다.
-pub const MODEL_NAME: &'static str = "Aris_Original";
+use super::*;
 
 /// 캐릭터의 Idle 애니메이션 이름입니다.
 const IDLE_ANIMATION: &'static str = constcat::concat!(MODEL_NAME, IDLE_ANIMATION_SUFFIX);
@@ -244,7 +243,7 @@ fn jump_animation<Tag: Copy + Component>(
     movement_state_timer: MovementStateTimer,
     transform_view: &mut ViewBorrow<&mut (Tag, ToParentTrans)>,
 ) {
-    let t = movement_state_timer.get().min(MAX_JUMP_DURATION) / MAX_JUMP_DURATION;
+    let t = movement_state_timer.0.min(MAX_JUMP_DURATION) as f32 / MAX_JUMP_DURATION as f32;
 
     let angle = -25f32.to_radians() * t;
     let rotate = glam::Mat4::from_rotation_z(angle);

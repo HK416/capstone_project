@@ -99,10 +99,10 @@ pub struct InGameLoadScene {
     model_pool: ModelPool,
     /// 애니메이션 데이터 풀 객체입니다.
     motion_pool: MotionPool,
-    /// 텍스처 데이터 풀 객체입니다.
-    texture_data_pool: TextureDataPool,
     /// 텍스처 풀 객체입니다.
     texture_pool: TexturePool,
+    /// 텍스처 데이터 풀 객체입니다.
+    texture_data_pool: TextureDataPool,
     /// 텍스처 뷰 풀 객체입니다.
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
@@ -146,8 +146,8 @@ impl InGameLoadScene {
             mesh_pool: MeshPool::new(),
             model_pool: ModelPool::new(),
             motion_pool: MotionPool::new(),
-            texture_data_pool: TextureDataPool::new(),
             texture_pool,
+            texture_data_pool: TextureDataPool::new(),
             texture_view_pool: TextureViewPool::new(),
             sampler_pool: SamplerPool::new(),
         }
@@ -473,7 +473,6 @@ impl GameScene for InGameLoadScene {
         let character_kinds: HashSet<CharacterKind> = packet
             .players
             .iter()
-            .filter(|data| data.is_connected())
             .map(|data| data.character_kind)
             .collect();
 
@@ -481,7 +480,6 @@ impl GameScene for InGameLoadScene {
         let bullet_kinds: HashSet<BulletKind> = packet
             .players
             .iter()
-            .filter(|data| data.is_connected())
             .map(|data| data.character_kind.into())
             .collect();
 
@@ -596,8 +594,8 @@ impl GameScene for InGameLoadScene {
                     self.mesh_pool.clone(),
                     self.model_pool.clone(),
                     self.motion_pool.clone(),
-                    self.texture_data_pool.clone(),
                     self.texture_pool.clone(),
+                    self.texture_data_pool.clone(),
                     self.texture_view_pool.clone(),
                     self.sampler_pool.clone(),
                 ));

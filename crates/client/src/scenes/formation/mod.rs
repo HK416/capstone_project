@@ -69,7 +69,7 @@ pub struct CharacterFormationScene {
     token: LoginToken,
 
     /// 캐릭터 편성까지 남은 시간
-    remaining_time_sec: f32,
+    remaining_time_ms: u16,
 
     /// 플레이어 집합
     players: HashMap<UserId, FormationPlayerData>,
@@ -128,7 +128,7 @@ impl CharacterFormationScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
-        remaining_time_sec: f32,
+        remaining_time_ms: u16,
         players: HashMap<UserId, FormationPlayerData>,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
@@ -137,7 +137,7 @@ impl CharacterFormationScene {
             locale,
             uid,
             token,
-            remaining_time_sec,
+            remaining_time_ms,
             players,
             ui_scale: 1.0,
             clip_rect: egui::Rect::ZERO,
@@ -1020,10 +1020,7 @@ impl CharacterFormationScene {
     /// 타이머 텍스트를 그립니다.
     fn draw_timer_label(&self, ui: &mut egui::Ui) {
         let text = match self.locale {
-            Locale::KOR => format!(
-                "남은 편성 시간: {}초",
-                self.remaining_time_sec.round() as u32
-            ),
+            Locale::KOR => format!("남은 편성 시간: {}초", self.remaining_time_ms / 1_000),
         };
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
@@ -1106,9 +1103,11 @@ impl GameScene for CharacterFormationScene {
                 let packet = FormationDataUpdatePacket::from_raw(packet);
 
                 // 남은 시간을 갱신합니다.
-                const TIME_EPSILON: f32 = 0.5;
-                if (self.remaining_time_sec - packet.remaining_time_sec).abs() > TIME_EPSILON {
-                    self.remaining_time_sec = packet.remaining_time_sec;
+                const TIME_EPSILON: f32 = 500.0;
+                if (self.remaining_time_ms as f32 - packet.remaining_time_ms as f32).abs()
+                    > TIME_EPSILON
+                {
+                    self.remaining_time_ms = packet.remaining_time_ms;
                 }
 
                 // 플레이어 데이터를 갱신합니다.
@@ -1168,6 +1167,9 @@ impl GameScene for CharacterFormationScene {
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
         self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
+
+        let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u16;
+        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
     }
 
     fn on_draw(

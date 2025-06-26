@@ -1,6 +1,10 @@
 mod animation;
-mod aris_original;
 mod pipeline;
 mod spawn;
 
-pub use self::{animation::*, aris_original::*, pipeline::*, spawn::*};
+mod aris_original;
+mod midori_original;
+mod momoi_original;
+mod yuuka_original;
+
+pub use self::{animation::*, pipeline::*, spawn::*};

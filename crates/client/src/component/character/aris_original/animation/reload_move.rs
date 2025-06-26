@@ -38,7 +38,7 @@ pub fn animate_character_when_reload_move<Tag: Copy + Component>(
 
     // 애니메이션 키 프레임을 샘플링합니다.
     let time_point_0 = action_state_timer
-        .get()
+        .0
         .min(character_attribute.normal_reload_duration);
     let keyframe = motion.linear_sampling(time_point_0);
 
@@ -78,7 +78,7 @@ pub fn animate_character_when_reload_move<Tag: Copy + Component>(
         .expect("no such animation data!");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let time_point_1 = movement_state_timer.get() % character_attribute.cafe_walk_duration;
+    let time_point_1 = movement_state_timer.0 % character_attribute.cafe_walk_duration;
     let keyframe = motion.linear_sampling(time_point_1);
 
     // 키 프레임을 구성하는 스키닝된 메쉬를 구성하는 엔터티의 로컬 변환 행렬을 갱신합니다.

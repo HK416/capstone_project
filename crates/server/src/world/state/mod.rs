@@ -31,7 +31,7 @@ pub trait GameWorldState: fmt::Debug + Send {
     fn handle_event(&mut self, world: &mut GameWorld, event: GameWorldEvent) {}
 
     /// 게임 월드 상태를 갱신할 때 호출되는 함수입니다.
-    fn on_advanced(&mut self, world: &mut GameWorld, elapsed_time_sec: f32) {}
+    fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {}
 }
 
 /// 게임 월드의 상태를 제어합니다.
@@ -83,7 +83,7 @@ pub async fn world_state_loop(mut world: GameWorld) {
 
             if world.running && world.flows.is_empty() {
                 // 현재 상태를 갱신합니다.
-                state.on_advanced(&mut world, elapsed.as_secs_f32());
+                state.on_advanced(&mut world, elapsed);
             }
 
             // 가져온 게임 월드 상태에 대한 소유권을 돌려줍니다.

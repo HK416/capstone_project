@@ -6,5 +6,5 @@ mod pull;
 
 pub use self::{init::*, pull::*};
 
-/// 플레이어의 최대 도약 시간입니다. (단위: 초)
-pub const MAX_JUMP_DURATION: f32 = 0.25;
+/// 플레이어의 최대 도약 시간입니다. (단위: ms)
+pub const MAX_JUMP_DURATION: u16 = 250;

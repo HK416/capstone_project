@@ -2,5 +2,9 @@
 //!
 
 mod animation;
+mod spawn;
 
-pub use self::animation::*;
+pub use self::{animation::*, spawn::*};
+
+/// 캐릭터 모델의 이름입니다.
+pub const MODEL_NAME: &'static str = "Aris_Original";

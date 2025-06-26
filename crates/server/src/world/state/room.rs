@@ -13,6 +13,7 @@ use mod_network::{
     },
 };
 use rand::seq::SliceRandom;
+use tokio::time::Duration;
 
 use crate::{
     data::get_stage_attributes,
@@ -642,9 +643,9 @@ impl GameWorldState for GameWorldRoomState {
         }
     }
 
-    fn on_advanced(&mut self, world: &mut GameWorld, elapsed_time_sec: f32) {
+    fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {
         // 경과 시간을 갱신합니다.
-        self.elapsed_time_sec += elapsed_time_sec;
+        self.elapsed_time_sec += elapsed.as_secs_f32();
 
         // 일정 시각마다 패킷을 전송합니다.
         const TICK: f32 = 1.0 / 30.0;

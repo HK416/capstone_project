@@ -38,7 +38,7 @@ pub fn animate_character_when_callsign<Tag: Copy + Component>(
 
     // 애니메이션 키 프레임을 샘플링합니다.
     let time_point_0 = action_state_timer
-        .get()
+        .0
         .min(character_attribute.normal_callsign_duration);
     let keyframe = motion.linear_sampling(time_point_0);
 

@@ -452,8 +452,8 @@ impl InGamePlayerPullDataBuilder {
             velocity: [0.0, 0.0, 0.0],
             bitfield: Bitfield::new(),
             states: PlayerStateData::new(),
-            action_state_timer: ActionStateTimer::new(0.0),
-            movement_state_timer: MovementStateTimer::new(0.0),
+            action_state_timer: ActionStateTimer::new(0),
+            movement_state_timer: MovementStateTimer::new(0),
         }
     }
 
@@ -671,8 +671,8 @@ mod tests {
             .with_permission(Permission::User)
             .with_action_state(ActionState::Attack)
             .with_movement_state(MovementState::Jumping)
-            .with_action_state_timer(ActionStateTimer::new(1.341341))
-            .with_movement_state_timer(MovementStateTimer::new(0.15154132))
+            .with_action_state_timer(ActionStateTimer::new(13413))
+            .with_movement_state_timer(MovementStateTimer::new(234))
             .build();
         let bytes = origin.to_big_endian_bytes();
         let other = InGamePlayerPullData::from_big_endian_bytes(&bytes);

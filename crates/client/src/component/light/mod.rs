@@ -28,14 +28,14 @@ pub const LOCAL_SHADOW_MAP_SIZE: u32 = 1024;
 /// 전역 조명의 그림자 맵 텍스처의 가로 세로 크기입니다.
 pub const GLOBAL_SHADOW_MAP_SIZE: u32 = 4096;
 
-/// 전역 조명 데이터입니다.
+/// 방향 조명 데이터입니다.
 #[derive(Debug, Clone)]
-pub struct GlobalLight {
-    /// 정적 그림자 맵 텍스처 뷰 입니다.
-    pub static_shadow_map_view: Arc<wgpu::TextureView>,
-    /// 정적 그림자 맵 텍스처 샘플러입니다.
-    pub static_shadow_map_sampler: Arc<wgpu::Sampler>,
-    /// 정적 그림자 맵의 조명 변환 행렬입니다.
+pub struct DirectionLight {
+    /// 미리 계산된 그림자 맵 텍스처 뷰 입니다.
+    pub shadow_map_view: Arc<wgpu::TextureView>,
+    /// 미리 계산된 그림자 맵 텍스처 샘플러입니다.
+    pub shadow_sampler: Arc<wgpu::Sampler>,
+    /// 미리 계산된 그림자 맵의 조명 변환 행렬입니다.
     pub light_proj_view: glam::Mat4,
     /// 월드 좌표 상 조명이 비추는 방향입니다.
     pub direction_w: glam::Vec3A,

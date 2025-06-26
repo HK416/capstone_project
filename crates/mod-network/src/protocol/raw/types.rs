@@ -80,6 +80,8 @@ pub enum PacketType {
     InGameReadyNotify = 0x62,
     /// 서버에서 클라이언트로 보내는 각 플레이어의 준비 상태 패킷
     InGameReadyStatus = 0x63,
+    /// 서버에서 클라이언트로 보내는 인게임 진입 알림 패킷
+    InGameEnterNotify = 0x64,
 }
 
 impl PacketType {
@@ -116,6 +118,7 @@ impl PacketType {
             0x61 => Some(PacketType::InGameDataInit),
             0x62 => Some(PacketType::InGameReadyNotify),
             0x63 => Some(PacketType::InGameReadyStatus),
+            0x64 => Some(PacketType::InGameEnterNotify),
             _ => None,
         }
     }
@@ -205,4 +208,6 @@ mod tests {
     test_packet_type!(test_packet_type_in_game_ready_notify, PacketType::InGameReadyNotify);
 
     test_packet_type!(test_packet_type_in_game_ready_status, PacketType::InGameReadyStatus);
+
+    test_packet_type!(test_packet_type_in_game_enter_notify, PacketType::InGameEnterNotify);
 }

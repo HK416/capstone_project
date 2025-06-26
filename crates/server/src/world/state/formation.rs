@@ -14,6 +14,7 @@ use mod_network::{
     },
 };
 use rand::seq::SliceRandom;
+use tokio::time::Duration;
 
 use crate::{
     session::{Session, SessionInGameReadyState, SessionStateFlow},
@@ -23,14 +24,14 @@ use crate::{
     },
 };
 
-/// 최대 장면 지속 시간(초)
-pub const MAX_FORMATION_TIME: f32 = 60.0;
+/// 최대 장면 지속 시간 (단위: ms)
+pub const MAX_FORMATION_TIME: u16 = 60_000;
 
 /// 캐릭터 편성 상태 게임 월드입니다.
 /// 모든 플레이어의 캐릭터 선택이 완료될 때 까지 대기합니다.
 pub struct GameWorldFormationState {
     /// 캐릭터 편성 완료까지 남은 시간
-    remaining_time_sec: f32,
+    remaining_time_ms: u16,
     /// 게임 캐릭터 중복 옵션
     allow_duplicates: bool,
     /// 게임 스테이지 종류
@@ -63,7 +64,7 @@ impl GameWorldFormationState {
         num_red_players: usize,
     ) -> Self {
         Self {
-            remaining_time_sec: MAX_FORMATION_TIME,
+            remaining_time_ms: MAX_FORMATION_TIME,
             allow_duplicates,
             stage_kind,
             elapsed_time_sec: 0.0,
@@ -334,7 +335,7 @@ impl GameWorldFormationState {
         }
 
         // 남은 시간이 없는 경우
-        if self.remaining_time_sec <= 0.0 {
+        if self.remaining_time_ms <= 0 {
             if self.allow_duplicates {
                 // 서버에 연결되어 있고, 캐릭터를 선택하지 않은 플레이어의 캐릭터를 무작위로 지정합니다.
                 for (&uid, data) in world.players.iter_mut() {
@@ -445,7 +446,7 @@ impl GameWorldFormationState {
             return;
         }
 
-        let packet = FormationDataUpdatePacket::new(self.remaining_time_sec, players);
+        let packet = FormationDataUpdatePacket::new(self.remaining_time_ms, players);
         for session in world.sessions.keys() {
             session.tcp_write(packet.as_raw());
         }
@@ -507,11 +508,12 @@ impl GameWorldState for GameWorldFormationState {
         }
     }
 
-    fn on_advanced(&mut self, world: &mut GameWorld, elapsed_time_sec: f32) {
+    fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {
+        let elapsed_time_ms = elapsed.as_millis().min(MAX_FORMATION_TIME as u128) as u16;
         // 남은 시간을 갱신합니다.
-        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
         // 경과 시간을 갱신합니다.
-        self.elapsed_time_sec += elapsed_time_sec;
+        self.elapsed_time_sec += elapsed.as_secs_f32();
 
         // 일정 시각마다 패킷을 전송합니다.
         const TICK: f32 = 1.0 / 30.0;

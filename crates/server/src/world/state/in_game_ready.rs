@@ -8,6 +8,7 @@ use mod_network::{
     },
 };
 use rand::seq::SliceRandom;
+use tokio::time::Duration;
 
 use crate::{
     session::Session,
@@ -17,14 +18,14 @@ use crate::{
     },
 };
 
-/// 최대 게임 로드 시간 (초)
-pub const MAX_LOAD_TIME: f32 = 60.0;
+/// 최대 게임 로드 시간 (단위: ms)
+pub const MAX_LOAD_TIME: u16 = 60_000;
 
 /// 인게임 상태 게임 월드입니다.
 /// 모든 플레이어의 로딩이 완료될 때 까지 대기합니다.
 pub struct GameWorldInGameReadyState {
     /// 게임 로드 완료까지 남은 시간
-    remaining_time_sec: f32,
+    remaining_time_ms: u16,
 
     /// 패킷을 보낸 후 경과 시간
     elapsed_time_sec: f32,
@@ -45,7 +46,7 @@ impl GameWorldInGameReadyState {
         leaved_players: HashSet<UserId>,
     ) -> Self {
         Self {
-            remaining_time_sec: MAX_LOAD_TIME,
+            remaining_time_ms: MAX_LOAD_TIME,
             elapsed_time_sec: 0.0,
             num_blue_players,
             num_red_players,
@@ -184,7 +185,7 @@ impl GameWorldInGameReadyState {
     /// 다음 게임 월드 상태로 전환을 시도합니다.
     fn try_enter_next_state(&mut self, world: &mut GameWorld) {
         // 남은 시간이 없는 경우
-        if self.remaining_time_sec <= 0.0 {
+        if self.remaining_time_ms <= 0 {
             // 준비되지 않은 플레이어의 서버 연결을 해제합니다.
             for (session, &uid) in world.sessions.iter() {
                 match world.players.get_mut(&uid) {
@@ -215,7 +216,7 @@ impl GameWorldInGameReadyState {
         if world.sessions.is_empty() {
             return;
         }
-        
+
         if all_player_readys {
             todo!()
         }
@@ -239,7 +240,7 @@ impl GameWorldInGameReadyState {
             return;
         }
 
-        let packet = InGameReadyStatusPacket::new(self.remaining_time_sec, players);
+        let packet = InGameReadyStatusPacket::new(self.remaining_time_ms, players);
         for session in world.sessions.keys() {
             session.tcp_write(packet.as_raw());
         }
@@ -298,11 +299,12 @@ impl GameWorldState for GameWorldInGameReadyState {
         }
     }
 
-    fn on_advanced(&mut self, world: &mut GameWorld, elapsed_time_sec: f32) {
+    fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {
+        let elapsed_time_ms = elapsed.as_millis().min(MAX_LOAD_TIME as u128) as u16;
         // 남은 시간을 갱신합니다.
-        self.remaining_time_sec = (self.remaining_time_sec - elapsed_time_sec).max(0.0);
+        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
         // 경과 시간을 갱신합니다.
-        self.elapsed_time_sec += elapsed_time_sec;
+        self.elapsed_time_sec += elapsed.as_secs_f32();
 
         // 일전 시각마다 패킷을 전송합니다.
         const TICK: f32 = 1.0 / 30.0;
