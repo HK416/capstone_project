@@ -31,7 +31,22 @@ pub enum MaterialKind {
 }
 
 impl MaterialKind {
+    /// 불투명 여부를 반환합니다.
     pub fn is_opaque(&self) -> bool {
+        match self {
+            MaterialKind::Bullet => true,
+            MaterialKind::EnergyBullet => false,
+            MaterialKind::Character => true,
+            MaterialKind::CharacterEyeMouth => true,
+            MaterialKind::CharacterHalo => true,
+            MaterialKind::CaptureZone => false,
+            MaterialKind::Stage => true,
+            MaterialKind::Tree => true,
+        }
+    }
+
+    /// 그림자 그림 여부를 반환합니다.
+    pub fn is_shadowed(&self) -> bool {
         match self {
             MaterialKind::Bullet => true,
             MaterialKind::EnergyBullet => false,

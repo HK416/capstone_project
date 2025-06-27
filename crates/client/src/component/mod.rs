@@ -23,6 +23,7 @@ pub use self::{
     light::*, material::*, mesh::*, skybox::*, stage::*, transform::*, ui::*,
 };
 
+#[derive(Debug, Clone)]
 pub enum MeshFilter {
     Mesh(MeshResource),
     SkinnedMesh(SkinnedMeshResource),
@@ -37,17 +38,24 @@ impl MeshFilter {
     }
 }
 
+/// 그리기 작업
+pub struct RenderTask {
+    pub mesh: Arc<Mesh>,
+    pub mesh_resource: MeshFilter,
+    pub material_index: usize,
+    pub material_resource: MaterialResource,
+}
+
 pub type BakeList = Vec<(Arc<ShadowResource>, ShadowMap)>;
-pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), HashMap<usize, Vec<MeshFilter>>>;
-pub type OpaqueMap =
-    HashMap<(Arc<Mesh>, MaterialKind), HashMap<(usize, MaterialResource), Vec<MeshFilter>>>;
-pub type TransparentMap =
-    HashMap<(Arc<Mesh>, MaterialKind), HashMap<(usize, MaterialResource), Vec<MeshFilter>>>;
+pub type TransformMap = HashMap<usize, Vec<MeshFilter>>;
+pub type ShadowMap = HashMap<(Arc<Mesh>, MaterialKind), TransformMap>;
+pub type MaterialMap = HashMap<(usize, MaterialResource), Vec<MeshFilter>>;
+pub type OpaqueMap = HashMap<(Arc<Mesh>, MaterialKind), MaterialMap>;
+pub type TransparentMap = HashMap<(Arc<Mesh>, MaterialKind), MaterialMap>;
 pub type MeshRenderer<'a> = (
     &'a Arc<Mesh>,
     &'a MeshResource,
     &'a TransformUniform,
-    &'a Vec<MaterialUniform>,
     &'a Vec<MaterialResource>,
 );
 pub type SkinnedMeshRenderer<'a> = (
@@ -55,7 +63,6 @@ pub type SkinnedMeshRenderer<'a> = (
     &'a SkinnedMeshResource,
     &'a BoneCollection,
     &'a BoneTransformUniform,
-    &'a Vec<MaterialUniform>,
     &'a Vec<MaterialResource>,
 );
 

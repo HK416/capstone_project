@@ -327,7 +327,6 @@ impl GameScene for InGameReadyScene {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::InGameEnterNotify => {
-                println!("!");
                 let packet = InGameEnterNotifyPacket::from_raw(packet);
 
                 // 다음 게임 장면으로 전환합니다.

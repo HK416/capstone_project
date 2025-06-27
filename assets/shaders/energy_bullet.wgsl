@@ -250,7 +250,7 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     let spec = numerator / denominator;
 
     let kS = F;
-    let kD = (vec3<f32>(1.0) - kS) * (1.0 - u_material.metallic);
+    let kD = vec3<f32>(1.0);
 
     // Toon Banding
     let specular_banded = toon_step(max(max(spec.x, spec.y), spec.z), u_material.specular_steps);

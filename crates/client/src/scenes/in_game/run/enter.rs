@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use ahash::HashMap;
-use hecs::{Entity, With, World};
+use hecs::{Entity, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
     etc::{AppEvent, WindowSize},
@@ -10,6 +12,7 @@ use mod_network::components::{
     ActionState, ActionStateTimer, CharacterKind, GameInputBits, LoginToken, PlayerStateData,
     StageKind, UserId,
 };
+use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use winit::window::Window;
@@ -21,19 +24,26 @@ use crate::{
         HUD_LAYOUT_URI_03,
     },
     component::{
-        clear_render_target_with_skybox, local_transform_query_mut, update_action_state_timer,
-        update_character_hierarchy, update_character_resource, AccumRenderTarget,
-        AlphaBlendPipeline, BakeList, BloomPipeline, BrightRenderTarget, Camera, CameraDataLayout,
-        CameraResource, CameraUniform, Child, DirectionLight, GaussianBlurPipeline,
-        LightSetResource, MaterialKind, MeshRenderer, OpaqueMap, PlayerArchetype, Projection,
-        RevealRenderTarget, Sibling, SkinnedMeshRenderer, Skybox, SkyboxDataLayout,
-        SkyboxRenderPipeline, ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        bake_character, bake_character_eye_mouth, bake_stage, clear_render_target_with_skybox,
+        collect_character_resource, collect_stage_resource, compute_frustum_corners_no_inverse,
+        compute_light_view_proj_matrix, draw_character, draw_character_eye_mouth,
+        draw_character_halo, draw_stage, draw_tree, local_transform_query_mut,
+        update_action_state_timer, update_character_hierarchy, update_character_resource,
+        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
+        BakeList, BloomPipeline, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
+        CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
+        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, ShadowResource,
+        Sibling, SkinnedMeshRenderer, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
+        ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::Locale,
     scenes::{
         FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
     },
 };
+
+const CAMERA_FOV_Y: f32 = 60f32.to_radians();
 
 /// 게임 시작 전 대기하는 장면입니다.
 pub struct InGameEnterScene {
@@ -217,7 +227,7 @@ impl InGameEnterScene {
         let world_transform = WorldTransform(transform);
         let (width, height): (f32, f32) = size.size().into();
         let aspect_ratio = width / height;
-        let projection = Projection::perspective(60f32.to_radians(), aspect_ratio, 0.1, 50.0);
+        let projection = Projection::perspective(CAMERA_FOV_Y, aspect_ratio, 0.1, 50.0);
         let proj_view = projection.0 * world_transform.to_view_trans();
         let frustum = Frustum::from_mat4(proj_view);
 
@@ -425,6 +435,127 @@ impl InGameEnterScene {
             elapsed_time_ms,
         );
     }
+
+    /// 조명 쉐이더 리소스를 갱신합니다.
+    ///
+    /// # Note
+    /// 이 함수는 카메라의 계층 구조가 갱신된 후 호출되어야 합니다.
+    ///
+    fn update_light_resource(
+        &self,
+        device: Arc<wgpu::Device>,
+        child_view: &ViewBorrow<'_, &Child>,
+        sibling_view: &ViewBorrow<'_, &Sibling>,
+        mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
+        skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+        bake_tasks: &Arc<Queue<(Arc<ShadowResource>, ShadowMap)>>,
+        window_size: WindowSize,
+    ) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        let stage = self.stage.as_ref().expect("the stage must be exists!");
+        let light_resource = self
+            .light_resource
+            .as_ref()
+            .expect("the light shader resource must be exists!");
+
+        let bake_tasks_cloned = bake_tasks.clone();
+        rayon::in_place_scope(|scope| {
+            let device_cloned = device.clone();
+            let bake_tasks = bake_tasks_cloned.clone();
+            scope.spawn(move |_| {
+                let mut staging_buffers = Vec::default();
+                let mut encoder = device_cloned
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+                if let Some(directional_light) = self.direction_light.as_ref() {
+                    // 카메라의 월드 공간 행렬을 가져옵니다.
+                    let mut query = world
+                        .query_one::<&(Camera, WorldTransform)>(self.camera)
+                        .expect("invalid entity!");
+                    let (_, transform) = query.get().expect("invalid entity component!");
+
+                    // 카메라의 뷰 프러스텀의 모서리 위치를 계산합니다.
+                    let (width, height): (f32, f32) = window_size.size().into();
+                    let frustum_corners = compute_frustum_corners_no_inverse(
+                        transform,
+                        CAMERA_FOV_Y,
+                        width / height,
+                        0.01,
+                        15.0,
+                    );
+
+                    // 전역 조명의 변환 행렬을 계산합니다.
+                    const MARGIN: f32 = 5.0;
+                    let color = directional_light.color;
+                    let light_dir = directional_light.direction_w;
+                    let light_proj_view =
+                        compute_light_view_proj_matrix(&frustum_corners, light_dir, MARGIN);
+
+                    // 유니폼 버퍼를 갱신합니다.
+                    let data = GlobalLightDataLayout {
+                        light_proj_view: light_proj_view.to_cols_array(),
+                        direction_w: light_dir.to_array(),
+                        color: color.to_array(),
+                        intensity: 1.0,
+                        ..Default::default()
+                    };
+                    light_resource.global_light_uniform.update(
+                        &device_cloned,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        data,
+                    );
+
+                    // 전역 조명의 그림자 쉐이더 리소스를 갱신합니다.
+                    let shadow_resource = light_resource.get_global();
+                    let data = LightTransformDataLayout {
+                        proj_view: light_proj_view.to_cols_array(),
+                    };
+                    shadow_resource.uniform.update(
+                        &device_cloned,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        data,
+                    );
+
+                    // 조명이 비추는 영역과 교차하는 엔터티를 수집합니다.
+                    let frustum = Frustum::from_mat4(light_proj_view);
+                    let mut stage_entity_list = stage.area.clone();
+                    if let Some(current) = &stage.root {
+                        Self::cull_state_entity(&frustum, current, &mut stage_entity_list);
+                    }
+                    let mut transform_resources = ShadowMap::default();
+                    collect_stage_resource(
+                        world,
+                        &stage_entity_list,
+                        child_view,
+                        sibling_view,
+                        mesh_filter_view,
+                        skinned_mesh_filter_view,
+                        &mut transform_resources,
+                    );
+
+                    let (entity, archetype) = self.player_entity();
+                    collect_character_resource(
+                        world,
+                        entity,
+                        archetype,
+                        child_view,
+                        sibling_view,
+                        mesh_filter_view,
+                        skinned_mesh_filter_view,
+                        &mut transform_resources,
+                    );
+
+                    bake_tasks.push((shadow_resource.clone(), transform_resources));
+                }
+            });
+        });
+    }
 }
 
 impl GameScene for InGameEnterScene {
@@ -437,9 +568,23 @@ impl GameScene for InGameEnterScene {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         self.setup_player();
+
         self.create_camera(size, device);
         self.update_camera_and_skybox(device, &mut encoder, &mut staging_buffers);
+
         self.cull_stage_entities();
+        {
+            let world = self.world.as_ref().expect("the world must be exists!");
+            let child_view = world.view::<&Child>();
+            let sibling_view = world.view::<&Sibling>();
+            update_stage_hierarchy(
+                world,
+                &self.culling_stage_entities,
+                &child_view,
+                &sibling_view,
+            );
+        }
+
         self.regist_hud_layout_texture(device, ui_renderer);
 
         let queue = app.render_queue();
@@ -500,43 +645,138 @@ impl GameScene for InGameEnterScene {
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
+        // 게임 월드 소유권을 가져옵니다.
         let world = match self.world.as_ref() {
             Some(world) => world,
             None => return,
         };
 
-        let child_view = world.view::<&Child>();
-        let sibling_view = world.view::<&Sibling>();
-        let mesh_filter_view = world.view::<MeshRenderer>();
-        let skinned_mesh_filter_view = world.view::<SkinnedMeshRenderer>();
+        let device = app.render_device().clone();
+        let child_view = &world.view::<&Child>();
+        let sibling_view = &world.view::<&Sibling>();
+        let mesh_filter_view = &world.view::<MeshRenderer>();
+        let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
+        let stage_entities = &self.culling_stage_entities;
 
         // 캐릭터 계층 구조를 갱신합니다.
         let (entity, archetype) = self.player_entity();
         update_character_hierarchy(world, entity, archetype, &child_view, &sibling_view);
 
-        let device = app.render_device();
-        let mut staging_buffers = Vec::new();
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let draw_tasks = Arc::new(Queue::new());
+        let draw_task_cloned = draw_tasks.clone();
+        rayon::in_place_scope(move |scope| {
+            // 캐릭터 쉐이더 리소스를 갱신합니다.
+            let device_cloned = device.clone();
+            let draw_tasks = draw_task_cloned.clone();
+            scope.spawn(move |_| {
+                let mut staging_buffers = Vec::default();
+                let mut encoder = device_cloned
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        // 캐릭터 쉐이더 리소스를 갱신합니다.
-        let (shadow_resource, opaque_resources, transparent_resources) = update_character_resource(
-            world,
-            entity,
-            archetype,
+                update_character_resource(
+                    world,
+                    entity,
+                    archetype,
+                    &device_cloned,
+                    &mut encoder,
+                    &mut staging_buffers,
+                    child_view,
+                    sibling_view,
+                    mesh_filter_view,
+                    skinned_mesh_filter_view,
+                    draw_tasks,
+                );
+            });
+
+            // 스테이지 쉐이더 리소스를 갱신합니다.
+            let device_cloned = device.clone();
+            let draw_tasks = draw_task_cloned.clone();
+            scope.spawn(move |_| {
+                let mut staging_buffers = Vec::default();
+                let mut encoder = device_cloned
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+                update_stage_resource(
+                    world,
+                    stage_entities,
+                    &device_cloned,
+                    &mut encoder,
+                    &mut staging_buffers,
+                    child_view,
+                    sibling_view,
+                    mesh_filter_view,
+                    skinned_mesh_filter_view,
+                    draw_tasks,
+                );
+            });
+        });
+
+        let device = app.render_device().clone();
+        let window_size = app.window_size();
+        let bake_tasks = Arc::new(Queue::new());
+        self.update_light_resource(
             device,
-            &mut encoder,
-            &mut staging_buffers,
-            &child_view,
-            &sibling_view,
-            &mesh_filter_view,
-            &skinned_mesh_filter_view,
+            child_view,
+            sibling_view,
+            mesh_filter_view,
+            skinned_mesh_filter_view,
+            &bake_tasks,
+            window_size,
         );
-        self.opaque_resources = opaque_resources;
-        self.transparent_resources = transparent_resources;
 
-        let queue = app.render_queue();
-        queue.submit(Some(encoder.finish()));
-        drop(staging_buffers);
+        while let Some(task) = draw_tasks.pop() {
+            let RenderTask {
+                mesh,
+                mesh_resource,
+                material_index,
+                material_resource,
+            } = task;
+
+            let material_kind = material_resource.kind();
+            if material_kind.is_opaque() {
+                // 불투명 작업 집합에 추가합니다.
+                let key = (mesh.clone(), material_kind);
+                let sub_key = (material_index, material_resource.clone());
+                match self.opaque_resources.get_mut(&key) {
+                    Some(resource_map) => match resource_map.get_mut(&sub_key) {
+                        Some(list) => {
+                            list.push(mesh_resource.clone());
+                        }
+                        None => {
+                            resource_map.insert(sub_key, vec![mesh_resource.clone()]);
+                        }
+                    },
+                    None => {
+                        self.opaque_resources.insert(
+                            key,
+                            HashMap::from_iter([(sub_key, vec![mesh_resource.clone()])]),
+                        );
+                    }
+                }
+            } else {
+                // 투명 작업 집합에 추가합니다.
+                let key = (mesh.clone(), material_kind);
+                let sub_key = (material_index, material_resource.clone());
+                match self.transparent_resources.get_mut(&key) {
+                    Some(resource_map) => match resource_map.get_mut(&sub_key) {
+                        Some(list) => {
+                            list.push(mesh_resource);
+                        }
+                        None => {
+                            resource_map.insert(sub_key, vec![mesh_resource]);
+                        }
+                    },
+                    None => {
+                        self.transparent_resources
+                            .insert(key, HashMap::from_iter([(sub_key, vec![mesh_resource])]));
+                    }
+                }
+            }
+        }
+
+        while let Some(task) = bake_tasks.pop() {
+            self.bake_list.push(task);
+        }
     }
 
     fn on_draw(
@@ -590,6 +830,52 @@ impl GameScene for InGameEnterScene {
             .as_ref()
             .expect("the bloom render pipeline must be exists!");
 
+        encoder.push_debug_group("shadow pass");
+        for (shadow_resource, shadow_map) in self.bake_list.iter() {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(ShadowPass))"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &shadow_resource.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            for ((mesh, kind), transform_resources) in shadow_map.iter() {
+                match kind {
+                    MaterialKind::Character => bake_character(
+                        mesh,
+                        device,
+                        shadow_resource,
+                        transform_resources,
+                        &mut rpass,
+                    ),
+                    MaterialKind::CharacterEyeMouth => bake_character_eye_mouth(
+                        mesh,
+                        device,
+                        shadow_resource,
+                        transform_resources,
+                        &mut rpass,
+                    ),
+                    MaterialKind::Stage | MaterialKind::Tree => bake_stage(
+                        mesh,
+                        device,
+                        shadow_resource,
+                        transform_resources,
+                        &mut rpass,
+                    ),
+                    _ => {}
+                };
+            }
+        }
+        encoder.pop_debug_group();
+
         encoder.push_debug_group("opaque pass");
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -631,7 +917,60 @@ impl GameScene for InGameEnterScene {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), material_resources) in self.opaque_resources.iter() {}
+            for ((mesh, kind), material_resources) in self.opaque_resources.iter() {
+                match kind {
+                    MaterialKind::Character => {
+                        draw_character(
+                            mesh,
+                            device,
+                            camera_resource,
+                            light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterEyeMouth => {
+                        draw_character_eye_mouth(
+                            mesh,
+                            device,
+                            camera_resource,
+                            light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterHalo => {
+                        draw_character_halo(
+                            mesh,
+                            device,
+                            camera_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::Stage => {
+                        draw_stage(
+                            mesh,
+                            device,
+                            camera_resource,
+                            light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::Tree => {
+                        draw_tree(
+                            mesh,
+                            device,
+                            camera_resource,
+                            light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    _ => {}
+                }
+            }
 
             clear_render_target_with_skybox(
                 &skybox,
@@ -640,5 +979,11 @@ impl GameScene for InGameEnterScene {
             );
         }
         encoder.pop_debug_group();
+    }
+
+    fn on_finish_draw(&mut self, window: &Window, app: &dyn AppHandle) {
+        self.bake_list.clear();
+        self.opaque_resources.clear();
+        self.transparent_resources.clear();
     }
 }

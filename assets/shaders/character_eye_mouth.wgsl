@@ -1,7 +1,8 @@
 //! 캐릭터의 눈과 입을 그리는 쉐이더 코드를 관리합니다.
 //! 
 
-const PI = 3.14159265359;
+const PI: f32 = 3.14159265359;
+const BIAS: f32 = 0.001;
 const MAX_LIGHTS: u32 = 8u;
 const MAX_BONES: u32 = 256u;
 
@@ -208,7 +209,7 @@ fn compute_static_shadow(light_space_pos: vec4<f32>) -> f32 {
 
     let proj = light_space_pos / light_space_pos.w;
     let proj_coords = proj.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
-    let curr_depth = proj.z;
+    let curr_depth = clamp(proj.z - BIAS, 0.0, 1.0);
 
     var uv: vec2<f32>;
     var depth: f32;
@@ -235,7 +236,7 @@ fn compute_global_shadow(light_space_pos: vec4<f32>) -> f32 {
     
     let proj = light_space_pos / light_space_pos.w;
     let proj_coords = proj.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
-    let curr_depth = proj.z;
+    let curr_depth = clamp(proj.z - BIAS, 0.0, 1.0);
 
     // 그림자 맵 경계 확인
     if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || 
@@ -298,7 +299,7 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     let spec = numerator / denominator;
 
     let kS = F;
-    let kD = (vec3<f32>(1.0) - kS) * (1.0 - u_material.metallic);
+    let kD = vec3<f32>(1.0);
 
     // Toon Banding
     let diffuse_banded = toon_step(NdotL, u_material.diffuse_steps);
@@ -322,10 +323,11 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
 
     // 최종 색상
     let color = (diffuse + specular) * u_global_light.color * u_global_light.intensity * shadow;
-    let final_color = color + rim * main_color;
+    let ambient = main_color * 0.8;
+    let final_color = color + rim * main_color + ambient;
 
     var out: RenderTarget;
-    out.color = vec4<f32>(final_color, 1.0);
+    out.color = vec4(pow(final_color, vec3(1.0 / 2.2)), 1.0); // 감마 보정
     out.emissive = vec4<f32>(0.0);
     return out;
 }

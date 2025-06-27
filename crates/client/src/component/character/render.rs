@@ -1,11 +1,17 @@
+use std::sync::Arc;
+
 use ahash::HashMap;
 use hecs::{Component, Entity, ViewBorrow, World};
+use mod_parallelism::collections::Queue;
+use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 
 use crate::component::{
-    Child, MeshFilter, MeshRenderer, OpaqueMap, Player0, Player1, Player2, Player3, Player4,
-    Player5, Player6, Player7, Player8, Player9, PlayerArchetype, ShadowMap, Sibling,
-    SkinnedMeshRenderer, ToParentTrans, TransformDataLayout, TransparentMap, WorldTransform,
-    MAX_BONES,
+    AttributeKind, CameraResource, CharacterBakePipeline, CharacterRenderPipeline, Child,
+    EyeMouthBakePipeline, EyeMouthRenderPipeline, HaloRenderPipeline, LightSetResource,
+    MaterialMap, Mesh, MeshFilter, MeshRenderer, Player0, Player1, Player2, Player3, Player4,
+    Player5, Player6, Player7, Player8, Player9, PlayerArchetype, RenderTask, ShadowMap,
+    ShadowResource, Sibling, SkinnedMeshRenderer, ToParentTrans, TransformDataLayout, TransformMap,
+    WorldTransform, MAX_BONES, SHADOW_FORMAT,
 };
 
 /// 캐릭터 엔터티의 계층 구조를 갱신합니다.
@@ -198,11 +204,8 @@ pub fn update_character_resource(
     sibling_view: &ViewBorrow<'_, &Sibling>,
     mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
     skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
-) -> (ShadowMap, OpaqueMap, TransparentMap) {
-    let mut shadow_resources = ShadowMap::default();
-    let mut opaque_resources = OpaqueMap::default();
-    let mut transparent_resources = TransparentMap::default();
-
+    draw_tasks: Arc<Queue<RenderTask>>,
+) {
     match archetype {
         PlayerArchetype::Player0 => {
             let transform_view = world.view::<&(Player0, WorldTransform)>();
@@ -216,9 +219,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player1 => {
@@ -233,9 +234,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player2 => {
@@ -250,9 +249,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player3 => {
@@ -267,9 +264,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player4 => {
@@ -284,9 +279,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player5 => {
@@ -301,9 +294,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player6 => {
@@ -318,9 +309,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player7 => {
@@ -335,9 +324,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player8 => {
@@ -352,9 +339,7 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
         PlayerArchetype::Player9 => {
@@ -369,14 +354,10 @@ pub fn update_character_resource(
                 &transform_view,
                 mesh_filter_view,
                 skinned_mesh_filter_view,
-                &mut shadow_resources,
-                &mut opaque_resources,
-                &mut transparent_resources,
+                &draw_tasks,
             );
         }
     }
-
-    (shadow_resources, opaque_resources, transparent_resources)
 }
 
 /// 캐릭터 쉐이더 리소스를 갱신합니다.
@@ -390,9 +371,7 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
     transform_view: &ViewBorrow<'_, &(Tag, WorldTransform)>,
     mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
     skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
-    shadow_resources: &mut ShadowMap,
-    opaque_resources: &mut OpaqueMap,
-    transparent_resources: &mut TransparentMap,
+    draw_tasks: &Queue<RenderTask>,
 ) {
     // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
     if let Some(child) = child_view.get(entity).cloned() {
@@ -407,9 +386,7 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             transform_view,
             mesh_filter_view,
             skinned_mesh_filter_view,
-            shadow_resources,
-            opaque_resources,
-            transparent_resources,
+            draw_tasks,
         );
     }
 
@@ -426,15 +403,13 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             transform_view,
             mesh_filter_view,
             skinned_mesh_filter_view,
-            shadow_resources,
-            opaque_resources,
-            transparent_resources,
+            draw_tasks,
         );
     }
 
     let result = mesh_filter_view.get(entity);
     match result {
-        Some((mesh, mesh_resource, mesh_uniform, _material_uniforms, material_resources)) => {
+        Some((mesh, mesh_resource, mesh_uniform, material_resources)) => {
             // 메쉬 유니폼 버퍼를 갱신합니다.
             let (_, transform) = transform_view
                 .get(entity)
@@ -445,43 +420,13 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             mesh_uniform.update(device, encoder, staging_buffers, data);
 
             for (index, material_resource) in material_resources.iter().enumerate() {
-                // 렌더 집합에 추가합니다.
-                let material_kind = material_resource.kind();
-                let key = (mesh.clone(), material_kind);
-                let sub_key = (index, material_resource.clone());
-                let val = MeshFilter::Mesh(mesh_resource.clone());
-                match opaque_resources.get_mut(&key) {
-                    Some(resource_map) => match resource_map.get_mut(&sub_key) {
-                        Some(list) => {
-                            list.push(val);
-                        }
-                        None => {
-                            resource_map.insert(sub_key, vec![val]);
-                        }
-                    },
-                    None => {
-                        opaque_resources.insert(key, HashMap::from_iter([(sub_key, vec![val])]));
-                    }
-                }
-
-                // 그림자 집합에 추가합니다.
-                if material_kind.is_opaque() {
-                    let key = (mesh.clone(), material_kind);
-                    let val = MeshFilter::Mesh(mesh_resource.clone());
-                    match shadow_resources.get_mut(&key) {
-                        Some(resource_map) => match resource_map.get_mut(&index) {
-                            Some(list) => {
-                                list.push(val);
-                            }
-                            None => {
-                                resource_map.insert(index, vec![val]);
-                            }
-                        },
-                        None => {
-                            shadow_resources.insert(key, HashMap::from_iter([(index, vec![val])]));
-                        }
-                    }
-                }
+                // 그리기 작업 목록에 추가합니다.
+                draw_tasks.push(RenderTask {
+                    mesh: mesh.clone(),
+                    mesh_resource: MeshFilter::Mesh(mesh_resource.clone()),
+                    material_index: index,
+                    material_resource: material_resource.clone(),
+                });
             }
 
             return;
@@ -496,7 +441,6 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             mesh_resource,
             bone_collection,
             bone_transform_uniform,
-            _material_uniforms,
             material_resources,
         )) => {
             // 뼈 변환 행렬 유니폼 버퍼를 갱신합니다.
@@ -510,12 +454,208 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             bone_transform_uniform.update(device, encoder, staging_buffers, data);
 
             for (index, material_resource) in material_resources.iter().enumerate() {
-                // 렌더 집합에 추가합니다.
+                // 그리기 작업 목록에 추가합니다.
+                draw_tasks.push(RenderTask {
+                    mesh: mesh.clone(),
+                    mesh_resource: MeshFilter::SkinnedMesh(mesh_resource.clone()),
+                    material_index: index,
+                    material_resource: material_resource.clone(),
+                });
+            }
+
+            return;
+        }
+        None => {}
+    }
+}
+
+/// 캐릭터 쉐이더 리소스를 수집합니다.
+///
+/// # Note
+/// 이 함수는 캐릭터 엔터티 계층 구조가 갱신 된 후에 호출되어야 합니다.
+///
+pub fn collect_character_resource(
+    world: &World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    child_view: &ViewBorrow<'_, &Child>,
+    sibling_view: &ViewBorrow<'_, &Sibling>,
+    mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
+    skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+    transform_resources: &mut ShadowMap,
+) {
+    match archetype {
+        PlayerArchetype::Player0 => {
+            let transform_view = world.view::<&(Player0, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player1 => {
+            let transform_view = world.view::<&(Player1, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player2 => {
+            let transform_view = world.view::<&(Player2, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player3 => {
+            let transform_view = world.view::<&(Player3, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player4 => {
+            let transform_view = world.view::<&(Player4, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player5 => {
+            let transform_view = world.view::<&(Player5, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player6 => {
+            let transform_view = world.view::<&(Player6, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player7 => {
+            let transform_view = world.view::<&(Player7, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player8 => {
+            let transform_view = world.view::<&(Player8, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+        PlayerArchetype::Player9 => {
+            let transform_view = world.view::<&(Player9, WorldTransform)>();
+            collect_character_resource_recursive(
+                entity,
+                child_view,
+                sibling_view,
+                &transform_view,
+                mesh_filter_view,
+                skinned_mesh_filter_view,
+                transform_resources,
+            );
+        }
+    }
+}
+
+/// 캐릭터 쉐이더 리소스를 갱신합니다.
+fn collect_character_resource_recursive<Tag: Copy + Component>(
+    entity: Entity,
+    child_view: &ViewBorrow<'_, &Child>,
+    sibling_view: &ViewBorrow<'_, &Sibling>,
+    transform_view: &ViewBorrow<'_, &(Tag, WorldTransform)>,
+    mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
+    skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+    transform_resources: &mut ShadowMap,
+) {
+    // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
+    if let Some(child) = child_view.get(entity).cloned() {
+        let entity = *child;
+        collect_character_resource_recursive(
+            entity,
+            child_view,
+            sibling_view,
+            transform_view,
+            mesh_filter_view,
+            skinned_mesh_filter_view,
+            transform_resources,
+        );
+    }
+
+    // 형제 엔터티가 존재하는 경우 형제 엔터티를 갱신합니다.
+    if let Some(sibling) = sibling_view.get(entity).cloned() {
+        let entity = *sibling;
+        collect_character_resource_recursive(
+            entity,
+            child_view,
+            sibling_view,
+            transform_view,
+            mesh_filter_view,
+            skinned_mesh_filter_view,
+            transform_resources,
+        );
+    }
+
+    let result = mesh_filter_view.get(entity);
+    match result {
+        Some((mesh, mesh_resource, _mesh_uniform, material_resources)) => {
+            for (material_index, material_resource) in material_resources.iter().enumerate() {
+                // 그림자 작업 목록에 추가합니다.
                 let material_kind = material_resource.kind();
                 let key = (mesh.clone(), material_kind);
-                let sub_key = (index, material_resource.clone());
-                let val = MeshFilter::SkinnedMesh(mesh_resource.clone());
-                match opaque_resources.get_mut(&key) {
+                let sub_key = material_index;
+                let val = MeshFilter::Mesh(mesh_resource.clone());
+                match transform_resources.get_mut(&key) {
                     Some(resource_map) => match resource_map.get_mut(&sub_key) {
                         Some(list) => {
                             list.push(val);
@@ -525,26 +665,7 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
                         }
                     },
                     None => {
-                        opaque_resources.insert(key, HashMap::from_iter([(sub_key, vec![val])]));
-                    }
-                }
-
-                // 그림자 집합에 추가합니다.
-                if material_kind.is_opaque() {
-                    let key = (mesh.clone(), material_kind);
-                    let val = MeshFilter::SkinnedMesh(mesh_resource.clone());
-                    match shadow_resources.get_mut(&key) {
-                        Some(resource_map) => match resource_map.get_mut(&index) {
-                            Some(list) => {
-                                list.push(val);
-                            }
-                            None => {
-                                resource_map.insert(index, vec![val]);
-                            }
-                        },
-                        None => {
-                            shadow_resources.insert(key, HashMap::from_iter([(index, vec![val])]));
-                        }
+                        transform_resources.insert(key, HashMap::from_iter([(sub_key, vec![val])]));
                     }
                 }
             }
@@ -552,5 +673,197 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             return;
         }
         None => {}
+    };
+
+    let result = skinned_mesh_filter_view.get(entity);
+    match result {
+        Some((
+            mesh,
+            mesh_resource,
+            _bone_collection,
+            _bone_transform_uniform,
+            material_resources,
+        )) => {
+            for (material_index, material_resource) in material_resources.iter().enumerate() {
+                // 그림자 작업 목록에 추가합니다.
+                let material_kind = material_resource.kind();
+                let key = (mesh.clone(), material_kind);
+                let sub_key = material_index;
+                let val = MeshFilter::SkinnedMesh(mesh_resource.clone());
+                match transform_resources.get_mut(&key) {
+                    Some(resource_map) => match resource_map.get_mut(&sub_key) {
+                        Some(list) => {
+                            list.push(val);
+                        }
+                        None => {
+                            resource_map.insert(sub_key, vec![val]);
+                        }
+                    },
+                    None => {
+                        transform_resources.insert(key, HashMap::from_iter([(sub_key, vec![val])]));
+                    }
+                }
+            }
+
+            return;
+        }
+        None => {}
+    }
+}
+
+/// 캐릭터 그림자를 그립니다.
+pub fn bake_character<'a>(
+    mesh: &'a Mesh,
+    device: &wgpu::Device,
+    shadow_resource: &'a ShadowResource,
+    transform_resources: &'a TransformMap,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(CharacterBakePipeline::get_or_init(device, SHADOW_FORMAT));
+
+    rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
+
+    rpass.set_vertex_buffer(0, mesh.vertex(..));
+    rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+    rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+    for (index, filters) in transform_resources {
+        let index_buffer = mesh.submeshes().get(*index).unwrap();
+        rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+
+        for resource in filters {
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+}
+
+/// 캐릭터를 그립니다.
+pub fn draw_character<'a>(
+    mesh: &'a Mesh,
+    device: &wgpu::Device,
+    camera_resource: &'a CameraResource,
+    light_resource: &'a LightSetResource,
+    material_resources: &'a MaterialMap,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(CharacterRenderPipeline::get_or_init(
+        device,
+        SWAPCHAIN_FORMAT,
+        DEPTH_FORMAT,
+    ));
+
+    rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+    rpass.set_bind_group(3, light_resource.bind_group(), &[]);
+
+    rpass.set_vertex_buffer(0, mesh.vertex(..));
+    rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
+    rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+    rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+    rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+    for ((index, material), filters) in material_resources {
+        let index_buffer = mesh.submeshes().get(*index).unwrap();
+        rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+        rpass.set_bind_group(2, material.bind_group(), &[]);
+
+        for resource in filters {
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+}
+
+/// 캐릭터 그림자를 그립니다.
+pub fn bake_character_eye_mouth<'a>(
+    mesh: &'a Mesh,
+    device: &wgpu::Device,
+    shadow_resource: &'a ShadowResource,
+    transform_resources: &'a TransformMap,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(EyeMouthBakePipeline::get_or_init(device, SHADOW_FORMAT));
+
+    rpass.set_bind_group(0, &shadow_resource.bind_group, &[]);
+
+    rpass.set_vertex_buffer(0, mesh.vertex(..));
+    rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+    rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+    for (index, filters) in transform_resources {
+        let index_buffer = mesh.submeshes().get(*index).unwrap();
+        rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+
+        for resource in filters {
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+}
+
+/// 캐릭터를 그립니다.
+pub fn draw_character_eye_mouth<'a>(
+    mesh: &'a Mesh,
+    device: &wgpu::Device,
+    camera_resource: &'a CameraResource,
+    light_resource: &'a LightSetResource,
+    material_resources: &'a MaterialMap,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(EyeMouthRenderPipeline::get_or_init(
+        device,
+        SWAPCHAIN_FORMAT,
+        DEPTH_FORMAT,
+    ));
+
+    rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+    rpass.set_bind_group(3, light_resource.bind_group(), &[]);
+
+    rpass.set_vertex_buffer(0, mesh.vertex(..));
+    rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
+    rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+    rpass.set_vertex_buffer(3, mesh.attribute(&AttributeKind::BoneIndex, ..).unwrap());
+    rpass.set_vertex_buffer(4, mesh.attribute(&AttributeKind::BoneWeight, ..).unwrap());
+
+    for ((index, material), filters) in material_resources {
+        let index_buffer = mesh.submeshes().get(*index).unwrap();
+        rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+        rpass.set_bind_group(2, material.bind_group(), &[]);
+
+        for resource in filters {
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+}
+
+/// 캐릭터를 그립니다.
+pub fn draw_character_halo<'a>(
+    mesh: &'a Mesh,
+    device: &wgpu::Device,
+    camera_resource: &'a CameraResource,
+    material_resources: &'a MaterialMap,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(HaloRenderPipeline::get_or_init(
+        device,
+        SWAPCHAIN_FORMAT,
+        DEPTH_FORMAT,
+    ));
+
+    rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+
+    rpass.set_vertex_buffer(0, mesh.vertex(..));
+    rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+
+    for ((index, material), filters) in material_resources {
+        let index_buffer = mesh.submeshes().get(*index).unwrap();
+        rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+        rpass.set_bind_group(2, material.bind_group(), &[]);
+
+        for resource in filters {
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
     }
 }
