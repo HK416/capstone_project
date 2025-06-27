@@ -327,7 +327,7 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     let final_color = color + rim * main_color + ambient;
 
     var out: RenderTarget;
-    out.color = vec4(pow(final_color, vec3(1.0 / 2.2)), 1.0); // 감마 보정
+    out.color = vec4(final_color, 1.0);
     out.emissive = vec4<f32>(0.0);
     return out;
 }

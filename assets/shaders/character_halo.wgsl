@@ -59,7 +59,7 @@ fn fs_main(input: VertexOutput) -> RenderTarget {
     let color = textureSample(t_main_color, s_main_color, input.uv);
 
     var out: RenderTarget;
-    out.color = vec4(pow(color.rgb, vec3(1.0 / 2.2)), color.a); // 감마 보정
+    out.color = vec4(color.rgb, 1.0);
     out.emissive = vec4<f32>(0.0, 0.0, 0.0, 0.0);
 
     return out;

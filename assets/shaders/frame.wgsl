@@ -38,6 +38,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 @fragment 
 fn fs_main(input: VertexOutput) -> RenderTarget {
     var out: RenderTarget;
-    out.color = textureSample(t_content, s_content, input.texcoord);
+    let color = textureSample(t_content, s_content, input.texcoord).rgb;
+    out.color = vec4(pow(color, vec3(1.0 / 2.2)), 1.0); // 감마 보정
     return out;
 }
