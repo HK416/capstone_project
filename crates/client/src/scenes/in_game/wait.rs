@@ -1,5 +1,3 @@
-use std::sync::atomic;
-
 use ahash::{HashMap, RandomState};
 use hecs::{Entity, World};
 use mod_app::{

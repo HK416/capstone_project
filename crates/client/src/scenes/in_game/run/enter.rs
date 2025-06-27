@@ -4,7 +4,7 @@ use ahash::HashMap;
 use hecs::{Entity, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
-    etc::{AppEvent, WindowSize},
+    etc::{AppEvent, Viewport, WindowSize},
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
@@ -14,13 +14,13 @@ use mod_network::components::{
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
-use winit::window::Window;
+use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
         MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumn,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_03,
+        HUD_LAYOUT_URI_03, IMG_FONT_MISSION_URI, NOTOSANS_BOLD,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage,
@@ -37,13 +37,20 @@ use crate::{
         Sibling, SkinnedMeshRenderer, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
         ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
     },
-    config::Locale,
+    config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
     },
 };
 
+/// 카메라의 Fov-y 값 (단위: 라디안)
 const CAMERA_FOV_Y: f32 = 60f32.to_radians();
+/// Ui 레이아웃 애니메이션 시간 (단위: ms)
+const MAX_ANIME_TIME: u16 = 1250;
+
+/// 애플리케이션 표시 언어에 따른 게임 방법 안내 텍스트
+const MESSAGE_TEXTS: [&'static str; NUM_LOCALE] = ["맵 중앙의 목표 구역을 먼저 선점하는 팀이 승리"];
 
 /// 게임 시작 전 대기하는 장면입니다.
 pub struct InGameEnterScene {
@@ -57,6 +64,10 @@ pub struct InGameEnterScene {
     stage_kind: StageKind,
     /// 남은 대기 시간입니다.
     remaining_time_ms: u16,
+    /// 레이아웃 이동 시간입니다.
+    animation_time_ms: u16,
+    /// 첫 번째 마우스가 눌림 여부 플래그
+    first_moust_pressed: bool,
 
     /// 게임 월드
     world: Option<World>,
@@ -97,8 +108,16 @@ pub struct InGameEnterScene {
     /// 투명 메쉬 렌더링 리소스 집합입니다.
     transparent_resources: TransparentMap,
 
+    /// Ui 스케일
+    ui_scale: f32,
+    /// 클립 사각형 영역
+    clip_rect: egui::Rect,
+    /// 이미지 폰트 텍스처
+    img_font_texture: egui::load::SizedTexture,
     /// 폰트 배경 텍스처
-    font_bg: egui::load::SizedTexture,
+    layout_texture: egui::load::SizedTexture,
+    /// 폰트 배경 사각형 영역
+    layout_rect: egui::Rect,
 
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
@@ -150,6 +169,8 @@ impl InGameEnterScene {
             token,
             stage_kind,
             remaining_time_ms,
+            animation_time_ms: 0,
+            first_moust_pressed: true,
             world: Some(world),
             camera: Entity::DANGLING,
             players,
@@ -167,10 +188,17 @@ impl InGameEnterScene {
             bake_list: BakeList::default(),
             opaque_resources: OpaqueMap::default(),
             transparent_resources: TransparentMap::default(),
-            font_bg: egui::load::SizedTexture {
+            ui_scale: 1.0,
+            clip_rect: egui::Rect::ZERO,
+            img_font_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
+            layout_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            layout_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -294,7 +322,7 @@ impl InGameEnterScene {
             .expect("HUD_Layout_03 texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
-        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        // 텍스처의 텍스처 뷰를 생성합니다.
         let texture = self
             .texture_view_pool
             .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
@@ -304,7 +332,32 @@ impl InGameEnterScene {
             ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         // 등록된 텍스처 정보를 저장합니다.
-        self.font_bg = egui::load::SizedTexture {
+        self.layout_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    /// 이미지 폰트 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_img_font_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_MISSION_URI)
+            .expect("ImgFont_Mission texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.img_font_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
@@ -556,11 +609,167 @@ impl InGameEnterScene {
             });
         });
     }
+
+    /// Ui의 크기를 재설정합니다.
+    fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
+        // 클립 사각형 영역의 크기를 재조정합니다.
+        let viewport = app.viewport();
+        let scale_factor = window.scale_factor() as f32;
+        (self.clip_rect, self.ui_scale) = Self::resize_clip_rect(viewport, scale_factor);
+
+        // 레이아웃 사각형 영역의 크기를 재조정합니다.
+        self.layout_rect = Self::resize_layout_bg(&self.clip_rect, self.ui_scale);
+    }
+
+    /// 클립 사각형 영역의 크기를 재조정합니다.
+    fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
+
+        (clip_rect, scale)
+    }
+
+    /// 레이아웃 사각형 영역의 크기를 재조정합니다.
+    fn resize_layout_bg(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+        let width = clip_rect.width() * 0.7;
+        let height = width * 0.135;
+        let size = egui::vec2(width, height);
+        let min = clip_rect.min + egui::vec2(0.0, clip_rect.height() * 0.7);
+        egui::Rect::from_min_size(min, size)
+    }
+
+    /// 레이아웃 사각형을 그립니다.
+    fn draw_layout_bg(&self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Layout_Bg"))
+            .sense(egui::Sense::empty())
+            .order(egui::Order::Background)
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+
+                let t = self.animation_time_ms as f32 / MAX_ANIME_TIME as f32;
+                let begin = -self.layout_rect.width();
+                let position = egui::vec2(begin * (1.0 - t), 0.0);
+
+                let left_top = self.layout_rect.min + position;
+                let right_bottom =
+                    self.layout_rect.max - egui::Vec2::splat(22.5 * self.ui_scale) + position;
+                let rect = egui::Rect::from_min_max(left_top, right_bottom);
+                let uv = egui::Rect::from_pos(egui::pos2(0.9214659686, 0.625));
+                egui::Image::new(self.layout_texture)
+                    .tint(egui::Color32::from_white_alpha(192))
+                    .sense(egui::Sense::empty())
+                    .uv(uv)
+                    .paint_at(ui, rect);
+
+                let left_top = self.layout_rect.left_bottom()
+                    - egui::vec2(0.0, 22.5 * self.ui_scale)
+                    + position;
+                let right_bottom = self.layout_rect.right_bottom()
+                    - egui::vec2(22.5 * self.ui_scale, 0.0)
+                    + position;
+                let rect = egui::Rect::from_min_max(left_top, right_bottom);
+                let uv =
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.625), egui::pos2(0.9214659686, 1.0));
+                egui::Image::new(self.layout_texture)
+                    .tint(egui::Color32::from_white_alpha(192))
+                    .sense(egui::Sense::empty())
+                    .uv(uv)
+                    .paint_at(ui, rect);
+
+                let left_top =
+                    self.layout_rect.right_top() - egui::vec2(22.5 * self.ui_scale, 0.0) + position;
+                let right_bottom = self.layout_rect.right_bottom()
+                    - egui::vec2(0.0, 22.5 * self.ui_scale)
+                    + position;
+                let rect = egui::Rect::from_min_max(left_top, right_bottom);
+                let uv =
+                    egui::Rect::from_min_max(egui::pos2(0.9214659686, 0.0), egui::pos2(1.0, 0.625));
+                egui::Image::new(self.layout_texture)
+                    .tint(egui::Color32::from_white_alpha(192))
+                    .sense(egui::Sense::empty())
+                    .uv(uv)
+                    .paint_at(ui, rect);
+
+                let left_top = self.layout_rect.right_bottom()
+                    - egui::Vec2::splat(22.5 * self.ui_scale)
+                    + position;
+                let right_bottom = self.layout_rect.right_bottom() + position;
+                let rect = egui::Rect::from_min_max(left_top, right_bottom);
+                let uv =
+                    egui::Rect::from_min_max(egui::pos2(0.9214659686, 0.625), egui::pos2(1.0, 1.0));
+                egui::Image::new(self.layout_texture)
+                    .tint(egui::Color32::from_white_alpha(192))
+                    .sense(egui::Sense::empty())
+                    .uv(uv)
+                    .paint_at(ui, rect);
+            });
+    }
+
+    /// 이미지 폰트를 그립니다.
+    fn draw_img_font(&self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Mission_Font"))
+            .sense(egui::Sense::empty())
+            .order(egui::Order::Middle)
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                let t = self.animation_time_ms as f32 / MAX_ANIME_TIME as f32;
+                let begin = -self.layout_rect.width();
+                let position = egui::vec2(begin * (1.0 - t), 0.0);
+
+                let min = self.layout_rect.min;
+                let max = min + self.layout_rect.size() * egui::vec2(0.333, 1.0);
+                let rect = egui::Rect::from_min_max(min, max);
+
+                let texture_size = self.img_font_texture.size;
+                let ratio = texture_size.x / texture_size.y;
+                let center = rect.center() + position;
+                let width = rect.width() * 0.7;
+                let height = width / ratio;
+                let size = egui::vec2(width, height);
+                let rect = egui::Rect::from_center_size(center, size);
+                egui::Image::new(self.img_font_texture)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, rect);
+            });
+    }
+
+    /// 안내 메시지를 그립니다.
+    fn draw_message(&self, ctx: &egui::Context, i: usize) {
+        egui::Area::new(egui::Id::new("Message_Font"))
+            .sense(egui::Sense::empty())
+            .order(egui::Order::Middle)
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                let t = self.animation_time_ms as f32 / MAX_ANIME_TIME as f32;
+                let begin = -self.layout_rect.width();
+                let position = egui::vec2(begin * (1.0 - t), 0.0);
+
+                let max = self.layout_rect.max + position;
+                let min = max - self.layout_rect.size() * egui::vec2(0.666, 1.0);
+                let rect = egui::Rect::from_min_max(min, max);
+
+                let text = MESSAGE_TEXTS[i];
+                let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+                let font_id = egui::FontId::new(24.0 * self.ui_scale, family);
+                let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+                let label = egui::Label::new(text)
+                    .wrap_mode(egui::TextWrapMode::Truncate)
+                    .sense(egui::Sense::empty())
+                    .selectable(false);
+                ui.put(rect, label);
+            });
+    }
 }
 
 impl GameScene for InGameEnterScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
-        self.on_enter_foreground(window, app);
+        let event = AppEvent::CursorDisable;
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+        self.first_moust_pressed = true;
 
         let size = app.window_size();
         let device = app.render_device();
@@ -586,6 +795,8 @@ impl GameScene for InGameEnterScene {
         }
 
         self.regist_hud_layout_texture(device, ui_renderer);
+        self.regist_img_font_texture(device, ui_renderer);
+        self.resize_ui(window, app);
 
         let queue = app.render_queue();
         queue.submit(Some(encoder.finish()));
@@ -599,28 +810,42 @@ impl GameScene for InGameEnterScene {
         ui_renderer: &mut UiRenderer,
     ) {
         // Ui 렌더러에 등록된 텍스처를 해제합니다.
-        ui_renderer.free_texture(&self.font_bg.id);
-    }
-
-    fn on_enter_foreground(&mut self, _window: &Window, app: &dyn AppHandle) {
-        let event = AppEvent::CursorDisable;
-        let event_loop_proxy = app.event_loop_proxy();
-        event_loop_proxy.send_event(event).unwrap();
+        ui_renderer.free_texture(&self.layout_texture.id);
+        ui_renderer.free_texture(&self.img_font_texture.id);
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
         let event = AppEvent::CursorEnable;
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        self.first_moust_pressed = false;
     }
 
-    fn on_window_resized(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
         if self.world.is_some() {
             let size = app.window_size();
             let device = app.render_device();
             self.create_weighted_blend_oit_resource(size, device);
             self.create_bloom_resource(size, device);
+            self.resize_ui(window, app);
         }
+    }
+
+    fn on_mouse_btn_released(
+        &mut self,
+        _button: MouseButton,
+        _window: &Window,
+        app: &dyn AppHandle,
+    ) -> bool {
+        if !self.first_moust_pressed {
+            let event = AppEvent::CursorDisable;
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+            self.first_moust_pressed = true;
+        }
+
+        true
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -641,6 +866,8 @@ impl GameScene for InGameEnterScene {
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u16;
+        self.animation_time_ms = (self.animation_time_ms + elapsed_time_ms).min(MAX_ANIME_TIME);
+        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
         self.update_player_character(elapsed_time_ms);
     }
 
@@ -993,9 +1220,16 @@ impl GameScene for InGameEnterScene {
         encoder.pop_debug_group();
     }
 
-    fn on_finish_draw(&mut self, window: &Window, app: &dyn AppHandle) {
+    fn on_finish_draw(&mut self, _window: &Window, _app: &dyn AppHandle) {
         self.bake_list.clear();
         self.opaque_resources.clear();
         self.transparent_resources.clear();
+    }
+
+    fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let ctx = app.egui_ctx();
+        self.draw_layout_bg(ctx);
+        self.draw_img_font(ctx);
+        self.draw_message(ctx, self.locale as usize);
     }
 }
