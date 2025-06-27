@@ -7,10 +7,12 @@ use mod_network::components::{
 use crate::{
     asset::{MotionPool, CHARACTER_URIS},
     component::{
-        character::aris_original, Player0, Player1, Player2, Player3, Player4, Player5, Player6,
-        Player7, Player8, Player9, PlayerArchetype, ToParentTrans,
+        Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
+        PlayerArchetype, ToParentTrans,
     },
 };
+
+use super::*;
 
 /// 모든 캐릭터 모델의 최상위 뼈 노드 이름입니다.
 pub const MODEL_BONE_ROOT: &'static str = "Bip001";
@@ -167,9 +169,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -188,9 +190,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -209,9 +211,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -230,9 +232,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -251,9 +253,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -272,9 +274,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -293,9 +295,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -314,9 +316,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -335,9 +337,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,
@@ -356,9 +358,9 @@ pub fn animate_character(
             let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
             let func = match character_kind {
                 CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MomoiOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::MidoriOriginal => aris_original::animate_character::<Tag>,
-                CharacterKind::YuukaOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
             };
             func(
                 &motions,

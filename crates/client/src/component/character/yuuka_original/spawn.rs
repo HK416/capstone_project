@@ -6,8 +6,8 @@ use std::{ops::Deref, sync::Arc};
 use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Component, Entity, EntityBuilder, World};
 use mod_network::components::{
-    ActionStateTimer, BulletData, HealthData, InGamePlayerInitData, MovementStateTimer,
-    PlayerStateData, SkillCostData, ViewStateTimer,
+    ActionState, ActionStateTimer, BulletData, HealthData, InGamePlayerInitData, MovementState,
+    MovementStateTimer, SkillCostData, ViewState, ViewStateTimer,
 };
 use parking_lot::Mutex;
 
@@ -62,7 +62,9 @@ pub fn spawn_player<Tag: Copy + Component>(
     ));
     builder.add((tag, WorldTransform::default()));
     builder.add_bundle((
-        PlayerStateData::new(),
+        ActionState::Idle,
+        MovementState::Idle,
+        ViewState::Idle,
         ActionStateTimer::new(0),
         MovementStateTimer::new(0),
         ViewStateTimer::new(0),
@@ -318,6 +320,9 @@ fn spawn_character_model_recursive<Tag: Copy + Component>(
 
     // 메쉬 데이터가 존재하는 경우 엔터티에 메쉬 데이터를 추가합니다.
     if let Some(mesh) = current.mesh.clone() {
+        let mesh_name = mesh.uri().into();
+        mesh_entity_list.insert(mesh_name, entity);
+
         match current.skinning.clone() {
             // 스키닝된 메쉬의 쉐이더 리소스를 생성합니다.
             Some(skinning) => {

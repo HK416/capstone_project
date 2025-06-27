@@ -1,12 +1,13 @@
 //! `Momoi_Original` 모델과 관련된 코드를 관리합니다.
 //!
 
+mod animation;
 mod spawn;
 
 use lazy_static::lazy_static;
 use mod_network::components::CharacterAttributes;
 
-pub use self::spawn::*;
+pub use self::{animation::*, spawn::*};
 
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Momoi_Original";
