@@ -32,8 +32,7 @@ mod victory_start;
 use ahash::HashMap;
 use hecs::{Component, ViewBorrow};
 use mod_network::components::{
-    ActionState, ActionStateTimer, LatLon, MovementState, MovementStateTimer, PlayerStateData,
-    MAX_JUMP_DURATION,
+    ActionState, ActionStateTimer, LatLon, MovementState, MovementStateTimer, MAX_JUMP_DURATION,
 };
 
 use crate::{
@@ -329,15 +328,14 @@ fn landing_animation<Tag: Copy + Component>(
 pub fn animate_character<Tag: Copy + Component>(
     motions: &HashMap<String, Motion>,
     skinning_animation: &SkinningAnimation,
-    state_data: PlayerStateData,
+    action_state: ActionState,
+    movement_state: MovementState,
     action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     latlon: LatLon,
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut (Tag, ToParentTrans)>,
 ) {
-    let action_state = state_data.action_state();
-    let movement_state = state_data.movement_state();
     let character_attribute = &CHARACTER_ATTRIBUTE;
     match action_state {
         ActionState::Idle => match movement_state {

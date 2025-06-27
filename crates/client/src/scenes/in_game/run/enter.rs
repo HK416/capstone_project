@@ -9,8 +9,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, GameInputBits, LoginToken, PlayerStateData,
-    StageKind, UserId,
+    ActionState, ActionStateTimer, CharacterKind, GameInputBits, LoginToken, StageKind, UserId,
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
@@ -24,13 +23,14 @@ use crate::{
         HUD_LAYOUT_URI_03,
     },
     component::{
-        bake_character, bake_character_eye_mouth, bake_stage, clear_render_target_with_skybox,
-        collect_character_resource, collect_stage_resource, compute_frustum_corners_no_inverse,
-        compute_light_view_proj_matrix, draw_character, draw_character_eye_mouth,
-        draw_character_halo, draw_stage, draw_tree, local_transform_query_mut,
-        update_action_state_timer, update_character_hierarchy, update_character_resource,
-        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
-        BakeList, BloomPipeline, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
+        animate_character, bake_character, bake_character_eye_mouth, bake_stage,
+        clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
+        compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
+        draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree,
+        local_transform_query_mut, update_action_state_timer, update_character_hierarchy,
+        update_character_resource, update_stage_hierarchy, update_stage_resource,
+        AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
         CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
         LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
         PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, ShadowResource,
@@ -194,11 +194,11 @@ impl InGameEnterScene {
         // 플레이어 캐릭터를 초기화 설정합니다.
         let (entity, _archetype) = self.player_entity();
         let world = self.world.as_mut().expect("the world must be exists!");
-        let player_states = world
-            .query_one_mut::<&mut PlayerStateData>(entity)
+        let action_state = world
+            .query_one_mut::<&mut ActionState>(entity)
             .expect("invalid entity or invalid entity component!");
 
-        player_states.set_action_state(ActionState::Callsign);
+        *action_state = ActionState::Callsign;
     }
 
     /// 카메라 엔터티를 생성합니다.
@@ -411,7 +411,7 @@ impl InGameEnterScene {
     fn update_player_character(&self, elapsed_time_ms: u16) {
         type Q<'a> = (
             &'a CharacterKind,
-            &'a mut PlayerStateData,
+            &'a mut ActionState,
             &'a mut ActionStateTimer,
         );
 
@@ -421,7 +421,7 @@ impl InGameEnterScene {
         };
         let (entity, _archetype) = self.player_entity();
         let mut query = world.query_one::<Q>(entity).expect("invalid entity!");
-        let (&character_kind, player_states, action_state_timer) =
+        let (&character_kind, action_state, action_state_timer) =
             query.get().expect("invalid entity component!");
 
         // 플레이어 엔터티의 행동 상태를 갱신합니다.
@@ -429,7 +429,7 @@ impl InGameEnterScene {
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         update_action_state_timer(
             GameInputBits::empty(),
-            player_states,
+            action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
@@ -658,8 +658,20 @@ impl GameScene for InGameEnterScene {
         let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
         let stage_entities = &self.culling_stage_entities;
 
-        // 캐릭터 계층 구조를 갱신합니다.
+        // 캐릭터 애니메이션을 재생합니다.
         let (entity, archetype) = self.player_entity();
+        let animation_view = world.view::<AnimationQuery>();
+        let collection_view = world.view::<&BoneCollection>();
+        animate_character(
+            world,
+            entity,
+            archetype,
+            &self.motion_pool,
+            &animation_view,
+            &collection_view,
+        );
+
+        // 캐릭터 계층 구조를 갱신합니다.
         update_character_hierarchy(world, entity, archetype, &child_view, &sibling_view);
 
         let draw_tasks = Arc::new(Queue::new());
