@@ -2,8 +2,8 @@
 //!
 
 use crate::components::{
-    ActionState, ActionStateTimer, BigEndian, MovementState, MovementStateTimer, NetworkState,
-    Permission, PlayerStateData, UserId,
+    ActionStateTimer, BigEndian, MovementStateTimer, NetworkState, Permission, PlayerStateData,
+    UserId,
 };
 
 /// 플레이어 비트 필드 데이터입니다.
@@ -147,7 +147,7 @@ pub struct InGamePlayerPullData {
     /// 비트 필드 데이터
     bitfield: Bitfield,
     /// 플레이어 상태 데이터
-    pub states: PlayerStateData,
+    pub player_states: PlayerStateData,
     /// 행동 상태 타이머
     pub action_state_timer: ActionStateTimer,
     /// 움직임 상태 타이머
@@ -155,6 +155,49 @@ pub struct InGamePlayerPullData {
 }
 
 impl InGamePlayerPullData {
+    pub fn new(
+        uid: UserId,
+        kill_count: u16,
+        dead_count: u16,
+        guard_health: u16,
+        current_health: u16,
+        current_bullet: u16,
+        current_skill_cost: u16,
+        translation: [f32; 3],
+        rotation: [f32; 4],
+        velocity: [f32; 3],
+        connected: bool,
+        invincible: bool,
+        permission: Permission,
+        overwrite: bool,
+        network_state: NetworkState,
+        player_states: PlayerStateData,
+        action_state_timer: ActionStateTimer,
+        movement_state_timer: MovementStateTimer,
+    ) -> Self {
+        Self {
+            uid,
+            kill_count,
+            dead_count,
+            guard_health,
+            current_health,
+            current_bullet,
+            current_skill_cost,
+            translation,
+            rotation,
+            velocity,
+            bitfield: Bitfield::new()
+                .with_connected(connected)
+                .with_invincible(invincible)
+                .with_permission(permission)
+                .with_overwrite(overwrite)
+                .with_network_state(network_state),
+            player_states,
+            action_state_timer,
+            movement_state_timer,
+        }
+    }
+
     /// 서버 연결 여부를 반환합니다.
     pub fn is_connected(&self) -> bool {
         self.bitfield.is_connected()
@@ -361,7 +404,7 @@ impl BigEndian for InGamePlayerPullData {
             rotation,
             velocity,
             bitfield,
-            states,
+            player_states: states,
             action_state_timer,
             movement_state_timer,
         }
@@ -381,7 +424,7 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.states.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.player_states.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
 
@@ -396,202 +439,6 @@ impl BigEndian for InGamePlayerPullData {
         }
 
         bytes
-    }
-}
-
-/// 인게임 플레이어 갱신 데이터의 빌더입니다.
-#[derive(Debug, Clone, PartialEq)]
-pub struct InGamePlayerPullDataBuilder {
-    /// 사용자 식별자
-    pub uid: UserId,
-
-    /// 상대 팀 처치 횟수
-    pub kill_count: u16,
-    /// 상태 팀에게 처치 당한 횟수
-    pub dead_count: u16,
-
-    /// 현재 방어막 체력
-    pub guard_health: u16,
-    /// 현재 체력
-    pub current_health: u16,
-    /// 현재 남은 총알 수
-    pub current_bullet: u16,
-    /// 현재 스킬 코스트
-    pub current_skill_cost: u16,
-
-    /// 월드 공간 위치
-    pub translation: [f32; 3],
-    /// 월드 공간 방향
-    pub rotation: [f32; 4],
-    /// 월드 공간 속도
-    pub velocity: [f32; 3],
-
-    /// 비트 필드 데이터
-    bitfield: Bitfield,
-    /// 플레이어 상태 데이터
-    pub states: PlayerStateData,
-    /// 행동 상태 타이머
-    pub action_state_timer: ActionStateTimer,
-    /// 움직임 상태 타이머
-    pub movement_state_timer: MovementStateTimer,
-}
-
-impl InGamePlayerPullDataBuilder {
-    /// 새로운 빌더를 생성합니다.
-    pub const fn new(uid: UserId) -> Self {
-        Self {
-            uid,
-            kill_count: 0,
-            dead_count: 0,
-            guard_health: 0,
-            current_health: 0,
-            current_bullet: 0,
-            current_skill_cost: 0,
-            translation: [0.0, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            velocity: [0.0, 0.0, 0.0],
-            bitfield: Bitfield::new(),
-            states: PlayerStateData::new(),
-            action_state_timer: ActionStateTimer::new(0),
-            movement_state_timer: MovementStateTimer::new(0),
-        }
-    }
-
-    /// 상대 팀 처치 횟수를 설정합니다.
-    pub fn with_kill_count(mut self, kill_count: u16) -> Self {
-        self.kill_count = kill_count;
-        self
-    }
-
-    /// 상대 팀에게 처치 당한 횟수를 설정합니다.
-    pub fn with_dead_count(mut self, dead_count: u16) -> Self {
-        self.dead_count = dead_count;
-        self
-    }
-
-    /// 방어막 체력을 설정합니다.
-    pub fn with_guard_health(mut self, guard_health: u16) -> Self {
-        self.guard_health = guard_health;
-        self
-    }
-
-    /// 현재 체력을 설정합니다.
-    pub fn with_current_health(mut self, current_health: u16) -> Self {
-        self.current_health = current_health;
-        self
-    }
-
-    /// 현재 남은 총알을 설정합니다.
-    pub fn with_current_bullet(mut self, current_health: u16) -> Self {
-        self.current_bullet = current_health;
-        self
-    }
-
-    /// 현재 스킬 코스트를 설정합니다.
-    pub fn with_current_skill_cost(mut self, current_skill_cost: u16) -> Self {
-        self.current_skill_cost = current_skill_cost;
-        self
-    }
-
-    /// 월드 공간 위치를 설정합니다.
-    pub fn with_translation<T>(mut self, translation: T) -> Self
-    where
-        T: Into<[f32; 3]>,
-    {
-        self.translation = translation.into();
-        self
-    }
-
-    /// 월드 공간 방향을 설정합니다.
-    pub fn with_rotation<T>(mut self, rotation: T) -> Self
-    where
-        T: Into<[f32; 4]>,
-    {
-        self.rotation = rotation.into();
-        self
-    }
-
-    /// 월드 공간 속도를 설정합니다.
-    pub fn with_velocity<T>(mut self, velocity: T) -> Self
-    where
-        T: Into<[f32; 3]>,
-    {
-        self.velocity = velocity.into();
-        self
-    }
-
-    /// 서버 연결 여부를 설정합니다.
-    pub fn with_connected(mut self, connected: bool) -> Self {
-        self.bitfield = self.bitfield.with_connected(connected);
-        self
-    }
-
-    /// 무적 여부를 설정합니다.
-    pub fn with_invincible(mut self, invincible: bool) -> Self {
-        self.bitfield = self.bitfield.with_invincible(invincible);
-        self
-    }
-
-    /// 권한을 설정합니다.
-    pub fn with_permission(mut self, permission: Permission) -> Self {
-        self.bitfield = self.bitfield.with_permission(permission);
-        self
-    }
-
-    /// 덮어쓰기 여부를 설정합니다.
-    pub fn with_overwrite(mut self, overwrite: bool) -> Self {
-        self.bitfield = self.bitfield.with_overwrite(overwrite);
-        self
-    }
-
-    /// 네트워크 상태를 설정합니다.
-    pub fn with_network_state(mut self, network_state: NetworkState) -> Self {
-        self.bitfield = self.bitfield.with_network_state(network_state);
-        self
-    }
-
-    /// 행동 상태를 설정합니다.
-    pub fn with_action_state(mut self, action_state: ActionState) -> Self {
-        self.states = self.states.with_action_state(action_state);
-        self
-    }
-
-    /// 움직임 상태를 설정합니다.
-    pub fn with_movement_state(mut self, movement_state: MovementState) -> Self {
-        self.states = self.states.with_movement_state(movement_state);
-        self
-    }
-
-    /// 행동 상태 타이머를 설정합니다.
-    pub fn with_action_state_timer(mut self, action_state_timer: ActionStateTimer) -> Self {
-        self.action_state_timer = action_state_timer;
-        self
-    }
-
-    /// 움직임 상태 타이머를 설정합니다.
-    pub fn with_movement_state_timer(mut self, movement_state_timer: MovementStateTimer) -> Self {
-        self.movement_state_timer = movement_state_timer;
-        self
-    }
-
-    /// 플레이어 갱신 데이터를 생성합니다.
-    pub fn build(self) -> InGamePlayerPullData {
-        InGamePlayerPullData {
-            uid: self.uid,
-            kill_count: self.kill_count,
-            dead_count: self.dead_count,
-            guard_health: self.guard_health,
-            current_health: self.current_health,
-            current_bullet: self.current_bullet,
-            current_skill_cost: self.current_skill_cost,
-            translation: self.translation,
-            rotation: self.rotation,
-            velocity: self.velocity,
-            bitfield: self.bitfield,
-            states: self.states,
-            action_state_timer: self.action_state_timer,
-            movement_state_timer: self.movement_state_timer,
-        }
     }
 }
 
@@ -654,30 +501,5 @@ mod tests {
         let state = NetworkState::Good;
         let bitfield = Bitfield::new().with_network_state(state);
         assert_eq!(NetworkState::Good, bitfield.network_state());
-    }
-
-    #[test]
-    fn test_in_game_player_pull_data() {
-        let origin = InGamePlayerPullDataBuilder::new(UserId::new(51513))
-            .with_kill_count(123)
-            .with_dead_count(543)
-            .with_guard_health(123)
-            .with_current_bullet(12)
-            .with_current_health(3223)
-            .with_current_skill_cost(0)
-            .with_connected(true)
-            .with_invincible(false)
-            .with_network_state(NetworkState::Good)
-            .with_permission(Permission::User)
-            .with_action_state(ActionState::Attack)
-            .with_movement_state(MovementState::Jumping)
-            .with_action_state_timer(ActionStateTimer::new(13413))
-            .with_movement_state_timer(MovementStateTimer::new(234))
-            .build();
-        let bytes = origin.to_big_endian_bytes();
-        let other = InGamePlayerPullData::from_big_endian_bytes(&bytes);
-
-        // 원본과 일치하는지 확인합니다.
-        assert_eq!(origin, other);
     }
 }

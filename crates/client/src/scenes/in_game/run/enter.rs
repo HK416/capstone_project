@@ -8,22 +8,23 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, GameInputBits, LoginToken, StageKind, UserId,
+use mod_network::{
+    components::{ActionState, ActionStateTimer, CharacterKind, LoginToken, StageKind, UserId},
+    protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
-use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
-        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumn,
+        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         HUD_LAYOUT_URI_03, IMG_FONT_MISSION_URI, NOTOSANS_BOLD,
     },
     component::{
-        animate_character, bake_character, bake_character_eye_mouth, bake_stage,
+        animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
         draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree,
@@ -34,12 +35,12 @@ use crate::{
         CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
         LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
         PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, ShadowResource,
-        Sibling, SkinnedMeshRenderer, Skybox, SkyboxDataLayout, SkyboxRenderPipeline,
-        ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        Sibling, SkinnedMeshRenderer, Skybox, SkyboxDataLayout, ToParentTrans, TransparentMap,
+        WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        FatalErrorSceneLayer, InGameRunScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
         ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
     },
 };
@@ -66,8 +67,8 @@ pub struct InGameEnterScene {
     remaining_time_ms: u16,
     /// 레이아웃 이동 시간입니다.
     animation_time_ms: u16,
-    /// 첫 번째 마우스가 눌림 여부 플래그
-    first_moust_pressed: bool,
+    /// 첫 번째 마우스 눌림 여부 플래그
+    first_mouse_pressed: bool,
 
     /// 게임 월드
     world: Option<World>,
@@ -170,7 +171,7 @@ impl InGameEnterScene {
             stage_kind,
             remaining_time_ms,
             animation_time_ms: 0,
-            first_moust_pressed: true,
+            first_mouse_pressed: false,
             world: Some(world),
             camera: Entity::DANGLING,
             players,
@@ -222,8 +223,8 @@ impl InGameEnterScene {
         // 플레이어 캐릭터를 초기화 설정합니다.
         let (entity, _archetype) = self.player_entity();
         let world = self.world.as_mut().expect("the world must be exists!");
-        let action_state = world
-            .query_one_mut::<&mut ActionState>(entity)
+        let (_, action_state) = world
+            .query_one_mut::<&mut (ActionState, ActionState)>(entity)
             .expect("invalid entity or invalid entity component!");
 
         *action_state = ActionState::Callsign;
@@ -260,8 +261,9 @@ impl InGameEnterScene {
         let frustum = Frustum::from_mat4(proj_view);
 
         // 카메라 쉐이더 리소스를 생성합니다.
-        let camera_uniform = CameraUniform::uninit(Some("Enter"), device);
-        let camera_resource = CameraResource::new(Some("Enter"), device, &camera_uniform);
+        let label = format!("InGameEnter(Camera)");
+        let camera_uniform = CameraUniform::uninit(Some(&label), device);
+        let camera_resource = CameraResource::new(Some(&label), device, &camera_uniform);
 
         // 엔터티를 생성합니다.
         self.camera = world.spawn((
@@ -287,29 +289,8 @@ impl InGameEnterScene {
             .expect("invalid entity or invalid entity component!");
 
         // 엔터티를 수집합니다.
-        if let Some(stage) = &self.stage {
-            let mut entity_list = stage.area.clone();
-            if let Some(current) = &stage.root {
-                Self::cull_state_entity(frustum, current, &mut entity_list);
-            }
-            self.culling_stage_entities = entity_list;
-        }
-    }
-
-    /// 스테이지 엔터티에 대해 카메라 뷰 프러스텀 컬링을 수행합니다.
-    fn cull_state_entity(
-        frustum: &Frustum,
-        current: &StageBoundingVolumn,
-        entity_list: &mut Vec<Entity>,
-    ) {
-        if frustum.sphere_test(&current.sphere) {
-            entity_list.push(current.entity);
-        }
-        if let Some(current) = &current.left {
-            Self::cull_state_entity(frustum, current, entity_list);
-        }
-        if let Some(current) = &current.right {
-            Self::cull_state_entity(frustum, current, entity_list);
+        if let Some(hierarchy) = &self.stage {
+            self.culling_stage_entities = cull_stage_entities(frustum, hierarchy);
         }
     }
 
@@ -365,6 +346,10 @@ impl InGameEnterScene {
 
     /// Weighted-Blended OIT에 사용되는 렌더 타겟과 파이프라인을 생성합니다.
     fn create_weighted_blend_oit_resource(&mut self, size: WindowSize, device: &wgpu::Device) {
+        if self.world.is_none() {
+            return;
+        }
+
         // 해상도의 크기를 가져옵니다.
         let (width, height): (u32, u32) = size.size().into();
 
@@ -391,6 +376,10 @@ impl InGameEnterScene {
 
     /// Bloom에 사용되는 렌더 타겟과 렌더/컴퓨트 파이프라인을 생성합니다.
     fn create_bloom_resource(&mut self, size: WindowSize, device: &wgpu::Device) {
+        if self.world.is_none() {
+            return;
+        }
+
         // 해상도의 크기를 가져옵니다.
         let (width, height): (u32, u32) = size.size().into();
 
@@ -464,7 +453,7 @@ impl InGameEnterScene {
     fn update_player_character(&self, elapsed_time_ms: u16) {
         type Q<'a> = (
             &'a CharacterKind,
-            &'a mut ActionState,
+            &'a mut (ActionState, ActionState),
             &'a mut ActionStateTimer,
         );
 
@@ -474,14 +463,14 @@ impl InGameEnterScene {
         };
         let (entity, _archetype) = self.player_entity();
         let mut query = world.query_one::<Q>(entity).expect("invalid entity!");
-        let (&character_kind, action_state, action_state_timer) =
+        let (&character_kind, (prev_action_state, action_state), action_state_timer) =
             query.get().expect("invalid entity component!");
 
         // 플레이어 엔터티의 행동 상태를 갱신합니다.
         let i = character_kind as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         update_action_state_timer(
-            GameInputBits::empty(),
+            prev_action_state,
             action_state,
             action_state_timer,
             character_attributes,
@@ -509,7 +498,7 @@ impl InGameEnterScene {
             None => return,
         };
 
-        let stage = self.stage.as_ref().expect("the stage must be exists!");
+        let hierarchy = self.stage.as_ref().expect("the stage must be exists!");
         let light_resource = self
             .light_resource
             .as_ref()
@@ -550,6 +539,7 @@ impl InGameEnterScene {
 
                     // 유니폼 버퍼를 갱신합니다.
                     let data = GlobalLightDataLayout {
+                        static_light_proj_view: directional_light.light_proj_view.to_cols_array(),
                         light_proj_view: light_proj_view.to_cols_array(),
                         direction_w: light_dir.to_array(),
                         color: color.to_array(),
@@ -577,10 +567,8 @@ impl InGameEnterScene {
 
                     // 조명이 비추는 영역과 교차하는 엔터티를 수집합니다.
                     let frustum = Frustum::from_mat4(light_proj_view);
-                    let mut stage_entity_list = stage.area.clone();
-                    if let Some(current) = &stage.root {
-                        Self::cull_state_entity(&frustum, current, &mut stage_entity_list);
-                    }
+                    let mut stage_entity_list = hierarchy.area.clone();
+                    stage_entity_list.append(&mut cull_stage_entities(&frustum, hierarchy));
                     let mut transform_resources = ShadowMap::default();
                     collect_stage_resource(
                         world,
@@ -618,7 +606,7 @@ impl InGameEnterScene {
         (self.clip_rect, self.ui_scale) = Self::resize_clip_rect(viewport, scale_factor);
 
         // 레이아웃 사각형 영역의 크기를 재조정합니다.
-        self.layout_rect = Self::resize_layout_bg(&self.clip_rect, self.ui_scale);
+        self.layout_rect = Self::resize_layout_bg(&self.clip_rect);
     }
 
     /// 클립 사각형 영역의 크기를 재조정합니다.
@@ -633,7 +621,7 @@ impl InGameEnterScene {
     }
 
     /// 레이아웃 사각형 영역의 크기를 재조정합니다.
-    fn resize_layout_bg(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+    fn resize_layout_bg(clip_rect: &egui::Rect) -> egui::Rect {
         let width = clip_rect.width() * 0.7;
         let height = width * 0.135;
         let size = egui::vec2(width, height);
@@ -766,10 +754,12 @@ impl InGameEnterScene {
 
 impl GameScene for InGameEnterScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
-        let event = AppEvent::CursorDisable;
-        let event_loop_proxy = app.event_loop_proxy();
-        event_loop_proxy.send_event(event).unwrap();
-        self.first_moust_pressed = true;
+        if window.has_focus() {
+            self.first_mouse_pressed = true;
+            let event = AppEvent::CursorDisable;
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+        }
 
         let size = app.window_size();
         let device = app.render_device();
@@ -818,8 +808,7 @@ impl GameScene for InGameEnterScene {
         let event = AppEvent::CursorEnable;
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
-
-        self.first_moust_pressed = false;
+        self.first_mouse_pressed = false;
     }
 
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -838,11 +827,11 @@ impl GameScene for InGameEnterScene {
         _window: &Window,
         app: &dyn AppHandle,
     ) -> bool {
-        if !self.first_moust_pressed {
+        if !self.first_mouse_pressed {
             let event = AppEvent::CursorDisable;
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
-            self.first_moust_pressed = true;
+            self.first_mouse_pressed = true;
         }
 
         true
@@ -864,6 +853,99 @@ impl GameScene for InGameEnterScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
+    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::InGamePull => {
+                let packet = InGamePullPacket::from_raw(packet);
+
+                // 다음 게임 장면으로 전환합니다.
+                let mut world = match self.world.take() {
+                    Some(world) => world,
+                    None => return None,
+                };
+
+                // 생성한 카메라를 제거합니다.
+                cleanup(&mut world, self.camera);
+
+                let players = self.players.clone();
+                let stage = self.stage.take().expect("the stage must be exists!");
+                let accum_render_target = self
+                    .accum_render_target
+                    .take()
+                    .expect("the accumulate render target must be exists!");
+                let reveal_render_target = self
+                    .reveal_render_target
+                    .take()
+                    .expect("the revealage render target must be exists!");
+                let bright_render_target = self
+                    .bright_render_target
+                    .take()
+                    .expect("the brightness render target must be exists!");
+                let alpha_blend_pipeline = self
+                    .alpha_blend_pipeline
+                    .take()
+                    .expect("the alpha blending render pipeline must be exists!");
+                let gaussian_blur_pipeline = self
+                    .gaussian_blur_pipeline
+                    .take()
+                    .expect("the gaussian blur compute pipeline must be exists!");
+                let bloom_pipeline = self
+                    .bloom_pipeline
+                    .take()
+                    .expect("the bloom render pipeline must be exists!");
+                let skybox = self.skybox.take().expect("the skybox must be exists!");
+                let direction_light = self
+                    .direction_light
+                    .take()
+                    .expect("the direction light must be exists!");
+                let light_resource = self
+                    .light_resource
+                    .take()
+                    .expect("the light shader resource must be exists!");
+                let scene = InGameRunScene::new(
+                    self.locale,
+                    self.uid,
+                    self.token,
+                    self.stage_kind,
+                    packet.remaining_time_ms,
+                    self.first_mouse_pressed,
+                    world,
+                    players,
+                    stage,
+                    accum_render_target,
+                    reveal_render_target,
+                    bright_render_target,
+                    alpha_blend_pipeline,
+                    gaussian_blur_pipeline,
+                    bloom_pipeline,
+                    skybox,
+                    direction_light,
+                    light_resource,
+                    self.mesh_pool.clone(),
+                    self.model_pool.clone(),
+                    self.motion_pool.clone(),
+                    self.texture_pool.clone(),
+                    self.texture_data_pool.clone(),
+                    self.texture_view_pool.clone(),
+                    self.sampler_pool.clone(),
+                );
+                let flow = GameSceneFlow::Change(Box::new(scene));
+                let event = AppEvent::AddGameSceneFlow(flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+            }
+            _ => {
+                log::warn!(
+                    "ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type,
+                );
+            }
+        }
+
+        None
+    }
+
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u16;
         self.animation_time_ms = (self.animation_time_ms + elapsed_time_ms).min(MAX_ANIME_TIME);
@@ -872,13 +954,13 @@ impl GameScene for InGameEnterScene {
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
-        // 게임 월드 소유권을 가져옵니다.
         let world = match self.world.as_ref() {
             Some(world) => world,
             None => return,
         };
 
-        let device = app.render_device().clone();
+        let device = app.render_device();
+        let queue = app.render_queue();
         let child_view = &world.view::<&Child>();
         let sibling_view = &world.view::<&Sibling>();
         let mesh_filter_view = &world.view::<MeshRenderer>();
@@ -901,22 +983,19 @@ impl GameScene for InGameEnterScene {
         // 캐릭터 계층 구조를 갱신합니다.
         update_character_hierarchy(world, entity, archetype, &child_view, &sibling_view);
 
-        let draw_tasks = Arc::new(Queue::new());
-        let draw_task_cloned = draw_tasks.clone();
+        let draw_tasks = &Arc::new(Queue::new());
         rayon::in_place_scope(move |scope| {
             // 캐릭터 쉐이더 리소스를 갱신합니다.
-            let device_cloned = device.clone();
-            let draw_tasks = draw_task_cloned.clone();
             scope.spawn(move |_| {
                 let mut staging_buffers = Vec::default();
-                let mut encoder = device_cloned
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
                 update_character_resource(
                     world,
                     entity,
                     archetype,
-                    &device_cloned,
+                    &device,
                     &mut encoder,
                     &mut staging_buffers,
                     child_view,
@@ -925,20 +1004,21 @@ impl GameScene for InGameEnterScene {
                     skinned_mesh_filter_view,
                     draw_tasks,
                 );
+
+                queue.submit(Some(encoder.finish()));
+                drop(staging_buffers);
             });
 
             // 스테이지 쉐이더 리소스를 갱신합니다.
-            let device_cloned = device.clone();
-            let draw_tasks = draw_task_cloned.clone();
             scope.spawn(move |_| {
                 let mut staging_buffers = Vec::default();
-                let mut encoder = device_cloned
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
                 update_stage_resource(
                     world,
                     stage_entities,
-                    &device_cloned,
+                    &device,
                     &mut encoder,
                     &mut staging_buffers,
                     child_view,
@@ -947,10 +1027,13 @@ impl GameScene for InGameEnterScene {
                     skinned_mesh_filter_view,
                     draw_tasks,
                 );
+
+                queue.submit(Some(encoder.finish()));
+                drop(staging_buffers);
             });
         });
 
-        let device = app.render_device().clone();
+        let device = device.clone();
         let window_size = app.window_size();
         let bake_tasks = Arc::new(Queue::new());
         self.update_light_resource(
@@ -1020,7 +1103,7 @@ impl GameScene for InGameEnterScene {
 
     fn on_draw(
         &mut self,
-        window: &Window,
+        _window: &Window,
         encoder: &mut wgpu::CommandEncoder,
         render_target_view: &wgpu::TextureView,
         depth_buffer_view: &wgpu::TextureView,
@@ -1211,11 +1294,100 @@ impl GameScene for InGameEnterScene {
                 }
             }
 
-            clear_render_target_with_skybox(
-                &skybox,
-                SkyboxRenderPipeline::get_or_init(&device, SWAPCHAIN_FORMAT, DEPTH_FORMAT),
-                &mut rpass,
-            );
+            clear_render_target_with_skybox(&skybox, device, &mut rpass);
+        }
+        encoder.pop_debug_group();
+
+        encoder.push_debug_group("transparent pass");
+        {
+            let mut _rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(TransparentPass))"),
+                color_attachments: &[
+                    // 0번 렌더 타겟: 누적 값
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear({
+                                wgpu::Color {
+                                    a: 0.0,
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                }
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: accum_render_target.view(),
+                        resolve_target: None,
+                    }),
+                    // 1번 렌더 타겟: 노출 값
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear({
+                                wgpu::Color {
+                                    a: 1.0,
+                                    r: 1.0,
+                                    g: 1.0,
+                                    b: 1.0,
+                                }
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: reveal_render_target.view(),
+                        resolve_target: None,
+                    }),
+                    // 2번 렌더 타겟: bloom
+                    Some(wgpu::RenderPassColorAttachment {
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                        view: bright_render_target.view(),
+                        resolve_target: None,
+                    }),
+                ],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_buffer_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        encoder.pop_debug_group();
+
+        encoder.push_debug_group("compute pass");
+        {
+            let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("ComputePass(InGame)"),
+                timestamp_writes: None,
+            });
+            gaussian_blur_pipeline.process(&mut cpass);
+        }
+        encoder.pop_debug_group();
+
+        encoder.push_debug_group("composite pass");
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("RenderPass(InGame(CompositePass))"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    view: render_target_view,
+                    resolve_target: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            alpha_blend_pipeline.process(&mut rpass);
+            bloom_pipeline.process(&mut rpass);
         }
         encoder.pop_debug_group();
     }

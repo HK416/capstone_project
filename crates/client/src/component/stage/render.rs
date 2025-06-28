@@ -78,7 +78,7 @@ pub fn update_stage_resource(
     sibling_view: &ViewBorrow<'_, &Sibling>,
     mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
     skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
-    draw_tasks: Arc<Queue<RenderTask>>,
+    draw_tasks: &Arc<Queue<RenderTask>>,
 ) {
     let transform_view = world.view::<&(Stage, WorldTransform)>();
     for &entity in entities {

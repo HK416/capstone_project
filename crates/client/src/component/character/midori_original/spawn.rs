@@ -59,7 +59,7 @@ pub fn spawn_player<Tag: Copy + Component>(
     ));
     builder.add((tag, WorldTransform::default()));
     builder.add_bundle((
-        ActionState::Idle,
+        (ActionState::Idle, ActionState::Idle),
         MovementState::Idle,
         ViewState::Idle,
         ActionStateTimer::new(0),

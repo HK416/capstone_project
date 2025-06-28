@@ -193,6 +193,12 @@ impl fmt::Debug for InGameEnterScene {
     }
 }
 
+impl fmt::Debug for InGameRunScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameRunScene))
+    }
+}
+
 // impl fmt::Debug for InGameDominationModePrepareScene {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 //         write!(f, "{}", stringify!(InGameDominationModePrepareScene))

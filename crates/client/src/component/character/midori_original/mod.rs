@@ -2,12 +2,13 @@
 //!
 
 mod animation;
+mod camera;
 mod spawn;
 
 use lazy_static::lazy_static;
 use mod_network::components::CharacterAttributes;
 
-pub use self::{animation::*, spawn::*};
+pub use self::{animation::*, camera::*, spawn::*};
 
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Midori_Original";

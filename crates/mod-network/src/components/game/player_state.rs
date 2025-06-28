@@ -196,7 +196,7 @@ impl PlayerStateData {
         // Safety: 주어지는 값은 범위를 넘지 않음
         unsafe { ViewState::new(val).unwrap_unchecked() }
     }
-    
+
     /// 시야 상태를 설정합니다.
     pub fn set_view_state(&mut self, state: ViewState) {
         self.0 &= !(Self::VIEW_BIT_MASK << Self::VIEW_SHIFT); // 기존 값 지우기

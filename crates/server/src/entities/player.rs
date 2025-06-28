@@ -2,8 +2,8 @@
 //!
 
 use mod_network::components::{
-    CharacterAttributes, CharacterKind, GameTier, LatLon, NetworkState, Permission, ProfileIcon,
-    Team, UserName,
+    ActionStateTimer, CharacterAttributes, CharacterKind, GameTier, LatLon, MovementStateTimer,
+    NetworkState, Permission, PlayerStateData, ProfileIcon, Team, UserName,
 };
 
 use crate::data::get_character_attributes;
@@ -17,6 +17,7 @@ use crate::data::get_character_attributes;
 /// - permission    | 1bit | 권한
 /// - tier          | 2bit | 티어
 /// - network_state | 2bit | 네트워크 상태
+/// - invincible    | 1bit | 무적 여부
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -35,6 +36,8 @@ impl Bitfield {
     const TIER_SHIFT: usize = 6;
     const STATE_BIT_MASK: u16 = 0x0003;
     const STATE_SHIFT: usize = 8;
+    const INVINCIBLE_BIT_MASK: u16 = 0x0001;
+    const INVINCIBLE_SHIFT: usize = 10;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     pub const fn new() -> Self {
@@ -159,6 +162,24 @@ impl Bitfield {
         self.set_network_state(state);
         self
     }
+
+    /// 무적 여부를 반환합니다.
+    pub fn is_invincible(&self) -> bool {
+        ((self.0 >> Self::INVINCIBLE_SHIFT) & Self::INVINCIBLE_BIT_MASK)
+            == Self::INVINCIBLE_BIT_MASK
+    }
+
+    /// 무적 여부를 설정합니다.
+    pub const fn set_invincible(&mut self, invincible: bool) {
+        self.0 &= !(Self::INVINCIBLE_BIT_MASK << Self::INVINCIBLE_SHIFT);
+        self.0 |= ((invincible as u16) & Self::INVINCIBLE_BIT_MASK) << Self::INVINCIBLE_SHIFT;
+    }
+
+    /// 무적 여부를 반환합니다.
+    pub const fn with_invincible(mut self, invincible: bool) -> Self {
+        self.set_invincible(invincible);
+        self
+    }
 }
 
 impl Default for Bitfield {
@@ -172,41 +193,73 @@ impl Default for Bitfield {
 #[derive(Debug, Clone)]
 pub struct Player {
     /// 사용자 이름
-    pub name: UserName,
+    pub name: UserName, // 34
     /// 사용자 프로필 아이콘
     pub profile_icon: ProfileIcon,
     /// 캐릭터 종류
-    character_kind: CharacterKind,
-    /// 비트 필드 데이터입니다.
-    bitfield: Bitfield,
-
+    character_kind: CharacterKind, // 36
+    /// 액션 상태 타이머
+    pub action_state_timer: ActionStateTimer, // 38
+    /// 움직임 상태 타이머
+    pub movement_state_timer: MovementStateTimer, // 40
     /// 캐릭터 속성 데이터
-    attributes: &'static CharacterAttributes,
+    attributes: &'static CharacterAttributes, // 48
+
+    /// 비트 필드 데이터입니다.
+    bitfield: Bitfield, // 50
+    /// 상대 팀을 처치한 횟수
+    pub kill_count: u16, // 52
+    /// 상대 팀에게 처치 당한 횟수
+    pub dead_count: u16, // 54
+    /// 방어막 체력
+    pub guard_health: u16, // 56
+
+    /// 현제 체력
+    pub current_health: u16, // 58
+    /// 남은 총알
+    pub current_bullet: u16, // 60
+    /// 남은 스킬 코스트
+    pub current_skill_cost: u16, // 62
+
+    /// 플레이어 상태 데이터
+    pub player_states: PlayerStateData, // 63
 
     /// 플레이어 월드 공간 위치
-    pub translation: glam::Vec3A,
+    pub translation: glam::Vec3A, // 80
+
     /// 플레이어 월드 공간 방향
-    pub rotation: glam::Quat,
+    pub rotation: glam::Quat, // 96
+
     /// 플레이어 월드 공간 이동 방향
-    pub velocity: glam::Vec3A,
+    pub velocity: glam::Vec3A, // 112
+
     /// 플레이어 시야 방향
-    pub latlon: LatLon,
+    pub latlon: LatLon, // 128
 }
 
 impl Player {
     /// 플레이어 데이터를 생성합니다.
     pub fn new(
-        permission: Permission,
         name: UserName,
-        tier: GameTier,
         profile_icon: ProfileIcon,
+        permission: Permission,
+        tier: GameTier,
     ) -> Self {
         Self {
             name,
             profile_icon,
             character_kind: CharacterKind::ArisOriginal,
-            bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
+            action_state_timer: ActionStateTimer(0),
+            movement_state_timer: MovementStateTimer(0),
             attributes: get_character_attributes(CharacterKind::ArisOriginal),
+            bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
+            kill_count: 0,
+            dead_count: 0,
+            guard_health: 0,
+            current_health: 0,
+            current_bullet: 0,
+            current_skill_cost: 0,
+            player_states: PlayerStateData::new(),
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
             velocity: glam::Vec3A::ZERO,
@@ -222,8 +275,12 @@ impl Player {
 
     /// 캐릭터 종류를 설정합니다.
     pub fn set_character_kind(&mut self, character_kind: CharacterKind) {
+        let attributes = get_character_attributes(self.character_kind);
         self.character_kind = character_kind;
-        self.attributes = get_character_attributes(self.character_kind);
+        self.attributes = attributes;
+        self.current_health = attributes.max_health_point;
+        self.current_bullet = attributes.max_bullets;
+        self.current_skill_cost = attributes.max_skill_cost;
     }
 
     /// 캐릭터 종류를 설정합니다.
@@ -338,6 +395,22 @@ impl Player {
     /// 네트워크 상태를 설정합니다.
     pub const fn with_network_state(mut self, state: NetworkState) -> Self {
         self.set_network_state(state);
+        self
+    }
+
+    /// 무적 여부를 반환합니다.
+    pub fn is_invincible(&self) -> bool {
+        self.bitfield.is_invincible()
+    }
+
+    /// 무적 여부를 설정합니다.
+    pub const fn set_invincible(&mut self, invincible: bool) {
+        self.bitfield.set_invincible(invincible);
+    }
+
+    /// 무적 여부를 반환합니다.
+    pub const fn with_invincible(mut self, invincible: bool) -> Self {
+        self.set_invincible(invincible);
         self
     }
 

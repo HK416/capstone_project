@@ -111,7 +111,7 @@ impl GameWorldRoomState {
         } else {
             Permission::User
         };
-        let mut player = Player::new(permission, name, tier, profile_icon);
+        let mut player = Player::new(name, profile_icon, permission, tier);
 
         // 플레이어의 팀을 설정합니다.
         if self.red_players.len() < self.blue_players.len() {

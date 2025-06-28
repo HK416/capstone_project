@@ -3,7 +3,10 @@ use std::{fs::OpenOptions, io::Read, path::PathBuf};
 
 use hecs::Entity;
 use mod_network::components::{StageLayoutAreaHeight, StageLayoutAttributes};
-use mod_physics::{collision::ColliderTree, object3d::Sphere};
+use mod_physics::{
+    collision::ColliderTree,
+    object3d::{Frustum, Sphere},
+};
 
 use super::AssetError;
 
@@ -317,4 +320,37 @@ pub struct StageBoundingVolumn {
     pub sphere: Sphere,
     pub left: Option<Box<StageBoundingVolumn>>,
     pub right: Option<Box<StageBoundingVolumn>>,
+}
+
+/// 스테이지 엔터티 계층 구조에 대해 카메라 뷰 프러스텀 컬링을 수행합니다.
+///
+/// # Note
+/// 이 함수는 카메라의 월드 변환 행렬을 갱신한 후 호출되어야 합니다.
+///
+pub fn cull_stage_entities(
+    frustum: &Frustum,
+    hierarchy: &StageBoundingVolumnHierarchy,
+) -> Vec<Entity> {
+    let mut entity_list = hierarchy.area.clone();
+    if let Some(current) = &hierarchy.root {
+        cull_state_entity(frustum, current, &mut entity_list);
+    }
+    entity_list
+}
+
+/// 스테이지 엔터티에 대해 카메라 뷰 프러스텀 컬링을 수행합니다.
+fn cull_state_entity(
+    frustum: &Frustum,
+    current: &StageBoundingVolumn,
+    entity_list: &mut Vec<Entity>,
+) {
+    if frustum.sphere_test(&current.sphere) {
+        entity_list.push(current.entity);
+    }
+    if let Some(current) = &current.left {
+        cull_state_entity(frustum, current, entity_list);
+    }
+    if let Some(current) = &current.right {
+        cull_state_entity(frustum, current, entity_list);
+    }
 }

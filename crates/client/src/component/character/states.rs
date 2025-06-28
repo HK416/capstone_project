@@ -1,18 +1,18 @@
-use mod_network::components::{ActionState, ActionStateTimer, CharacterAttributes, GameInputBits};
+use mod_network::components::{ActionState, ActionStateTimer, CharacterAttributes};
 
 /// 행동 상태의 개수입니다.
 pub const NUM_ACTION_STATES: usize = 11;
 
 /// [`ActionState`]일 때 [`ActionStateTimer`]를 갱신합니다.
 pub fn update_action_state_timer(
-    input_flags: GameInputBits,
+    prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
 ) {
     type Func =
-        fn(GameInputBits, &mut ActionState, &mut ActionStateTimer, &CharacterAttributes, u16);
+        fn(&mut ActionState, &mut ActionState, &mut ActionStateTimer, &CharacterAttributes, u16);
     const FUNC: [Func; NUM_ACTION_STATES] = [
         update_action_state_timer_when_idle,
         update_action_state_timer_when_aiming,
@@ -29,7 +29,7 @@ pub fn update_action_state_timer(
 
     let i = *action_state as usize;
     FUNC[i](
-        input_flags,
+        prev_action_state,
         action_state,
         action_state_timer,
         character_attributes,
@@ -39,7 +39,7 @@ pub fn update_action_state_timer(
 
 /// [`ActionState::Idle`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_idle(
-    _input_flags: GameInputBits,
+    _prev_action_state: &mut ActionState,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -52,7 +52,7 @@ fn update_action_state_timer_when_idle(
 
 /// [`ActionState::Aiming`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_aiming(
-    _input_flags: GameInputBits,
+    _prev_action_state: &mut ActionState,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -65,7 +65,7 @@ fn update_action_state_timer_when_aiming(
 
 /// [`ActionState::AimAt`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_aim_at(
-    _input_flags: GameInputBits,
+    prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -77,6 +77,7 @@ fn update_action_state_timer_when_aim_at(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
+        *prev_action_state = ActionState::AimAt;
         *action_state = ActionState::Aiming;
         action_state_timer.0 = diff_t as u16;
     }
@@ -84,7 +85,7 @@ fn update_action_state_timer_when_aim_at(
 
 /// [`ActionState::AimOff`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_aim_off(
-    _input_flags: GameInputBits,
+    prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -96,6 +97,7 @@ fn update_action_state_timer_when_aim_off(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
+        *prev_action_state = ActionState::AimOff;
         *action_state = ActionState::Idle;
         action_state_timer.0 = diff_t as u16;
     }
@@ -103,7 +105,7 @@ fn update_action_state_timer_when_aim_off(
 
 /// [`ActionState::Attack`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_attack(
-    input_flags: GameInputBits,
+    prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -115,24 +117,15 @@ fn update_action_state_timer_when_attack(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
+        *action_state = *prev_action_state;
+        *prev_action_state = ActionState::Attack;
         action_state_timer.0 = diff_t as u16;
-        if input_flags.contains(GameInputBits::Skill) {
-            *action_state = ActionState::Skill;
-        } else if input_flags.contains(GameInputBits::Attack) {
-            *action_state = ActionState::Attack;
-        } else if input_flags.contains(GameInputBits::Reload) {
-            *action_state = ActionState::Reload;
-        } else if input_flags.contains(GameInputBits::Aiming) {
-            *action_state = ActionState::Aiming;
-        } else {
-            *action_state = ActionState::Idle;
-        }
     }
 }
 
 /// [`ActionState::Death`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_death(
-    _input_flags: GameInputBits,
+    _prev_action_state: &mut ActionState,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -145,7 +138,7 @@ fn update_action_state_timer_when_death(
 
 /// [`ActionState::Reload`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_reload(
-    input_flags: GameInputBits,
+    prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -157,24 +150,15 @@ fn update_action_state_timer_when_reload(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
+        *action_state = *prev_action_state;
+        *prev_action_state = ActionState::Reload;
         action_state_timer.0 = diff_t as u16;
-        if input_flags.contains(GameInputBits::Skill) {
-            *action_state = ActionState::Skill;
-        } else if input_flags.contains(GameInputBits::Attack) {
-            *action_state = ActionState::Attack;
-        } else if input_flags.contains(GameInputBits::Reload) {
-            *action_state = ActionState::Reload;
-        } else if input_flags.contains(GameInputBits::Aiming) {
-            *action_state = ActionState::Aiming;
-        } else {
-            *action_state = ActionState::Idle;
-        }
     }
 }
 
 /// [`ActionState::Skill`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_skill(
-    input_flags: GameInputBits,
+    prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -186,24 +170,15 @@ fn update_action_state_timer_when_skill(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
+        *action_state = *prev_action_state;
+        *prev_action_state = ActionState::Skill;
         action_state_timer.0 = diff_t as u16;
-        if input_flags.contains(GameInputBits::Skill) {
-            *action_state = ActionState::Skill;
-        } else if input_flags.contains(GameInputBits::Attack) {
-            *action_state = ActionState::Attack;
-        } else if input_flags.contains(GameInputBits::Reload) {
-            *action_state = ActionState::Reload;
-        } else if input_flags.contains(GameInputBits::Aiming) {
-            *action_state = ActionState::Aiming;
-        } else {
-            *action_state = ActionState::Idle;
-        }
     }
 }
 
 /// [`ActionState::Callsign`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_callsign(
-    _input_flags: GameInputBits,
+    _prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -222,7 +197,7 @@ fn update_action_state_timer_when_callsign(
 
 /// [`ActionState::VictoryStart`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_victory_start(
-    _input_flags: GameInputBits,
+    _prev_action_state: &mut ActionState,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -241,7 +216,7 @@ fn update_action_state_timer_when_victory_start(
 
 /// [`ActionState::VictoryEnd`]일 때 [`ActionStateTimer`]를 갱신합니다.
 fn update_action_state_timer_when_victory_end(
-    _input_flags: GameInputBits,
+    _prev_action_state: &mut ActionState,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
