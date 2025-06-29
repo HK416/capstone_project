@@ -264,9 +264,7 @@ pub struct Player {
     pub input_state_timer: InputStateTimer, // 122
     /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
     pub skill_cost_timer: u16, // 124
-    /// 이전 움직임 상태
-    pub prev_movement_state: MovementState, // 125
-                                            // ------ 128byte --------
+                               // ------ 128byte --------
 }
 
 impl Player {
@@ -301,7 +299,6 @@ impl Player {
             attributes: get_character_attributes(CharacterKind::ArisOriginal),
             input_state_timer: InputStateTimer(0),
             skill_cost_timer: 0,
-            prev_movement_state: MovementState::Idle,
         }
     }
 

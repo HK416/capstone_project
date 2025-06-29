@@ -375,7 +375,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Jumping => {
+            MovementState::InPlaceJumping | MovementState::MovingJumping => {
                 animate_character_when_jumping(
                     motions,
                     skinning_animation,
@@ -387,7 +387,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Landing => {
+            MovementState::InPlaceLanding | MovementState::MovingLanding => {
                 animate_character_when_landing(
                     motions,
                     skinning_animation,
@@ -425,7 +425,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Jumping => {
+            MovementState::InPlaceJumping | MovementState::MovingJumping => {
                 animate_character_when_aim_jumping(
                     motions,
                     skinning_animation,
@@ -437,7 +437,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Landing => {
+            MovementState::InPlaceLanding | MovementState::MovingLanding => {
                 animate_character_when_aim_landing(
                     motions,
                     skinning_animation,
@@ -475,7 +475,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Jumping => {
+            MovementState::InPlaceJumping | MovementState::MovingJumping => {
                 animate_character_when_aim_jumping(
                     motions,
                     skinning_animation,
@@ -487,7 +487,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Landing => {
+            MovementState::InPlaceLanding | MovementState::MovingLanding => {
                 animate_character_when_aim_landing(
                     motions,
                     skinning_animation,
@@ -525,7 +525,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Jumping => {
+            MovementState::InPlaceJumping | MovementState::MovingJumping => {
                 animate_character_when_aim_jumping(
                     motions,
                     skinning_animation,
@@ -537,7 +537,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Landing => {
+            MovementState::InPlaceLanding | MovementState::MovingLanding => {
                 animate_character_when_aim_landing(
                     motions,
                     skinning_animation,
@@ -575,7 +575,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Jumping => {
+            MovementState::InPlaceJumping | MovementState::MovingJumping => {
                 animate_character_when_attack_jumping(
                     motions,
                     skinning_animation,
@@ -587,7 +587,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Landing => {
+            MovementState::InPlaceLanding | MovementState::MovingLanding => {
                 animate_character_when_attack_landing(
                     motions,
                     skinning_animation,
@@ -664,7 +664,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Jumping => {
+            MovementState::InPlaceJumping | MovementState::MovingJumping => {
                 animate_character_when_skill_jumping(
                     motions,
                     skinning_animation,
@@ -676,7 +676,7 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            MovementState::Landing => {
+            MovementState::InPlaceLanding | MovementState::MovingLanding => {
                 animate_character_when_skill_landing(
                     motions,
                     skinning_animation,

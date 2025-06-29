@@ -7,7 +7,7 @@ use crate::components::{BigEndian, TryFromBigEndian};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SkillCostData {
     /// 남은 스킬 코스트입니다.
-    remaining: u16,
+    pub remaining: u16,
     /// 최대 스킬 코스트입니다. 최대 스킬 코스트가 0인 경우 무한대를 의미합니다.
     maximum: u16,
 }
@@ -29,31 +29,6 @@ impl SkillCostData {
             remaining: maximum,
             maximum,
         }
-    }
-
-    /// 플레이어가 스킬 코스트를 회복할 때 호출되는 함수로
-    /// 남은 스킬 코스트를 주어진 `cost`만큼 추가합니다.
-    ///
-    /// 이때 남은 스킬 코스트는 최대 스킬 코스트를 초과할 수 없습니다.
-    ///
-    pub fn on_advanced(&mut self, cost: u16) {
-        self.remaining = (self.remaining + cost).min(self.maximum)
-    }
-
-    /// 플레이어가 스킬을 사용하고자 할 때 호출되는 함수로
-    /// 남은 스킬 코스트가 최대 스킬 코스트와 같을 경우 `true`를 반환 후
-    /// 남은 스킬 코스트를 0으로 설정합니다.
-    pub fn on_fired(&mut self) -> bool {
-        if self.remaining == self.maximum {
-            self.remaining = 0;
-            return true;
-        }
-        return false;
-    }
-
-    /// 남은 스킬 코스트를 가져옵니다.
-    pub fn num_remaining_cost(&self) -> u16 {
-        self.remaining
     }
 
     /// 최대 스킬 코스트를 가져옵니다.

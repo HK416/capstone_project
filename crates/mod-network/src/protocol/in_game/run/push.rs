@@ -249,7 +249,7 @@ mod tests {
             123,
             PlayerStateData::new()
                 .with_action_state(ActionState::AimOff)
-                .with_movement_state(MovementState::Jumping)
+                .with_movement_state(MovementState::InPlaceJumping)
                 .with_view_state(ViewState::Idle),
             [0.01341, 1.234123, 10.031431],
             [0.00341341, 0.003141, 0.743141, 0.21341341],
@@ -289,7 +289,7 @@ mod tests {
             123,
             PlayerStateData::new()
                 .with_action_state(ActionState::AimOff)
-                .with_movement_state(MovementState::Jumping)
+                .with_movement_state(MovementState::InPlaceJumping)
                 .with_view_state(ViewState::Idle),
             [0.01341, 1.234123, 10.031431],
             [0.00341341, 0.003141, 0.743141, 0.21341341],
@@ -299,7 +299,7 @@ mod tests {
             156,
             PlayerStateData::new()
                 .with_action_state(ActionState::Idle)
-                .with_movement_state(MovementState::Jumping)
+                .with_movement_state(MovementState::InPlaceJumping)
                 .with_view_state(ViewState::Idle),
             [0.01341, 1.534123, 10.031431],
             [0.00341341, 0.003141, 0.743141, 0.21341341],

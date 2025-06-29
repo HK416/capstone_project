@@ -7,7 +7,7 @@ use crate::components::{BigEndian, TryFromBigEndian};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BulletData {
     /// 남은 총알 수 입니다.
-    remaining: u16,
+    pub remaining: u16,
     /// 최대 총알 수 입니다. 최대 총알 수가 0인 경우 무한대를 의미합니다.
     maximum: u16,
 }
@@ -29,37 +29,6 @@ impl BulletData {
             remaining: maximum,
             maximum,
         }
-    }
-
-    /// 플레이어가 재장전 했을 때 호출되는 함수로
-    /// 남은 총알 수를 최대 총알 수로 초기화합니다.
-    pub fn on_reload(&mut self) {
-        self.remaining = self.maximum;
-    }
-
-    /// 플레이어가 일반 공격 했을 때 호출되는 함수로
-    /// 남은 총알 수를 하나 줄입니다.
-    ///
-    /// 총알이 발사될 수 있는 경우 `true`를 반환합니다.
-    ///
-    pub fn on_fired(&mut self) -> bool {
-        // 남은 총알이 무한대인 경우 항상 `true`를 반환합니다.
-        if self.maximum == 0 {
-            return true;
-        }
-
-        // 남은 총알이 0보다 큰 경우 `true`를 반환합니다.
-        if self.remaining > 0 {
-            self.remaining -= 1;
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    /// 남은 총알의 수를 가져옵니다.
-    pub fn num_remaining_bullets(&self) -> u16 {
-        self.remaining
     }
 
     /// 최대 총알의 수를 가져옵니다.

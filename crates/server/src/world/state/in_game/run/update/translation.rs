@@ -11,7 +11,7 @@ use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
-use rand::{random, random_range};
+use rand::random_range;
 use tokio::time::Duration;
 
 use crate::{
@@ -20,7 +20,7 @@ use crate::{
         is_valid_position,
     },
     entities::{Bullet, Player},
-    world::{GameWorld, GameWorldEvent, GameWorldInGameRunStateEvent},
+    world::GameWorld,
 };
 
 const GROUNDED_ANGLE: f32 = 45f32.to_radians();
@@ -111,13 +111,15 @@ pub fn update_player_translation(stage_kind: StageKind, data: &mut Player, elaps
     if data.is_grounded() {
         let movement_state = data.player_states.movement_state();
         match movement_state {
-            MovementState::Jumping => {
+            MovementState::InPlaceJumping | MovementState::MovingJumping => {
                 velocity.y = 5.0;
             }
-            MovementState::Landing => {
-                data.player_states
-                    .set_movement_state(data.prev_movement_state);
-                data.prev_movement_state = MovementState::Landing;
+            MovementState::InPlaceLanding => {
+                data.player_states.set_movement_state(MovementState::Idle);
+                data.movement_state_timer.0 = 0;
+            }
+            MovementState::MovingLanding => {
+                data.player_states.set_movement_state(MovementState::Moving);
                 data.movement_state_timer.0 = 0;
             }
             _ => {}

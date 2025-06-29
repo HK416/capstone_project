@@ -904,6 +904,7 @@ impl GameScene for InGameEnterScene {
                     .take()
                     .expect("the light shader resource must be exists!");
                 let scene = InGameRunScene::new(
+                    packet.epoch,
                     self.locale,
                     self.uid,
                     self.token,

@@ -166,7 +166,7 @@ mod tests {
             NetworkState::Poor,
             PlayerStateData::new()
                 .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::Landing)
+                .with_movement_state(MovementState::InPlaceLanding)
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(320),
             MovementStateTimer::new(1200),
@@ -191,7 +191,7 @@ mod tests {
             NetworkState::Good,
             PlayerStateData::new()
                 .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::Landing)
+                .with_movement_state(MovementState::InPlaceLanding)
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(323),
             MovementStateTimer::new(1212),
