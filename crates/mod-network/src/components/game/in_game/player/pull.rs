@@ -2,8 +2,8 @@
 //!
 
 use crate::components::{
-    ActionStateTimer, BigEndian, MovementStateTimer, NetworkState, Permission, PlayerStateData,
-    UserId,
+    ActionStateTimer, BigEndian, LatLon, MovementStateTimer, NetworkState, Permission,
+    PlayerStateData, UserId, ViewStateTimer,
 };
 
 /// 플레이어 비트 필드 데이터입니다.
@@ -152,6 +152,10 @@ pub struct InGamePlayerPullData {
     pub action_state_timer: ActionStateTimer,
     /// 움직임 상태 타이머
     pub movement_state_timer: MovementStateTimer,
+    /// 시야 상태 타이머
+    pub view_state_timer: ViewStateTimer,
+    /// 시야 방향
+    pub latlon: LatLon,
 }
 
 impl InGamePlayerPullData {
@@ -174,6 +178,8 @@ impl InGamePlayerPullData {
         player_states: PlayerStateData,
         action_state_timer: ActionStateTimer,
         movement_state_timer: MovementStateTimer,
+        view_state_timer: ViewStateTimer,
+        latlon: LatLon,
     ) -> Self {
         Self {
             uid,
@@ -195,6 +201,8 @@ impl InGamePlayerPullData {
             player_states,
             action_state_timer,
             movement_state_timer,
+            view_state_timer,
+            latlon,
         }
     }
 
@@ -295,6 +303,8 @@ impl BigEndian for InGamePlayerPullData {
             + PlayerStateData::byte_size()    // 58byte
             + ActionStateTimer::byte_size()    // 60byte
             + MovementStateTimer::byte_size() // 62byte
+            + ViewStateTimer::byte_size() // 64byte
+            + LatLon::byte_size() // 66byte
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -392,6 +402,18 @@ impl BigEndian for InGamePlayerPullData {
         data = &bytes[offset..offset + size];
         let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
 
+        // 시야 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = ViewStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let view_state_timer = ViewStateTimer::from_big_endian_bytes(data);
+
+        // 시야 방향을 가져옵니다.
+        offset = offset + size;
+        size = LatLon::byte_size();
+        data = &bytes[offset..offset + size];
+        let latlon = LatLon::from_big_endian_bytes(data);
+
         Self {
             uid,
             kill_count,
@@ -407,6 +429,8 @@ impl BigEndian for InGamePlayerPullData {
             player_states: states,
             action_state_timer,
             movement_state_timer,
+            view_state_timer,
+            latlon,
         }
     }
 
@@ -427,6 +451,8 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.player_states.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.view_state_timer.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.latlon.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {

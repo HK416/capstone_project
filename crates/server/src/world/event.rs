@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mod_network::components::{
-    CharacterKind, GameTier, NetworkState, ObjectId, ProfileIcon, UserId, UserName,
+    BulletKind, CharacterKind, GameTier, NetworkState, ObjectId, ProfileIcon, UserId, UserName,
 };
 
 use crate::session::Session;
@@ -37,13 +37,8 @@ pub enum GameWorldEvent {
         event: GameWorldInGameReadyStateEvent,
     },
 
-    /// 총알 오브젝트를 추가합니다.
-    AddBullet { shooter_id: UserId, delay: f32 },
-    /// 총알 오브젝트를 제거합니다.
-    RemoveBullet(ObjectId),
-
-    /// 플레이어 리스폰 요청
-    RespawnPlayer { uid: UserId },
+    /// 인게임 이벤트
+    inGameRunState(GameWorldInGameRunStateEvent),
 }
 
 /// 게임 월드의 시스템 이벤트 목록입니다.
@@ -89,4 +84,18 @@ pub enum GameWorldFormationStateEvent {
 pub enum GameWorldInGameReadyStateEvent {
     /// 클라이언트가 게임 준비를 마쳤을 때 발생되는 이벤트입니다.
     ReadyToPlay,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum GameWorldInGameRunStateEvent {
+    /// 플레이어가 리스폰될 때 발생되는 이벤트입니다.
+    RespawnPlayer(UserId),
+    /// 플레이어가 총알을 발사할 때 발생되는 이벤트입니다.
+    SpawnBullet {
+        shooter_id: UserId,
+        delay_time_ms: u16,
+        bullet_kind: BulletKind,
+        translation: glam::Vec3A,
+        rotation: glam::Quat,
+    },
 }

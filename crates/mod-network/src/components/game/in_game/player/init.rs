@@ -2,8 +2,7 @@
 //!
 
 use crate::components::{
-    BigEndian, CharacterKind, LatLon, NetworkState, Permission, Team, TryFromBigEndian, UserId,
-    UserName,
+    BigEndian, CharacterKind, NetworkState, Permission, Team, TryFromBigEndian, UserId, UserName,
 };
 
 /// 플레이어 비트 필드 데이터입니다.
@@ -147,8 +146,6 @@ pub struct InGamePlayerInitData {
     pub translation: [f32; 3],
     /// 월드 공간 방향 (플레이어 캐릭터 스폰 방향)
     pub rotation: [f32; 4],
-    /// 카메라 방향 (플레이어 카메라 스폰 방향)
-    pub latlon: LatLon,
 }
 
 impl InGamePlayerInitData {
@@ -171,7 +168,6 @@ impl InGamePlayerInitData {
         maximum_skill_cost: u16,
         translation: [f32; 3],
         rotation: [f32; 4],
-        latlon: LatLon,
     ) -> Self {
         Self {
             uid,
@@ -188,7 +184,6 @@ impl InGamePlayerInitData {
             maximum_skill_cost,
             translation,
             rotation,
-            latlon,
         }
     }
 
@@ -228,8 +223,7 @@ impl BigEndian for InGamePlayerInitData {
             + u16::byte_size()    // 43byte
             + u16::byte_size()    // 45byte
             + <[f32; 3]>::byte_size()    // 57byte
-            + <[f32; 4]>::byte_size()    // 73byte
-            + LatLon::byte_size() // 77byte
+            + <[f32; 4]>::byte_size() // 73byte
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -248,7 +242,6 @@ impl BigEndian for InGamePlayerInitData {
         bytes.extend_from_slice(&self.maximum_skill_cost.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.latlon.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -330,12 +323,6 @@ impl TryFromBigEndian for InGamePlayerInitData {
         data = &bytes[offset..offset + size];
         let rotation = <[f32; 4]>::from_big_endian_bytes(data);
 
-        // 카메라 방향을 가져옵니다.
-        offset = offset + size;
-        size = LatLon::byte_size();
-        data = &bytes[offset..offset + size];
-        let latlon = LatLon::from_big_endian_bytes(data);
-
         Some(Self {
             uid,
             name,
@@ -346,7 +333,6 @@ impl TryFromBigEndian for InGamePlayerInitData {
             maximum_skill_cost,
             translation,
             rotation,
-            latlon,
         })
     }
 }
@@ -417,7 +403,6 @@ mod tests {
             1234,
             [0.14532151, 3.134151, -1.02515614],
             [0.00013412, 0.00134141, 0.91413541, 0.004312451],
-            LatLon::new(0.00034115, 1.024111),
         );
         let bytes = origin.to_big_endian_bytes();
         let other = InGamePlayerInitData::from_big_endian_bytes(&bytes);

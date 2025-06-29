@@ -57,7 +57,6 @@ pub struct StageAttributes {
 pub struct Spawn {
     pub pos: [glam::Vec3A; MAX_IN_GAME_PLAYERS / 2],
     pub dir: glam::Quat,
-    pub latlon: LatLon,
 }
 
 #[derive(Debug, Clone)]
@@ -150,15 +149,7 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         .try_into()
         .expect("스폰 위치 데이터가 잘못되었습니다!");
     let dir: glam::Quat = stage_layout.blue_spawn_dir.into();
-    let view_dir = LatLon::new(
-        10f32.to_radians(),
-        glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
-    );
-    let blue_team_spawn = Spawn {
-        pos,
-        dir,
-        latlon: view_dir,
-    };
+    let blue_team_spawn = Spawn { pos, dir };
     let p0: glam::Vec2 = stage_layout.blue_safe_area_p0.into();
     let p1: glam::Vec2 = stage_layout.blue_safe_area_p1.into();
     let blue_safe_area = (p0.min(p1), p0.max(p1));
@@ -173,15 +164,7 @@ fn load_stage_layout(workspace: &str) -> StageAttributes {
         .try_into()
         .expect("스폰 위치 데이터가 잘못되었습니다!");
     let dir: glam::Quat = stage_layout.red_spawn_dir.into();
-    let view_dir = LatLon::new(
-        10f32.to_radians(),
-        glam::Vec3A::Z.angle_between(dir.mul_vec3a(glam::Vec3A::Z)),
-    );
-    let red_team_spawn = Spawn {
-        pos,
-        dir,
-        latlon: view_dir,
-    };
+    let red_team_spawn = Spawn { pos, dir };
     let p0: glam::Vec2 = stage_layout.red_safe_area_p0.into();
     let p1: glam::Vec2 = stage_layout.red_safe_area_p1.into();
     let red_safe_area = (p0.min(p1), p0.max(p1));

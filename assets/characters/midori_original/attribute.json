@@ -57,5 +57,14 @@
     "critical_damage": 200,
     "max_skill_cost": 750,
     "attack_range": 750,
-    "bullet_radius": 0.02
+    "bullet_radius": 0.02,
+    "collider": {
+        "center": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+        },
+        "height": 1.0,
+        "radius": 0.25
+    }
 }

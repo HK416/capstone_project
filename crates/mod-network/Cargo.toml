@@ -20,6 +20,8 @@ wgpu = { workspace = true }
 
 local-ip-address = "0.6.2"
 
+mod-physics = { path = "../mod-physics" }
+
 [features]
 default = ["check-validation"]
 

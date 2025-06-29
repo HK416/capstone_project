@@ -6,8 +6,8 @@ use std::{ops::Deref, sync::Arc};
 use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Component, Entity, EntityBuilder, World};
 use mod_network::components::{
-    ActionState, ActionStateTimer, BulletData, HealthData, InGamePlayerInitData, MovementState,
-    MovementStateTimer, SkillCostData, ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, BulletData, HealthData, InGamePlayerInitData, LatLon,
+    MovementState, MovementStateTimer, SkillCostData, ViewState, ViewStateTimer,
 };
 use parking_lot::Mutex;
 
@@ -65,7 +65,7 @@ pub fn spawn_player<Tag: Copy + Component>(
         ActionStateTimer::new(0),
         MovementStateTimer::new(0),
         ViewStateTimer::new(0),
-        data.latlon,
+        LatLon::default(),
     ));
 
     // 캐릭터 모델을 가져옵니다.

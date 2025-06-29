@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ahash::{HashMap, RandomState};
 use mod_network::{
     components::{
-        CustomRoomPlayerData, FormationPlayerInitData, GameTier, MAX_IN_GAME_PLAYERS,
+        CustomRoomPlayerData, FormationPlayerInitData, GameTier, LatLon, MAX_IN_GAME_PLAYERS,
         MAX_IN_GAME_TEAM_PLAYERS, NetworkState, Permission, ProfileIcon, StageKind, Team, UserId,
         UserName,
     },
@@ -430,16 +430,15 @@ impl GameWorldRoomState {
             let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
             for (&uid, data) in world.players.iter_mut() {
                 // 플레이어 데이터를 설정합니다.
-                let (index, translation, roataion, latlon) = match data.team() {
+                let (index, translation, roataion) = match data.team() {
                     Team::Blue => {
                         let index = num_blue;
                         num_blue += 1;
 
                         let translation = attribute.blue_team_spawn.pos[index];
                         let rotation = attribute.blue_team_spawn.dir;
-                        let latlon = attribute.blue_team_spawn.latlon;
 
-                        (index, translation, rotation, latlon)
+                        (index, translation, rotation)
                     }
                     Team::Red => {
                         let index = num_red;
@@ -447,15 +446,14 @@ impl GameWorldRoomState {
 
                         let translation = attribute.red_team_spawn.pos[index];
                         let rotation = attribute.red_team_spawn.dir;
-                        let latlon = attribute.red_team_spawn.latlon;
 
-                        (index, translation, rotation, latlon)
+                        (index, translation, rotation)
                     }
                 };
                 data.set_team_index(index);
                 data.translation = translation;
                 data.rotation = roataion;
-                data.latlon = latlon;
+                data.latlon = LatLon::default();
 
                 // 플레이어 초기화 데이터를 생성합니다.
                 players.push(FormationPlayerInitData::new(

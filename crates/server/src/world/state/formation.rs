@@ -35,7 +35,6 @@ pub struct GameWorldFormationState {
     /// 게임 캐릭터 중복 옵션
     allow_duplicates: bool,
     /// 게임 스테이지 종류
-    #[allow(dead_code)]
     stage_kind: StageKind,
 
     /// 패킷을 보낸 후 경과 시간
@@ -399,7 +398,6 @@ impl GameWorldFormationState {
                     data.maximum_skill_cost(),
                     data.translation.to_array(),
                     data.rotation.to_array(),
-                    data.latlon,
                 ));
             }
 
@@ -417,6 +415,7 @@ impl GameWorldFormationState {
             let leaved_players = self.leaved_players.clone();
             self.leaved_players.clear();
             let state = GameWorldInGameReadyState::new(
+                self.stage_kind,
                 self.num_blue_players,
                 self.num_red_players,
                 leaved_players,

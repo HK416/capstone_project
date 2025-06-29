@@ -9,6 +9,8 @@ use crate::{
 /// 서버에서 클라이언트로 보내는 인게임 장면 갱신 패킷입니다.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InGamePullPacket {
+    /// 현재 시대
+    pub epoch: u64,
     /// 남은 게임 시간
     pub remaining_time_ms: u32,
     /// 플레이어 데이터
@@ -21,11 +23,12 @@ impl InGamePullPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(remaining_time_ms: u32, players: Vec<InGamePlayerPullData>) -> Self {
+    pub fn new(epoch: u64, remaining_time_ms: u32, players: Vec<InGamePlayerPullData>) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
 
         Self {
+            epoch,
             remaining_time_ms,
             players,
         }
@@ -36,12 +39,12 @@ impl InGamePullPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn from_iter<I>(remaining_time_ms: u32, iter: I) -> Self
+    pub fn from_iter<I>(epoch: u64, remaining_time_ms: u32, iter: I) -> Self
     where
         I: IntoIterator<Item = InGamePlayerPullData>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(remaining_time_ms, iter.into_iter().collect())
+        Self::new(epoch, remaining_time_ms, iter.into_iter().collect())
     }
 }
 
@@ -53,9 +56,12 @@ impl Packet for InGamePullPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
-        let data_size =
-            u32::byte_size() + u8::byte_size() + InGamePlayerPullData::byte_size() * num_players;
+        let data_size = u64::byte_size() // 8byte
+            + u32::byte_size() // 12byte
+            + u8::byte_size()  // 13byte
+            + InGamePlayerPullData::byte_size() * num_players; // max: 673byte
         let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&self.epoch.to_big_endian_bytes());
         data.extend_from_slice(&self.remaining_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
@@ -86,11 +92,17 @@ impl Packet for InGamePullPacket {
             return None;
         }
 
-        // 남은 시간을 가져옵니다.
+        // 현재 시대를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = u32::byte_size();
+        let mut size = u64::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let epoch = u64::from_big_endian_bytes(data);
+
+        // 남은 시간을 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
         let remaining_time_ms = u32::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
@@ -112,6 +124,7 @@ impl Packet for InGamePullPacket {
         }
 
         Some(Self {
+            epoch,
             remaining_time_ms,
             players,
         })
@@ -121,8 +134,8 @@ impl Packet for InGamePullPacket {
 #[cfg(test)]
 mod tests {
     use crate::components::{
-        ActionState, ActionStateTimer, MovementState, MovementStateTimer, NetworkState, Permission,
-        PlayerStateData, UserId, ViewState,
+        ActionState, ActionStateTimer, LatLon, MovementState, MovementStateTimer, NetworkState,
+        Permission, PlayerStateData, UserId, ViewState, ViewStateTimer,
     };
 
     use super::*;
@@ -130,7 +143,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_creation_in_game_pull_packet() {
-        InGamePullPacket::new(30_000, vec![]);
+        InGamePullPacket::new(12341, 30_000, vec![]);
     }
 
     #[test]
@@ -157,6 +170,8 @@ mod tests {
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(320),
             MovementStateTimer::new(1200),
+            ViewStateTimer::new(214),
+            LatLon::new(42f32.to_radians(), 180f32.to_radians()),
         );
         let player_1 = InGamePlayerPullData::new(
             UserId::new(98431),
@@ -180,10 +195,12 @@ mod tests {
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(323),
             MovementStateTimer::new(1212),
+            ViewStateTimer::new(300),
+            LatLon::new(4f32.to_radians(), 10f32.to_radians()),
         );
 
         let players = vec![player_0, player_1];
-        let origin = InGamePullPacket::new(42_123, players);
+        let origin = InGamePullPacket::new(614123, 42_123, players);
         let raw = origin.as_raw();
         let other = InGamePullPacket::from_raw(raw);
 

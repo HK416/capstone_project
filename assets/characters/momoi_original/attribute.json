@@ -1,63 +1,72 @@
 {
-  "speed": 5.3,
-  "muzzle_position_min": {
-    "x": 0.10579069,
-    "y": 0.77921677,
-    "z": 0.3338462
-  },
-  "muzzle_direction_min": {
-    "x": 0,
-    "y": 0.529824,
-    "z": 0.848108
-  },
-  "muzzle_position_mid": {
-    "x": 0.10579062,
-    "y": 0.61306787,
-    "z": 0.4505404
-  },
-  "muzzle_direction_mid": {
-    "x": 0,
-    "y": 0.109375,
-    "z": 0.994001
-  },
-  "muzzle_position_max": {
-    "x": 0.105790615,
-    "y": 0.4158794,
-    "z": 0.48467982
-  },
-  "muzzle_direction_max": {
-    "x": 0,
-    "y": -0.332737,
-    "z": 0.943020
-  },
-  "normal_idle_duration": 2000,
-  "cafe_walk_duration": 1333,
-  "move_ing_duration": 600,
-  "move_end_normal_duration": 1300,
-  "normal_attack_start_duration": 433,
-  "normal_attack_end_duration": 533,
-  "normal_attack_ing_duration": 700,
-  "vital_death_duration": 2333,
-  "normal_reload_duration": 1933,
-  "skill_duration": 0,
-  "normal_callsign_duration": 1500,
-  "victory_start_duration": 3000,
-  "victory_end_duration": 1667,
-  "normal_attack_timing": [
-    166,
-    233,
-    400
-  ],
-  "normal_attack_count": 3,
-  "max_bullets": 45,
-  "max_health_point": 2426,
-  "attack_power": 233,
-  "defense_power": 20,
-  "accuracy_stat": 681,
-  "evasion_stat": 821,
-  "critical_rate": 194,
-  "critical_damage": 200,
-  "max_skill_cost": 700,
-  "attack_range": 650,
-  "bullet_radius": 0.02
+    "speed": 5.3,
+    "muzzle_position_min": {
+        "x": 0.10579069,
+        "y": 0.77921677,
+        "z": 0.3338462
+    },
+    "muzzle_direction_min": {
+        "x": 0,
+        "y": 0.529824,
+        "z": 0.848108
+    },
+    "muzzle_position_mid": {
+        "x": 0.10579062,
+        "y": 0.61306787,
+        "z": 0.4505404
+    },
+    "muzzle_direction_mid": {
+        "x": 0,
+        "y": 0.109375,
+        "z": 0.994001
+    },
+    "muzzle_position_max": {
+        "x": 0.105790615,
+        "y": 0.4158794,
+        "z": 0.48467982
+    },
+    "muzzle_direction_max": {
+        "x": 0,
+        "y": -0.332737,
+        "z": 0.943020
+    },
+    "normal_idle_duration": 2000,
+    "cafe_walk_duration": 1333,
+    "move_ing_duration": 600,
+    "move_end_normal_duration": 1300,
+    "normal_attack_start_duration": 433,
+    "normal_attack_end_duration": 533,
+    "normal_attack_ing_duration": 700,
+    "vital_death_duration": 2333,
+    "normal_reload_duration": 1933,
+    "skill_duration": 0,
+    "normal_callsign_duration": 1500,
+    "victory_start_duration": 3000,
+    "victory_end_duration": 1667,
+    "normal_attack_timing": [
+        166,
+        233,
+        400
+    ],
+    "normal_attack_count": 3,
+    "max_bullets": 45,
+    "max_health_point": 2426,
+    "attack_power": 233,
+    "defense_power": 20,
+    "accuracy_stat": 681,
+    "evasion_stat": 821,
+    "critical_rate": 194,
+    "critical_damage": 200,
+    "max_skill_cost": 700,
+    "attack_range": 650,
+    "bullet_radius": 0.02,
+    "collider": {
+        "center": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+        },
+        "height": 1.0,
+        "radius": 0.25
+    }
 }

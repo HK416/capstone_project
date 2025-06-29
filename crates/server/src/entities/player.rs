@@ -2,8 +2,9 @@
 //!
 
 use mod_network::components::{
-    ActionStateTimer, CharacterAttributes, CharacterKind, GameTier, LatLon, MovementStateTimer,
-    NetworkState, Permission, PlayerStateData, ProfileIcon, Team, UserName,
+    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameTier, InputStateTimer,
+    LatLon, MovementState, MovementStateTimer, NetworkState, Permission, PlayerStateData,
+    ProfileIcon, Team, UserName, ViewStateTimer,
 };
 
 use crate::data::get_character_attributes;
@@ -18,6 +19,7 @@ use crate::data::get_character_attributes;
 /// - tier          | 2bit | 티어
 /// - network_state | 2bit | 네트워크 상태
 /// - invincible    | 1bit | 무적 여부
+/// - grounded      | 1bit | 지면을 밟고 있는 여부
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -38,6 +40,8 @@ impl Bitfield {
     const STATE_SHIFT: usize = 8;
     const INVINCIBLE_BIT_MASK: u16 = 0x0001;
     const INVINCIBLE_SHIFT: usize = 10;
+    const GROUND_BIT_MASK: u16 = 0x0001;
+    const GROUND_SHIFT: usize = 11;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     pub const fn new() -> Self {
@@ -180,6 +184,23 @@ impl Bitfield {
         self.set_invincible(invincible);
         self
     }
+
+    /// 지면을 밟고 있는 여부를 반환합니다.
+    pub fn is_grounded(&self) -> bool {
+        ((self.0 >> Self::GROUND_SHIFT) & Self::GROUND_BIT_MASK) == Self::GROUND_BIT_MASK
+    }
+
+    /// 지면을 밟고 있는 여부를 설정합니다.
+    pub const fn set_grounded(&mut self, ground: bool) {
+        self.0 &= !(Self::GROUND_BIT_MASK << Self::GROUND_SHIFT);
+        self.0 |= ((ground as u16) & Self::GROUND_BIT_MASK) << Self::GROUND_SHIFT;
+    }
+
+    /// 지면을 밟고 있는 여부를 반환합니다.
+    pub const fn with_grounded(mut self, ground: bool) -> Self {
+        self.set_grounded(ground);
+        self
+    }
 }
 
 impl Default for Bitfield {
@@ -195,15 +216,21 @@ pub struct Player {
     /// 사용자 이름
     pub name: UserName, // 34
     /// 사용자 프로필 아이콘
-    pub profile_icon: ProfileIcon,
+    pub profile_icon: ProfileIcon, // 25
     /// 캐릭터 종류
     character_kind: CharacterKind, // 36
+    /// 이전 액션 상태
+    pub prev_action_state: ActionState, // 37
+    /// 플레이어 시야 방향
+    pub player_states: PlayerStateData, // 38
     /// 액션 상태 타이머
-    pub action_state_timer: ActionStateTimer, // 38
+    pub action_state_timer: ActionStateTimer, // 40
     /// 움직임 상태 타이머
-    pub movement_state_timer: MovementStateTimer, // 40
-    /// 캐릭터 속성 데이터
-    attributes: &'static CharacterAttributes, // 48
+    pub movement_state_timer: MovementStateTimer, // 42
+    /// 플레이어 상태 데이터
+    pub view_state_timer: ViewStateTimer, // 44
+    /// 플레이어 시야 각도
+    pub latlon: LatLon, // 48
 
     /// 비트 필드 데이터입니다.
     bitfield: Bitfield, // 50
@@ -213,16 +240,14 @@ pub struct Player {
     pub dead_count: u16, // 54
     /// 방어막 체력
     pub guard_health: u16, // 56
-
     /// 현제 체력
     pub current_health: u16, // 58
     /// 남은 총알
     pub current_bullet: u16, // 60
     /// 남은 스킬 코스트
     pub current_skill_cost: u16, // 62
-
-    /// 플레이어 상태 데이터
-    pub player_states: PlayerStateData, // 63
+    /// 한 공격당 발사 횟수
+    pub fire_per_attack: u16, // 64
 
     /// 플레이어 월드 공간 위치
     pub translation: glam::Vec3A, // 80
@@ -233,8 +258,15 @@ pub struct Player {
     /// 플레이어 월드 공간 이동 방향
     pub velocity: glam::Vec3A, // 112
 
-    /// 플레이어 시야 방향
-    pub latlon: LatLon, // 128
+    /// 캐릭터 속성 데이터
+    attributes: &'static CharacterAttributes, // 120
+    /// 입력 상태 타이머
+    pub input_state_timer: InputStateTimer, // 122
+    /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
+    pub skill_cost_timer: u16, // 124
+    /// 이전 움직임 상태
+    pub prev_movement_state: MovementState, // 125
+                                            // ------ 128byte --------
 }
 
 impl Player {
@@ -249,9 +281,12 @@ impl Player {
             name,
             profile_icon,
             character_kind: CharacterKind::ArisOriginal,
+            prev_action_state: ActionState::Idle,
+            player_states: PlayerStateData::new(),
             action_state_timer: ActionStateTimer(0),
             movement_state_timer: MovementStateTimer(0),
-            attributes: get_character_attributes(CharacterKind::ArisOriginal),
+            view_state_timer: ViewStateTimer(0),
+            latlon: LatLon::default(),
             bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
             kill_count: 0,
             dead_count: 0,
@@ -259,11 +294,14 @@ impl Player {
             current_health: 0,
             current_bullet: 0,
             current_skill_cost: 0,
-            player_states: PlayerStateData::new(),
+            fire_per_attack: 0,
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
             velocity: glam::Vec3A::ZERO,
-            latlon: LatLon::default(),
+            attributes: get_character_attributes(CharacterKind::ArisOriginal),
+            input_state_timer: InputStateTimer(0),
+            skill_cost_timer: 0,
+            prev_movement_state: MovementState::Idle,
         }
     }
 
@@ -292,6 +330,11 @@ impl Player {
     /// 캐릭터 종류를 반환합니다.
     pub fn character_kind(&self) -> CharacterKind {
         self.character_kind
+    }
+
+    /// 캐릭터 속성 데이터를 반환합니다.
+    pub fn character_attributes(&self) -> &'static CharacterAttributes {
+        self.attributes
     }
 
     /// 팀 종류를 반환합니다.
@@ -411,6 +454,22 @@ impl Player {
     /// 무적 여부를 반환합니다.
     pub const fn with_invincible(mut self, invincible: bool) -> Self {
         self.set_invincible(invincible);
+        self
+    }
+
+    /// 지면을 밟고 있는 여부를 반환합니다.
+    pub fn is_grounded(&self) -> bool {
+        self.bitfield.is_grounded()
+    }
+
+    /// 지면을 밟고 있는 여부를 설정합니다.
+    pub const fn set_grounded(&mut self, ground: bool) {
+        self.bitfield.set_grounded(ground);
+    }
+
+    /// 지면을 밟고 있는 여부를 반환합니다.
+    pub const fn with_grounded(mut self, ground: bool) -> Self {
+        self.set_grounded(ground);
         self
     }
 

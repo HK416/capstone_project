@@ -1,7 +1,5 @@
 mod formation;
-mod in_game_enter;
-mod in_game_ready;
-mod in_game_run;
+mod in_game;
 mod room;
 
 use std::{collections::VecDeque, fmt};
@@ -10,7 +8,7 @@ use tokio::time::{Duration, Instant};
 
 use crate::world::{get_pool, get_retires};
 
-pub use self::{formation::*, in_game_enter::*, in_game_ready::*, in_game_run::*, room::*};
+pub use self::{formation::*, in_game::*, room::*};
 
 use super::{GameWorld, GameWorldEvent};
 

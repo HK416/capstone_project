@@ -5,7 +5,7 @@ use crate::components::BigEndian;
 
 /// 플레이어 행동 상태 타이머입니다. (단위: ms)
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ActionStateTimer(pub u16);
 
 impl ActionStateTimer {
@@ -33,7 +33,7 @@ impl Default for ActionStateTimer {
 
 /// 플레이어 움직임 상태 타이머입니다.
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MovementStateTimer(pub u16);
 
 impl MovementStateTimer {
@@ -82,6 +82,37 @@ impl BigEndian for ViewStateTimer {
 }
 
 impl Default for ViewStateTimer {
+    fn default() -> Self {
+        Self(0)
+    }
+}
+
+/// 최대 플레이어 입력 상태 타이머 시간입니다. (단위: ms)
+pub const MAX_INPUT_STATE_TIME: u16 = 250;
+
+/// 플레이어 입력 상태 타이머입니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct InputStateTimer(pub u16);
+
+impl InputStateTimer {
+    /// 새로운 입력 상태 타이머를 생성합니다.
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+}
+
+impl BigEndian for InputStateTimer {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self(u16::from_big_endian_bytes(bytes))
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        self.0.to_big_endian_bytes()
+    }
+}
+
+impl Default for InputStateTimer {
     fn default() -> Self {
         Self(0)
     }

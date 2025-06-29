@@ -123,9 +123,7 @@ impl Packet for InGameDataInitPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{
-        CharacterKind, LatLon, NetworkState, Permission, Team, UserId, UserName,
-    };
+    use crate::components::{CharacterKind, NetworkState, Permission, Team, UserId, UserName};
 
     use super::*;
 
@@ -151,7 +149,6 @@ mod tests {
             100,
             [0.1341431, 1.2413413, -0.341431241],
             [0.031431241, 0.000213412, 0.8741431241, 0.3414134],
-            LatLon::new(2.0241431, 0.03411341),
         );
         let player_1 = InGamePlayerInitData::new(
             UserId::new(4314321),
@@ -167,7 +164,6 @@ mod tests {
             100,
             [0.1341431, 1.2413413, -0.341431241],
             [0.031431241, 0.000213412, 0.8741431241, 0.3414134],
-            LatLon::new(2.0241431, 0.03411341),
         );
 
         let players = vec![player_0, player_1];

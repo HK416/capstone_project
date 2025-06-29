@@ -67,6 +67,8 @@ pub struct InGameRunScene {
     camera_fov_y: f32,
     /// 카메라 상대 위치
     camera_rel_position: glam::Vec3A,
+    /// 카메라 방향
+    camera_direction: LatLon,
 
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
@@ -159,6 +161,7 @@ impl InGameRunScene {
             camera: Entity::DANGLING,
             camera_fov_y: 45f32.to_radians(),
             camera_rel_position: glam::Vec3A::ZERO,
+            camera_direction: LatLon::default(),
             players,
             stage: Some(stage),
             accum_render_target: Some(accum_render_target),
@@ -249,7 +252,6 @@ impl InGameRunScene {
             &'a ActionStateTimer,
             &'a ViewState,
             &'a ViewStateTimer,
-            &'a LatLon,
         );
         let (
             &character_kind,
@@ -257,7 +259,6 @@ impl InGameRunScene {
             &action_state_timer,
             &view_state,
             &view_state_timer,
-            latlon,
         ) = world
             .query_one_mut::<Q>(entity)
             .expect("invalid entity or invalid entity component!");
@@ -276,13 +277,13 @@ impl InGameRunScene {
         // 카메라 변환 행렬을 생성합니다.
         let distance = self.camera_rel_position * glam::Vec3A::NEG_Z;
         let mut transform = glam::Mat4::from_translation(distance.into());
-        let rotation = glam::Mat4::from_rotation_y(latlon.lon.to_f32());
+        let rotation = glam::Mat4::from_rotation_y(self.camera_direction.lon.to_f32());
         transform = rotation * transform;
 
         let forward = glam::Vec3A::from_vec4(transform.z_axis);
         let forward = forward.normalize_or(glam::Vec3A::Z);
         let axis = glam::Vec3A::Y.cross(forward);
-        let rotation = glam::Mat4::from_axis_angle(axis.into(), latlon.lat.to_f32());
+        let rotation = glam::Mat4::from_axis_angle(axis.into(), self.camera_direction.lat.to_f32());
         transform = rotation * transform;
 
         let offset = self.camera_rel_position.with_z(0.0);
@@ -612,7 +613,7 @@ impl GameScene for InGameRunScene {
                             fov_y,
                             aspect_ratio,
                             0.1,
-                            500.0,
+                            15.0,
                         );
 
                         // 전역 조명 유니폼 버퍼를 갱신합니다.

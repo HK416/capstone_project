@@ -1,5 +1,6 @@
 //! 캐릭터 속성과 관련된 코드를 관리합니다.
 //!
+use mod_physics::object3d::Capsule;
 use serde::{Deserialize, Serialize};
 
 use crate::components::Float3;
@@ -75,6 +76,9 @@ pub struct CharacterAttributes {
     pub attack_range: u16,
     /// 캐릭터 총알의 반지름
     pub bullet_radius: f32,
+
+    /// 캐릭터 충돌체
+    pub collider: Capsule,
 }
 
 impl CharacterAttributes {
