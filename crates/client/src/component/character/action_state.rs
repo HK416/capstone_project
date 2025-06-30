@@ -1,89 +1,239 @@
-use mod_network::components::{ActionState, ActionStateTimer, CharacterAttributes};
+use mod_network::components::{
+    ActionState, ActionStateTimer, BulletData, CharacterAttributes, GameInputBits, SkillCostData,
+    RESPAWN_DELAY,
+};
+
+/// [`ActionState`]와 입력 상태에 따라 [`ActionState`]를 갱신합니다.
+///
+/// [`ActionState`]가 변경될 경우 변경된 [`ActionState`]를 반환합니다.
+///
+pub fn update_action_state(
+    input_flags: GameInputBits,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    character_attributes: &CharacterAttributes,
+    bullet_data: &BulletData,
+    skill_cost_data: &SkillCostData,
+) -> Option<ActionState> {
+    match action_state {
+        ActionState::Idle => update_state_when_idle(
+            input_flags,
+            action_state,
+            action_state_timer,
+            character_attributes,
+            bullet_data,
+            skill_cost_data,
+        ),
+        ActionState::Aiming => update_state_when_aiming(
+            input_flags,
+            action_state,
+            action_state_timer,
+            character_attributes,
+            bullet_data,
+            skill_cost_data,
+        ),
+        ActionState::AimAt => update_state_when_aim_at(
+            input_flags,
+            action_state,
+            action_state_timer,
+            character_attributes,
+            bullet_data,
+            skill_cost_data,
+        ),
+        ActionState::AimOff => update_state_when_aim_off(
+            input_flags,
+            action_state,
+            action_state_timer,
+            character_attributes,
+            bullet_data,
+            skill_cost_data,
+        ),
+        _ => None,
+    }
+}
+
+/// [`ActionState::Idle`]일 때 입력 상태에 따라 [`ActionState`]를 갱신합니다.
+fn update_state_when_idle(
+    input_flags: GameInputBits,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    character_attributes: &CharacterAttributes,
+    bullet_data: &BulletData,
+    skill_cost_data: &SkillCostData,
+) -> Option<ActionState> {
+    if input_flags.contains(GameInputBits::Skill)
+        && skill_cost_data.remaining >= character_attributes.skill_cost
+    {
+        Some(ActionState::Skill)
+    } else if input_flags.contains(GameInputBits::Attack) && bullet_data.remaining > 0 {
+        Some(ActionState::Attack)
+    } else if input_flags.contains(GameInputBits::Reload) {
+        *action_state = ActionState::Reload;
+        action_state_timer.0 = 0;
+        Some(ActionState::Reload)
+    } else if input_flags.contains(GameInputBits::Aiming) {
+        *action_state = ActionState::AimAt;
+        action_state_timer.0 = 0;
+        Some(ActionState::AimAt)
+    } else {
+        None
+    }
+}
+
+/// [`ActionState::Aiming`]일 때 입력 상태에 따라 [`ActionState`]를 갱신합니다.
+fn update_state_when_aiming(
+    input_flags: GameInputBits,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    character_attributes: &CharacterAttributes,
+    bullet_data: &BulletData,
+    skill_cost_data: &SkillCostData,
+) -> Option<ActionState> {
+    if input_flags.contains(GameInputBits::Skill)
+        && skill_cost_data.remaining >= character_attributes.skill_cost
+    {
+        Some(ActionState::Skill)
+    } else if input_flags.contains(GameInputBits::Attack) && bullet_data.remaining > 0 {
+        Some(ActionState::Attack)
+    } else if input_flags.contains(!GameInputBits::Aiming) {
+        *action_state = ActionState::AimOff;
+        action_state_timer.0 = 0;
+        Some(ActionState::AimOff)
+    } else {
+        None
+    }
+}
+
+/// [`ActionState::AimAt`]일 때 입력 상태에 따라 [`ActionState`]를 갱신합니다.
+fn update_state_when_aim_at(
+    input_flags: GameInputBits,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    character_attributes: &CharacterAttributes,
+    _bullet_data: &BulletData,
+    _skill_cost_data: &SkillCostData,
+) -> Option<ActionState> {
+    if !input_flags.contains(GameInputBits::Aiming) {
+        *action_state = ActionState::AimOff;
+
+        let aim_at_duration = character_attributes.normal_attack_start_duration;
+        let aim_off_duration = character_attributes.normal_attack_end_duration;
+        let s = action_state_timer.0 as f32 / aim_at_duration as f32;
+        let t = (1.0 - s) * aim_off_duration as f32;
+        action_state_timer.0 = t.floor() as u16;
+        Some(ActionState::AimAt)
+    } else {
+        None
+    }
+}
+
+/// [`ActionState::AimOff`]일 때 입력 상태에 따라 [`ActionState`]를 갱신합니다.
+fn update_state_when_aim_off(
+    input_flags: GameInputBits,
+    action_state: &mut ActionState,
+    action_state_timer: &mut ActionStateTimer,
+    character_attributes: &CharacterAttributes,
+    _bullet_data: &BulletData,
+    _skill_cost_data: &SkillCostData,
+) -> Option<ActionState> {
+    if input_flags.contains(GameInputBits::Aiming) {
+        *action_state = ActionState::AimAt;
+
+        let aim_at_duration = character_attributes.normal_attack_start_duration;
+        let aim_off_duration = character_attributes.normal_attack_end_duration;
+        let s = action_state_timer.0 as f32 / aim_off_duration as f32;
+        let t = (1.0 - s) * aim_at_duration as f32;
+        action_state_timer.0 = t.floor() as u16;
+        Some(ActionState::AimAt)
+    } else {
+        None
+    }
+}
 
 /// [`ActionState`]에 따라 [`ActionStateTimer`]를 갱신합니다.
 ///
 /// [`ActionState`]가 변경될 경우 변경된 [`ActionState`]와 경과 시간을 반환합니다.
 ///
 pub fn update_action_state_timer(
-    prev_action_state: &mut ActionState,
+    input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
 ) -> Option<(ActionState, u16)> {
     match action_state {
-        ActionState::Idle => update_action_state_timer_when_idle(
-            prev_action_state,
+        ActionState::Idle => update_timer_when_idle(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::Aiming => update_action_state_timer_when_aiming(
-            prev_action_state,
+        ActionState::Aiming => update_timer_when_aiming(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::AimAt => update_action_state_timer_when_aim_at(
-            prev_action_state,
+        ActionState::AimAt => update_timer_when_aim_at(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::AimOff => update_action_state_timer_when_aim_off(
-            prev_action_state,
+        ActionState::AimOff => update_timer_when_aim_off(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::Attack => update_action_state_timer_when_attack(
-            prev_action_state,
+        ActionState::Attack => update_timer_when_attack(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::Death => update_action_state_timer_when_death(
-            prev_action_state,
+        ActionState::Death => update_timer_when_death(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::Reload => update_action_state_timer_when_reload(
-            prev_action_state,
+        ActionState::Reload => update_timer_when_reload(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::Skill => update_action_state_timer_when_skill(
-            prev_action_state,
+        ActionState::Skill => update_timer_when_skill(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::Callsign => update_action_state_timer_when_callsign(
-            prev_action_state,
+        ActionState::Callsign => update_timer_when_callsign(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::VictoryStart => update_action_state_timer_when_victory_start(
-            prev_action_state,
+        ActionState::VictoryStart => update_timer_when_victory_start(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::VictoryEnd => update_action_state_timer_when_victory_end(
-            prev_action_state,
+        ActionState::VictoryEnd => update_timer_when_victory_end(
+            input_flags,
             action_state,
             action_state_timer,
             character_attributes,
@@ -93,8 +243,8 @@ pub fn update_action_state_timer(
 }
 
 /// [`ActionState::Idle`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_idle(
-    _prev_action_state: &mut ActionState,
+fn update_timer_when_idle(
+    _input_flags: GameInputBits,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -108,8 +258,8 @@ fn update_action_state_timer_when_idle(
 }
 
 /// [`ActionState::Aiming`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_aiming(
-    _prev_action_state: &mut ActionState,
+fn update_timer_when_aiming(
+    _input_flags: GameInputBits,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -123,8 +273,8 @@ fn update_action_state_timer_when_aiming(
 }
 
 /// [`ActionState::AimAt`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_aim_at(
-    prev_action_state: &mut ActionState,
+fn update_timer_when_aim_at(
+    _input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -136,7 +286,6 @@ fn update_action_state_timer_when_aim_at(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
-        *prev_action_state = ActionState::AimAt;
         *action_state = ActionState::Aiming;
         action_state_timer.0 = diff_t as u16;
 
@@ -147,8 +296,8 @@ fn update_action_state_timer_when_aim_at(
 }
 
 /// [`ActionState::AimOff`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_aim_off(
-    prev_action_state: &mut ActionState,
+fn update_timer_when_aim_off(
+    _input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -160,9 +309,9 @@ fn update_action_state_timer_when_aim_off(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
-        *prev_action_state = ActionState::AimOff;
+        let duration = character_attributes.normal_idle_duration;
         *action_state = ActionState::Idle;
-        action_state_timer.0 = diff_t as u16;
+        action_state_timer.0 = diff_t as u16 % duration;
 
         Some((ActionState::Idle, elapsed_time_ms - diff_t as u16))
     } else {
@@ -171,8 +320,8 @@ fn update_action_state_timer_when_aim_off(
 }
 
 /// [`ActionState::Attack`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_attack(
-    prev_action_state: &mut ActionState,
+fn update_timer_when_attack(
+    input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -184,35 +333,37 @@ fn update_action_state_timer_when_attack(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
-        let state = *prev_action_state;
-        *prev_action_state = ActionState::Attack;
-        *action_state = state;
-        action_state_timer.0 = diff_t as u16;
-
-        Some((state, elapsed_time_ms - diff_t as u16))
+        let duration = character_attributes.normal_idle_duration;
+        if input_flags.contains(GameInputBits::Aiming) {
+            *action_state = ActionState::Aiming;
+            action_state_timer.0 = diff_t as u16 % duration;
+            Some((ActionState::Aiming, elapsed_time_ms - diff_t as u16))
+        } else {
+            *action_state = ActionState::Idle;
+            action_state_timer.0 = diff_t as u16 % duration;
+            Some((ActionState::Idle, elapsed_time_ms - diff_t as u16))
+        }
     } else {
         None
     }
 }
 
 /// [`ActionState::Death`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_death(
-    _prev_action_state: &mut ActionState,
+fn update_timer_when_death(
+    _input_flags: GameInputBits,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
-    character_attributes: &CharacterAttributes,
+    _character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
 ) -> Option<(ActionState, u16)> {
     // 타이머를 갱신합니다.
-    let duration = character_attributes.vital_death_duration;
-    action_state_timer.0 = (action_state_timer.0 + elapsed_time_ms).min(duration);
-
+    action_state_timer.0 = (action_state_timer.0 + elapsed_time_ms).min(RESPAWN_DELAY);
     None
 }
 
 /// [`ActionState::Reload`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_reload(
-    prev_action_state: &mut ActionState,
+fn update_timer_when_reload(
+    _input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -224,20 +375,19 @@ fn update_action_state_timer_when_reload(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
-        let state = *prev_action_state;
-        *prev_action_state = ActionState::Reload;
-        *action_state = state;
-        action_state_timer.0 = diff_t as u16;
+        let duration = character_attributes.normal_idle_duration;
+        *action_state = ActionState::Idle;
+        action_state_timer.0 = diff_t as u16 % duration;
 
-        Some((ActionState::Reload, elapsed_time_ms - diff_t as u16))
+        Some((ActionState::Idle, elapsed_time_ms - diff_t as u16))
     } else {
         None
     }
 }
 
 /// [`ActionState::Skill`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_skill(
-    prev_action_state: &mut ActionState,
+fn update_timer_when_skill(
+    input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -249,20 +399,24 @@ fn update_action_state_timer_when_skill(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
-        let state = *prev_action_state;
-        *prev_action_state = ActionState::Skill;
-        *action_state = state;
-        action_state_timer.0 = diff_t as u16;
-
-        Some((state, elapsed_time_ms - diff_t as u16))
+        let duration = character_attributes.normal_idle_duration;
+        if input_flags.contains(GameInputBits::Aiming) {
+            *action_state = ActionState::Aiming;
+            action_state_timer.0 = diff_t as u16 % duration;
+            Some((ActionState::Aiming, elapsed_time_ms - diff_t as u16))
+        } else {
+            *action_state = ActionState::Idle;
+            action_state_timer.0 = diff_t as u16 % duration;
+            Some((ActionState::Idle, elapsed_time_ms - diff_t as u16))
+        }
     } else {
         None
     }
 }
 
 /// [`ActionState::Callsign`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_callsign(
-    _prev_action_state: &mut ActionState,
+fn update_timer_when_callsign(
+    _input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -274,16 +428,17 @@ fn update_action_state_timer_when_callsign(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
+        let duration = character_attributes.normal_idle_duration;
         *action_state = ActionState::Idle;
-        action_state_timer.0 = diff_t as u16;
+        action_state_timer.0 = diff_t as u16 % duration;
     }
 
     None
 }
 
 /// [`ActionState::VictoryStart`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_victory_start(
-    _prev_action_state: &mut ActionState,
+fn update_timer_when_victory_start(
+    _input_flags: GameInputBits,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -295,16 +450,17 @@ fn update_action_state_timer_when_victory_start(
 
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
+        let duration = character_attributes.victory_end_duration;
         *action_state = ActionState::VictoryEnd;
-        action_state_timer.0 = diff_t as u16;
+        action_state_timer.0 = (diff_t as u16) % duration;
     }
 
     None
 }
 
 /// [`ActionState::VictoryEnd`]일 때 [`ActionStateTimer`]를 갱신합니다.
-fn update_action_state_timer_when_victory_end(
-    _prev_action_state: &mut ActionState,
+fn update_timer_when_victory_end(
+    _input_flags: GameInputBits,
     _action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,

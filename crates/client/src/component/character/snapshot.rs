@@ -7,7 +7,7 @@ use mod_network::components::{
     MovementStateTimer, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION, RESPAWN_DELAY,
 };
 
-use crate::component::{Velocity, CHARACTER_ATTRIBUTES};
+use crate::component::CHARACTER_ATTRIBUTES;
 
 /// 서버에서 받은 패킷 데이터의 스냅샷입니다.
 #[derive(Debug, Clone)]
@@ -18,7 +18,7 @@ pub struct EntitySnapshot {
     action_state_timer: ActionStateTimer,
     movement_state: MovementState,
     movement_state_timer: MovementStateTimer,
-    velocity: Velocity,
+    velocity: glam::Vec3A,
 }
 
 impl EntitySnapshot {
@@ -31,7 +31,7 @@ impl EntitySnapshot {
         action_state_timer: ActionStateTimer,
         movement_state: MovementState,
         movement_state_timer: MovementStateTimer,
-        velocity: Velocity,
+        velocity: [f32; 3],
     ) -> Self {
         Self {
             time_stamp_ms,
@@ -43,7 +43,7 @@ impl EntitySnapshot {
             action_state_timer,
             movement_state,
             movement_state_timer,
-            velocity,
+            velocity: glam::Vec3A::from_array(velocity),
         }
     }
 }
@@ -146,7 +146,7 @@ impl InterpolationManager {
                 let elapsed_time_ms =
                     (time_stamp_ms - prev.time_stamp_ms).clamp(0, self.max_extrapolation_ms);
                 let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
-                let distance = prev.velocity.0 * elapsed_time_sec;
+                let distance = prev.velocity * elapsed_time_sec;
                 let mut transform = prev.transform;
                 transform.w_axis += glam::Vec4::new(distance.x, distance.y, distance.z, 0.0);
 

@@ -2,22 +2,18 @@
 //!
 
 use crate::{
-    components::{BigEndian, PlayerStateData},
+    components::{BigEndian, GameInputBits, PlayerStateData},
     protocol::{Packet, PacketType, RawPacket},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerHistory {
     /// 경과 시간
     pub elapsed_time_ms: u16,
     /// 플레이어 상태 데이터
     pub player_state: PlayerStateData,
-    /// 플레이어 월드 공간 위치
-    pub translation: [f32; 3],
-    /// 플레이어 월드 공간 방향
-    pub rotation: [f32; 4],
-    /// 플레이어 월드 공간 속도
-    pub velocity: [f32; 3],
+    /// 플레이어 입력 플래그
+    pub input_flags: GameInputBits,
 }
 
 impl PlayerHistory {
@@ -25,16 +21,12 @@ impl PlayerHistory {
     pub const fn new(
         elapsed_time_ms: u16,
         player_state: PlayerStateData,
-        translation: [f32; 3],
-        rotation: [f32; 4],
-        velocity: [f32; 3],
+        input_flags: GameInputBits,
     ) -> Self {
         Self {
             elapsed_time_ms,
             player_state,
-            translation,
-            rotation,
-            velocity,
+            input_flags,
         }
     }
 }
@@ -43,9 +35,7 @@ impl BigEndian for PlayerHistory {
     fn byte_size() -> usize {
         u16::byte_size() // 2byte
         + PlayerStateData::byte_size() // 3byte
-        + <[f32; 3]>::byte_size() // 15byte
-        + <[f32; 4]>::byte_size() // 31byte
-        + <[f32; 3]>::byte_size() // 43byte
+        + GameInputBits::byte_size() // 5byte
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -71,30 +61,16 @@ impl BigEndian for PlayerHistory {
         data = &bytes[offset..offset + size];
         let player_state = PlayerStateData::from_big_endian_bytes(data);
 
-        // 월드 공간 위치를 가져옵니다.
+        // 플레이어 입력 플래그를 가져옵니다.
         offset = offset + size;
-        size = <[f32; 3]>::byte_size();
+        size = GameInputBits::byte_size();
         data = &bytes[offset..offset + size];
-        let translation = <[f32; 3]>::from_big_endian_bytes(data);
-
-        // 월드 공간 방향을 가져옵니다.
-        offset = offset + size;
-        size = <[f32; 4]>::byte_size();
-        data = &bytes[offset..offset + size];
-        let rotation = <[f32; 4]>::from_big_endian_bytes(data);
-
-        // 월드 공간 속도를 가져옵니다.
-        offset = offset + size;
-        size = <[f32; 3]>::byte_size();
-        data = &bytes[offset..offset + size];
-        let velocity = <[f32; 3]>::from_big_endian_bytes(data);
+        let input_flags = GameInputBits::from_big_endian_bytes(data);
 
         Self {
             elapsed_time_ms,
             player_state,
-            translation,
-            rotation,
-            velocity,
+            input_flags,
         }
     }
 
@@ -103,9 +79,7 @@ impl BigEndian for PlayerHistory {
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.elapsed_time_ms.to_big_endian_bytes());
         bytes.extend_from_slice(&self.player_state.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.input_flags.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -122,7 +96,7 @@ impl BigEndian for PlayerHistory {
 }
 
 /// 최대 플레이어 데이터의 수
-pub const MAX_HISTORYIES: usize = 20;
+pub const MAX_HISTORYIES: usize = 100;
 
 /// 클라이언트에서 서버로 보내는 플레이어 데이터 갱신 패킷입니다.
 #[derive(Debug, Clone, PartialEq)]
@@ -174,7 +148,7 @@ impl Packet for InGamePushPacket {
         let num_histories = self.histories.len();
         let data_size = u64::byte_size() // 8byte
             + u8::byte_size() // 9byte
-            + PlayerHistory::byte_size() * num_histories; // max: 869byte
+            + PlayerHistory::byte_size() * num_histories; // max: 509byte
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.epoch.to_big_endian_bytes());
         data.extend_from_slice(&(num_histories as u8).to_big_endian_bytes());
@@ -251,9 +225,7 @@ mod tests {
                 .with_action_state(ActionState::AimOff)
                 .with_movement_state(MovementState::InPlaceJumping)
                 .with_view_state(ViewState::Idle),
-            [0.01341, 1.234123, 10.031431],
-            [0.00341341, 0.003141, 0.743141, 0.21341341],
-            [0.0, 0.1341341, -0.1431241],
+            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Jump,
         );
         let bytes = origin.to_big_endian_bytes();
         let other = PlayerHistory::from_big_endian_bytes(&bytes);
@@ -268,16 +240,12 @@ mod tests {
         let history_0 = PlayerHistory::new(
             142,
             PlayerStateData::default(),
-            [0.0; 3],
-            [0.0; 4],
-            [0.0; 3],
+            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Jump,
         );
         let history_1 = PlayerHistory::new(
             102,
             PlayerStateData::default(),
-            [0.0; 3],
-            [0.0; 4],
-            [0.0; 3],
+            GameInputBits::Forward | GameInputBits::Left,
         );
         let histories = vec![history_0, history_1];
         InGamePushPacket::new(53145, histories);
@@ -291,9 +259,7 @@ mod tests {
                 .with_action_state(ActionState::AimOff)
                 .with_movement_state(MovementState::InPlaceJumping)
                 .with_view_state(ViewState::Idle),
-            [0.01341, 1.234123, 10.031431],
-            [0.00341341, 0.003141, 0.743141, 0.21341341],
-            [0.0, 0.1341341, -0.1431241],
+            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Jump,
         );
         let history_1 = PlayerHistory::new(
             156,
@@ -301,9 +267,7 @@ mod tests {
                 .with_action_state(ActionState::Idle)
                 .with_movement_state(MovementState::InPlaceJumping)
                 .with_view_state(ViewState::Idle),
-            [0.01341, 1.534123, 10.031431],
-            [0.00341341, 0.003141, 0.743141, 0.21341341],
-            [0.0, 0.1341341, -0.1431241],
+            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Skill,
         );
         let histories = vec![history_0, history_1];
         let origin = InGamePushPacket::new(151341, histories);

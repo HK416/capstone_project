@@ -1,6 +1,136 @@
 use mod_network::components::{
-    ActionState, CharacterAttributes, MovementState, MovementStateTimer, MAX_JUMP_DURATION,
+    ActionState, CharacterAttributes, GameInputBits, MovementState, MovementStateTimer,
+    MAX_JUMP_DURATION,
 };
+
+/// [`MovementState`]와 입력 상태에 따라 [`MovementState`]를 갱신합니다.
+///
+/// [`MovementState`]가 변경될 경우 변경된 [`MovementState`]를 반환합니다.
+///
+pub fn update_movement_state(
+    input_flags: GameInputBits,
+    action_state: ActionState,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+) -> Option<MovementState> {
+    match action_state {
+        ActionState::Idle => match movement_state {
+            MovementState::Idle => {
+                update_state_when_idle(input_flags, movement_state, movement_state_timer)
+            }
+            MovementState::Moving => {
+                update_state_when_moving(input_flags, movement_state, movement_state_timer)
+            }
+            MovementState::MoveToEnd => {
+                update_state_when_move_to_end(input_flags, movement_state, movement_state_timer)
+            }
+            MovementState::InPlaceJumping
+            | MovementState::InPlaceLanding
+            | MovementState::MovingJumping
+            | MovementState::MovingLanding => None,
+        },
+        ActionState::Aiming
+        | ActionState::AimAt
+        | ActionState::AimOff
+        | ActionState::Attack
+        | ActionState::Reload
+        | ActionState::Skill => match movement_state {
+            MovementState::Idle => {
+                update_state_when_idle(input_flags, movement_state, movement_state_timer)
+            }
+            MovementState::Moving => {
+                update_state_when_walking(input_flags, movement_state, movement_state_timer)
+            }
+            MovementState::MoveToEnd => {
+                update_state_when_move_to_end(input_flags, movement_state, movement_state_timer)
+            }
+            MovementState::InPlaceJumping
+            | MovementState::InPlaceLanding
+            | MovementState::MovingJumping
+            | MovementState::MovingLanding => None,
+        },
+        ActionState::Death
+        | ActionState::Callsign
+        | ActionState::VictoryEnd
+        | ActionState::VictoryStart => None,
+    }
+}
+
+/// [`MovementState::Idle`]일 때 입력 상태에 따라 [`MovementState`]를 갱신합니다.
+fn update_state_when_idle(
+    input_flags: GameInputBits,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+) -> Option<MovementState> {
+    if input_flags.is_moved() {
+        *movement_state = MovementState::Moving;
+        movement_state_timer.0 = 0;
+        Some(MovementState::Moving)
+    } else if input_flags.contains(GameInputBits::Jump) {
+        *movement_state = MovementState::InPlaceJumping;
+        movement_state_timer.0 = 0;
+        Some(MovementState::InPlaceJumping)
+    } else {
+        None
+    }
+}
+
+/// [`MovementState::Moving`]일 때 입력 상태에 따라 [`MovementState`]를 갱신합니다.
+fn update_state_when_moving(
+    input_flags: GameInputBits,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+) -> Option<MovementState> {
+    if !input_flags.is_moved() {
+        *movement_state = MovementState::MoveToEnd;
+        movement_state_timer.0 = 0;
+        Some(MovementState::MoveToEnd)
+    } else if input_flags.contains(GameInputBits::Jump) {
+        *movement_state = MovementState::MovingJumping;
+        movement_state_timer.0 = 0;
+        Some(MovementState::MovingJumping)
+    } else {
+        None
+    }
+}
+
+/// [`ActionState::Idle`]이 아니고, [`MovementState::Idle`]일 때 입력 상태에 따라 [`MovementState`]를 갱신합니다.
+fn update_state_when_walking(
+    input_flags: GameInputBits,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+) -> Option<MovementState> {
+    if !input_flags.is_moved() {
+        *movement_state = MovementState::Idle;
+        movement_state_timer.0 = 0;
+        Some(MovementState::Moving)
+    } else if input_flags.contains(GameInputBits::Jump) {
+        *movement_state = MovementState::MovingJumping;
+        movement_state_timer.0 = 0;
+        Some(MovementState::MovingJumping)
+    } else {
+        None
+    }
+}
+
+/// [`MovementState::MoveToEnd`]일 때 입력 상태에 따라 [`MovementState`]를 갱신합니다.
+fn update_state_when_move_to_end(
+    input_flags: GameInputBits,
+    movement_state: &mut MovementState,
+    movement_state_timer: &mut MovementStateTimer,
+) -> Option<MovementState> {
+    if input_flags.is_moved() {
+        *movement_state = MovementState::Moving;
+        movement_state_timer.0 = 0;
+        Some(MovementState::Moving)
+    } else if input_flags.contains(GameInputBits::Jump) {
+        *movement_state = MovementState::InPlaceJumping;
+        movement_state_timer.0 = 0;
+        Some(MovementState::InPlaceJumping)
+    } else {
+        None
+    }
+}
 
 /// [`MovementState`]에 따라 [`ActionStateTimer`]를 갱신합니다.
 ///
@@ -15,43 +145,43 @@ pub fn update_movement_state_timer(
 ) -> Option<(MovementState, u16)> {
     match action_state {
         ActionState::Idle => match movement_state {
-            MovementState::Idle => update_movement_state_timer_when_idle(
+            MovementState::Idle => update_timer_when_idle(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::Moving => update_movement_state_timer_when_moving(
+            MovementState::Moving => update_timer_when_moving(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::MoveToEnd => update_movement_state_timer_when_move_to_end(
+            MovementState::MoveToEnd => update_timer_when_move_to_end(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::InPlaceJumping => update_movement_state_timer_when_in_place_jumping(
+            MovementState::InPlaceJumping => update_timer_when_in_place_jumping(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::InPlaceLanding => update_movement_state_timer_when_in_place_landing(
+            MovementState::InPlaceLanding => update_timer_when_in_place_landing(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::MovingJumping => update_movement_state_timer_when_moving_jumping(
+            MovementState::MovingJumping => update_timer_when_moving_jumping(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::MovingLanding => update_movement_state_timer_when_moving_landing(
+            MovementState::MovingLanding => update_timer_when_moving_landing(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
@@ -64,43 +194,43 @@ pub fn update_movement_state_timer(
         | ActionState::Attack
         | ActionState::Reload
         | ActionState::Skill => match movement_state {
-            MovementState::Idle => update_movement_state_timer_when_idle(
+            MovementState::Idle => update_timer_when_idle(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::Moving => update_movement_state_timer_when_walking(
+            MovementState::Moving => update_timer_when_walking(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::MoveToEnd => update_movement_state_timer_when_move_to_end(
+            MovementState::MoveToEnd => update_timer_when_move_to_end(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::InPlaceJumping => update_movement_state_timer_when_in_place_jumping(
+            MovementState::InPlaceJumping => update_timer_when_in_place_jumping(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::InPlaceLanding => update_movement_state_timer_when_in_place_landing(
+            MovementState::InPlaceLanding => update_timer_when_in_place_landing(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::MovingJumping => update_movement_state_timer_when_moving_jumping(
+            MovementState::MovingJumping => update_timer_when_moving_jumping(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
             ),
-            MovementState::MovingLanding => update_movement_state_timer_when_moving_landing(
+            MovementState::MovingLanding => update_timer_when_moving_landing(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
@@ -112,7 +242,7 @@ pub fn update_movement_state_timer(
 }
 
 /// [`MovementState::Idle`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_idle(
+pub fn update_timer_when_idle(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
@@ -125,7 +255,7 @@ pub fn update_movement_state_timer_when_idle(
 }
 
 /// [`MovementState::Moving`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_moving(
+pub fn update_timer_when_moving(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
@@ -138,7 +268,7 @@ pub fn update_movement_state_timer_when_moving(
 }
 
 /// [`MovementState::MoveToEnd`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_move_to_end(
+pub fn update_timer_when_move_to_end(
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
@@ -159,7 +289,7 @@ pub fn update_movement_state_timer_when_move_to_end(
 }
 
 /// [`ActionState::Idle`]이 아니고, [`MovementState::Moving`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_walking(
+pub fn update_timer_when_walking(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
@@ -172,7 +302,7 @@ pub fn update_movement_state_timer_when_walking(
 }
 
 /// [`MovementState::InPlaceJumping`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_in_place_jumping(
+pub fn update_timer_when_in_place_jumping(
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     _character_attributes: &CharacterAttributes,
@@ -195,7 +325,7 @@ pub fn update_movement_state_timer_when_in_place_jumping(
 }
 
 /// [`MovementState::InPlaceLanding`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_in_place_landing(
+pub fn update_timer_when_in_place_landing(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     _character_attributes: &CharacterAttributes,
@@ -208,7 +338,7 @@ pub fn update_movement_state_timer_when_in_place_landing(
 }
 
 /// [`MovementState::MovingJumping`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_moving_jumping(
+pub fn update_timer_when_moving_jumping(
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     _character_attributes: &CharacterAttributes,
@@ -231,7 +361,7 @@ pub fn update_movement_state_timer_when_moving_jumping(
 }
 
 /// [`MovementState::MovingLanding`]일 때 [`MovementStateTimer`]를 갱신합니다.
-pub fn update_movement_state_timer_when_moving_landing(
+pub fn update_timer_when_moving_landing(
     _movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
     _character_attributes: &CharacterAttributes,

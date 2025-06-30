@@ -6,6 +6,7 @@ mod formation;
 mod health;
 mod icon;
 mod in_game;
+mod input;
 mod latlon;
 mod name;
 mod network;
@@ -22,6 +23,6 @@ mod weapon;
 
 pub use self::{
     bullet_kind::*, character_attr::*, character_kind::*, finish::*, formation::*, health::*,
-    icon::*, in_game::*, latlon::*, name::*, network::*, permission::*, player_state::*, room::*,
-    skill::*, stage_attr::*, stage_kind::*, team::*, tier::*, timer::*, weapon::*,
+    icon::*, in_game::*, input::*, latlon::*, name::*, network::*, permission::*, player_state::*,
+    room::*, skill::*, stage_attr::*, stage_kind::*, team::*, tier::*, timer::*, weapon::*,
 };

@@ -102,6 +102,30 @@ impl WorldTransform {
         )
     }
 
+    /// 월드 변환 행렬의 z축을 주어진 방향과 같도록 합니다.
+    pub fn look_to<PZ, PY>(&mut self, look: PZ, up: PY)
+    where
+        PZ: Into<glam::Vec3A>,
+        PY: Into<glam::Vec3A>,
+    {
+        // 세 축의 방향 벡터를 계산합니다.
+        let mut z_axis: glam::Vec3A = look.into();
+        z_axis = z_axis.normalize_or(glam::Vec3A::Z);
+        let mut y_axis: glam::Vec3A = up.into();
+        y_axis = y_axis.normalize_or(glam::Vec3A::Y);
+        let x_axis = y_axis.cross(z_axis);
+        y_axis = z_axis.cross(x_axis);
+
+        // 회전 쿼터니언을 생성합니다.
+        let rotation = glam::Quat::from_mat3a(&glam::Mat3A::from_cols(x_axis, y_axis, z_axis));
+
+        // 현재 변환 행렬로 부터 스케일과 위치를 가져옵니다.
+        let (scale, _, translation) = self.0.to_scale_rotation_translation();
+
+        // 새로운 변환 행렬을 적용합니다.
+        self.0 = glam::Mat4::from_scale_rotation_translation(scale, rotation, translation);
+    }
+
     /// 월드 좌표계의 벡터를 모델 좌표계로 변환합니다.
     #[allow(dead_code)]
     pub fn world_to_model_vector3a(&self, v: glam::Vec3A) -> glam::Vec3A {
@@ -134,8 +158,3 @@ impl Projection {
         ))
     }
 }
-
-/// 속도 데이터입니다.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Velocity(pub glam::Vec3A);

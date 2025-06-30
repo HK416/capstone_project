@@ -9,7 +9,9 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{ActionState, ActionStateTimer, CharacterKind, LoginToken, StageKind, UserId},
+    components::{
+        ActionState, ActionStateTimer, CharacterKind, GameInputBits, LoginToken, StageKind, UserId,
+    },
     protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -470,7 +472,7 @@ impl InGameEnterScene {
         let i = character_kind as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         update_action_state_timer(
-            prev_action_state,
+            GameInputBits::empty(),
             action_state,
             action_state_timer,
             character_attributes,

@@ -72,6 +72,8 @@ pub struct CharacterAttributes {
     pub critical_damage: u16,
     /// 캐릭터의 최대 스킬 코스트
     pub max_skill_cost: u16,
+    /// 캐릭터의 사용 스킬 코스트
+    pub skill_cost: u16,
     /// 캐릭터의 공격 사거리
     pub attack_range: u16,
     /// 캐릭터 총알의 반지름
