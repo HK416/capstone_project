@@ -95,7 +95,7 @@ fn update_state_when_aiming(
         Some(ActionState::Skill)
     } else if input_flags.contains(GameInputBits::Attack) && bullet_data.remaining > 0 {
         Some(ActionState::Attack)
-    } else if input_flags.contains(!GameInputBits::Aiming) {
+    } else if !input_flags.contains(GameInputBits::Aiming) {
         *action_state = ActionState::AimOff;
         action_state_timer.0 = 0;
         Some(ActionState::AimOff)

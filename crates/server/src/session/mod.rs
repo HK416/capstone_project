@@ -106,13 +106,13 @@ impl Session {
     }
 
     /// 네트워크 상태를 반환합니다.
-    pub fn network_state(&self) -> (NetworkState, u16) {
+    pub fn network_state(&self) -> NetworkState {
         let ping = self.ping.load(MemOrdering::Acquire);
         match ping {
-            0..=50 => (NetworkState::Good, ping as u16),
-            51..=100 => (NetworkState::Fair, ping as u16),
-            101..=200 => (NetworkState::Poor, ping as u16),
-            _ => (NetworkState::Critical, 250),
+            0..=50 => NetworkState::Good,
+            51..=100 => NetworkState::Fair,
+            101..=200 => NetworkState::Poor,
+            _ => NetworkState::Critical,
         }
     }
 

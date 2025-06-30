@@ -1,9 +1,9 @@
 use mod_network::components::{
-    ActionStateTimer, MovementStateTimer, PlayerStateData, ViewStateTimer,
+    ActionStateTimer, LatLon, MovementStateTimer, PlayerStateData, ViewStateTimer,
 };
 
 /// 최대 스냅샷의 수
-pub const MAX_SNAPSHOTS: usize = 12;
+pub const MAX_SNAPSHOTS: usize = 24;
 
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy)]
@@ -22,6 +22,8 @@ pub struct Snapshot {
     pub rotation: glam::Quat,
     /// 월드 공간 속도
     pub velocity: glam::Vec3A,
+    /// 카메라 회전 각도
+    pub latlon: LatLon,
 }
 
 impl Snapshot {
@@ -34,6 +36,7 @@ impl Snapshot {
         translation: glam::Vec3A,
         rotation: glam::Quat,
         velocity: glam::Vec3A,
+        latlon: LatLon,
     ) -> Self {
         Self {
             action_state_timer,
@@ -43,6 +46,7 @@ impl Snapshot {
             translation,
             rotation,
             velocity,
+            latlon,
         }
     }
 }

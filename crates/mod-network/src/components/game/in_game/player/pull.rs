@@ -123,8 +123,6 @@ pub struct InGamePlayerPullData {
     /// 사용자 식별자
     pub uid: UserId,
 
-    /// 플레이어 핑
-    pub ping: u16,
     /// 상대 팀 처치 횟수
     pub kill_count: u16,
     /// 상태 팀에게 처치 당한 횟수
@@ -159,7 +157,6 @@ pub struct InGamePlayerPullData {
 impl InGamePlayerPullData {
     pub fn new(
         uid: UserId,
-        ping: u16,
         kill_count: u16,
         dead_count: u16,
         guard_health: u16,
@@ -180,7 +177,6 @@ impl InGamePlayerPullData {
     ) -> Self {
         Self {
             uid,
-            ping,
             kill_count,
             dead_count,
             guard_health,
@@ -292,14 +288,13 @@ impl BigEndian for InGamePlayerPullData {
             + u16::byte_size()    // 12byte
             + u16::byte_size()    // 14byte
             + u16::byte_size()    // 16byte
-            + u16::byte_size()    // 18byte
-            + <[f32; 3]>::byte_size()    // 30byte
-            + <[f32; 4]>::byte_size()    // 46byte
-            + <[f32; 3]>::byte_size()    // 58byte
-            + Bitfield::byte_size()    // 59byte
-            + PlayerStateData::byte_size()    // 60byte
-            + ActionStateTimer::byte_size()    // 62byte
-            + MovementStateTimer::byte_size() // 64byte
+            + <[f32; 3]>::byte_size()    // 28byte
+            + <[f32; 4]>::byte_size()    // 44byte
+            + <[f32; 3]>::byte_size()    // 56byte
+            + Bitfield::byte_size()    // 57byte
+            + PlayerStateData::byte_size()    // 58yte
+            + ActionStateTimer::byte_size()    // 60byte
+            + MovementStateTimer::byte_size() // 62byte
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -318,12 +313,6 @@ impl BigEndian for InGamePlayerPullData {
         let mut size = UserId::byte_size();
         let mut data = &bytes[offset..offset + size];
         let uid = UserId::from_big_endian_bytes(data);
-
-        // 플레이어 핑을 가져옵니다.
-        offset = offset + size;
-        size = u16::byte_size();
-        data = &bytes[offset..offset + size];
-        let ping = u16::from_big_endian_bytes(data);
 
         // 상대 팀 처치 횟수를 가져옵니다.
         offset = offset + size;
@@ -405,7 +394,6 @@ impl BigEndian for InGamePlayerPullData {
 
         Self {
             uid,
-            ping,
             kill_count,
             dead_count,
             guard_health,
@@ -426,7 +414,6 @@ impl BigEndian for InGamePlayerPullData {
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
         bytes.extend_from_slice(&self.uid.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.ping.to_big_endian_bytes());
         bytes.extend_from_slice(&self.kill_count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.dead_count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.guard_health.to_big_endian_bytes());

@@ -1,12 +1,12 @@
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionState, DamageLogData, InGamePlayerPullData, MAX_IN_GAME_PLAYERS, NetworkState,
-        ObjectId, Permission, StageKind, Team, UserId,
+        ActionState, BulletKind, DamageLogData, InGamePlayerPullData, LatLon, MAX_IN_GAME_PLAYERS,
+        NetworkState, ObjectId, Permission, StageKind, Team, UserId,
     },
-    protocol::{InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, Packet},
+    protocol::{InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, Packet, StateHistory},
 };
 use rand::seq::SliceRandom;
 use tokio::time::Duration;
@@ -14,7 +14,10 @@ use tokio::time::Duration;
 use crate::{
     entities::Bullet,
     session::Session,
-    world::{GameWorld, GameWorldEvent, GameWorldState, GameWorldSystemEvent},
+    world::{
+        GameWorld, GameWorldEvent, GameWorldInGameRunStateEvent, GameWorldState,
+        GameWorldSystemEvent,
+    },
 };
 
 use super::*;
@@ -50,7 +53,7 @@ pub struct GameWorldInGameRunState {
     damage_log_data: Vec<DamageLogData>,
 
     /// 플레이어 스냅샷
-    snapshots: HashMap<UserId, [Snapshot; MAX_SNAPSHOTS]>,
+    snapshots: HashMap<UserId, VecDeque<Snapshot>>,
     /// 플레이어 데이터 덮어쓰기 플래그
     overwrite_flags: HashMap<UserId, bool>,
 }
@@ -170,7 +173,6 @@ impl GameWorldInGameRunState {
         session: Arc<Session>,
         uid: UserId,
         state: NetworkState,
-        ping: u16,
     ) {
         // 플레이어 데이터를 가져옵니다.
         let data = match world.players.get_mut(&uid) {
@@ -185,7 +187,33 @@ impl GameWorldInGameRunState {
 
         // 네트워크 상태를 설정합니다.
         data.set_network_state(state);
-        data.ping = ping;
+    }
+
+    /// [`GameWorldInGameRunStateEvent::PlayerUpdate`] 이벤트를 처리합니다.
+    fn handle_player_update_event(
+        &mut self,
+        world: &mut GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+        epoch: u64,
+        elapsed_time_ms: u16,
+        translation: glam::Vec3A,
+        latlon: LatLon,
+        histories: Vec<StateHistory>,
+    ) {
+    }
+
+    /// [`GameWorldInGameRunStateEvent::PlayerRespawn`] 이벤트를 처리합니다.
+    fn handle_player_respawn_event(&mut self, uid: UserId) {}
+
+    fn handle_bullet_spawn_event(
+        &mut self,
+        shooter_id: UserId,
+        delay_time_ms: u16,
+        bullet_kind: BulletKind,
+        translation: glam::Vec3A,
+        rotation: glam::Quat,
+    ) {
     }
 
     /// 모든 세션에 패킷 데이터를 전송합니다.
@@ -196,7 +224,6 @@ impl GameWorldInGameRunState {
             let overwrite = self.overwrite_flags.insert(uid, false).unwrap_or(false);
             players.push(InGamePlayerPullData::new(
                 uid,
-                data.ping,
                 data.kill_count,
                 data.dead_count,
                 data.guard_health,
@@ -226,9 +253,12 @@ impl GameWorldInGameRunState {
                     data.translation,
                     data.rotation,
                     data.velocity,
+                    data.latlon,
                 );
-                snapshots.copy_within(0..(MAX_SNAPSHOTS - 1), 1);
-                snapshots[0] = snapshot;
+                snapshots.push_front(snapshot);
+                while snapshots.len() > MAX_SNAPSHOTS {
+                    snapshots.pop_back();
+                }
             }
         }
 
@@ -304,7 +334,6 @@ impl GameWorldState for GameWorldInGameRunState {
             let connected = !self.leaved_players.contains(&uid);
             players.push(InGamePlayerPullData::new(
                 uid,
-                data.ping,
                 data.kill_count,
                 data.dead_count,
                 data.guard_health,
@@ -325,7 +354,8 @@ impl GameWorldState for GameWorldInGameRunState {
             ));
 
             // 스냅샷을 초기화합니다.
-            let snapshot = Snapshot::new(
+            let mut snapshots = VecDeque::with_capacity(MAX_SNAPSHOTS);
+            snapshots.push_front(Snapshot::new(
                 data.action_state_timer,
                 data.movement_state_timer,
                 data.view_state_timer,
@@ -333,8 +363,9 @@ impl GameWorldState for GameWorldInGameRunState {
                 data.translation,
                 data.rotation,
                 data.velocity,
-            );
-            self.snapshots.insert(uid, [snapshot; MAX_SNAPSHOTS]);
+                data.latlon,
+            ));
+            self.snapshots.insert(uid, snapshots);
 
             // 플래그를 초기화합니다.
             self.overwrite_flags.insert(uid, false);
@@ -370,8 +401,48 @@ impl GameWorldState for GameWorldInGameRunState {
                 GameWorldSystemEvent::PlayerLeave => {
                     self.handle_player_leave_event(world, session, uid);
                 }
-                GameWorldSystemEvent::UpdatePing(state, ping) => {
-                    self.handle_update_ping_event(world, session, uid, state, ping);
+                GameWorldSystemEvent::UpdatePing(state) => {
+                    self.handle_update_ping_event(world, session, uid, state);
+                }
+            },
+            GameWorldEvent::InGameRunState(event) => match event {
+                GameWorldInGameRunStateEvent::PlayerUpdate {
+                    session,
+                    uid,
+                    epoch,
+                    elapsed_time_ms,
+                    translation,
+                    latlon,
+                    histories,
+                } => {
+                    self.handle_player_update_event(
+                        world,
+                        session,
+                        uid,
+                        epoch,
+                        elapsed_time_ms,
+                        translation,
+                        latlon,
+                        histories,
+                    );
+                }
+                GameWorldInGameRunStateEvent::PlayerRespawn(uid) => {
+                    self.handle_player_respawn_event(uid);
+                }
+                GameWorldInGameRunStateEvent::BulletSpawn {
+                    shooter_id,
+                    delay_time_ms,
+                    bullet_kind,
+                    translation,
+                    rotation,
+                } => {
+                    self.handle_bullet_spawn_event(
+                        shooter_id,
+                        delay_time_ms,
+                        bullet_kind,
+                        translation,
+                        rotation,
+                    );
                 }
             },
             _ => {

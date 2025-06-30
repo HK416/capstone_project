@@ -13,6 +13,7 @@
 
 mod formation;
 mod in_game_ready;
+mod in_game_run;
 mod lobby;
 mod login;
 mod room;
@@ -27,7 +28,9 @@ use std::{
 use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
 use tokio::time::{Duration, Instant};
 
-pub use self::{formation::*, in_game_ready::*, lobby::*, login::*, room::*, verify::*};
+pub use self::{
+    formation::*, in_game_ready::*, in_game_run::*, lobby::*, login::*, room::*, verify::*,
+};
 
 use super::Session;
 
@@ -334,5 +337,11 @@ impl fmt::Debug for SessionFormationState {
 impl fmt::Debug for SessionInGameReadyState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(SessionInGameReadyState))
+    }
+}
+
+impl fmt::Debug for SessionInGameRunState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(SessionInGameRunState))
     }
 }

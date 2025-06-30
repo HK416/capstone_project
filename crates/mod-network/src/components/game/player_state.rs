@@ -167,13 +167,13 @@ impl PlayerStateData {
     }
 
     /// 행동 상태를 설정합니다.
-    pub fn set_action_state(&mut self, state: ActionState) {
+    pub const fn set_action_state(&mut self, state: ActionState) {
         self.0 &= !(Self::ACTION_BIT_MASK << Self::ACTION_SHIFT); // 기존 값 지우기
         self.0 |= (state as u8) << Self::ACTION_SHIFT; // 값 덮어쓰기
     }
 
     /// 행동 상태를 설정합니다.
-    pub fn with_action_state(mut self, state: ActionState) -> Self {
+    pub const fn with_action_state(mut self, state: ActionState) -> Self {
         self.set_action_state(state);
         self
     }
@@ -185,13 +185,13 @@ impl PlayerStateData {
     }
 
     /// 움직임 상태를 설정합니다.
-    pub fn set_movement_state(&mut self, state: MovementState) {
+    pub const fn set_movement_state(&mut self, state: MovementState) {
         self.0 &= !(Self::MOVEMENT_BIT_MASK << Self::MOVEMENT_SHIFT); // 기존 값 지우기
         self.0 |= (state as u8) << Self::MOVEMENT_SHIFT; // 값 덮어쓰기
     }
 
     /// 움직임 상태를 설정합니다.
-    pub fn with_movement_state(mut self, state: MovementState) -> Self {
+    pub const fn with_movement_state(mut self, state: MovementState) -> Self {
         self.set_movement_state(state);
         self
     }
@@ -204,13 +204,13 @@ impl PlayerStateData {
     }
 
     /// 시야 상태를 설정합니다.
-    pub fn set_view_state(&mut self, state: ViewState) {
+    pub const fn set_view_state(&mut self, state: ViewState) {
         self.0 &= !(Self::VIEW_BIT_MASK << Self::VIEW_SHIFT); // 기존 값 지우기
         self.0 |= (state as u8) << Self::VIEW_SHIFT; // 값 덮어쓰기
     }
 
     /// 시야 상태를 설정합니다.
-    pub fn with_view_state(mut self, state: ViewState) -> Self {
+    pub const fn with_view_state(mut self, state: ViewState) -> Self {
         self.set_view_state(state);
         self
     }

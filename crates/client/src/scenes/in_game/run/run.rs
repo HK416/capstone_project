@@ -12,11 +12,11 @@ use mod_network::{
     components::{
         ActionState, ActionStateTimer, BulletData, CharacterKind, GameInputBits, HealthData,
         LatLon, LoginToken, MovementState, MovementStateTimer, NetworkState, Permission,
-        PlayerStateData, SkillCostData, StageKind, UserId, ViewState, ViewStateTimer,
+        SkillCostData, StageKind, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
-        InGamePullPacket, InGamePushPacket, Packet, PacketType, PlayerHistory, RawPacket,
-        MAX_HISTORYIES,
+        InGamePullPacket, InGamePushNotifyPacket, Packet, PacketType, RawPacket, StateHistory,
+        MAX_HISTORIES,
     },
 };
 use mod_parallelism::collections::Queue;
@@ -42,15 +42,15 @@ use crate::{
         update_camera_hierarchy, update_camera_param, update_character_hierarchy,
         update_character_resource, update_character_rotation, update_movement_state,
         update_movement_state_timer, update_stage_hierarchy, update_stage_resource,
-        update_view_state, update_view_state_timer, AccumRenderTarget, AlphaBlendPipeline,
-        AnimationQuery, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera,
-        CameraResource, CameraUniform, Child, DirectionLight, EntitySnapshot, GaussianBlurPipeline,
-        GlobalLightDataLayout, InterpolationManager, LightSetResource, LightTransformDataLayout,
-        MaterialKind, MeshRenderer, MoveDirection, OpaqueMap, Player0, Player1, Player2, Player3,
-        Player4, Player5, Player6, Player7, Player8, Player9, PlayerArchetype, Projection,
-        RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, Skybox,
-        SnapshotBuffer, ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y,
-        CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        update_view_state, update_view_state_timer, world_transform_query_mut, AccumRenderTarget,
+        AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, Camera, CameraResource, CameraUniform, Child, DirectionLight,
+        EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout, InterpolationManager,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, MoveDirection,
+        OpaqueMap, Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8,
+        Player9, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
+        SkinnedMeshRenderer, Skybox, SnapshotBuffer, ToParentTrans, TransparentMap, WorldTransform,
+        CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, UserConfig},
     scenes::{
@@ -65,8 +65,10 @@ pub struct InGameRunScene {
     epoch: u64,
     /// 현재 시대 시각
     epoch_time_stamp: Instant,
-    /// 플레이어 데이터 기록
-    histories: Vec<PlayerHistory>,
+    /// 이전 패킷을 보낸 후 경과 시간
+    elapsed_time_ms: u16,
+    /// 플레이어 상태 데이터 기록
+    histories: Vec<StateHistory>,
 
     /// 애플리케이션 표시 언어
     locale: Locale,
@@ -192,7 +194,8 @@ impl InGameRunScene {
         Self {
             epoch,
             epoch_time_stamp: Instant::now(),
-            histories: Vec::with_capacity(MAX_HISTORYIES),
+            elapsed_time_ms: 0,
+            histories: Vec::with_capacity(MAX_HISTORIES),
             locale,
             uid,
             token,
@@ -306,17 +309,16 @@ impl InGameRunScene {
             skill_cost_data,
         ) {
             let now = Instant::now();
-            let epoch_elapsed = now
+            let epoch_elapsed_time_ms = now
                 .saturating_duration_since(self.epoch_time_stamp)
                 .as_millis()
                 .min(u16::MAX as u128) as u16;
-            self.histories.push(PlayerHistory::new(
-                epoch_elapsed,
-                PlayerStateData::new()
-                    .with_action_state(action_state)
-                    .with_movement_state(*movement_state)
-                    .with_view_state(*view_state),
-                self.input_flags,
+            self.histories.push(StateHistory::new(
+                self.epoch,
+                epoch_elapsed_time_ms,
+                action_state,
+                *movement_state,
+                *view_state,
             ));
         }
 
@@ -328,23 +330,22 @@ impl InGameRunScene {
             movement_state_timer,
         ) {
             let now = Instant::now();
-            let epoch_elapsed = now
+            let epoch_elapsed_time_ms = now
                 .saturating_duration_since(self.epoch_time_stamp)
                 .as_millis()
                 .min(u16::MAX as u128) as u16;
-            self.histories.push(PlayerHistory::new(
-                epoch_elapsed,
-                PlayerStateData::new()
-                    .with_action_state(*action_state)
-                    .with_movement_state(movement_state)
-                    .with_view_state(*view_state),
-                self.input_flags,
+            self.histories.push(StateHistory::new(
+                self.epoch,
+                epoch_elapsed_time_ms,
+                *action_state,
+                movement_state,
+                *view_state,
             ));
         }
     }
 
     /// 플레이어 캐릭터 타이머를 갱신합니다.
-    fn update_player_character_timer(&mut self, epoch_elapsed: u16, elapsed_time_ms: u16) {
+    fn update_player_character_timer(&mut self, epoch_elapsed_time_ms: u16, elapsed_time_ms: u16) {
         let (entity, _archetype) = self.player_entity();
         let world = match self.world.as_mut() {
             Some(world) => world,
@@ -392,13 +393,13 @@ impl InGameRunScene {
             elapsed_time_ms,
         );
         if let Some((action_state, elapsed_time)) = result {
-            self.histories.push(PlayerHistory::new(
-                epoch_elapsed + elapsed_time,
-                PlayerStateData::new()
-                    .with_action_state(action_state)
-                    .with_movement_state(*movement_state)
-                    .with_view_state(*view_state),
-                self.input_flags,
+            let elapsed_time_ms = epoch_elapsed_time_ms + elapsed_time;
+            self.histories.push(StateHistory::new(
+                self.epoch,
+                elapsed_time_ms,
+                action_state,
+                *movement_state,
+                *view_state,
             ));
         }
         let result = update_movement_state_timer(
@@ -409,13 +410,13 @@ impl InGameRunScene {
             elapsed_time_ms,
         );
         if let Some((movement_state, elapsed_time)) = result {
-            self.histories.push(PlayerHistory::new(
-                epoch_elapsed + elapsed_time,
-                PlayerStateData::new()
-                    .with_action_state(*action_state)
-                    .with_movement_state(movement_state)
-                    .with_view_state(*view_state),
-                self.input_flags,
+            let elapsed_time_ms = epoch_elapsed_time_ms + elapsed_time;
+            self.histories.push(StateHistory::new(
+                self.epoch,
+                elapsed_time_ms,
+                *action_state,
+                movement_state,
+                *view_state,
             ));
         }
     }
@@ -792,7 +793,7 @@ impl InGameRunScene {
 
         // 플레이어 상태를 갱신합니다.
         for data in packet.players {
-            let (entity, archetype) = self
+            let (entity, _archetype) = self
                 .players
                 .get(&data.uid)
                 .cloned()
@@ -858,7 +859,7 @@ impl GameScene for InGameRunScene {
         self.first_mouse_pressed = false;
     }
 
-    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
+    fn on_window_resized(&mut self, _window: &Window, app: &dyn AppHandle) {
         if self.world.is_some() {
             let size = app.window_size();
             let device = app.render_device();
@@ -1020,19 +1021,47 @@ impl GameScene for InGameRunScene {
         }
 
         let elapsed_time_ms = elapsed_time_ms.min(u16::MAX as u32) as u16;
+        self.elapsed_time_ms = self.elapsed_time_ms.saturating_add(elapsed_time_ms);
         self.update_player_character_timer(epoch_elapsed, elapsed_time_ms);
         self.update_player_character_rotation();
         self.update_other_characters();
     }
 
-    fn on_post_update(&mut self, window: &Window, app: &dyn AppHandle) {
-        let net = app.net_manager();
-        let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-        while !self.histories.is_empty() {
-            let count = self.histories.len().min(MAX_HISTORYIES);
-            let histories = self.histories.drain(..count);
-            let packet = InGamePushPacket::from_iter(self.epoch, histories);
-            // socket.push_packet(packet.as_raw());
+    fn on_post_update(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        const TICK: u16 = 16;
+        if self.elapsed_time_ms >= TICK {
+            self.elapsed_time_ms = 0;
+
+            // 플레이어 위치를 가져옵니다.
+            let translation = world_transform_query_mut(world, entity, archetype).get_translation();
+
+            let net = app.net_manager();
+            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+            while !self.histories.is_empty() {
+                let now = Instant::now();
+                let elapsed_time_ms = now
+                    .saturating_duration_since(self.epoch_time_stamp)
+                    .as_millis()
+                    .min(u16::MAX as u128) as u16;
+                let count = self.histories.len().min(MAX_HISTORIES);
+                let iter: std::vec::Drain<'_, StateHistory> = self.histories.drain(..count);
+                let packet = InGamePushNotifyPacket::from_iter(
+                    self.uid,
+                    self.token,
+                    self.epoch,
+                    elapsed_time_ms,
+                    iter,
+                    translation,
+                    self.latlon,
+                );
+                socket.push_packet(packet.as_raw());
+            }
         }
     }
 
@@ -1053,7 +1082,7 @@ impl GameScene for InGameRunScene {
 
             rayon::in_place_scope(|scope| {
                 // 각 캐릭터의 애니메이션을 재생합니다.
-                for (&uid, &(entity, archetype)) in self.players.iter() {
+                for (entity, archetype) in self.players.values().cloned() {
                     let &(_, connected) = connect_view
                         .get(entity)
                         .expect("invalid entity or invalid entity component!");

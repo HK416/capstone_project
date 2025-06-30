@@ -129,14 +129,14 @@ fn update_action_state_timer_when_attack(
 
         let shooter_id = uid;
         let delay_time_ms = data.action_state_timer.0 - time_point;
-        let event = GameWorldInGameRunStateEvent::SpawnBullet {
+        let event = GameWorldInGameRunStateEvent::BulletSpawn {
             shooter_id,
             delay_time_ms,
             bullet_kind: data.character_kind().into(),
             translation: data.translation,
             rotation: data.rotation,
         };
-        let event = GameWorldEvent::inGameRunState(event);
+        let event = GameWorldEvent::InGameRunState(event);
         events.push(event);
     }
 
@@ -164,8 +164,8 @@ fn update_action_state_timer_when_death(
         data.player_states.set_action_state(ActionState::Idle);
         data.action_state_timer.0 = diff_t as u16;
 
-        let event = GameWorldInGameRunStateEvent::RespawnPlayer(uid);
-        let event = GameWorldEvent::inGameRunState(event);
+        let event = GameWorldInGameRunStateEvent::PlayerRespawn(uid);
+        let event = GameWorldEvent::InGameRunState(event);
         events.push(event);
     }
 }

@@ -98,10 +98,12 @@ pub fn animate_character_when_move_to_aim_move<Tag: Copy + Component>(
         // 뼈 엔터티의 로컬 변환 행렬을 갱신합니다.
         for (bone_index, bone_transform) in keyframe_mesh.bone_trans.iter().cloned().enumerate() {
             let bone_entity = collection.bones[bone_index];
-            let (_, local_transform) = transform_view
-                .get_mut(bone_entity)
-                .expect("invalid entity or invalid entity component!");
-            local_transform.0 = local_transform.0 * 0.2 + bone_transform * 0.8;
+            if skinning_animation.mixing_bone_list.contains(&bone_entity) {
+                let (_, local_transform) = transform_view
+                    .get_mut(bone_entity)
+                    .expect("invalid entity or invalid entity component!");
+                local_transform.0 = local_transform.0 * 0.2 + bone_transform * 0.8;
+            }
         }
     }
 

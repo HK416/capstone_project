@@ -415,8 +415,7 @@ impl SessionState for SessionRoomState {
         if self.elapsed_time_sec >= TICK {
             // 핑 갱신 요청을 보냅니다.
             self.elapsed_time_sec = 0.0;
-            let (network_state, ping) = session.network_state();
-            let event = GameWorldSystemEvent::UpdatePing(network_state, ping);
+            let event = GameWorldSystemEvent::UpdatePing(session.network_state());
             let event = GameWorldEvent::System {
                 session: session.clone(),
                 uid: self.uid,

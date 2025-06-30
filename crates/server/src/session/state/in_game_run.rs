@@ -2,29 +2,29 @@ use std::sync::Arc;
 
 use mod_network::{
     components::UserId,
-    protocol::{InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
+    protocol::{InGamePushNotifyPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 
 use crate::{
     session::{Session, SessionState},
     token::UserTokenMap,
-    world::{GameWorldEvent, GameWorldInGameReadyStateEvent, GameWorldSystemEvent},
+    world::{GameWorldEvent, GameWorldInGameRunStateEvent, GameWorldSystemEvent},
 };
 
-/// 클라이언트가 인게임 준비 장면에 위치하고 있는 상태입니다.
-pub struct SessionInGameReadyState {
+/// 클라이언트가 인게임 진행 장면에 위치하고 있는 상태입니다.
+pub struct SessionInGameRunState {
     /// 사용자 식별자
     uid: UserId,
     /// 게임 월드 이벤트 전송자
     sender: Arc<Queue<GameWorldEvent>>,
-    // 네트워크 상태 갱신을 위한 경과 시간
+    /// 네트워크 상태 갱신을 위한 경과 시간
     elapsed_time_sec: f32,
     /// 유효하지 않은 패킷 경고 횟수
     packet_warn_count: usize,
 }
 
-impl SessionInGameReadyState {
+impl SessionInGameRunState {
     /// 새로운 세션 상태를 생성합니다.
     pub fn new(uid: UserId, sender: Arc<Queue<GameWorldEvent>>) -> Self {
         Self {
@@ -35,11 +35,11 @@ impl SessionInGameReadyState {
         }
     }
 
-    /// [`InGameReadyNotifyPacket`]을 처리합니다.
-    fn handle_in_game_ready_notify_packet(
+    /// [`InGamePushNotifyPacket`]을 처리합니다.
+    fn handle_in_game_push_notify_packet(
         &mut self,
         session: &Arc<Session>,
-        packet: InGameReadyNotifyPacket,
+        packet: InGamePushNotifyPacket,
     ) {
         // 수신한 패킷이 올바른지 검사합니다.
         if self.uid != packet.uid {
@@ -63,25 +63,27 @@ impl SessionInGameReadyState {
             return;
         }
 
-        // 로드 완료 요청을 보냅니다.
-        let event = GameWorldInGameReadyStateEvent::ReadyToPlay;
-        let event = GameWorldEvent::InGameReadyState {
+        // 이벤트를 전송합니다.
+        let event = GameWorldInGameRunStateEvent::PlayerUpdate {
             session: session.clone(),
-            uid: packet.uid,
-            event,
+            uid: self.uid,
+            epoch: packet.epoch,
+            elapsed_time_ms: packet.elapsed_time_ms,
+            translation: packet.translation.into(),
+            latlon: packet.latlon,
+            histories: packet.histories,
         };
+        let event = GameWorldEvent::InGameRunState(event);
         self.sender.push(event);
     }
 }
 
-impl SessionState for SessionInGameReadyState {
-    #[rustfmt::skip]
+impl SessionState for SessionInGameRunState {
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CharacterSelectRequest | PacketType::CharacterReleaseNotify => { /* empty */ }
-            PacketType::InGameReadyNotify => {
-                let packet = match InGameReadyNotifyPacket::try_from_raw(packet){
+            PacketType::InGamePushNotify => {
+                let packet = match InGamePushNotifyPacket::try_from_raw(packet) {
                     Some(packet) => packet,
                     None => {
                         session.close();
@@ -89,14 +91,14 @@ impl SessionState for SessionInGameReadyState {
                     }
                 };
 
-                self.handle_in_game_ready_notify_packet(session, packet);
+                self.handle_in_game_push_notify_packet(session, packet);
             }
             _ => {
                 log::warn!(
                     "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
                     &session,
                     &self,
-                    &packet_type,
+                    &packet_type
                 );
 
                 // 유효하지 않은 패킷 경고 횟수를 증가시킵니다.

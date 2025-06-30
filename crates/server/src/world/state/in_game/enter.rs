@@ -9,7 +9,7 @@ use rand::seq::SliceRandom;
 use tokio::time::Duration;
 
 use crate::{
-    session::Session,
+    session::{Session, SessionInGameRunState, SessionStateFlow},
     world::{
         GameWorld, GameWorldEvent, GameWorldInGameRunState, GameWorldState, GameWorldStateFlow,
         GameWorldSystemEvent,
@@ -142,7 +142,6 @@ impl GameWorldInGameEnterState {
         session: Arc<Session>,
         uid: UserId,
         state: NetworkState,
-        ping: u16,
     ) {
         // 플레이어 데이터를 가져옵니다.
         let data = match world.players.get_mut(&uid) {
@@ -157,7 +156,6 @@ impl GameWorldInGameEnterState {
 
         // 네트워크 상태를 설정합니다.
         data.set_network_state(state);
-        data.ping = ping;
     }
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
@@ -173,8 +171,17 @@ impl GameWorldInGameEnterState {
                 self.num_red_players,
                 leaved_players,
             );
+
             let flow = GameWorldStateFlow::Change(Box::new(state));
             world.flows.push(flow);
+
+            // 모든 세션의 상태를 전환합니다.
+            for (session, &uid) in world.sessions.iter() {
+                let sender = world.events.clone();
+                let state = SessionInGameRunState::new(uid, sender);
+                let flow = SessionStateFlow::Change(Box::new(state));
+                session.add_flow(flow);
+            }
         }
     }
 }
@@ -208,8 +215,8 @@ impl GameWorldState for GameWorldInGameEnterState {
                 GameWorldSystemEvent::PlayerLeave => {
                     self.handle_player_leave_event(world, session, uid);
                 }
-                GameWorldSystemEvent::UpdatePing(state, ping) => {
-                    self.handle_update_ping_event(world, session, uid, state, ping);
+                GameWorldSystemEvent::UpdatePing(state) => {
+                    self.handle_update_ping_event(world, session, uid, state);
                 }
             },
             _ => {

@@ -1,41 +1,68 @@
-//! 인게임 장면을 갱신 하는 패킷과 관련된 코드를 관리합니다.
+//! 인게임 장면을 검증 하는 패킷과 관련된 코드를 관리합니다.
 //!
 
+use std::cmp;
+
 use crate::{
-    components::{BigEndian, GameInputBits, PlayerStateData},
+    components::{
+        ActionState, BigEndian, LatLon, LoginToken, MovementState, PlayerStateData, UserId,
+        ViewState,
+    },
     protocol::{Packet, PacketType, RawPacket},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlayerHistory {
-    /// 경과 시간
+/// 최대 상태 기록의 수
+pub const MAX_HISTORIES: usize = 100;
+
+/// 플레이어 상태 기록 데이터입니다.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateHistory {
+    /// 현재 시대
+    pub epoch: u64,
+    /// 현재 시대에서 경과한 시간
     pub elapsed_time_ms: u16,
     /// 플레이어 상태 데이터
-    pub player_state: PlayerStateData,
-    /// 플레이어 입력 플래그
-    pub input_flags: GameInputBits,
+    states: PlayerStateData,
 }
 
-impl PlayerHistory {
-    /// 새로운 플레이어 데이터를 생성합니다.
+impl StateHistory {
+    /// 새로운 상태 기록을 생성합니다.
     pub const fn new(
+        epoch: u64,
         elapsed_time_ms: u16,
-        player_state: PlayerStateData,
-        input_flags: GameInputBits,
+        action_state: ActionState,
+        movement_state: MovementState,
+        view_state: ViewState,
     ) -> Self {
         Self {
+            epoch,
             elapsed_time_ms,
-            player_state,
-            input_flags,
+            states: PlayerStateData::new()
+                .with_action_state(action_state)
+                .with_movement_state(movement_state)
+                .with_view_state(view_state),
         }
+    }
+
+    /// 행동 상태를 반환합니다.
+    pub fn action_state(&self) -> ActionState {
+        self.states.action_state()
+    }
+
+    /// 움직임 상태를 반환합니다.
+    pub fn movement_state(&self) -> MovementState {
+        self.states.movement_state()
+    }
+
+    /// 시야 상태를 반환합니다.
+    pub fn view_state(&self) -> ViewState {
+        self.states.view_state()
     }
 }
 
-impl BigEndian for PlayerHistory {
+impl BigEndian for StateHistory {
     fn byte_size() -> usize {
-        u16::byte_size() // 2byte
-        + PlayerStateData::byte_size() // 3byte
-        + GameInputBits::byte_size() // 5byte
+        u64::byte_size() + u16::byte_size() + PlayerStateData::byte_size()
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -45,49 +72,49 @@ impl BigEndian for PlayerHistory {
                 bytes.len(),
                 Self::byte_size(),
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(PlayerHistory)
+                stringify!(StateHistory)
             )
         };
 
-        // 경과 시간을 가져옵니다.
+        // 현재 시대를 가져옵니다.
         let mut offset = 0;
-        let mut size = u16::byte_size();
+        let mut size = u64::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let epoch = u64::from_big_endian_bytes(data);
+
+        // 경과 시간을 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
         let elapsed_time_ms = u16::from_big_endian_bytes(data);
 
-        // 플레이어 상태를 가져옵니다.
+        // 플레이어 상태 데이터를 가져옵니다.
         offset = offset + size;
         size = PlayerStateData::byte_size();
         data = &bytes[offset..offset + size];
-        let player_state = PlayerStateData::from_big_endian_bytes(data);
-
-        // 플레이어 입력 플래그를 가져옵니다.
-        offset = offset + size;
-        size = GameInputBits::byte_size();
-        data = &bytes[offset..offset + size];
-        let input_flags = GameInputBits::from_big_endian_bytes(data);
+        let states = PlayerStateData::from_big_endian_bytes(data);
 
         Self {
+            epoch,
             elapsed_time_ms,
-            player_state,
-            input_flags,
+            states,
         }
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
+        bytes.extend_from_slice(&self.epoch.to_big_endian_bytes());
         bytes.extend_from_slice(&self.elapsed_time_ms.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.player_state.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.input_flags.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.states.to_big_endian_bytes());
 
-        // 바이트 배열 유효성 검증
+        // 바이트 배열 유효성을 검증합니다.
         if cfg!(feature = "check-validation") {
             assert_eq!(
                 bytes.len(),
                 Self::byte_size(),
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(PlayerHistory)
+                stringify!(StateHistory)
             );
         }
 
@@ -95,66 +122,119 @@ impl BigEndian for PlayerHistory {
     }
 }
 
-/// 최대 플레이어 데이터의 수
-pub const MAX_HISTORYIES: usize = 100;
+impl Ord for StateHistory {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.epoch
+            .cmp(&other.epoch)
+            .then(self.elapsed_time_ms.cmp(&other.elapsed_time_ms))
+    }
+}
 
-/// 클라이언트에서 서버로 보내는 플레이어 데이터 갱신 패킷입니다.
+impl PartialOrd<Self> for StateHistory {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        self.epoch.partial_cmp(&other.epoch)
+    }
+}
+
+/// 클라이언트에서 서버로 보내는 인게임 장면 갱신 패킷입니다.
+/// 위치, 회전 정보를 갱신합니다.
 #[derive(Debug, Clone, PartialEq)]
-pub struct InGamePushPacket {
+pub struct InGamePushNotifyPacket {
+    /// 사용자 식별자
+    pub uid: UserId,
+    /// 로그인 토큰
+    pub token: LoginToken,
     /// 현재 시대
     pub epoch: u64,
-    /// 플레이어 데이터
-    pub histories: Vec<PlayerHistory>,
+    /// 현재 시대에서 경과한 시간
+    pub elapsed_time_ms: u16,
+    /// 상태 기록
+    pub histories: Vec<StateHistory>,
+    /// 월드 공간 위치.
+    pub translation: [f32; 3],
+    /// 카메라 회전 각도
+    pub latlon: LatLon,
 }
 
-impl InGamePushPacket {
+impl InGamePushNotifyPacket {
     /// 새로운 패킷을 생성합니다.
-    ///
-    /// # Panics
-    /// - 주어진 `history`가 없거나, `MAX_HISTORYIES`보다 클 큰 경우 [`panic!`]을 호출합니다.
-    /// - 주어진 `history`가 시간순으로 정렬되지 않은 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn new(epoch: u64, histories: Vec<PlayerHistory>) -> Self {
-        assert!(
-            histories.is_sorted_by_key(|h| h.elapsed_time_ms),
-            "the given data must be sorted chronologically"
-        );
-        assert!(!histories.is_empty(), "the given history data is empty!");
-        assert!(histories.len() <= MAX_HISTORYIES, "too many historys!");
-        Self { epoch, histories }
+    pub fn new<T>(
+        uid: UserId,
+        token: LoginToken,
+        epoch: u64,
+        elapsed_time_ms: u16,
+        histories: Vec<StateHistory>,
+        translation: T,
+        latlon: LatLon,
+    ) -> Self
+    where
+        T: Into<[f32; 3]>,
+    {
+        Self {
+            uid,
+            token,
+            epoch,
+            elapsed_time_ms,
+            histories,
+            translation: translation.into(),
+            latlon,
+        }
     }
 
     /// 새로운 패킷을 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 `history`가 없거나, `MAX_HISTORYIES`보다 클 큰 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn from_iter<I>(epoch: u64, iter: I) -> Self
+    pub fn from_iter<T, I>(
+        uid: UserId,
+        token: LoginToken,
+        epoch: u64,
+        elapsed_time_ms: u16,
+        iter: I,
+        translation: T,
+        latlon: LatLon,
+    ) -> Self
     where
-        I: IntoIterator<Item = PlayerHistory>,
+        T: Into<[f32; 3]>,
+        I: IntoIterator<Item = StateHistory>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(epoch, iter.into_iter().collect())
+        Self::new(
+            uid,
+            token,
+            epoch,
+            elapsed_time_ms,
+            iter.into_iter().collect(),
+            translation,
+            latlon,
+        )
     }
 }
 
-impl Packet for InGamePushPacket {
+impl Packet for InGamePushNotifyPacket {
     fn packet_type() -> PacketType {
-        PacketType::InGamePush
+        PacketType::InGamePushNotify
     }
 
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_histories = self.histories.len();
-        let data_size = u64::byte_size() // 8byte
-            + u8::byte_size() // 9byte
-            + PlayerHistory::byte_size() * num_histories; // max: 509byte
+        let data_size = UserId::byte_size()
+            + LoginToken::byte_size()
+            + u64::byte_size()
+            + u16::byte_size()
+            + u8::byte_size()
+            + StateHistory::byte_size() * num_histories
+            + <[f32; 3]>::byte_size()
+            + LatLon::byte_size();
         let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&self.uid.to_big_endian_bytes());
+        data.extend_from_slice(&self.token.to_big_endian_bytes());
         data.extend_from_slice(&self.epoch.to_big_endian_bytes());
+        data.extend_from_slice(&self.elapsed_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&(num_histories as u8).to_big_endian_bytes());
         for history in self.histories.iter() {
             data.extend_from_slice(&history.to_big_endian_bytes());
         }
+        data.extend_from_slice(&self.translation.to_big_endian_bytes());
+        data.extend_from_slice(&self.latlon.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증
         if cfg!(feature = "check-validation") {
@@ -162,9 +242,9 @@ impl Packet for InGamePushPacket {
                 data.len(),
                 data_size,
                 "the size of the byte array and the size of the `{}` are different!",
-                stringify!(InGamePushPacket)
-            );
-        }
+                stringify!(InGamePushNotifyPacket)
+            )
+        };
 
         RawPacket::new(Self::packet_type(), data)
     }
@@ -180,99 +260,133 @@ impl Packet for InGamePushPacket {
             return None;
         }
 
-        // 현재 시대를 가져옵니다.
+        // 사용자 식별자를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = u64::byte_size();
+        let mut size = UserId::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let uid = UserId::from_big_endian_bytes(data);
+
+        // 로그인 토근을 가져옵니다.
+        offset = offset + size;
+        size = LoginToken::byte_size();
+        data = &bytes[offset..offset + size];
+        let token = LoginToken::from_big_endian_bytes(data);
+
+        // 현재 시대를 가져옵니다.
+        offset = offset + size;
+        size = u64::byte_size();
+        data = &bytes[offset..offset + size];
         let epoch = u64::from_big_endian_bytes(data);
+
+        // 현재 시대로부터 경과한 시간을 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let elapsed_time_ms = u16::from_big_endian_bytes(data);
 
         // 기록의 수를 가져옵니다.
         offset = offset + size;
         size = u8::byte_size();
         data = &bytes[offset..offset + size];
         let num_histories = u8::from_big_endian_bytes(data) as usize;
-        if num_histories == 0 || num_histories > MAX_HISTORYIES {
-            return None;
-        }
 
-        // 기록을 가져옵니다.
+        // 상태 데이터를 가져옵니다.
         let mut histories = Vec::with_capacity(num_histories);
         for _ in 0..num_histories {
             offset = offset + size;
-            size = PlayerHistory::byte_size();
+            size = StateHistory::byte_size();
             data = &bytes[offset..offset + size];
-            histories.push(PlayerHistory::from_big_endian_bytes(data));
+            histories.push(StateHistory::from_big_endian_bytes(data));
         }
 
-        histories
-            .is_sorted_by_key(|h| h.elapsed_time_ms)
-            .then_some(Self { epoch, histories })
+        // 월드 공간 위치를 가져옵니다.
+        offset = offset + size;
+        size = <[f32; 3]>::byte_size();
+        data = &bytes[offset..offset + size];
+        let translation = <[f32; 3]>::from_big_endian_bytes(data);
+
+        // 카메라 회전 각도를 가져옵니다.
+        offset = offset + size;
+        size = LatLon::byte_size();
+        data = &bytes[offset..offset + size];
+        let latlon = LatLon::from_big_endian_bytes(data);
+
+        Some(Self {
+            uid,
+            token,
+            epoch,
+            elapsed_time_ms,
+            histories,
+            translation,
+            latlon,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{ActionState, MovementState, ViewState};
-
     use super::*;
 
     #[test]
-    fn test_player_history() {
-        let origin = PlayerHistory::new(
+    fn test_state_history() {
+        let origin = StateHistory::new(
+            1,
             123,
-            PlayerStateData::new()
-                .with_action_state(ActionState::AimOff)
-                .with_movement_state(MovementState::InPlaceJumping)
-                .with_view_state(ViewState::Idle),
-            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Jump,
+            ActionState::Aiming,
+            MovementState::Moving,
+            ViewState::Aiming,
         );
         let bytes = origin.to_big_endian_bytes();
-        let other = PlayerHistory::from_big_endian_bytes(&bytes);
+        let other = StateHistory::from_big_endian_bytes(&bytes);
 
         // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);
     }
 
     #[test]
-    #[should_panic]
-    fn test_creation_in_game_push_packet() {
-        let history_0 = PlayerHistory::new(
-            142,
-            PlayerStateData::default(),
-            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Jump,
+    fn test_in_game_push_notify_packet() {
+        let origin = InGamePushNotifyPacket::new(
+            UserId::new(175462),
+            LoginToken::new(8641451),
+            31841,
+            232,
+            vec![],
+            glam::vec3a(0.0341341, 1.431413, -10.431412),
+            LatLon::new(34f32.to_radians(), 120f32.to_radians()),
         );
-        let history_1 = PlayerHistory::new(
-            102,
-            PlayerStateData::default(),
-            GameInputBits::Forward | GameInputBits::Left,
-        );
-        let histories = vec![history_0, history_1];
-        InGamePushPacket::new(53145, histories);
-    }
-
-    #[test]
-    fn test_in_game_push_packet() {
-        let history_0 = PlayerHistory::new(
-            123,
-            PlayerStateData::new()
-                .with_action_state(ActionState::AimOff)
-                .with_movement_state(MovementState::InPlaceJumping)
-                .with_view_state(ViewState::Idle),
-            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Jump,
-        );
-        let history_1 = PlayerHistory::new(
-            156,
-            PlayerStateData::new()
-                .with_action_state(ActionState::Idle)
-                .with_movement_state(MovementState::InPlaceJumping)
-                .with_view_state(ViewState::Idle),
-            GameInputBits::Forward | GameInputBits::Left | GameInputBits::Skill,
-        );
-        let histories = vec![history_0, history_1];
-        let origin = InGamePushPacket::new(151341, histories);
         let raw = origin.as_raw();
-        let other = InGamePushPacket::from_raw(raw);
+        let other = InGamePushNotifyPacket::from_raw(raw);
+
+        // 원본과 일치하는지 확인합니다.
+        assert_eq!(origin, other);
+
+        let origin = InGamePushNotifyPacket::new(
+            UserId::new(175462),
+            LoginToken::new(8641451),
+            31841,
+            232,
+            vec![
+                StateHistory::new(
+                    31841,
+                    53,
+                    ActionState::AimOff,
+                    MovementState::Moving,
+                    ViewState::ZoomOut,
+                ),
+                StateHistory::new(
+                    31841,
+                    153,
+                    ActionState::Idle,
+                    MovementState::MoveToEnd,
+                    ViewState::Idle,
+                ),
+            ],
+            glam::vec3a(0.0341341, 1.431413, -10.431412),
+            LatLon::new(34f32.to_radians(), 120f32.to_radians()),
+        );
+        let raw = origin.as_raw();
+        let other = InGamePushNotifyPacket::from_raw(raw);
 
         // 원본과 일치하는지 확인합니다.
         assert_eq!(origin, other);

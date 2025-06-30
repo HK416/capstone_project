@@ -33,7 +33,7 @@ pub fn animate_character_when_reload<Tag: Copy + Component>(
 ) {
     // "*_Normal_Reload" 애니메이션을 가져옵니다.
     let motion = motions
-        .get(RELOAD_ANIMATION_SUFFIX)
+        .get(NORMAL_RELOAD_ANIMATION)
         .expect("no such animation data!");
 
     // 애니메이션 키 프레임을 샘플링합니다.
