@@ -4,7 +4,7 @@ mod join;
 mod layer;
 mod option;
 
-use std::{num::NonZeroU32, sync::Arc};
+use std::{num::NonZeroU32, sync::Arc, time::Instant};
 
 use mod_app::{
     app::AppHandle,
@@ -1008,7 +1008,12 @@ impl GameScene for MainLobbyScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        _: Instant,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::JoinRoomFailed => {

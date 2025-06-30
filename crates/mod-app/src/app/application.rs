@@ -1065,11 +1065,11 @@ impl ApplicationHandler<AppEvent> for Application {
                 let current_scene = unsafe { scene_stack.back_mut().unwrap_unchecked() };
                 current_scene.handle_network_error(error, self);
             }
-            AppEvent::PacketReceived(packet) => {
+            AppEvent::PacketReceived(time_stamp, packet) => {
                 let mut temp = Some(packet);
                 for scene in scene_stack.iter_mut().rev() {
                     if let Some(packet) = temp.take() {
-                        temp = scene.on_received_packet(packet, self);
+                        temp = scene.on_received_packet(time_stamp, packet, self);
                     }
                 }
             }

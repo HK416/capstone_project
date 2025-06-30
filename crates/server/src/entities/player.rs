@@ -3,8 +3,8 @@
 
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameTier, InputStateTimer,
-    LatLon, MovementState, MovementStateTimer, NetworkState, Permission, PlayerStateData,
-    ProfileIcon, Team, UserName, ViewStateTimer,
+    LatLon, MovementStateTimer, NetworkState, Permission, PlayerStateData, ProfileIcon, Team,
+    UserName, ViewStateTimer,
 };
 
 use crate::data::get_character_attributes;
@@ -264,7 +264,9 @@ pub struct Player {
     pub input_state_timer: InputStateTimer, // 122
     /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
     pub skill_cost_timer: u16, // 124
-                               // ------ 128byte --------
+    /// 플레이어 핑
+    pub ping: u16, // 126
+                   // ------ 128byte --------
 }
 
 impl Player {
@@ -299,6 +301,7 @@ impl Player {
             attributes: get_character_attributes(CharacterKind::ArisOriginal),
             input_state_timer: InputStateTimer(0),
             skill_cost_timer: 0,
+            ping: 0,
         }
     }
 

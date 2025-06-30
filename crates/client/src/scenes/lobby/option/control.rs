@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use mod_app::{
     app::AppHandle,
@@ -606,7 +606,12 @@ impl GameScene for LobbyControlOptionModalLayer {
         true
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, _app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        _: Instant,
+        packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::LobbyDataUpdate => Some(packet),

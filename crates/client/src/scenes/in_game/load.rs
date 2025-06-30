@@ -1,6 +1,7 @@
 use std::{
     path::Path,
     sync::{Arc, OnceLock},
+    time::Instant,
 };
 
 use ahash::HashSet;
@@ -526,6 +527,7 @@ impl GameScene for InGameLoadScene {
 
     fn on_received_packet(
         &mut self,
+        _: Instant,
         _packet: RawPacket,
         _app: &dyn AppHandle,
     ) -> Option<RawPacket> {

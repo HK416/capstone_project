@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use ahash::HashMap;
 use hecs::{Entity, World};
@@ -31,16 +31,18 @@ use crate::{
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
         draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree, get_world_transform,
-        pull_transform_data, update_action_state_timer, update_camera_and_skybox_resource,
-        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
-        update_character_resource, update_movement_state_timer, update_stage_hierarchy,
-        update_stage_resource, world_transform_query_mut, AccumRenderTarget, AlphaBlendPipeline,
-        AnimationQuery, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera,
-        CameraResource, CameraUniform, Child, DirectionLight, GaussianBlurPipeline,
-        GlobalLightDataLayout, LightSetResource, LightTransformDataLayout, MaterialKind,
-        MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
-        ShadowMap, Sibling, SkinnedMeshRenderer, Skybox, ToParentTrans, TransparentMap,
-        WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        update_action_state_timer, update_camera_and_skybox_resource, update_camera_hierarchy,
+        update_camera_param, update_character_hierarchy, update_character_resource,
+        update_movement_state_timer, update_stage_hierarchy, update_stage_resource,
+        AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform, Child,
+        DirectionLight, EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout,
+        InterpolationManager, LightSetResource, LightTransformDataLayout, MaterialKind,
+        MeshRenderer, OpaqueMap, Player0, Player1, Player2, Player3, Player4, Player5, Player6,
+        Player7, Player8, Player9, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
+        ShadowMap, Sibling, SkinnedMeshRenderer, Skybox, SnapshotBuffer, ToParentTrans,
+        TransparentMap, Velocity, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
+        CHARACTER_ATTRIBUTES,
     },
     config::Locale,
     scenes::{
@@ -65,6 +67,8 @@ pub struct InGameRunScene {
     token: LoginToken,
     /// 스테이지 종류
     stage_kind: StageKind,
+    /// 최대 게임 플레이 시간
+    max_game_play_time_ms: u32,
     /// 남은 게임 진행 시간
     remaining_time_ms: u32,
     /// 첫 번쨰 마우스 눌림 여부 플래그
@@ -82,6 +86,8 @@ pub struct InGameRunScene {
     /// 카메라 방향
     camera_direction: LatLon,
 
+    /// 다른 플레이어 데이터를 관리합니다.
+    interpolation: InterpolationManager,
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
     /// 스테이지 엔터티
@@ -171,6 +177,7 @@ impl InGameRunScene {
             uid,
             token,
             stage_kind,
+            max_game_play_time_ms: remaining_time_ms,
             remaining_time_ms,
             first_mouse_pressed,
             world: Some(world),
@@ -178,6 +185,7 @@ impl InGameRunScene {
             camera_fov_y: 45f32.to_radians(),
             camera_rel_position: glam::Vec3A::ZERO,
             camera_direction: LatLon::default(),
+            interpolation: InterpolationManager::new(),
             players,
             stage: Some(stage),
             accum_render_target: Some(accum_render_target),
@@ -211,8 +219,9 @@ impl InGameRunScene {
             .expect("no such entity!")
     }
 
-    /// 캐릭터 상태 타이머를 갱신합니다.
-    fn update_characters(&mut self, elapsed_time_ms: u16) {
+    /// 플레이어 캐릭터를 갱신합니다.
+    fn update_player_character(&mut self, elapsed_time_ms: u16) {
+        let (entity, archetype) = self.player_entity();
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
@@ -228,65 +237,176 @@ impl InGameRunScene {
             &'a mut ViewStateTimer,
         );
         let mut view = world.view::<Q>();
-        for (&uid, &(entity, archetype)) in self.players.iter() {
-            let (
-                &character_kind,
-                (prev_action_state, action_state),
-                action_state_timer,
-                movement_state,
-                movement_state_timer,
-                view_state,
-                view_state_timer,
-            ) = view
-                .get_mut(entity)
-                .expect("invalid entity or invalid entity component!");
 
-            let i = character_kind as usize;
-            let character_attributes = CHARACTER_ATTRIBUTES[i];
-            let result = update_action_state_timer(
-                prev_action_state,
+        let (
+            &character_kind,
+            (prev_action_state, action_state),
+            action_state_timer,
+            movement_state,
+            movement_state_timer,
+            view_state,
+            view_state_timer,
+        ) = view
+            .get_mut(entity)
+            .expect("invalid entity or invalid entity component!");
+
+        let i = character_kind as usize;
+        let character_attributes = CHARACTER_ATTRIBUTES[i];
+        let result = update_action_state_timer(
+            prev_action_state,
+            action_state,
+            action_state_timer,
+            character_attributes,
+            elapsed_time_ms,
+        );
+        if let Some((action_state, elapsed_time)) = result {
+            let transform = get_world_transform(world, entity, archetype);
+            self.histories.push(PlayerHistory::new(
+                self.epoch_elapsed_time_ms + elapsed_time,
+                PlayerStateData::new()
+                    .with_action_state(action_state)
+                    .with_movement_state(*movement_state)
+                    .with_view_state(*view_state),
+                transform.get_translation().to_array(),
+                transform.get_rotation().to_array(),
+                [0.0; 3],
+            ));
+        }
+
+        let result = update_movement_state_timer(
+            *action_state,
+            movement_state,
+            movement_state_timer,
+            character_attributes,
+            elapsed_time_ms,
+        );
+        if let Some((movement_state, elapsed_time)) = result {
+            let transform = get_world_transform(world, entity, archetype);
+            self.histories.push(PlayerHistory::new(
+                self.epoch_elapsed_time_ms + elapsed_time,
+                PlayerStateData::new()
+                    .with_action_state(*action_state)
+                    .with_movement_state(movement_state)
+                    .with_view_state(*view_state),
+                transform.get_translation().to_array(),
+                transform.get_rotation().to_array(),
+                [0.0; 3],
+            ));
+        }
+    }
+
+    /// 다른 플레이어 캐릭터를 갱신합니다.
+    fn update_other_characters(&mut self) {
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        type Q<'a> = (
+            &'a mut (ActionState, ActionState),
+            &'a mut ActionStateTimer,
+            &'a mut MovementState,
+            &'a mut MovementStateTimer,
+        );
+        let time_stamp_ms = self
+            .max_game_play_time_ms
+            .saturating_sub(self.remaining_time_ms);
+        let mut state_view = world.view::<Q>();
+        for (entity, archetype) in self.players.values().cloned() {
+            let result = self.interpolation.get_interpolated(entity, time_stamp_ms);
+            if let Some((
+                transform,
                 action_state,
                 action_state_timer,
-                character_attributes,
-                elapsed_time_ms,
-            );
-            if let Some((action_state, elapsed_time)) = result
-                && uid == self.uid
-            {
-                let transform = get_world_transform(world, entity, archetype);
-                self.histories.push(PlayerHistory::new(
-                    self.epoch_elapsed_time_ms + elapsed_time,
-                    PlayerStateData::new()
-                        .with_action_state(action_state)
-                        .with_movement_state(*movement_state)
-                        .with_view_state(*view_state),
-                    transform.get_translation().to_array(),
-                    transform.get_rotation().to_array(),
-                    [0.0; 3],
-                ));
-            }
-
-            let result = update_movement_state_timer(
-                *action_state,
                 movement_state,
                 movement_state_timer,
-                character_attributes,
-                elapsed_time_ms,
-            );
-            if let Some((movement_state, elapsed_time)) = result
-                && uid == self.uid
+            )) = result
             {
-                let transform = get_world_transform(world, entity, archetype);
-                self.histories.push(PlayerHistory::new(
-                    self.epoch_elapsed_time_ms + elapsed_time,
-                    PlayerStateData::new()
-                        .with_action_state(*action_state)
-                        .with_movement_state(movement_state)
-                        .with_view_state(*view_state),
-                    transform.get_translation().to_array(),
-                    transform.get_rotation().to_array(),
-                    [0.0; 3],
-                ));
+                let (
+                    (_, old_action_state),
+                    old_action_state_timer,
+                    old_movement_state,
+                    old_movement_state_timer,
+                ) = state_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component!");
+                *old_action_state = action_state;
+                *old_action_state_timer = action_state_timer;
+                *old_movement_state = movement_state;
+                *old_movement_state_timer = movement_state_timer;
+
+                match archetype {
+                    PlayerArchetype::Player0 => {
+                        let mut query = world
+                            .query_one::<&mut (Player0, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player1 => {
+                        let mut query = world
+                            .query_one::<&mut (Player1, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player2 => {
+                        let mut query = world
+                            .query_one::<&mut (Player2, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player3 => {
+                        let mut query = world
+                            .query_one::<&mut (Player3, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player4 => {
+                        let mut query = world
+                            .query_one::<&mut (Player4, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player5 => {
+                        let mut query = world
+                            .query_one::<&mut (Player5, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player6 => {
+                        let mut query = world
+                            .query_one::<&mut (Player6, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player7 => {
+                        let mut query = world
+                            .query_one::<&mut (Player7, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player8 => {
+                        let mut query = world
+                            .query_one::<&mut (Player8, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                    PlayerArchetype::Player9 => {
+                        let mut query = world
+                            .query_one::<&mut (Player9, ToParentTrans)>(entity)
+                            .expect("invalid entity");
+                        let (_, local_transform) = query.get().expect("invalid entity component!");
+                        *local_transform = ToParentTrans(transform);
+                    }
+                }
             }
         }
     }
@@ -474,99 +594,85 @@ impl InGameRunScene {
     }
 
     /// 서버로부터 전달받은 데이터로 플레이어를 갱신합니다.
-    fn pull_player_data(&mut self, packet: InGamePullPacket) {
+    fn pull_world_data(&mut self, time_stamp: Instant, packet: InGamePullPacket) {
         // 게임 월드를 빌려옵니다.
         let world = match self.world.as_ref() {
             Some(world) => world,
             None => return,
         };
 
-        // 현재 시대를 갱신합니다.
-        self.epoch = packet.epoch;
-        self.epoch_elapsed_time_ms = 0;
-
-        type Query<'a> = (
+        type Kind<'a> = &'a CharacterKind;
+        type Always<'a> = (
             &'a mut Permission,
             &'a mut (NetworkState, bool),
             &'a mut HealthData,
             &'a mut BulletData,
             &'a mut SkillCostData,
-            &'a mut (ActionState, ActionState),
-            &'a mut ActionStateTimer,
-            &'a mut MovementState,
-            &'a mut MovementStateTimer,
-            &'a mut ViewState,
-            &'a mut ViewStateTimer,
-            &'a mut LatLon,
         );
-        let mut view = world.view::<Query>();
+        let checter_kind_view = world.view::<Kind>();
+        let mut always_change_view = world.view::<Always>();
+
+        // 남은 시간을 계산합니다.
+        let delta = Instant::now()
+            .saturating_duration_since(time_stamp)
+            .as_millis()
+            .min(self.max_game_play_time_ms as u128) as u32;
+        self.remaining_time_ms = packet.remaining_time_ms.saturating_add(delta);
+        let time_stamp_ms = self
+            .max_game_play_time_ms
+            .saturating_sub(self.remaining_time_ms);
 
         // 플레이어 상태를 갱신합니다.
-        rayon::in_place_scope(|scope| {
-            for data in packet.players {
-                let is_player = self.uid == data.uid;
-                let (entity, archetype) = self
-                    .players
-                    .get(&data.uid)
-                    .cloned()
-                    .expect("the player data must be exists!");
+        for data in packet.players {
+            let (entity, archetype) = self
+                .players
+                .get(&data.uid)
+                .cloned()
+                .expect("the player data must be exists!");
 
-                let (
-                    permission,
-                    (network_state, connected),
-                    health_data,
-                    bullet_data,
-                    skill_cost_data,
-                    (prev_action_state, action_state),
-                    action_state_timer,
-                    movement_state,
-                    movement_state_timer,
-                    view_state,
-                    view_state_timer,
-                    latlon,
-                ) = view
+            let (permission, (network_state, connected), health_data, bullet_data, skill_cost_data) =
+                always_change_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component!");
-                *permission = data.permission();
-                *network_state = data.network_state();
-                *connected = data.is_connected();
-                health_data.shield = data.guard_health;
-                health_data.remaining = data.current_health;
-                bullet_data.remaining = data.current_bullet;
-                skill_cost_data.remaining = data.current_skill_cost;
+            *permission = data.permission();
+            *network_state = data.network_state();
+            *connected = data.is_connected();
+            health_data.shield = data.guard_health;
+            health_data.remaining = data.current_health;
+            bullet_data.remaining = data.current_bullet;
+            skill_cost_data.remaining = data.current_skill_cost;
 
-                if !is_player {
-                    *view_state = data.player_states.view_state();
-                    *view_state_timer = data.view_state_timer;
-                    *latlon = data.latlon;
-                }
-
-                let diff_t = action_state_timer.0 as i32 - data.action_state_timer.0 as i32;
-                let changed = *action_state != data.player_states.action_state();
-                if data.is_overwrite() || changed || (!is_player && diff_t.abs() > 100) {
-                    *action_state = data.player_states.action_state();
-                    *action_state_timer = data.action_state_timer;
-                }
-
-                let diff_t = movement_state_timer.0 as i32 - data.movement_state_timer.0 as i32;
-                let changed = *movement_state != data.player_states.movement_state();
-                if data.is_overwrite() || changed || (!is_player && diff_t.abs() > 100) {
-                    *movement_state = data.player_states.movement_state();
-                    *movement_state_timer = data.movement_state_timer;
-                }
-
-                pull_transform_data(
-                    world,
-                    entity,
-                    archetype,
+            if data.uid != self.uid {
+                let snapshot = EntitySnapshot::new(
+                    time_stamp_ms,
                     data.translation,
                     data.rotation,
-                    data.velocity,
-                    is_player,
-                    data.is_overwrite(),
+                    data.player_states.action_state(),
+                    data.action_state_timer,
+                    data.player_states.movement_state(),
+                    data.movement_state_timer,
+                    Velocity(glam::Vec3A::from_array(data.velocity)),
                 );
+
+                match self.interpolation.buffers.get_mut(&entity) {
+                    Some((_, buffers)) => {
+                        buffers.insert(snapshot);
+                    }
+                    None => {
+                        let &character_kind = checter_kind_view
+                            .get(entity)
+                            .expect("invalid entity or invalid entity component!");
+
+                        let mut buffers = SnapshotBuffer::new();
+                        buffers.insert(snapshot);
+
+                        self.interpolation
+                            .buffers
+                            .insert(entity, (character_kind, buffers));
+                    }
+                };
             }
-        });
+        }
     }
 }
 
@@ -626,12 +732,19 @@ impl GameScene for InGameRunScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, _app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        time_stamp: Instant,
+        packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::InGamePull => {
                 let packet = InGamePullPacket::from_raw(packet);
-                self.pull_player_data(packet);
+                self.epoch = packet.epoch;
+                self.epoch_elapsed_time_ms = 0;
+                self.pull_world_data(time_stamp, packet);
             }
             _ => {
                 log::warn!(
@@ -645,10 +758,13 @@ impl GameScene for InGameRunScene {
 
     fn on_update(&mut self, elapsed_time_sec: f32, window: &Window, app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u32;
-        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
+        if self.epoch_elapsed_time_ms <= 500 {
+            self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
+        }
 
         let elapsed_time_ms = elapsed_time_ms.min(u16::MAX as u32) as u16;
-        self.update_characters(elapsed_time_ms);
+        self.update_player_character(elapsed_time_ms);
+        self.update_other_characters();
         self.epoch_elapsed_time_ms = self.epoch_elapsed_time_ms.saturating_add(elapsed_time_ms);
     }
 

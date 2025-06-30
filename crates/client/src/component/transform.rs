@@ -134,3 +134,8 @@ impl Projection {
         ))
     }
 }
+
+/// 속도 데이터입니다.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Velocity(pub glam::Vec3A);

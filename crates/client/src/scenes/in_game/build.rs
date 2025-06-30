@@ -1,4 +1,7 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
 
 use hecs::{Entity, EntityBuilder, World};
 use mod_app::{
@@ -168,11 +171,16 @@ impl GameScene for InGameBuildScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        time_stamp: Instant,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::InGameEnterNotify => {
-                let event = AppEvent::PacketReceived(packet);
+                let event = AppEvent::PacketReceived(time_stamp, packet);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
             }

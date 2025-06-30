@@ -5,6 +5,7 @@ mod movement_state;
 mod pipeline;
 mod pull;
 mod render;
+mod snapshot;
 mod spawn;
 
 mod aris_original;
@@ -17,7 +18,7 @@ use mod_network::components::{CharacterAttributes, NUM_CHARACTERS};
 
 pub use self::{
     action_state::*, animation::*, camera::*, movement_state::*, pipeline::*, pull::*, render::*,
-    spawn::*,
+    snapshot::*, spawn::*,
 };
 
 lazy_static! {

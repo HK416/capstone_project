@@ -3,7 +3,7 @@
 
 mod ban;
 
-use std::cmp;
+use std::{cmp, time::Instant};
 
 use ahash::{HashMap, HashSet, RandomState};
 use mod_app::{
@@ -1483,7 +1483,12 @@ impl GameScene for CustomGameRoomScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        _: Instant,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::JoinRoomFailed => {

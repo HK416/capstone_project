@@ -170,6 +170,7 @@ impl GameWorldInGameRunState {
         session: Arc<Session>,
         uid: UserId,
         state: NetworkState,
+        ping: u16,
     ) {
         // 플레이어 데이터를 가져옵니다.
         let data = match world.players.get_mut(&uid) {
@@ -184,6 +185,7 @@ impl GameWorldInGameRunState {
 
         // 네트워크 상태를 설정합니다.
         data.set_network_state(state);
+        data.ping = ping;
     }
 
     /// 모든 세션에 패킷 데이터를 전송합니다.
@@ -194,6 +196,7 @@ impl GameWorldInGameRunState {
             let overwrite = self.overwrite_flags.insert(uid, false).unwrap_or(false);
             players.push(InGamePlayerPullData::new(
                 uid,
+                data.ping,
                 data.kill_count,
                 data.dead_count,
                 data.guard_health,
@@ -211,8 +214,6 @@ impl GameWorldInGameRunState {
                 data.player_states,
                 data.action_state_timer,
                 data.movement_state_timer,
-                data.view_state_timer,
-                data.latlon,
             ));
 
             // 스냅샷을 추가합니다.
@@ -303,6 +304,7 @@ impl GameWorldState for GameWorldInGameRunState {
             let connected = !self.leaved_players.contains(&uid);
             players.push(InGamePlayerPullData::new(
                 uid,
+                data.ping,
                 data.kill_count,
                 data.dead_count,
                 data.guard_health,
@@ -320,8 +322,6 @@ impl GameWorldState for GameWorldInGameRunState {
                 data.player_states,
                 data.action_state_timer,
                 data.movement_state_timer,
-                data.view_state_timer,
-                data.latlon,
             ));
 
             // 스냅샷을 초기화합니다.
@@ -370,8 +370,8 @@ impl GameWorldState for GameWorldInGameRunState {
                 GameWorldSystemEvent::PlayerLeave => {
                     self.handle_player_leave_event(world, session, uid);
                 }
-                GameWorldSystemEvent::UpdatePing(state) => {
-                    self.handle_update_ping_event(world, session, uid, state);
+                GameWorldSystemEvent::UpdatePing(state, ping) => {
+                    self.handle_update_ping_event(world, session, uid, state, ping);
                 }
             },
             _ => {

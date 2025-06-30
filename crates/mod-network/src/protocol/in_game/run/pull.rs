@@ -59,7 +59,7 @@ impl Packet for InGamePullPacket {
         let data_size = u64::byte_size() // 8byte
             + u32::byte_size() // 12byte
             + u8::byte_size()  // 13byte
-            + InGamePlayerPullData::byte_size() * num_players; // max: 673byte
+            + InGamePlayerPullData::byte_size() * num_players; // max: 654byte
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.epoch.to_big_endian_bytes());
         data.extend_from_slice(&self.remaining_time_ms.to_big_endian_bytes());
@@ -134,8 +134,8 @@ impl Packet for InGamePullPacket {
 #[cfg(test)]
 mod tests {
     use crate::components::{
-        ActionState, ActionStateTimer, LatLon, MovementState, MovementStateTimer, NetworkState,
-        Permission, PlayerStateData, UserId, ViewState, ViewStateTimer,
+        ActionState, ActionStateTimer, MovementState, MovementStateTimer, NetworkState, Permission,
+        PlayerStateData, UserId, ViewState,
     };
 
     use super::*;
@@ -150,6 +150,7 @@ mod tests {
     fn test_in_game_pull_packet() {
         let player_0 = InGamePlayerPullData::new(
             UserId::new(13413451),
+            6,
             0,
             12,
             10,
@@ -170,11 +171,10 @@ mod tests {
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(320),
             MovementStateTimer::new(1200),
-            ViewStateTimer::new(214),
-            LatLon::new(42f32.to_radians(), 180f32.to_radians()),
         );
         let player_1 = InGamePlayerPullData::new(
             UserId::new(98431),
+            72,
             12,
             2,
             210,
@@ -195,8 +195,6 @@ mod tests {
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(323),
             MovementStateTimer::new(1212),
-            ViewStateTimer::new(300),
-            LatLon::new(4f32.to_radians(), 10f32.to_radians()),
         );
 
         let players = vec![player_0, player_1];

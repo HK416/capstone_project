@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -73,6 +75,7 @@ impl GameScene for FatalErrorSceneLayer {
 
     fn on_received_packet(
         &mut self,
+        _: Instant,
         _packet: RawPacket,
         _app: &dyn AppHandle,
     ) -> Option<RawPacket> {

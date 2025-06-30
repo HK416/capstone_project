@@ -52,7 +52,7 @@ pub enum GameWorldSystemEvent {
     },
     /// 플레이어가 게임 월드에서 떠날 때 발생되는 이벤트입니다.
     PlayerLeave,
-    UpdatePing(NetworkState),
+    UpdatePing(NetworkState, u16),
 }
 
 /// 커스텀 게임 대기실 상태의 이벤트 목록입니다.

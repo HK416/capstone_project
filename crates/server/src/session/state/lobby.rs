@@ -227,7 +227,8 @@ impl SessionState for SessionLobbyState {
             self.elapsed_time_sec = 0.0;
 
             // 패킷을 생성하고 전송합니다.
-            let packet = LobbyDataUpdatePacket::new(session.network_state());
+            let (network_state, _ping) = session.network_state();
+            let packet = LobbyDataUpdatePacket::new(network_state);
             session.tcp_write(packet.as_raw());
         }
     }

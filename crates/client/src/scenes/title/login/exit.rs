@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -80,7 +82,12 @@ impl GameScene for GameExitModalScene {
         event_loop_proxy.send_event(event).unwrap();
     }
 
-    fn on_received_packet(&mut self, _: RawPacket, _: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        _: Instant,
+        _: RawPacket,
+        _: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         None
     }
 

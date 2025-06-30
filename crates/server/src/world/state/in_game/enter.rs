@@ -142,6 +142,7 @@ impl GameWorldInGameEnterState {
         session: Arc<Session>,
         uid: UserId,
         state: NetworkState,
+        ping: u16,
     ) {
         // 플레이어 데이터를 가져옵니다.
         let data = match world.players.get_mut(&uid) {
@@ -156,6 +157,7 @@ impl GameWorldInGameEnterState {
 
         // 네트워크 상태를 설정합니다.
         data.set_network_state(state);
+        data.ping = ping;
     }
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
@@ -206,8 +208,8 @@ impl GameWorldState for GameWorldInGameEnterState {
                 GameWorldSystemEvent::PlayerLeave => {
                     self.handle_player_leave_event(world, session, uid);
                 }
-                GameWorldSystemEvent::UpdatePing(state) => {
-                    self.handle_update_ping_event(world, session, uid, state);
+                GameWorldSystemEvent::UpdatePing(state, ping) => {
+                    self.handle_update_ping_event(world, session, uid, state, ping);
                 }
             },
             _ => {

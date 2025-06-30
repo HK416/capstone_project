@@ -1,12 +1,12 @@
 //! 플레이어 행동 상태와 관련된 코드를 관리합니다.
 //!
 
-use mod_network::components::{ActionState, CharacterKind, UserId};
+use mod_network::components::{ActionState, CharacterKind, RESPAWN_DELAY, UserId};
 use mod_parallelism::collections::Queue;
 
 use crate::{
     entities::Player,
-    world::{GameWorldEvent, GameWorldInGameRunStateEvent, RESPAWN_DELAY},
+    world::{GameWorldEvent, GameWorldInGameRunStateEvent},
 };
 
 /// 플레이어의 [`ActionStateTimer`]를 갱신합니다.
