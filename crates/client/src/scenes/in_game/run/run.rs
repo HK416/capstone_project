@@ -1,6 +1,7 @@
-use std::{sync::Arc, time::Instant};
+use std::{f32::consts::TAU, sync::Arc, time::Instant};
 
 use ahash::HashMap;
+use half::f16;
 use hecs::{Entity, World};
 use mod_app::{
     app::AppHandle,
@@ -15,7 +16,7 @@ use mod_network::{
         BulletData, CharacterFlags, CharacterKind, GameInputBits, HealthData, InputStateTimer,
         LatLon, LoginToken, MovementState, MovementStateTimer, MovingDirection, NetworkState,
         Permission, SkillCostData, StageAttributes, StageKind, Team, UserId, Velocity, ViewState,
-        ViewStateTimer,
+        ViewStateTimer, MAX_LATITUDE, MIN_LATITUDE,
     },
     protocol::{
         InGamePullPacket, InGamePushNotifyPacket, Packet, PacketType, RawPacket, StateHistory,
@@ -406,25 +407,16 @@ impl InGameRunScene {
             None => return,
         };
 
-        type States<'a> = (
-            &'a CharacterKind,
-            &'a ActionState,
-            &'a ActionStateTimer,
-            &'a MovementState,
-        );
+        type States<'a> = (&'a ActionState, &'a MovementState);
         let state_view = world.view::<States>();
 
         // 플레이어 움직임 방향을 갱신합니다
         self.direction.update(self.input_bits, self.latlon);
 
         // 캐릭터 상태 데이터를 가져옵니다.
-        let (&character_kind, &action_state, &action_state_timer, &movement_state) = state_view
+        let (&action_state, &movement_state) = state_view
             .get(entity)
             .expect("invalid entity or invalid entity component!");
-
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let i = character_kind as usize;
-        let character_attributes = CHARACTER_ATTRIBUTES[i];
 
         update_character_rotation(
             world,
@@ -432,8 +424,6 @@ impl InGameRunScene {
             archetype,
             action_state,
             movement_state,
-            character_attributes,
-            action_state_timer,
             self.direction,
             self.latlon,
         );
@@ -950,6 +940,43 @@ impl GameScene for InGameRunScene {
         }
 
         self.update_player_character_state();
+        true
+    }
+
+    fn on_cursor_moved(
+        &mut self,
+        x: f32,
+        y: f32,
+        mut dx: f32,
+        mut dy: f32,
+        window: &Window,
+        app: &dyn AppHandle,
+    ) -> bool {
+        if !self.first_mouse_pressed {
+            return true;
+        }
+
+        // FOV-y 값에 따른 카메라 이동 속도 오프셋
+        const MAX_CAM_FOV_Y: f32 = 90f32.to_radians();
+        let s = self.camera_fov_y.min(MAX_CAM_FOV_Y) / MAX_CAM_FOV_Y;
+        let offset = 0.05 + 0.95 * s;
+
+        dx *= match self.flip_horizontal {
+            true => -self.control_sensitivity * offset,
+            false => self.control_sensitivity * offset,
+        };
+
+        dy *= match self.flip_vertical {
+            true => -self.control_sensitivity * offset,
+            false => self.control_sensitivity * offset,
+        };
+
+        let lat = self.latlon.lat.to_f32_const() + dy.to_radians();
+        self.latlon.lat = f16::from_f32_const(lat.clamp(MIN_LATITUDE, MAX_LATITUDE));
+
+        let lon = self.latlon.lon.to_f32_const() + dx.to_radians();
+        self.latlon.lon = f16::from_f32_const(lon % TAU);
+
         true
     }
 

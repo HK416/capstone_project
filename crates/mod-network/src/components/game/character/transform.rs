@@ -1,7 +1,7 @@
 //! 캐릭터 위치 갱신과 관련된 코드를 관리합니다.
 //!
 
-use std::f32::EPSILON;
+use std::f32::{consts::PI, EPSILON};
 
 use mod_physics::{
     collision::{Collider, ColliderTreeIterator},
@@ -9,14 +9,100 @@ use mod_physics::{
 };
 
 use crate::components::{
-    ActionState, CharacterAttributes, GameInputBits, HealthData, InputStateTimer, MovementState,
-    MovementStateTimer, MovingDirection, StageAttributes, Team, Velocity,
+    ActionState, CharacterAttributes, GameInputBits, HealthData, InputStateTimer, LatLon,
+    MovementState, MovementStateTimer, MovingDirection, StageAttributes, Team, Velocity,
 };
 
 /// 중력 가속도 (단위: m/s^2)
-pub const GRAVITY: f32 = -9.8;
+pub const GRAVITY: f32 = -9.80665;
 /// 임계 각도 (단위: 라디안)
 const GROUNDED_ANGLE: f32 = 45f32.to_radians();
+
+/// 플레이어 방향을 갱신합니다.
+pub fn update_player_rotation(
+    look: glam::Vec3A,
+    action_state: ActionState,
+    movement_state: MovementState,
+    direction: MovingDirection,
+    latlon: LatLon,
+) -> glam::Vec3A {
+    match action_state {
+        ActionState::Idle => match movement_state {
+            MovementState::Idle
+            | MovementState::MoveToEnd
+            | MovementState::Jumping
+            | MovementState::Landing => update_rotation_when_none(look, direction, latlon),
+            MovementState::Moving => update_rotation_when_to_direction(look, direction, latlon),
+        },
+        ActionState::AimAt => match movement_state {
+            MovementState::Idle
+            | MovementState::Moving
+            | MovementState::Jumping
+            | MovementState::Landing => update_rotation_when_to_camera(look, direction, latlon),
+            MovementState::MoveToEnd => update_rotation_when_none(look, direction, latlon),
+        },
+        ActionState::AimOff => match movement_state {
+            MovementState::Moving => update_rotation_when_to_direction(look, direction, latlon),
+            MovementState::Idle
+            | MovementState::MoveToEnd
+            | MovementState::Jumping
+            | MovementState::Landing => update_rotation_when_none(look, direction, latlon),
+        },
+        ActionState::Aiming | ActionState::Attack | ActionState::Reload | ActionState::Skill => {
+            update_rotation_when_to_camera(look, direction, latlon)
+        }
+        ActionState::Death
+        | ActionState::Callsign
+        | ActionState::VictoryStart
+        | ActionState::VictoryEnd => update_rotation_when_none(look, direction, latlon),
+    }
+}
+
+/// 캐릭터 방향을 반환합니다.
+fn update_rotation_when_none(
+    look: glam::Vec3A,
+    _direction: MovingDirection,
+    _latlon: LatLon,
+) -> glam::Vec3A {
+    look
+}
+
+/// 캐릭터 방향을 카메라 방향으로 변환합니다.
+fn update_rotation_when_to_camera(
+    look: glam::Vec3A,
+    _direction: MovingDirection,
+    latlon: LatLon,
+) -> glam::Vec3A {
+    // 카메라 방향을 계산합니다.
+    let angle = latlon.lon.to_f32_const();
+    let matrix = glam::Mat4::from_rotation_y(angle);
+    let cam_look = matrix.transform_vector3a(glam::Vec3A::Z);
+
+    // 두 벡터의 각도를 계산합니다.
+    let angle = look.angle_between(cam_look);
+    if (angle - PI) <= EPSILON {
+        cam_look
+    } else {
+        // 보간된 방향을 계산합니다.
+        look.lerp(cam_look, 0.1).normalize_or(cam_look)
+    }
+}
+
+/// 캐릭터 방향을 움직임 방향으로 변환합니다.
+fn update_rotation_when_to_direction(
+    look: glam::Vec3A,
+    direction: MovingDirection,
+    _latlon: LatLon,
+) -> glam::Vec3A {
+    // 두 벡터의 각도를 계산합니다.
+    let angle = look.angle_between(direction.0);
+    if (angle - PI).abs() <= EPSILON {
+        direction.0
+    } else {
+        // 보간된 방향을 계산합니다.
+        look.lerp(direction.0, 0.1).normalize_or(direction.0)
+    }
+}
 
 /// 플레이어 위치를 갱신합니다.
 pub fn update_player_translation(
