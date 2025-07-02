@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use ahash::{HashMap, RandomState};
 use hecs::{Entity, World};
@@ -9,7 +9,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, StageKind, UserId, MAX_IN_GAME_PLAYERS},
+    components::{LoginToken, StageAttributes, StageKind, UserId, MAX_IN_GAME_PLAYERS},
     protocol::{InGameEnterNotifyPacket, InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
@@ -44,8 +44,8 @@ pub struct InGameReadySceneBuilder {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
-    /// 스테이지 종류
-    stage_kind: StageKind,
+    /// 스테이지 속성 데이터
+    stage_attributes: Arc<StageAttributes>,
 
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
@@ -79,7 +79,7 @@ impl InGameReadySceneBuilder {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
-        stage_kind: StageKind,
+        stage_attributes: Arc<StageAttributes>,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -92,7 +92,7 @@ impl InGameReadySceneBuilder {
             locale,
             uid,
             token,
-            stage_kind,
+            stage_attributes,
             players: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             stage: None,
             skybox: None,
@@ -132,7 +132,7 @@ impl InGameReadySceneBuilder {
             locale: self.locale,
             uid: self.uid,
             token: self.token,
-            stage_kind: self.stage_kind,
+            stage_attributes: self.stage_attributes,
             world: Some(world),
             players: self.players,
             stage: self.stage,
@@ -165,7 +165,7 @@ pub struct InGameReadyScene {
     /// 로그인 토큰
     token: LoginToken,
     /// 스테이지 종류
-    stage_kind: StageKind,
+    stage_attributes: Arc<StageAttributes>,
 
     /// 게임 월드
     world: Option<World>,
@@ -222,7 +222,7 @@ impl InGameReadyScene {
 
         // 조명 쉐이더 리소스를 생성합니다.
         let resource = LightSetResource::new(
-            Some(&format!("{:?}", &self.stage_kind)),
+            Some(&format!("{:?}", &self.stage_attributes)),
             device,
             &directional_light.shadow_map_view,
             &directional_light.shadow_sampler,
@@ -378,7 +378,7 @@ impl GameScene for InGameReadyScene {
                     self.locale,
                     self.uid,
                     self.token,
-                    self.stage_kind,
+                    self.stage_attributes.clone(),
                     packet.remaining_time_ms,
                     world,
                     players,

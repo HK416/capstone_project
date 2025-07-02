@@ -70,7 +70,7 @@ pub struct InGameBuildScene {
     /// 초기화 패킷
     packet: Option<InGameDataInitPacket>,
     /// 스테이지 레이아웃 데이터
-    stage_layout_data: Arc<OnceLock<StageAttributes>>,
+    stage_layout_data: Arc<OnceLock<Arc<StageAttributes>>>,
 
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
@@ -95,7 +95,7 @@ impl InGameBuildScene {
         uid: UserId,
         token: LoginToken,
         packet: InGameDataInitPacket,
-        stage_layout_data: Arc<OnceLock<StageAttributes>>,
+        stage_layout_data: Arc<OnceLock<Arc<StageAttributes>>>,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -269,7 +269,7 @@ fn build_next_scene(
     texture_data_pool: TextureDataPool,
     texture_view_pool: TextureViewPool,
     sampler_pool: SamplerPool,
-    stage_attributes: Arc<OnceLock<StageAttributes>>,
+    stage_attributes: Arc<OnceLock<Arc<StageAttributes>>>,
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
 ) {
     rayon::spawn(move || {
@@ -342,7 +342,7 @@ fn build_next_scene(
             locale,
             uid,
             token,
-            packet.stage_kind,
+            stage_attributes.clone(),
             mesh_pool,
             model_pool,
             motion_pool,

@@ -1,11 +1,11 @@
 use hecs::{Entity, World};
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterAttributes, LatLon, MovementState,
+    ActionState, ActionStateTimer, CharacterAttributes, LatLon, MovementState, MovingDirection,
 };
 
 use crate::component::{
-    MoveDirection, Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8,
-    Player9, PlayerArchetype, ToParentTrans,
+    Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
+    PlayerArchetype, ToParentTrans,
 };
 
 /// 플레이어 캐릭터가 바라보는 방향을 갱신합니다.
@@ -21,7 +21,7 @@ pub fn update_character_rotation(
     movement_state: MovementState,
     character_attributes: &CharacterAttributes,
     action_state_timer: ActionStateTimer,
-    move_direction: MoveDirection,
+    direction: MovingDirection,
     latlon: LatLon,
 ) {
     match archetype {
@@ -36,7 +36,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -51,7 +51,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -66,7 +66,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -81,7 +81,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -96,7 +96,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -111,7 +111,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -126,7 +126,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -141,7 +141,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -156,7 +156,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -171,7 +171,7 @@ pub fn update_character_rotation(
                 movement_state,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             );
         }
@@ -189,7 +189,7 @@ fn update_character_rotation_inner(
     movement_state: MovementState,
     character_attributes: &CharacterAttributes,
     action_state_timer: ActionStateTimer,
-    move_direction: MoveDirection,
+    direction: MovingDirection,
     latlon: LatLon,
 ) {
     match movement_state {
@@ -201,86 +201,84 @@ fn update_character_rotation_inner(
                 local_transform,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             ),
             ActionState::AimAt => set_rotation_to_camera_from_current(
                 local_transform,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             ),
             ActionState::Attack => set_rotation_to_camera(
                 local_transform,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             ),
             ActionState::Skill => set_rotation_to_camera(
                 local_transform,
                 character_attributes,
                 action_state_timer,
-                move_direction,
+                direction,
                 latlon,
             ),
             _ => {}
         },
-        MovementState::Moving | MovementState::Jumping | MovementState::Landing => {
-            match action_state {
-                ActionState::Idle => set_rotation_to_movement(
-                    local_transform,
-                    character_attributes,
-                    action_state_timer,
-                    move_direction,
-                    latlon,
-                ),
-                ActionState::Aiming => set_rotation_to_camera(
-                    local_transform,
-                    character_attributes,
-                    action_state_timer,
-                    move_direction,
-                    latlon,
-                ),
-                ActionState::AimAt => set_rotation_to_camera_from_current(
-                    local_transform,
-                    character_attributes,
-                    action_state_timer,
-                    move_direction,
-                    latlon,
-                ),
-                ActionState::AimOff => set_rotation_to_current_from_camera(
-                    local_transform,
-                    character_attributes,
-                    action_state_timer,
-                    move_direction,
-                    latlon,
-                ),
-                ActionState::Attack => set_rotation_to_camera(
-                    local_transform,
-                    character_attributes,
-                    action_state_timer,
-                    move_direction,
-                    latlon,
-                ),
-                ActionState::Reload => set_rotation_to_camera(
-                    local_transform,
-                    character_attributes,
-                    action_state_timer,
-                    move_direction,
-                    latlon,
-                ),
-                ActionState::Skill => set_rotation_to_camera(
-                    local_transform,
-                    character_attributes,
-                    action_state_timer,
-                    move_direction,
-                    latlon,
-                ),
-                _ => {}
-            }
-        }
+        MovementState::Moving => match action_state {
+            ActionState::Idle => set_rotation_to_movement(
+                local_transform,
+                character_attributes,
+                action_state_timer,
+                direction,
+                latlon,
+            ),
+            ActionState::Aiming => set_rotation_to_camera(
+                local_transform,
+                character_attributes,
+                action_state_timer,
+                direction,
+                latlon,
+            ),
+            ActionState::AimAt => set_rotation_to_camera_from_current(
+                local_transform,
+                character_attributes,
+                action_state_timer,
+                direction,
+                latlon,
+            ),
+            ActionState::AimOff => set_rotation_to_current_from_camera(
+                local_transform,
+                character_attributes,
+                action_state_timer,
+                direction,
+                latlon,
+            ),
+            ActionState::Attack => set_rotation_to_camera(
+                local_transform,
+                character_attributes,
+                action_state_timer,
+                direction,
+                latlon,
+            ),
+            ActionState::Reload => set_rotation_to_camera(
+                local_transform,
+                character_attributes,
+                action_state_timer,
+                direction,
+                latlon,
+            ),
+            ActionState::Skill => set_rotation_to_camera(
+                local_transform,
+                character_attributes,
+                action_state_timer,
+                direction,
+                latlon,
+            ),
+            _ => {}
+        },
     }
 }
 
@@ -289,14 +287,14 @@ fn set_rotation_to_movement(
     local_transform: &mut ToParentTrans,
     _character_attributes: &CharacterAttributes,
     _action_state_timer: ActionStateTimer,
-    move_direction: MoveDirection,
+    direction: MovingDirection,
     _latlon: LatLon,
 ) {
     // 현재 캐릭터의 방향을 가져옵니다.
     let look = local_transform.get_look_vector();
 
     // 두 방향을 각도에 따라 선형 보간합니다.
-    let dir = look.lerp(move_direction.0, 0.5);
+    let dir = look.lerp(direction.0, 0.5);
 
     // 로컬 변환 행렬을 갱신합니다.
     local_transform.look_to(dir, glam::Vec3::Y);
@@ -307,7 +305,7 @@ fn set_rotation_to_camera_from_current(
     local_transform: &mut ToParentTrans,
     character_attributes: &CharacterAttributes,
     action_state_timer: ActionStateTimer,
-    _move_direction: MoveDirection,
+    _direction: MovingDirection,
     latlon: LatLon,
 ) {
     // 삼인칭 카메라의 방향을 계산합니다.
@@ -332,7 +330,7 @@ fn set_rotation_to_current_from_camera(
     local_transform: &mut ToParentTrans,
     character_attributes: &CharacterAttributes,
     action_state_timer: ActionStateTimer,
-    move_direction: MoveDirection,
+    direction: MovingDirection,
     _latlon: LatLon,
 ) {
     // 캐릭터의 방향을 가져옵니다.
@@ -341,10 +339,7 @@ fn set_rotation_to_current_from_camera(
     // 선형 보간된 방향을 계산합니다.
     let duration = character_attributes.normal_attack_end_duration;
     let s = action_state_timer.0 as f32 / duration as f32;
-    let look = move_direction
-        .0
-        .lerp(look, s)
-        .normalize_or(move_direction.0);
+    let look = direction.0.lerp(look, s).normalize_or(direction.0);
 
     // 월드 변환 행렬을 갱신합니다.
     local_transform.look_to(look, glam::Vec3::Y);
@@ -355,7 +350,7 @@ fn set_rotation_to_camera(
     local_transform: &mut ToParentTrans,
     _character_attributes: &CharacterAttributes,
     _action_state_timer: ActionStateTimer,
-    _move_direction: MoveDirection,
+    _direction: MovingDirection,
     latlon: LatLon,
 ) {
     // 삼인칭 카메라의 방향을 계산합니다.

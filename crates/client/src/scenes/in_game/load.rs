@@ -88,7 +88,7 @@ pub struct InGameLoadScene {
     num_remaining_tasks: usize,
 
     /// 로드된 에셋 데이터입니다.
-    stage_layout_data: Arc<OnceLock<StageAttributes>>,
+    stage_layout_data: Arc<OnceLock<Arc<StageAttributes>>>,
     /// 스테이징 버퍼 집합
     staging_buffers: Vec<wgpu::Buffer>,
 
@@ -557,7 +557,7 @@ impl GameScene for InGameLoadScene {
                     command,
                 } => {
                     self.stage_layout_data
-                        .set(attributes)
+                        .set(Arc::new(attributes))
                         .expect("data already exist!");
                     self.staging_buffers.append(&mut staging_buffers);
                     queue.submit(Some(command));

@@ -1,4 +1,4 @@
-//! 캐릭터 모델의 `AimLanding` 애니메이션과 관련된 코드를 관리합니다.
+//! 캐릭터 모델의 `ReloadJumping` 애니메이션과 관련된 코드를 관리합니다.
 //!
 
 use ahash::HashMap;
@@ -12,7 +12,7 @@ use crate::{
 
 use super::*;
 
-/// `*_Normal_Attack_Ing`와 착지 애니메이션을 재생합니다.
+/// "*_Normal_Reload"와 점프 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -21,26 +21,26 @@ use super::*;
 /// - 스키닝 애니메이션을 구성하는 엔터티가 유효하지 않은 경우 [`panic!`]을 호출합니다.
 /// - 엔터티 컴포넌트 데이터가 스레드에 안전하지 않은 경우 [`panic!`]을 호출합니다.
 ///
-pub fn animate_character_when_aim_landing<Tag: Copy + Component>(
+pub fn animate_character_when_reload_jumping<Tag: Copy + Component>(
     motions: &HashMap<String, Motion>,
     skinning_animation: &SkinningAnimation,
-    _character_attribute: &CharacterAttributes,
-    _action_state_timer: ActionStateTimer,
-    _movement_state_timer: MovementStateTimer,
+    character_attribute: &CharacterAttributes,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
     latlon: LatLon,
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut (Tag, ToParentTrans)>,
 ) {
-    // "*_Attack_Ing" 애니메이션을 가져옵니다.
+    // "*_Normal_Reload" 애니메이션을 가져옵니다.
     let motion = motions
-        .get(ATTACK_ING_ANIMATION)
+        .get(NORMAL_RELOAD_ANIMATION)
         .expect("no such animation data!");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let keyframe = motion
-        .keyframes
-        .first()
-        .expect("keyframes must not be empty");
+    let time_point_0 = action_state_timer
+        .0
+        .min(character_attribute.normal_reload_duration);
+    let keyframe = motion.linear_sampling(time_point_0);
 
     // 최상위 엔터티의 로컬 변환 행렬을 갱신합니다.
     let (_, local_transform) = transform_view
@@ -72,9 +72,8 @@ pub fn animate_character_when_aim_landing<Tag: Copy + Component>(
         }
     }
 
-    landing_animation(skinning_animation, transform_view);
+    jump_animation(skinning_animation, movement_state_timer, transform_view);
 
-    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let offset = 1.0;
+    let offset = 0.0;
     look_to_camera_direction(offset, latlon, skinning_animation, transform_view);
 }

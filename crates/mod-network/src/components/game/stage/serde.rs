@@ -6,6 +6,9 @@ use crate::components::{Float3, Float4, Float4x4};
 /// 지형의 속성 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct StageAttributesData {
+    /// 지형의 이름
+    pub name: String,
+
     /// 지역의 x축 방향 개수입니다.
     pub num_area_width: u32,
     /// 지역의 z축 방향 개수입니다.
@@ -59,6 +62,26 @@ pub struct GlobalLightData {
     pub static_light_proj_view: Float4x4,
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub enum RotationY {
+    Rotate0,
+    Rotate90,
+    Rotate180,
+    Rotate270,
+}
+
+impl RotationY {
+    pub const fn to_quat(self) -> glam::Quat {
+        match self {
+            RotationY::Rotate0 => glam::quat(0.0, 0.0, 0.0, 1.0),
+            RotationY::Rotate90 => glam::quat(0.0, 0.7071068, 0.0, 0.7071068),
+            RotationY::Rotate180 => glam::quat(0.0, 1.0, 0.0, 0.0),
+            RotationY::Rotate270 => glam::quat(0.0, 0.7071068, 0.0, -0.7071068),
+        }
+    }
+}
+
 /// 지역의 속성 데이터입니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AreaAttributeData {
@@ -68,6 +91,8 @@ pub struct AreaAttributeData {
     pub height_map: Option<String>,
     /// 월드 공간 위치
     pub translation: Float3,
+    /// 월드 공간 방향
+    pub rotation: RotationY,
 }
 
 /// 장식물의 속성 데이터입니다.

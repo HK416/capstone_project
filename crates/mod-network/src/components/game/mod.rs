@@ -1,6 +1,5 @@
 mod bullet_kind;
-mod character_attr;
-mod character_kind;
+mod character;
 mod finish;
 mod formation;
 mod health;
@@ -11,7 +10,6 @@ mod latlon;
 mod name;
 mod network;
 mod permission;
-mod player_state;
 mod room;
 mod skill;
 mod stage;
@@ -22,7 +20,7 @@ mod timer;
 mod weapon;
 
 pub use self::{
-    bullet_kind::*, character_attr::*, character_kind::*, finish::*, formation::*, health::*,
-    icon::*, in_game::*, input::*, latlon::*, name::*, network::*, permission::*, player_state::*,
-    room::*, skill::*, stage::*, state::*, team::*, tier::*, timer::*, weapon::*,
+    bullet_kind::*, character::*, finish::*, formation::*, health::*, icon::*, in_game::*,
+    input::*, latlon::*, name::*, network::*, permission::*, room::*, skill::*, stage::*, state::*,
+    team::*, tier::*, timer::*, weapon::*,
 };

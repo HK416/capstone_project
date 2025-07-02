@@ -11,7 +11,7 @@ use mod_app::{
 use mod_network::{
     components::{
         update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
-        GameInputBits, LoginToken, SkillCostData, StageKind, UserId,
+        GameInputBits, LoginToken, SkillCostData, StageAttributes, UserId,
     },
     protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
@@ -63,8 +63,9 @@ pub struct InGameEnterScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
-    /// 게임 스테이지 종류
-    stage_kind: StageKind,
+
+    /// 스테이지 속성 데이터
+    stage_attributes: Arc<StageAttributes>,
     /// 남은 대기 시간입니다.
     remaining_time_ms: u16,
     /// 레이아웃 이동 시간입니다.
@@ -144,7 +145,7 @@ impl InGameEnterScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
-        stage_kind: StageKind,
+        stage_attributes: Arc<StageAttributes>,
         remaining_time_ms: u16,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
@@ -170,7 +171,7 @@ impl InGameEnterScene {
             locale,
             uid,
             token,
-            stage_kind,
+            stage_attributes,
             remaining_time_ms,
             animation_time_ms: 0,
             first_mouse_pressed: false,
@@ -920,7 +921,7 @@ impl GameScene for InGameEnterScene {
                     self.locale,
                     self.uid,
                     self.token,
-                    self.stage_kind,
+                    self.stage_attributes.clone(),
                     packet.remaining_time_ms,
                     self.first_mouse_pressed,
                     world,

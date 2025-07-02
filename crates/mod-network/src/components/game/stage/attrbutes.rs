@@ -3,9 +3,10 @@
 
 use core::f32;
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     f32::EPSILON,
     fs::OpenOptions,
+    hash::RandomState,
     io::{self, Read},
     path::Path,
 };
@@ -13,7 +14,7 @@ use std::{
 use mod_physics::collision::{Collider, ColliderTree, ColliderTreeIterator};
 
 use crate::components::{
-    GlobalLightData, HeightData, PropAttributeData, StageAttributesData, Team,
+    GlobalLightData, HeightData, PropAttributeData, RotationY, StageAttributesData, Team,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +34,9 @@ pub enum StageLoadError {
 /// 스테이지 데이터입니다.
 #[derive(Debug, Clone)]
 pub struct StageAttributes {
+    /// 스테이지 이름
+    pub name: String,
+
     /// 지역의 x축 방향 개수입니다.
     pub num_area_width: usize,
     /// 지역의 z축 방향 개수입니다.
@@ -82,12 +86,14 @@ pub struct StageAttributes {
 #[derive(Debug, Clone)]
 pub struct AreaAttributes {
     pub model: String,
-    /// 지역의 월드 변환 행렬입니다.
+    /// 지역의 위치입니다.
     pub translation: glam::Vec3A,
+    /// 지역의 Y축 회전 각도입니다.
+    pub rotation: RotationY,
     /// 지역의 월드 변환 행렬의 역행렬입니다.
     pub inv_transform: glam::Mat4,
     /// 높이 데이터입니다.
-    pub height: HeightData,
+    pub height: Option<HeightData>,
 }
 
 impl StageAttributes {
@@ -189,18 +195,22 @@ impl StageAttributes {
                         StageLoadError::ParsingFailed(e)
                     })?;
 
-                    height_map
+                    Some(height_map)
                 }
-                None => continue,
+                None => None,
             };
 
             let i = ((data.translation.x + 0.5 * w) / attributes.area_width).floor() as usize;
             let j = ((data.translation.z + 0.5 * d) / attributes.area_depth).floor() as usize;
-            let transform = glam::Mat4::from_translation(data.translation.into());
+            let transform = glam::Mat4::from_rotation_translation(
+                data.rotation.to_quat(),
+                data.translation.into(),
+            );
             let inv_transform = transform.inverse();
             area[i][j] = Some(AreaAttributes {
                 model: data.model.clone(),
                 translation: data.translation.into(),
+                rotation: data.rotation,
                 inv_transform,
                 height,
             });
@@ -339,6 +349,7 @@ impl StageAttributes {
         })?;
 
         Ok(StageAttributes {
+            name: attributes.name,
             num_area_width: n,
             num_area_depth: m,
             area_width: attributes.area_width,
@@ -398,7 +409,10 @@ impl StageAttributes {
             .iter()
             .filter(|(i, j)| *i >= 0.0 && *i < n as f32 && *j >= 0.0 && *j < m as f32)
             .filter_map(|(i, j)| self.area[*i as usize][*j as usize].as_ref())
-            .map(|area| (area, &area.height))
+            .filter_map(|area| match &area.height {
+                Some(height) => Some((area, height)),
+                None => None,
+            })
             .next()?;
 
         let hw = 0.5 * self.area_width;
@@ -435,7 +449,12 @@ impl StageAttributes {
         let mut queue = VecDeque::new();
         queue.push_back((i, j));
 
+        let mut visited = HashSet::with_capacity_and_hasher(
+            self.num_area_depth * self.num_area_width,
+            RandomState::new(),
+        );
         while let Some((i, j)) = queue.pop_front() {
+            visited.insert((i, j));
             if let Some(area) = &self.area[i][j] {
                 let min_x = area.translation.x - 0.5 * self.area_width;
                 let max_x = area.translation.x + 0.5 * self.area_width;
@@ -451,19 +470,19 @@ impl StageAttributes {
                 min_distance = min_distance;
                 min_distance_position = (x + dx, z + dz);
 
-                if i > 0 {
+                if i > 0 && !visited.contains(&(i - 1, j)) {
                     queue.push_back((i - 1, j));
                 }
 
-                if j > 0 {
+                if j > 0 && !visited.contains(&(i, j - 1)) {
                     queue.push_back((i, j - 1));
                 }
 
-                if i + 1 < n {
+                if i + 1 < n && !visited.contains(&(i + 1, j)) {
                     queue.push_back((i + 1, j));
                 }
 
-                if j + 1 < m {
+                if j + 1 < m && !visited.contains(&(i, j + 1)) {
                     queue.push_back((i, j + 1));
                 }
             }
@@ -473,12 +492,12 @@ impl StageAttributes {
     }
 
     /// 주어진 좌표가 유효한지 확인합니다.
-    pub fn is_valid_point(&self, team: Team, point: &glam::Vec3A) -> bool {
+    pub fn is_valid_position(&self, team: Team, x: f32, z: f32) -> bool {
         let n = self.num_area_width;
         let m = self.num_area_depth;
 
-        let i = ((point.x + 0.5 * self.total_width) / self.area_width).floor() as usize;
-        let j = ((point.z + 0.5 * self.total_depth) / self.area_depth).floor() as usize;
+        let i = ((x + 0.5 * self.total_width) / self.area_width).floor() as usize;
+        let j = ((z + 0.5 * self.total_depth) / self.area_depth).floor() as usize;
 
         if i < n && j < m {
             // 다른 팀의 안전구연인 경우 invalid
@@ -488,7 +507,7 @@ impl StageAttributes {
             };
 
             for collider in iterator {
-                if collider.check_point_collision(point) {
+                if collider.check_point_collision(&glam::vec3a(x, 0.0, z)) {
                     return false;
                 }
             }
@@ -499,15 +518,14 @@ impl StageAttributes {
         }
     }
 
-    pub fn is_safe_area(&self, team: Team, point: &glam::Vec3A) -> bool {
-        // 다른 팀의 안전구연인 경우 invalid
+    pub fn is_safe_area(&self, team: Team, x: f32, z: f32) -> bool {
         let iterator = match team {
             Team::Blue => ColliderTreeIterator::new(&self.blue_team_collider),
             Team::Red => ColliderTreeIterator::new(&self.red_team_collider),
         };
 
         for collider in iterator {
-            if collider.check_point_collision(point) {
+            if collider.check_point_collision(&glam::vec3a(x, 0.0, z)) {
                 return true;
             }
         }

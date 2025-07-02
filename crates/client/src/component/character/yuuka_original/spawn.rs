@@ -6,8 +6,8 @@ use std::{ops::Deref, sync::Arc};
 use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Component, Entity, EntityBuilder, World};
 use mod_network::components::{
-    ActionState, ActionStateTimer, BulletData, HealthData, InGamePlayerInitData, LatLon,
-    MovementState, MovementStateTimer, SkillCostData, ViewState, ViewStateTimer,
+    ActionState, ActionStateTimer, BulletData, CharacterFlags, HealthData, InGamePlayerInitData,
+    LatLon, MovementState, MovementStateTimer, SkillCostData, ViewState, ViewStateTimer,
 };
 use parking_lot::Mutex;
 
@@ -48,10 +48,13 @@ pub fn spawn_player<Tag: Copy + Component>(
         data.permission(),
         data.character_kind,
         (data.team(), data.team_index()),
-        (data.network_state(), data.is_connected()),
+        data.network_state(),
         HealthData::splat(data.maximum_health),
         BulletData::splat(data.maximum_bullet),
         SkillCostData::new(0, data.maximum_skill_cost),
+        CharacterFlags::new()
+            .with_connected(data.is_connected())
+            .with_grounded(true),
     ));
     builder.add((
         tag,

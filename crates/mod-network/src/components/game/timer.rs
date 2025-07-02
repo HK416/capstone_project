@@ -1,7 +1,7 @@
 //! 플레이어 타이머와 관련된 코드를 관리합니다.
 //!
 
-use crate::components::BigEndian;
+use crate::components::{BigEndian, GameInputBits};
 
 /// 플레이어 행동 상태 타이머입니다. (단위: ms)
 #[repr(transparent)]
@@ -93,12 +93,29 @@ pub const MAX_INPUT_STATE_TIME: u16 = 250;
 /// 플레이어 입력 상태 타이머입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct InputStateTimer(pub u16);
+pub struct InputStateTimer(u16);
 
 impl InputStateTimer {
     /// 새로운 입력 상태 타이머를 생성합니다.
     pub const fn new(value: u16) -> Self {
         Self(value)
+    }
+
+    /// 플레이어 입력 상태 타이머를 갱신합니다.
+    pub fn update(&mut self, input_bits: GameInputBits, elapsed_time_ms: u16) {
+        if input_bits.is_moved() {
+            self.0 = self
+                .0
+                .saturating_add(elapsed_time_ms)
+                .min(MAX_INPUT_STATE_TIME);
+        } else {
+            self.0 = self.0.saturating_sub(elapsed_time_ms);
+        }
+    }
+
+    /// 0..=1 사이의 값을 반환합니다.
+    pub fn perentage(&self) -> f32 {
+        self.0 as f32 / MAX_INPUT_STATE_TIME as f32
     }
 }
 

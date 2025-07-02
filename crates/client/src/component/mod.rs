@@ -101,6 +101,167 @@ pub enum PlayerArchetype {
     Player9,
 }
 
+/// 주어진 플레이어 엔터티의 로컬 변환 행렬을 가져옵니다.
+pub fn get_local_transform(
+    world: &World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+) -> ToParentTrans {
+    match archetype {
+        PlayerArchetype::Player0 => {
+            let mut query = world
+                .query_one::<&(Player0, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player1 => {
+            let mut query = world
+                .query_one::<&(Player1, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player2 => {
+            let mut query = world
+                .query_one::<&(Player2, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player3 => {
+            let mut query = world
+                .query_one::<&(Player3, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player4 => {
+            let mut query = world
+                .query_one::<&(Player4, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player5 => {
+            let mut query = world
+                .query_one::<&(Player5, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player6 => {
+            let mut query = world
+                .query_one::<&(Player6, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player7 => {
+            let mut query = world
+                .query_one::<&(Player7, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player8 => {
+            let mut query = world
+                .query_one::<&(Player8, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+        PlayerArchetype::Player9 => {
+            let mut query = world
+                .query_one::<&(Player9, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().cloned().expect("invalid entity component!");
+            trans
+        }
+    }
+}
+
+/// 주어진 플레이어 엔터티의 로컬 변환 행렬을 설정합니다.
+pub fn set_local_transform(
+    world: &World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    transform: ToParentTrans,
+) {
+    match archetype {
+        PlayerArchetype::Player0 => {
+            let mut query = world
+                .query_one::<&mut (Player0, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player1 => {
+            let mut query = world
+                .query_one::<&mut (Player1, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player2 => {
+            let mut query = world
+                .query_one::<&mut (Player2, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player3 => {
+            let mut query = world
+                .query_one::<&mut (Player3, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player4 => {
+            let mut query = world
+                .query_one::<&mut (Player4, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player5 => {
+            let mut query = world
+                .query_one::<&mut (Player5, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player6 => {
+            let mut query = world
+                .query_one::<&mut (Player6, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player7 => {
+            let mut query = world
+                .query_one::<&mut (Player7, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player8 => {
+            let mut query = world
+                .query_one::<&mut (Player8, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+        PlayerArchetype::Player9 => {
+            let mut query = world
+                .query_one::<&mut (Player9, ToParentTrans)>(entity)
+                .expect("invalid entity!");
+            let (_, trans) = query.get().expect("invalid entity component!");
+            *trans = transform;
+        }
+    }
+}
+
 /// PlayerArchetype과 함께 엔터티의 컴포넌트를 질의합니다.
 pub fn local_transform_query_mut<'a>(
     world: &'a mut World,

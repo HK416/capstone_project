@@ -3,10 +3,9 @@
 
 mod action_state;
 mod movement_state;
+mod player_state;
 
-use crate::components::{ActionState, MovementState};
-
-pub use self::{action_state::*, movement_state::*};
+pub use self::{action_state::*, movement_state::*, player_state::*};
 
 /// 상태 이벤트 목록입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

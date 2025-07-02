@@ -2,8 +2,8 @@
 //!
 
 use crate::components::{
-    ActionState, ActionStateTimer, BulletData, CharacterAttributes, GameInputBits, SkillCostData,
-    StateEvent, RESPAWN_DELAY,
+    ActionState, ActionStateTimer, BulletData, CharacterAttributes, GameInputBits, MovementState,
+    SkillCostData, StateEvent, RESPAWN_DELAY,
 };
 
 /// [`ActionState`]에 따라 플레이어의 [`ActionState`]와 [`ActionStateTimer`]를 변경합니다.

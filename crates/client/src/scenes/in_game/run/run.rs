@@ -11,9 +11,11 @@ use mod_app::{
 use mod_network::{
     components::{
         update_action_state, update_action_state_timer, update_movement_state,
-        update_movement_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
-        GameInputBits, HealthData, LatLon, LoginToken, MovementState, MovementStateTimer,
-        NetworkState, Permission, SkillCostData, StageKind, UserId, ViewState, ViewStateTimer,
+        update_movement_state_timer, update_player_translation, ActionState, ActionStateTimer,
+        BulletData, CharacterFlags, CharacterKind, GameInputBits, HealthData, InputStateTimer,
+        LatLon, LoginToken, MovementState, MovementStateTimer, MovingDirection, NetworkState,
+        Permission, SkillCostData, StageAttributes, StageKind, Team, UserId, Velocity, ViewState,
+        ViewStateTimer,
     },
     protocol::{
         InGamePullPacket, InGamePushNotifyPacket, Packet, PacketType, RawPacket, StateHistory,
@@ -38,7 +40,8 @@ use crate::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
-        draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree, get_world_transform,
+        draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree, get_local_transform,
+        get_world_transform, local_transform_query_mut, set_local_transform,
         update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
         update_character_hierarchy, update_character_resource, update_character_rotation,
         update_stage_hierarchy, update_stage_resource, update_view_state, update_view_state_timer,
@@ -83,8 +86,8 @@ pub struct InGameRunScene {
     /// 시야 조작의 좌우 반전 여부입니다.
     flip_vertical: bool,
 
-    /// 스테이지 종류
-    stage_kind: StageKind,
+    /// 스테이지 속성 데이터
+    stage_attributes: Arc<StageAttributes>,
     /// 최대 게임 플레이 시간
     max_game_play_time_ms: u32,
     /// 남은 게임 진행 시간
@@ -93,8 +96,12 @@ pub struct InGameRunScene {
     first_mouse_pressed: bool,
     /// 사용자 입력 상태 플래그 변수입니다.
     input_bits: GameInputBits,
+    /// 플레이어 움직임 속도입니다.
+    velocity: Velocity,
     /// 플레이어 움직임 방향입니다.
-    move_direction: MoveDirection,
+    direction: MovingDirection,
+    /// 플레이어 입력 타이머입니다.
+    input_timer: InputStateTimer,
 
     /// 게임 월드
     world: Option<World>,
@@ -168,7 +175,7 @@ impl InGameRunScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
-        stage_kind: StageKind,
+        stage_attributes: Arc<StageAttributes>,
         remaining_time_ms: u32,
         first_mouse_pressed: bool,
         world: World,
@@ -202,17 +209,19 @@ impl InGameRunScene {
             control_sensitivity: 0.5,
             flip_horizontal: false,
             flip_vertical: false,
-            stage_kind,
+            stage_attributes,
             max_game_play_time_ms: remaining_time_ms,
             remaining_time_ms,
             first_mouse_pressed,
-            input_bits: GameInputBits::default(),
+            input_bits: GameInputBits::new(),
+            velocity: Velocity::new(),
+            direction: MovingDirection::new(),
+            input_timer: InputStateTimer::new(0),
             world: Some(world),
             camera: Entity::DANGLING,
             camera_fov_y: 45f32.to_radians(),
             camera_rel_position: glam::Vec3A::ZERO,
             latlon: LatLon::default(),
-            move_direction: MoveDirection::default(),
             interpolation: InterpolationManager::new(),
             players,
             stage: Some(stage),
@@ -359,6 +368,8 @@ impl InGameRunScene {
         // 캐릭터 속성 정보를 가져옵니다.
         let i = character_kind as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
+
+        self.input_timer.update(self.input_bits, elapsed_time_ms);
         update_view_state_timer(
             view_state,
             view_state_timer,
@@ -404,9 +415,8 @@ impl InGameRunScene {
         let state_view = world.view::<States>();
 
         // 플레이어 움직임 방향을 갱신합니다
-        let controller = self.input_bits.as_state();
-        self.move_direction
-            .update_from_third_person_camera(controller, &self.latlon);
+        self.direction.update(self.input_bits, self.latlon);
+
         // 캐릭터 상태 데이터를 가져옵니다.
         let (&character_kind, &action_state, &action_state_timer, &movement_state) = state_view
             .get(entity)
@@ -424,9 +434,71 @@ impl InGameRunScene {
             movement_state,
             character_attributes,
             action_state_timer,
-            self.move_direction,
+            self.direction,
             self.latlon,
         );
+    }
+
+    fn update_player_character_translation(&mut self, elapsed_time_sec: f32) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        type Q<'a> = (
+            &'a CharacterKind,
+            &'a (Team, usize),
+            &'a ActionState,
+            &'a mut MovementState,
+            &'a mut MovementStateTimer,
+            &'a mut HealthData,
+            &'a mut CharacterFlags,
+        );
+        let mut query = world.query_one::<Q>(entity).expect("invalid entity!");
+        let (
+            &character_kind,
+            &(team, _),
+            &action_state,
+            movement_state,
+            movement_state_timer,
+            health_data,
+            character_flags,
+        ) = query.get().expect("invalid entity component!");
+
+        // 캐릭터 속성 데이터를 가져옵니다.
+        let i = character_kind as usize;
+        let character_attributes = CHARACTER_ATTRIBUTES[i];
+
+        // 캐릭터 위치를 가져옵니다.
+        let mut transform = get_local_transform(world, entity, archetype);
+        let mut translation = transform.get_translation();
+        let mut is_grounded = character_flags.is_grounded();
+        let mut is_invincible = character_flags.is_invincible();
+
+        update_player_translation(
+            &self.stage_attributes,
+            character_attributes,
+            action_state,
+            movement_state,
+            movement_state_timer,
+            &mut self.velocity,
+            &mut translation,
+            self.direction,
+            self.input_bits,
+            team,
+            &mut is_grounded,
+            &mut is_invincible,
+            health_data,
+            self.input_timer,
+            elapsed_time_sec,
+        );
+
+        // 캐릭터 위치를 설정합니다.
+        character_flags.set_grounded(is_grounded);
+        character_flags.set_invincible(is_invincible);
+        transform.set_translation(translation.into());
+        set_local_transform(world, entity, archetype, transform);
     }
 
     /// 다른 플레이어 캐릭터를 갱신합니다.
@@ -733,10 +805,11 @@ impl InGameRunScene {
         type Kind<'a> = &'a CharacterKind;
         type Always<'a> = (
             &'a mut Permission,
-            &'a mut (NetworkState, bool),
+            &'a mut NetworkState,
             &'a mut HealthData,
             &'a mut BulletData,
             &'a mut SkillCostData,
+            &'a mut CharacterFlags,
         );
         let checter_kind_view = world.view::<Kind>();
         let mut always_change_view = world.view::<Always>();
@@ -759,13 +832,14 @@ impl InGameRunScene {
                 .cloned()
                 .expect("the player data must be exists!");
 
-            let (permission, (network_state, connected), health_data, bullet_data, skill_cost_data) =
+            let (permission, network_state, health_data, bullet_data, skill_cost_data, flags) =
                 always_change_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component!");
             *permission = data.permission();
             *network_state = data.network_state();
-            *connected = data.is_connected();
+            flags.set_connected(data.is_connected());
+            flags.set_invincible(data.is_invincible());
             health_data.shield = data.guard_health;
             health_data.remaining = data.current_health;
             bullet_data.remaining = data.current_bullet;
@@ -984,6 +1058,8 @@ impl GameScene for InGameRunScene {
         self.elapsed_time_ms = self.elapsed_time_ms.saturating_add(elapsed_time_ms);
         self.update_player_character_timer(epoch_elapsed, elapsed_time_ms);
         self.update_player_character_rotation();
+        self.update_player_character_translation(elapsed_time_sec);
+        self.update_player_character_state();
         self.update_other_characters();
     }
 
@@ -1035,7 +1111,7 @@ impl GameScene for InGameRunScene {
 
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
-            let connect_view = &world.view::<&(NetworkState, bool)>();
+            let flag_view = &world.view::<&CharacterFlags>();
             let animation_view = &world.view::<AnimationQuery>();
             let collection_view = &world.view::<&BoneCollection>();
             let motion_pool = &self.motion_pool;
@@ -1043,10 +1119,10 @@ impl GameScene for InGameRunScene {
             rayon::in_place_scope(|scope| {
                 // 각 캐릭터의 애니메이션을 재생합니다.
                 for (entity, archetype) in self.players.values().cloned() {
-                    let &(_, connected) = connect_view
+                    let flags = flag_view
                         .get(entity)
                         .expect("invalid entity or invalid entity component!");
-                    if !connected {
+                    if !flags.is_connected() {
                         continue;
                     }
 
@@ -1089,7 +1165,7 @@ impl GameScene for InGameRunScene {
 
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
-            let connect_view = &world.view::<&(NetworkState, bool)>();
+            let flag_view = &world.view::<&CharacterFlags>();
             let mesh_filter_view = &world.view::<MeshRenderer>();
             let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
 
@@ -1115,10 +1191,10 @@ impl GameScene for InGameRunScene {
 
                 // 캐릭터 엔터티의 쉐이더 리소스를 갱신합니다.
                 for (entity, archetype) in self.players.values().cloned() {
-                    let &(_, connected) = connect_view
+                    let flags = flag_view
                         .get(entity)
                         .expect("invalid entity or invalid entity component!");
-                    if !connected {
+                    if !flags.is_connected() {
                         continue;
                     }
 
@@ -1259,10 +1335,10 @@ impl GameScene for InGameRunScene {
                         let frustum = Frustum::from_mat4(light_proj_view);
                         let mut transform_resources = ShadowMap::default();
                         for (entity, archetype) in player_entities {
-                            let &(_, connected) = connect_view
+                            let flags = flag_view
                                 .get(entity)
                                 .expect("invalid entity or invalid entity component!");
-                            if !connected {
+                            if !flags.is_connected() {
                                 continue;
                             }
 

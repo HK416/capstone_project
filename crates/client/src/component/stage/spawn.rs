@@ -1,17 +1,16 @@
 //! 스테이지 객체의 생성과 관련된 코드를 관리합니다.
 //!
-use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::{AreaAttributes, PropAttributeData, StageAttributes};
-use mod_physics::object3d::Sphere;
 use parking_lot::Mutex;
 
 use crate::{
     asset::{
-        AssetError, ModelNode, ModelPool, ModelRoot, StageBoundingVolumn,
-        StageBoundingVolumnHierarchy, TextureDataPool,
+        ModelNode, ModelPool, ModelRoot, StageBoundingVolumn, StageBoundingVolumnHierarchy,
+        TextureDataPool,
     },
     component::{
         BoneCollection, BoneTransformUniform, Child, MaterialData, MaterialResource,
@@ -88,20 +87,21 @@ pub fn build_stage(
     let mut bvh = StageBoundingVolumnHierarchy::default();
 
     // 지역 데이터를 생성합니다.
-    let iterator = stage_attributes.area.iter().flatten().flatten();
-    for area_data in iterator {
-        build_stage_area(
-            label,
-            world,
-            model_pool,
-            texture_data_pool,
-            area_data,
-            device,
-            encoder,
-            staging_buffers,
-            &mut batch_commands,
-            &mut bvh,
-        );
+    for v in stage_attributes.area.iter().flatten() {
+        if let Some(area_data) = v {
+            build_stage_area(
+                label,
+                world,
+                model_pool,
+                texture_data_pool,
+                area_data,
+                device,
+                encoder,
+                staging_buffers,
+                &mut batch_commands,
+                &mut bvh,
+            );
+        }
     }
 
     // 장식물 데이터를 생성합니다.
@@ -234,7 +234,10 @@ pub fn spawn_stage_area(
     // 컴포넌트를 추가합니다.
     builder.add((
         Stage,
-        ToParentTrans(glam::Mat4::from_translation(data.translation.into())),
+        ToParentTrans(glam::Mat4::from_rotation_translation(
+            data.rotation.to_quat(),
+            data.translation.into(),
+        )),
     ));
     builder.add((Stage, WorldTransform::default()));
 

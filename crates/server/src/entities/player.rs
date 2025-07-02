@@ -3,8 +3,9 @@
 
 use mod_network::components::{
     ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind, GameInputBits,
-    GameTier, HealthData, InputStateTimer, LatLon, MovementState, MovementStateTimer, NetworkState,
-    Permission, PlayerStateData, ProfileIcon, SkillCostData, Team, UserName, ViewStateTimer,
+    GameTier, HealthData, InputStateTimer, LatLon, MovementState, MovementStateTimer,
+    MovingDirection, NetworkState, Permission, PlayerStateData, ProfileIcon, SkillCostData, Team,
+    UserName, Velocity,
 };
 
 use crate::data::get_character_attributes;
@@ -179,7 +180,7 @@ impl Bitfield {
         self.0 |= ((invincible as u16) & Self::INVINCIBLE_BIT_MASK) << Self::INVINCIBLE_SHIFT;
     }
 
-    /// 무적 여부를 반환합니다.
+    /// 무적 여부를 설정합니다.
     pub const fn with_invincible(mut self, invincible: bool) -> Self {
         self.set_invincible(invincible);
         self
@@ -196,7 +197,7 @@ impl Bitfield {
         self.0 |= ((ground as u16) & Self::GROUND_BIT_MASK) << Self::GROUND_SHIFT;
     }
 
-    /// 지면을 밟고 있는 여부를 반환합니다.
+    /// 지면을 밟고 있는 여부를 설정합니다.
     pub const fn with_grounded(mut self, ground: bool) -> Self {
         self.set_grounded(ground);
         self
@@ -249,7 +250,7 @@ pub struct Player {
     /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
     pub skill_cost_timer: u16, // 74
     /// 입력 상태 타이머
-    pub input_state_timer: InputStateTimer, // 76
+    pub input_timer: InputStateTimer, // 76
     /// 게임 입력 비트 플래그
     pub input_bits: GameInputBits, // 78
 
@@ -259,10 +260,12 @@ pub struct Player {
     /// 플레이어 월드 공간 방향
     pub rotation: glam::Quat, // 112
 
-    /// 플레이어 월드 공간 이동 방향
-    pub velocity: glam::Vec3A, // 128
+    /// 플레이어 월드 공간 이동 속도
+    pub velocity: Velocity, // 128
 
-                               // ------ 128byte --------
+    /// 플레이어 월드 공간 이동 방향
+    pub direction: MovingDirection, // 144
+                                    // ------ 144byte --------
 }
 
 impl Player {
@@ -290,11 +293,12 @@ impl Player {
             skill_cost_data: SkillCostData::default(),
             attributes: get_character_attributes(CharacterKind::ArisOriginal),
             skill_cost_timer: 0,
-            input_state_timer: InputStateTimer(0),
+            input_timer: InputStateTimer::new(0),
             input_bits: GameInputBits::default(),
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
-            velocity: glam::Vec3A::ZERO,
+            velocity: Velocity::new(),
+            direction: MovingDirection::new(),
         }
     }
 

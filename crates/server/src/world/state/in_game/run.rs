@@ -5,7 +5,7 @@ use mod_network::{
     components::{
         ActionState, BulletKind, DamageLogData, InGamePlayerPullData, LatLon, MAX_IN_GAME_PLAYERS,
         NetworkState, ObjectId, Permission, StageKind, Team, UserId, update_action_state_timer,
-        update_input_sate_timer, update_movement_state_timer,
+        update_movement_state_timer, update_player_translation,
     },
     protocol::{InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, Packet, StateHistory},
 };
@@ -13,6 +13,7 @@ use rand::seq::SliceRandom;
 use tokio::time::Duration;
 
 use crate::{
+    data::get_stage_attributes,
     entities::Bullet,
     session::Session,
     world::{
@@ -227,7 +228,7 @@ impl GameWorldInGameRunState {
                 data.skill_cost_data.remaining,
                 data.translation.to_array(),
                 data.rotation.to_array(),
-                data.velocity.to_array(),
+                data.velocity.0.to_array(),
                 connected,
                 data.is_invincible(),
                 data.permission(),
@@ -284,11 +285,7 @@ impl GameWorldInGameRunState {
                 elapsed_time_ms,
                 &mut events,
             );
-            update_input_sate_timer(
-                data.movement_state,
-                &mut data.input_state_timer,
-                elapsed_time_ms,
-            );
+            data.input_timer.update(data.input_bits, elapsed_time_ms);
 
             // 플레이어 스킬 코스트를 증가시킵니다.
             if data.action_state != ActionState::Death {
@@ -302,7 +299,30 @@ impl GameWorldInGameRunState {
             }
 
             // 플레이어 위치를 갱신합니다.
-            // update_player_translation(self.stage_kind, data, elapsed);
+            let elapsed_time_sec = elapsed.as_secs_f32();
+            let stage_attributes = get_stage_attributes(self.stage_kind);
+            let team = data.team();
+            let mut is_grounded = data.is_grounded();
+            let mut is_invincible = data.is_invincible();
+            update_player_translation(
+                stage_attributes,
+                data.character_attributes(),
+                data.action_state,
+                &mut data.movement_state,
+                &mut data.movement_state_timer,
+                &mut data.velocity,
+                &mut data.translation,
+                data.direction,
+                data.input_bits,
+                team,
+                &mut is_grounded,
+                &mut is_invincible,
+                &mut data.health_data,
+                data.input_timer,
+                elapsed_time_sec,
+            );
+            data.set_grounded(is_grounded);
+            data.set_invincible(is_invincible);
         }
 
         // 총알 오브젝트를 갱신합니다.

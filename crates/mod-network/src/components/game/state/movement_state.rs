@@ -352,7 +352,7 @@ fn update_timer_when_move_to_end(
     events: &mut Vec<StateEvent>,
 ) {
     // 움직임 상태를 갱신합니다.
-    let duration = character_attributes.move_ing_duration;
+    let duration = character_attributes.move_end_normal_duration;
     movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms);
 
     let diff_t = movement_state_timer.0 as i32 - duration as i32;

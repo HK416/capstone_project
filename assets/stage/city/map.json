@@ -1,4 +1,5 @@
 {
+    "name": "Common_City",
     "num_area_width": 7,
     "num_area_depth": 7,
     "area_width": 15,
@@ -84,7 +85,8 @@
                 "x": -45,
                 "y": 0,
                 "z": 45
-            }
+            },
+            "rotation": "Rotate90"
         },
         {
             "model": "City_Plane_04",
@@ -93,7 +95,8 @@
                 "x": -30,
                 "y": 0,
                 "z": 45
-            }
+            },
+            "rotation": "Rotate90"
         },
         {
             "model": "City_Plane_00",
@@ -102,7 +105,8 @@
                 "x": -15,
                 "y": 0.25,
                 "z": 45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -111,7 +115,8 @@
                 "x": 0,
                 "y": 0.25,
                 "z": 45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -120,7 +125,8 @@
                 "x": 15,
                 "y": 0.25,
                 "z": 45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_05",
@@ -129,7 +135,8 @@
                 "x": 30,
                 "y": 0,
                 "z": 45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_05",
@@ -138,7 +145,8 @@
                 "x": 45,
                 "y": 0,
                 "z": 45
-            }
+            },
+            "rotation": "Rotate180"
         },
         {
             "model": "City_Plane_00",
@@ -147,7 +155,8 @@
                 "x": -45,
                 "y": 0.25,
                 "z": 30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_02",
@@ -156,7 +165,8 @@
                 "x": -30,
                 "y": 0,
                 "z": 30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -165,7 +175,8 @@
                 "x": -15,
                 "y": 0.25,
                 "z": 30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -174,7 +185,8 @@
                 "x": 0,
                 "y": 0.25,
                 "z": 30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -183,7 +195,8 @@
                 "x": 15,
                 "y": 0.25,
                 "z": 30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_03",
@@ -192,7 +205,8 @@
                 "x": 30,
                 "y": 0,
                 "z": 30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -202,12 +216,7 @@
                 "y": 0.25,
                 "z": 30
             },
-            "rotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
-            }
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -216,7 +225,8 @@
                 "x": -45,
                 "y": 0.25,
                 "z": 15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_02",
@@ -225,7 +235,8 @@
                 "x": -30,
                 "y": 0,
                 "z": 15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -234,7 +245,8 @@
                 "x": -15,
                 "y": 0.25,
                 "z": 15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -243,7 +255,8 @@
                 "x": 0,
                 "y": 0.25,
                 "z": 15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -252,7 +265,8 @@
                 "x": 15,
                 "y": 0.25,
                 "z": 15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_02",
@@ -262,12 +276,7 @@
                 "y": 0,
                 "z": 15
             },
-            "rotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
-            }
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -276,7 +285,8 @@
                 "x": 45,
                 "y": 0.25,
                 "z": 15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -285,7 +295,8 @@
                 "x": -45,
                 "y": 0.25,
                 "z": 0
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_01",
@@ -294,7 +305,8 @@
                 "x": -30,
                 "y": 0,
                 "z": 0
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_02",
@@ -303,7 +315,8 @@
                 "x": -15,
                 "y": 0,
                 "z": 0
-            }
+            },
+            "rotation": "Rotate90"
         },
         {
             "model": "City_Plane_02",
@@ -312,7 +325,8 @@
                 "x": 0,
                 "y": 0,
                 "z": 0
-            }
+            },
+            "rotation": "Rotate90"
         },
         {
             "model": "City_Plane_02",
@@ -321,7 +335,8 @@
                 "x": 15,
                 "y": 0,
                 "z": 0
-            }
+            },
+            "rotation": "Rotate90"
         },
         {
             "model": "City_Plane_01",
@@ -330,7 +345,8 @@
                 "x": 30,
                 "y": 0,
                 "z": 0
-            }
+            },
+            "rotation": "Rotate180"
         },
         {
             "model": "City_Plane_00",
@@ -339,7 +355,8 @@
                 "x": 45,
                 "y": 0.25,
                 "z": 0
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -348,7 +365,8 @@
                 "x": -45,
                 "y": 0.25,
                 "z": -15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_02",
@@ -358,12 +376,7 @@
                 "y": 0,
                 "z": -15
             },
-            "rotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
-            }
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -372,7 +385,8 @@
                 "x": -15,
                 "y": 0.25,
                 "z": -15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -381,7 +395,8 @@
                 "x": 0,
                 "y": 0.25,
                 "z": -15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -390,7 +405,8 @@
                 "x": 15,
                 "y": 0.25,
                 "z": -15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_02",
@@ -399,7 +415,8 @@
                 "x": 30,
                 "y": 0,
                 "z": -15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -408,7 +425,8 @@
                 "x": 45,
                 "y": 0.25,
                 "z": -15
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -417,7 +435,8 @@
                 "x": -45,
                 "y": 0.25,
                 "z": -30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_03",
@@ -426,7 +445,8 @@
                 "x": -30,
                 "y": 0,
                 "z": -30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -435,7 +455,8 @@
                 "x": -15,
                 "y": 0.25,
                 "z": -30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -444,7 +465,8 @@
                 "x": 0,
                 "y": 0.25,
                 "z": -30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -453,7 +475,8 @@
                 "x": 15,
                 "y": 0.25,
                 "z": -30
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_02",
@@ -463,12 +486,7 @@
                 "y": 0,
                 "z": -30
             },
-            "rotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
-            }
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -478,12 +496,7 @@
                 "y": 0.25,
                 "z": -30
             },
-            "rotation": {
-                "x": 0,
-                "y": 0,
-                "z": 0,
-                "w": 1
-            }
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_05",
@@ -492,7 +505,8 @@
                 "x": -45,
                 "y": 0,
                 "z": -45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_05",
@@ -501,7 +515,8 @@
                 "x": -30,
                 "y": 0,
                 "z": -45
-            }
+            },
+            "rotation": "Rotate180"
         },
         {
             "model": "City_Plane_00",
@@ -510,7 +525,8 @@
                 "x": -15,
                 "y": 0.25,
                 "z": -45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -519,7 +535,8 @@
                 "x": 0,
                 "y": 0.25,
                 "z": -45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_00",
@@ -528,7 +545,8 @@
                 "x": 15,
                 "y": 0.25,
                 "z": -45
-            }
+            },
+            "rotation": "Rotate0"
         },
         {
             "model": "City_Plane_04",
@@ -537,7 +555,8 @@
                 "x": 30,
                 "y": 0,
                 "z": -45
-            }
+            },
+            "rotation": "Rotate270"
         },
         {
             "model": "City_Plane_02",
@@ -546,7 +565,8 @@
                 "x": 45,
                 "y": 0,
                 "z": -45
-            }
+            },
+            "rotation": "Rotate90"
         }
     ],
     "prop": {

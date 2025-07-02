@@ -21,6 +21,8 @@ mod move_to_aim_move;
 mod move_to_end;
 mod moving;
 mod reload;
+mod reload_jumping;
+mod reload_landing;
 mod reload_move;
 mod skill;
 mod skill_jumping;
@@ -38,6 +40,10 @@ use mod_network::components::{
 use crate::{
     asset::Motion,
     component::{
+        character::momoi_original::animation::{
+            reload_jumping::animate_character_when_reload_jumping,
+            reload_landing::animate_character_when_reload_landing,
+        },
         BoneCollection, SkinningAnimation, ToParentTrans, ATTACK_END_ANIMATION_SUFFIX,
         ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
         EXS_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MOVE_TO_END_ANIMATION_SUFFIX,
@@ -645,7 +651,30 @@ pub fn animate_character<Tag: Copy + Component>(
                     transform_view,
                 );
             }
-            _ => unreachable!("invalid game logic!"),
+            MovementState::Jumping => {
+                animate_character_when_reload_jumping(
+                    motions,
+                    skinning_animation,
+                    character_attribute,
+                    action_state_timer,
+                    movement_state_timer,
+                    latlon,
+                    collection_view,
+                    transform_view,
+                );
+            }
+            MovementState::Landing => {
+                animate_character_when_reload_landing(
+                    motions,
+                    skinning_animation,
+                    character_attribute,
+                    action_state_timer,
+                    movement_state_timer,
+                    latlon,
+                    collection_view,
+                    transform_view,
+                );
+            }
         },
         ActionState::Skill => match movement_state {
             MovementState::Idle | MovementState::MoveToEnd => {
