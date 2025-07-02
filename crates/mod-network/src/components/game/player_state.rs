@@ -59,7 +59,7 @@ impl ActionState {
 }
 
 /// 움직임 상태의 개수입니다.
-pub const NUM_MOVEMENT_STATES: usize = 4;
+pub const NUM_MOVEMENT_STATES: usize = 5;
 
 /// 캐릭터의 움직임 상태 목록입니다.
 #[repr(u8)]
@@ -73,13 +73,9 @@ pub enum MovementState {
     /// 움직이다가 멈춘 상태
     MoveToEnd = 2,
     /// 점프하는 상태
-    InPlaceJumping = 3,
+    Jumping = 3,
     /// 착지하는 상태
-    InPlaceLanding = 4,
-    /// 점프하는 상태
-    MovingJumping = 5,
-    /// 착지하는 상태
-    MovingLanding = 6,
+    Landing = 4,
 }
 
 impl MovementState {
@@ -92,10 +88,8 @@ impl MovementState {
             0 => Some(MovementState::Idle),
             1 => Some(MovementState::Moving),
             2 => Some(MovementState::MoveToEnd),
-            3 => Some(MovementState::InPlaceJumping),
-            4 => Some(MovementState::InPlaceLanding),
-            5 => Some(MovementState::MovingJumping),
-            6 => Some(MovementState::MovingLanding),
+            3 => Some(MovementState::Jumping),
+            4 => Some(MovementState::Landing),
             _ => None,
         }
     }
@@ -341,16 +335,16 @@ mod tests {
 
     #[test]
     fn test_creation_movement_state_jumping() {
-        let val = MovementState::InPlaceJumping as u8;
+        let val = MovementState::Jumping as u8;
         let state = MovementState::new(val).unwrap();
-        assert_eq!(MovementState::InPlaceJumping, state);
+        assert_eq!(MovementState::Jumping, state);
     }
 
     #[test]
     fn test_creation_movement_state_landing() {
-        let val = MovementState::InPlaceLanding as u8;
+        let val = MovementState::Landing as u8;
         let state = MovementState::new(val).unwrap();
-        assert_eq!(MovementState::InPlaceLanding, state);
+        assert_eq!(MovementState::Landing, state);
     }
 
     #[test]
@@ -391,7 +385,7 @@ mod tests {
     fn test_player_state_data() {
         let origin = PlayerStateData::new()
             .with_action_state(ActionState::Death)
-            .with_movement_state(MovementState::InPlaceJumping)
+            .with_movement_state(MovementState::Jumping)
             .with_view_state(ViewState::ZoomIn);
         let bytes = origin.to_big_endian_bytes();
         let other = PlayerStateData::from_big_endian_bytes(&bytes);

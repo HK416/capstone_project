@@ -2,9 +2,9 @@
 //!
 
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, GameTier, InputStateTimer,
-    LatLon, MovementStateTimer, NetworkState, Permission, PlayerStateData, ProfileIcon, Team,
-    UserName, ViewStateTimer,
+    ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind, GameInputBits,
+    GameTier, HealthData, InputStateTimer, LatLon, MovementState, MovementStateTimer, NetworkState,
+    Permission, PlayerStateData, ProfileIcon, SkillCostData, Team, UserName, ViewStateTimer,
 };
 
 use crate::data::get_character_attributes;
@@ -216,54 +216,52 @@ pub struct Player {
     /// 사용자 이름
     pub name: UserName, // 34
     /// 사용자 프로필 아이콘
-    pub profile_icon: ProfileIcon, // 25
+    pub profile_icon: ProfileIcon, // 35
     /// 캐릭터 종류
     character_kind: CharacterKind, // 36
-    /// 이전 액션 상태
-    pub prev_action_state: ActionState, // 37
-    /// 플레이어 시야 방향
-    pub player_states: PlayerStateData, // 38
-    /// 액션 상태 타이머
+    /// 행동 상태
+    pub action_state: ActionState, // 37
+    /// 움직임 상태
+    pub movement_state: MovementState, // 38
+    /// 행동 상태 타이머
     pub action_state_timer: ActionStateTimer, // 40
     /// 움직임 상태 타이머
     pub movement_state_timer: MovementStateTimer, // 42
-    /// 플레이어 상태 데이터
-    pub view_state_timer: ViewStateTimer, // 44
     /// 플레이어 시야 각도
-    pub latlon: LatLon, // 48
+    pub latlon: LatLon, // 46
 
     /// 비트 필드 데이터입니다.
-    bitfield: Bitfield, // 50
+    bitfield: Bitfield, // 48
+
     /// 상대 팀을 처치한 횟수
-    pub kill_count: u16, // 52
+    pub kill_count: u16, // 50
     /// 상대 팀에게 처치 당한 횟수
-    pub dead_count: u16, // 54
-    /// 방어막 체력
-    pub guard_health: u16, // 56
-    /// 현제 체력
-    pub current_health: u16, // 58
-    /// 남은 총알
-    pub current_bullet: u16, // 60
-    /// 남은 스킬 코스트
-    pub current_skill_cost: u16, // 62
-    /// 한 공격당 발사 횟수
-    pub fire_per_attack: u16, // 64
+    pub dead_count: u16, // 52
+    /// 체력 데이터
+    pub health_data: HealthData, // 58
+    /// 총알 데이터
+    pub bullet_data: BulletData, // 64
+
+    /// 스킬 코스트 데이터
+    pub skill_cost_data: SkillCostData, // 68
+    /// 캐릭터 속성 데이터
+    attributes: &'static CharacterAttributes, // 72
+    /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
+    pub skill_cost_timer: u16, // 74
+    /// 입력 상태 타이머
+    pub input_state_timer: InputStateTimer, // 76
+    /// 게임 입력 비트 플래그
+    pub input_bits: GameInputBits, // 78
 
     /// 플레이어 월드 공간 위치
-    pub translation: glam::Vec3A, // 80
+    pub translation: glam::Vec3A, // 96
 
     /// 플레이어 월드 공간 방향
-    pub rotation: glam::Quat, // 96
+    pub rotation: glam::Quat, // 112
 
     /// 플레이어 월드 공간 이동 방향
-    pub velocity: glam::Vec3A, // 112
+    pub velocity: glam::Vec3A, // 128
 
-    /// 캐릭터 속성 데이터
-    attributes: &'static CharacterAttributes, // 120
-    /// 입력 상태 타이머
-    pub input_state_timer: InputStateTimer, // 122
-    /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
-    pub skill_cost_timer: u16, // 124
                                // ------ 128byte --------
 }
 
@@ -279,26 +277,24 @@ impl Player {
             name,
             profile_icon,
             character_kind: CharacterKind::ArisOriginal,
-            prev_action_state: ActionState::Idle,
-            player_states: PlayerStateData::new(),
+            action_state: ActionState::Idle,
+            movement_state: MovementState::Idle,
             action_state_timer: ActionStateTimer(0),
             movement_state_timer: MovementStateTimer(0),
-            view_state_timer: ViewStateTimer(0),
             latlon: LatLon::default(),
             bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
             kill_count: 0,
             dead_count: 0,
-            guard_health: 0,
-            current_health: 0,
-            current_bullet: 0,
-            current_skill_cost: 0,
-            fire_per_attack: 0,
+            health_data: HealthData::default(),
+            bullet_data: BulletData::default(),
+            skill_cost_data: SkillCostData::default(),
+            attributes: get_character_attributes(CharacterKind::ArisOriginal),
+            skill_cost_timer: 0,
+            input_state_timer: InputStateTimer(0),
+            input_bits: GameInputBits::default(),
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
             velocity: glam::Vec3A::ZERO,
-            attributes: get_character_attributes(CharacterKind::ArisOriginal),
-            input_state_timer: InputStateTimer(0),
-            skill_cost_timer: 0,
         }
     }
 
@@ -313,9 +309,10 @@ impl Player {
         let attributes = get_character_attributes(self.character_kind);
         self.character_kind = character_kind;
         self.attributes = attributes;
-        self.current_health = attributes.max_health_point;
-        self.current_bullet = attributes.max_bullets;
-        self.current_skill_cost = attributes.max_skill_cost;
+
+        self.health_data = HealthData::splat(attributes.max_health_point);
+        self.bullet_data = BulletData::splat(attributes.max_bullets);
+        self.skill_cost_data = SkillCostData::new(0, attributes.max_skill_cost);
     }
 
     /// 캐릭터 종류를 설정합니다.
@@ -332,6 +329,12 @@ impl Player {
     /// 캐릭터 속성 데이터를 반환합니다.
     pub fn character_attributes(&self) -> &'static CharacterAttributes {
         self.attributes
+    }
+
+    pub fn player_states(&self) -> PlayerStateData {
+        PlayerStateData::new()
+            .with_action_state(self.action_state)
+            .with_movement_state(self.movement_state)
     }
 
     /// 팀 종류를 반환합니다.

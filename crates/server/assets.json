@@ -40,7 +40,9 @@
                         "City_Plane_02_Height.json",
                         "City_Plane_04_Height.json",
                         "map.json",
-                        "collider.json"
+                        "collider.json",
+                        "blue_collider.json",
+                        "red_collider.json"
                     ],
                     "directories" : { }
                 }

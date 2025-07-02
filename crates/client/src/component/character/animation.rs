@@ -127,7 +127,7 @@ pub struct BoneCollection {
 
 pub type AnimationQuery<'a> = (
     &'a CharacterKind,
-    &'a (ActionState, ActionState),
+    &'a ActionState,
     &'a MovementState,
     &'a ActionStateTimer,
     &'a MovementStateTimer,
@@ -147,7 +147,7 @@ pub fn animate_character(
     // 컴포넌트를 가져옵니다.
     let (
         &character_kind,
-        &(_, action_state),
+        &action_state,
         &movement_state,
         &action_state_timer,
         &movement_state_timer,

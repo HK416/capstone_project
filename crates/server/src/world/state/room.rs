@@ -435,8 +435,8 @@ impl GameWorldRoomState {
                         let index = num_blue;
                         num_blue += 1;
 
-                        let translation = attribute.blue_team_spawn.pos[index];
-                        let rotation = attribute.blue_team_spawn.dir;
+                        let translation = attribute.blue_team_positions[index];
+                        let rotation = attribute.blue_team_rotation;
 
                         (index, translation, rotation)
                     }
@@ -444,8 +444,8 @@ impl GameWorldRoomState {
                         let index = num_red;
                         num_red += 1;
 
-                        let translation = attribute.red_team_spawn.pos[index];
-                        let rotation = attribute.red_team_spawn.dir;
+                        let translation = attribute.red_team_positions[index];
+                        let rotation = attribute.red_team_rotation;
 
                         (index, translation, rotation)
                     }

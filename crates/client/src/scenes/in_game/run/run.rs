@@ -10,9 +10,10 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, BulletData, CharacterKind, GameInputBits, HealthData,
-        LatLon, LoginToken, MovementState, MovementStateTimer, NetworkState, Permission,
-        SkillCostData, StageKind, UserId, ViewState, ViewStateTimer,
+        update_action_state, update_action_state_timer, update_movement_state,
+        update_movement_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
+        GameInputBits, HealthData, LatLon, LoginToken, MovementState, MovementStateTimer,
+        NetworkState, Permission, SkillCostData, StageKind, UserId, ViewState, ViewStateTimer,
     },
     protocol::{
         InGamePullPacket, InGamePushNotifyPacket, Packet, PacketType, RawPacket, StateHistory,
@@ -38,19 +39,18 @@ use crate::{
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
         draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree, get_world_transform,
-        update_action_state, update_action_state_timer, update_camera_and_skybox_resource,
-        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
-        update_character_resource, update_character_rotation, update_movement_state,
-        update_movement_state_timer, update_stage_hierarchy, update_stage_resource,
-        update_view_state, update_view_state_timer, world_transform_query_mut, AccumRenderTarget,
-        AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline, BoneCollection,
-        BrightRenderTarget, Camera, CameraResource, CameraUniform, Child, DirectionLight,
-        EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout, InterpolationManager,
-        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, MoveDirection,
-        OpaqueMap, Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8,
-        Player9, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
-        SkinnedMeshRenderer, Skybox, SnapshotBuffer, ToParentTrans, TransparentMap, WorldTransform,
-        CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
+        update_character_hierarchy, update_character_resource, update_character_rotation,
+        update_stage_hierarchy, update_stage_resource, update_view_state, update_view_state_timer,
+        world_transform_query_mut, AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList,
+        BloomPipeline, BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform,
+        Child, DirectionLight, EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout,
+        InterpolationManager, LightSetResource, LightTransformDataLayout, MaterialKind,
+        MeshRenderer, MoveDirection, OpaqueMap, Player0, Player1, Player2, Player3, Player4,
+        Player5, Player6, Player7, Player8, Player9, PlayerArchetype, Projection, RenderTask,
+        RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, Skybox, SnapshotBuffer,
+        ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
+        CHARACTER_ATTRIBUTES,
     },
     config::{Locale, UserConfig},
     scenes::{
@@ -92,7 +92,7 @@ pub struct InGameRunScene {
     /// 첫 번쨰 마우스 눌림 여부 플래그
     first_mouse_pressed: bool,
     /// 사용자 입력 상태 플래그 변수입니다.
-    input_flags: GameInputBits,
+    input_bits: GameInputBits,
     /// 플레이어 움직임 방향입니다.
     move_direction: MoveDirection,
 
@@ -206,7 +206,7 @@ impl InGameRunScene {
             max_game_play_time_ms: remaining_time_ms,
             remaining_time_ms,
             first_mouse_pressed,
-            input_flags: GameInputBits::default(),
+            input_bits: GameInputBits::default(),
             world: Some(world),
             camera: Entity::DANGLING,
             camera_fov_y: 45f32.to_radians(),
@@ -257,20 +257,20 @@ impl InGameRunScene {
 
         type Q<'a> = (
             &'a CharacterKind,
-            &'a mut (ActionState, ActionState),
+            &'a mut ActionState,
             &'a mut ActionStateTimer,
             &'a mut MovementState,
             &'a mut MovementStateTimer,
             &'a mut ViewState,
             &'a mut ViewStateTimer,
             &'a HealthData,
-            &'a BulletData,
-            &'a SkillCostData,
+            &'a mut BulletData,
+            &'a mut SkillCostData,
         );
         let mut view = world.view_mut::<Q>();
         let (
             &character_kind,
-            (_, action_state),
+            action_state,
             action_state_timer,
             movement_state,
             movement_state_timer,
@@ -292,7 +292,7 @@ impl InGameRunScene {
             view_state,
             view_state_timer,
             character_attributes,
-            self.input_flags,
+            self.input_bits,
         );
 
         if health_data.num_maximum_health() != 0 && health_data.remaining == 0 {
@@ -300,48 +300,25 @@ impl InGameRunScene {
         }
 
         // 행동 상태를 갱신합니다.
-        if let Some(action_state) = update_action_state(
-            self.input_flags,
+        let mut events = Vec::default();
+        update_action_state(
+            self.input_bits,
             action_state,
             action_state_timer,
             character_attributes,
             bullet_data,
             skill_cost_data,
-        ) {
-            let now = Instant::now();
-            let epoch_elapsed_time_ms = now
-                .saturating_duration_since(self.epoch_time_stamp)
-                .as_millis()
-                .min(u16::MAX as u128) as u16;
-            self.histories.push(StateHistory::new(
-                self.epoch,
-                epoch_elapsed_time_ms,
-                action_state,
-                *movement_state,
-                *view_state,
-            ));
-        }
+            &mut events,
+        );
 
         // 움직임 상태를 갱신합니다.
-        if let Some(movement_state) = update_movement_state(
-            self.input_flags,
+        update_movement_state(
+            self.input_bits,
             *action_state,
             movement_state,
             movement_state_timer,
-        ) {
-            let now = Instant::now();
-            let epoch_elapsed_time_ms = now
-                .saturating_duration_since(self.epoch_time_stamp)
-                .as_millis()
-                .min(u16::MAX as u128) as u16;
-            self.histories.push(StateHistory::new(
-                self.epoch,
-                epoch_elapsed_time_ms,
-                *action_state,
-                movement_state,
-                *view_state,
-            ));
-        }
+            &mut events,
+        );
     }
 
     /// 플레이어 캐릭터 타이머를 갱신합니다.
@@ -354,23 +331,27 @@ impl InGameRunScene {
 
         type Q<'a> = (
             &'a CharacterKind,
-            &'a mut (ActionState, ActionState),
+            &'a mut ActionState,
             &'a mut ActionStateTimer,
             &'a mut MovementState,
             &'a mut MovementStateTimer,
             &'a mut ViewState,
             &'a mut ViewStateTimer,
+            &'a mut BulletData,
+            &'a mut SkillCostData,
         );
         let mut view = world.view::<Q>();
 
         let (
             &character_kind,
-            (prev_action_state, action_state),
+            action_state,
             action_state_timer,
             movement_state,
             movement_state_timer,
             view_state,
             view_state_timer,
+            bullet_data,
+            skill_cost_data,
         ) = view
             .get_mut(entity)
             .expect("invalid entity or invalid entity component!");
@@ -385,40 +366,25 @@ impl InGameRunScene {
             elapsed_time_ms,
         );
 
-        let result = update_action_state_timer(
-            self.input_flags,
+        let mut events = Vec::new();
+        update_action_state_timer(
+            self.input_bits,
+            bullet_data,
+            skill_cost_data,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
+            &mut events,
         );
-        if let Some((action_state, elapsed_time)) = result {
-            let elapsed_time_ms = epoch_elapsed_time_ms + elapsed_time;
-            self.histories.push(StateHistory::new(
-                self.epoch,
-                elapsed_time_ms,
-                action_state,
-                *movement_state,
-                *view_state,
-            ));
-        }
-        let result = update_movement_state_timer(
+        update_movement_state_timer(
             *action_state,
             movement_state,
             movement_state_timer,
             character_attributes,
             elapsed_time_ms,
+            &mut events,
         );
-        if let Some((movement_state, elapsed_time)) = result {
-            let elapsed_time_ms = epoch_elapsed_time_ms + elapsed_time;
-            self.histories.push(StateHistory::new(
-                self.epoch,
-                elapsed_time_ms,
-                *action_state,
-                movement_state,
-                *view_state,
-            ));
-        }
     }
 
     /// 플레이어 캐릭터의 회전 방향을 설정합니다.
@@ -431,21 +397,20 @@ impl InGameRunScene {
 
         type States<'a> = (
             &'a CharacterKind,
-            &'a (ActionState, ActionState),
+            &'a ActionState,
             &'a ActionStateTimer,
             &'a MovementState,
         );
         let state_view = world.view::<States>();
 
         // 플레이어 움직임 방향을 갱신합니다
-        let controller = self.input_flags.as_state();
+        let controller = self.input_bits.as_state();
         self.move_direction
             .update_from_third_person_camera(controller, &self.latlon);
         // 캐릭터 상태 데이터를 가져옵니다.
-        let (&character_kind, &(_, action_state), &action_state_timer, &movement_state) =
-            state_view
-                .get(entity)
-                .expect("invalid entity or invalid entity component!");
+        let (&character_kind, &action_state, &action_state_timer, &movement_state) = state_view
+            .get(entity)
+            .expect("invalid entity or invalid entity component!");
 
         // 캐릭터 속성 데이터를 가져옵니다.
         let i = character_kind as usize;
@@ -472,7 +437,7 @@ impl InGameRunScene {
         };
 
         type Q<'a> = (
-            &'a mut (ActionState, ActionState),
+            &'a mut ActionState,
             &'a mut ActionStateTimer,
             &'a mut MovementState,
             &'a mut MovementStateTimer,
@@ -492,7 +457,7 @@ impl InGameRunScene {
             )) = result
             {
                 let (
-                    (_, old_action_state),
+                    old_action_state,
                     old_action_state_timer,
                     old_movement_state,
                     old_movement_state_timer,
@@ -630,20 +595,15 @@ impl InGameRunScene {
         // 플레이어 엔터티의 컴포넌트를 가져옵니다.
         type Q<'a> = (
             &'a CharacterKind,
-            &'a (ActionState, ActionState),
+            &'a ActionState,
             &'a ActionStateTimer,
             &'a ViewState,
             &'a ViewStateTimer,
         );
-        let (
-            &character_kind,
-            &(_, action_state),
-            &action_state_timer,
-            &view_state,
-            &view_state_timer,
-        ) = world
-            .query_one_mut::<Q>(entity)
-            .expect("invalid entity or invalid entity component!");
+        let (&character_kind, &action_state, &action_state_timer, &view_state, &view_state_timer) =
+            world
+                .query_one_mut::<Q>(entity)
+                .expect("invalid entity or invalid entity component!");
 
         // 카메라 파라미터를 갱신합니다.
         update_camera_param(
@@ -885,7 +845,7 @@ impl GameScene for InGameRunScene {
                 .get_mouse_input(&button)
                 .map(|input| input.into_bits())
                 .unwrap_or_default();
-            self.input_flags |= flags;
+            self.input_bits |= flags;
         }
 
         self.update_player_character_state();
@@ -912,7 +872,7 @@ impl GameScene for InGameRunScene {
                 .get_mouse_input(&button)
                 .map(|input| input.into_bits())
                 .unwrap_or_default();
-            self.input_flags &= !flags;
+            self.input_bits &= !flags;
         }
 
         self.update_player_character_state();
@@ -935,7 +895,7 @@ impl GameScene for InGameRunScene {
                     .get_keyboard_input(&(code, location))
                     .map(|input| input.into_bits())
                     .unwrap_or_default();
-                self.input_flags |= flags;
+                self.input_bits |= flags;
             }
 
             self.update_player_character_state();
@@ -960,7 +920,7 @@ impl GameScene for InGameRunScene {
                     .get_keyboard_input(&(code, location))
                     .map(|input| input.into_bits())
                     .unwrap_or_default();
-                self.input_flags &= !flags;
+                self.input_bits &= !flags;
             }
 
             self.update_player_character_state();

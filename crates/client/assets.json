@@ -269,6 +269,10 @@
                         "City_Plane_04.mesh",
                         "City_Plane_05.hierarchy",
                         "City_Plane_05.mesh",
+                        "City_Plane_00_Height.json",
+                        "City_Plane_01_Height.json",
+                        "City_Plane_02_Height.json",
+                        "City_Plane_04_Height.json",
                         "City_Prop_Billboard_00.hierarchy",
                         "City_Prop_Billboard_00.mesh",
                         "City_Prop_Bollard_00.hierarchy",
@@ -317,7 +321,10 @@
                         "Common_Prop_Container_00.material",
                         "Common_Prop_Container_00.mesh",
                         "Common_Prop_Container_00.texD",
-                        "map.json"
+                        "map.json",
+                        "collider.json",
+                        "blue_collider.json",
+                        "red_collider.json"
                     ],
                     "directories" : {}
                 }

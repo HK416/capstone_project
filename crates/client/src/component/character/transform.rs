@@ -195,8 +195,8 @@ fn update_character_rotation_inner(
     match movement_state {
         MovementState::Idle
         | MovementState::MoveToEnd
-        | MovementState::InPlaceJumping
-        | MovementState::InPlaceLanding => match action_state {
+        | MovementState::Jumping
+        | MovementState::Landing => match action_state {
             ActionState::Aiming => set_rotation_to_camera(
                 local_transform,
                 character_attributes,
@@ -227,7 +227,7 @@ fn update_character_rotation_inner(
             ),
             _ => {}
         },
-        MovementState::Moving | MovementState::MovingJumping | MovementState::MovingLanding => {
+        MovementState::Moving | MovementState::Jumping | MovementState::Landing => {
             match action_state {
                 ActionState::Idle => set_rotation_to_movement(
                     local_transform,

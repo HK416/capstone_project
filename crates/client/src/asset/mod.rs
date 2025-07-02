@@ -6,7 +6,7 @@ mod texture;
 
 use std::io;
 
-use mod_network::components::{NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES};
+use mod_network::components::{StageLoadError, NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES};
 
 pub use self::{hierarchy::*, mesh::*, motion::*, stage::*, texture::*};
 
@@ -236,4 +236,14 @@ pub enum AssetError {
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
     #[error("failed to read asset for the following reason:{0})")]
     IOError(#[from] io::Error),
+}
+
+impl From<StageLoadError> for AssetError {
+    fn from(value: StageLoadError) -> Self {
+        match value {
+            StageLoadError::InvalidData => AssetError::InvalidData,
+            StageLoadError::ParsingFailed(error) => AssetError::ParsingFailed(error),
+            StageLoadError::IOError(error) => AssetError::IOError(error),
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::components::BigEndian;
+use crate::components::{BigEndian, InputStateTimer, MovementState, MAX_INPUT_STATE_TIME};
 
 /// `ControllerState` 상태 수 입니다.
 pub const NUM_CONTROLLER_STATES: usize = 9;
@@ -153,5 +153,23 @@ impl BigEndian for GameInputBits {
 impl Default for GameInputBits {
     fn default() -> Self {
         Self::empty()
+    }
+}
+
+/// 플레이어의 [`InputStateTimer`]를 갱신합니다.
+pub fn update_input_sate_timer(
+    movement_state: MovementState,
+    input_state_timer: &mut InputStateTimer,
+    elapsed_time_ms: u16,
+) {
+    match movement_state {
+        MovementState::Idle | MovementState::MoveToEnd => {
+            input_state_timer.0 = input_state_timer.0.saturating_sub(elapsed_time_ms);
+        }
+        MovementState::Moving => {
+            input_state_timer.0 =
+                (input_state_timer.0.saturating_add(elapsed_time_ms)).min(MAX_INPUT_STATE_TIME);
+        }
+        MovementState::Jumping | MovementState::Landing => {}
     }
 }

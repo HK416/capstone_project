@@ -1,7 +1,5 @@
-mod action_state;
 mod animation;
 mod camera;
-mod movement_state;
 mod pipeline;
 mod pull;
 mod render;
@@ -19,8 +17,8 @@ use lazy_static::lazy_static;
 use mod_network::components::{CharacterAttributes, NUM_CHARACTERS};
 
 pub use self::{
-    action_state::*, animation::*, camera::*, movement_state::*, pipeline::*, pull::*, render::*,
-    snapshot::*, spawn::*, transform::*, view_state::*,
+    animation::*, camera::*, pipeline::*, pull::*, render::*, snapshot::*, spawn::*, transform::*,
+    view_state::*,
 };
 
 lazy_static! {

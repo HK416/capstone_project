@@ -11,7 +11,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{InGamePlayerInitData, LoginToken, StageKind, StageLayoutAttributes, UserId},
+    components::{InGamePlayerInitData, LoginToken, StageAttributes, StageKind, UserId},
     protocol::{InGameDataInitPacket, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -70,7 +70,7 @@ pub struct InGameBuildScene {
     /// 초기화 패킷
     packet: Option<InGameDataInitPacket>,
     /// 스테이지 레이아웃 데이터
-    stage_layout_data: Arc<OnceLock<StageLayoutAttributes>>,
+    stage_layout_data: Arc<OnceLock<StageAttributes>>,
 
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
@@ -95,7 +95,7 @@ impl InGameBuildScene {
         uid: UserId,
         token: LoginToken,
         packet: InGameDataInitPacket,
-        stage_layout_data: Arc<OnceLock<StageLayoutAttributes>>,
+        stage_layout_data: Arc<OnceLock<StageAttributes>>,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -269,7 +269,7 @@ fn build_next_scene(
     texture_data_pool: TextureDataPool,
     texture_view_pool: TextureViewPool,
     sampler_pool: SamplerPool,
-    stage_attributes: Arc<OnceLock<StageLayoutAttributes>>,
+    stage_attributes: Arc<OnceLock<StageAttributes>>,
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
 ) {
     rayon::spawn(move || {
@@ -578,7 +578,7 @@ fn create_stage_entities<'a>(
     model_pool: ModelPool,
     texture_data_pool: TextureDataPool,
     task_result: Arc<Queue<TaskResult>>,
-    stage_attributes: &'a StageLayoutAttributes,
+    stage_attributes: &'a StageAttributes,
 ) {
     scope.spawn(move |_| {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
@@ -647,7 +647,7 @@ fn create_stage_lights<'a>(
     scope: &Scope<'a>,
     texture_data_pool: TextureDataPool,
     task_result: Arc<Queue<TaskResult>>,
-    stage_attributes: &'a StageLayoutAttributes,
+    stage_attributes: &'a StageAttributes,
 ) {
     scope.spawn(move |_| {
         // 전역 조명 데이터를 가져옵니다.
@@ -658,14 +658,14 @@ fn create_stage_lights<'a>(
 
         // 그림자 맵 텍스처를 가져옵니다.
         let (shadow_map_view, shadow_sampler) = texture_data_pool
-            .get(&data.shadow_map)
+            .get(&data.static_shadow_map)
             .expect("the shadow map texture must be preloaded!");
 
         // 스테이지 정적 조명 생성 결과를 전송합니다.
         task_result.push(TaskResult::DirectionLight(DirectionLight {
             shadow_map_view,
             shadow_sampler,
-            light_proj_view: data.light_proj_view.into(),
+            light_proj_view: data.static_light_proj_view.into(),
             direction_w: data.direction_w.into(),
             color: data.color.into(),
         }));

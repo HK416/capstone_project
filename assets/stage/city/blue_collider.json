@@ -1,0 +1,18 @@
+{
+    "collider": {
+        "Aabb": {
+            "center": {
+                "x": 30,
+                "y": 0,
+                "z": 33
+            },
+            "size": {
+                "x": 15,
+                "y": 50,
+                "z": 9
+            }
+        }
+    },
+    "left": null,
+    "right": null
+}

@@ -320,9 +320,8 @@ fn movement_state_interpolated(
             MovementState::Idle => character_attributes.normal_idle_duration,
             MovementState::Moving => character_attributes.move_ing_duration,
             MovementState::MoveToEnd => character_attributes.move_end_normal_duration,
-            MovementState::InPlaceJumping | MovementState::InPlaceLanding => MAX_JUMP_DURATION,
-            MovementState::MovingJumping | MovementState::MovingLanding => {
-                movement_state_timer.0 + elapsed_time_ms
+            MovementState::Jumping | MovementState::Landing => {
+                (movement_state_timer.0 + elapsed_time_ms).min(MAX_JUMP_DURATION)
             }
         };
         movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms);
@@ -366,14 +365,20 @@ fn movement_state_extrapolation(
                 movement_state_timer.0 = diff_t as u16 % duration;
             }
         }
-        MovementState::InPlaceJumping | MovementState::MovingJumping => {
+        MovementState::Jumping => {
             let duration = MAX_JUMP_DURATION;
             movement_state_timer.0 = movement_state_timer
                 .0
                 .saturating_add(elapsed_time_ms)
                 .min(duration);
         }
-        MovementState::InPlaceLanding | MovementState::MovingLanding => {}
+        MovementState::Landing => {
+            let duration = MAX_JUMP_DURATION;
+            movement_state_timer.0 = movement_state_timer
+                .0
+                .saturating_add(elapsed_time_ms)
+                .min(duration);
+        }
     };
 
     (movement_state, movement_state_timer)

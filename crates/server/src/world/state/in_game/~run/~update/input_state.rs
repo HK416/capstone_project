@@ -16,9 +16,6 @@ pub fn update_input_sate_timer(data: &mut Player, elapsed_time_ms: u16) {
             data.input_state_timer.0 = (data.input_state_timer.0.saturating_add(elapsed_time_ms))
                 .min(MAX_INPUT_STATE_TIME);
         }
-        MovementState::InPlaceJumping
-        | MovementState::InPlaceLanding
-        | MovementState::MovingJumping
-        | MovementState::MovingLanding => {}
+        MovementState::Jumping | MovementState::Landing => {}
     }
 }

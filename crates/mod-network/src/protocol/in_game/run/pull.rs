@@ -150,7 +150,6 @@ mod tests {
     fn test_in_game_pull_packet() {
         let player_0 = InGamePlayerPullData::new(
             UserId::new(13413451),
-            6,
             0,
             12,
             10,
@@ -167,14 +166,13 @@ mod tests {
             NetworkState::Poor,
             PlayerStateData::new()
                 .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::InPlaceLanding)
+                .with_movement_state(MovementState::Landing)
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(320),
             MovementStateTimer::new(1200),
         );
         let player_1 = InGamePlayerPullData::new(
             UserId::new(98431),
-            72,
             12,
             2,
             210,
@@ -191,7 +189,7 @@ mod tests {
             NetworkState::Good,
             PlayerStateData::new()
                 .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::InPlaceLanding)
+                .with_movement_state(MovementState::Landing)
                 .with_view_state(ViewState::Aiming),
             ActionStateTimer::new(323),
             MovementStateTimer::new(1212),

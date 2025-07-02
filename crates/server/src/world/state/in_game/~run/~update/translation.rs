@@ -111,10 +111,10 @@ pub fn update_player_translation(stage_kind: StageKind, data: &mut Player, elaps
     if data.is_grounded() {
         let movement_state = data.player_states.movement_state();
         match movement_state {
-            MovementState::InPlaceJumping | MovementState::MovingJumping => {
+            MovementState::Jumping | MovementState::MovingJumping => {
                 velocity.y = 5.0;
             }
-            MovementState::InPlaceLanding => {
+            MovementState::Landing => {
                 data.player_states.set_movement_state(MovementState::Idle);
                 data.movement_state_timer.0 = 0;
             }

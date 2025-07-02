@@ -10,7 +10,8 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, CharacterKind, GameInputBits, LoginToken, StageKind, UserId,
+        update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
+        GameInputBits, LoginToken, SkillCostData, StageKind, UserId,
     },
     protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
@@ -30,15 +31,14 @@ use crate::{
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
         draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree,
-        local_transform_query_mut, update_action_state_timer, update_character_hierarchy,
-        update_character_resource, update_stage_hierarchy, update_stage_resource,
-        AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline,
-        BoneCollection, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
-        CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
-        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
-        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, ShadowResource,
-        Sibling, SkinnedMeshRenderer, Skybox, SkyboxDataLayout, ToParentTrans, TransparentMap,
-        WorldTransform, CHARACTER_ATTRIBUTES,
+        local_transform_query_mut, update_character_hierarchy, update_character_resource,
+        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
+        AnimationQuery, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera,
+        CameraDataLayout, CameraResource, CameraUniform, Child, DirectionLight,
+        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
+        MaterialKind, MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask,
+        RevealRenderTarget, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer, Skybox,
+        SkyboxDataLayout, ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -225,8 +225,8 @@ impl InGameEnterScene {
         // 플레이어 캐릭터를 초기화 설정합니다.
         let (entity, _archetype) = self.player_entity();
         let world = self.world.as_mut().expect("the world must be exists!");
-        let (_, action_state) = world
-            .query_one_mut::<&mut (ActionState, ActionState)>(entity)
+        let action_state = world
+            .query_one_mut::<&mut ActionState>(entity)
             .expect("invalid entity or invalid entity component!");
 
         *action_state = ActionState::Callsign;
@@ -455,7 +455,9 @@ impl InGameEnterScene {
     fn update_player_character(&self, elapsed_time_ms: u16) {
         type Q<'a> = (
             &'a CharacterKind,
-            &'a mut (ActionState, ActionState),
+            &'a mut BulletData,
+            &'a mut SkillCostData,
+            &'a mut ActionState,
             &'a mut ActionStateTimer,
         );
 
@@ -465,7 +467,7 @@ impl InGameEnterScene {
         };
         let (entity, _archetype) = self.player_entity();
         let mut query = world.query_one::<Q>(entity).expect("invalid entity!");
-        let (&character_kind, (prev_action_state, action_state), action_state_timer) =
+        let (&character_kind, bullet_data, skill_cost_data, action_state, action_state_timer) =
             query.get().expect("invalid entity component!");
 
         // 플레이어 엔터티의 행동 상태를 갱신합니다.
@@ -473,10 +475,13 @@ impl InGameEnterScene {
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         update_action_state_timer(
             GameInputBits::empty(),
+            bullet_data,
+            skill_cost_data,
             action_state,
             action_state_timer,
             character_attributes,
             elapsed_time_ms,
+            &mut Vec::new(),
         );
     }
 

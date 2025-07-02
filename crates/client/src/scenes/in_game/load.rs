@@ -12,7 +12,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{BulletKind, CharacterKind, LoginToken, StageKind, StageLayoutAttributes, UserId},
+    components::{BulletKind, CharacterKind, LoginToken, StageAttributes, StageKind, UserId},
     protocol::{InGameDataInitPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -30,7 +30,7 @@ use crate::{
         IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD,
         SCHALE_ICON_URI, STAGE_URI, STAGE_WORKSPACES, WEAPON_ICON_URI,
     },
-    component::{load_stage_layout_from_file, MaterialDataPool},
+    component::MaterialDataPool,
     config::{Locale, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, InGameBuildScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
@@ -57,7 +57,7 @@ enum TaskResult {
     CharacterMotions,
     /// 스테이지 데이터
     Stage {
-        attributes: StageLayoutAttributes,
+        attributes: StageAttributes,
         staging_buffers: Vec<wgpu::Buffer>,
         command: wgpu::CommandBuffer,
     },
@@ -88,7 +88,7 @@ pub struct InGameLoadScene {
     num_remaining_tasks: usize,
 
     /// 로드된 에셋 데이터입니다.
-    stage_layout_data: Arc<OnceLock<StageLayoutAttributes>>,
+    stage_layout_data: Arc<OnceLock<StageAttributes>>,
     /// 스테이징 버퍼 집합
     staging_buffers: Vec<wgpu::Buffer>,
 
@@ -391,17 +391,19 @@ impl InGameLoadScene {
         let root_dir = root_dir.to_path_buf();
         thread_pool.spawn(move || {
             let i = stage_kind as usize;
-            let uri = STAGE_URI;
             let mut workspace = root_dir.clone();
             workspace.push(STAGE_WORKSPACES[i]);
 
             // 지형 데이터를 로드합니다.
-            let result = load_stage_layout_from_file(&workspace, uri);
+            let mut path = workspace.clone();
+            path.push(format!("{}.json", STAGE_URI));
+
+            let result = StageAttributes::load_from_file(path);
             let attributes = match result {
                 Ok(attributes) => attributes,
                 Err(e) => {
                     // 오류를 전송합니다.
-                    task_results.push(TaskResult::Failed(e));
+                    task_results.push(TaskResult::Failed(e.into()));
                     return;
                 }
             };
@@ -412,7 +414,7 @@ impl InGameLoadScene {
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
             // 지형 데이터를 구성하는 모델을 로드합니다.
-            for uri in attributes.models.iter() {
+            for uri in attributes.model_list.iter() {
                 let result = model_pool.get_or_init(
                     &mesh_pool,
                     &material_data_pool,
@@ -436,7 +438,7 @@ impl InGameLoadScene {
 
             // 스테이지의 쉐도우 맵을 로드합니다.
             if let Some(light) = attributes.global_light.as_ref() {
-                let uri = &light.shadow_map;
+                let uri = &light.static_shadow_map;
                 let result = texture_data_pool.get_or_init(
                     &workspace,
                     uri,

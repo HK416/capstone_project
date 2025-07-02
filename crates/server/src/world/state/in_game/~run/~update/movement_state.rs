@@ -16,10 +16,10 @@ pub fn update_movement_state_timer(data: &mut Player, elapsed_time_ms: u16) {
             MovementState::MoveToEnd => {
                 update_movement_state_timer_when_move_to_end(data, elapsed_time_ms)
             }
-            MovementState::InPlaceJumping => {
+            MovementState::Jumping => {
                 update_movement_state_timer_when_in_place_jumping(data, elapsed_time_ms)
             }
-            MovementState::InPlaceLanding => {
+            MovementState::Landing => {
                 update_movement_state_timer_when_in_place_landing(data, elapsed_time_ms)
             }
             MovementState::MovingJumping => {
@@ -42,10 +42,10 @@ pub fn update_movement_state_timer(data: &mut Player, elapsed_time_ms: u16) {
             MovementState::MoveToEnd => {
                 update_movement_state_timer_when_move_to_end(data, elapsed_time_ms)
             }
-            MovementState::InPlaceJumping => {
+            MovementState::Jumping => {
                 update_movement_state_timer_when_in_place_jumping(data, elapsed_time_ms)
             }
-            MovementState::InPlaceLanding => {
+            MovementState::Landing => {
                 update_movement_state_timer_when_in_place_landing(data, elapsed_time_ms)
             }
             MovementState::MovingJumping => {
@@ -99,7 +99,7 @@ pub fn update_movement_state_timer_when_in_place_jumping(data: &mut Player, elap
     let diff_t = data.movement_state_timer.0 as i32 - MAX_JUMP_DURATION as i32;
     if diff_t >= 0 {
         data.player_states
-            .set_movement_state(MovementState::InPlaceLanding);
+            .set_movement_state(MovementState::Landing);
         data.movement_state_timer.0 = 0;
     }
 }

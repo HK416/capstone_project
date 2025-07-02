@@ -4,7 +4,7 @@ use std::{fs::OpenOptions, io::Read, ops::Deref, path::Path, sync::Arc};
 
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, World};
-use mod_network::components::{StageLayoutAreaData, StageLayoutAttributes, StageLayoutPropData};
+use mod_network::components::{AreaAttributes, PropAttributeData, StageAttributes};
 use mod_physics::object3d::Sphere;
 use parking_lot::Mutex;
 
@@ -21,57 +21,57 @@ use crate::{
     },
 };
 
-/// 파일에서 스테이지 레이아웃 데이터를 로드합니다.
-pub fn load_stage_layout_from_file<Dir, Uri>(
-    workspace: Dir,
-    uri: Uri,
-) -> Result<StageLayoutAttributes, AssetError>
-where
-    Dir: AsRef<Path>,
-    Uri: AsRef<str>,
-{
-    let mut path = workspace.as_ref().to_path_buf();
-    path.push(format!("{}.json", uri.as_ref()));
+// /// 파일에서 스테이지 레이아웃 데이터를 로드합니다.
+// pub fn load_stage_layout_from_file<Dir, Uri>(
+//     workspace: Dir,
+//     uri: Uri,
+// ) -> Result<StageLayoutAttributes, AssetError>
+// where
+//     Dir: AsRef<Path>,
+//     Uri: AsRef<str>,
+// {
+//     let mut path = workspace.as_ref().to_path_buf();
+//     path.push(format!("{}.json", uri.as_ref()));
 
-    // 파일을 읽습니다.
-    log::debug!("open stage data asset (PATH:{})", path.display());
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(false)
-        .open(&path)
-        .map_err(|e| {
-            log::error!(
-                "failed to open stage data asset (PATH:{}, REASON:{})",
-                path.display(),
-                &e
-            );
-            AssetError::IOError(e)
-        })?;
+//     // 파일을 읽습니다.
+//     log::debug!("open stage data asset (PATH:{})", path.display());
+//     let mut file = OpenOptions::new()
+//         .read(true)
+//         .write(false)
+//         .open(&path)
+//         .map_err(|e| {
+//             log::error!(
+//                 "failed to open stage data asset (PATH:{}, REASON:{})",
+//                 path.display(),
+//                 &e
+//             );
+//             AssetError::IOError(e)
+//         })?;
 
-    log::debug!("read stage data asset (PATH:{})", path.display());
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).map_err(|e| {
-        log::error!(
-            "failed to read stage data asset (PATH:{}, REASON:{})",
-            path.display(),
-            &e
-        );
-        AssetError::IOError(e)
-    })?;
+//     log::debug!("read stage data asset (PATH:{})", path.display());
+//     let mut buf = Vec::new();
+//     file.read_to_end(&mut buf).map_err(|e| {
+//         log::error!(
+//             "failed to read stage data asset (PATH:{}, REASON:{})",
+//             path.display(),
+//             &e
+//         );
+//         AssetError::IOError(e)
+//     })?;
 
-    log::debug!("close stage data asset (PATH:{})", path.display());
-    drop(file);
+//     log::debug!("close stage data asset (PATH:{})", path.display());
+//     drop(file);
 
-    log::debug!("decode stage data asset (PATH:{})", path.display());
-    serde_json::from_slice(&buf).map_err(|e| {
-        log::error!(
-            "failed to decode stage data asset (PATH:{}, REASON:{})",
-            path.display(),
-            &e
-        );
-        AssetError::ParsingFailed(e)
-    })
-}
+//     log::debug!("decode stage data asset (PATH:{})", path.display());
+//     serde_json::from_slice(&buf).map_err(|e| {
+//         log::error!(
+//             "failed to decode stage data asset (PATH:{}, REASON:{})",
+//             path.display(),
+//             &e
+//         );
+//         AssetError::ParsingFailed(e)
+//     })
+// }
 
 /// 스테이지를 구성하는 엔터티를 생성하고, Bounding Volumn Hierarchy를 반환합니다.
 pub fn build_stage(
@@ -82,13 +82,14 @@ pub fn build_stage(
     staging_buffers: &mut Vec<wgpu::Buffer>,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    stage_attributes: &StageLayoutAttributes,
+    stage_attributes: &StageAttributes,
 ) -> (StageBoundingVolumnHierarchy, Vec<(Entity, EntityBuilder)>) {
     let mut batch_commands = Vec::default();
     let mut bvh = StageBoundingVolumnHierarchy::default();
 
     // 지역 데이터를 생성합니다.
-    for area_data in stage_attributes.area.iter() {
+    let iterator = stage_attributes.area.iter().flatten().flatten();
+    for area_data in iterator {
         build_stage_area(
             label,
             world,
@@ -104,7 +105,7 @@ pub fn build_stage(
     }
 
     // 장식물 데이터를 생성합니다.
-    bvh.root = stage_attributes.root_prop.as_ref().map(|prop_data| {
+    bvh.root = stage_attributes.prop.as_ref().map(|prop_data| {
         build_stage_prop(
             label,
             world,
@@ -127,7 +128,7 @@ fn build_stage_area(
     world: &World,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    area_data: &StageLayoutAreaData,
+    area_data: &AreaAttributes,
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
@@ -157,7 +158,7 @@ fn build_stage_prop(
     batch_commands: &mut Vec<(Entity, EntityBuilder)>,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    prop_data: &StageLayoutPropData,
+    prop_data: &PropAttributeData,
 ) -> Box<StageBoundingVolumn> {
     let (entity, mut batch_command) = spawn_stage_prop(
         label,
@@ -173,10 +174,7 @@ fn build_stage_prop(
 
     Box::new(StageBoundingVolumn {
         entity,
-        sphere: Sphere {
-            center: prop_data.center.into(),
-            radius: prop_data.radius,
-        },
+        sphere: prop_data.collider.clone(),
         left: prop_data.left.as_ref().map(|prop_data| {
             build_stage_prop(
                 label,
@@ -221,7 +219,7 @@ pub fn spawn_stage_area(
     staging_buffers: &mut Vec<wgpu::Buffer>,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    data: &StageLayoutAreaData,
+    data: &AreaAttributes,
 ) -> (Entity, Vec<(Entity, EntityBuilder)>) {
     // 모델 풀 객체에서 스테이지 모델 노드를 가져옵니다.
     log::debug!("spawn stage model (URI:{})", &data.model);
@@ -236,10 +234,7 @@ pub fn spawn_stage_area(
     // 컴포넌트를 추가합니다.
     builder.add((
         Stage,
-        ToParentTrans(glam::Mat4::from_rotation_translation(
-            data.rotation.into(),
-            data.translation.into(),
-        )),
+        ToParentTrans(glam::Mat4::from_translation(data.translation.into())),
     ));
     builder.add((Stage, WorldTransform::default()));
 
@@ -279,7 +274,7 @@ fn spawn_stage_prop(
     staging_buffers: &mut Vec<wgpu::Buffer>,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
-    data: &StageLayoutPropData,
+    data: &PropAttributeData,
 ) -> (Entity, Vec<(Entity, EntityBuilder)>) {
     // 모델 풀 객체에서 스테이지 모델 노드를 가져옵니다.
     log::debug!("spawn stage model (URI:{})", &data.model);

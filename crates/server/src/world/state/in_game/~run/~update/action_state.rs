@@ -1,7 +1,7 @@
 //! 플레이어 행동 상태와 관련된 코드를 관리합니다.
 //!
 
-use mod_network::components::{ActionState, CharacterKind, RESPAWN_DELAY, UserId};
+use mod_network::components::{ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind, GameInputBits, UserId, RESPAWN_DELAY};
 use mod_parallelism::collections::Queue;
 
 use crate::{

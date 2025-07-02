@@ -14,8 +14,8 @@ mod permission;
 mod player_state;
 mod room;
 mod skill;
-mod stage_attr;
-mod stage_kind;
+mod stage;
+mod state;
 mod team;
 mod tier;
 mod timer;
@@ -24,5 +24,5 @@ mod weapon;
 pub use self::{
     bullet_kind::*, character_attr::*, character_kind::*, finish::*, formation::*, health::*,
     icon::*, in_game::*, input::*, latlon::*, name::*, network::*, permission::*, player_state::*,
-    room::*, skill::*, stage_attr::*, stage_kind::*, team::*, tier::*, timer::*, weapon::*,
+    room::*, skill::*, stage::*, state::*, team::*, tier::*, timer::*, weapon::*,
 };
