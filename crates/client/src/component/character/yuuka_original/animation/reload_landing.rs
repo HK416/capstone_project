@@ -24,9 +24,9 @@ use super::*;
 pub fn animate_character_when_reload_landing<Tag: Copy + Component>(
     motions: &HashMap<String, Motion>,
     skinning_animation: &SkinningAnimation,
-    character_attribute: &CharacterAttributes,
+    character_attributes: &CharacterAttributes,
     action_state_timer: ActionStateTimer,
-    movement_state_timer: MovementStateTimer,
+    _movement_state_timer: MovementStateTimer,
     latlon: LatLon,
     collection_view: &ViewBorrow<&BoneCollection>,
     transform_view: &mut ViewBorrow<&mut (Tag, ToParentTrans)>,
@@ -39,7 +39,7 @@ pub fn animate_character_when_reload_landing<Tag: Copy + Component>(
     // 애니메이션 키 프레임을 샘플링합니다.
     let time_point_0 = action_state_timer
         .0
-        .min(character_attribute.normal_reload_duration);
+        .min(character_attributes.normal_reload_duration);
     let keyframe = motion.linear_sampling(time_point_0);
 
     // 최상위 엔터티의 로컬 변환 행렬을 갱신합니다.
@@ -75,5 +75,11 @@ pub fn animate_character_when_reload_landing<Tag: Copy + Component>(
     landing_animation(skinning_animation, transform_view);
 
     let offset = 0.0;
-    look_to_camera_direction(offset, latlon, skinning_animation, transform_view);
+    look_to_camera_direction(
+        offset,
+        latlon,
+        character_attributes,
+        skinning_animation,
+        transform_view,
+    );
 }

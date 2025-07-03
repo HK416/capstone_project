@@ -24,7 +24,7 @@ use super::*;
 pub fn animate_character_when_aim_move<Tag: Copy + Component>(
     motions: &HashMap<String, Motion>,
     skinning_animation: &SkinningAnimation,
-    character_attribute: &CharacterAttributes,
+    character_attributes: &CharacterAttributes,
     _action_state_timer: ActionStateTimer,
     movement_state_timer: MovementStateTimer,
     latlon: LatLon,
@@ -75,7 +75,7 @@ pub fn animate_character_when_aim_move<Tag: Copy + Component>(
         .expect("no such animation data!");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let time_point_1 = movement_state_timer.0 % character_attribute.cafe_walk_duration;
+    let time_point_1 = movement_state_timer.0 % character_attributes.cafe_walk_duration;
     let keyframe = motion.linear_sampling(time_point_1);
 
     // 키 프레임을 구성하는 스키닝된 메쉬를 구성하는 엔터티의 로컬 변환 행렬을 갱신합니다.
@@ -105,5 +105,11 @@ pub fn animate_character_when_aim_move<Tag: Copy + Component>(
     }
 
     let offset = 1.0;
-    look_to_camera_direction(offset, latlon, skinning_animation, transform_view);
+    look_to_camera_direction(
+        offset,
+        latlon,
+        character_attributes,
+        skinning_animation,
+        transform_view,
+    );
 }

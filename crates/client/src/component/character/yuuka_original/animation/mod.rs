@@ -96,71 +96,6 @@ const VICTORY_START_ANIMATION: &'static str = constcat::concat!(MODEL_NAME, VICT
 /// 캐릭터의 *_Victory_End 애니메이션 이름입니다.
 const VICTORY_END_ANIMATION: &'static str = constcat::concat!(MODEL_NAME, VICTORY_END_SUFFIX);
 
-/// `Bip001_Head`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
-pub const HEAD_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 =
-    glam::vec3(-0.050692074, 0.60760593, -0.792619);
-/// `Bip001_Spine`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
-pub const SPINE_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 =
-    glam::vec3(0.018127501, 0.88046324, -0.47376776);
-/// `Bip001_Spine1`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 월드 좌표계 X축을 로컬 좌표계로 변환한 벡터입니다.
-pub const SPINE1_W2L_X_NORMAL_ATTACK_ING: glam::Vec3 =
-    glam::vec3(-0.16704176, 0.9152928, -0.3665189);
-/// `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임에서 `Bip001_L_Hand`에서 `Bip001_Weapon`까지의 변환 행렬입니다.
-pub const WEAPON_OFFSET: glam::Mat4 = glam::Mat4::from_cols(
-    glam::Vec4::new(-0.25398198, 0.96574277, 0.05343934, 0.0),
-    glam::Vec4::new(-0.22625628, -0.00560271, -0.9740808, 0.0),
-    glam::Vec4::new(-0.9403992, -0.25946116, 0.21992218, 0.0),
-    glam::Vec4::new(-0.053849846, 0.01216054, 0.017126352, 1.0),
-);
-
-/// `Bip001_L_Thigh`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
-const L_THIGH_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(-0.7308136, -0.4484693, -0.5145746, 0.0),
-    glam::vec4(-0.4265977, 0.8885932, -0.168573, 0.0),
-    glam::vec4(0.5328473, 0.0963209, -0.840712, 0.0),
-    glam::vec4(0.00000009536743, 0.0000001215935, 0.07688279, 1.0),
-);
-
-/// `Bip001_R_Thigh`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
-const R_THIGH_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(-0.8947756, -0.4049033, 0.1882291, 0.0),
-    glam::vec4(-0.3156573, 0.8717507, 0.3747147, 0.0),
-    glam::vec4(-0.3158121, 0.2758697, -0.9078319, 0.0),
-    glam::vec4(-0.0000001144409, -0.0000001049042, -0.07688277, 1.0),
-);
-
-/// `Bip001_L_Calf`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
-const L_CALF_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.6872864, 0.7263864, 0.0000001192093, 0.0),
-    glam::vec4(-0.7263865, 0.6872865, -0.000000007450585, 0.0),
-    glam::vec4(-0.00000008734294, -0.00000008147134, 1.0, 0.0),
-    glam::vec4(-0.1674679, 0.0, -0.00000001907349, 1.0),
-);
-
-/// `Bip001_R_Calf`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
-const R_CALF_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.52034, 0.8539593, 0.0000000000000008881785, 0.0),
-    glam::vec4(-0.8539593, 0.52034, -0.00000002980232, 0.0),
-    glam::vec4(-0.00000002544997, 0.00000001550734, 1.0, 0.0),
-    glam::vec4(-0.1674679, 0.000000009536743, 0.0, 1.0),
-);
-
-/// `Bip001_L_Foot`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
-const L_FOOT_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.8666437, -0.1439797, -0.4777017, 0.0),
-    glam::vec4(0.134106, 0.9894437, -0.0549249, 0.0),
-    glam::vec4(0.4805669, -0.01646233, 0.8768035, 0.0),
-    glam::vec4(-0.1537036, 0.00000001907349, 0.0, 1.0),
-);
-
-/// `Bip001_R_Foot`의 `*_Normal_Idle` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
-const R_FOOT_NORMAL_IDLE_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.7690588, -0.5080033, 0.3879192, 0.0),
-    glam::vec4(0.5303443, 0.8459078, 0.0563467, 0.0),
-    glam::vec4(-0.3567682, 0.1623968, 0.9199694, 0.0),
-    glam::vec4(-0.1537036, -0.000000002384186, 0.0, 1.0),
-);
-
 /// `Bip001_L_Thigh`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
 const L_THIGH_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
     glam::vec4(-0.9263942, -0.08319063, -0.3672509, 0.0),
@@ -208,38 +143,6 @@ const R_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
     glam::vec4(-0.3602612, 0.123382, 0.9246559, 0.0),
     glam::vec4(-0.1537036, -0.00000001549721, -0.00000001907349, 1.0),
 );
-
-/// 캐릭터가 카메라가 바라보는 방향을 바라보도록 로컬 변환 행렬을 수정합니다.
-fn look_to_camera_direction<Tag: Copy + Component>(
-    offset: f32,
-    latlon: LatLon,
-    skinning_animation: &SkinningAnimation,
-    transform_view: &mut ViewBorrow<&mut (Tag, ToParentTrans)>,
-) {
-    let latitude = latlon.lat.to_f32_const() + 3f32.to_radians();
-
-    // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
-    let angle = 3.0 * latitude / 7.0 * offset;
-    let bone_entity = skinning_animation.lower_spine;
-    let (_, local_transform) = transform_view
-        .get_mut(bone_entity)
-        .expect("invalid entity or invalid entity component");
-    local_transform.0 *= glam::Mat4::from_axis_angle(SPINE_W2L_X_NORMAL_ATTACK_ING, angle);
-
-    let angle = 3.0 * latitude / 7.0 * offset;
-    let bone_entity = skinning_animation.uppper_spine;
-    let (_, local_transform) = transform_view
-        .get_mut(bone_entity)
-        .expect("invalid entity or invalid entity component");
-    local_transform.0 *= glam::Mat4::from_axis_angle(SPINE1_W2L_X_NORMAL_ATTACK_ING, angle);
-
-    let angle = latitude / 7.0 * offset;
-    let bone_entity = skinning_animation.head;
-    let (_, local_transform) = transform_view
-        .get_mut(bone_entity)
-        .expect("invalid entity or invalid entity component");
-    local_transform.0 *= glam::Mat4::from_axis_angle(HEAD_W2L_X_NORMAL_ATTACK_ING, angle);
-}
 
 /// 점프 애니메이션을 적용합니다.
 fn jump_animation<Tag: Copy + Component>(

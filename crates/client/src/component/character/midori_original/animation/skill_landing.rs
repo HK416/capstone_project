@@ -24,7 +24,7 @@ use super::*;
 pub fn animate_character_when_skill_landing<Tag: Copy + Component>(
     motions: &HashMap<String, Motion>,
     skinning_animation: &SkinningAnimation,
-    character_attribute: &CharacterAttributes,
+    character_attributes: &CharacterAttributes,
     action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
     latlon: LatLon,
@@ -37,7 +37,9 @@ pub fn animate_character_when_skill_landing<Tag: Copy + Component>(
         .expect("no such animation data!");
 
     // 애니메이션 키 프레임을 샘플링합니다.
-    let time_point_0 = action_state_timer.0.min(character_attribute.skill_duration);
+    let time_point_0 = action_state_timer
+        .0
+        .min(character_attributes.skill_duration);
     let keyframe = motion.linear_sampling(time_point_0);
 
     // 최상위 엔터티의 로컬 변환 행렬을 갱신합니다.
@@ -74,5 +76,11 @@ pub fn animate_character_when_skill_landing<Tag: Copy + Component>(
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
     let offset = 1.0;
-    look_to_camera_direction(offset, latlon, skinning_animation, transform_view);
+    look_to_camera_direction(
+        offset,
+        latlon,
+        character_attributes,
+        skinning_animation,
+        transform_view,
+    );
 }

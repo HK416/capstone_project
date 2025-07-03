@@ -15,7 +15,7 @@ use mod_network::{
         update_movement_state_timer, update_player_translation, ActionState, ActionStateTimer,
         BulletData, CharacterFlags, CharacterKind, GameInputBits, HealthData, InputStateTimer,
         LatLon, LoginToken, MovementState, MovementStateTimer, MovingDirection, NetworkState,
-        Permission, SkillCostData, StageAttributes, StageKind, Team, UserId, Velocity, ViewState,
+        Permission, SkillCostData, StageAttributes, Team, UserId, Velocity, ViewState,
         ViewStateTimer, MAX_LATITUDE, MIN_LATITUDE,
     },
     protocol::{
@@ -42,18 +42,18 @@ use crate::{
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
         draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree, get_local_transform,
-        get_world_transform, local_transform_query_mut, set_local_transform,
-        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
-        update_character_hierarchy, update_character_resource, update_character_rotation,
-        update_stage_hierarchy, update_stage_resource, update_view_state, update_view_state_timer,
+        get_world_transform, set_local_transform, update_camera_and_skybox_resource,
+        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
+        update_character_resource, update_character_rotation, update_stage_hierarchy,
+        update_stage_resource, update_view_state, update_view_state_timer,
         world_transform_query_mut, AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList,
         BloomPipeline, BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform,
         Child, DirectionLight, EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout,
         InterpolationManager, LightSetResource, LightTransformDataLayout, MaterialKind,
-        MeshRenderer, MoveDirection, OpaqueMap, Player0, Player1, Player2, Player3, Player4,
-        Player5, Player6, Player7, Player8, Player9, PlayerArchetype, Projection, RenderTask,
-        RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, Skybox, SnapshotBuffer,
-        ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
+        MeshRenderer, OpaqueMap, Player0, Player1, Player2, Player3, Player4, Player5, Player6,
+        Player7, Player8, Player9, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
+        ShadowMap, Sibling, SkinnedMeshRenderer, Skybox, SnapshotBuffer, ToParentTrans,
+        TransparentMap, WeaponQuery, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
         CHARACTER_ATTRIBUTES,
     },
     config::{Locale, UserConfig},
@@ -870,7 +870,7 @@ impl InGameRunScene {
 }
 
 impl GameScene for InGameRunScene {
-    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
+    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let size = app.window_size();
         let device = app.render_device();
         self.create_camera(size, device);
@@ -945,12 +945,12 @@ impl GameScene for InGameRunScene {
 
     fn on_cursor_moved(
         &mut self,
-        x: f32,
-        y: f32,
+        _x: f32,
+        _y: f32,
         mut dx: f32,
         mut dy: f32,
-        window: &Window,
-        app: &dyn AppHandle,
+        _window: &Window,
+        _app: &dyn AppHandle,
     ) -> bool {
         if !self.first_mouse_pressed {
             return true;
@@ -1136,9 +1136,19 @@ impl GameScene for InGameRunScene {
                 None => return,
             };
 
+            // 플레이어의 카메라 각도를 설정합니다.
+            let (entity, _) = self.player_entity();
+            let mut query = world
+                .query_one::<&mut LatLon>(entity)
+                .expect("invalid entity!");
+            let latlon = query.get().expect("invalid entity component!");
+            *latlon = self.latlon;
+            drop(query);
+
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
             let flag_view = &world.view::<&CharacterFlags>();
+            let weapon_view = &world.view::<WeaponQuery>();
             let animation_view = &world.view::<AnimationQuery>();
             let collection_view = &world.view::<&BoneCollection>();
             let motion_pool = &self.motion_pool;
@@ -1163,6 +1173,7 @@ impl GameScene for InGameRunScene {
                             animation_view,
                             &collection_view,
                         );
+
                         // 캐릭터 계층 구조를 갱신합니다.
                         update_character_hierarchy(
                             world,
@@ -1170,6 +1181,7 @@ impl GameScene for InGameRunScene {
                             archetype,
                             child_view,
                             sibling_view,
+                            weapon_view,
                         );
                     });
                 }

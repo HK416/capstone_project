@@ -6,12 +6,13 @@ use mod_parallelism::collections::Queue;
 use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 
 use crate::component::{
-    AttributeKind, CameraResource, CharacterBakePipeline, CharacterRenderPipeline, Child,
-    EyeMouthBakePipeline, EyeMouthRenderPipeline, HaloRenderPipeline, LightSetResource,
-    MaterialMap, Mesh, MeshFilter, MeshRenderer, Player0, Player1, Player2, Player3, Player4,
-    Player5, Player6, Player7, Player8, Player9, PlayerArchetype, RenderTask, ShadowMap,
-    ShadowResource, Sibling, SkinnedMeshRenderer, ToParentTrans, TransformDataLayout, TransformMap,
-    WorldTransform, MAX_BONES, SHADOW_FORMAT,
+    set_weapon_position, AttributeKind, CameraResource, CharacterBakePipeline,
+    CharacterRenderPipeline, Child, EyeMouthBakePipeline, EyeMouthRenderPipeline,
+    HaloRenderPipeline, LightSetResource, MaterialMap, Mesh, MeshFilter, MeshRenderer, Player0,
+    Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
+    PlayerArchetype, RenderTask, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
+    ToParentTrans, TransformDataLayout, TransformMap, WeaponQuery, WorldTransform,
+    CHARACTER_ATTRIBUTES, MAX_BONES, SHADOW_FORMAT,
 };
 
 /// 캐릭터 엔터티의 계층 구조를 갱신합니다.
@@ -21,139 +22,267 @@ pub fn update_character_hierarchy(
     archetype: PlayerArchetype,
     child_view: &ViewBorrow<'_, &Child>,
     sibling_view: &ViewBorrow<'_, &Sibling>,
+    weapon_view: &ViewBorrow<'_, WeaponQuery>,
 ) {
+    let (&character_kind, &action_state, skinning_animation) = weapon_view
+        .get(entity)
+        .expect("invalid entity or invalid entity component!");
+    let i = character_kind as usize;
+    let character_attributes = CHARACTER_ATTRIBUTES[i];
+
     let parent = glam::Mat4::IDENTITY;
     match archetype {
         PlayerArchetype::Player0 => {
             type Tag = Player0;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player1 => {
             type Tag = Player1;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player2 => {
             type Tag = Player2;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player3 => {
             type Tag = Player3;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player4 => {
             type Tag = Player4;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player5 => {
             type Tag = Player5;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player6 => {
             type Tag = Player6;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player7 => {
             type Tag = Player7;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player8 => {
             type Tag = Player8;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
         PlayerArchetype::Player9 => {
             type Tag = Player9;
-            type Q<'a> = (&'a (Tag, ToParentTrans), &'a mut (Tag, WorldTransform));
-            let mut transform_view = world.view::<Q>();
+            type L<'a> = &'a (Tag, ToParentTrans);
+            type W<'a> = &'a mut (Tag, WorldTransform);
+            let mut local_transform_view = world.view::<L>();
+            let mut world_transform_view = world.view::<W>();
             update_entity_hierarchy_with_archetype(
                 entity,
                 parent,
                 child_view,
                 sibling_view,
-                &mut transform_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
+            );
+            set_weapon_position(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                &mut local_transform_view,
+                &mut world_transform_view,
             );
         }
     }
 }
 
 /// 엔터티 계층 구조를 갱신합니다.
-fn update_entity_hierarchy_with_archetype<Tag: Copy + Component>(
+pub fn update_entity_hierarchy_with_archetype<Tag: Copy + Component>(
     entity: Entity,
     parent: glam::Mat4,
     child_view: &ViewBorrow<'_, &Child>,
     sibling_view: &ViewBorrow<'_, &Sibling>,
-    transform_view: &mut ViewBorrow<'_, (&(Tag, ToParentTrans), &mut (Tag, WorldTransform))>,
+    local_transform_view: &mut ViewBorrow<'_, &(Tag, ToParentTrans)>,
+    world_transform_view: &mut ViewBorrow<'_, &mut (Tag, WorldTransform)>,
 ) {
     // 형제 엔터티가 존재하는 경우 형제 엔터티 계층 구조를 갱신합니다.
     if let Some(sibling) = sibling_view.get(entity).cloned() {
@@ -163,12 +292,16 @@ fn update_entity_hierarchy_with_archetype<Tag: Copy + Component>(
             parent,
             child_view,
             sibling_view,
-            transform_view,
+            local_transform_view,
+            world_transform_view,
         );
     }
 
     // 현재 엔터티의 월드 변환 행렬을 갱신합니다.
-    let ((_, local_transform), (_, world_transform)) = transform_view
+    let (_, local_transform) = local_transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component!");
+    let (_, world_transform) = world_transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component!");
     let transform = parent * local_transform.0;
@@ -183,7 +316,8 @@ fn update_entity_hierarchy_with_archetype<Tag: Copy + Component>(
             parent,
             child_view,
             sibling_view,
-            transform_view,
+            local_transform_view,
+            world_transform_view,
         );
     }
 }

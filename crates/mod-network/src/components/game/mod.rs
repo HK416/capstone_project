@@ -29,6 +29,6 @@ pub use self::{
 pub const MAX_CAMERA_FOV_Y: f32 = 90f32.to_radians();
 
 /// 최소 위도 (단위: 라디안)
-pub const MIN_LATITUDE: f32 = -40f32.to_radians();
+pub const MIN_LATITUDE: f32 = -30f32.to_radians();
 /// 최대 위도 (단위: 라디안)
-pub const MAX_LATITUDE: f32 = 40f32.to_radians();
+pub const MAX_LATITUDE: f32 = 30f32.to_radians();

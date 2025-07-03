@@ -24,7 +24,7 @@ use super::*;
 pub fn animate_character_when_aim_landing<Tag: Copy + Component>(
     motions: &HashMap<String, Motion>,
     skinning_animation: &SkinningAnimation,
-    _character_attribute: &CharacterAttributes,
+    character_attributes: &CharacterAttributes,
     _action_state_timer: ActionStateTimer,
     _movement_state_timer: MovementStateTimer,
     latlon: LatLon,
@@ -76,5 +76,11 @@ pub fn animate_character_when_aim_landing<Tag: Copy + Component>(
 
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
     let offset = 1.0;
-    look_to_camera_direction(offset, latlon, skinning_animation, transform_view);
+    look_to_camera_direction(
+        offset,
+        latlon,
+        character_attributes,
+        skinning_animation,
+        transform_view,
+    );
 }

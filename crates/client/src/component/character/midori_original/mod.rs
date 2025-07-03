@@ -10,6 +10,8 @@ use mod_network::components::CharacterAttributes;
 
 pub use self::{animation::*, camera::*, spawn::*};
 
+use super::look_to_camera_direction;
+
 /// 캐릭터 모델의 이름입니다.
 pub const MODEL_NAME: &'static str = "Midori_Original";
 

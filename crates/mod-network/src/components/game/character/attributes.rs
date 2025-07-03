@@ -4,25 +4,46 @@
 use mod_physics::object3d::Capsule;
 use serde::{Deserialize, Serialize};
 
-use crate::components::Float3;
+use crate::components::{Float3, Float4x4};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WeaponAttributes {
+    pub bip001: Float4x4,
+    pub bip001_pelvis: Float4x4,
+    pub bip001_spine: Float4x4,
+    pub bip001_spine1: Float4x4,
+    pub bip001_clavicle: Float4x4,
+    pub bip001_upperarm: Float4x4,
+    pub bip001_forearm: Float4x4,
+    pub bip001_hand: Float4x4,
+    pub hand_to_weapon_offset: Float4x4,
+    pub bip001_fire: Float4x4,
+}
 
 /// 캐릭터 속성 데이터를 저장합니다.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CharacterAttributes {
     /// 캐릭터 이동 속도
     pub speed: f32,
-    /// 위도가 최소(-60도)이고, `ActionState::Aim`일 때 총구의 상대 위치
-    pub muzzle_position_min: Float3,
-    /// 위도가 최소(-60도)이고, `ActionState::Aim`일 때 총구가 향하는 방향
-    pub muzzle_direction_min: Float3,
-    /// 위도가 0도이고, `ActionState::Aim`일 때 총구의 상대 위치
-    pub muzzle_position_mid: Float3,
-    /// 위도가 0도이고, `ActionState::Aim`일 때 총구가 향하는 방향
-    pub muzzle_direction_mid: Float3,
-    /// 위도가 최대(60도)이고, `ActionState::Aim`일 때 총구의 상대 위치
-    pub muzzle_position_max: Float3,
-    /// 위도가 최대(60도)이고, `ActionState::Aim`일 때 총구가 향하는 방향
-    pub muzzle_direction_max: Float3,
+
+    /// 왼쪽 무기 속성 데이터
+    pub left_weapon: Option<WeaponAttributes>,
+    /// 오른쪽 무기 속성 데이터
+    pub right_weapon: Option<WeaponAttributes>,
+
+    /// 일반 공격 상태 일 때 `Head` 뼈 노드의 축
+    pub attack_head_axis: Float3,
+    /// 일반 공격 상태 일 때 `Spine` 뼈 노드의 축
+    pub attack_spine_axis: Float3,
+    /// 일반 공격 상태 일 때 `Spine1` 뼈 노드의 축
+    pub attack_spine1_axis: Float3,
+
+    /// 스킬 시전 상태 일 때 `Head` 뼈 노드의 축
+    pub skill_head_axis: Float3,
+    /// 스킬 시전 상태 일 때 `Spine` 뼈 노드의 축
+    pub skill_spine_axis: Float3,
+    /// 스킬 시전 상태 일 때 `Spine1` 뼈 노드의 축
+    pub skill_spine1_axis: Float3,
 
     /// `ActionState::Idle` 애니메이션 시간 (단위: ms)
     pub normal_idle_duration: u16,
@@ -82,48 +103,4 @@ pub struct CharacterAttributes {
 
     /// 캐릭터 충돌체
     pub collider: Capsule,
-}
-
-impl CharacterAttributes {
-    /// 라그랑주 보간법을 사용하여 총구의 위치를 계산합니다.
-    ///
-    /// # Note
-    /// t의 값은 0부터 1사이의 값 입니다.
-    ///
-    pub fn get_muzzle_position(&self, t: f32) -> (f32, f32, f32) {
-        let l1 = ((t - 0.5) * (t - 1.0)) / 0.5;
-        let l2 = (t * (t - 1.0)) / -0.25;
-        let l3 = (t * (t - 0.5)) / 0.5;
-
-        let (x1, y1, z1): (f32, f32, f32) = self.muzzle_position_min.into();
-        let (x2, y2, z2): (f32, f32, f32) = self.muzzle_position_mid.into();
-        let (x3, y3, z3): (f32, f32, f32) = self.muzzle_position_max.into();
-
-        let x = x1 * l1 + x2 * l2 + x3 * l3;
-        let y = y1 * l1 + y2 * l2 + y3 * l3;
-        let z = z1 * l1 + z2 * l2 + z3 * l3;
-
-        (x, y, z)
-    }
-
-    /// 라그랑주 보간법을 사용하여 총구의 방향을 계산합니다.
-    ///
-    /// # Note
-    /// t의 값은 0부터 1사이의 값 입니다.
-    ///
-    pub fn get_muzzle_direction(&self, t: f32) -> (f32, f32, f32) {
-        let l1 = ((t - 0.5) * (t - 1.0)) / 0.5;
-        let l2 = (t * (t - 1.0)) / -0.25;
-        let l3 = (t * (t - 0.5)) / 0.5;
-
-        let (x1, y1, z1): (f32, f32, f32) = self.muzzle_direction_min.into();
-        let (x2, y2, z2): (f32, f32, f32) = self.muzzle_direction_mid.into();
-        let (x3, y3, z3): (f32, f32, f32) = self.muzzle_direction_max.into();
-
-        let x = x1 * l1 + x2 * l2 + x3 * l3;
-        let y = y1 * l1 + y2 * l2 + y3 * l3;
-        let z = z1 * l1 + z2 * l2 + z3 * l3;
-
-        (x, y, z)
-    }
 }

@@ -19,8 +19,9 @@ use crate::{
         MaterialData, MaterialResource, MaterialUniform, MeshResource, Parent, Sibling,
         SkinnedMeshResource, SkinningAnimation, ToParentTrans, TransformUniform, WorldTransform,
         MAX_BONES, MODEL_BONE_HEAD, MODEL_BONE_L_CALF, MODEL_BONE_L_FOOT, MODEL_BONE_L_THIGH,
-        MODEL_BONE_ROOT, MODEL_BONE_R_CALF, MODEL_BONE_R_FOOT, MODEL_BONE_R_HAND,
-        MODEL_BONE_R_THIGH, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1,
+        MODEL_BONE_PELVIS, MODEL_BONE_ROOT, MODEL_BONE_R_CALF, MODEL_BONE_R_CLAVICLE,
+        MODEL_BONE_R_FOOT, MODEL_BONE_R_FOREARM, MODEL_BONE_R_HAND, MODEL_BONE_R_THIGH,
+        MODEL_BONE_R_UPPERARM, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1,
     },
 };
 
@@ -162,25 +163,40 @@ fn spawn_character_model<Tag: Copy + Component>(
             .get(MODEL_BONE_ROOT)
             .cloned()
             .expect("no such entity"),
-        head: entity_list
-            .get(MODEL_BONE_HEAD)
+        bip001_pelvis: entity_list
+            .get(MODEL_BONE_PELVIS)
             .cloned()
             .expect("no such entity"),
-        muzzle: entity_list.get("fire_01").cloned().expect("no such entity"),
-        weapon: entity_list
-            .get(MODEL_BONE_WEAPON)
-            .cloned()
-            .expect("no such entity"),
-        lower_spine: entity_list
+        bip001_spine: entity_list
             .get(MODEL_BONE_SPINE)
             .cloned()
             .expect("no such entity"),
-        uppper_spine: entity_list
+        bip001_spine1: entity_list
             .get(MODEL_BONE_SPINE_1)
             .cloned()
             .expect("no such entity"),
-        main_hand: entity_list
+        bip001_r_clavicle: entity_list
+            .get(MODEL_BONE_R_CLAVICLE)
+            .cloned()
+            .expect("no such entity"),
+        bip001_r_upperarm: entity_list
+            .get(MODEL_BONE_R_UPPERARM)
+            .cloned()
+            .expect("no such entity"),
+        bip001_r_forearm: entity_list
+            .get(MODEL_BONE_R_FOREARM)
+            .cloned()
+            .expect("no such entity"),
+        bip001_r_hand: entity_list
             .get(MODEL_BONE_R_HAND)
+            .cloned()
+            .expect("no such entity"),
+        bip001_head: entity_list
+            .get(MODEL_BONE_HEAD)
+            .cloned()
+            .expect("no such entity"),
+        bip001_r_weapon: entity_list
+            .get(MODEL_BONE_WEAPON)
             .cloned()
             .expect("no such entity"),
         left_thigh: entity_list
@@ -209,6 +225,7 @@ fn spawn_character_model<Tag: Copy + Component>(
             .expect("no such entity"),
         mesh_entity_list,
         mixing_bone_list,
+        ..Default::default()
     };
 
     (skinning_animation, entity, batch_commands)

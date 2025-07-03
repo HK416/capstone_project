@@ -38,7 +38,8 @@ use crate::{
         GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
         MaterialKind, MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask,
         RevealRenderTarget, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer, Skybox,
-        SkyboxDataLayout, ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        SkyboxDataLayout, ToParentTrans, TransparentMap, WeaponQuery, WorldTransform,
+        CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -983,6 +984,7 @@ impl GameScene for InGameEnterScene {
 
         // 캐릭터 애니메이션을 재생합니다.
         let (entity, archetype) = self.player_entity();
+        let weapon_view = world.view::<WeaponQuery>();
         let animation_view = world.view::<AnimationQuery>();
         let collection_view = world.view::<&BoneCollection>();
         animate_character(
@@ -995,7 +997,14 @@ impl GameScene for InGameEnterScene {
         );
 
         // 캐릭터 계층 구조를 갱신합니다.
-        update_character_hierarchy(world, entity, archetype, &child_view, &sibling_view);
+        update_character_hierarchy(
+            world,
+            entity,
+            archetype,
+            &child_view,
+            &sibling_view,
+            &weapon_view,
+        );
 
         let draw_tasks = &Arc::new(Queue::new());
         rayon::in_place_scope(move |scope| {

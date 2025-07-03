@@ -18,10 +18,33 @@ use super::*;
 pub const MODEL_BONE_ROOT: &'static str = "Bip001";
 /// 모든 캐릭터 모델의 머리 뼈 노드 이름입니다.
 pub const MODEL_BONE_HEAD: &'static str = "Bip001_Head";
+/// 모든 캐릭터 모델의 골반 뼈 노드 이름입니다.
+pub const MODEL_BONE_PELVIS: &'static str = "Bip001_Pelvis";
 /// 모든 캐릭터 모델의 아래 척추 뼈 노드 이름입니다.
 pub const MODEL_BONE_SPINE: &'static str = "Bip001_Spine";
 /// 모든 캐릭터 모델의 윗 척추 뼈 노드 이름입니다.
 pub const MODEL_BONE_SPINE_1: &'static str = "Bip001_Spine1";
+
+// /// 모든 캐릭터 모델의 왼쪽 쇄골 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_CLAVICLE: &'static str = "Bip001_L_Clavicle";
+// /// 모든 캐릭터 모델의 왼쪽 윗팔 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_UPPERARM: &'static str = "Bip001_L_UpperArm";
+// /// 모든 캐릭터 모델의 왼쪽 아래팔 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_FOREARM: &'static str = "Bip001_L_Forearm";
+// /// 모든 캐릭터 모델의 왼쪽 손 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_HAND: &'static str = "Bip001_L_Hand";
+
+/// 모든 캐릭터 모델의 오른쪽 쇄골 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_CLAVICLE: &'static str = "Bip001_R_Clavicle";
+/// 모든 캐릭터 모델의 오른쪽 윗팔 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_UPPERARM: &'static str = "Bip001_R_UpperArm";
+/// 모든 캐릭터 모델의 오른쪽 아래팔 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_FOREARM: &'static str = "Bip001_R_Forearm";
+/// 모든 캐릭터 모델의 오른쪽 손 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_HAND: &'static str = "Bip001_R_Hand";
+/// 모든 캐릭터 모델의 무기 뼈 노드 이름입니다.
+pub const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon";
+
 /// 모든 캐릭터 모델의 왼쪽 허벅지 안쪽 뼈 노드 이름입니다.
 pub const MODEL_BONE_L_THIGH: &'static str = "Bip001_L_Thigh";
 /// 모든 캐릭터 모델의 오른쪽 허벅지 안쪽 뼈 노드 이름입니다.
@@ -34,10 +57,6 @@ pub const MODEL_BONE_R_CALF: &'static str = "Bip001_R_Calf";
 pub const MODEL_BONE_L_FOOT: &'static str = "Bip001_L_Foot";
 /// 모든 캐릭터 모델의 오른쪽 발 뼈 노드 이름입니다.
 pub const MODEL_BONE_R_FOOT: &'static str = "Bip001_R_Foot";
-/// 모든 캐릭터의 오른쪽 손 뼈 노드 이름입니다.
-pub const MODEL_BONE_R_HAND: &'static str = "Bip001_R_Hand";
-/// 모든 캐릭터 모델의 무기 뼈 노드 이름입니다.
-pub const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon";
 
 /// 모든 캐릭터 모델의 Idle 애니메이션 접미사입니다.
 pub const IDLE_ANIMATION_SUFFIX: &'static str = "_Normal_Idle";
@@ -78,12 +97,20 @@ pub const FORMATION_PICKUP: &'static str = "_Formation_Pickup";
 pub struct SkinningAnimation {
     /// NOTE: `BoneCollection`의 `root`와 다름!
     pub root: Entity,
-    pub head: Entity,
-    pub muzzle: Entity,
-    pub weapon: Entity,
-    pub lower_spine: Entity,
-    pub uppper_spine: Entity,
-    pub main_hand: Entity,
+    pub bip001_head: Entity,
+    pub bip001_pelvis: Entity,
+    pub bip001_spine: Entity,
+    pub bip001_spine1: Entity,
+    pub bip001_l_clavicle: Entity,
+    pub bip001_l_upperarm: Entity,
+    pub bip001_l_forearm: Entity,
+    pub bip001_l_hand: Entity,
+    pub bip001_l_weapon: Entity,
+    pub bip001_r_clavicle: Entity,
+    pub bip001_r_upperarm: Entity,
+    pub bip001_r_forearm: Entity,
+    pub bip001_r_hand: Entity,
+    pub bip001_r_weapon: Entity,
     pub left_thigh: Entity,
     pub right_thigh: Entity,
     pub left_calf: Entity,
@@ -98,12 +125,20 @@ impl Default for SkinningAnimation {
     fn default() -> Self {
         Self {
             root: Entity::DANGLING,
-            head: Entity::DANGLING,
-            muzzle: Entity::DANGLING,
-            weapon: Entity::DANGLING,
-            lower_spine: Entity::DANGLING,
-            uppper_spine: Entity::DANGLING,
-            main_hand: Entity::DANGLING,
+            bip001_pelvis: Entity::DANGLING,
+            bip001_head: Entity::DANGLING,
+            bip001_spine: Entity::DANGLING,
+            bip001_spine1: Entity::DANGLING,
+            bip001_l_clavicle: Entity::DANGLING,
+            bip001_l_upperarm: Entity::DANGLING,
+            bip001_l_forearm: Entity::DANGLING,
+            bip001_l_hand: Entity::DANGLING,
+            bip001_l_weapon: Entity::DANGLING,
+            bip001_r_clavicle: Entity::DANGLING,
+            bip001_r_upperarm: Entity::DANGLING,
+            bip001_r_forearm: Entity::DANGLING,
+            bip001_r_hand: Entity::DANGLING,
+            bip001_r_weapon: Entity::DANGLING,
             left_thigh: Entity::DANGLING,
             right_thigh: Entity::DANGLING,
             left_foot: Entity::DANGLING,
@@ -124,6 +159,8 @@ pub struct BoneCollection {
     pub root: Entity,
     pub bones: Vec<Entity>,
 }
+
+pub type WeaponQuery<'a> = (&'a CharacterKind, &'a ActionState, &'a SkinningAnimation);
 
 pub type AnimationQuery<'a> = (
     &'a CharacterKind,
