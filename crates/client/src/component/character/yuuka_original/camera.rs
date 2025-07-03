@@ -208,24 +208,29 @@ fn attack_wave_camera_effect(
     rel_pos: glam::Vec3A,
     fov_y: f32,
 ) {
-    const TIME_POINT_0: u16 = 90;
+    const TIME_POINT_0: u16 = 90; // fire
     const TIME_POINT_1: u16 = 140;
-    const TIME_POINT_2: u16 = 180;
-    const TIME_POINT_3: u16 = 190;
+    static_assertions::const_assert_eq!(TIME_POINT_1 - TIME_POINT_0, WAVE_DURATION_0);
+    const TIME_POINT_2: u16 = 180; // fire
+    const TIME_POINT_3: u16 = 230;
+    static_assertions::const_assert_eq!(TIME_POINT_3 - TIME_POINT_2, WAVE_DURATION_0);
     const TIME_POINT_4: u16 = 280;
-    const TIME_POINT_5: u16 = 350;
-    const TIME_POINT_6: u16 = 300;
-    const TIME_POINT_7: u16 = 400;
+    static_assertions::const_assert_eq!(TIME_POINT_4 - TIME_POINT_3, WAVE_DURATION_0);
+    const TIME_POINT_5: u16 = 300; // fire
+    const TIME_POINT_6: u16 = 375;
+    static_assertions::const_assert_eq!(TIME_POINT_6 - TIME_POINT_5, WAVE_DURATION_1);
+    const TIME_POINT_7: u16 = 450;
+    static_assertions::const_assert_eq!(TIME_POINT_7 - TIME_POINT_6, WAVE_DURATION_1);
     const WAVE_DURATION_0: u16 = 50;
-    const WAVE_DURATION_1: u16 = 100;
-    const WAVE_OFFSET: f32 = 7f32.to_radians();
+    const WAVE_DURATION_1: u16 = 75;
+    const WAVE_OFFSET: f32 = 1f32.to_radians();
 
     *camera_rel_pos = rel_pos;
     if (TIME_POINT_0..TIME_POINT_1).contains(&action_state_timer.0) {
         let t = (action_state_timer.0 - TIME_POINT_0) as f32 / WAVE_DURATION_0 as f32;
         let s = t * t / (t * t + (1.0 - t) * (1.0 - t));
         *camera_fov_y = fov_y + WAVE_OFFSET * s;
-    } else if (TIME_POINT_1..=TIME_POINT_2).contains(&action_state_timer.0) {
+    } else if (TIME_POINT_1..TIME_POINT_2).contains(&action_state_timer.0) {
         let t = (action_state_timer.0 - TIME_POINT_1) as f32 / WAVE_DURATION_0 as f32;
         let s = 1.0 - t * t / (t * t + (1.0 - t) * (1.0 - t));
         *camera_fov_y = fov_y + WAVE_OFFSET * s;
@@ -235,15 +240,15 @@ fn attack_wave_camera_effect(
         *camera_fov_y = fov_y + WAVE_OFFSET * s;
     } else if (TIME_POINT_3..TIME_POINT_4).contains(&action_state_timer.0) {
         let t = (action_state_timer.0 - TIME_POINT_3) as f32 / WAVE_DURATION_0 as f32;
-        let s = 1.0 - t * t / (t * t * (1.0 - t) * (1.0 - t));
+        let s = 1.0 - t * t / (t * t + (1.0 - t) * (1.0 - t));
         *camera_fov_y = fov_y + WAVE_OFFSET * s;
     } else if (TIME_POINT_5..TIME_POINT_6).contains(&action_state_timer.0) {
         let t = (action_state_timer.0 - TIME_POINT_5) as f32 / WAVE_DURATION_1 as f32;
-        let s = t * t / (t * t * (1.0 - t) * (1.0 - t));
+        let s = t * t / (t * t + (1.0 - t) * (1.0 - t));
         *camera_fov_y = fov_y + WAVE_OFFSET * s;
     } else if (TIME_POINT_6..TIME_POINT_7).contains(&action_state_timer.0) {
         let t = (action_state_timer.0 - TIME_POINT_6) as f32 / WAVE_DURATION_1 as f32;
-        let s = 1.0 - t * t / (t * t * (1.0 - t) * (1.0 - t));
+        let s = 1.0 - t * t / (t * t + (1.0 - t) * (1.0 - t));
         *camera_fov_y = fov_y + WAVE_OFFSET * s;
     } else {
         *camera_fov_y = fov_y;

@@ -74,7 +74,7 @@ fn update_rotation_when_to_camera(
     latlon: LatLon,
 ) -> glam::Vec3A {
     // 카메라 방향을 계산합니다.
-    let angle = latlon.lon.to_f32_const();
+    let angle = latlon.lon;
     let matrix = glam::Mat4::from_rotation_y(angle);
     let cam_look = matrix.transform_vector3a(glam::Vec3A::Z);
 
@@ -84,7 +84,7 @@ fn update_rotation_when_to_camera(
         cam_look
     } else {
         // 보간된 방향을 계산합니다.
-        look.lerp(cam_look, 0.1).normalize_or(cam_look)
+        look.lerp(cam_look, 0.2).normalize_or(cam_look)
     }
 }
 
@@ -100,7 +100,7 @@ fn update_rotation_when_to_direction(
         direction.0
     } else {
         // 보간된 방향을 계산합니다.
-        look.lerp(direction.0, 0.1).normalize_or(direction.0)
+        look.lerp(direction.0, 0.2).normalize_or(direction.0)
     }
 }
 

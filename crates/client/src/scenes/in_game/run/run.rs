@@ -113,8 +113,8 @@ pub struct InGameRunScene {
     camera_fov_y: f32,
     /// 카메라 상대 위치
     camera_rel_position: glam::Vec3A,
-    /// 카메라 방향
-    latlon: LatLon,
+    /// 카메라 종횡비
+    camera_aspect_ratio: f32,
 
     /// 다른 플레이어 데이터를 관리합니다.
     interpolation: InterpolationManager,
@@ -222,7 +222,7 @@ impl InGameRunScene {
             camera: Entity::DANGLING,
             camera_fov_y: 45f32.to_radians(),
             camera_rel_position: glam::Vec3A::ZERO,
-            latlon: LatLon::default(),
+            camera_aspect_ratio: 1.0,
             interpolation: InterpolationManager::new(),
             players,
             stage: Some(stage),
@@ -407,11 +407,16 @@ impl InGameRunScene {
             None => return,
         };
 
+        // 플레이어 카메라 방향을 가져옵니다.
+        let &latlon = world
+            .query_one_mut::<&LatLon>(entity)
+            .expect("invalid entity or invalid entity component!");
+
         type States<'a> = (&'a ActionState, &'a MovementState);
         let state_view = world.view::<States>();
 
         // 플레이어 움직임 방향을 갱신합니다
-        self.direction.update(self.input_bits, self.latlon);
+        self.direction.update(self.input_bits, latlon);
 
         // 캐릭터 상태 데이터를 가져옵니다.
         let (&action_state, &movement_state) = state_view
@@ -425,7 +430,7 @@ impl InGameRunScene {
             action_state,
             movement_state,
             self.direction,
-            self.latlon,
+            latlon,
         );
     }
 
@@ -608,7 +613,7 @@ impl InGameRunScene {
     }
 
     /// 카메라 엔터티를 생성합니다.
-    fn create_camera(&mut self, size: WindowSize, device: &wgpu::Device) {
+    fn create_camera(&mut self, device: &wgpu::Device) {
         // 플레이어 캐릭터의 종류를 가져옵니다.
         let (entity, _archetype) = self.player_entity();
         let world = self.world.as_mut().expect("the world must be exists!");
@@ -624,9 +629,8 @@ impl InGameRunScene {
         // 카메라 컴포넌트 데이터를 생성합니다.
         let local_transform = ToParentTrans::default();
         let world_transform = WorldTransform::default();
-        let (width, height): (f32, f32) = size.size().into();
-        let aspect_ratio = width / height;
-        let projection = Projection::perspective(self.camera_fov_y, aspect_ratio, 0.1, 500.0);
+        let projection =
+            Projection::perspective(self.camera_fov_y, self.camera_aspect_ratio, 0.1, 200.0);
         let proj_view = projection.0 * world_transform.to_view_trans();
         let frustum = Frustum::from_mat4(proj_view);
 
@@ -661,11 +665,18 @@ impl InGameRunScene {
             &'a ActionStateTimer,
             &'a ViewState,
             &'a ViewStateTimer,
+            &'a LatLon,
         );
-        let (&character_kind, &action_state, &action_state_timer, &view_state, &view_state_timer) =
-            world
-                .query_one_mut::<Q>(entity)
-                .expect("invalid entity or invalid entity component!");
+        let (
+            &character_kind,
+            &action_state,
+            &action_state_timer,
+            &view_state,
+            &view_state_timer,
+            &latlon,
+        ) = world
+            .query_one_mut::<Q>(entity)
+            .expect("invalid entity or invalid entity component!");
 
         // 카메라 파라미터를 갱신합니다.
         update_camera_param(
@@ -681,24 +692,26 @@ impl InGameRunScene {
         // 카메라 변환 행렬을 생성합니다.
         let distance = self.camera_rel_position * glam::Vec3A::NEG_Z;
         let mut transform = glam::Mat4::from_translation(distance.into());
-        let rotation = glam::Mat4::from_rotation_y(self.latlon.lon.to_f32());
+        let rotation = glam::Mat4::from_rotation_y(latlon.lon);
         transform = rotation * transform;
 
         let forward = glam::Vec3A::from_vec4(transform.z_axis);
         let forward = forward.normalize_or(glam::Vec3A::Z);
         let axis = glam::Vec3A::Y.cross(forward);
-        let rotation = glam::Mat4::from_axis_angle(axis.into(), self.latlon.lat.to_f32());
+        let rotation = glam::Mat4::from_axis_angle(axis.into(), latlon.lat);
         transform = rotation * transform;
 
         let offset = self.camera_rel_position.with_z(0.0);
         let offset = glam::Mat4::from_translation(offset.into());
         transform = transform * offset;
 
-        // 카메라의 로컬 변환 행렬을 설정합니다.
-        let (_, local_transform) = world
-            .query_one_mut::<&mut (Camera, ToParentTrans)>(self.camera)
+        // 카메라의 로컬 변환 행렬, 투영 변환 행렬을 설정합니다.
+        let ((_, local_transform), projection) = world
+            .query_one_mut::<(&mut (Camera, ToParentTrans), &mut Projection)>(self.camera)
             .expect("invalid entity or invalid entity component!");
         local_transform.0 = transform;
+        *projection =
+            Projection::perspective(self.camera_fov_y, self.camera_aspect_ratio, 0.1, 200.0);
     }
 
     /// 카메라 변환 행렬을 갱신합니다.
@@ -873,7 +886,10 @@ impl GameScene for InGameRunScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let size = app.window_size();
         let device = app.render_device();
-        self.create_camera(size, device);
+
+        let (width, height): (f32, f32) = size.size().into();
+        self.camera_aspect_ratio = width / height;
+        self.create_camera(device);
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -886,6 +902,9 @@ impl GameScene for InGameRunScene {
     fn on_window_resized(&mut self, _window: &Window, app: &dyn AppHandle) {
         if self.world.is_some() {
             let size = app.window_size();
+            let (width, height): (f32, f32) = size.size().into();
+            self.camera_aspect_ratio = width / height;
+
             let device = app.render_device();
             self.create_weighted_blend_oit_resource(size, device);
             self.create_bloom_resource(size, device);
@@ -956,26 +975,36 @@ impl GameScene for InGameRunScene {
             return true;
         }
 
+        // 플레이어 카메라 방향을 가져옵니다.
+        let (entity, _) = self.player_entity();
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return true,
+        };
+        let latlon = world
+            .query_one_mut::<&mut LatLon>(entity)
+            .expect("invalid entity or invalid entity component!");
+
         // FOV-y 값에 따른 카메라 이동 속도 오프셋
         const MAX_CAM_FOV_Y: f32 = 90f32.to_radians();
         let s = self.camera_fov_y.min(MAX_CAM_FOV_Y) / MAX_CAM_FOV_Y;
         let offset = 0.05 + 0.95 * s;
 
         dx *= match self.flip_horizontal {
-            true => -self.control_sensitivity * offset,
-            false => self.control_sensitivity * offset,
+            true => -self.control_sensitivity,
+            false => self.control_sensitivity,
         };
 
         dy *= match self.flip_vertical {
-            true => -self.control_sensitivity * offset,
-            false => self.control_sensitivity * offset,
+            true => -self.control_sensitivity,
+            false => self.control_sensitivity,
         };
 
-        let lat = self.latlon.lat.to_f32_const() + dy.to_radians();
-        self.latlon.lat = f16::from_f32_const(lat.clamp(MIN_LATITUDE, MAX_LATITUDE));
+        let lat = latlon.lat + dy.to_radians() * offset;
+        latlon.lat = lat.clamp(MIN_LATITUDE, MAX_LATITUDE);
 
-        let lon = self.latlon.lon.to_f32_const() + dx.to_radians();
-        self.latlon.lon = f16::from_f32_const(lon % TAU);
+        let lon = latlon.lon + dx.to_radians() * offset;
+        latlon.lon = lon % TAU;
 
         true
     }
@@ -1101,6 +1130,11 @@ impl GameScene for InGameRunScene {
         if self.elapsed_time_ms >= TICK {
             self.elapsed_time_ms = 0;
 
+            // 플레이어 카메라 각도를 가져옵니다.
+            let &latlon = world
+                .query_one_mut::<&LatLon>(entity)
+                .expect("invalid entity or invalid entity component!");
+
             // 플레이어 위치를 가져옵니다.
             let translation = world_transform_query_mut(world, entity, archetype).get_translation();
 
@@ -1121,7 +1155,7 @@ impl GameScene for InGameRunScene {
                     elapsed_time_ms,
                     iter,
                     translation,
-                    self.latlon,
+                    latlon,
                 );
                 socket.push_packet(packet.as_raw());
             }
@@ -1135,15 +1169,6 @@ impl GameScene for InGameRunScene {
                 Some(world) => world,
                 None => return,
             };
-
-            // 플레이어의 카메라 각도를 설정합니다.
-            let (entity, _) = self.player_entity();
-            let mut query = world
-                .query_one::<&mut LatLon>(entity)
-                .expect("invalid entity!");
-            let latlon = query.get().expect("invalid entity component!");
-            *latlon = self.latlon;
-            drop(query);
 
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();

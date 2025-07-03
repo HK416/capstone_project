@@ -21,7 +21,7 @@ impl MovingDirection {
 
     /// 이동 방향을 갱신합니다.
     pub fn update(&mut self, input_bits: GameInputBits, latlon: LatLon) {
-        let m = glam::Mat4::from_rotation_y(latlon.lon.to_f32_const());
+        let m = glam::Mat4::from_rotation_y(latlon.lon);
         let right = glam::Vec3A::from_vec4(m.x_axis).normalize_or(glam::Vec3A::X);
         let look = glam::Vec3A::from_vec4(m.z_axis).normalize_or(glam::Vec3A::Z);
 

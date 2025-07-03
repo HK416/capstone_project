@@ -41,7 +41,7 @@ fn look_to_camera_direction<Tag: Copy + Component>(
     skinning_animation: &SkinningAnimation,
     transform_view: &mut ViewBorrow<&mut (Tag, ToParentTrans)>,
 ) {
-    let latitude = latlon.lat.to_f32_const() + 3f32.to_radians();
+    let latitude = latlon.lat + 3f32.to_radians();
 
     // Head
     let angle = latitude / 7.0 * offset;
