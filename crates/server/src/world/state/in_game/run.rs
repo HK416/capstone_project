@@ -3,9 +3,10 @@ use std::sync::Arc;
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionState, BulletKind, DamageLogData, InGamePlayerPullData, LatLon, MAX_IN_GAME_PLAYERS,
-        NetworkState, ObjectId, Permission, StageKind, Team, UserId, update_action_state_timer,
-        update_movement_state_timer, update_player_translation,
+        ActionState, BulletKind, DamageLogData, GameInputBits, InGamePlayerPullData, LatLon,
+        MAX_IN_GAME_PLAYERS, NetworkState, ObjectId, Permission, StageKind, Team, UserId,
+        update_action_state, update_action_state_timer, update_movement_state,
+        update_movement_state_timer, update_player_rotation, update_player_translation,
     },
     protocol::{InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, Packet, StateHistory},
 };
@@ -31,7 +32,7 @@ pub const SKILL_COST_TICK: u16 = 100;
 /// 게임을 진행합니다.
 pub struct GameWorldInGameRunState {
     /// 현재 시대
-    epoch: u64,
+    epoch: u32,
     /// 게임 스테이지 종류
     stage_kind: StageKind,
     /// 남은 게임 진행 시간
@@ -191,12 +192,23 @@ impl GameWorldInGameRunState {
         world: &mut GameWorld,
         session: Arc<Session>,
         uid: UserId,
-        epoch: u64,
+        epoch: u32,
         elapsed_time_ms: u16,
-        translation: glam::Vec3A,
-        latlon: LatLon,
+        input_bits: GameInputBits,
         histories: Vec<StateHistory>,
     ) {
+        // 플레이어 데이터를 가져옵니다.
+        let data = match world.players.get_mut(&uid) {
+            Some(data) => data,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        data.input_bits = input_bits;
     }
 
     /// [`GameWorldInGameRunStateEvent::PlayerRespawn`] 이벤트를 처리합니다.
@@ -237,6 +249,7 @@ impl GameWorldInGameRunState {
                 data.player_states(),
                 data.action_state_timer,
                 data.movement_state_timer,
+                data.latlon,
             ));
         }
 
@@ -267,6 +280,7 @@ impl GameWorldInGameRunState {
             let elapsed_time_ms = elapsed.as_millis().min(MAX_GAME_TIME as u128) as u16;
             let character_attributes = data.character_attributes();
             let mut events = Vec::new();
+            data.input_timer.update(data.input_bits, elapsed_time_ms);
             update_action_state_timer(
                 data.input_bits,
                 &mut data.bullet_data,
@@ -304,6 +318,21 @@ impl GameWorldInGameRunState {
             let team = data.team();
             let mut is_grounded = data.is_grounded();
             let mut is_invincible = data.is_invincible();
+            let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
+            data.direction.update(data.input_bits, data.latlon);
+            look = update_player_rotation(
+                look,
+                data.action_state,
+                data.movement_state,
+                data.direction,
+                data.latlon,
+            );
+            let z = look.normalize();
+            let x = glam::Vec3A::Y.cross(z).normalize();
+            let y = z.cross(x);
+            let rot = glam::Mat3A::from_cols(x, y, z);
+            data.rotation = glam::Quat::from_mat3(&rot.into());
+
             update_player_translation(
                 stage_attributes,
                 data.character_attributes(),
@@ -323,6 +352,23 @@ impl GameWorldInGameRunState {
             );
             data.set_grounded(is_grounded);
             data.set_invincible(is_invincible);
+
+            update_action_state(
+                data.input_bits,
+                &mut data.action_state,
+                &mut data.action_state_timer,
+                character_attributes,
+                &mut data.bullet_data,
+                &mut data.skill_cost_data,
+                &mut events,
+            );
+            update_movement_state(
+                data.input_bits,
+                data.action_state,
+                &mut data.movement_state,
+                &mut data.movement_state_timer,
+                &mut events,
+            );
         }
 
         // 총알 오브젝트를 갱신합니다.
@@ -380,8 +426,7 @@ impl GameWorldState for GameWorldInGameRunState {
                     uid,
                     epoch,
                     elapsed_time_ms,
-                    translation,
-                    latlon,
+                    input_bits,
                     histories,
                 } => {
                     self.handle_player_update_event(
@@ -390,8 +435,7 @@ impl GameWorldState for GameWorldInGameRunState {
                         uid,
                         epoch,
                         elapsed_time_ms,
-                        translation,
-                        latlon,
+                        input_bits,
                         histories,
                     );
                 }

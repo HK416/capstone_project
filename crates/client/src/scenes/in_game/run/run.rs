@@ -1,7 +1,6 @@
 use std::{f32::consts::TAU, sync::Arc, time::Instant};
 
 use ahash::HashMap;
-use half::f16;
 use hecs::{Entity, World};
 use mod_app::{
     app::AppHandle,
@@ -42,13 +41,13 @@ use crate::{
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
         draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree, get_local_transform,
-        get_world_transform, set_local_transform, update_camera_and_skybox_resource,
-        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
-        update_character_resource, update_character_rotation, update_stage_hierarchy,
-        update_stage_resource, update_view_state, update_view_state_timer,
-        world_transform_query_mut, AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList,
-        BloomPipeline, BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform,
-        Child, DirectionLight, EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout,
+        get_world_transform, lerp_local_transform, set_local_transform,
+        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
+        update_character_hierarchy, update_character_resource, update_character_rotation,
+        update_stage_hierarchy, update_stage_resource, update_view_state, update_view_state_timer,
+        AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform, Child,
+        DirectionLight, EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout,
         InterpolationManager, LightSetResource, LightTransformDataLayout, MaterialKind,
         MeshRenderer, OpaqueMap, Player0, Player1, Player2, Player3, Player4, Player5, Player6,
         Player7, Player8, Player9, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
@@ -66,11 +65,11 @@ use crate::{
 /// 게임을 진행하는 장면입니다.
 pub struct InGameRunScene {
     /// 현재 시대
-    epoch: u64,
+    epoch: u32,
     /// 현재 시대 시각
     epoch_time_stamp: Instant,
     /// 이전 패킷을 보낸 후 경과 시간
-    elapsed_time_ms: u16,
+    packet_elapsed_time_ms: u16,
     /// 플레이어 상태 데이터 기록
     histories: Vec<StateHistory>,
 
@@ -118,6 +117,8 @@ pub struct InGameRunScene {
 
     /// 다른 플레이어 데이터를 관리합니다.
     interpolation: InterpolationManager,
+    /// 최근 수신받은 플레이어 데이터입니다.
+    latest_snapshot: Option<EntitySnapshot>,
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
     /// 스테이지 엔터티
@@ -172,7 +173,7 @@ pub struct InGameRunScene {
 impl InGameRunScene {
     /// 새로운 `InGameRunScene`을 생성합니다.
     pub fn new(
-        epoch: u64,
+        epoch: u32,
         locale: Locale,
         uid: UserId,
         token: LoginToken,
@@ -202,7 +203,7 @@ impl InGameRunScene {
         Self {
             epoch,
             epoch_time_stamp: Instant::now(),
-            elapsed_time_ms: 0,
+            packet_elapsed_time_ms: 0,
             histories: Vec::with_capacity(MAX_HISTORIES),
             locale,
             uid,
@@ -224,6 +225,7 @@ impl InGameRunScene {
             camera_rel_position: glam::Vec3A::ZERO,
             camera_aspect_ratio: 1.0,
             interpolation: InterpolationManager::new(),
+            latest_snapshot: None,
             players,
             stage: Some(stage),
             accum_render_target: Some(accum_render_target),
@@ -332,7 +334,7 @@ impl InGameRunScene {
     }
 
     /// 플레이어 캐릭터 타이머를 갱신합니다.
-    fn update_player_character_timer(&mut self, epoch_elapsed_time_ms: u16, elapsed_time_ms: u16) {
+    fn update_player_character_timer(&mut self, elapsed_time_ms: u16) {
         let (entity, _archetype) = self.player_entity();
         let world = match self.world.as_mut() {
             Some(world) => world,
@@ -508,6 +510,7 @@ impl InGameRunScene {
             &'a mut ActionStateTimer,
             &'a mut MovementState,
             &'a mut MovementStateTimer,
+            &'a mut LatLon,
         );
         let time_stamp_ms = self
             .max_game_play_time_ms
@@ -521,6 +524,7 @@ impl InGameRunScene {
                 action_state_timer,
                 movement_state,
                 movement_state_timer,
+                latlon,
             )) = result
             {
                 let (
@@ -528,6 +532,7 @@ impl InGameRunScene {
                     old_action_state_timer,
                     old_movement_state,
                     old_movement_state_timer,
+                    old_latlon,
                 ) = state_view
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component!");
@@ -535,6 +540,7 @@ impl InGameRunScene {
                 *old_action_state_timer = action_state_timer;
                 *old_movement_state = movement_state;
                 *old_movement_state_timer = movement_state_timer;
+                *old_latlon = latlon;
 
                 match archetype {
                     PlayerArchetype::Player0 => {
@@ -805,8 +811,8 @@ impl InGameRunScene {
             None => return,
         };
 
-        type Kind<'a> = &'a CharacterKind;
         type Always<'a> = (
+            &'a CharacterKind,
             &'a mut Permission,
             &'a mut NetworkState,
             &'a mut HealthData,
@@ -814,7 +820,6 @@ impl InGameRunScene {
             &'a mut SkillCostData,
             &'a mut CharacterFlags,
         );
-        let checter_kind_view = world.view::<Kind>();
         let mut always_change_view = world.view::<Always>();
 
         // 남은 시간을 계산합니다.
@@ -822,10 +827,10 @@ impl InGameRunScene {
             .saturating_duration_since(time_stamp)
             .as_millis()
             .min(self.max_game_play_time_ms as u128) as u32;
-        self.remaining_time_ms = packet.remaining_time_ms.saturating_add(delta);
-        let time_stamp_ms = self
+        let server_remaining_time_ms = packet.remaining_time_ms.saturating_sub(delta);
+        let server_time_stamp_ms = self
             .max_game_play_time_ms
-            .saturating_sub(self.remaining_time_ms);
+            .saturating_sub(server_remaining_time_ms);
 
         // 플레이어 상태를 갱신합니다.
         for data in packet.players {
@@ -835,10 +840,20 @@ impl InGameRunScene {
                 .cloned()
                 .expect("the player data must be exists!");
 
-            let (permission, network_state, health_data, bullet_data, skill_cost_data, flags) =
-                always_change_view
-                    .get_mut(entity)
-                    .expect("invalid entity or invalid entity component!");
+            // 캐릭터 데이터를 가져옵니다.
+            let (
+                &character_kind,
+                permission,
+                network_state,
+                health_data,
+                bullet_data,
+                skill_cost_data,
+                flags,
+            ) = always_change_view
+                .get_mut(entity)
+                .expect("invalid entity or invalid entity component!");
+
+            // 서버 데이터를 저장합니다.
             *permission = data.permission();
             *network_state = data.network_state();
             flags.set_connected(data.is_connected());
@@ -849,15 +864,17 @@ impl InGameRunScene {
             skill_cost_data.remaining = data.current_skill_cost;
 
             if data.uid != self.uid {
+                // 다른 플레이어 캐릭터의 스냅샷을 생성합니다.
                 let snapshot = EntitySnapshot::new(
-                    time_stamp_ms,
-                    data.translation,
+                    server_time_stamp_ms,
+                    data.velocity,
                     data.rotation,
+                    data.translation,
                     data.player_states.action_state(),
                     data.action_state_timer,
                     data.player_states.movement_state(),
                     data.movement_state_timer,
-                    data.velocity,
+                    data.latlon,
                 );
 
                 match self.interpolation.buffers.get_mut(&entity) {
@@ -865,10 +882,6 @@ impl InGameRunScene {
                         buffers.insert(snapshot);
                     }
                     None => {
-                        let &character_kind = checter_kind_view
-                            .get(entity)
-                            .expect("invalid entity or invalid entity component!");
-
                         let mut buffers = SnapshotBuffer::new();
                         buffers.insert(snapshot);
 
@@ -877,7 +890,99 @@ impl InGameRunScene {
                             .insert(entity, (character_kind, buffers));
                     }
                 };
+            } else {
+                self.latest_snapshot = Some(EntitySnapshot::new(
+                    server_time_stamp_ms,
+                    data.velocity,
+                    data.rotation,
+                    data.translation,
+                    data.player_states.action_state(),
+                    data.action_state_timer,
+                    data.player_states.movement_state(),
+                    data.movement_state_timer,
+                    data.latlon,
+                ));
             }
+        }
+
+        let diff_t = (packet.remaining_time_ms as i32 - self.remaining_time_ms as i32).abs();
+        if diff_t > 100 {
+            self.remaining_time_ms = packet.remaining_time_ms;
+        }
+    }
+
+    /// 플레이어 데이터를 보정합니다.
+    fn correct_player_data(&mut self) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        type Q<'a> = (
+            &'a mut ActionState,
+            &'a mut ActionStateTimer,
+            &'a mut MovementState,
+            &'a mut MovementStateTimer,
+            &'a mut LatLon,
+        );
+        let mut optional_change_view = world.view::<Q>();
+
+        if let Some(snapshot) = self.latest_snapshot.as_ref() {
+            // 플레이어 캐릭터 데이터를 가져옵니다.
+            let (action_state, action_state_timer, movement_state, movement_state_timer, latlon) =
+                optional_change_view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component!");
+
+            // 클라이언트의 시각을 계산합니다.
+            let client_time_stamp = self
+                .max_game_play_time_ms
+                .saturating_sub(self.remaining_time_ms);
+
+            let diff_t = (client_time_stamp as i32 - snapshot.time_stamp_ms as i32).abs();
+            if *action_state == snapshot.action_state {
+                // 차이가 큰 경우에만 서버 데이터를 덮어씁니다.
+                if diff_t > 100 {
+                    action_state_timer.0 = snapshot.action_state_timer.0;
+                }
+            } else {
+                // 행동 상태가 다른 경우 서버 데이터를 덮어씁니다.
+                *action_state = snapshot.action_state;
+                action_state_timer.0 = snapshot.action_state_timer.0;
+            }
+
+            if *movement_state == snapshot.movement_state {
+                // 차이가 큰 경우에만 서버 데이터를 덮어씁니다.
+                if diff_t > 100 {
+                    movement_state_timer.0 = snapshot.movement_state_timer.0;
+                }
+            } else {
+                // 움직임 상태가 다른 경우 서버 데이터를 덮어씁니다.
+                *movement_state = snapshot.movement_state;
+                movement_state_timer.0 = snapshot.movement_state_timer.0;
+            }
+
+            // 카메라 방향 데이터를 덮어씁니다.
+            let min = snapshot.latlon.lat - 3f32.to_radians().max(MIN_LATITUDE);
+            let max = snapshot.latlon.lat + 3f32.to_radians().min(MAX_LATITUDE);
+            latlon.lat = latlon.lat.clamp(min, max);
+            let min = snapshot.latlon.lon - 5f32.to_radians();
+            let max = snapshot.latlon.lon + 5f32.to_radians();
+            latlon.lon = latlon.lon.clamp(min, max) % TAU;
+
+            let p0 = get_local_transform(world, entity, archetype).get_translation();
+            let p1 = snapshot.transform.w_axis.truncate().into();
+            let d = p0.distance_squared(p1);
+            let s = d.min(0.5) / 0.5;
+            self.velocity.0 = self.velocity.0.lerp(snapshot.velocity.0, 0.5);
+            lerp_local_transform(
+                world,
+                entity,
+                archetype,
+                ToParentTrans(snapshot.transform),
+                s,
+            );
         }
     }
 }
@@ -1106,41 +1211,32 @@ impl GameScene for InGameRunScene {
             .saturating_duration_since(self.epoch_time_stamp)
             .as_millis()
             .min(u16::MAX as u128) as u16;
-        if epoch_elapsed <= 500 {
-            self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
+        if epoch_elapsed > 500 {
+            return;
         }
 
+        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
         let elapsed_time_ms = elapsed_time_ms.min(u16::MAX as u32) as u16;
-        self.elapsed_time_ms = self.elapsed_time_ms.saturating_add(elapsed_time_ms);
-        self.update_player_character_timer(epoch_elapsed, elapsed_time_ms);
+        self.packet_elapsed_time_ms = self.packet_elapsed_time_ms.saturating_add(elapsed_time_ms);
+        self.update_other_characters();
+        self.update_player_character_timer(elapsed_time_ms);
         self.update_player_character_rotation();
         self.update_player_character_translation(elapsed_time_sec);
         self.update_player_character_state();
-        self.update_other_characters();
     }
 
     fn on_post_update(&mut self, _window: &Window, app: &dyn AppHandle) {
-        let (entity, archetype) = self.player_entity();
-        let world = match self.world.as_mut() {
-            Some(world) => world,
-            None => return,
-        };
+        if self.world.is_none() {
+            return;
+        }
 
-        const TICK: u16 = 16;
-        if self.elapsed_time_ms >= TICK {
-            self.elapsed_time_ms = 0;
-
-            // 플레이어 카메라 각도를 가져옵니다.
-            let &latlon = world
-                .query_one_mut::<&LatLon>(entity)
-                .expect("invalid entity or invalid entity component!");
-
-            // 플레이어 위치를 가져옵니다.
-            let translation = world_transform_query_mut(world, entity, archetype).get_translation();
+        const TICK: u16 = 11;
+        if self.packet_elapsed_time_ms >= TICK {
+            self.packet_elapsed_time_ms = 0;
 
             let net = app.net_manager();
             let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-            while !self.histories.is_empty() {
+            loop {
                 let now = Instant::now();
                 let elapsed_time_ms = now
                     .saturating_duration_since(self.epoch_time_stamp)
@@ -1153,16 +1249,22 @@ impl GameScene for InGameRunScene {
                     self.token,
                     self.epoch,
                     elapsed_time_ms,
+                    self.input_bits,
                     iter,
-                    translation,
-                    latlon,
                 );
                 socket.push_packet(packet.as_raw());
+
+                if self.histories.is_empty() {
+                    break;
+                }
             }
         }
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
+        // 플레이어 데이터를 보정합니다.
+        self.correct_player_data();
+
         // 변환 행렬을 갱신합니다.
         {
             let world = match self.world.as_ref() {

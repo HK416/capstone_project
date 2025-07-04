@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use mod_network::{
     components::{
-        BulletKind, CharacterKind, GameTier, LatLon, NetworkState, ObjectId, ProfileIcon, UserId,
+        BulletKind, CharacterKind, GameInputBits, GameTier, NetworkState, ProfileIcon, UserId,
         UserName,
     },
     protocol::StateHistory,
@@ -99,13 +99,11 @@ pub enum GameWorldInGameRunStateEvent {
         /// 사용자 식별자
         uid: UserId,
         /// 현재 시대
-        epoch: u64,
+        epoch: u32,
         /// 현재 시대로부터 경과한 시간 (단위: ms)
         elapsed_time_ms: u16,
-        /// 월드 공간 위치
-        translation: glam::Vec3A,
-        /// 카메라 회전 각도
-        latlon: LatLon,
+        /// 게임 입력 비트 필드 데이터
+        input_bits: GameInputBits,
         /// 상태 기록 데이터
         histories: Vec<StateHistory>,
     },

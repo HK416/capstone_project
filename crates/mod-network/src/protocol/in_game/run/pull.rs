@@ -10,7 +10,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct InGamePullPacket {
     /// 현재 시대
-    pub epoch: u64,
+    pub epoch: u32,
     /// 남은 게임 시간
     pub remaining_time_ms: u32,
     /// 플레이어 데이터
@@ -23,7 +23,7 @@ impl InGamePullPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(epoch: u64, remaining_time_ms: u32, players: Vec<InGamePlayerPullData>) -> Self {
+    pub fn new(epoch: u32, remaining_time_ms: u32, players: Vec<InGamePlayerPullData>) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
 
@@ -39,7 +39,7 @@ impl InGamePullPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn from_iter<I>(epoch: u64, remaining_time_ms: u32, iter: I) -> Self
+    pub fn from_iter<I>(epoch: u32, remaining_time_ms: u32, iter: I) -> Self
     where
         I: IntoIterator<Item = InGamePlayerPullData>,
         I::IntoIter: ExactSizeIterator,
@@ -56,10 +56,10 @@ impl Packet for InGamePullPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
-        let data_size = u64::byte_size() // 8byte
-            + u32::byte_size() // 12byte
-            + u8::byte_size()  // 13byte
-            + InGamePlayerPullData::byte_size() * num_players; // max: 654byte
+        let data_size = u32::byte_size()
+            + u32::byte_size()
+            + u8::byte_size()
+            + InGamePlayerPullData::byte_size() * num_players;
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.epoch.to_big_endian_bytes());
         data.extend_from_slice(&self.remaining_time_ms.to_big_endian_bytes());
@@ -95,9 +95,9 @@ impl Packet for InGamePullPacket {
         // 현재 시대를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = u64::byte_size();
+        let mut size = u32::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = u64::from_big_endian_bytes(data);
+        let epoch = u32::from_big_endian_bytes(data);
 
         // 남은 시간을 가져옵니다.
         offset = offset + size;
@@ -134,8 +134,8 @@ impl Packet for InGamePullPacket {
 #[cfg(test)]
 mod tests {
     use crate::components::{
-        ActionState, ActionStateTimer, MovementState, MovementStateTimer, NetworkState, Permission,
-        PlayerStateData, UserId, ViewState,
+        ActionState, ActionStateTimer, LatLon, MovementState, MovementStateTimer, NetworkState,
+        Permission, PlayerStateData, UserId,
     };
 
     use super::*;
@@ -166,10 +166,10 @@ mod tests {
             NetworkState::Poor,
             PlayerStateData::new()
                 .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::Landing)
-                .with_view_state(ViewState::Aiming),
+                .with_movement_state(MovementState::Landing),
             ActionStateTimer::new(320),
             MovementStateTimer::new(1200),
+            LatLon::new(45f32.to_radians(), 72f32.to_radians()),
         );
         let player_1 = InGamePlayerPullData::new(
             UserId::new(98431),
@@ -189,10 +189,10 @@ mod tests {
             NetworkState::Good,
             PlayerStateData::new()
                 .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::Landing)
-                .with_view_state(ViewState::Aiming),
+                .with_movement_state(MovementState::Landing),
             ActionStateTimer::new(323),
             MovementStateTimer::new(1212),
+            LatLon::new(-11f32.to_radians(), 63f32.to_radians()),
         );
 
         let players = vec![player_0, player_1];

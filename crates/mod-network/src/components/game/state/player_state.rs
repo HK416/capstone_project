@@ -132,21 +132,18 @@ impl ViewState {
 /// 플레이어 행동 상태 데이터입니다.
 ///
 /// 아래와 같은 데이터가 포함되어있습니다.
-/// - action_state   | 3bit | 행동 상태
-/// - movement_state | 3bit | 움직임 상태
-/// - view_state     | 2bit | 시야 상태
+/// - action_state   | 4bit | 행동 상태
+/// - movement_state | 4bit | 움직임 상태
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PlayerStateData(u8);
 
 impl PlayerStateData {
-    const ACTION_BIT_MASK: u8 = 0x7;
+    const ACTION_BIT_MASK: u8 = 0xF;
     const ACTION_SHIFT: usize = 0;
-    const MOVEMENT_BIT_MASK: u8 = 0x7;
-    const MOVEMENT_SHIFT: usize = 3;
-    const VIEW_BIT_MASK: u8 = 0x3;
-    const VIEW_SHIFT: usize = 6;
+    const MOVEMENT_BIT_MASK: u8 = 0xF;
+    const MOVEMENT_SHIFT: usize = 4;
 
     /// 새로운 플레이어 행동 상태 데이터를 생성합니다.
     pub const fn new() -> Self {
@@ -156,8 +153,7 @@ impl PlayerStateData {
     /// 행동 상태를 반환합니다.
     pub fn action_state(&self) -> ActionState {
         let val = (self.0 >> Self::ACTION_SHIFT) & Self::ACTION_BIT_MASK;
-        // Safety: 주어지는 값은 범위를 넘지 않음
-        unsafe { ActionState::new(val).unwrap_unchecked() }
+        ActionState::new(val).unwrap_or_default()
     }
 
     /// 행동 상태를 설정합니다.
@@ -187,25 +183,6 @@ impl PlayerStateData {
     /// 움직임 상태를 설정합니다.
     pub const fn with_movement_state(mut self, state: MovementState) -> Self {
         self.set_movement_state(state);
-        self
-    }
-
-    /// 시야 상태를 반환합니다.
-    pub fn view_state(&self) -> ViewState {
-        let val = (self.0 >> Self::VIEW_SHIFT) & Self::VIEW_BIT_MASK;
-        // Safety: 주어지는 값은 범위를 넘지 않음
-        unsafe { ViewState::new(val).unwrap_unchecked() }
-    }
-
-    /// 시야 상태를 설정합니다.
-    pub const fn set_view_state(&mut self, state: ViewState) {
-        self.0 &= !(Self::VIEW_BIT_MASK << Self::VIEW_SHIFT); // 기존 값 지우기
-        self.0 |= (state as u8) << Self::VIEW_SHIFT; // 값 덮어쓰기
-    }
-
-    /// 시야 상태를 설정합니다.
-    pub const fn with_view_state(mut self, state: ViewState) -> Self {
-        self.set_view_state(state);
         self
     }
 }
@@ -385,8 +362,7 @@ mod tests {
     fn test_player_state_data() {
         let origin = PlayerStateData::new()
             .with_action_state(ActionState::Death)
-            .with_movement_state(MovementState::Jumping)
-            .with_view_state(ViewState::ZoomIn);
+            .with_movement_state(MovementState::Jumping);
         let bytes = origin.to_big_endian_bytes();
         let other = PlayerStateData::from_big_endian_bytes(&bytes);
 

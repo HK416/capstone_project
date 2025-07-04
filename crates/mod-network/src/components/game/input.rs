@@ -31,53 +31,59 @@ impl Default for ControllerState {
 pub const NUM_GAME_INPUTS: usize = 11;
 
 /// 게임 입력 목록입니다.
-#[repr(u16)]
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub enum GameInput {
-    Left = 0x0001,
-    Right = 0x0002,
-    Forward = 0x0004,
-    Backward = 0x0008,
-    Aiming = 0x0010,
-    Attack = 0x0020,
-    Skill = 0x0040,
-    Jump = 0x0080,
-    Reload = 0x0100,
-    Status = 0x0200,
-    Emotion = 0x0400,
+    Left = 0,
+    Right = 1,
+    Forward = 2,
+    Backward = 3,
+    Aiming = 4,
+    Attack = 5,
+    Skill = 6,
+    Jump = 7,
+    Reload = 8,
+    Status = 9,
+    Emotion = 10,
 }
 
 impl GameInput {
-    /// `GameInputBits`로 부터 `GameInput`을 생성합니다.
-    /// `GameInput`을 생성할 수 없는 경우 `None`을 반환합니다.
-    pub fn from_bits(flag: GameInputBits) -> Option<Self> {
-        match flag.bits() {
-            0x0001 => Some(Self::Left),
-            0x0002 => Some(Self::Right),
-            0x0004 => Some(Self::Forward),
-            0x0008 => Some(Self::Backward),
-            0x0010 => Some(Self::Aiming),
-            0x0020 => Some(Self::Attack),
-            0x0040 => Some(Self::Skill),
-            0x0080 => Some(Self::Jump),
-            0x0100 => Some(Self::Reload),
-            0x0200 => Some(Self::Status),
-            0x0400 => Some(Self::Emotion),
-            _ => {
-                log::warn!(
-                    "failed to convert `{}` to `{}`! (VALUE:{:?})",
-                    stringify!(GameInputBits),
-                    stringify!(GameInput),
-                    flag
-                );
-                None
-            }
+    /// 주어진 정수로부터 [`GameInput`]을 생성합니다.
+    ///
+    /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
+    ///
+    pub const fn new(val: u8) -> Option<Self> {
+        match val {
+            0 => Some(Self::Left),
+            1 => Some(Self::Right),
+            2 => Some(Self::Forward),
+            3 => Some(Self::Backward),
+            4 => Some(Self::Aiming),
+            5 => Some(Self::Attack),
+            6 => Some(Self::Skill),
+            7 => Some(Self::Jump),
+            8 => Some(Self::Reload),
+            9 => Some(Self::Status),
+            10 => Some(Self::Emotion),
+            _ => None,
         }
     }
 
     /// `GameInputBits`로 변환합니다.
-    pub fn into_bits(self) -> GameInputBits {
-        GameInputBits::from_bits_truncate(self as u16)
+    pub const fn into_bits(self) -> GameInputBits {
+        match self {
+            GameInput::Left => GameInputBits::Left,
+            GameInput::Right => GameInputBits::Right,
+            GameInput::Forward => GameInputBits::Forward,
+            GameInput::Backward => GameInputBits::Backward,
+            GameInput::Aiming => GameInputBits::Aiming,
+            GameInput::Attack => GameInputBits::Attack,
+            GameInput::Skill => GameInputBits::Skill,
+            GameInput::Jump => GameInputBits::Jump,
+            GameInput::Reload => GameInputBits::Reload,
+            GameInput::Status => GameInputBits::Status,
+            GameInput::Emotion => GameInputBits::Emotion,
+        }
     }
 }
 

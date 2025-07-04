@@ -3,8 +3,8 @@ use std::collections::VecDeque;
 use ahash::{HashMap, RandomState};
 use hecs::Entity;
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, MovementState,
-    MovementStateTimer, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION, RESPAWN_DELAY,
+    ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, LatLon, MovementState,
+    MovementStateTimer, Velocity, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION, RESPAWN_DELAY,
 };
 
 use crate::component::CHARACTER_ATTRIBUTES;
@@ -12,29 +12,32 @@ use crate::component::CHARACTER_ATTRIBUTES;
 /// 서버에서 받은 패킷 데이터의 스냅샷입니다.
 #[derive(Debug, Clone)]
 pub struct EntitySnapshot {
-    time_stamp_ms: u32,
-    transform: glam::Mat4,
-    action_state: ActionState,
-    action_state_timer: ActionStateTimer,
-    movement_state: MovementState,
-    movement_state_timer: MovementStateTimer,
-    velocity: glam::Vec3A,
+    pub time_stamp_ms: u32,
+    pub velocity: Velocity,
+    pub transform: glam::Mat4,
+    pub action_state: ActionState,
+    pub action_state_timer: ActionStateTimer,
+    pub movement_state: MovementState,
+    pub movement_state_timer: MovementStateTimer,
+    pub latlon: LatLon,
 }
 
 impl EntitySnapshot {
     /// 새로운 엔터티 스냅샷을 생성합니다.
     pub fn new(
         time_stamp_ms: u32,
-        translation: [f32; 3],
+        velocity: [f32; 3],
         rotation: [f32; 4],
+        translation: [f32; 3],
         action_state: ActionState,
         action_state_timer: ActionStateTimer,
         movement_state: MovementState,
         movement_state_timer: MovementStateTimer,
-        velocity: [f32; 3],
+        latlon: LatLon,
     ) -> Self {
         Self {
             time_stamp_ms,
+            velocity: Velocity(velocity.into()),
             transform: glam::Mat4::from_rotation_translation(
                 glam::Quat::from_array(rotation),
                 glam::Vec3::from_array(translation),
@@ -43,7 +46,7 @@ impl EntitySnapshot {
             action_state_timer,
             movement_state,
             movement_state_timer,
-            velocity: glam::Vec3A::from_array(velocity),
+            latlon,
         }
     }
 }
@@ -53,11 +56,11 @@ pub const SNAPSHOT_CAPACITY: usize = 100;
 
 /// 스냅샵을 모아 놓는 버퍼입니다.
 #[derive(Debug, Clone)]
-pub struct SnapshotBuffer {
-    snapshots: VecDeque<EntitySnapshot>,
+pub struct SnapshotBuffer<T> {
+    snapshots: VecDeque<T>,
 }
 
-impl SnapshotBuffer {
+impl<T> SnapshotBuffer<T> {
     /// 새로운 스냅샷 버퍼를 생성합니다.
     pub fn new() -> Self {
         Self {
@@ -66,7 +69,7 @@ impl SnapshotBuffer {
     }
 
     /// 새로운 엔터티 스냅샷을 추가합니다.
-    pub fn insert(&mut self, snapshot: EntitySnapshot) {
+    pub fn insert(&mut self, snapshot: T) {
         self.snapshots.push_back(snapshot);
         // 오래된 스냅샷을 제거합니다.
         while self.snapshots.len() > SNAPSHOT_CAPACITY {
@@ -78,9 +81,9 @@ impl SnapshotBuffer {
 /// 엔터티 스냅샷을 관리하고, 스냅샷의 선형 보간을 수행합니다.
 #[derive(Debug, Clone)]
 pub struct InterpolationManager {
-    pub buffers: HashMap<Entity, (CharacterKind, SnapshotBuffer)>,
-    pub interpolation_delay_ms: u32,
-    pub max_extrapolation_ms: u32,
+    pub buffers: HashMap<Entity, (CharacterKind, SnapshotBuffer<EntitySnapshot>)>,
+    interpolation_delay_ms: u32,
+    max_extrapolation_ms: u32,
 }
 
 impl InterpolationManager {
@@ -103,6 +106,7 @@ impl InterpolationManager {
         ActionStateTimer,
         MovementState,
         MovementStateTimer,
+        LatLon,
     )> {
         let (character_kind, buffer) = self.buffers.get(&entity)?;
         let time_stamp_ms = time_stamp_ms.saturating_sub(self.interpolation_delay_ms);
@@ -117,6 +121,9 @@ impl InterpolationManager {
                 let elapsed_time_ms = time_stamp_ms - prev.time_stamp_ms;
                 let t = elapsed_time_ms as f32 / (next.time_stamp_ms - prev.time_stamp_ms) as f32;
                 let transform = prev.transform * (1.0 - t) + next.transform * t;
+                let lat = prev.latlon.lat * (1.0 - t) * next.latlon.lat * t;
+                let lon = prev.latlon.lon * (1.0 - t) * next.latlon.lon * t;
+                let latlon = LatLon::new(lat, lon);
 
                 let (action_state, action_state_timer) = action_state_interpolated(
                     prev.action_state,
@@ -139,6 +146,7 @@ impl InterpolationManager {
                     action_state_timer,
                     movement_state,
                     movement_state_timer,
+                    latlon,
                 ))
             }
             (Some(prev), None) => {
@@ -146,7 +154,7 @@ impl InterpolationManager {
                 let elapsed_time_ms =
                     (time_stamp_ms - prev.time_stamp_ms).clamp(0, self.max_extrapolation_ms);
                 let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
-                let distance = prev.velocity * elapsed_time_sec;
+                let distance = prev.velocity.0 * elapsed_time_sec;
                 let mut transform = prev.transform;
                 transform.w_axis += glam::Vec4::new(distance.x, distance.y, distance.z, 0.0);
 
@@ -169,6 +177,7 @@ impl InterpolationManager {
                     action_state_timer,
                     movement_state,
                     movement_state_timer,
+                    prev.latlon,
                 ))
             }
             _ => None,

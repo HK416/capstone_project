@@ -69,8 +69,7 @@ impl SessionInGameRunState {
             uid: self.uid,
             epoch: packet.epoch,
             elapsed_time_ms: packet.elapsed_time_ms,
-            translation: packet.translation.into(),
-            latlon: packet.latlon,
+            input_bits: packet.input_bits,
             histories: packet.histories,
         };
         let event = GameWorldEvent::InGameRunState(event);
