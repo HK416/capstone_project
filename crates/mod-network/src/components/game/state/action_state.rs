@@ -490,17 +490,23 @@ fn update_timer_when_attack(
 
     let timings = &character_attributes.normal_attack_timing;
     let mut index = bullet_data.fires_per_attack as usize;
-    while let Some(timing) = timings.get(index).cloned()
-        && timing <= next_timer
-        && bullet_data.remaining > 0
-    {
-        // 총알 발사 이벤트를 생성합니다.
-        let timing = timing.saturating_sub(action_state_timer.0);
-        events.push(StateEvent::BulletFired { timing });
+    loop {
+        let timing_opt = timings.get(index).cloned();
+        if let Some(timing) = timing_opt {
+            if timing <= next_timer && bullet_data.remaining > 0 {
+                // 총알 발사 이벤트를 생성합니다.
+                let timing = timing.saturating_sub(action_state_timer.0);
+                events.push(StateEvent::BulletFired { timing });
 
-        bullet_data.fires_per_attack += 1;
-        bullet_data.remaining -= 1;
-        index = bullet_data.fires_per_attack as usize;
+                bullet_data.fires_per_attack += 1;
+                bullet_data.remaining -= 1;
+                index = bullet_data.fires_per_attack as usize;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
     }
 
     if diff_t >= 0 {

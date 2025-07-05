@@ -1,4 +1,5 @@
 mod account;
+mod ai; // AI 모듈 추가
 mod data;
 mod entities;
 mod formula;
