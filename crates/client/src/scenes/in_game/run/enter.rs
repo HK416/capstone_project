@@ -11,9 +11,9 @@ use mod_app::{
 use mod_network::{
     components::{
         update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
-        GameInputBits, LoginToken, SkillCostData, StageAttributes, UserId,
+        HeldInput, LoginToken, SkillCostData, StageAttributes, UserId,
     },
-    protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
+    protocol::{PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
@@ -67,6 +67,8 @@ pub struct InGameEnterScene {
 
     /// 스테이지 속성 데이터
     stage_attributes: Arc<StageAttributes>,
+    /// 최대 게임 플레이 시간입니다.
+    max_game_play_time_ms: u32,
     /// 남은 대기 시간입니다.
     remaining_time_ms: u16,
     /// 레이아웃 이동 시간입니다.
@@ -147,6 +149,7 @@ impl InGameEnterScene {
         uid: UserId,
         token: LoginToken,
         stage_attributes: Arc<StageAttributes>,
+        max_game_play_time_ms: u32,
         remaining_time_ms: u16,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
@@ -173,6 +176,7 @@ impl InGameEnterScene {
             uid,
             token,
             stage_attributes,
+            max_game_play_time_ms,
             remaining_time_ms,
             animation_time_ms: 0,
             first_mouse_pressed: false,
@@ -476,7 +480,7 @@ impl InGameEnterScene {
         let i = character_kind as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         update_action_state_timer(
-            GameInputBits::empty(),
+            HeldInput::empty(),
             bullet_data,
             skill_cost_data,
             action_state,
@@ -871,8 +875,6 @@ impl GameScene for InGameEnterScene {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::InGamePull => {
-                let packet = InGamePullPacket::from_raw(packet);
-
                 // 다음 게임 장면으로 전환합니다.
                 let mut world = match self.world.take() {
                     Some(world) => world,
@@ -918,12 +920,11 @@ impl GameScene for InGameEnterScene {
                     .take()
                     .expect("the light shader resource must be exists!");
                 let scene = InGameRunScene::new(
-                    packet.epoch,
                     self.locale,
                     self.uid,
                     self.token,
                     self.stage_attributes.clone(),
-                    packet.remaining_time_ms,
+                    self.max_game_play_time_ms,
                     self.first_mouse_pressed,
                     world,
                     players,

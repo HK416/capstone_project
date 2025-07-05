@@ -9,7 +9,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, StageAttributes, StageKind, UserId, MAX_IN_GAME_PLAYERS},
+    components::{LoginToken, StageAttributes, UserId, MAX_IN_GAME_PLAYERS},
     protocol::{InGameEnterNotifyPacket, InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
@@ -47,6 +47,9 @@ pub struct InGameReadySceneBuilder {
     /// 스테이지 속성 데이터
     stage_attributes: Arc<StageAttributes>,
 
+    /// 최대 게임 플레이 시간
+    max_game_play_time_ms: u32,
+
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
     /// 스테이지 엔터티
@@ -80,6 +83,7 @@ impl InGameReadySceneBuilder {
         uid: UserId,
         token: LoginToken,
         stage_attributes: Arc<StageAttributes>,
+        max_game_play_time_ms: u32,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -93,6 +97,7 @@ impl InGameReadySceneBuilder {
             uid,
             token,
             stage_attributes,
+            max_game_play_time_ms,
             players: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             stage: None,
             skybox: None,
@@ -133,6 +138,7 @@ impl InGameReadySceneBuilder {
             uid: self.uid,
             token: self.token,
             stage_attributes: self.stage_attributes,
+            max_game_play_time_ms: self.max_game_play_time_ms,
             world: Some(world),
             players: self.players,
             stage: self.stage,
@@ -166,6 +172,9 @@ pub struct InGameReadyScene {
     token: LoginToken,
     /// 스테이지 종류
     stage_attributes: Arc<StageAttributes>,
+
+    /// 최대 게임 플레이 시간
+    max_game_play_time_ms: u32,
 
     /// 게임 월드
     world: Option<World>,
@@ -379,6 +388,7 @@ impl GameScene for InGameReadyScene {
                     self.uid,
                     self.token,
                     self.stage_attributes.clone(),
+                    self.max_game_play_time_ms,
                     packet.remaining_time_ms,
                     world,
                     players,

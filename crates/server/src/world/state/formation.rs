@@ -20,7 +20,7 @@ use crate::{
     session::{Session, SessionInGameReadyState, SessionStateFlow},
     world::{
         GameWorld, GameWorldEvent, GameWorldFormationStateEvent, GameWorldInGameReadyState,
-        GameWorldState, GameWorldStateFlow, GameWorldSystemEvent,
+        GameWorldState, GameWorldStateFlow, GameWorldSystemEvent, MAX_GAME_TIME,
     },
 };
 
@@ -401,7 +401,7 @@ impl GameWorldFormationState {
                 ));
             }
 
-            let packet = InGameDataInitPacket::new(self.stage_kind, players);
+            let packet = InGameDataInitPacket::new(self.stage_kind, MAX_GAME_TIME, players);
             for (session, &uid) in world.sessions.iter() {
                 session.tcp_write(packet.as_raw());
 

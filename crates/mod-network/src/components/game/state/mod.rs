@@ -12,14 +12,12 @@ pub use self::{action_state::*, movement_state::*, player_state::*};
 pub enum StateEvent {
     /// 행동 상태 변경 이벤트
     ChangeActionState {
-        from: ActionState,
-        to: ActionState,
+        action_state: ActionState,
         timing: u16,
     },
     /// 움직임 상태 변경 이벤트
     ChangeMovementState {
-        from: MovementState,
-        to: MovementState,
+        movement_state: MovementState,
         timing: u16,
     },
     /// 총알 발사 이벤트

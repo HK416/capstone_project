@@ -9,7 +9,7 @@ use mod_physics::{
 };
 
 use crate::components::{
-    ActionState, CharacterAttributes, GameInputBits, HealthData, InputStateTimer, LatLon,
+    ActionState, CharacterAttributes, HealthData, HeldInput, InputStateTimer, LatLon,
     MovementState, MovementStateTimer, MovingDirection, StageAttributes, Team, Velocity,
 };
 
@@ -114,7 +114,7 @@ pub fn update_player_translation(
     velocity: &mut Velocity,
     translation: &mut glam::Vec3A,
     direction: MovingDirection,
-    input_bits: GameInputBits,
+    held_input: HeldInput,
     team: Team,
     is_grounded: &mut bool,
     is_invincible: &mut bool,
@@ -217,7 +217,7 @@ pub fn update_player_translation(
     if *is_grounded {
         match movement_state {
             MovementState::Landing => {
-                if input_bits.is_moved() {
+                if held_input.is_moved() {
                     *movement_state = MovementState::Moving;
                     movement_state_timer.0 = 0;
                 } else {

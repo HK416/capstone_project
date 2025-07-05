@@ -343,6 +343,7 @@ fn build_next_scene(
             uid,
             token,
             stage_attributes.clone(),
+            packet.max_game_play_time_ms,
             mesh_pool,
             model_pool,
             motion_pool,

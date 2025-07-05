@@ -12,14 +12,14 @@ use mod_network::{
     components::{
         update_action_state, update_action_state_timer, update_movement_state,
         update_movement_state_timer, update_player_translation, ActionState, ActionStateTimer,
-        BulletData, CharacterFlags, CharacterKind, GameInputBits, HealthData, InputStateTimer,
-        LatLon, LoginToken, MovementState, MovementStateTimer, MovingDirection, NetworkState,
-        Permission, SkillCostData, StageAttributes, Team, UserId, Velocity, ViewState,
-        ViewStateTimer, MAX_LATITUDE, MIN_LATITUDE,
+        BulletData, CharacterFlags, CharacterKind, HealthData, HeldInput, InputStateTimer, LatLon,
+        LoginToken, MovementState, MovementStateTimer, MovingDirection, NetworkState, Permission,
+        SkillCostData, StageAttributes, Team, UserId, Velocity, ViewState, ViewStateTimer,
+        MAX_LATITUDE, MIN_LATITUDE,
     },
     protocol::{
-        InGamePullPacket, InGamePushNotifyPacket, Packet, PacketType, RawPacket, StateHistory,
-        MAX_HISTORIES,
+        InGameInputEventPacket, InGameInputStatePacket, InGamePullPacket, InputEvent, Packet,
+        PacketType, RawPacket, MAX_INPUT_EVENTS,
     },
 };
 use mod_parallelism::collections::Queue;
@@ -64,15 +64,6 @@ use crate::{
 
 /// 게임을 진행하는 장면입니다.
 pub struct InGameRunScene {
-    /// 현재 시대
-    epoch: u32,
-    /// 현재 시대 시각
-    epoch_time_stamp: Instant,
-    /// 이전 패킷을 보낸 후 경과 시간
-    packet_elapsed_time_ms: u16,
-    /// 플레이어 상태 데이터 기록
-    histories: Vec<StateHistory>,
-
     /// 애플리케이션 표시 언어
     locale: Locale,
     /// 사용자 식별자
@@ -86,16 +77,27 @@ pub struct InGameRunScene {
     /// 시야 조작의 좌우 반전 여부입니다.
     flip_vertical: bool,
 
-    /// 스테이지 속성 데이터
-    stage_attributes: Arc<StageAttributes>,
     /// 최대 게임 플레이 시간
     max_game_play_time_ms: u32,
-    /// 남은 게임 진행 시간
-    remaining_time_ms: u32,
+    /// 게임 플레이 경과 시간
+    play_elapsed_time_ms: u32,
+    /// 이전 패킷을 보낸 후 경과 시간
+    packet_send_elapsed_time_ms: u16,
+    /// 최근의 패킷을 받은 후 경과 시간
+    packet_recv_elapsed_time_ms: u16,
+    /// 한 프레임 내의 입력 이벤트 목록
+    input_events: Vec<InputEvent>,
+    /// 위도의 변위
+    delta_lat: f32,
+    /// 경도의 변위
+    delta_lon: f32,
+
+    /// 스테이지 속성 데이터
+    stage_attributes: Arc<StageAttributes>,
     /// 첫 번쨰 마우스 눌림 여부 플래그
     first_mouse_pressed: bool,
     /// 사용자 입력 상태 플래그 변수입니다.
-    input_bits: GameInputBits,
+    held_input: HeldInput,
     /// 플레이어 움직임 속도입니다.
     velocity: Velocity,
     /// 플레이어 움직임 방향입니다.
@@ -173,12 +175,11 @@ pub struct InGameRunScene {
 impl InGameRunScene {
     /// 새로운 `InGameRunScene`을 생성합니다.
     pub fn new(
-        epoch: u32,
         locale: Locale,
         uid: UserId,
         token: LoginToken,
         stage_attributes: Arc<StageAttributes>,
-        remaining_time_ms: u32,
+        max_game_play_time_ms: u32,
         first_mouse_pressed: bool,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
@@ -201,21 +202,22 @@ impl InGameRunScene {
         sampler_pool: SamplerPool,
     ) -> Self {
         Self {
-            epoch,
-            epoch_time_stamp: Instant::now(),
-            packet_elapsed_time_ms: 0,
-            histories: Vec::with_capacity(MAX_HISTORIES),
             locale,
             uid,
             token,
             control_sensitivity: 0.5,
             flip_horizontal: false,
             flip_vertical: false,
+            max_game_play_time_ms,
+            play_elapsed_time_ms: 0,
+            packet_send_elapsed_time_ms: 0,
+            packet_recv_elapsed_time_ms: 0,
+            input_events: Vec::with_capacity(MAX_INPUT_EVENTS),
+            delta_lat: 0.0,
+            delta_lon: 0.0,
             stage_attributes,
-            max_game_play_time_ms: remaining_time_ms,
-            remaining_time_ms,
             first_mouse_pressed,
-            input_bits: GameInputBits::new(),
+            held_input: HeldInput::new(),
             velocity: Velocity::new(),
             direction: MovingDirection::new(),
             input_timer: InputStateTimer::new(0),
@@ -304,7 +306,7 @@ impl InGameRunScene {
             view_state,
             view_state_timer,
             character_attributes,
-            self.input_bits,
+            self.held_input,
         );
 
         if health_data.num_maximum_health() != 0 && health_data.remaining == 0 {
@@ -314,7 +316,7 @@ impl InGameRunScene {
         // 행동 상태를 갱신합니다.
         let mut events = Vec::default();
         update_action_state(
-            self.input_bits,
+            self.held_input,
             action_state,
             action_state_timer,
             character_attributes,
@@ -325,7 +327,7 @@ impl InGameRunScene {
 
         // 움직임 상태를 갱신합니다.
         update_movement_state(
-            self.input_bits,
+            self.held_input,
             *action_state,
             movement_state,
             movement_state_timer,
@@ -372,7 +374,7 @@ impl InGameRunScene {
         let i = character_kind as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
 
-        self.input_timer.update(self.input_bits, elapsed_time_ms);
+        self.input_timer.update(self.held_input, elapsed_time_ms);
         update_view_state_timer(
             view_state,
             view_state_timer,
@@ -382,7 +384,7 @@ impl InGameRunScene {
 
         let mut events = Vec::new();
         update_action_state_timer(
-            self.input_bits,
+            self.held_input,
             bullet_data,
             skill_cost_data,
             action_state,
@@ -418,7 +420,7 @@ impl InGameRunScene {
         let state_view = world.view::<States>();
 
         // 플레이어 움직임 방향을 갱신합니다
-        self.direction.update(self.input_bits, latlon);
+        self.direction.update(self.held_input, latlon);
 
         // 캐릭터 상태 데이터를 가져옵니다.
         let (&action_state, &movement_state) = state_view
@@ -482,7 +484,7 @@ impl InGameRunScene {
             &mut self.velocity,
             &mut translation,
             self.direction,
-            self.input_bits,
+            self.held_input,
             team,
             &mut is_grounded,
             &mut is_invincible,
@@ -512,9 +514,7 @@ impl InGameRunScene {
             &'a mut MovementStateTimer,
             &'a mut LatLon,
         );
-        let time_stamp_ms = self
-            .max_game_play_time_ms
-            .saturating_sub(self.remaining_time_ms);
+        let time_stamp_ms = self.play_elapsed_time_ms;
         let mut state_view = world.view::<Q>();
         for (entity, archetype) in self.players.values().cloned() {
             let result = self.interpolation.get_interpolated(entity, time_stamp_ms);
@@ -823,14 +823,11 @@ impl InGameRunScene {
         let mut always_change_view = world.view::<Always>();
 
         // 남은 시간을 계산합니다.
-        let delta = Instant::now()
+        let delay_time = Instant::now()
             .saturating_duration_since(time_stamp)
             .as_millis()
             .min(self.max_game_play_time_ms as u128) as u32;
-        let server_remaining_time_ms = packet.remaining_time_ms.saturating_sub(delta);
-        let server_time_stamp_ms = self
-            .max_game_play_time_ms
-            .saturating_sub(server_remaining_time_ms);
+        let server_time_stamp_ms = packet.play_elapsed_time_ms;
 
         // 플레이어 상태를 갱신합니다.
         for data in packet.players {
@@ -858,7 +855,7 @@ impl InGameRunScene {
             *network_state = data.network_state();
             flags.set_connected(data.is_connected());
             flags.set_invincible(data.is_invincible());
-            health_data.shield = data.guard_health;
+            health_data.shield = data.shield_health;
             health_data.remaining = data.current_health;
             bullet_data.remaining = data.current_bullet;
             skill_cost_data.remaining = data.current_skill_cost;
@@ -870,9 +867,9 @@ impl InGameRunScene {
                     data.velocity,
                     data.rotation,
                     data.translation,
-                    data.player_states.action_state(),
+                    data.action_state(),
                     data.action_state_timer,
-                    data.player_states.movement_state(),
+                    data.movement_state(),
                     data.movement_state_timer,
                     data.latlon,
                 );
@@ -896,18 +893,13 @@ impl InGameRunScene {
                     data.velocity,
                     data.rotation,
                     data.translation,
-                    data.player_states.action_state(),
+                    data.action_state(),
                     data.action_state_timer,
-                    data.player_states.movement_state(),
+                    data.movement_state(),
                     data.movement_state_timer,
                     data.latlon,
                 ));
             }
-        }
-
-        let diff_t = (packet.remaining_time_ms as i32 - self.remaining_time_ms as i32).abs();
-        if diff_t > 100 {
-            self.remaining_time_ms = packet.remaining_time_ms;
         }
     }
 
@@ -935,12 +927,7 @@ impl InGameRunScene {
                     .get_mut(entity)
                     .expect("invalid entity or invalid entity component!");
 
-            // 클라이언트의 시각을 계산합니다.
-            let client_time_stamp = self
-                .max_game_play_time_ms
-                .saturating_sub(self.remaining_time_ms);
-
-            let diff_t = (client_time_stamp as i32 - snapshot.time_stamp_ms as i32).abs();
+            let diff_t = (self.play_elapsed_time_ms as i32 - snapshot.time_stamp_ms as i32).abs();
             if *action_state == snapshot.action_state {
                 // 차이가 큰 경우에만 서버 데이터를 덮어씁니다.
                 if diff_t > 100 {
@@ -974,7 +961,7 @@ impl InGameRunScene {
             let p0 = get_local_transform(world, entity, archetype).get_translation();
             let p1 = snapshot.transform.w_axis.truncate().into();
             let d = p0.distance_squared(p1);
-            let s = d.min(0.5) / 0.5;
+            let s = d.min(0.1) / 0.1;
             self.velocity.0 = self.velocity.0.lerp(snapshot.velocity.0, 0.5);
             lerp_local_transform(
                 world,
@@ -983,6 +970,45 @@ impl InGameRunScene {
                 ToParentTrans(snapshot.transform),
                 s,
             );
+        }
+    }
+
+    /// 입력 이벤트를 서버로 전송합니다.
+    fn input_event_send_to_server(&mut self, app: &dyn AppHandle) {
+        if self.input_events.len() > 0 {
+            let count = self.input_events.len().min(MAX_INPUT_EVENTS);
+            let iter = self.input_events.drain(..count);
+            let packet = InGameInputEventPacket::from_iter(self.uid, self.token, iter);
+
+            let net = app.net_manager();
+            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+            socket.push_packet(packet.as_raw());
+        }
+    }
+
+    /// 입력 상태를 서버로 전송합니다.
+    fn input_state_send_to_server(&mut self, app: &dyn AppHandle) {
+        const TICK: u16 = 33;
+        if self.packet_send_elapsed_time_ms >= TICK {
+            let packet = InGameInputStatePacket::new(
+                self.uid,
+                self.token,
+                0.0,
+                0.0,
+                0.0,
+                self.delta_lat,
+                self.delta_lon,
+                self.held_input,
+                self.play_elapsed_time_ms,
+            );
+
+            let net = app.net_manager();
+            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+            socket.push_packet(packet.as_raw());
+
+            self.packet_send_elapsed_time_ms = 0;
+            self.delta_lat = 0.0;
+            self.delta_lon = 0.0;
         }
     }
 }
@@ -1031,9 +1057,20 @@ impl GameScene for InGameRunScene {
             let config = UserConfig::get();
             let flags = config
                 .get_mouse_input(&button)
-                .map(|input| input.into_bits())
+                .map(|input| {
+                    if self.input_events.len() < MAX_INPUT_EVENTS {
+                        self.input_events.push(InputEvent::new(
+                            self.play_elapsed_time_ms,
+                            input,
+                            true,
+                        ));
+                        input.into_bits()
+                    } else {
+                        HeldInput::empty()
+                    }
+                })
                 .unwrap_or_default();
-            self.input_bits |= flags;
+            self.held_input |= flags;
         }
 
         self.update_player_character_state();
@@ -1058,9 +1095,20 @@ impl GameScene for InGameRunScene {
             let config = UserConfig::get();
             let flags = config
                 .get_mouse_input(&button)
-                .map(|input| input.into_bits())
+                .map(|input| {
+                    if self.input_events.len() < MAX_INPUT_EVENTS {
+                        self.input_events.push(InputEvent::new(
+                            self.play_elapsed_time_ms,
+                            input,
+                            false,
+                        ));
+                        input.into_bits()
+                    } else {
+                        HeldInput::empty()
+                    }
+                })
                 .unwrap_or_default();
-            self.input_bits &= !flags;
+            self.held_input &= !flags;
         }
 
         self.update_player_character_state();
@@ -1105,11 +1153,13 @@ impl GameScene for InGameRunScene {
             false => self.control_sensitivity,
         };
 
-        let lat = latlon.lat + dy.to_radians() * offset;
-        latlon.lat = lat.clamp(MIN_LATITUDE, MAX_LATITUDE);
+        let delta = dy.to_radians() * offset;
+        latlon.lat = (latlon.lat + delta).clamp(MIN_LATITUDE, MAX_LATITUDE);
+        self.delta_lat += delta;
 
-        let lon = latlon.lon + dx.to_radians() * offset;
-        latlon.lon = lon % TAU;
+        let delta = dx.to_radians() * offset;
+        latlon.lon = (latlon.lon + delta) % TAU;
+        self.delta_lon += delta;
 
         true
     }
@@ -1128,9 +1178,20 @@ impl GameScene for InGameRunScene {
                 let config = UserConfig::get();
                 let flags = config
                     .get_keyboard_input(&(code, location))
-                    .map(|input| input.into_bits())
+                    .map(|input| {
+                        if self.input_events.len() < MAX_INPUT_EVENTS {
+                            self.input_events.push(InputEvent::new(
+                                self.play_elapsed_time_ms,
+                                input,
+                                true,
+                            ));
+                            input.into_bits()
+                        } else {
+                            HeldInput::empty()
+                        }
+                    })
                     .unwrap_or_default();
-                self.input_bits |= flags;
+                self.held_input |= flags;
             }
 
             self.update_player_character_state();
@@ -1153,9 +1214,20 @@ impl GameScene for InGameRunScene {
                 let config = UserConfig::get();
                 let flags = config
                     .get_keyboard_input(&(code, location))
-                    .map(|input| input.into_bits())
+                    .map(|input| {
+                        if self.input_events.len() < MAX_INPUT_EVENTS {
+                            self.input_events.push(InputEvent::new(
+                                self.play_elapsed_time_ms,
+                                input,
+                                false,
+                            ));
+                            input.into_bits()
+                        } else {
+                            HeldInput::empty()
+                        }
+                    })
                     .unwrap_or_default();
-                self.input_bits &= !flags;
+                self.held_input &= !flags;
             }
 
             self.update_player_character_state();
@@ -1190,8 +1262,7 @@ impl GameScene for InGameRunScene {
         match packet_type {
             PacketType::InGamePull => {
                 let packet = InGamePullPacket::from_raw(packet);
-                self.epoch = packet.epoch;
-                self.epoch_time_stamp = Instant::now();
+                self.packet_recv_elapsed_time_ms = 0;
                 self.pull_world_data(time_stamp, packet);
             }
             _ => {
@@ -1206,18 +1277,19 @@ impl GameScene for InGameRunScene {
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u32;
-        let now = Instant::now();
-        let epoch_elapsed = now
-            .saturating_duration_since(self.epoch_time_stamp)
-            .as_millis()
-            .min(u16::MAX as u128) as u16;
-        if epoch_elapsed > 500 {
-            return;
-        }
+        self.play_elapsed_time_ms = self
+            .play_elapsed_time_ms
+            .saturating_add(elapsed_time_ms)
+            .min(self.max_game_play_time_ms);
 
-        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
         let elapsed_time_ms = elapsed_time_ms.min(u16::MAX as u32) as u16;
-        self.packet_elapsed_time_ms = self.packet_elapsed_time_ms.saturating_add(elapsed_time_ms);
+        self.packet_recv_elapsed_time_ms = self
+            .packet_recv_elapsed_time_ms
+            .saturating_add(elapsed_time_ms);
+        self.packet_send_elapsed_time_ms = self
+            .packet_send_elapsed_time_ms
+            .saturating_add(elapsed_time_ms);
+
         self.update_other_characters();
         self.update_player_character_timer(elapsed_time_ms);
         self.update_player_character_rotation();
@@ -1225,43 +1297,11 @@ impl GameScene for InGameRunScene {
         self.update_player_character_state();
     }
 
-    fn on_post_update(&mut self, _window: &Window, app: &dyn AppHandle) {
-        if self.world.is_none() {
-            return;
-        }
-
-        const TICK: u16 = 11;
-        if self.packet_elapsed_time_ms >= TICK {
-            self.packet_elapsed_time_ms = 0;
-
-            let net = app.net_manager();
-            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-            loop {
-                let now = Instant::now();
-                let elapsed_time_ms = now
-                    .saturating_duration_since(self.epoch_time_stamp)
-                    .as_millis()
-                    .min(u16::MAX as u128) as u16;
-                let count = self.histories.len().min(MAX_HISTORIES);
-                let iter: std::vec::Drain<'_, StateHistory> = self.histories.drain(..count);
-                let packet = InGamePushNotifyPacket::from_iter(
-                    self.uid,
-                    self.token,
-                    self.epoch,
-                    elapsed_time_ms,
-                    self.input_bits,
-                    iter,
-                );
-                socket.push_packet(packet.as_raw());
-
-                if self.histories.is_empty() {
-                    break;
-                }
-            }
-        }
-    }
-
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
+        // 패킷을 서버로 전송합니다.
+        self.input_event_send_to_server(app);
+        self.input_state_send_to_server(app);
+
         // 플레이어 데이터를 보정합니다.
         self.correct_player_data();
 

@@ -1,20 +1,25 @@
 //! 인게임 장면을 갱신 하는 패킷과 관련된 코드를 관리합니다.
 //!
 
+use ahash::{HashMap, RandomState};
+
 use crate::{
-    components::{BigEndian, InGamePlayerPullData, MAX_IN_GAME_PLAYERS},
+    components::{
+        BigEndian, InGamePlayerPullData, StateChangeEvent, TryFromBigEndian, UserId,
+        MAX_IN_GAME_PLAYERS,
+    },
     protocol::{Packet, PacketType, RawPacket},
 };
 
 /// 서버에서 클라이언트로 보내는 인게임 장면 갱신 패킷입니다.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InGamePullPacket {
-    /// 현재 시대
-    pub epoch: u32,
-    /// 남은 게임 시간
-    pub remaining_time_ms: u32,
+    /// 게임 플레이 경과 시간. (단위: ms)
+    pub play_elapsed_time_ms: u32,
     /// 플레이어 데이터
     pub players: Vec<InGamePlayerPullData>,
+    /// 각 플레이어의 상태 변화 이벤트 목록입니다.
+    pub events: HashMap<UserId, Vec<StateChangeEvent>>,
 }
 
 impl InGamePullPacket {
@@ -23,28 +28,19 @@ impl InGamePullPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(epoch: u32, remaining_time_ms: u32, players: Vec<InGamePlayerPullData>) -> Self {
+    pub fn new(
+        play_elapsed_time_ms: u32,
+        players: Vec<InGamePlayerPullData>,
+        events: HashMap<UserId, Vec<StateChangeEvent>>,
+    ) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
 
         Self {
-            epoch,
-            remaining_time_ms,
+            play_elapsed_time_ms,
             players,
+            events,
         }
-    }
-
-    /// 새로운 패킷을 생성합니다.
-    ///
-    /// # Panics
-    /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
-    ///
-    pub fn from_iter<I>(epoch: u32, remaining_time_ms: u32, iter: I) -> Self
-    where
-        I: IntoIterator<Item = InGamePlayerPullData>,
-        I::IntoIter: ExactSizeIterator,
-    {
-        Self::new(epoch, remaining_time_ms, iter.into_iter().collect())
     }
 }
 
@@ -56,26 +52,22 @@ impl Packet for InGamePullPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
-        let data_size = u32::byte_size()
-            + u32::byte_size()
-            + u8::byte_size()
-            + InGamePlayerPullData::byte_size() * num_players;
-        let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.epoch.to_big_endian_bytes());
-        data.extend_from_slice(&self.remaining_time_ms.to_big_endian_bytes());
+        let mut data = Vec::new();
+        data.extend_from_slice(&self.play_elapsed_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
             data.extend_from_slice(&player.to_big_endian_bytes());
-        }
 
-        // 바이트 배열 유효성 검증
-        if cfg!(feature = "check-validation") {
-            assert_eq!(
-                data.len(),
-                data_size,
-                "the size of the byte array and the size of the `{}` are different!",
-                stringify!(InGamePullPacket)
-            );
+            if let Some(events) = self.events.get(&player.uid) {
+                let num_events = events.len() as u8;
+                data.extend_from_slice(&num_events.to_big_endian_bytes());
+                for event in events {
+                    data.extend_from_slice(&event.to_big_endian_bytes());
+                }
+            } else {
+                let num_events = 0u8;
+                data.extend_from_slice(&num_events.to_big_endian_bytes());
+            }
         }
 
         RawPacket::new(Self::packet_type(), data)
@@ -92,18 +84,12 @@ impl Packet for InGamePullPacket {
             return None;
         }
 
-        // 현재 시대를 가져옵니다.
+        // 현재 플레이 경과 시간을 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
         let mut size = u32::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let epoch = u32::from_big_endian_bytes(data);
-
-        // 남은 시간을 가져옵니다.
-        offset = offset + size;
-        size = u32::byte_size();
-        data = &bytes[offset..offset + size];
-        let remaining_time_ms = u32::from_big_endian_bytes(data);
+        let play_elapsed_time_ms = u32::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
         offset = offset + size;
@@ -114,19 +100,35 @@ impl Packet for InGamePullPacket {
             return None;
         }
 
-        // 플레이어 데이터를 가져옵니다.
-        let mut players = Vec::with_capacity(num_players as usize);
+        let mut players = Vec::with_capacity(num_players);
+        let mut events = HashMap::with_capacity_and_hasher(num_players, RandomState::new());
         for _ in 0..num_players {
+            // 플레이어 데이터를 가져옵니다.
             offset = offset + size;
             size = InGamePlayerPullData::byte_size();
             data = &bytes[offset..offset + size];
-            players.push(InGamePlayerPullData::from_big_endian_bytes(data));
+            let player = InGamePlayerPullData::from_big_endian_bytes(data);
+
+            // 이벤트의 수를 가져옵니다.
+            offset = offset + size;
+            size = u8::byte_size();
+            data = &bytes[offset..offset + size];
+            let num_events = u8::from_big_endian_bytes(data) as usize;
+            let mut states_events = Vec::with_capacity(num_events);
+            for _ in 0..num_events {
+                offset = offset + size;
+                size = StateChangeEvent::byte_size();
+                data = &bytes[offset..offset + size];
+                states_events.push(StateChangeEvent::try_from_big_endian_bytes(data)?);
+            }
+            events.insert(player.uid, states_events);
+            players.push(player);
         }
 
         Some(Self {
-            epoch,
-            remaining_time_ms,
+            play_elapsed_time_ms,
             players,
+            events,
         })
     }
 }
@@ -143,7 +145,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_creation_in_game_pull_packet() {
-        InGamePullPacket::new(12341, 30_000, vec![]);
+        InGamePullPacket::new(30_000, vec![], HashMap::default());
     }
 
     #[test]
@@ -159,9 +161,9 @@ mod tests {
             [10.0241, 0.0111, 5.031413],
             [0.00134123, 0.0061341, 0.7341341, 0.212341],
             [0.0, 0.13414132, 0.513411],
-            true,
-            true,
             Permission::Admin,
+            true,
+            true,
             true,
             NetworkState::Poor,
             PlayerStateData::new()
@@ -182,10 +184,10 @@ mod tests {
             [10.0241, 0.0111, 5.031413],
             [0.00134123, 0.0061341, 0.7341341, 0.212341],
             [0.0, 0.13414132, 0.513411],
-            false,
-            false,
             Permission::User,
+            false,
             true,
+            false,
             NetworkState::Good,
             PlayerStateData::new()
                 .with_action_state(ActionState::Attack)
@@ -195,8 +197,40 @@ mod tests {
             LatLon::new(-11f32.to_radians(), 63f32.to_radians()),
         );
 
+        let mut events = HashMap::default();
+        events.insert(
+            UserId::new(13413451),
+            vec![
+                StateChangeEvent::MovementState {
+                    movement_state: MovementState::Idle,
+                    play_elapsed_time_ms: 40_921,
+                },
+                StateChangeEvent::ActionState {
+                    action_state: ActionState::Attack,
+                    play_elapsed_time_ms: 40_921,
+                },
+            ],
+        );
+        events.insert(
+            UserId::new(98431),
+            vec![
+                StateChangeEvent::MovementState {
+                    movement_state: MovementState::Moving,
+                    play_elapsed_time_ms: 40_121,
+                },
+                StateChangeEvent::ActionState {
+                    action_state: ActionState::Attack,
+                    play_elapsed_time_ms: 40_921,
+                },
+                StateChangeEvent::MovementState {
+                    movement_state: MovementState::Idle,
+                    play_elapsed_time_ms: 41_221,
+                },
+            ],
+        );
+
         let players = vec![player_0, player_1];
-        let origin = InGamePullPacket::new(614123, 42_123, players);
+        let origin = InGamePullPacket::new(42_123, players, events);
         let raw = origin.as_raw();
         let other = InGamePullPacket::from_raw(raw);
 

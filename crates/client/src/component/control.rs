@@ -1,4 +1,4 @@
-use mod_network::components::{ControllerState, LatLon, NUM_CONTROLLER_STATES};
+use mod_network::components::{DirectionKind, LatLon, NUM_DIRECTION_KINDS};
 
 /// 플레이어가 이동하고자 하는 방향을 나타냅니다. (캐릭터가 바라보는 방향과 다를 수 있습니다)
 ///
@@ -11,13 +11,9 @@ pub struct MoveDirection(pub glam::Vec3A);
 
 impl MoveDirection {
     /// 삼인칭 카메라 시점을 기준으로 컨트롤러 상태에 따라 플레이어 이동 방향을 갱신합니다.
-    pub fn update_from_third_person_camera(
-        &mut self,
-        controller: ControllerState,
-        latlon: &LatLon,
-    ) {
+    pub fn update_from_third_person_camera(&mut self, controller: DirectionKind, latlon: &LatLon) {
         type Func = fn(glam::Vec3A, glam::Vec3A, &mut MoveDirection);
-        const FUNC_TABLE: [Func; NUM_CONTROLLER_STATES] = [
+        const FUNC_TABLE: [Func; NUM_DIRECTION_KINDS] = [
             update_move_direction_when_idle_state,
             update_move_direction_when_moving_left_state,
             update_move_direction_when_moving_right_state,

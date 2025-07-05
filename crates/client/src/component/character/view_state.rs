@@ -1,11 +1,11 @@
-use mod_network::components::{CharacterAttributes, GameInputBits, ViewState, ViewStateTimer};
+use mod_network::components::{CharacterAttributes, HeldInput, ViewState, ViewStateTimer};
 
 /// [`ViewState`]과 입력 상태에 따라 [`ViewState`]를 갱신합니다.
 pub fn update_view_state(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     character_attributes: &CharacterAttributes,
-    input_bits: GameInputBits,
+    input_bits: HeldInput,
 ) {
     match view_state {
         ViewState::Idle => update_state_when_idle(
@@ -40,9 +40,9 @@ fn update_state_when_idle(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     _character_attributes: &CharacterAttributes,
-    input_bits: GameInputBits,
+    input_bits: HeldInput,
 ) {
-    if input_bits.contains(GameInputBits::Aiming) {
+    if input_bits.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomIn;
         view_state_timer.0 = 0;
     }
@@ -53,9 +53,9 @@ fn update_state_when_zoom_in(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     character_attributes: &CharacterAttributes,
-    input_bits: GameInputBits,
+    input_bits: HeldInput,
 ) {
-    if !input_bits.contains(GameInputBits::Aiming) {
+    if !input_bits.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomOut;
 
         let zoom_in_duration = character_attributes.normal_attack_start_duration;
@@ -71,9 +71,9 @@ fn update_state_when_zoom_out(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     character_attributes: &CharacterAttributes,
-    input_bits: GameInputBits,
+    input_bits: HeldInput,
 ) {
-    if input_bits.contains(GameInputBits::Aiming) {
+    if input_bits.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomIn;
 
         let zoom_in_duration = character_attributes.normal_attack_start_duration;
@@ -89,9 +89,9 @@ fn update_state_when_aiming(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     _character_attributes: &CharacterAttributes,
-    input_bits: GameInputBits,
+    input_bits: HeldInput,
 ) {
-    if !input_bits.contains(GameInputBits::Aiming) {
+    if !input_bits.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomOut;
         view_state_timer.0 = 0;
     }

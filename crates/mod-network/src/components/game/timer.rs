@@ -1,7 +1,7 @@
 //! 플레이어 타이머와 관련된 코드를 관리합니다.
 //!
 
-use crate::components::{BigEndian, GameInputBits};
+use crate::components::{BigEndian, HeldInput};
 
 /// 플레이어 행동 상태 타이머입니다. (단위: ms)
 #[repr(transparent)]
@@ -102,8 +102,8 @@ impl InputStateTimer {
     }
 
     /// 플레이어 입력 상태 타이머를 갱신합니다.
-    pub fn update(&mut self, input_bits: GameInputBits, elapsed_time_ms: u16) {
-        if input_bits.is_moved() {
+    pub fn update(&mut self, held_input: HeldInput, elapsed_time_ms: u16) {
+        if held_input.is_moved() {
             self.0 = self
                 .0
                 .saturating_add(elapsed_time_ms)

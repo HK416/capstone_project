@@ -2,8 +2,8 @@
 //!
 
 use mod_network::components::{
-    ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind, GameInputBits,
-    GameTier, HealthData, InputStateTimer, LatLon, MovementState, MovementStateTimer,
+    ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind, GameTier,
+    HealthData, HeldInput, InputStateTimer, LatLon, MovementState, MovementStateTimer,
     MovingDirection, NetworkState, Permission, PlayerStateData, ProfileIcon, SkillCostData, Team,
     UserName, Velocity,
 };
@@ -252,7 +252,7 @@ pub struct Player {
     /// 입력 상태 타이머
     pub input_timer: InputStateTimer, // 76
     /// 게임 입력 비트 플래그
-    pub input_bits: GameInputBits, // 78
+    pub held_input: HeldInput, // 78
 
     /// 플레이어 월드 공간 위치
     pub translation: glam::Vec3A, // 96
@@ -294,7 +294,7 @@ impl Player {
             attributes: get_character_attributes(CharacterKind::ArisOriginal),
             skill_cost_timer: 0,
             input_timer: InputStateTimer::new(0),
-            input_bits: GameInputBits::default(),
+            held_input: HeldInput::default(),
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
             velocity: Velocity::new(),

@@ -2,17 +2,17 @@
 //!
 
 use crate::components::{
-    ActionStateTimer, BigEndian, LatLon, MovementStateTimer, NetworkState, Permission,
-    PlayerStateData, UserId,
+    ActionState, ActionStateTimer, BigEndian, LatLon, MovementState, MovementStateTimer,
+    NetworkState, Permission, PlayerStateData, TryFromBigEndian, UserId,
 };
 
 /// 플레이어 비트 필드 데이터입니다.
 ///
 /// 아래 데이터가 포함됩니다.
-/// - connected     | 1bit | 서버 연결 여부
-/// - invincible    | 1bit | 무적 여부
 /// - permission    | 1bit | 권한
-/// - overwrite     | 1bit | 덮어쓰기 여부
+/// - connected     | 1bit | 서버 연결 여부
+/// - grounded      | 1bit | 지면을 밟고 있는 여부
+/// - invincible    | 1bit | 무적 여부
 /// - network_state | 2bit | 네트워크 상태
 ///
 #[repr(transparent)]
@@ -20,14 +20,14 @@ use crate::components::{
 struct Bitfield(u8);
 
 impl Bitfield {
-    const CONNECT_BIT_MASK: u8 = 0x01;
-    const CONNECT_SHIFT: usize = 0;
-    const INVINCIBLE_BIT_MASK: u8 = 0x01;
-    const INVINCIBLE_SHIFT: usize = 1;
     const PERMISSION_BIT_MASK: u8 = 0x01;
-    const PERMISSION_SHIFT: usize = 2;
-    const OVERWRITE_BIT_MASK: u8 = 0x01;
-    const OVERWRITE_SHIFT: usize = 3;
+    const PERMISSION_SHIFT: usize = 0;
+    const CONNECT_BIT_MASK: u8 = 0x01;
+    const CONNECT_SHIFT: usize = 1;
+    const INVINCIBLE_BIT_MASK: u8 = 0x01;
+    const INVINCIBLE_SHIFT: usize = 2;
+    const GROUND_BIT_MASK: u8 = 0x01;
+    const GROUND_SHIFT: usize = 3;
     const STATE_BIT_MASK: u8 = 0x03;
     const STATE_SHIFT: usize = 4;
 
@@ -36,13 +36,27 @@ impl Bitfield {
         Self(0x00)
     }
 
+    /// 권한을 반환합니다.
+    fn permission(&self) -> Permission {
+        let val = (self.0 >> Self::PERMISSION_SHIFT) & Self::PERMISSION_BIT_MASK;
+        // Safety: 주어지는 값은 범위를 벗어나지 않음
+        unsafe { Permission::new(val).unwrap_unchecked() }
+    }
+
+    /// 권한을 설정합니다.
+    const fn with_permission(mut self, permission: Permission) -> Self {
+        self.0 &= !(Self::PERMISSION_BIT_MASK << Self::PERMISSION_SHIFT);
+        self.0 |= ((permission as u8) & Self::PERMISSION_BIT_MASK) << Self::PERMISSION_SHIFT;
+        self
+    }
+
     /// 서버 연결 여부를 반환합니다.
     fn is_connected(&self) -> bool {
         (self.0 >> Self::CONNECT_SHIFT) & Self::CONNECT_BIT_MASK == Self::CONNECT_BIT_MASK
     }
 
     /// 서버 연결 여부를 설정합니다.
-    fn with_connected(mut self, connected: bool) -> Self {
+    const fn with_connected(mut self, connected: bool) -> Self {
         self.0 &= !(Self::CONNECT_BIT_MASK << Self::CONNECT_SHIFT);
         self.0 |= ((connected as u8) & Self::CONNECT_BIT_MASK) << Self::CONNECT_SHIFT;
         self
@@ -54,35 +68,21 @@ impl Bitfield {
     }
 
     /// 무적 여부를 설정합니다.
-    fn with_invincible(mut self, invincible: bool) -> Self {
+    const fn with_invincible(mut self, invincible: bool) -> Self {
         self.0 &= !(Self::INVINCIBLE_BIT_MASK << Self::INVINCIBLE_SHIFT);
         self.0 |= ((invincible as u8) & Self::INVINCIBLE_BIT_MASK) << Self::INVINCIBLE_SHIFT;
         self
     }
 
-    /// 권한을 반환합니다.
-    fn permission(&self) -> Permission {
-        let val = (self.0 >> Self::PERMISSION_SHIFT) & Self::PERMISSION_BIT_MASK;
-        // Safety: 주어지는 값은 범위를 벗어나지 않음
-        unsafe { Permission::new(val).unwrap_unchecked() }
+    /// 지면을 밟고 있는 여부를 반환합니다.
+    fn is_grounded(&self) -> bool {
+        (self.0 >> Self::GROUND_SHIFT) & Self::GROUND_BIT_MASK == Self::GROUND_BIT_MASK
     }
 
-    /// 권한을 설정합니다.
-    fn with_permission(mut self, permission: Permission) -> Self {
-        self.0 &= !(Self::PERMISSION_BIT_MASK << Self::PERMISSION_SHIFT);
-        self.0 |= ((permission as u8) & Self::PERMISSION_BIT_MASK) << Self::PERMISSION_SHIFT;
-        self
-    }
-
-    /// 덮어쓰기 여부를 반환합니다.
-    fn is_overwrite(&self) -> bool {
-        (self.0 >> Self::OVERWRITE_SHIFT) & Self::OVERWRITE_BIT_MASK == Self::OVERWRITE_BIT_MASK
-    }
-
-    /// 덮어쓰기 여부를 설정합니다.
-    fn with_overwrite(mut self, overwrite: bool) -> Self {
-        self.0 &= !(Self::OVERWRITE_BIT_MASK << Self::OVERWRITE_SHIFT);
-        self.0 |= ((overwrite as u8) & Self::OVERWRITE_BIT_MASK) << Self::OVERWRITE_SHIFT;
+    /// 지면을 밟고 있는 여부를 설정합니다.
+    const fn with_grounded(mut self, grounded: bool) -> Self {
+        self.0 &= !(Self::GROUND_BIT_MASK << Self::GROUND_SHIFT);
+        self.0 |= ((grounded as u8) & Self::GROUND_BIT_MASK) << Self::GROUND_SHIFT;
         self
     }
 
@@ -94,7 +94,7 @@ impl Bitfield {
     }
 
     /// 네트워크 상태를 설정합니다.
-    fn with_network_state(mut self, state: NetworkState) -> Self {
+    const fn with_network_state(mut self, state: NetworkState) -> Self {
         self.0 &= !(Self::STATE_BIT_MASK << Self::STATE_SHIFT);
         self.0 |= ((state as u8) & Self::STATE_BIT_MASK) << Self::STATE_SHIFT;
         self
@@ -117,6 +117,107 @@ impl Default for Bitfield {
     }
 }
 
+/// 상태 이벤트입니다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum StateChangeEvent {
+    ActionState {
+        action_state: ActionState,
+        play_elapsed_time_ms: u32,
+    },
+    MovementState {
+        movement_state: MovementState,
+        play_elapsed_time_ms: u32,
+    },
+}
+
+impl StateChangeEvent {
+    const TIME_BIT_MASK: u32 = 0x00FFFFFF;
+    const TIME_SHIFT: usize = 0;
+    const STATE_BIT_MASK: u32 = 0x7F;
+    const STATE_SHIFT: usize = 24;
+    const KIND_BIT_MASK: u32 = 0x1;
+    const KIND_SHIFT: usize = 31;
+}
+
+impl BigEndian for StateChangeEvent {
+    fn byte_size() -> usize {
+        u32::byte_size()
+    }
+
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::try_from_big_endian_bytes(bytes).expect("invalid data!")
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        match *self {
+            StateChangeEvent::ActionState {
+                action_state,
+                play_elapsed_time_ms,
+            } => {
+                let kind = ((true as u32) & Self::KIND_BIT_MASK) << Self::KIND_SHIFT;
+                let state = ((action_state as u32) & Self::STATE_BIT_MASK) << Self::STATE_SHIFT;
+                let time = ((play_elapsed_time_ms) & Self::TIME_BIT_MASK) << Self::TIME_SHIFT;
+                let bits = kind | state | time;
+
+                let mut bytes = Vec::with_capacity(Self::byte_size());
+                bytes.extend_from_slice(&bits.to_big_endian_bytes());
+                bytes
+            }
+            StateChangeEvent::MovementState {
+                movement_state,
+                play_elapsed_time_ms,
+            } => {
+                let kind = ((false as u32) & Self::KIND_BIT_MASK) << Self::KIND_SHIFT;
+                let state = ((movement_state as u32) & Self::STATE_BIT_MASK) << Self::STATE_SHIFT;
+                let time = ((play_elapsed_time_ms) & Self::TIME_BIT_MASK) << Self::TIME_SHIFT;
+                let bits = kind | state | time;
+
+                let mut bytes = Vec::with_capacity(Self::byte_size());
+                bytes.extend_from_slice(&bits.to_big_endian_bytes());
+                bytes
+            }
+        }
+    }
+}
+
+impl TryFromBigEndian for StateChangeEvent {
+    #[allow(unused_mut)]
+    fn try_from_big_endian_bytes(bytes: &[u8]) -> Option<Self> {
+        // 바이트 배열의 크기가 다른지 확인합니다.
+        if cfg!(feature = "check-validation") {
+            assert_eq!(
+                bytes.len(),
+                Self::byte_size(),
+                "the size of the byte array and the size of the `{}` are different!",
+                stringify!(StateChangeEvent)
+            )
+        };
+
+        let mut offset = 0;
+        let mut size = u32::byte_size();
+        let mut data = &bytes[offset..offset + size];
+        let bits = u32::from_big_endian_bytes(data);
+        let kind = (bits >> Self::KIND_SHIFT) & Self::KIND_BIT_MASK == Self::KIND_BIT_MASK;
+        if kind {
+            let val = ((bits >> Self::STATE_SHIFT) & Self::STATE_BIT_MASK) as u8;
+            let action_state = ActionState::new(val)?;
+            let play_elapsed_time_ms = (bits >> Self::TIME_SHIFT) & Self::TIME_BIT_MASK;
+            Some(Self::ActionState {
+                action_state,
+                play_elapsed_time_ms,
+            })
+        } else {
+            let val = ((bits >> Self::STATE_SHIFT) & Self::STATE_BIT_MASK) as u8;
+            let movement_state = MovementState::new(val)?;
+            let play_elapsed_time_ms = (bits >> Self::TIME_SHIFT) & Self::TIME_BIT_MASK;
+            Some(Self::MovementState {
+                movement_state,
+                play_elapsed_time_ms,
+            })
+        }
+    }
+}
+
 /// 인게임 플레이어 갱신 데이터입니다.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InGamePlayerPullData {
@@ -129,7 +230,7 @@ pub struct InGamePlayerPullData {
     pub dead_count: u16,
 
     /// 현재 방어막 체력
-    pub guard_health: u16,
+    pub shield_health: u16,
     /// 현재 체력
     pub current_health: u16,
     /// 현재 남은 총알 수
@@ -147,7 +248,7 @@ pub struct InGamePlayerPullData {
     /// 비트 필드 데이터
     bitfield: Bitfield,
     /// 플레이어 상태 데이터
-    pub player_states: PlayerStateData,
+    player_states: PlayerStateData,
     /// 행동 상태 타이머
     pub action_state_timer: ActionStateTimer,
     /// 움직임 상태 타이머
@@ -157,21 +258,22 @@ pub struct InGamePlayerPullData {
 }
 
 impl InGamePlayerPullData {
-    pub fn new(
+    /// 새로운 플레이어 데이터를 생성합니다.
+    pub const fn new(
         uid: UserId,
         kill_count: u16,
         dead_count: u16,
-        guard_health: u16,
+        shield_health: u16,
         current_health: u16,
         current_bullet: u16,
         current_skill_cost: u16,
         translation: [f32; 3],
         rotation: [f32; 4],
         velocity: [f32; 3],
-        connected: bool,
-        invincible: bool,
         permission: Permission,
-        overwrite: bool,
+        connected: bool,
+        grounded: bool,
+        invincible: bool,
         network_state: NetworkState,
         player_states: PlayerStateData,
         action_state_timer: ActionStateTimer,
@@ -182,7 +284,7 @@ impl InGamePlayerPullData {
             uid,
             kill_count,
             dead_count,
-            guard_health,
+            shield_health,
             current_health,
             current_bullet,
             current_skill_cost,
@@ -190,10 +292,10 @@ impl InGamePlayerPullData {
             rotation,
             velocity,
             bitfield: Bitfield::new()
-                .with_connected(connected)
-                .with_invincible(invincible)
                 .with_permission(permission)
-                .with_overwrite(overwrite)
+                .with_connected(connected)
+                .with_grounded(grounded)
+                .with_invincible(invincible)
                 .with_network_state(network_state),
             player_states,
             action_state_timer,
@@ -202,20 +304,19 @@ impl InGamePlayerPullData {
         }
     }
 
+    /// 권한을 반환합니다.
+    pub fn permission(&self) -> Permission {
+        self.bitfield.permission()
+    }
+
     /// 서버 연결 여부를 반환합니다.
     pub fn is_connected(&self) -> bool {
         self.bitfield.is_connected()
     }
 
-    /// 서버 연결 여부를 설정합니다.
-    pub fn set_connected(&mut self, connected: bool) {
-        self.bitfield = self.bitfield.with_connected(connected);
-    }
-
-    /// 서버 연결 여부를 설정합니다.
-    pub fn with_connected(mut self, connected: bool) -> Self {
-        self.bitfield = self.bitfield.with_connected(connected);
-        self
+    /// 지면을 밟고 있는 여부를 반환합니다.
+    pub fn is_grounded(&self) -> bool {
+        self.bitfield.is_grounded()
     }
 
     /// 무적 여부를 반환합니다.
@@ -223,83 +324,39 @@ impl InGamePlayerPullData {
         self.bitfield.is_invincible()
     }
 
-    /// 무적 여부를 설정합니다.
-    pub fn set_invincible(&mut self, invincible: bool) {
-        self.bitfield = self.bitfield.with_invincible(invincible);
-    }
-
-    /// 무적 여부를 설정합니다.
-    pub fn with_invincible(mut self, invincible: bool) -> Self {
-        self.bitfield = self.bitfield.with_invincible(invincible);
-        self
-    }
-
-    /// 권한을 반환합니다.
-    pub fn permission(&self) -> Permission {
-        self.bitfield.permission()
-    }
-
-    /// 권한을 설정합니다.
-    pub fn set_permission(&mut self, permission: Permission) {
-        self.bitfield = self.bitfield.with_permission(permission);
-    }
-
-    /// 권한을 설정합니다.
-    pub fn with_permission(mut self, permission: Permission) -> Self {
-        self.bitfield = self.bitfield.with_permission(permission);
-        self
-    }
-
-    /// 데이터 덮어쓰기 여부를 반환합니다.
-    pub fn is_overwrite(&self) -> bool {
-        self.bitfield.is_overwrite()
-    }
-
-    /// 데이터 덮에쓰기 여부를 설정합니다.
-    pub fn set_overwrite(&mut self, overwrite: bool) {
-        self.bitfield = self.bitfield.with_overwrite(overwrite);
-    }
-
-    /// 데이터 덮어쓰기 여부를 설정합니다.
-    pub fn with_overwrite(mut self, overwrite: bool) -> Self {
-        self.bitfield = self.bitfield.with_overwrite(overwrite);
-        self
-    }
-
     /// 네트워크 상태를 반환합니다.
     pub fn network_state(&self) -> NetworkState {
         self.bitfield.network_state()
     }
 
-    /// 네트워크 상태를 설정합니다.
-    pub fn set_network_state(&mut self, state: NetworkState) {
-        self.bitfield = self.bitfield.with_network_state(state);
+    /// 행동 상태를 반환합니다.
+    pub fn action_state(&self) -> ActionState {
+        self.player_states.action_state()
     }
 
-    /// 네트워크 상태를 설정합니다.
-    pub fn with_network_state(mut self, state: NetworkState) -> Self {
-        self.bitfield = self.bitfield.with_network_state(state);
-        self
+    /// 움직임 상태를 반환합니다.
+    pub fn movement_state(&self) -> MovementState {
+        self.player_states.movement_state()
     }
 }
 
 impl BigEndian for InGamePlayerPullData {
     fn byte_size() -> usize {
-        UserId::byte_size()    // 4byte
-            + u16::byte_size()    // 6byte
-            + u16::byte_size()    // 8byte
-            + u16::byte_size()    // 10byte
-            + u16::byte_size()    // 12byte
-            + u16::byte_size()    // 14byte
-            + u16::byte_size()    // 16byte
-            + <[f32; 3]>::byte_size()    // 28byte
-            + <[f32; 4]>::byte_size()    // 44byte
-            + <[f32; 3]>::byte_size()    // 56byte
-            + Bitfield::byte_size()    // 57byte
-            + PlayerStateData::byte_size()    // 58yte
-            + ActionStateTimer::byte_size()    // 60byte
-            + MovementStateTimer::byte_size() // 62byte
-            + LatLon::byte_size() // 70byte
+        UserId::byte_size()
+            + u16::byte_size()
+            + u16::byte_size()
+            + u16::byte_size()
+            + u16::byte_size()
+            + u16::byte_size()
+            + u16::byte_size()
+            + <[f32; 3]>::byte_size()
+            + <[f32; 4]>::byte_size()
+            + <[f32; 3]>::byte_size()
+            + Bitfield::byte_size()
+            + PlayerStateData::byte_size()
+            + ActionStateTimer::byte_size()
+            + MovementStateTimer::byte_size()
+            + LatLon::byte_size()
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -407,7 +464,7 @@ impl BigEndian for InGamePlayerPullData {
             uid,
             kill_count,
             dead_count,
-            guard_health,
+            shield_health: guard_health,
             current_health,
             current_bullet,
             current_skill_cost,
@@ -428,7 +485,7 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.uid.to_big_endian_bytes());
         bytes.extend_from_slice(&self.kill_count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.dead_count.to_big_endian_bytes());
-        bytes.extend_from_slice(&self.guard_health.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.shield_health.to_big_endian_bytes());
         bytes.extend_from_slice(&self.current_health.to_big_endian_bytes());
         bytes.extend_from_slice(&self.current_bullet.to_big_endian_bytes());
         bytes.extend_from_slice(&self.current_skill_cost.to_big_endian_bytes());
@@ -489,12 +546,12 @@ mod tests {
     }
 
     #[test]
-    fn test_bitfield_overwrite() {
-        let bitfield = Bitfield::new().with_overwrite(false);
-        assert_eq!(false, bitfield.is_overwrite());
+    fn test_bitfield_grounded() {
+        let bitfield = Bitfield::new().with_grounded(false);
+        assert_eq!(false, bitfield.is_grounded());
 
-        let bitfield = Bitfield::new().with_overwrite(true);
-        assert_eq!(true, bitfield.is_overwrite());
+        let bitfield = Bitfield::new().with_grounded(true);
+        assert_eq!(true, bitfield.is_grounded());
     }
 
     #[test]
