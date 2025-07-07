@@ -244,6 +244,8 @@ pub struct InGamePlayerPullData {
     pub rotation: [f32; 4],
     /// 월드 공간 속도
     pub velocity: [f32; 3],
+    /// 월드 공간 이동 방향
+    pub direction: [f32; 3],
 
     /// 비트 필드 데이터
     bitfield: Bitfield,
@@ -270,6 +272,7 @@ impl InGamePlayerPullData {
         translation: [f32; 3],
         rotation: [f32; 4],
         velocity: [f32; 3],
+        direction: [f32; 3],
         permission: Permission,
         connected: bool,
         grounded: bool,
@@ -291,6 +294,7 @@ impl InGamePlayerPullData {
             translation,
             rotation,
             velocity,
+            direction,
             bitfield: Bitfield::new()
                 .with_permission(permission)
                 .with_connected(connected)
@@ -351,6 +355,7 @@ impl BigEndian for InGamePlayerPullData {
             + u16::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 4]>::byte_size()
+            + <[f32; 3]>::byte_size()
             + <[f32; 3]>::byte_size()
             + Bitfield::byte_size()
             + PlayerStateData::byte_size()
@@ -430,6 +435,12 @@ impl BigEndian for InGamePlayerPullData {
         data = &bytes[offset..offset + size];
         let velocity = <[f32; 3]>::from_big_endian_bytes(data);
 
+        // 월드 공간 이동 방향을 가져옵니다.
+        offset = offset + size;
+        size = <[f32; 3]>::byte_size();
+        data = &bytes[offset..offset + size];
+        let direction = <[f32; 3]>::from_big_endian_bytes(data);
+
         // 비트 필드 데이터를 가져옵니다.
         offset = offset + size;
         size = u8::byte_size();
@@ -471,6 +482,7 @@ impl BigEndian for InGamePlayerPullData {
             translation,
             rotation,
             velocity,
+            direction,
             bitfield,
             player_states: states,
             action_state_timer,
@@ -492,6 +504,7 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.direction.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
         bytes.extend_from_slice(&self.player_states.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());

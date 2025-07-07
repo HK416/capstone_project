@@ -23,5 +23,5 @@ pub enum StateEvent {
     /// 총알 발사 이벤트
     BulletFired { timing: u16 },
     /// 스킬 응답 이벤트
-    SkillResponse { timing: u16 },
+    Skill { timing: u16 },
 }

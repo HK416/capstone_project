@@ -1,87 +1,54 @@
 //! 이벤트성 입력 전송 패킷과 관련된 코드를 관리합니다.
 //!
 
+// use half::f16;
+
 use crate::{
     components::{BigEndian, InputKind, LoginToken, TryFromBigEndian, UserId},
     protocol::{Packet, PacketType, RawPacket},
 };
 
-/// 비트 필드 데이터
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Bitfield(u8);
-
-impl Bitfield {
-    const INPUT_BIT_MASK: u8 = 0x0F;
-    const INPUT_SHIFT: usize = 0;
-    const PRESS_BIT_MASK: u8 = 0x01;
-    const PRESS_SHIFT: usize = 4;
-
-    /// 새로운 비트 필드 데이터를 생성합니다.
-    pub const fn new() -> Self {
-        Self(0x00)
-    }
-
-    /// 입력 종류를 반환합니다.
-    pub fn input_kind(self) -> Option<InputKind> {
-        InputKind::new((self.0 >> Self::INPUT_SHIFT) & Self::INPUT_BIT_MASK)
-    }
-
-    /// 입력 종류를 설정합니다.
-    pub const fn with_input_kind(mut self, input: InputKind) -> Self {
-        self.0 &= !(Self::INPUT_BIT_MASK << Self::INPUT_SHIFT);
-        self.0 |= ((input as u8) & Self::INPUT_BIT_MASK) << Self::INPUT_SHIFT;
-        self
-    }
-
-    /// 눌림 떼임 여부를 반환합니다.
-    pub fn is_pressed(self) -> bool {
-        (self.0 >> Self::PRESS_SHIFT) & Self::PRESS_BIT_MASK == Self::PRESS_BIT_MASK
-    }
-
-    /// 눌림 떼임 여부를 설정합니다.
-    pub const fn with_pressed(mut self, pressed: bool) -> Self {
-        self.0 &= !(Self::PRESS_BIT_MASK << Self::PRESS_SHIFT);
-        self.0 |= ((pressed as u8) & Self::PRESS_BIT_MASK) << Self::PRESS_SHIFT;
-        self
-    }
-}
-
-impl BigEndian for Bitfield {
-    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
-        Self(u8::from_big_endian_bytes(bytes))
-    }
-
-    fn to_big_endian_bytes(&self) -> Vec<u8> {
-        self.0.to_big_endian_bytes()
-    }
-}
-
 /// 입력 이벤트 데이터입니다.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct InputEvent {
-    /// 클라이언트의 플레이 경과 시간
-    pub play_elapsed_time_ms: u32,
-    /// 입력 이벤트 종류
-    pub input: InputKind,
-    /// 눌림 여부
-    pub pressed: bool,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum InputEvent {
+    KeyPress {
+        play_elapsed_time_ms: u32,
+        input: InputKind,
+    },
+    KeyRelease {
+        play_elapsed_time_ms: u32,
+        input: InputKind,
+    },
 }
 
 impl InputEvent {
-    /// 새로운 `InputEvent`를 생성합니다.
-    pub const fn new(play_elapsed_time_ms: u32, input: InputKind, pressed: bool) -> Self {
-        Self {
-            play_elapsed_time_ms,
-            input,
-            pressed,
+    const TIME_BIT_MASK: u32 = 0x3FFFFFFF;
+    const TIME_SHIFT: usize = 0;
+    const KIND_BIT_MASK: u32 = 0x03;
+    const KIND_SHIFT: usize = 30;
+
+    /// 플레이 경과 시간을 반환합니다.
+    pub const fn play_elapsed_time_ms(self) -> u32 {
+        match self {
+            InputEvent::KeyPress {
+                play_elapsed_time_ms,
+                ..
+            } => play_elapsed_time_ms,
+            InputEvent::KeyRelease {
+                play_elapsed_time_ms,
+                ..
+            } => play_elapsed_time_ms,
+            // InputEvent::CameraRotation {
+            //     play_elapsed_time_ms,
+            //     ..
+            // } => play_elapsed_time_ms,
         }
     }
 }
 
 impl BigEndian for InputEvent {
     fn byte_size() -> usize {
-        u32::byte_size() + Bitfield::byte_size()
+        u32::byte_size() + u32::byte_size()
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -89,15 +56,41 @@ impl BigEndian for InputEvent {
     }
 
     fn to_big_endian_bytes(&self) -> Vec<u8> {
-        // 데이터를 생성합니다.
-        let bitfield = Bitfield::new()
-            .with_input_kind(self.input)
-            .with_pressed(self.pressed);
-
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
-        bytes.extend_from_slice(&self.play_elapsed_time_ms.to_big_endian_bytes());
-        bytes.extend_from_slice(&bitfield.to_big_endian_bytes());
+        match *self {
+            InputEvent::KeyPress {
+                play_elapsed_time_ms,
+                input,
+            } => {
+                let kind = 0 << Self::KIND_SHIFT;
+                let time = (play_elapsed_time_ms & Self::TIME_BIT_MASK) << Self::TIME_SHIFT;
+                let bits = kind | time;
+                bytes.extend_from_slice(&bits.to_big_endian_bytes());
+                bytes.extend_from_slice(&(input as u32).to_big_endian_bytes());
+            }
+            InputEvent::KeyRelease {
+                play_elapsed_time_ms,
+                input,
+            } => {
+                let kind = 1 << Self::KIND_SHIFT;
+                let time = (play_elapsed_time_ms & Self::TIME_BIT_MASK) << Self::TIME_SHIFT;
+                let bits = kind | time;
+                bytes.extend_from_slice(&bits.to_big_endian_bytes());
+                bytes.extend_from_slice(&(input as u32).to_big_endian_bytes());
+            } // InputEvent::CameraRotation {
+              //     play_elapsed_time_ms,
+              //     delta_lat,
+              //     delta_lon,
+              // } => {
+              //     let kind = 2 << Self::KIND_SHIFT;
+              //     let time = (play_elapsed_time_ms & Self::TIME_BIT_MASK) << Self::TIME_SHIFT;
+              //     let bits = kind | time;
+              //     bytes.extend_from_slice(&bits.to_big_endian_bytes());
+              //     bytes.extend_from_slice(&delta_lat.to_bits().to_big_endian_bytes());
+              //     bytes.extend_from_slice(&delta_lon.to_bits().to_big_endian_bytes());
+              // }
+        };
 
         // 바이트 배열 유효성을 검증합니다.
         if cfg!(feature = "check-validation") {
@@ -125,23 +118,58 @@ impl TryFromBigEndian for InputEvent {
             )
         };
 
-        // 클라이언트 플레이 경과 시간을 가져옵니다.
         let mut offset = 0;
         let mut size = u32::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let play_elapsed_time_ms = u32::from_big_endian_bytes(data);
+        let bits = u32::from_big_endian_bytes(data);
+        let kind = (bits >> Self::KIND_SHIFT) & Self::KIND_BIT_MASK;
+        let play_elapsed_time_ms = (bits >> Self::TIME_SHIFT) & Self::TIME_BIT_MASK;
+        match kind {
+            0 => {
+                offset = offset + size;
+                size = u32::byte_size();
+                data = &bytes[offset..offset + size];
+                let val = u32::from_big_endian_bytes(data) as u8;
+                let input = InputKind::new(val)?;
 
-        // 비트 필드 데이터를 가져옵니다.
-        offset = offset + size;
-        size = Bitfield::byte_size();
-        data = &bytes[offset..offset + size];
-        let bitfield = Bitfield::from_big_endian_bytes(data);
+                Some(Self::KeyPress {
+                    play_elapsed_time_ms,
+                    input,
+                })
+            }
+            1 => {
+                offset = offset + size;
+                size = u32::byte_size();
+                data = &bytes[offset..offset + size];
+                let val = u32::from_big_endian_bytes(data) as u8;
+                let input = InputKind::new(val)?;
 
-        Some(Self {
-            play_elapsed_time_ms,
-            input: bitfield.input_kind()?,
-            pressed: bitfield.is_pressed(),
-        })
+                Some(Self::KeyRelease {
+                    play_elapsed_time_ms,
+                    input,
+                })
+            }
+            // 2 => {
+            //     offset = offset + size;
+            //     size = u16::byte_size();
+            //     data = &bytes[offset..offset + size];
+            //     let bits = u16::from_big_endian_bytes(data);
+            //     let delta_lat = f16::from_bits(bits);
+
+            //     offset = offset + size;
+            //     size = u16::byte_size();
+            //     data = &bytes[offset..offset + size];
+            //     let bits = u16::from_big_endian_bytes(data);
+            //     let delta_lon = f16::from_bits(bits);
+
+            //     Some(Self::CameraRotation {
+            //         play_elapsed_time_ms,
+            //         delta_lat,
+            //         delta_lon,
+            //     })
+            // }
+            _ => None,
+        }
     }
 }
 
@@ -150,7 +178,7 @@ pub const MAX_INPUT_EVENTS: usize = u16::MAX as usize;
 
 /// 인게임 장면에서 클라이언트에서 서버로 입력 이벤트를 보내는 패킷입니다.
 /// 한 프레임에서 발생하는 모든 입력 이벤트를 전송합니다.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InGameInputEventPacket {
     /// 사용자 식별자
     pub uid: UserId,
@@ -280,12 +308,28 @@ mod tests {
             UserId::new(54131),
             LoginToken::new(85312451324),
             [
-                InputEvent::new(1210, InputKind::Reload, false),
-                InputEvent::new(1290, InputKind::Attack, true),
-                InputEvent::new(1310, InputKind::Jump, false),
-                InputEvent::new(1330, InputKind::Attack, true),
-                InputEvent::new(1401, InputKind::Jump, false),
-                InputEvent::new(1420, InputKind::Skill, true),
+                // InputEvent::CameraRotation {
+                //     play_elapsed_time_ms: 1210,
+                //     delta_lat: f16::from_f32(4.3f32.to_radians()),
+                //     delta_lon: f16::from_f32(-13f32.to_radians()),
+                // },
+                InputEvent::KeyPress {
+                    play_elapsed_time_ms: 1290,
+                    input: InputKind::Jump,
+                },
+                InputEvent::KeyPress {
+                    play_elapsed_time_ms: 1352,
+                    input: InputKind::Attack,
+                },
+                // InputEvent::CameraRotation {
+                //     play_elapsed_time_ms: 1398,
+                //     delta_lat: f16::from_f32(-4.3f32.to_radians()),
+                //     delta_lon: f16::from_f32(-0.6f32.to_radians()),
+                // },
+                InputEvent::KeyRelease {
+                    play_elapsed_time_ms: 1422,
+                    input: InputKind::Attack,
+                },
             ],
         );
         let raw = origin.as_raw();

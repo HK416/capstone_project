@@ -19,7 +19,7 @@ impl Velocity {
 
     pub fn update(
         &mut self,
-        direction: &MovingDirection,
+        direction: MovingDirection,
         input_timer: InputStateTimer,
         action_state: ActionState,
         movement_state: MovementState,
@@ -124,7 +124,7 @@ impl Velocity {
     /// [`ActionState::Idle`]일 때 플레이어 속도를 갱신합니다.
     fn update_when_idle(
         &mut self,
-        direction: &MovingDirection,
+        direction: MovingDirection,
         input_timer: InputStateTimer,
         _movement_state_timer: MovementStateTimer,
         character_attributes: &CharacterAttributes,
@@ -139,7 +139,7 @@ impl Velocity {
     /// [`ActionState::Idle`]이 아니고, [`MovementState::Moving`]일 떄 때 플레이어 속도를 갱신합니다.
     fn update_when_walking(
         &mut self,
-        direction: &MovingDirection,
+        direction: MovingDirection,
         input_timer: InputStateTimer,
         _movement_state_timer: MovementStateTimer,
         character_attributes: &CharacterAttributes,
@@ -154,7 +154,7 @@ impl Velocity {
     /// [`ActionState::Idle`]이고, [`MovementState::Moving`]일 떄 때 플레이어 속도를 갱신합니다.
     fn update_when_moving(
         &mut self,
-        direction: &MovingDirection,
+        direction: MovingDirection,
         input_timer: InputStateTimer,
         _movement_state_timer: MovementStateTimer,
         character_attributes: &CharacterAttributes,
@@ -169,7 +169,7 @@ impl Velocity {
     /// [`MovementState::MoveToEnd`]일 떄 때 플레이어 속도를 갱신합니다.
     fn update_when_move_to_end(
         &mut self,
-        direction: &MovingDirection,
+        direction: MovingDirection,
         input_timer: InputStateTimer,
         _movement_state_timer: MovementStateTimer,
         character_attributes: &CharacterAttributes,
@@ -184,7 +184,7 @@ impl Velocity {
     /// [`ActionState::AimAt`]이고, [`MovementState::Moving`]일 떄 때 플레이어 속도를 갱신합니다.
     fn update_when_move_to_aim_move(
         &mut self,
-        direction: &MovingDirection,
+        direction: MovingDirection,
         _input_timer: InputStateTimer,
         movement_state_timer: MovementStateTimer,
         character_attributes: &CharacterAttributes,
@@ -200,7 +200,7 @@ impl Velocity {
     /// [`ActionState::AimOff`]이고, [`MovementState::Moving`]일 떄 때 플레이어 속도를 갱신합니다.
     fn update_when_aim_move_to_move(
         &mut self,
-        direction: &MovingDirection,
+        direction: MovingDirection,
         _input_timer: InputStateTimer,
         movement_state_timer: MovementStateTimer,
         character_attributes: &CharacterAttributes,

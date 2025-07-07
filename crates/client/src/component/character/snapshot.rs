@@ -4,10 +4,36 @@ use ahash::{HashMap, RandomState};
 use hecs::Entity;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, LatLon, MovementState,
-    MovementStateTimer, Velocity, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION, RESPAWN_DELAY,
+    MovementStateTimer, StateChangeEvent, Velocity, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION,
+    RESPAWN_DELAY,
 };
 
 use crate::component::CHARACTER_ATTRIBUTES;
+
+/// 최대 스냅샷의 개수입니다.
+pub const MAX_SNAPSHOTS: usize = 3;
+
+#[derive(Debug, Clone)]
+pub struct PlayerSnapshot {
+    /// 게임 플레이 경과 시간
+    pub play_elapsed_time_ms: u32,
+    /// 월드 공간 속도
+    pub velocity: glam::Vec3A,
+    /// 월드 공간 방향
+    pub rotation: glam::Quat,
+    /// 월드 공간 위치
+    pub translation: glam::Vec3A,
+    /// 행동 상태
+    pub action_state: ActionState,
+    /// 행동 상태 타이머
+    pub action_state_timer: ActionStateTimer,
+    /// 움직임 상태
+    pub movement_state: MovementState,
+    /// 움직임 상태 타이머
+    pub movement_state_timer: MovementStateTimer,
+    /// 카메라 방향 각도
+    pub latlon: LatLon,
+}
 
 /// 서버에서 받은 패킷 데이터의 스냅샷입니다.
 #[derive(Debug, Clone)]
@@ -201,7 +227,7 @@ fn find_snapshots<'a>(
 }
 
 /// [`ActionState`]와 [`ActionStateTimer`]를 보간합니다.
-fn action_state_interpolated(
+pub fn action_state_interpolated(
     prev_state: ActionState,
     prev_state_timer: ActionStateTimer,
     next_state: ActionState,
@@ -311,7 +337,7 @@ fn action_state_extrapolation(
 }
 
 /// [`MovementState`]와 [`MovementStateTimer`]를 보간합니다.
-fn movement_state_interpolated(
+pub fn movement_state_interpolated(
     prev_state: MovementState,
     prev_state_timer: MovementStateTimer,
     next_state: MovementState,

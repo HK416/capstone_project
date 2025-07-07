@@ -1,11 +1,11 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, f32::consts::TAU, sync::Arc};
 
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionState, BulletKind, DamageLogData, HeldInput, InGamePlayerPullData, InputKind,
-        MAX_IN_GAME_PLAYERS, NetworkState, ObjectId, Permission, StageKind, StateChangeEvent, Team,
-        UserId, update_action_state, update_action_state_timer, update_movement_state,
+        BulletKind, DamageLogData, HeldInput, InGamePlayerPullData, MAX_IN_GAME_PLAYERS,
+        MAX_LATITUDE, MIN_LATITUDE, NetworkState, ObjectId, Permission, StageKind, StateEvent,
+        Team, UserId, update_action_state, update_action_state_timer, update_movement_state,
         update_movement_state_timer, update_player_rotation, update_player_translation,
     },
     protocol::{InGamePullPacket, InputEvent, JoinFailedReason, JoinRoomFailedPacket, Packet},
@@ -15,7 +15,7 @@ use tokio::time::Duration;
 
 use crate::{
     data::get_stage_attributes,
-    entities::{Bullet, MAX_SNAPSHOTS, Player, PlayerSnapshot},
+    entities::{Bullet, EventSnapshot, MAX_SNAPSHOTS, Player, PlayerSnapshot},
     session::Session,
     world::{
         GameWorld, GameWorldEvent, GameWorldInGameRunStateEvent, GameWorldState,
@@ -49,11 +49,11 @@ pub struct GameWorldInGameRunState {
     damage_log_data: Vec<DamageLogData>,
     /// 총알 오브젝트
     bullets: HashMap<ObjectId, Bullet>,
-    /// 상태 이벤트 목록
-    events: Option<HashMap<UserId, Vec<StateChangeEvent>>>,
 
     /// 플레이어 스냅샷 데이터
     player_snapshots: HashMap<UserId, VecDeque<PlayerSnapshot>>,
+    /// 플레이어 이벤트 스냅샷 데이터
+    event_snapshots: HashMap<UserId, VecDeque<EventSnapshot>>,
 }
 
 impl GameWorldInGameRunState {
@@ -72,8 +72,11 @@ impl GameWorldInGameRunState {
             leaved_players,
             damage_log_data: Vec::with_capacity(128),
             bullets: HashMap::with_capacity_and_hasher(1024, RandomState::new()),
-            events: None,
             player_snapshots: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
+            event_snapshots: HashMap::with_capacity_and_hasher(
                 MAX_IN_GAME_PLAYERS,
                 RandomState::new(),
             ),
@@ -204,26 +207,38 @@ impl GameWorldInGameRunState {
                 return;
             }
         };
-
         let character_attributes = data.character_attributes();
         let stage_attributes = get_stage_attributes(self.stage_kind);
         let team = data.team();
 
         // 플레이어 데이터 스냅샷의 소유권을 가져옵니다.
-        let mut buffer = match self.player_snapshots.remove(&uid) {
-            Some(buffer) => buffer,
+        let mut data_snapshots = match self.player_snapshots.remove(&uid) {
+            Some(data_snapshots) => data_snapshots,
             None => {
-                log::error!("Player({}) snapshot data not found in {}!", &uid, &world);
-                eprintln!("Player({}) snapshot data not found in {}!", &uid, &world);
+                log::error!(
+                    "Player({}) data snapshot data not found in {}!",
+                    &uid,
+                    &world
+                );
+                eprintln!(
+                    "Player({}) data snapshot data not found in {}!",
+                    &uid, &world
+                );
                 session.close();
                 return;
             }
         };
 
+        // 플레이어 이벤트 스냅샷의 소유권을 가져옵니다.
+        let mut event_snapshots = match self.event_snapshots.remove(&uid) {
+            Some(event_snapshots) => event_snapshots,
+            None => VecDeque::with_capacity(MAX_SNAPSHOTS + 1),
+        };
+
         // 맨 처음 입력 이벤트를 가져옵니다.
-        let mut iter = events.iter();
-        let mut event = match iter.next() {
-            Some(event) => event,
+        let mut event_iterator = events.into_iter();
+        let mut input_event = match event_iterator.next() {
+            Some(input_event) => input_event,
             None => {
                 log::error!("Player({}) input events is empty!", &uid);
                 eprintln!("Player({}) input events is empty!", &uid);
@@ -232,21 +247,38 @@ impl GameWorldInGameRunState {
             }
         };
 
-        // 이벤트 시작 스냅샷을 찾습니다.
+        // 과거 데이터 스냅샷부터 최근 데이터 스냅샷 까지 순회하며 이벤트 시작 데이터 스냅샷을 찾습니다.
         let mut select = None;
-        for snapshot in buffer.iter() {
-            if snapshot.play_elapsed_time_ms > event.play_elapsed_time_ms {
+        for (index, data_snapshot) in data_snapshots.iter().enumerate() {
+            if data_snapshot.play_elapsed_time_ms > input_event.play_elapsed_time_ms() {
                 break;
             }
-            let interval = event.play_elapsed_time_ms - snapshot.play_elapsed_time_ms;
-            select = Some((snapshot, interval));
+            let interval = input_event.play_elapsed_time_ms() - data_snapshot.play_elapsed_time_ms;
+            select = Some((index, data_snapshot, interval));
         }
 
-        if let Some((snapshot, interval)) = select
-            && event.play_elapsed_time_ms < self.play_elapsed_time_ms
+        // 전달된 이벤트는 가장 최근에 추가된 이벤트보다 미래 시점이어야 합니다.
+        let validate = event_snapshots.is_empty()
+            || event_snapshots.back().is_some_and(|snapshot| {
+                snapshot.play_elapsed_time_ms <= input_event.play_elapsed_time_ms()
+            });
+
+        if let Some((index, snapshot, mut interval)) = select
+            && input_event.play_elapsed_time_ms() < self.play_elapsed_time_ms
             && interval < 250
+            && validate
         {
+            // 현재 스냅샷을 복사합니다.
+            let snapshot = snapshot.clone();
+
+            // 이벤트 시점 이후 스냅샷을 제거합니다.
+            let num_snapshots = data_snapshots.len();
+            for _ in (index + 1)..num_snapshots {
+                data_snapshots.pop_back();
+            }
+
             // 재 시뮬레이션을 진행합니다.
+            let mut current_play_elapsed_time_ms = snapshot.play_elapsed_time_ms;
             data.action_state = snapshot.action_state;
             data.movement_state = snapshot.movement_state;
             data.action_state_timer = snapshot.action_state_timer;
@@ -261,35 +293,11 @@ impl GameWorldInGameRunState {
             data.set_invincible(snapshot.is_invincible);
             data.set_grounded(snapshot.is_grounded);
 
-            let mut play_elapsed_time_ms = snapshot.play_elapsed_time_ms;
-            let mut elapsed_time_ms = interval;
             loop {
-                if event.pressed {
-                    data.held_input |= event.input.into_bits();
-                } else {
-                    data.held_input &= !event.input.into_bits();
-                }
-
-                let mut events = Vec::new();
-                update_action_state(
-                    data.held_input,
-                    &mut data.action_state,
-                    &mut data.action_state_timer,
-                    character_attributes,
-                    &mut data.bullet_data,
-                    &mut data.skill_cost_data,
-                    &mut events,
-                );
-                update_movement_state(
-                    data.held_input,
-                    data.action_state,
-                    &mut data.movement_state,
-                    &mut data.movement_state_timer,
-                    &mut events,
-                );
-
-                data.input_timer
-                    .update(data.held_input, elapsed_time_ms as u16);
+                // 이벤트 까지 경과 시간의 데이터를 갱신 --------------------------------------
+                let elapsed_time_ms = interval as u16;
+                let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+                let mut events = Vec::default();
                 update_action_state_timer(
                     data.held_input,
                     &mut data.bullet_data,
@@ -297,7 +305,7 @@ impl GameWorldInGameRunState {
                     &mut data.action_state,
                     &mut data.action_state_timer,
                     character_attributes,
-                    elapsed_time_ms as u16,
+                    elapsed_time_ms,
                     &mut events,
                 );
                 update_movement_state_timer(
@@ -305,11 +313,20 @@ impl GameWorldInGameRunState {
                     &mut data.movement_state,
                     &mut data.movement_state_timer,
                     character_attributes,
-                    elapsed_time_ms as u16,
+                    elapsed_time_ms,
                     &mut events,
                 );
 
+                data.input_timer.update(data.held_input, elapsed_time_ms);
                 data.direction.update(data.held_input, data.latlon);
+                data.velocity.update(
+                    data.direction,
+                    data.input_timer,
+                    data.action_state,
+                    data.movement_state,
+                    data.movement_state_timer,
+                    character_attributes,
+                );
                 let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
                 look = update_player_rotation(
                     look,
@@ -318,10 +335,13 @@ impl GameWorldInGameRunState {
                     data.direction,
                     data.latlon,
                 );
+                let z = look.normalize_or(glam::Vec3A::Z);
+                let x = glam::Vec3A::Y.cross(z);
+                let y = z.cross(x);
+                data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z)).normalize();
 
                 let mut is_grounded = data.is_grounded();
                 let mut is_invincible = data.is_invincible();
-                let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
                 update_player_translation(
                     stage_attributes,
                     character_attributes,
@@ -342,28 +362,286 @@ impl GameWorldInGameRunState {
                 data.set_grounded(is_grounded);
                 data.set_invincible(is_invincible);
 
-                // 게임 플레이 경과 시간을 증가시킵니다.
-                play_elapsed_time_ms += elapsed_time_ms;
+                // 상태 변경 이벤트를 처리합니다.
+                for event in events {
+                    match event {
+                        StateEvent::ChangeActionState {
+                            action_state,
+                            timing,
+                        } => {}
+                        StateEvent::ChangeMovementState {
+                            movement_state,
+                            timing,
+                        } => {}
+                        StateEvent::BulletFired { timing } => {}
+                        StateEvent::Skill { timing } => {}
+                    }
+                }
+                //-----------------------------------------------------------------------
+                current_play_elapsed_time_ms += interval;
+
+                // 전달받은 이벤트를 적용합니다.
+                match input_event {
+                    InputEvent::KeyPress { input, .. } => {
+                        data.held_input |= input.into_bits();
+                    }
+                    InputEvent::KeyRelease { input, .. } => {
+                        data.held_input &= !input.into_bits();
+                    } // InputEvent::CameraRotation {
+                      //     delta_lat,
+                      //     delta_lon,
+                      //     ..
+                      // } => {
+                      //     data.latlon.lat = (data.latlon.lat + delta_lat.to_f32())
+                      //         .clamp(MIN_LATITUDE, MAX_LATITUDE);
+                      //     data.latlon.lon = (data.latlon.lon + delta_lon.to_f32()) % TAU;
+                      // }
+                };
+
+                // 이벤트 스냡샷을 추가합니다.
+                event_snapshots.push_back(EventSnapshot {
+                    play_elapsed_time_ms: current_play_elapsed_time_ms,
+                    input: input_event,
+                });
+
+                // 오래된 이벤트 스냅샷을 제거합니다.
+                while event_snapshots.len() > MAX_SNAPSHOTS {
+                    event_snapshots.pop_front();
+                }
+
+                // 상태를 갱신합니다.
+                let mut events = Vec::default();
+                update_action_state(
+                    data.held_input,
+                    &mut data.action_state,
+                    &mut data.action_state_timer,
+                    character_attributes,
+                    &mut data.bullet_data,
+                    &mut data.skill_cost_data,
+                    &mut events,
+                );
+                update_movement_state(
+                    data.held_input,
+                    data.action_state,
+                    &mut data.movement_state,
+                    &mut data.movement_state_timer,
+                    &mut events,
+                );
+
+                for event in events {
+                    match event {
+                        StateEvent::ChangeActionState {
+                            action_state,
+                            timing,
+                        } => {}
+                        StateEvent::ChangeMovementState {
+                            movement_state,
+                            timing,
+                        } => {}
+                        StateEvent::BulletFired { timing } => {
+                            // TODO
+                        }
+                        StateEvent::Skill { timing } => {
+                            // TODO
+                        }
+                    }
+                }
+
+                // 데이터 스냅샷을 추가합니다.
+                data_snapshots.push_back(PlayerSnapshot {
+                    play_elapsed_time_ms: current_play_elapsed_time_ms,
+                    action_state: data.action_state,
+                    movement_state: data.movement_state,
+                    action_state_timer: data.action_state_timer,
+                    movement_state_timer: data.movement_state_timer,
+                    latlon: data.latlon,
+                    translation: data.translation,
+                    rotation: data.rotation,
+                    velocity: data.velocity,
+                    direction: data.direction,
+                    input_timer: data.input_timer,
+                    held_input: data.held_input,
+                    is_invincible: data.is_invincible(),
+                    is_grounded: data.is_grounded(),
+                });
+
+                // 오래된 데이터 스냅샷을 제거합니다.
+                while data_snapshots.len() > MAX_SNAPSHOTS {
+                    data_snapshots.pop_front();
+                }
 
                 // 다음 이벤트를 가져옵니다.
-                event = match iter.next() {
+                (input_event, interval) = match event_iterator.next() {
                     Some(event)
-                        if event.play_elapsed_time_ms < self.play_elapsed_time_ms
-                            && event.play_elapsed_time_ms < play_elapsed_time_ms =>
+                        if current_play_elapsed_time_ms <= event.play_elapsed_time_ms()
+                            && event.play_elapsed_time_ms() < self.play_elapsed_time_ms =>
                     {
-                        event
+                        (
+                            event,
+                            event.play_elapsed_time_ms() - current_play_elapsed_time_ms,
+                        )
                     }
                     _ => break,
                 };
+            }
+            // 전달받은 이벤트 처리 끝 ------------------------------------------------------------
 
-                elapsed_time_ms = event.play_elapsed_time_ms - play_elapsed_time_ms;
+            let interval = self.play_elapsed_time_ms - current_play_elapsed_time_ms;
+            if interval > 0 {
+                // 서버 시간 까지 경과 시간의 데이터를 갱신합니다.
+                let elapsed_time_ms = interval as u16;
+                let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+                let mut events = Vec::default();
+                update_action_state_timer(
+                    data.held_input,
+                    &mut data.bullet_data,
+                    &mut data.skill_cost_data,
+                    &mut data.action_state,
+                    &mut data.action_state_timer,
+                    character_attributes,
+                    elapsed_time_ms as u16,
+                    &mut events,
+                );
+                update_movement_state_timer(
+                    data.action_state,
+                    &mut data.movement_state,
+                    &mut data.movement_state_timer,
+                    character_attributes,
+                    elapsed_time_ms as u16,
+                    &mut events,
+                );
+
+                data.input_timer.update(data.held_input, elapsed_time_ms);
+                data.direction.update(data.held_input, data.latlon);
+                data.velocity.update(
+                    data.direction,
+                    data.input_timer,
+                    data.action_state,
+                    data.movement_state,
+                    data.movement_state_timer,
+                    character_attributes,
+                );
+                let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
+                look = update_player_rotation(
+                    look,
+                    data.action_state,
+                    data.movement_state,
+                    data.direction,
+                    data.latlon,
+                );
+                let z = look.normalize_or(glam::Vec3A::Z);
+                let x = glam::Vec3A::Y.cross(z);
+                let y = z.cross(x);
+                data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z)).normalize();
+
+                let mut is_grounded = data.is_grounded();
+                let mut is_invincible = data.is_invincible();
+                update_player_translation(
+                    stage_attributes,
+                    character_attributes,
+                    data.action_state,
+                    &mut data.movement_state,
+                    &mut data.movement_state_timer,
+                    &mut data.velocity,
+                    &mut data.translation,
+                    data.direction,
+                    data.held_input,
+                    team,
+                    &mut is_grounded,
+                    &mut is_invincible,
+                    &mut data.health_data,
+                    data.input_timer,
+                    elapsed_time_sec,
+                );
+                data.set_grounded(is_grounded);
+                data.set_invincible(is_invincible);
+
+                // 상태 변경 이벤트를 처리합니다.
+                for event in events {
+                    match event {
+                        StateEvent::ChangeActionState {
+                            action_state,
+                            timing,
+                        } => {}
+                        StateEvent::ChangeMovementState {
+                            movement_state,
+                            timing,
+                        } => {}
+                        StateEvent::BulletFired { timing } => {}
+                        StateEvent::Skill { timing } => {}
+                    }
+                }
+
+                // 상태를 갱신합니다.
+                let mut events = Vec::default();
+                update_action_state(
+                    data.held_input,
+                    &mut data.action_state,
+                    &mut data.action_state_timer,
+                    character_attributes,
+                    &mut data.bullet_data,
+                    &mut data.skill_cost_data,
+                    &mut events,
+                );
+                update_movement_state(
+                    data.held_input,
+                    data.action_state,
+                    &mut data.movement_state,
+                    &mut data.movement_state_timer,
+                    &mut events,
+                );
+
+                for event in events {
+                    match event {
+                        StateEvent::ChangeActionState {
+                            action_state,
+                            timing,
+                        } => {}
+                        StateEvent::ChangeMovementState {
+                            movement_state,
+                            timing,
+                        } => {}
+                        StateEvent::BulletFired { timing } => {
+                            // TODO
+                        }
+                        StateEvent::Skill { timing } => {
+                            // TODO
+                        }
+                    }
+                }
+
+                // 스냅샷을 추가합니다.
+                data_snapshots.push_back(PlayerSnapshot {
+                    play_elapsed_time_ms: self.play_elapsed_time_ms,
+                    action_state: data.action_state,
+                    movement_state: data.movement_state,
+                    action_state_timer: data.action_state_timer,
+                    movement_state_timer: data.movement_state_timer,
+                    latlon: data.latlon,
+                    translation: data.translation,
+                    rotation: data.rotation,
+                    velocity: data.velocity,
+                    direction: data.direction,
+                    input_timer: data.input_timer,
+                    held_input: data.held_input,
+                    is_invincible: data.is_invincible(),
+                    is_grounded: data.is_grounded(),
+                });
+
+                // 오래된 스냅샷을 제거합니다.
+                while data_snapshots.len() > MAX_SNAPSHOTS {
+                    data_snapshots.pop_front();
+                }
             }
         } else {
             log::info!("no suitable Player({}) snapshot found!", &uid);
         }
 
+        // 플레이어 이벤트 스냅샷의 소유권을 돌려놓습니다.
+        self.event_snapshots.insert(uid, event_snapshots);
+
         // 플레이어 데이터 스냅샷의 소유권을 돌려놓습니다.
-        self.player_snapshots.insert(uid, buffer);
+        self.player_snapshots.insert(uid, data_snapshots);
     }
 
     /// [`GameWorldInGameRunStateEvent::InputState`] 이벤트를 처리합니다.
@@ -391,7 +669,9 @@ impl GameWorldInGameRunState {
             }
         };
 
-        data.held_input = held_input;
+        // data.held_input = held_input;
+        data.latlon.lat = (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
+        data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
     }
 
     /// [`GameWorldInGameRunStateEvent::PlayerRespawn`] 이벤트를 처리합니다.
@@ -423,6 +703,7 @@ impl GameWorldInGameRunState {
                 data.translation.to_array(),
                 data.rotation.to_array(),
                 data.velocity.0.to_array(),
+                data.direction.0.to_array(),
                 data.permission(),
                 connected,
                 data.is_grounded(),
@@ -441,12 +722,7 @@ impl GameWorldInGameRunState {
         }
 
         // 상태 변경 이벤트를 가져옵니다.
-        let events = match self.events.take() {
-            Some(events) => events,
-            None => HashMap::default(),
-        };
-
-        let packet = InGamePullPacket::new(self.play_elapsed_time_ms, players, events);
+        let packet = InGamePullPacket::new(self.play_elapsed_time_ms, players);
         for session in world.sessions.keys() {
             session.tcp_write(packet.as_raw());
         }
@@ -463,11 +739,14 @@ impl GameWorldInGameRunState {
                 continue;
             }
 
-            // 플레이어 상태 타이머를 갱신합니다.
-            let elapsed_time_ms = elapsed.as_millis().min(MAX_GAME_TIME as u128) as u16;
             let character_attributes = data.character_attributes();
-            let mut events = Vec::new();
-            data.input_timer.update(data.held_input, elapsed_time_ms);
+            let stage_attributes = get_stage_attributes(self.stage_kind);
+            let team = data.team();
+
+            // 이벤트 까지 경과 시간의 데이터를 갱신 --------------------------------------
+            let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
+            let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+            let mut events = Vec::default();
             update_action_state_timer(
                 data.held_input,
                 &mut data.bullet_data,
@@ -486,27 +765,18 @@ impl GameWorldInGameRunState {
                 elapsed_time_ms,
                 &mut events,
             );
+
             data.input_timer.update(data.held_input, elapsed_time_ms);
-
-            // 플레이어 스킬 코스트를 증가시킵니다.
-            if data.action_state != ActionState::Death {
-                data.skill_cost_timer = data.skill_cost_timer.saturating_add(elapsed_time_ms);
-                if data.skill_cost_timer >= SKILL_COST_TICK {
-                    let maximum = data.maximum_skill_cost();
-                    let add = data.skill_cost_timer % SKILL_COST_TICK;
-                    data.skill_cost_data.remaining =
-                        (data.skill_cost_data.remaining.saturating_add(add)).min(maximum);
-                }
-            }
-
-            // 플레이어 위치를 갱신합니다.
-            let elapsed_time_sec = elapsed.as_secs_f32();
-            let stage_attributes = get_stage_attributes(self.stage_kind);
-            let team = data.team();
-            let mut is_grounded = data.is_grounded();
-            let mut is_invincible = data.is_invincible();
-            let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
             data.direction.update(data.held_input, data.latlon);
+            data.velocity.update(
+                data.direction,
+                data.input_timer,
+                data.action_state,
+                data.movement_state,
+                data.movement_state_timer,
+                character_attributes,
+            );
+            let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
             look = update_player_rotation(
                 look,
                 data.action_state,
@@ -514,15 +784,16 @@ impl GameWorldInGameRunState {
                 data.direction,
                 data.latlon,
             );
-            let z = look.normalize();
-            let x = glam::Vec3A::Y.cross(z).normalize();
+            let z = look.normalize_or(glam::Vec3A::Z);
+            let x = glam::Vec3A::Y.cross(z);
             let y = z.cross(x);
-            let rot = glam::Mat3A::from_cols(x, y, z);
-            data.rotation = glam::Quat::from_mat3(&rot.into());
+            data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z)).normalize();
 
+            let mut is_grounded = data.is_grounded();
+            let mut is_invincible = data.is_invincible();
             update_player_translation(
                 stage_attributes,
-                data.character_attributes(),
+                character_attributes,
                 data.action_state,
                 &mut data.movement_state,
                 &mut data.movement_state_timer,
@@ -540,6 +811,34 @@ impl GameWorldInGameRunState {
             data.set_grounded(is_grounded);
             data.set_invincible(is_invincible);
 
+            // 상태 변경 이벤트를 처리합니다.
+            for event in events {
+                match event {
+                    StateEvent::ChangeActionState {
+                        action_state,
+                        timing,
+                    } => {
+                        // state_change_events.push_back(StateChangeEvent::ActionState {
+                        //     action_state,
+                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
+                        // });
+                    }
+                    StateEvent::ChangeMovementState {
+                        movement_state,
+                        timing,
+                    } => {
+                        // state_change_events.push_back(StateChangeEvent::MovementState {
+                        //     movement_state,
+                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
+                        // });
+                    }
+                    StateEvent::BulletFired { timing } => {}
+                    StateEvent::Skill { timing } => {}
+                }
+            }
+            //-----------------------------------------------------------------------
+            // 상태를 갱신합니다.
+            let mut events = Vec::default();
             update_action_state(
                 data.held_input,
                 &mut data.action_state,
@@ -556,6 +855,70 @@ impl GameWorldInGameRunState {
                 &mut data.movement_state_timer,
                 &mut events,
             );
+
+            for event in events {
+                match event {
+                    StateEvent::ChangeActionState {
+                        action_state,
+                        timing,
+                    } => {
+                        // state_change_events.push_back(StateChangeEvent::ActionState {
+                        //     action_state,
+                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
+                        // });
+                    }
+                    StateEvent::ChangeMovementState {
+                        movement_state,
+                        timing,
+                    } => {
+                        // state_change_events.push_back(StateChangeEvent::MovementState {
+                        //     movement_state,
+                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
+                        // });
+                    }
+                    StateEvent::BulletFired { timing } => {
+                        // TODO
+                    }
+                    StateEvent::Skill { timing } => {
+                        // TODO
+                    }
+                }
+            }
+
+            // 플레이어 데이터 스냅샷의 소유권을 가져옵니다.
+            let mut data_snapshots = match self.player_snapshots.remove(&uid) {
+                Some(data_snapshots) => data_snapshots,
+                None => VecDeque::with_capacity(MAX_SNAPSHOTS),
+            };
+
+            // 데이터 스냅샷을 추가합니다.
+            data_snapshots.push_back(PlayerSnapshot {
+                play_elapsed_time_ms: self.play_elapsed_time_ms,
+                action_state: data.action_state,
+                movement_state: data.movement_state,
+                action_state_timer: data.action_state_timer,
+                movement_state_timer: data.movement_state_timer,
+                latlon: data.latlon,
+                translation: data.translation,
+                rotation: data.rotation,
+                velocity: data.velocity,
+                direction: data.direction,
+                input_timer: data.input_timer,
+                held_input: data.held_input,
+                is_invincible: data.is_invincible(),
+                is_grounded: data.is_grounded(),
+            });
+
+            // 오래된 데이터 스냅샷을 제거합니다.
+            while data_snapshots.len() > MAX_SNAPSHOTS {
+                data_snapshots.pop_front();
+            }
+
+            // 플레이어 데이터 스냅샷의 소유권을 돌려놓습니다.
+            self.player_snapshots.insert(uid, data_snapshots);
+
+            // // 상태 변경 이벤트의 소유권을 돌려놓습니다.
+            // self.state_change_events.insert(uid, state_change_events);
         }
 
         // 총알 오브젝트를 갱신합니다.
@@ -701,12 +1064,14 @@ impl GameWorldState for GameWorldInGameRunState {
     }
 
     fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {
-        // 게임 플레이 경과 시간을 갱신합니다.
         let elapsed_time_ms = elapsed.as_millis().min(MAX_GAME_TIME as u128) as u32;
+
+        // 플레이 경과 시간을 갱신합니다.
         self.play_elapsed_time_ms = self
             .play_elapsed_time_ms
             .saturating_add(elapsed_time_ms)
             .min(MAX_GAME_TIME);
+        // 패킷 전송 경과 시간을 갱신합니다.
         self.packet_send_elapsed_time_ms = self
             .packet_send_elapsed_time_ms
             .saturating_add(elapsed_time_ms);

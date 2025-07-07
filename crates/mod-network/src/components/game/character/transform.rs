@@ -127,7 +127,7 @@ pub fn update_player_translation(
 
     // 플레이어 속도를 갱신합니다.
     velocity.update(
-        &direction,
+        direction,
         input_timer,
         action_state,
         *movement_state,

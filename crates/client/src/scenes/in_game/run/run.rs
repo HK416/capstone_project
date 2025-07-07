@@ -1,6 +1,13 @@
-use std::{f32::consts::TAU, sync::Arc, time::Instant};
+use std::{
+    collections::VecDeque,
+    f32::consts::{PI, TAU},
+    sync::Arc,
+    time::Instant,
+};
 
-use ahash::HashMap;
+use ahash::{HashMap, RandomState};
+use glam::FloatExt;
+use half::f16;
 use hecs::{Entity, World};
 use mod_app::{
     app::AppHandle,
@@ -15,7 +22,7 @@ use mod_network::{
         BulletData, CharacterFlags, CharacterKind, HealthData, HeldInput, InputStateTimer, LatLon,
         LoginToken, MovementState, MovementStateTimer, MovingDirection, NetworkState, Permission,
         SkillCostData, StageAttributes, Team, UserId, Velocity, ViewState, ViewStateTimer,
-        MAX_LATITUDE, MIN_LATITUDE,
+        MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
         InGameInputEventPacket, InGameInputStatePacket, InGamePullPacket, InputEvent, Packet,
@@ -37,23 +44,24 @@ use crate::{
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
     },
     component::{
-        animate_character, bake_character, bake_character_eye_mouth, bake_stage,
-        clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
-        compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
-        draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree, get_local_transform,
-        get_world_transform, lerp_local_transform, set_local_transform,
-        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
-        update_character_hierarchy, update_character_resource, update_character_rotation,
-        update_stage_hierarchy, update_stage_resource, update_view_state, update_view_state_timer,
-        AccumRenderTarget, AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline,
-        BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform, Child,
-        DirectionLight, EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout,
-        InterpolationManager, LightSetResource, LightTransformDataLayout, MaterialKind,
-        MeshRenderer, OpaqueMap, Player0, Player1, Player2, Player3, Player4, Player5, Player6,
-        Player7, Player8, Player9, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
-        ShadowMap, Sibling, SkinnedMeshRenderer, Skybox, SnapshotBuffer, ToParentTrans,
-        TransparentMap, WeaponQuery, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
-        CHARACTER_ATTRIBUTES,
+        action_state_interpolated, animate_character, bake_character, bake_character_eye_mouth,
+        bake_stage, clear_render_target_with_skybox, collect_character_resource,
+        collect_stage_resource, compute_frustum_corners_no_inverse, compute_light_view_proj_matrix,
+        draw_character, draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree,
+        get_local_transform, get_world_transform, lerp_local_transform,
+        movement_state_interpolated, set_local_transform, update_camera_and_skybox_resource,
+        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
+        update_character_resource, update_character_rotation, update_stage_hierarchy,
+        update_stage_resource, update_view_state, update_view_state_timer, AccumRenderTarget,
+        AlphaBlendPipeline, AnimationQuery, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, Camera, CameraResource, CameraUniform, Child, DirectionLight,
+        EntitySnapshot, GaussianBlurPipeline, GlobalLightDataLayout, InterpolationManager,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap, Player0,
+        Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
+        PlayerArchetype, PlayerSnapshot, Projection, RenderTask, RevealRenderTarget, ShadowMap,
+        Sibling, SkinnedMeshRenderer, Skybox, SnapshotBuffer, ToParentTrans, TransparentMap,
+        WeaponQuery, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        MAX_SNAPSHOTS,
     },
     config::{Locale, UserConfig},
     scenes::{
@@ -82,9 +90,9 @@ pub struct InGameRunScene {
     /// 게임 플레이 경과 시간
     play_elapsed_time_ms: u32,
     /// 이전 패킷을 보낸 후 경과 시간
-    packet_send_elapsed_time_ms: u16,
+    packet_send_elapsed_time_ms: u32,
     /// 최근의 패킷을 받은 후 경과 시간
-    packet_recv_elapsed_time_ms: u16,
+    packet_recv_elapsed_time_ms: u32,
     /// 한 프레임 내의 입력 이벤트 목록
     input_events: Vec<InputEvent>,
     /// 위도의 변위
@@ -116,6 +124,9 @@ pub struct InGameRunScene {
     camera_rel_position: glam::Vec3A,
     /// 카메라 종횡비
     camera_aspect_ratio: f32,
+
+    /// 플레이어 스냅샷 데이터
+    player_snapshots: HashMap<UserId, VecDeque<PlayerSnapshot>>,
 
     /// 다른 플레이어 데이터를 관리합니다.
     interpolation: InterpolationManager,
@@ -226,6 +237,10 @@ impl InGameRunScene {
             camera_fov_y: 45f32.to_radians(),
             camera_rel_position: glam::Vec3A::ZERO,
             camera_aspect_ratio: 1.0,
+            player_snapshots: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
             interpolation: InterpolationManager::new(),
             latest_snapshot: None,
             players,
@@ -507,6 +522,7 @@ impl InGameRunScene {
             None => return,
         };
 
+        type K<'a> = &'a CharacterKind;
         type Q<'a> = (
             &'a mut ActionState,
             &'a mut ActionStateTimer,
@@ -514,108 +530,576 @@ impl InGameRunScene {
             &'a mut MovementStateTimer,
             &'a mut LatLon,
         );
-        let time_stamp_ms = self.play_elapsed_time_ms;
-        let mut state_view = world.view::<Q>();
-        for (entity, archetype) in self.players.values().cloned() {
-            let result = self.interpolation.get_interpolated(entity, time_stamp_ms);
-            if let Some((
-                transform,
-                action_state,
-                action_state_timer,
-                movement_state,
-                movement_state_timer,
-                latlon,
-            )) = result
-            {
-                let (
-                    old_action_state,
-                    old_action_state_timer,
-                    old_movement_state,
-                    old_movement_state_timer,
-                    old_latlon,
-                ) = state_view
-                    .get_mut(entity)
-                    .expect("invalid entity or invalid entity component!");
-                *old_action_state = action_state;
-                *old_action_state_timer = action_state_timer;
-                *old_movement_state = movement_state;
-                *old_movement_state_timer = movement_state_timer;
-                *old_latlon = latlon;
+        let mut kind_view = world.view::<K>();
+        let mut data_view = world.view::<Q>();
 
-                match archetype {
-                    PlayerArchetype::Player0 => {
-                        let mut query = world
-                            .query_one::<&mut (Player0, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player1 => {
-                        let mut query = world
-                            .query_one::<&mut (Player1, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player2 => {
-                        let mut query = world
-                            .query_one::<&mut (Player2, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player3 => {
-                        let mut query = world
-                            .query_one::<&mut (Player3, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player4 => {
-                        let mut query = world
-                            .query_one::<&mut (Player4, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player5 => {
-                        let mut query = world
-                            .query_one::<&mut (Player5, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player6 => {
-                        let mut query = world
-                            .query_one::<&mut (Player6, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player7 => {
-                        let mut query = world
-                            .query_one::<&mut (Player7, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player8 => {
-                        let mut query = world
-                            .query_one::<&mut (Player8, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
-                    }
-                    PlayerArchetype::Player9 => {
-                        let mut query = world
-                            .query_one::<&mut (Player9, ToParentTrans)>(entity)
-                            .expect("invalid entity");
-                        let (_, local_transform) = query.get().expect("invalid entity component!");
-                        *local_transform = ToParentTrans(transform);
+        for (&uid, &(entity, archetype)) in self.players.iter() {
+            if uid == self.uid {
+                continue;
+            }
+
+            // 캐릭터 속성 데이터를 가져옵니다.
+            let &character_kind = kind_view
+                .get(entity)
+                .expect("invalid entity or invalid entity component!");
+            let i = character_kind as usize;
+            let character_attributes = CHARACTER_ATTRIBUTES[i];
+
+            // 이전과 이후 스냅샷을 가져옵니다.
+            let (next, prev) = match self.player_snapshots.get(&uid) {
+                Some(buffer) => {
+                    let mut iter = buffer.iter();
+                    (iter.next(), iter.next())
+                }
+                None => (None, None),
+            };
+
+            match (next, prev) {
+                (Some(next), Some(prev)) => {
+                    // 시간 간격이 좁은 경우
+                    let interval = next
+                        .play_elapsed_time_ms
+                        .saturating_sub(prev.play_elapsed_time_ms);
+                    if 0 < interval
+                        && interval < 250
+                        && self.packet_recv_elapsed_time_ms <= interval
+                    {
+                        let t = self.packet_recv_elapsed_time_ms as f32 / interval as f32;
+
+                        // 카메라 방향을 보간합니다.
+                        let new_lat = prev.latlon.lat.lerp(next.latlon.lat, t);
+                        let new_lon = prev.latlon.lon.lerp(next.latlon.lon, t);
+                        let new_latlon = LatLon::new(new_lat, new_lon);
+
+                        // 위치를 보간합니다.
+                        let new_translation = prev.translation.lerp(next.translation, t);
+
+                        // 회전 방향을 보간합니다.
+                        let q1 = prev.rotation;
+                        let mut q2 = next.rotation;
+
+                        // 쿼터니언이 반대 방향이면 부호 반전
+                        let mut dot = q1.dot(q2);
+                        if dot < 0.0 {
+                            q2 = -q2;
+                            dot = -dot;
+                        }
+
+                        let new_rotation = if dot > 0.9995 {
+                            // 거의 정반대면 직접 보간
+                            q1.lerp(q2, t).normalize()
+                        } else if dot < 0.0005 {
+                            // 정반대의 경우 직교하는 축 지정
+                            let axis = glam::Vec3::Y;
+                            let mid = glam::Quat::from_axis_angle(axis, PI * t);
+                            mid * q1
+                        } else {
+                            q1.slerp(q2, t)
+                        };
+
+                        // 상태 보간
+                        let (new_action_state, new_action_state_timer) = action_state_interpolated(
+                            prev.action_state,
+                            prev.action_state_timer,
+                            next.action_state,
+                            character_attributes,
+                            self.packet_recv_elapsed_time_ms as u16,
+                        );
+
+                        let (new_movement_state, new_movement_state_timer) =
+                            movement_state_interpolated(
+                                prev.movement_state,
+                                prev.movement_state_timer,
+                                next.movement_state,
+                                character_attributes,
+                                self.packet_recv_elapsed_time_ms as u16,
+                            );
+
+                        // 결과를 저장합니다.
+                        let (
+                            action_state,
+                            action_state_timer,
+                            movement_state,
+                            movement_state_timer,
+                            latlon,
+                        ) = data_view
+                            .get_mut(entity)
+                            .expect("invalid entity or invalid entity component!");
+                        *action_state = new_action_state;
+                        *action_state_timer = new_action_state_timer;
+                        *movement_state = new_movement_state;
+                        *movement_state_timer = new_movement_state_timer;
+                        *latlon = new_latlon;
+
+                        match archetype {
+                            PlayerArchetype::Player0 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player0, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player1 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player1, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player2 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player2, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player3 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player3, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player4 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player4, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player5 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player5, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player6 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player6, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player7 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player7, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player8 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player8, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                            PlayerArchetype::Player9 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player9, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_rotation_translation(
+                                    new_rotation.into(),
+                                    new_translation.into(),
+                                );
+                            }
+                        }
+                    } else {
+                        // 캐릭터 속성 데이터를 가져옵니다.
+                        let &character_kind = kind_view
+                            .get(entity)
+                            .expect("invalid entity or invalid entity component");
+                        let i = character_kind as usize;
+                        let character_attributes = CHARACTER_ATTRIBUTES[i];
+
+                        // 위치를 보간합니다.
+                        let elapsed_time_ms =
+                            self.packet_recv_elapsed_time_ms.min(u16::MAX as u32) as u16;
+                        let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+                        let velocity = next.velocity;
+                        let new_translation = next.translation + velocity * elapsed_time_sec;
+
+                        // 행동 상태 보간
+                        let mut new_action_state = next.action_state;
+                        let mut new_action_state_timer = next.action_state_timer;
+                        match new_action_state {
+                            ActionState::Idle => {
+                                let duration = character_attributes.normal_idle_duration;
+                                new_action_state_timer.0 =
+                                    (new_action_state_timer.0 + elapsed_time_ms) % duration;
+                            }
+                            ActionState::Aiming => {
+                                let duration = character_attributes.normal_idle_duration;
+                                new_action_state_timer.0 =
+                                    (new_action_state_timer.0 + elapsed_time_ms) % duration;
+                            }
+                            ActionState::AimAt => {
+                                let duration = character_attributes.normal_attack_start_duration;
+                                new_action_state_timer.0 =
+                                    new_action_state_timer.0 + elapsed_time_ms;
+
+                                let diff_t = new_action_state_timer.0 as i32 - duration as i32;
+                                if diff_t >= 0 {
+                                    let duration = character_attributes.normal_idle_duration;
+                                    new_action_state = ActionState::Aiming;
+                                    new_action_state_timer.0 = diff_t as u16 % duration;
+                                }
+                            }
+                            ActionState::AimOff => {
+                                let duration = character_attributes.normal_attack_start_duration;
+                                new_action_state_timer.0 =
+                                    new_action_state_timer.0 + elapsed_time_ms;
+
+                                let diff_t = new_action_state_timer.0 as i32 - duration as i32;
+                                if diff_t >= 0 {
+                                    let duration = character_attributes.normal_idle_duration;
+                                    new_action_state = ActionState::Idle;
+                                    new_action_state_timer.0 = diff_t as u16 % duration;
+                                }
+                            }
+                            ActionState::Attack => {
+                                let duration = character_attributes.normal_attack_ing_duration;
+                                new_action_state_timer.0 =
+                                    (new_action_state_timer.0 + elapsed_time_ms).min(duration);
+                            }
+                            ActionState::Death => {
+                                let duration = RESPAWN_DELAY;
+                                new_action_state_timer.0 =
+                                    (new_action_state_timer.0 + elapsed_time_ms).min(duration);
+                            }
+                            ActionState::Reload => {
+                                let duration = character_attributes.normal_reload_duration;
+                                new_action_state_timer.0 =
+                                    (new_action_state_timer.0 + elapsed_time_ms).min(duration);
+                            }
+                            ActionState::Skill => {
+                                let duration = character_attributes.skill_duration;
+                                new_action_state_timer.0 =
+                                    (new_action_state_timer.0 + elapsed_time_ms).min(duration);
+                            }
+                            ActionState::Callsign => {
+                                let duration = character_attributes.normal_callsign_duration;
+                                new_action_state_timer.0 =
+                                    new_action_state_timer.0 + elapsed_time_ms;
+
+                                let diff_t = new_action_state_timer.0 as i32 - duration as i32;
+                                if diff_t >= 0 {
+                                    let duration = character_attributes.normal_idle_duration;
+                                    new_action_state = ActionState::Idle;
+                                    new_action_state_timer.0 = diff_t as u16 % duration;
+                                }
+                            }
+                            ActionState::VictoryStart => {
+                                let duration = character_attributes.victory_start_duration;
+                                new_action_state_timer.0 =
+                                    new_action_state_timer.0 + elapsed_time_ms;
+
+                                let diff_t = new_action_state_timer.0 as i32 - duration as i32;
+                                if diff_t >= 0 {
+                                    let duration = character_attributes.victory_end_duration;
+                                    new_action_state = ActionState::VictoryEnd;
+                                    new_action_state_timer.0 = diff_t as u16 % duration;
+                                }
+                            }
+                            ActionState::VictoryEnd => {
+                                let duration = character_attributes.victory_end_duration;
+                                new_action_state_timer.0 =
+                                    (new_action_state_timer.0 + elapsed_time_ms) % duration;
+                            }
+                        }
+
+                        // 움직임 상태 보간
+                        let mut new_movement_state = next.movement_state;
+                        let mut new_movement_state_timer = next.movement_state_timer;
+                        match new_movement_state {
+                            MovementState::Idle => {
+                                let duration = character_attributes.normal_idle_duration;
+                                new_movement_state_timer.0 =
+                                    (new_movement_state_timer.0 + elapsed_time_ms) % duration;
+                            }
+                            MovementState::Moving => {
+                                let duration = character_attributes.move_ing_duration;
+                                new_movement_state_timer.0 =
+                                    (new_movement_state_timer.0 + elapsed_time_ms) % duration;
+                            }
+                            MovementState::MoveToEnd => {
+                                let duration = character_attributes.move_end_normal_duration;
+                                new_movement_state_timer.0 =
+                                    new_movement_state_timer.0 + elapsed_time_ms;
+
+                                let diff_t = new_movement_state_timer.0 as i32 - duration as i32;
+                                if diff_t >= 0 {
+                                    let duration = character_attributes.normal_idle_duration;
+                                    new_movement_state = MovementState::Idle;
+                                    new_movement_state_timer.0 = diff_t as u16 % duration;
+                                }
+                            }
+                            MovementState::Jumping => {
+                                let duration = MAX_JUMP_DURATION;
+                                new_movement_state_timer.0 =
+                                    new_movement_state_timer.0 + elapsed_time_ms;
+
+                                let diff_t = new_movement_state_timer.0 as i32 - duration as i32;
+                                if diff_t >= 0 {
+                                    new_movement_state = MovementState::Landing;
+                                    new_movement_state_timer.0 = diff_t as u16 % duration;
+                                }
+                            }
+                            MovementState::Landing => {
+                                let duration = MAX_JUMP_DURATION;
+                                new_movement_state_timer.0 =
+                                    (new_movement_state_timer.0 + elapsed_time_ms).min(duration);
+                            }
+                        };
+
+                        // 결과를 저장합니다.
+                        let (
+                            action_state,
+                            action_state_timer,
+                            movement_state,
+                            movement_state_timer,
+                            _latlon,
+                        ) = data_view
+                            .get_mut(entity)
+                            .expect("invalid entity or invalid entity component!");
+                        *action_state = new_action_state;
+                        *action_state_timer = new_action_state_timer;
+                        *movement_state = new_movement_state;
+                        *movement_state_timer = new_movement_state_timer;
+
+                        match archetype {
+                            PlayerArchetype::Player0 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player0, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player1 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player1, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player2 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player2, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player3 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player3, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player4 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player4, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player5 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player5, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player6 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player6, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player7 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player7, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player8 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player8, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                            PlayerArchetype::Player9 => {
+                                let mut query = world
+                                    .query_one::<&mut (Player9, ToParentTrans)>(entity)
+                                    .expect("invalid entity!");
+                                let (_, transform) =
+                                    query.get().expect("invalid entity component!");
+                                transform.set_translation(new_translation.into());
+                            }
+                        }
                     }
                 }
-            }
+                (Some(next), None) => {
+                    // todo!()
+                }
+                _ => {
+                    // todo!()
+                }
+            };
         }
+
+        // let time_stamp_ms = self.play_elapsed_time_ms;
+        // for (entity, archetype) in self.players.values().cloned() {
+        //     let result = self.interpolation.get_interpolated(entity, time_stamp_ms);
+        //     if let Some((
+        //         transform,
+        //         action_state,
+        //         action_state_timer,
+        //         movement_state,
+        //         movement_state_timer,
+        //         latlon,
+        //     )) = result
+        //     {
+        //         let (
+        //             old_action_state,
+        //             old_action_state_timer,
+        //             old_movement_state,
+        //             old_movement_state_timer,
+        //             old_latlon,
+        //         ) = data_view
+        //             .get_mut(entity)
+        //             .expect("invalid entity or invalid entity component!");
+        //         *old_action_state = action_state;
+        //         *old_action_state_timer = action_state_timer;
+        //         *old_movement_state = movement_state;
+        //         *old_movement_state_timer = movement_state_timer;
+        //         *old_latlon = latlon;
+
+        //         match archetype {
+        //             PlayerArchetype::Player0 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player0, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player1 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player1, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player2 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player2, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player3 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player3, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player4 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player4, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player5 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player5, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player6 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player6, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player7 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player7, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player8 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player8, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //             PlayerArchetype::Player9 => {
+        //                 let mut query = world
+        //                     .query_one::<&mut (Player9, ToParentTrans)>(entity)
+        //                     .expect("invalid entity");
+        //                 let (_, local_transform) = query.get().expect("invalid entity component!");
+        //                 *local_transform = ToParentTrans(transform);
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     /// 카메라 엔터티를 생성합니다.
@@ -804,14 +1288,13 @@ impl InGameRunScene {
     }
 
     /// 서버로부터 전달받은 데이터로 플레이어를 갱신합니다.
-    fn pull_world_data(&mut self, time_stamp: Instant, packet: InGamePullPacket) {
-        // 게임 월드를 빌려옵니다.
+    fn pull_world_data(&mut self, time_stamp: Instant, mut packet: InGamePullPacket) {
         let world = match self.world.as_ref() {
             Some(world) => world,
             None => return,
         };
 
-        type Always<'a> = (
+        type Q<'a> = (
             &'a CharacterKind,
             &'a mut Permission,
             &'a mut NetworkState,
@@ -820,14 +1303,20 @@ impl InGameRunScene {
             &'a mut SkillCostData,
             &'a mut CharacterFlags,
         );
-        let mut always_change_view = world.view::<Always>();
+        let mut view = world.view::<Q>();
 
         // 남은 시간을 계산합니다.
         let delay_time = Instant::now()
             .saturating_duration_since(time_stamp)
             .as_millis()
             .min(self.max_game_play_time_ms as u128) as u32;
-        let server_time_stamp_ms = packet.play_elapsed_time_ms;
+        let server_time_stamp_ms = packet
+            .play_elapsed_time_ms
+            .saturating_add(delay_time)
+            .min(self.max_game_play_time_ms);
+
+        // 클라이언트 시간을 보정합니다.
+        self.play_elapsed_time_ms = (self.play_elapsed_time_ms + server_time_stamp_ms) / 2;
 
         // 플레이어 상태를 갱신합니다.
         for data in packet.players {
@@ -846,7 +1335,7 @@ impl InGameRunScene {
                 bullet_data,
                 skill_cost_data,
                 flags,
-            ) = always_change_view
+            ) = view
                 .get_mut(entity)
                 .expect("invalid entity or invalid entity component!");
 
@@ -859,6 +1348,33 @@ impl InGameRunScene {
             health_data.remaining = data.current_health;
             bullet_data.remaining = data.current_bullet;
             skill_cost_data.remaining = data.current_skill_cost;
+
+            // 스냅샷 버퍼의 소유권을 가져옵니다.
+            let mut buffer = match self.player_snapshots.remove(&data.uid) {
+                Some(buffer) => buffer,
+                None => VecDeque::with_capacity(MAX_SNAPSHOTS + 1),
+            };
+
+            // 캐릭터 스냅샷을 추가합니다.
+            buffer.push_front(PlayerSnapshot {
+                play_elapsed_time_ms: server_time_stamp_ms,
+                velocity: glam::Vec3A::from_array(data.velocity),
+                rotation: glam::Quat::from_array(data.rotation),
+                translation: glam::Vec3A::from_array(data.translation),
+                action_state: data.action_state(),
+                action_state_timer: data.action_state_timer,
+                movement_state: data.movement_state(),
+                movement_state_timer: data.movement_state_timer,
+                latlon: data.latlon,
+            });
+
+            // 오래된 스냅샷 데이터를 제거합니다.
+            while buffer.len() > MAX_SNAPSHOTS {
+                buffer.pop_back();
+            }
+
+            // 스냅샷 버퍼의 소유권을 되돌려놓습니다.
+            self.player_snapshots.insert(data.uid, buffer);
 
             if data.uid != self.uid {
                 // 다른 플레이어 캐릭터의 스냅샷을 생성합니다.
@@ -951,8 +1467,8 @@ impl InGameRunScene {
             }
 
             // 카메라 방향 데이터를 덮어씁니다.
-            let min = snapshot.latlon.lat - 3f32.to_radians().max(MIN_LATITUDE);
-            let max = snapshot.latlon.lat + 3f32.to_radians().min(MAX_LATITUDE);
+            let min = snapshot.latlon.lat - 5f32.to_radians().max(MIN_LATITUDE);
+            let max = snapshot.latlon.lat + 5f32.to_radians().min(MAX_LATITUDE);
             latlon.lat = latlon.lat.clamp(min, max);
             let min = snapshot.latlon.lon - 5f32.to_radians();
             let max = snapshot.latlon.lon + 5f32.to_radians();
@@ -988,7 +1504,7 @@ impl InGameRunScene {
 
     /// 입력 상태를 서버로 전송합니다.
     fn input_state_send_to_server(&mut self, app: &dyn AppHandle) {
-        const TICK: u16 = 33;
+        const TICK: u32 = 33;
         if self.packet_send_elapsed_time_ms >= TICK {
             let packet = InGameInputStatePacket::new(
                 self.uid,
@@ -1059,11 +1575,10 @@ impl GameScene for InGameRunScene {
                 .get_mouse_input(&button)
                 .map(|input| {
                     if self.input_events.len() < MAX_INPUT_EVENTS {
-                        self.input_events.push(InputEvent::new(
-                            self.play_elapsed_time_ms,
+                        self.input_events.push(InputEvent::KeyPress {
+                            play_elapsed_time_ms: self.play_elapsed_time_ms,
                             input,
-                            true,
-                        ));
+                        });
                         input.into_bits()
                     } else {
                         HeldInput::empty()
@@ -1097,11 +1612,10 @@ impl GameScene for InGameRunScene {
                 .get_mouse_input(&button)
                 .map(|input| {
                     if self.input_events.len() < MAX_INPUT_EVENTS {
-                        self.input_events.push(InputEvent::new(
-                            self.play_elapsed_time_ms,
+                        self.input_events.push(InputEvent::KeyRelease {
+                            play_elapsed_time_ms: self.play_elapsed_time_ms,
                             input,
-                            false,
-                        ));
+                        });
                         input.into_bits()
                     } else {
                         HeldInput::empty()
@@ -1153,13 +1667,21 @@ impl GameScene for InGameRunScene {
             false => self.control_sensitivity,
         };
 
-        let delta = dy.to_radians() * offset;
-        latlon.lat = (latlon.lat + delta).clamp(MIN_LATITUDE, MAX_LATITUDE);
-        self.delta_lat += delta;
+        let delta_lat = dy.to_radians() * offset;
+        latlon.lat = (latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
+        self.delta_lat += delta_lat;
 
-        let delta = dx.to_radians() * offset;
-        latlon.lon = (latlon.lon + delta) % TAU;
-        self.delta_lon += delta;
+        let delta_lon = dx.to_radians() * offset;
+        latlon.lon = (latlon.lon + delta_lon) % TAU;
+        self.delta_lon += delta_lon;
+
+        // if self.input_events.len() < MAX_INPUT_EVENTS {
+        //     self.input_events.push(InputEvent::CameraRotation {
+        //         play_elapsed_time_ms: self.play_elapsed_time_ms,
+        //         delta_lat: f16::from_f32(delta_lat),
+        //         delta_lon: f16::from_f32(delta_lon),
+        //     });
+        // }
 
         true
     }
@@ -1180,11 +1702,10 @@ impl GameScene for InGameRunScene {
                     .get_keyboard_input(&(code, location))
                     .map(|input| {
                         if self.input_events.len() < MAX_INPUT_EVENTS {
-                            self.input_events.push(InputEvent::new(
-                                self.play_elapsed_time_ms,
+                            self.input_events.push(InputEvent::KeyPress {
+                                play_elapsed_time_ms: self.play_elapsed_time_ms,
                                 input,
-                                true,
-                            ));
+                            });
                             input.into_bits()
                         } else {
                             HeldInput::empty()
@@ -1216,11 +1737,10 @@ impl GameScene for InGameRunScene {
                     .get_keyboard_input(&(code, location))
                     .map(|input| {
                         if self.input_events.len() < MAX_INPUT_EVENTS {
-                            self.input_events.push(InputEvent::new(
-                                self.play_elapsed_time_ms,
+                            self.input_events.push(InputEvent::KeyRelease {
+                                play_elapsed_time_ms: self.play_elapsed_time_ms,
                                 input,
-                                false,
-                            ));
+                            });
                             input.into_bits()
                         } else {
                             HeldInput::empty()
@@ -1281,8 +1801,6 @@ impl GameScene for InGameRunScene {
             .play_elapsed_time_ms
             .saturating_add(elapsed_time_ms)
             .min(self.max_game_play_time_ms);
-
-        let elapsed_time_ms = elapsed_time_ms.min(u16::MAX as u32) as u16;
         self.packet_recv_elapsed_time_ms = self
             .packet_recv_elapsed_time_ms
             .saturating_add(elapsed_time_ms);
@@ -1290,6 +1808,7 @@ impl GameScene for InGameRunScene {
             .packet_send_elapsed_time_ms
             .saturating_add(elapsed_time_ms);
 
+        let elapsed_time_ms = elapsed_time_ms.min(u16::MAX as u32) as u16;
         self.update_other_characters();
         self.update_player_character_timer(elapsed_time_ms);
         self.update_player_character_rotation();
