@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use mod_network::{
     components::UserId,
-    protocol::{InGameInputEventPacket, InGameInputStatePacket, Packet, PacketType, RawPacket},
+    protocol::{InGameInputPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 
@@ -39,14 +39,14 @@ impl SessionInGameRunState {
     fn handle_in_game_input_event_packet(
         &mut self,
         session: &Arc<Session>,
-        packet: InGameInputEventPacket,
+        packet: InGameInputPacket,
     ) {
         // 수신한 패킷이 올바른지 검사합니다.
         if self.uid != packet.uid {
             log::error!(
                 "{} invalid identifier (PACKET:{:?})",
                 &session,
-                &PacketType::InGameInputEvent
+                &PacketType::InGameInput
             );
             session.close();
             return;
@@ -57,61 +57,17 @@ impl SessionInGameRunState {
             log::error!(
                 "{} invalid token (PACKET:{:?})",
                 &session,
-                &PacketType::InGameInputEvent
+                &PacketType::InGameInput
             );
             session.close();
             return;
         }
 
         // 이벤트를 전송합니다.
-        let event = GameWorldInGameRunStateEvent::InputEvent {
+        let event = GameWorldInGameRunStateEvent::InputSnapshot {
             session: session.clone(),
             uid: packet.uid,
-            events: packet.events,
-        };
-        let event = GameWorldEvent::InGameRunState(event);
-        self.sender.push(event);
-    }
-
-    /// [`InGameInputStatePacket`]을 처리합니다.
-    fn handle_in_game_input_state_packet(
-        &mut self,
-        session: &Arc<Session>,
-        packet: InGameInputStatePacket,
-    ) {
-        // 수신한 패킷이 올바른지 검사합니다.
-        if self.uid != packet.uid {
-            log::error!(
-                "{} invalid identifier (PACKET:{:?})",
-                &session,
-                &PacketType::InGameInputState
-            );
-            session.close();
-            return;
-        }
-
-        // 수신한 패킷이 올바른지 검사합니다.
-        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
-            log::error!(
-                "{} invalid token (PACKET:{:?})",
-                &session,
-                &PacketType::InGameInputState
-            );
-            session.close();
-            return;
-        }
-
-        // 이벤트를 전송합니다.
-        let event = GameWorldInGameRunStateEvent::InputState {
-            session: session.clone(),
-            uid: packet.uid,
-            delta_x: packet.delta_x,
-            delta_y: packet.delta_y,
-            delta_z: packet.delta_z,
-            delta_lat: packet.delta_lat,
-            delta_lon: packet.delta_lon,
-            held_input: packet.held_input,
-            play_elapsed_time_ms: packet.play_elapsed_time_ms,
+            snapshots: packet.snapshots,
         };
         let event = GameWorldEvent::InGameRunState(event);
         self.sender.push(event);
@@ -122,8 +78,8 @@ impl SessionState for SessionInGameRunState {
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::InGameInputEvent => {
-                let packet = match InGameInputEventPacket::try_from_raw(packet) {
+            PacketType::InGameInput => {
+                let packet = match InGameInputPacket::try_from_raw(packet) {
                     Some(packet) => packet,
                     None => {
                         session.close();
@@ -132,17 +88,6 @@ impl SessionState for SessionInGameRunState {
                 };
 
                 self.handle_in_game_input_event_packet(session, packet);
-            }
-            PacketType::InGameInputState => {
-                let packet = match InGameInputStatePacket::try_from_raw(packet) {
-                    Some(packet) => packet,
-                    None => {
-                        session.close();
-                        return;
-                    }
-                };
-
-                self.handle_in_game_input_state_packet(session, packet);
             }
             _ => {
                 log::warn!(

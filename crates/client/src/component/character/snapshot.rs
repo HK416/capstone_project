@@ -4,15 +4,31 @@ use ahash::{HashMap, RandomState};
 use hecs::Entity;
 use mod_network::components::{
     ActionState, ActionStateTimer, CharacterAttributes, CharacterKind, LatLon, MovementState,
-    MovementStateTimer, StateChangeEvent, Velocity, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION,
-    RESPAWN_DELAY,
+    MovementStateTimer, Velocity, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION, RESPAWN_DELAY,
 };
 
 use crate::component::CHARACTER_ATTRIBUTES;
 
 /// 최대 스냅샷의 개수입니다.
-pub const MAX_SNAPSHOTS: usize = 3;
+pub const MAX_SNAPSHOTS: usize = 127;
 
+// /// 입력 스냅샷 데이터입니다.
+// #[derive(Debug, Clone)]
+// pub enum InputSnapshot {
+//     CameraControl {
+//         /// 카메라 위도의 변위
+//         delta_lat: f32,
+//         /// 카메라 경도의 변위
+//         delta_lon: f32,
+//         /// 게임 플레이 경과 시간
+//         play_elapsed_time_ms: u32,
+//     },
+//     KeyInput {
+//         events: Vec<InputEvent>,
+//     }
+// }
+
+/// 플레이어 스냅샷 데이터입니다.
 #[derive(Debug, Clone)]
 pub struct PlayerSnapshot {
     /// 게임 플레이 경과 시간

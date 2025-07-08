@@ -1,26 +1,13 @@
 //! 게임 월드의 스냅샷과 관련된 코드를 관리합니다.
 //!
 
-use mod_network::{
-    components::{
-        ActionState, ActionStateTimer, HeldInput, InputStateTimer, LatLon, MovementState,
-        MovementStateTimer, MovingDirection, Velocity,
-    },
-    protocol::InputEvent,
+use mod_network::components::{
+    ActionState, ActionStateTimer, HeldInput, InputStateTimer, LatLon, MovementState,
+    MovementStateTimer, MovingDirection, Velocity,
 };
 
-/// 최대 스냅샷의 개수입니다.
-pub const MAX_SNAPSHOTS: usize = 127;
-
-/// 플레이어 입력 이벤트 스냅샷 데이터입니다.
-#[repr(C, align(16))]
-#[derive(Debug, Clone, Copy)]
-pub struct EventSnapshot {
-    /// 플레이 경과 시간
-    pub play_elapsed_time_ms: u32,
-    /// 입력 이벤트
-    pub input: InputEvent,
-}
+/// 최대 플레이어 스냅샷 데이터의 개수입니다.
+pub const MAX_PLAYER_SNAPSHOTS: usize = 127;
 
 /// 플레이어 스냅샷 데이터입니다.
 #[repr(C, align(16))]

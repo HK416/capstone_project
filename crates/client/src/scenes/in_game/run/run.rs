@@ -7,7 +7,6 @@ use std::{
 
 use ahash::{HashMap, RandomState};
 use glam::FloatExt;
-use half::f16;
 use hecs::{Entity, World};
 use mod_app::{
     app::AppHandle,
@@ -19,14 +18,14 @@ use mod_network::{
     components::{
         update_action_state, update_action_state_timer, update_movement_state,
         update_movement_state_timer, update_player_translation, ActionState, ActionStateTimer,
-        BulletData, CharacterFlags, CharacterKind, HealthData, HeldInput, InputStateTimer, LatLon,
-        LoginToken, MovementState, MovementStateTimer, MovingDirection, NetworkState, Permission,
-        SkillCostData, StageAttributes, Team, UserId, Velocity, ViewState, ViewStateTimer,
-        MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+        BulletData, CharacterFlags, CharacterKind, HealthData, HeldInput, InputEvent,
+        InputSnapshot, InputStateTimer, LatLon, LoginToken, MovementState, MovementStateTimer,
+        MovingDirection, NetworkState, Permission, SkillCostData, StageAttributes, Team, UserId,
+        Velocity, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_PLAYERS,
+        MAX_JUMP_DURATION, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
-        InGameInputEventPacket, InGameInputStatePacket, InGamePullPacket, InputEvent, Packet,
-        PacketType, RawPacket, MAX_INPUT_EVENTS,
+        InGameInputPacket, InGamePullPacket, Packet, PacketType, RawPacket, MAX_INPUT_SNAPSHOTS,
     },
 };
 use mod_parallelism::collections::Queue;
@@ -89,12 +88,19 @@ pub struct InGameRunScene {
     max_game_play_time_ms: u32,
     /// 게임 플레이 경과 시간
     play_elapsed_time_ms: u32,
-    /// 이전 패킷을 보낸 후 경과 시간
-    packet_send_elapsed_time_ms: u32,
+    /// 이전 스냅샷을 추가한 후 경과 시간
+    snapshot_elapsed_time_ms: u32,
     /// 최근의 패킷을 받은 후 경과 시간
     packet_recv_elapsed_time_ms: u32,
-    /// 한 프레임 내의 입력 이벤트 목록
-    input_events: Vec<InputEvent>,
+
+    /// 플레이어 스냅샷 데이터
+    player_snapshots: HashMap<UserId, VecDeque<PlayerSnapshot>>,
+    /// 입력 스냅샷 데이터입니다.
+    input_snapshots: VecDeque<InputSnapshot>,
+    /// 임시로 생성된 스냅샷 데이터를 저장하는 버퍼입니다.
+    input_snapshot_buffer: Vec<InputSnapshot>,
+    /// 임시로 입력 이벤트를 저장하는 버퍼입니다.
+    input_events_buffer: Vec<InputEvent>,
     /// 위도의 변위
     delta_lat: f32,
     /// 경도의 변위
@@ -124,9 +130,6 @@ pub struct InGameRunScene {
     camera_rel_position: glam::Vec3A,
     /// 카메라 종횡비
     camera_aspect_ratio: f32,
-
-    /// 플레이어 스냅샷 데이터
-    player_snapshots: HashMap<UserId, VecDeque<PlayerSnapshot>>,
 
     /// 다른 플레이어 데이터를 관리합니다.
     interpolation: InterpolationManager,
@@ -221,9 +224,15 @@ impl InGameRunScene {
             flip_vertical: false,
             max_game_play_time_ms,
             play_elapsed_time_ms: 0,
-            packet_send_elapsed_time_ms: 0,
+            snapshot_elapsed_time_ms: 0,
             packet_recv_elapsed_time_ms: 0,
-            input_events: Vec::with_capacity(MAX_INPUT_EVENTS),
+            player_snapshots: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
+            input_snapshots: VecDeque::with_capacity(MAX_INPUT_SNAPSHOTS + 1),
+            input_snapshot_buffer: Vec::with_capacity(MAX_INPUT_SNAPSHOTS + 1),
+            input_events_buffer: Vec::with_capacity(MAX_INPUT_EVENTS + 1),
             delta_lat: 0.0,
             delta_lon: 0.0,
             stage_attributes,
@@ -237,10 +246,6 @@ impl InGameRunScene {
             camera_fov_y: 45f32.to_radians(),
             camera_rel_position: glam::Vec3A::ZERO,
             camera_aspect_ratio: 1.0,
-            player_snapshots: HashMap::with_capacity_and_hasher(
-                MAX_IN_GAME_PLAYERS,
-                RandomState::new(),
-            ),
             interpolation: InterpolationManager::new(),
             latest_snapshot: None,
             players,
@@ -1488,45 +1493,6 @@ impl InGameRunScene {
             );
         }
     }
-
-    /// 입력 이벤트를 서버로 전송합니다.
-    fn input_event_send_to_server(&mut self, app: &dyn AppHandle) {
-        if self.input_events.len() > 0 {
-            let count = self.input_events.len().min(MAX_INPUT_EVENTS);
-            let iter = self.input_events.drain(..count);
-            let packet = InGameInputEventPacket::from_iter(self.uid, self.token, iter);
-
-            let net = app.net_manager();
-            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-            socket.push_packet(packet.as_raw());
-        }
-    }
-
-    /// 입력 상태를 서버로 전송합니다.
-    fn input_state_send_to_server(&mut self, app: &dyn AppHandle) {
-        const TICK: u32 = 33;
-        if self.packet_send_elapsed_time_ms >= TICK {
-            let packet = InGameInputStatePacket::new(
-                self.uid,
-                self.token,
-                0.0,
-                0.0,
-                0.0,
-                self.delta_lat,
-                self.delta_lon,
-                self.held_input,
-                self.play_elapsed_time_ms,
-            );
-
-            let net = app.net_manager();
-            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-            socket.push_packet(packet.as_raw());
-
-            self.packet_send_elapsed_time_ms = 0;
-            self.delta_lat = 0.0;
-            self.delta_lon = 0.0;
-        }
-    }
 }
 
 impl GameScene for InGameRunScene {
@@ -1569,26 +1535,20 @@ impl GameScene for InGameRunScene {
             return true;
         }
 
-        {
+        let flags = {
             let config = UserConfig::get();
-            let flags = config
+            config
                 .get_mouse_input(&button)
-                .map(|input| {
-                    if self.input_events.len() < MAX_INPUT_EVENTS {
-                        self.input_events.push(InputEvent::KeyPress {
-                            play_elapsed_time_ms: self.play_elapsed_time_ms,
-                            input,
-                        });
-                        input.into_bits()
-                    } else {
-                        HeldInput::empty()
-                    }
-                })
-                .unwrap_or_default();
-            self.held_input |= flags;
+                .map(|input| (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input))
+                .flatten()
+        };
+
+        if let Some(input) = flags {
+            self.held_input |= input.into_bits();
+            self.input_events_buffer.push(InputEvent::KeyPress(input));
+            self.update_player_character_state();
         }
 
-        self.update_player_character_state();
         true
     }
 
@@ -1606,26 +1566,20 @@ impl GameScene for InGameRunScene {
             return true;
         }
 
-        {
+        let flags = {
             let config = UserConfig::get();
-            let flags = config
+            config
                 .get_mouse_input(&button)
-                .map(|input| {
-                    if self.input_events.len() < MAX_INPUT_EVENTS {
-                        self.input_events.push(InputEvent::KeyRelease {
-                            play_elapsed_time_ms: self.play_elapsed_time_ms,
-                            input,
-                        });
-                        input.into_bits()
-                    } else {
-                        HeldInput::empty()
-                    }
-                })
-                .unwrap_or_default();
-            self.held_input &= !flags;
+                .map(|input| (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input))
+                .flatten()
+        };
+
+        if let Some(input) = flags {
+            self.held_input &= !input.into_bits();
+            self.input_events_buffer.push(InputEvent::KeyRelease(input));
+            self.update_player_character_state();
         }
 
-        self.update_player_character_state();
         true
     }
 
@@ -1675,14 +1629,6 @@ impl GameScene for InGameRunScene {
         latlon.lon = (latlon.lon + delta_lon) % TAU;
         self.delta_lon += delta_lon;
 
-        // if self.input_events.len() < MAX_INPUT_EVENTS {
-        //     self.input_events.push(InputEvent::CameraRotation {
-        //         play_elapsed_time_ms: self.play_elapsed_time_ms,
-        //         delta_lat: f16::from_f32(delta_lat),
-        //         delta_lon: f16::from_f32(delta_lon),
-        //     });
-        // }
-
         true
     }
 
@@ -1696,26 +1642,21 @@ impl GameScene for InGameRunScene {
         _app: &dyn AppHandle,
     ) -> bool {
         if !repeat {
-            {
+            let flags = {
                 let config = UserConfig::get();
-                let flags = config
+                config
                     .get_keyboard_input(&(code, location))
                     .map(|input| {
-                        if self.input_events.len() < MAX_INPUT_EVENTS {
-                            self.input_events.push(InputEvent::KeyPress {
-                                play_elapsed_time_ms: self.play_elapsed_time_ms,
-                                input,
-                            });
-                            input.into_bits()
-                        } else {
-                            HeldInput::empty()
-                        }
+                        (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input)
                     })
-                    .unwrap_or_default();
-                self.held_input |= flags;
-            }
+                    .flatten()
+            };
 
-            self.update_player_character_state();
+            if let Some(input) = flags {
+                self.held_input |= input.into_bits();
+                self.input_events_buffer.push(InputEvent::KeyPress(input));
+                self.update_player_character_state();
+            }
         }
 
         true
@@ -1731,26 +1672,21 @@ impl GameScene for InGameRunScene {
         _app: &dyn AppHandle,
     ) -> bool {
         if !repeat {
-            {
+            let flags = {
                 let config = UserConfig::get();
-                let flags = config
+                config
                     .get_keyboard_input(&(code, location))
                     .map(|input| {
-                        if self.input_events.len() < MAX_INPUT_EVENTS {
-                            self.input_events.push(InputEvent::KeyRelease {
-                                play_elapsed_time_ms: self.play_elapsed_time_ms,
-                                input,
-                            });
-                            input.into_bits()
-                        } else {
-                            HeldInput::empty()
-                        }
+                        (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input)
                     })
-                    .unwrap_or_default();
-                self.held_input &= !flags;
-            }
+                    .flatten()
+            };
 
-            self.update_player_character_state();
+            if let Some(input) = flags {
+                self.held_input &= !input.into_bits();
+                self.input_events_buffer.push(InputEvent::KeyRelease(input));
+                self.update_player_character_state();
+            }
         }
 
         true
@@ -1795,6 +1731,28 @@ impl GameScene for InGameRunScene {
         None
     }
 
+    fn on_pre_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
+        let count = self.input_events_buffer.len();
+        if count > 0 {
+
+            if self.input_events_buffer.len() > MAX_INPUT_EVENTS {
+                println!("!")
+            }
+            
+            // 스냅샷 데이터를 생성합니다.
+            let events: Vec<_> = self.input_events_buffer.drain(..count).collect();
+            let snapshot = InputSnapshot::KeyEvent {
+                play_elapsed_time_ms: self.play_elapsed_time_ms,
+                events,
+            };
+
+            // 임시 스냅샷 버퍼에 추가합니다.
+            if self.input_snapshot_buffer.len() < MAX_INPUT_SNAPSHOTS {
+                self.input_snapshot_buffer.push(snapshot);
+            }
+        }
+    }
+
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u32;
         self.play_elapsed_time_ms = self
@@ -1804,8 +1762,8 @@ impl GameScene for InGameRunScene {
         self.packet_recv_elapsed_time_ms = self
             .packet_recv_elapsed_time_ms
             .saturating_add(elapsed_time_ms);
-        self.packet_send_elapsed_time_ms = self
-            .packet_send_elapsed_time_ms
+        self.snapshot_elapsed_time_ms = self
+            .snapshot_elapsed_time_ms
             .saturating_add(elapsed_time_ms);
 
         let elapsed_time_ms = elapsed_time_ms.min(u16::MAX as u32) as u16;
@@ -1816,10 +1774,49 @@ impl GameScene for InGameRunScene {
         self.update_player_character_state();
     }
 
+    fn on_post_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
+        const TICK: u32 = 22;
+        if self.snapshot_elapsed_time_ms >= TICK {
+            // 스냅샷 데이터를 생성합니다.
+            let snapshot = InputSnapshot::CameraOrientation {
+                play_elapsed_time_ms: self.play_elapsed_time_ms,
+                delta_lat: self.delta_lat,
+                delta_lon: self.delta_lon,
+            };
+
+            // 임시 스냅샷 버퍼에 추가합니다.
+            if self.input_snapshot_buffer.len() < MAX_INPUT_SNAPSHOTS {
+                self.input_snapshot_buffer.push(snapshot);
+            }
+
+            self.snapshot_elapsed_time_ms = 0;
+            self.delta_lat = 0.0;
+            self.delta_lon = 0.0;
+        }
+    }
+
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
-        // 패킷을 서버로 전송합니다.
-        self.input_event_send_to_server(app);
-        self.input_state_send_to_server(app);
+        let count = self.input_snapshot_buffer.len();
+        if count > 0 {
+            // 한 프레임 내의 스냅샷 데이터를 가져옵니다.
+            let snapshots: Vec<_> = self.input_snapshot_buffer.drain(..count).collect();
+            let packet = InGameInputPacket::new(self.uid, self.token, snapshots.clone());
+
+            // 패킷을 전송합니다.
+            let net = app.net_manager();
+            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+            socket.push_packet(packet.as_raw());
+
+            for snapshot in snapshots {
+                // 입력 스냅샷을 추가합니다.
+                self.input_snapshots.push_back(snapshot);
+
+                // 오래된 입력 스냅샷을 제거합니다.
+                while self.input_snapshots.len() > MAX_INPUT_SNAPSHOTS {
+                    self.input_snapshots.pop_front();
+                }
+            }
+        }
 
         // 플레이어 데이터를 보정합니다.
         self.correct_player_data();

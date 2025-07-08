@@ -5,8 +5,9 @@ mod bullet;
 mod capture_point;
 mod damage;
 mod player;
+mod snapshot;
 
-pub use self::{bullet::*, capture_point::*, damage::*, player::*};
+pub use self::{bullet::*, capture_point::*, damage::*, player::*, snapshot::*};
 
 /// 게임에 참여 가능한 최대 플레이어 수 입니다.
 pub const MAX_IN_GAME_PLAYERS: usize = 10;

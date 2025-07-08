@@ -84,10 +84,8 @@ pub enum PacketType {
     InGameEnterNotify = 0x64,
     /// 서버에서 클라이언트로 보내는 인게임 갱신 패킷
     InGamePull = 0x65,
-    /// 주기적으로 클라이언트에서 서버로 보내는 지속 입력 데이터 패킷
-    InGameInputState = 0x66,
     /// 이벤트 발생 시 클라이언트에서 서버로 보내는 입력 이벤트 패킷
-    InGameInputEvent = 0x67,
+    InGameInput = 0x66,
 }
 
 impl PacketType {
@@ -126,8 +124,7 @@ impl PacketType {
             0x63 => Some(PacketType::InGameReadyStatus),
             0x64 => Some(PacketType::InGameEnterNotify),
             0x65 => Some(PacketType::InGamePull),
-            0x66 => Some(PacketType::InGameInputState),
-            0x67 => Some(PacketType::InGameInputEvent),
+            0x66 => Some(PacketType::InGameInput),
             _ => None,
         }
     }
@@ -222,7 +219,5 @@ mod tests {
 
     test_packet_type!(test_packet_type_in_game_pull, PacketType::InGamePull);
 
-    test_packet_type!(test_packet_type_in_game_input_state, PacketType::InGameInputState);
-
-    test_packet_type!(test_packet_type_in_game_input_event, PacketType::InGameInputEvent);
+    test_packet_type!(test_packet_type_in_game_input_event, PacketType::InGameInput);
 }

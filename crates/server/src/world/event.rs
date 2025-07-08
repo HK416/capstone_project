@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
-use mod_network::{
-    components::{
-        BulletKind, CharacterKind, GameTier, HeldInput, NetworkState, ProfileIcon, UserId, UserName,
-    },
-    protocol::InputEvent,
+use mod_network::components::{
+    BulletKind, CharacterKind, GameTier, HeldInput, InputSnapshot, NetworkState, ProfileIcon,
+    UserId, UserName,
 };
 
 use crate::session::Session;
@@ -92,13 +90,13 @@ pub enum GameWorldInGameReadyStateEvent {
 #[derive(Debug, Clone)]
 pub enum GameWorldInGameRunStateEvent {
     /// 플레이어 입력이 발생했을 때 발생되는 입력 이벤트 목록 이벤트입니다.
-    InputEvent {
+    InputSnapshot {
         /// 요청 세션
         session: Arc<Session>,
         /// 사용자 식별자
         uid: UserId,
         /// 입력 이벤트 목록
-        events: Vec<InputEvent>,
+        snapshots: Vec<InputSnapshot>,
     },
     /// 매 주기마다 발생되는 플레이어 상태 이벤트입니다.
     InputState {
