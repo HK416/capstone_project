@@ -198,6 +198,7 @@ impl GameWorldInGameRunState {
         world: &mut GameWorld,
         session: Arc<Session>,
         uid: UserId,
+        client_play_elapsed_time_ms: u32,
         snapshots: Vec<InputSnapshot>,
     ) {
         // 플레이어 데이터를 가져옵니다.
@@ -210,6 +211,19 @@ impl GameWorldInGameRunState {
                 return;
             }
         };
+
+        // 오프셋 시간을 계산 후 저장합니다.
+        let offset_time = (session.ping() / 2) as i32;
+        if self.play_elapsed_time_ms < client_play_elapsed_time_ms {
+            data.offset_time = -offset_time;
+        } else {
+            data.offset_time = offset_time;
+        }
+
+        // 오프셋이 너무 큰 경우 무시합니다.
+        if offset_time.abs() > 250 {
+            return;
+        }
 
         // 속성 데이터를 가져옵니다.
         let character_attributes = data.character_attributes();
@@ -241,14 +255,20 @@ impl GameWorldInGameRunState {
 
         // 전달된 입력 스냅샷을 스냅샷 버퍼에 추가합니다.
         let mut first_input_snapshot_time = None;
-        for snapshot in snapshots.into_iter() {
+        for mut snapshot in snapshots.into_iter() {
+            // 전달된 입력 스냅샷의 보정된 게임 플레이 경과 시간을 계산합니다.
+            let new_play_elapsed_time_ms = snapshot
+                .play_elapsed_time_ms()
+                .saturating_add_signed(offset_time);
+            snapshot.set_play_elapsed_time_ms(new_play_elapsed_time_ms);
+
             // 스냅샷 버퍼 마지막 스냅샷의 게임 플레이 시간보다 커야 하며 서버 게임 플레이 시간보다 작아야합니다.
             let last_snapshot_time = input_snapshots
                 .back()
                 .map(|snapshot| snapshot.play_elapsed_time_ms())
                 .unwrap_or(0);
             if last_snapshot_time <= snapshot.play_elapsed_time_ms()
-                && snapshot.play_elapsed_time_ms() < self.play_elapsed_time_ms
+                && snapshot.play_elapsed_time_ms() <= self.play_elapsed_time_ms
             {
                 // 전달받은 첫 번째 스냅샷의 게임 플레이 경과 시간을 초기화합니다.
                 if first_input_snapshot_time.is_none() {
@@ -853,8 +873,15 @@ impl GameWorldState for GameWorldInGameRunState {
                 GameWorldInGameRunStateEvent::InputSnapshot {
                     session,
                     uid,
+                    client_play_elapsed_time_ms,
                     snapshots,
-                } => self.handle_input_snapshot_event(world, session, uid, snapshots),
+                } => self.handle_input_snapshot_event(
+                    world,
+                    session,
+                    uid,
+                    client_play_elapsed_time_ms,
+                    snapshots,
+                ),
                 GameWorldInGameRunStateEvent::InputState {
                     session,
                     uid,

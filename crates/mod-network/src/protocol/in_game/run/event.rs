@@ -17,6 +17,8 @@ pub struct InGameInputPacket {
     pub uid: UserId,
     /// 로그인 토큰
     pub token: LoginToken,
+    /// 클라이언트의 게임 경과 시간
+    pub play_elapsed_time_ms: u32,
     /// 스냅샷 목록입니다.
     pub snapshots: Vec<InputSnapshot>,
 }
@@ -27,12 +29,18 @@ impl InGameInputPacket {
     /// # Panics
     /// 주어진 `snapshots`가 비어있거나 `MAX_INPUT_EVENTS`보다 많은 경우 [`panic`]을 호출합니다.
     ///
-    pub const fn new(uid: UserId, token: LoginToken, snapshots: Vec<InputSnapshot>) -> Self {
+    pub const fn new(
+        uid: UserId, 
+        token: LoginToken, 
+        play_elapsed_time_ms: u32,
+        snapshots: Vec<InputSnapshot>
+    ) -> Self {
         assert!(!snapshots.is_empty(), "the given events is empty!");
         assert!(snapshots.len() <= MAX_INPUT_SNAPSHOTS, "too many events!");
         Self {
             uid,
             token,
+            play_elapsed_time_ms,
             snapshots,
         }
     }
@@ -42,12 +50,17 @@ impl InGameInputPacket {
     /// # Panics
     /// 주어진 `events`가 비어있거나 `MAX_INPUT_EVENTS`보다 많은 경우 [`panic`]을 호출합니다.
     ///
-    pub fn from_iter<I>(uid: UserId, token: LoginToken, iter: I) -> Self
+    pub fn from_iter<I>(
+        uid: UserId, 
+        token: LoginToken, 
+        play_elapsed_time_ms: u32,
+        iter: I
+    ) -> Self
     where
         I: IntoIterator<Item = InputSnapshot>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(uid, token, iter.into_iter().collect())
+        Self::new(uid, token, play_elapsed_time_ms, iter.into_iter().collect())
     }
 }
 
@@ -69,7 +82,7 @@ impl Packet for InGameInputPacket {
         );
 
         // 데이터 크기를 계산합니다.
-        let mut data_size = UserId::byte_size() + LoginToken::byte_size() + u8::byte_size();
+        let mut data_size = UserId::byte_size() + LoginToken::byte_size() + u32::byte_size() + u8::byte_size();
         for snapshot in self.snapshots.iter() {
             match snapshot {
                 InputSnapshot::CameraOrientation { .. } => {
@@ -89,6 +102,7 @@ impl Packet for InGameInputPacket {
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.uid.to_big_endian_bytes());
         data.extend_from_slice(&self.token.to_big_endian_bytes());
+        data.extend_from_slice(&self.play_elapsed_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&(num_events as u8).to_big_endian_bytes());
         for snapshot in self.snapshots.iter() {
             match snapshot {
@@ -158,6 +172,12 @@ impl Packet for InGameInputPacket {
         size = LoginToken::byte_size();
         data = &bytes[offset..offset + size];
         let token = LoginToken::from_big_endian_bytes(data);
+
+        // 클라이언트 게임 경과 시간을 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let play_elapsed_time_ms = u32::from_big_endian_bytes(data);
 
         // 스냅샷의 수를 가져옵니다.
         offset = offset + size;
@@ -230,6 +250,7 @@ impl Packet for InGameInputPacket {
         Some(Self {
             uid,
             token,
+            play_elapsed_time_ms,
             snapshots,
         })
     }
@@ -246,6 +267,7 @@ mod tests {
         let origin = InGameInputPacket::from_iter(
             UserId::new(54131),
             LoginToken::new(85312451324),
+            465_910,
             [
                 InputSnapshot::KeyEvent {
                     play_elapsed_time_ms: 462_321,

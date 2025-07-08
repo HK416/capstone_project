@@ -1800,7 +1800,12 @@ impl GameScene for InGameRunScene {
         if count > 0 {
             // 한 프레임 내의 스냅샷 데이터를 가져옵니다.
             let snapshots: Vec<_> = self.input_snapshot_buffer.drain(..count).collect();
-            let packet = InGameInputPacket::new(self.uid, self.token, snapshots.clone());
+            let packet = InGameInputPacket::new(
+                self.uid, 
+                self.token, 
+                self.play_elapsed_time_ms,
+                snapshots.clone()
+            );
 
             // 패킷을 전송합니다.
             let net = app.net_manager();

@@ -95,6 +95,8 @@ pub enum GameWorldInGameRunStateEvent {
         session: Arc<Session>,
         /// 사용자 식별자
         uid: UserId,
+        /// 클라이언트 게임 경과 시간입니다.
+        client_play_elapsed_time_ms: u32,
         /// 입력 이벤트 목록
         snapshots: Vec<InputSnapshot>,
     },

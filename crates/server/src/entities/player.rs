@@ -215,57 +215,57 @@ impl Default for Bitfield {
 #[derive(Debug, Clone)]
 pub struct Player {
     /// 사용자 이름
-    pub name: UserName, // 34
+    pub name: UserName,
     /// 사용자 프로필 아이콘
-    pub profile_icon: ProfileIcon, // 35
+    pub profile_icon: ProfileIcon,
     /// 캐릭터 종류
-    character_kind: CharacterKind, // 36
+    character_kind: CharacterKind,
     /// 행동 상태
-    pub action_state: ActionState, // 37
+    pub action_state: ActionState,
     /// 움직임 상태
-    pub movement_state: MovementState, // 38
+    pub movement_state: MovementState,
     /// 행동 상태 타이머
-    pub action_state_timer: ActionStateTimer, // 40
+    pub action_state_timer: ActionStateTimer,
     /// 움직임 상태 타이머
-    pub movement_state_timer: MovementStateTimer, // 42
+    pub movement_state_timer: MovementStateTimer,
     /// 플레이어 시야 각도
-    pub latlon: LatLon, // 46
+    pub latlon: LatLon,
 
     /// 비트 필드 데이터입니다.
-    bitfield: Bitfield, // 48
+    bitfield: Bitfield,
 
+    pub offset_time: i32,
     /// 상대 팀을 처치한 횟수
-    pub kill_count: u16, // 50
+    pub kill_count: u16,
     /// 상대 팀에게 처치 당한 횟수
-    pub dead_count: u16, // 52
+    pub dead_count: u16,
     /// 체력 데이터
-    pub health_data: HealthData, // 58
+    pub health_data: HealthData,
     /// 총알 데이터
-    pub bullet_data: BulletData, // 64
+    pub bullet_data: BulletData,
 
     /// 스킬 코스트 데이터
-    pub skill_cost_data: SkillCostData, // 68
+    pub skill_cost_data: SkillCostData,
     /// 캐릭터 속성 데이터
-    attributes: &'static CharacterAttributes, // 72
+    attributes: &'static CharacterAttributes,
     /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
-    pub skill_cost_timer: u16, // 74
+    pub skill_cost_timer: u16,
     /// 입력 상태 타이머
-    pub input_timer: InputStateTimer, // 76
+    pub input_timer: InputStateTimer,
     /// 게임 입력 비트 플래그
-    pub held_input: HeldInput, // 78
+    pub held_input: HeldInput,
 
     /// 플레이어 월드 공간 위치
-    pub translation: glam::Vec3A, // 96
+    pub translation: glam::Vec3A,
 
     /// 플레이어 월드 공간 방향
-    pub rotation: glam::Quat, // 112
+    pub rotation: glam::Quat,
 
     /// 플레이어 월드 공간 이동 속도
-    pub velocity: Velocity, // 128
+    pub velocity: Velocity,
 
     /// 플레이어 월드 공간 이동 방향
-    pub direction: MovingDirection, // 144
-                                    // ------ 144byte --------
+    pub direction: MovingDirection,
 }
 
 impl Player {
@@ -286,6 +286,7 @@ impl Player {
             movement_state_timer: MovementStateTimer(0),
             latlon: LatLon::default(),
             bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
+            offset_time: 0,
             kill_count: 0,
             dead_count: 0,
             health_data: HealthData::default(),

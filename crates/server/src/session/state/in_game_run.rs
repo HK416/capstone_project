@@ -67,6 +67,7 @@ impl SessionInGameRunState {
         let event = GameWorldInGameRunStateEvent::InputSnapshot {
             session: session.clone(),
             uid: packet.uid,
+            client_play_elapsed_time_ms: packet.play_elapsed_time_ms,
             snapshots: packet.snapshots,
         };
         let event = GameWorldEvent::InGameRunState(event);

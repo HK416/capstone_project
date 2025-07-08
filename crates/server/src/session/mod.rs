@@ -107,13 +107,17 @@ impl Session {
 
     /// 네트워크 상태를 반환합니다.
     pub fn network_state(&self) -> NetworkState {
-        let ping = self.ping.load(MemOrdering::Acquire);
-        match ping {
+        match self.ping() {
             0..=50 => NetworkState::Good,
             51..=100 => NetworkState::Fair,
             101..=200 => NetworkState::Poor,
             _ => NetworkState::Critical,
         }
+    }
+
+    /// 세션의 Ping을 반환합니다.
+    pub fn ping(&self) -> u32 {
+        self.ping.load(MemOrdering::Acquire)
     }
 
     /// 수신된 패킷의 처리가 취소됐는지 여부를 반환합니다.

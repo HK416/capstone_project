@@ -91,6 +91,19 @@ pub enum InputSnapshot {
 }
 
 impl InputSnapshot {
+    /// 게임 플레이 경과 시간을 설정합니다.
+    pub fn set_play_elapsed_time_ms(&mut self, new_play_elapsed_time_ms: u32) {
+        let play_elapsed_time_ms = match self {
+            InputSnapshot::CameraOrientation { play_elapsed_time_ms, .. } => {
+                play_elapsed_time_ms
+            },
+            InputSnapshot::KeyEvent { play_elapsed_time_ms, .. } => {
+                play_elapsed_time_ms
+            },
+        };
+        *play_elapsed_time_ms = new_play_elapsed_time_ms;
+    }
+
     /// 게임 플레이 경과 시간을 반환합니다.
     pub const fn play_elapsed_time_ms(&self) -> u32 {
         match self {
