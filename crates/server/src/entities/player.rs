@@ -468,13 +468,13 @@ impl Player {
     }
 
     /// 지면을 밟고 있는 여부를 설정합니다.
-    pub const fn set_grounded(&mut self, ground: bool) {
-        self.bitfield.set_grounded(ground);
+    pub const fn set_grounded(&mut self, grounded: bool) {
+        self.bitfield.set_grounded(grounded);
     }
 
     /// 지면을 밟고 있는 여부를 반환합니다.
-    pub const fn with_grounded(mut self, ground: bool) -> Self {
-        self.set_grounded(ground);
+    pub const fn with_grounded(mut self, grounded: bool) -> Self {
+        self.set_grounded(grounded);
         self
     }
 

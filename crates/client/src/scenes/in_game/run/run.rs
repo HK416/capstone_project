@@ -623,7 +623,6 @@ impl InGameRunScene {
                 *action_state,
                 movement_state,
                 movement_state_timer,
-                &mut vec![],
             );
 
             update_view_state(
@@ -693,7 +692,6 @@ impl InGameRunScene {
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                &mut vec![],
             );
 
             update_view_state_timer(
@@ -1081,7 +1079,6 @@ impl InGameRunScene {
                                             new_rotation.into(),
                                             new_translation.into(),
                                         );
-                                        println!("{}", new_rotation);
                                     }
                                 );
                             } else {
@@ -1116,7 +1113,6 @@ impl InGameRunScene {
                                     &mut new_movement_state_timer,
                                     character_attributes,
                                     elapsed_time_ms,
-                                    &mut vec![],
                                 );
 
                                 new_direction.update(curr.held_input, curr.latlon);
@@ -1167,7 +1163,6 @@ impl InGameRunScene {
                                     new_action_state,
                                     &mut new_movement_state,
                                     &mut new_movement_state_timer,
-                                    &mut vec![],
                                 );
 
                                 type Q1<'a> = (
@@ -1236,7 +1231,6 @@ impl InGameRunScene {
                                 &mut new_movement_state_timer,
                                 character_attributes,
                                 elapsed_time_ms,
-                                &mut vec![],
                             );
 
                             new_direction.update(curr.held_input, curr.latlon);
@@ -1287,7 +1281,6 @@ impl InGameRunScene {
                                 new_action_state,
                                 &mut new_movement_state,
                                 &mut new_movement_state_timer,
-                                &mut vec![],
                             );
 
                             type Q1<'a> = (
@@ -1467,7 +1460,6 @@ impl InGameRunScene {
                                 &mut new_movement_state_timer,
                                 character_attributes,
                                 elapsed_time_ms,
-                                &mut vec![],
                             );
 
                             new_direction.update(new_held_input, new_latlon);
@@ -1520,7 +1512,6 @@ impl InGameRunScene {
                             new_action_state,
                             &mut new_movement_state,
                             &mut new_movement_state_timer,
-                            &mut vec![],
                         );
 
                         // -------------------------------------- //
@@ -1560,7 +1551,6 @@ impl InGameRunScene {
                                         new_action_state,
                                         &mut new_movement_state,
                                         &mut new_movement_state_timer,
-                                        &mut vec![],
                                     );
                                 }
                             }
@@ -1601,7 +1591,6 @@ impl InGameRunScene {
                                         &mut new_movement_state_timer,
                                         character_attributes,
                                         elapsed_time_ms,
-                                        &mut vec![],
                                     );
 
                                     new_direction.update(new_held_input, new_latlon);
@@ -1654,7 +1643,6 @@ impl InGameRunScene {
                                     new_action_state,
                                     &mut new_movement_state,
                                     &mut new_movement_state_timer,
-                                    &mut vec![],
                                 );
                             }
                         }

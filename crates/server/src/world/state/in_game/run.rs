@@ -3,10 +3,10 @@ use std::{collections::VecDeque, f32::consts::TAU, sync::Arc};
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        BulletKind, DamageLogData, HeldInput, InGamePlayerPullData, InputEvent, InputSnapshot,
-        MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS, MIN_LATITUDE, NetworkState,
-        ObjectId, Permission, PlayerSnapshot, StageAttributes, StageKind, StateEvent, Team, UserId,
-        update_action_state, update_action_state_timer, update_movement_state,
+        ActionEvent, BulletKind, DamageLogData, HeldInput, InGamePlayerPullData, InputEvent,
+        InputSnapshot, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS, MIN_LATITUDE,
+        NetworkState, ObjectId, Permission, PlayerSnapshot, StageAttributes, StageKind, Team,
+        UserId, update_action_state, update_action_state_timer, update_movement_state,
         update_movement_state_timer, update_player_rotation, update_player_translation,
     },
     protocol::{
@@ -375,13 +375,23 @@ impl GameWorldInGameRunState {
             // 입력 스냅샷 까지 경과 시간의 데이터를 갱신합니다.
             if interval > 0 {
                 let elapsed_time_ms = interval as u16;
-                Self::update_player(stage_attributes, data, elapsed_time_ms);
+                let action_events = Self::update_player(stage_attributes, data, elapsed_time_ms);
+                // 행동 상태 이벤트를 처리합니다.
+                for event in action_events {
+                    match event {
+                        ActionEvent::Respawn { timing } => {}
+                        ActionEvent::Reloading => {
+                            data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
+                        }
+                        ActionEvent::BulletFired { timing } => {}
+                        ActionEvent::Skill { timing } => {}
+                    }
+                }
                 current_play_elapsed_time_ms += interval;
             }
 
             // ------------------------------------//
             // 입력 스냅샷을 적용합니다.
-            let mut state_events = Vec::default();
             match input_snapshot {
                 InputSnapshot::CameraOrientation {
                     delta_lat,
@@ -405,6 +415,8 @@ impl GameWorldInGameRunState {
                         }
                     }
 
+                    // 행동 상태를 갱신합니다.
+                    let mut action_events = Vec::default();
                     update_action_state(
                         data.held_input,
                         &mut data.action_state,
@@ -412,14 +424,25 @@ impl GameWorldInGameRunState {
                         character_attributes,
                         &mut data.bullet_data,
                         &mut data.skill_cost_data,
-                        &mut state_events,
+                        &mut action_events,
                     );
+                    // 행동 상태 이벤트를 처리합니다.
+                    for event in action_events {
+                        match event {
+                            ActionEvent::Respawn { timing } => {}
+                            ActionEvent::Reloading => {
+                                data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
+                            }
+                            ActionEvent::BulletFired { timing } => {}
+                            ActionEvent::Skill { timing } => {}
+                        }
+                    }
+
                     update_movement_state(
                         data.held_input,
                         data.action_state,
                         &mut data.movement_state,
                         &mut data.movement_state_timer,
-                        &mut state_events,
                     );
                 }
             };
@@ -524,49 +547,6 @@ impl GameWorldInGameRunState {
         self.player_snapshots.insert(uid, data_snapshots);
     }
 
-    /// [`GameWorldInGameRunStateEvent::InputState`] 이벤트를 처리합니다.
-    fn handle_input_state(
-        &mut self,
-        world: &mut GameWorld,
-        session: Arc<Session>,
-        uid: UserId,
-        delta_x: f32,
-        delta_y: f32,
-        delta_z: f32,
-        delta_lat: f32,
-        delta_lon: f32,
-        held_input: HeldInput,
-        play_elapsed_time_ms: u32,
-    ) {
-        // 플레이어 데이터를 가져옵니다.
-        let data = match world.players.get_mut(&uid) {
-            Some(data) => data,
-            None => {
-                log::error!("Player({}) not found in {}!", &uid, &world);
-                eprintln!("Player({}) not found in {}!", &uid, &world);
-                session.close();
-                return;
-            }
-        };
-
-        // data.held_input = held_input;
-        // data.latlon.lat = (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
-        // data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
-    }
-
-    /// [`GameWorldInGameRunStateEvent::PlayerRespawn`] 이벤트를 처리합니다.
-    fn handle_player_respawn_event(&mut self, uid: UserId) {}
-
-    fn handle_bullet_spawn_event(
-        &mut self,
-        shooter_id: UserId,
-        delay_time_ms: u16,
-        bullet_kind: BulletKind,
-        translation: glam::Vec3A,
-        rotation: glam::Quat,
-    ) {
-    }
-
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&mut self, world: &GameWorld) {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
@@ -658,42 +638,30 @@ impl GameWorldInGameRunState {
                 continue;
             }
 
-            let character_attributes = data.character_attributes();
-            let stage_attributes = get_stage_attributes(self.stage_kind);
-
-            // 경과 시간의 데이터를 갱신합니다.
             let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
-            let state_events = Self::update_player(stage_attributes, data, elapsed_time_ms);
+            let stage_attributes = get_stage_attributes(self.stage_kind);
+            let character_attributes = data.character_attributes();
 
-            // 상태 변경 이벤트를 처리합니다.
-            for event in state_events {
+            //-----------------------------------------------------------------------
+            // 플레이어를 갱신합니다.
+            let action_events = Self::update_player(stage_attributes, data, elapsed_time_ms);
+            // 행동 상태 이벤트를 처리합니다.
+            for event in action_events {
                 match event {
-                    StateEvent::ChangeActionState {
-                        action_state,
-                        timing,
-                    } => {
-                        // state_change_events.push_back(StateChangeEvent::ActionState {
-                        //     action_state,
-                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
-                        // });
+                    ActionEvent::Respawn { timing } => {}
+                    ActionEvent::Reloading => {
+                        data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
                     }
-                    StateEvent::ChangeMovementState {
-                        movement_state,
-                        timing,
-                    } => {
-                        // state_change_events.push_back(StateChangeEvent::MovementState {
-                        //     movement_state,
-                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
-                        // });
-                    }
-                    StateEvent::BulletFired { timing } => {}
-                    StateEvent::Skill { timing } => {}
+                    ActionEvent::BulletFired { timing } => {}
+                    ActionEvent::Skill { timing } => {}
                 }
             }
 
             //-----------------------------------------------------------------------
-            // 상태를 갱신합니다.
-            let mut state_events = Vec::default();
+            // 입력에 따른 상태를 갱신합니다.
+
+            // 행동 상태를 갱신합니다.
+            let mut action_events = Vec::default();
             update_action_state(
                 data.held_input,
                 &mut data.action_state,
@@ -701,44 +669,27 @@ impl GameWorldInGameRunState {
                 character_attributes,
                 &mut data.bullet_data,
                 &mut data.skill_cost_data,
-                &mut state_events,
+                &mut action_events,
             );
+            // 행동 상태 이벤트를 처리합니다.
+            for event in action_events {
+                match event {
+                    ActionEvent::Respawn { timing } => {}
+                    ActionEvent::Reloading => {
+                        data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
+                    }
+                    ActionEvent::BulletFired { timing } => {}
+                    ActionEvent::Skill { timing } => {}
+                }
+            }
+
+            // 움직임 상태를 갱신합니다.
             update_movement_state(
                 data.held_input,
                 data.action_state,
                 &mut data.movement_state,
                 &mut data.movement_state_timer,
-                &mut state_events,
             );
-
-            for event in state_events {
-                match event {
-                    StateEvent::ChangeActionState {
-                        action_state,
-                        timing,
-                    } => {
-                        // state_change_events.push_back(StateChangeEvent::ActionState {
-                        //     action_state,
-                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
-                        // });
-                    }
-                    StateEvent::ChangeMovementState {
-                        movement_state,
-                        timing,
-                    } => {
-                        // state_change_events.push_back(StateChangeEvent::MovementState {
-                        //     movement_state,
-                        //     play_elapsed_time_ms: current_play_elapsed_time_ms + timing as u32,
-                        // });
-                    }
-                    StateEvent::BulletFired { timing } => {
-                        // TODO
-                    }
-                    StateEvent::Skill { timing } => {
-                        // TODO
-                    }
-                }
-            }
         }
 
         // 총알 오브젝트를 갱신합니다.
@@ -765,14 +716,16 @@ impl GameWorldInGameRunState {
         stage_attributes: &StageAttributes,
         data: &mut Player,
         elapsed_time_ms: u16,
-    ) -> Vec<StateEvent> {
+    ) -> Vec<ActionEvent> {
         let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
         let character_attributes = data.character_attributes();
-        let mut state_events = Vec::default();
+        let mut action_events = Vec::default();
 
+        // 입력 상태 타이머를 갱신합니다.
         data.input_state_timer
             .update(data.held_input, elapsed_time_ms);
 
+        // 행동 상태 타이머를 갱신합니다.
         update_action_state_timer(
             data.held_input,
             &mut data.bullet_data,
@@ -781,20 +734,22 @@ impl GameWorldInGameRunState {
             &mut data.action_state_timer,
             character_attributes,
             elapsed_time_ms,
-            &mut state_events,
+            &mut action_events,
         );
 
+        // 움직임 상태 타이머를 갱신합니다.
         update_movement_state_timer(
             data.action_state,
             &mut data.movement_state,
             &mut data.movement_state_timer,
             character_attributes,
             elapsed_time_ms,
-            &mut state_events,
         );
 
+        // 이동 방향을 갱신합니다.
         data.direction.update(data.held_input, data.latlon);
 
+        // 플레이어 캐릭터 방향을 갱신합니다.
         let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
         look = update_player_rotation(
             look,
@@ -808,6 +763,7 @@ impl GameWorldInGameRunState {
         let y = z.cross(x);
         data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z)).normalize();
 
+        // 플레이어 캐릭터 위치를 갱신합니다.
         let team = data.team();
         let mut is_grounded = data.is_grounded();
         let mut is_invincible = data.is_invincible();
@@ -831,7 +787,7 @@ impl GameWorldInGameRunState {
         data.set_grounded(is_grounded);
         data.set_invincible(is_invincible);
 
-        state_events
+        action_events
     }
 }
 
@@ -877,39 +833,6 @@ impl GameWorldState for GameWorldInGameRunState {
                     client_play_elapsed_time_ms,
                     snapshots,
                 ),
-                GameWorldInGameRunStateEvent::InputState {
-                    session,
-                    uid,
-                    delta_x,
-                    delta_y,
-                    delta_z,
-                    delta_lat,
-                    delta_lon,
-                    held_input,
-                    play_elapsed_time_ms,
-                } => self.handle_input_state(
-                    world,
-                    session,
-                    uid,
-                    delta_x,
-                    delta_y,
-                    delta_z,
-                    delta_lat,
-                    delta_lon,
-                    held_input,
-                    play_elapsed_time_ms,
-                ),
-                GameWorldInGameRunStateEvent::PlayerRespawn {
-                    uid,
-                    play_elapsed_time_ms,
-                } => todo!(),
-                GameWorldInGameRunStateEvent::BulletSpawn {
-                    shooter_id,
-                    play_elapsed_time_ms,
-                    bullet_kind,
-                    translation,
-                    rotation,
-                } => todo!(),
             },
             _ => {
                 log::warn!(
@@ -924,6 +847,9 @@ impl GameWorldState for GameWorldInGameRunState {
     fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {
         let elapsed_time_ms = elapsed.as_millis().min(MAX_GAME_TIME as u128) as u32;
 
+        // 게임 월드를 갱신합니다.
+        self.update(world, elapsed);
+
         // 플레이 경과 시간을 갱신합니다.
         self.play_elapsed_time_ms = self
             .play_elapsed_time_ms
@@ -933,9 +859,6 @@ impl GameWorldState for GameWorldInGameRunState {
         self.packet_send_elapsed_time_ms = self
             .packet_send_elapsed_time_ms
             .saturating_add(elapsed_time_ms);
-
-        // 게임 월드를 갱신합니다.
-        self.update(world, elapsed);
 
         // 일전 시각마다 패킷을 전송합니다.
         const TICK: u32 = 16;
