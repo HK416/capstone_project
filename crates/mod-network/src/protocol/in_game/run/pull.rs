@@ -9,7 +9,9 @@ use crate::{
 /// 서버에서 클라이언트로 보내는 인게임 장면 갱신 패킷입니다.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InGamePullPacket {
-    /// 게임 플레이 경과 시간. (단위: ms)
+    /// 현재 클라이언트의 Ping
+    pub ping: u16,
+    /// 서버의 게임 플레이 경과 시간. (단위: ms)
     pub play_elapsed_time_ms: u32,
     /// 플레이어 데이터
     pub players: Vec<InGamePlayerPullData>,
@@ -26,6 +28,7 @@ impl InGamePullPacket {
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
 
         Self {
+            ping: 0,
             play_elapsed_time_ms,
             players,
         }
@@ -40,10 +43,13 @@ impl Packet for InGamePullPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
-        let data_size =
-            u32::byte_size() + u8::byte_size() + InGamePlayerPullData::byte_size() * num_players;
+        let data_size = u16::byte_size()
+            + u32::byte_size()
+            + u8::byte_size()
+            + InGamePlayerPullData::byte_size() * num_players;
         let num_players = self.players.len();
         let mut data = Vec::with_capacity(data_size);
+        data.extend_from_slice(&self.ping.to_big_endian_bytes());
         data.extend_from_slice(&self.play_elapsed_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
@@ -74,11 +80,17 @@ impl Packet for InGamePullPacket {
             return None;
         }
 
-        // 현재 플레이 경과 시간을 가져옵니다.
+        // 현재 클라이언트의 Ping을 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = u32::byte_size();
+        let mut size = u16::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let ping = u16::from_big_endian_bytes(data);
+
+        // 서버의 플레이 경과 시간을 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
         let play_elapsed_time_ms = u32::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
@@ -100,6 +112,7 @@ impl Packet for InGamePullPacket {
         }
 
         Some(Self {
+            ping,
             play_elapsed_time_ms,
             players,
         })
@@ -109,8 +122,8 @@ impl Packet for InGamePullPacket {
 #[cfg(test)]
 mod tests {
     use crate::components::{
-        ActionState, ActionStateTimer, LatLon, MovementState, MovementStateTimer, NetworkState,
-        Permission, PlayerStateData, UserId,
+        ActionState, ActionStateTimer, HeldInput, InputStateTimer, LatLon, MovementState,
+        MovementStateTimer, NetworkState, Permission, PlayerStateData, UserId,
     };
 
     use super::*;
@@ -135,6 +148,7 @@ mod tests {
             [0.00134123, 0.0061341, 0.7341341, 0.212341],
             [0.0, 0.13414132, 0.513411],
             [0.0, 0.13414132, 0.513411],
+            HeldInput::all(),
             Permission::Admin,
             true,
             true,
@@ -145,6 +159,7 @@ mod tests {
                 .with_movement_state(MovementState::Landing),
             ActionStateTimer::new(320),
             MovementStateTimer::new(1200),
+            InputStateTimer::new(123),
             LatLon::new(45f32.to_radians(), 72f32.to_radians()),
         );
         let player_1 = InGamePlayerPullData::new(
@@ -159,6 +174,7 @@ mod tests {
             [0.00134123, 0.0061341, 0.7341341, 0.212341],
             [0.0, 0.13414132, 0.513411],
             [0.0, 0.13414132, 0.513411],
+            HeldInput::Left | HeldInput::Reload | HeldInput::Jump,
             Permission::User,
             false,
             true,
@@ -169,6 +185,7 @@ mod tests {
                 .with_movement_state(MovementState::Landing),
             ActionStateTimer::new(323),
             MovementStateTimer::new(1212),
+            InputStateTimer::new(123),
             LatLon::new(-11f32.to_radians(), 63f32.to_radians()),
         );
 

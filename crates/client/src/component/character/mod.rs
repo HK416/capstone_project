@@ -3,7 +3,6 @@ mod camera;
 mod pipeline;
 mod pull;
 mod render;
-mod snapshot;
 mod spawn;
 mod transform;
 mod view_state;
@@ -20,8 +19,7 @@ use mod_network::components::{ActionState, CharacterAttributes, LatLon, NUM_CHAR
 use crate::component::{Child, Sibling, ToParentTrans, WorldTransform};
 
 pub use self::{
-    animation::*, camera::*, pipeline::*, pull::*, render::*, snapshot::*, spawn::*, transform::*,
-    view_state::*,
+    animation::*, camera::*, pipeline::*, pull::*, render::*, spawn::*, transform::*, view_state::*,
 };
 
 lazy_static! {

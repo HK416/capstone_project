@@ -1,7 +1,11 @@
 //! 스냅샷 데이터와 관련된 코드를 관리합니다.
 //!
 
-use crate::components::{BigEndian, InputKind, TryFromBigEndian};
+use crate::components::{
+    ActionState, ActionStateTimer, BigEndian, BulletData, HeldInput, InputKind, InputStateTimer,
+    LatLon, MovementState, MovementStateTimer, MovingDirection, SkillCostData, TryFromBigEndian,
+    Velocity,
+};
 
 /// Epsilon
 pub const LAT_LON_EPSILON: f32 = 3f32.to_radians();
@@ -69,7 +73,7 @@ impl TryFromBigEndian for InputEvent {
 }
 
 /// 최대 입력키 이벤트의 개수입니다.
-pub const MAX_INPUT_EVENTS: usize = 255 as usize;
+pub const MAX_INPUT_EVENTS: usize = 127 as usize;
 
 /// 클라이언트 입력에 대한 스냅샷 데이터입니다.
 #[derive(Debug, Clone, PartialEq)]
@@ -94,12 +98,14 @@ impl InputSnapshot {
     /// 게임 플레이 경과 시간을 설정합니다.
     pub fn set_play_elapsed_time_ms(&mut self, new_play_elapsed_time_ms: u32) {
         let play_elapsed_time_ms = match self {
-            InputSnapshot::CameraOrientation { play_elapsed_time_ms, .. } => {
-                play_elapsed_time_ms
-            },
-            InputSnapshot::KeyEvent { play_elapsed_time_ms, .. } => {
-                play_elapsed_time_ms
-            },
+            InputSnapshot::CameraOrientation {
+                play_elapsed_time_ms,
+                ..
+            } => play_elapsed_time_ms,
+            InputSnapshot::KeyEvent {
+                play_elapsed_time_ms,
+                ..
+            } => play_elapsed_time_ms,
         };
         *play_elapsed_time_ms = new_play_elapsed_time_ms;
     }
@@ -117,4 +123,45 @@ impl InputSnapshot {
             } => *play_elapsed_time_ms,
         }
     }
+}
+
+/// 최대 플레이어 스냅샷 데이터의 개수입니다.
+pub const MAX_PLAYER_SNAPSHOTS: usize = 127;
+
+/// 플레이어 스냅샷 데이터입니다.
+#[repr(C, align(16))]
+#[derive(Debug, Clone)]
+pub struct PlayerSnapshot {
+    /// 플레이 경과 시간
+    pub play_elapsed_time_ms: u32,
+    /// 행동 상태
+    pub action_state: ActionState,
+    /// 움직임 상태
+    pub movement_state: MovementState,
+    /// 행동 상태 타이머
+    pub action_state_timer: ActionStateTimer,
+    /// 움직임 상태 타이머
+    pub movement_state_timer: MovementStateTimer,
+    /// 총알 데이터
+    pub bullet_data: BulletData,
+    /// 스킬 코스트 데이터
+    pub skill_cost_data: SkillCostData,
+    /// 플레이어 카메라 각도
+    pub latlon: LatLon,
+    /// 플레이어 월드 공간 위치
+    pub translation: glam::Vec3A,
+    /// 플레이어 월드 공간 방향
+    pub rotation: glam::Quat,
+    /// 플레이어 월드 공간 이동 속도
+    pub velocity: Velocity,
+    /// 플레이어 월드 공간 이동 방향
+    pub direction: MovingDirection,
+    /// 입력 상태 타이머
+    pub input_state_timer: InputStateTimer,
+    /// 게임 입력 비트 플래그
+    pub held_input: HeldInput,
+    /// 무적 여부
+    pub is_invincible: bool,
+    /// 지면을 밟고 있는 여부
+    pub is_grounded: bool,
 }

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use hecs::{Component, Entity, ViewBorrow, World};
+use mod_network::components::{ActionState, CharacterKind};
 use mod_parallelism::collections::Queue;
 use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 
@@ -11,7 +12,7 @@ use crate::component::{
     HaloRenderPipeline, LightSetResource, MaterialMap, Mesh, MeshFilter, MeshRenderer, Player0,
     Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
     PlayerArchetype, RenderTask, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-    ToParentTrans, TransformDataLayout, TransformMap, WeaponQuery, WorldTransform,
+    SkinningAnimation, ToParentTrans, TransformDataLayout, TransformMap, WorldTransform,
     CHARACTER_ATTRIBUTES, MAX_BONES, SHADOW_FORMAT,
 };
 
@@ -20,13 +21,22 @@ pub fn update_character_hierarchy(
     world: &World,
     entity: Entity,
     archetype: PlayerArchetype,
+    action_state: ActionState,
     child_view: &ViewBorrow<'_, &Child>,
     sibling_view: &ViewBorrow<'_, &Sibling>,
-    weapon_view: &ViewBorrow<'_, WeaponQuery>,
+    character_view: &ViewBorrow<&CharacterKind>,
+    skinning_view: &ViewBorrow<&SkinningAnimation>,
 ) {
-    let (&character_kind, &action_state, skinning_animation) = weapon_view
+    // 캐릭터 종류를 가져옵니다.
+    let &character_kind = character_view
         .get(entity)
         .expect("invalid entity or invalid entity component!");
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = skinning_view
+        .get(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    // 캐릭터 속성 데이터를 가져옵니다.
     let i = character_kind as usize;
     let character_attributes = CHARACTER_ATTRIBUTES[i];
 

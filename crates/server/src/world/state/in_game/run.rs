@@ -4,10 +4,10 @@ use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
         BulletKind, DamageLogData, HeldInput, InGamePlayerPullData, InputEvent, InputSnapshot,
-        MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, NetworkState, ObjectId, Permission,
-        StageAttributes, StageKind, StateEvent, Team, UserId, update_action_state,
-        update_action_state_timer, update_movement_state, update_movement_state_timer,
-        update_player_rotation, update_player_translation,
+        MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS, MIN_LATITUDE, NetworkState,
+        ObjectId, Permission, PlayerSnapshot, StageAttributes, StageKind, StateEvent, Team, UserId,
+        update_action_state, update_action_state_timer, update_movement_state,
+        update_movement_state_timer, update_player_rotation, update_player_translation,
     },
     protocol::{
         InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, MAX_INPUT_SNAPSHOTS, Packet,
@@ -18,7 +18,7 @@ use tokio::time::Duration;
 
 use crate::{
     data::get_stage_attributes,
-    entities::{Bullet, MAX_PLAYER_SNAPSHOTS, Player, PlayerSnapshot},
+    entities::{Bullet, Player},
     session::Session,
     world::{
         GameWorld, GameWorldEvent, GameWorldInGameRunStateEvent, GameWorldState,
@@ -358,12 +358,14 @@ impl GameWorldInGameRunState {
         data.movement_state = data_snapshot.movement_state;
         data.action_state_timer = data_snapshot.action_state_timer;
         data.movement_state_timer = data_snapshot.movement_state_timer;
+        data.bullet_data = data_snapshot.bullet_data;
+        data.skill_cost_data = data_snapshot.skill_cost_data;
         data.latlon = data_snapshot.latlon;
         data.translation = data_snapshot.translation;
         data.rotation = data_snapshot.rotation;
         data.velocity = data_snapshot.velocity;
         data.direction = data_snapshot.direction;
-        data.input_timer = data_snapshot.input_timer;
+        data.input_state_timer = data_snapshot.input_state_timer;
         data.held_input = data_snapshot.held_input;
         data.set_invincible(data_snapshot.is_invincible);
         data.set_grounded(data_snapshot.is_grounded);
@@ -419,10 +421,6 @@ impl GameWorldInGameRunState {
                         &mut data.movement_state_timer,
                         &mut state_events,
                     );
-                    println!(
-                        "state update (Action:{:?}, Movement:{:?})",
-                        data.action_state, data.movement_state
-                    );
                 }
             };
 
@@ -465,7 +463,7 @@ impl GameWorldInGameRunState {
                             next_data_snapshot.rotation = data.rotation;
                             next_data_snapshot.velocity = data.velocity;
                             next_data_snapshot.direction = data.direction;
-                            next_data_snapshot.input_timer = data.input_timer;
+                            next_data_snapshot.input_state_timer = data.input_state_timer;
                             next_data_snapshot.held_input = data.held_input;
                             next_data_snapshot.is_invincible = data.is_invincible();
                             next_data_snapshot.is_grounded = data.is_grounded();
@@ -500,7 +498,7 @@ impl GameWorldInGameRunState {
                         next_data_snapshot.rotation = data.rotation;
                         next_data_snapshot.velocity = data.velocity;
                         next_data_snapshot.direction = data.direction;
-                        next_data_snapshot.input_timer = data.input_timer;
+                        next_data_snapshot.input_state_timer = data.input_state_timer;
                         next_data_snapshot.held_input = data.held_input;
                         next_data_snapshot.is_invincible = data.is_invincible();
                         next_data_snapshot.is_grounded = data.is_grounded();
@@ -586,6 +584,7 @@ impl GameWorldInGameRunState {
                 data.rotation.to_array(),
                 data.velocity.0.to_array(),
                 data.direction.0.to_array(),
+                data.held_input,
                 data.permission(),
                 connected,
                 data.is_grounded(),
@@ -594,6 +593,7 @@ impl GameWorldInGameRunState {
                 data.player_states(),
                 data.action_state_timer,
                 data.movement_state_timer,
+                data.input_state_timer,
                 data.latlon,
             ));
 
@@ -611,12 +611,14 @@ impl GameWorldInGameRunState {
                     movement_state: data.movement_state,
                     action_state_timer: data.action_state_timer,
                     movement_state_timer: data.movement_state_timer,
+                    bullet_data: data.bullet_data,
+                    skill_cost_data: data.skill_cost_data,
                     latlon: data.latlon,
                     translation: data.translation,
                     rotation: data.rotation,
                     velocity: data.velocity,
                     direction: data.direction,
-                    input_timer: data.input_timer,
+                    input_state_timer: data.input_state_timer,
                     held_input: data.held_input,
                     is_invincible: data.is_invincible(),
                     is_grounded: data.is_grounded(),
@@ -638,8 +640,9 @@ impl GameWorldInGameRunState {
         }
 
         // 상태 변경 이벤트를 가져옵니다.
-        let packet = InGamePullPacket::new(self.play_elapsed_time_ms, players);
+        let mut packet = InGamePullPacket::new(self.play_elapsed_time_ms, players);
         for session in world.sessions.keys() {
+            packet.ping = session.ping();
             session.tcp_write(packet.as_raw());
         }
     }
@@ -767,7 +770,8 @@ impl GameWorldInGameRunState {
         let character_attributes = data.character_attributes();
         let mut state_events = Vec::default();
 
-        data.input_timer.update(data.held_input, elapsed_time_ms);
+        data.input_state_timer
+            .update(data.held_input, elapsed_time_ms);
 
         update_action_state_timer(
             data.held_input,
@@ -790,15 +794,6 @@ impl GameWorldInGameRunState {
         );
 
         data.direction.update(data.held_input, data.latlon);
-
-        data.velocity.update(
-            data.direction,
-            data.input_timer,
-            data.action_state,
-            data.movement_state,
-            data.movement_state_timer,
-            character_attributes,
-        );
 
         let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
         look = update_player_rotation(
@@ -829,8 +824,8 @@ impl GameWorldInGameRunState {
             team,
             &mut is_grounded,
             &mut is_invincible,
-            &mut data.health_data,
-            data.input_timer,
+            Some(&mut data.health_data),
+            data.input_state_timer,
             elapsed_time_sec,
         );
         data.set_grounded(is_grounded);

@@ -7,7 +7,7 @@ use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Component, Entity, EntityBuilder, World};
 use mod_network::components::{
     ActionState, ActionStateTimer, BulletData, CharacterFlags, HealthData, InGamePlayerInitData,
-    LatLon, MovementState, MovementStateTimer, SkillCostData, ViewState, ViewStateTimer,
+    LatLon, MovementState, MovementStateTimer, SkillCostData,
 };
 use parking_lot::Mutex;
 
@@ -43,16 +43,10 @@ pub fn spawn_player<Tag: Copy + Component>(
     // 컴포넌트를 추가합니다.
     builder.add_bundle((
         data.name,
-        data.permission(),
         data.character_kind,
         (data.team(), data.team_index()),
+        data.permission(),
         data.network_state(),
-        HealthData::splat(data.maximum_health),
-        BulletData::splat(data.maximum_bullet),
-        SkillCostData::new(0, data.maximum_skill_cost),
-        CharacterFlags::new()
-            .with_connected(data.is_connected())
-            .with_grounded(true),
     ));
     builder.add((
         tag,
@@ -63,13 +57,20 @@ pub fn spawn_player<Tag: Copy + Component>(
     ));
     builder.add((tag, WorldTransform::default()));
     builder.add_bundle((
-        ActionState::Idle,
-        MovementState::Idle,
-        ViewState::Idle,
-        ActionStateTimer::new(0),
-        MovementStateTimer::new(0),
-        ViewStateTimer::new(0),
-        LatLon::default(),
+        (tag, HealthData::splat(data.maximum_health)),
+        (tag, BulletData::splat(data.maximum_bullet)),
+        (tag, SkillCostData::new(0, data.maximum_skill_cost)),
+        (
+            tag,
+            CharacterFlags::new()
+                .with_connected(data.is_connected())
+                .with_grounded(true),
+        ),
+        (tag, ActionState::Idle),
+        (tag, MovementState::Idle),
+        (tag, ActionStateTimer::new(0)),
+        (tag, MovementStateTimer::new(0)),
+        (tag, LatLon::default()),
     ));
 
     // 캐릭터 모델을 가져옵니다.

@@ -2,8 +2,8 @@
 //!
 
 use crate::components::{
-    ActionState, ActionStateTimer, BigEndian, LatLon, MovementState, MovementStateTimer,
-    NetworkState, Permission, PlayerStateData, TryFromBigEndian, UserId,
+    ActionState, ActionStateTimer, BigEndian, HeldInput, InputStateTimer, LatLon, MovementState,
+    MovementStateTimer, NetworkState, Permission, PlayerStateData, TryFromBigEndian, UserId,
 };
 
 /// 플레이어 비트 필드 데이터입니다.
@@ -247,6 +247,8 @@ pub struct InGamePlayerPullData {
     /// 월드 공간 이동 방향
     pub direction: [f32; 3],
 
+    /// 누르고 있는 키
+    pub held_input: HeldInput,
     /// 비트 필드 데이터
     bitfield: Bitfield,
     /// 플레이어 상태 데이터
@@ -255,6 +257,8 @@ pub struct InGamePlayerPullData {
     pub action_state_timer: ActionStateTimer,
     /// 움직임 상태 타이머
     pub movement_state_timer: MovementStateTimer,
+    /// 입력 상태 타이머
+    pub input_state_timer: InputStateTimer,
     /// 카메라 시점 각도
     pub latlon: LatLon,
 }
@@ -273,6 +277,7 @@ impl InGamePlayerPullData {
         rotation: [f32; 4],
         velocity: [f32; 3],
         direction: [f32; 3],
+        held_input: HeldInput,
         permission: Permission,
         connected: bool,
         grounded: bool,
@@ -281,6 +286,7 @@ impl InGamePlayerPullData {
         player_states: PlayerStateData,
         action_state_timer: ActionStateTimer,
         movement_state_timer: MovementStateTimer,
+        input_state_timer: InputStateTimer,
         latlon: LatLon,
     ) -> Self {
         Self {
@@ -295,6 +301,7 @@ impl InGamePlayerPullData {
             rotation,
             velocity,
             direction,
+            held_input,
             bitfield: Bitfield::new()
                 .with_permission(permission)
                 .with_connected(connected)
@@ -304,6 +311,7 @@ impl InGamePlayerPullData {
             player_states,
             action_state_timer,
             movement_state_timer,
+            input_state_timer,
             latlon,
         }
     }
@@ -357,10 +365,12 @@ impl BigEndian for InGamePlayerPullData {
             + <[f32; 4]>::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 3]>::byte_size()
+            + HeldInput::byte_size()
             + Bitfield::byte_size()
             + PlayerStateData::byte_size()
             + ActionStateTimer::byte_size()
             + MovementStateTimer::byte_size()
+            + InputStateTimer::byte_size()
             + LatLon::byte_size()
     }
 
@@ -441,6 +451,12 @@ impl BigEndian for InGamePlayerPullData {
         data = &bytes[offset..offset + size];
         let direction = <[f32; 3]>::from_big_endian_bytes(data);
 
+        // 눌려있는 키 필드 데이터를 가져옵니다.
+        offset = offset + size;
+        size = HeldInput::byte_size();
+        data = &bytes[offset..offset + size];
+        let held_input = HeldInput::from_big_endian_bytes(data);
+
         // 비트 필드 데이터를 가져옵니다.
         offset = offset + size;
         size = u8::byte_size();
@@ -465,6 +481,12 @@ impl BigEndian for InGamePlayerPullData {
         data = &bytes[offset..offset + size];
         let movement_state_timer = MovementStateTimer::from_big_endian_bytes(data);
 
+        // 입력 상태 타이머를 가져옵니다.
+        offset = offset + size;
+        size = InputStateTimer::byte_size();
+        data = &bytes[offset..offset + size];
+        let input_state_timer = InputStateTimer::from_big_endian_bytes(data);
+
         // 카메라 시점을 가져옵니다.
         offset = offset + size;
         size = LatLon::byte_size();
@@ -483,10 +505,12 @@ impl BigEndian for InGamePlayerPullData {
             rotation,
             velocity,
             direction,
+            held_input,
             bitfield,
             player_states: states,
             action_state_timer,
             movement_state_timer,
+            input_state_timer,
             latlon,
         }
     }
@@ -505,10 +529,12 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.velocity.to_big_endian_bytes());
         bytes.extend_from_slice(&self.direction.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.held_input.to_big_endian_bytes());
         bytes.extend_from_slice(&self.bitfield.to_big_endian_bytes());
         bytes.extend_from_slice(&self.player_states.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.input_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.latlon.to_big_endian_bytes());
 
         // 바이트 배열 유효성 검증

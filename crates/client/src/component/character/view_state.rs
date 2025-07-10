@@ -5,32 +5,32 @@ pub fn update_view_state(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     character_attributes: &CharacterAttributes,
-    input_bits: HeldInput,
+    held_input: HeldInput,
 ) {
     match view_state {
         ViewState::Idle => update_state_when_idle(
             view_state,
             view_state_timer,
             character_attributes,
-            input_bits,
+            held_input,
         ),
         ViewState::ZoomIn => update_state_when_zoom_in(
             view_state,
             view_state_timer,
             character_attributes,
-            input_bits,
+            held_input,
         ),
         ViewState::ZoomOut => update_state_when_zoom_out(
             view_state,
             view_state_timer,
             character_attributes,
-            input_bits,
+            held_input,
         ),
         ViewState::Aiming => update_state_when_aiming(
             view_state,
             view_state_timer,
             character_attributes,
-            input_bits,
+            held_input,
         ),
     }
 }
@@ -40,9 +40,9 @@ fn update_state_when_idle(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     _character_attributes: &CharacterAttributes,
-    input_bits: HeldInput,
+    held_input: HeldInput,
 ) {
-    if input_bits.contains(HeldInput::Aiming) {
+    if held_input.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomIn;
         view_state_timer.0 = 0;
     }
@@ -53,9 +53,9 @@ fn update_state_when_zoom_in(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     character_attributes: &CharacterAttributes,
-    input_bits: HeldInput,
+    held_input: HeldInput,
 ) {
-    if !input_bits.contains(HeldInput::Aiming) {
+    if !held_input.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomOut;
 
         let zoom_in_duration = character_attributes.normal_attack_start_duration;
@@ -71,9 +71,9 @@ fn update_state_when_zoom_out(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     character_attributes: &CharacterAttributes,
-    input_bits: HeldInput,
+    held_input: HeldInput,
 ) {
-    if input_bits.contains(HeldInput::Aiming) {
+    if held_input.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomIn;
 
         let zoom_in_duration = character_attributes.normal_attack_start_duration;
@@ -89,9 +89,9 @@ fn update_state_when_aiming(
     view_state: &mut ViewState,
     view_state_timer: &mut ViewStateTimer,
     _character_attributes: &CharacterAttributes,
-    input_bits: HeldInput,
+    held_input: HeldInput,
 ) {
-    if !input_bits.contains(HeldInput::Aiming) {
+    if !held_input.contains(HeldInput::Aiming) {
         *view_state = ViewState::ZoomOut;
         view_state_timer.0 = 0;
     }

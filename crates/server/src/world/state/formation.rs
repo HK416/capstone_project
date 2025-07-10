@@ -339,7 +339,7 @@ impl GameWorldFormationState {
                 // 서버에 연결되어 있고, 캐릭터를 선택하지 않은 플레이어의 캐릭터를 무작위로 지정합니다.
                 for (&uid, data) in world.players.iter_mut() {
                     let leaved = self.leaved_players.contains(&uid);
-                    if !leaved && data.is_ready_to_play() {
+                    if !leaved && !data.is_ready_to_play() {
                         data.set_character_kind(rand::random());
                         data.set_ready_to_play(true);
                     }
@@ -360,7 +360,7 @@ impl GameWorldFormationState {
                     total.difference(&self.red_characters).cloned().collect();
                 for (&uid, data) in world.players.iter_mut() {
                     let leaved = self.leaved_players.contains(&uid);
-                    if !leaved && data.is_ready_to_play() {
+                    if !leaved && !data.is_ready_to_play() {
                         let character_kind = match data.team() {
                             Team::Blue => blue_diff.pop().unwrap_or(CharacterKind::default()),
                             Team::Red => red_diff.pop().unwrap_or(CharacterKind::default()),

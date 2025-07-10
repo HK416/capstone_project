@@ -30,10 +30,10 @@ impl InGameInputPacket {
     /// 주어진 `snapshots`가 비어있거나 `MAX_INPUT_EVENTS`보다 많은 경우 [`panic`]을 호출합니다.
     ///
     pub const fn new(
-        uid: UserId, 
-        token: LoginToken, 
+        uid: UserId,
+        token: LoginToken,
         play_elapsed_time_ms: u32,
-        snapshots: Vec<InputSnapshot>
+        snapshots: Vec<InputSnapshot>,
     ) -> Self {
         assert!(!snapshots.is_empty(), "the given events is empty!");
         assert!(snapshots.len() <= MAX_INPUT_SNAPSHOTS, "too many events!");
@@ -50,12 +50,7 @@ impl InGameInputPacket {
     /// # Panics
     /// 주어진 `events`가 비어있거나 `MAX_INPUT_EVENTS`보다 많은 경우 [`panic`]을 호출합니다.
     ///
-    pub fn from_iter<I>(
-        uid: UserId, 
-        token: LoginToken, 
-        play_elapsed_time_ms: u32,
-        iter: I
-    ) -> Self
+    pub fn from_iter<I>(uid: UserId, token: LoginToken, play_elapsed_time_ms: u32, iter: I) -> Self
     where
         I: IntoIterator<Item = InputSnapshot>,
         I::IntoIter: ExactSizeIterator,
@@ -82,7 +77,8 @@ impl Packet for InGameInputPacket {
         );
 
         // 데이터 크기를 계산합니다.
-        let mut data_size = UserId::byte_size() + LoginToken::byte_size() + u32::byte_size() + u8::byte_size();
+        let mut data_size =
+            UserId::byte_size() + LoginToken::byte_size() + u32::byte_size() + u8::byte_size();
         for snapshot in self.snapshots.iter() {
             match snapshot {
                 InputSnapshot::CameraOrientation { .. } => {

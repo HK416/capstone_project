@@ -475,7 +475,7 @@ fn update_timer_when_aim_off(
 fn update_timer_when_attack(
     held_input: HeldInput,
     bullet_data: &mut BulletData,
-    _skill_cost_data: &mut SkillCostData,
+    skill_cost_data: &mut SkillCostData,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -484,33 +484,72 @@ fn update_timer_when_attack(
 ) {
     // 다음 행동 상태 타이머를 갱신합니다.
     let duration = character_attributes.normal_attack_ing_duration;
-    let next_timer = action_state_timer.0.saturating_add(elapsed_time_ms);
-    let diff_t = next_timer as i32 - duration as i32;
+    action_state_timer.0 = action_state_timer.0.saturating_add(elapsed_time_ms);
+    let diff_t = action_state_timer.0 as i32 - duration as i32;
 
     let timings = &character_attributes.normal_attack_timing;
     let mut index = bullet_data.fires_per_attack as usize;
     while let Some(timing) = timings.get(index).cloned()
-        && timing <= next_timer
+        && timing <= action_state_timer.0
         && bullet_data.remaining > 0
     {
         // 총알 발사 이벤트를 생성합니다.
-        let timing = timing.saturating_sub(action_state_timer.0);
+        let timing = elapsed_time_ms - (action_state_timer.0 - timing);
         events.push(StateEvent::BulletFired { timing });
 
-        bullet_data.fires_per_attack += 1;
         bullet_data.remaining -= 1;
+        bullet_data.fires_per_attack += 1;
         index = bullet_data.fires_per_attack as usize;
     }
 
     if diff_t >= 0 {
         // 행동 상태를 변경합니다.
-        if held_input.contains(HeldInput::Aiming) {
+        if held_input.contains(HeldInput::Skill)
+            && skill_cost_data.remaining > character_attributes.skill_cost
+        {
+            let timing = elapsed_time_ms - diff_t as u16;
+            let event = StateEvent::ChangeActionState {
+                action_state: ActionState::Skill,
+                timing,
+            };
+
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Skill;
+            let duration = character_attributes.skill_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+            events.push(event);
+        } else if held_input.contains(HeldInput::Attack) && bullet_data.remaining > 0 {
+            let timing = elapsed_time_ms - diff_t as u16;
+            let event = StateEvent::ChangeActionState {
+                action_state: ActionState::Attack,
+                timing,
+            };
+
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Attack;
+            let duration = character_attributes.normal_attack_ing_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+            events.push(event);
+        } else if held_input.contains(HeldInput::Reload) {
+            let timing = elapsed_time_ms - diff_t as u16;
+            let event = StateEvent::ChangeActionState {
+                action_state: ActionState::Reload,
+                timing,
+            };
+
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Reload;
+            let duration = character_attributes.normal_reload_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+            events.push(event);
+        } else if held_input.contains(HeldInput::Aiming) {
             let timing = elapsed_time_ms - diff_t as u16;
             let event = StateEvent::ChangeActionState {
                 action_state: ActionState::Aiming,
                 timing,
             };
 
+            bullet_data.fires_per_attack = 0;
             *action_state = ActionState::Aiming;
             let duration = character_attributes.normal_idle_duration;
             action_state_timer.0 = diff_t as u16 % duration;
@@ -522,14 +561,13 @@ fn update_timer_when_attack(
                 timing,
             };
 
+            bullet_data.fires_per_attack = 0;
             *action_state = ActionState::Idle;
             let duration = character_attributes.normal_idle_duration;
             action_state_timer.0 = diff_t as u16 % duration;
             events.push(event);
         }
     }
-
-    action_state_timer.0 = next_timer;
 }
 
 /// [`ActionState::Death`]일 떄 플레이어의 [`ActionState`]와 [`ActionStateTimer`]를 변경합니다.
@@ -565,8 +603,8 @@ fn update_timer_when_death(
 /// [`ActionState::Reload`]일 떄 플레이어의 [`ActionState`]와 [`ActionStateTimer`]를 변경합니다.
 fn update_timer_when_reload(
     held_input: HeldInput,
-    _bullet_data: &mut BulletData,
-    _skill_cost_data: &mut SkillCostData,
+    bullet_data: &mut BulletData,
+    skill_cost_data: &mut SkillCostData,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
@@ -580,7 +618,42 @@ fn update_timer_when_reload(
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
         // 행동 상태를 변경합니다.
-        if held_input.contains(HeldInput::Aiming) {
+        if held_input.contains(HeldInput::Skill)
+            && skill_cost_data.remaining > character_attributes.skill_cost
+        {
+            let timing = elapsed_time_ms - diff_t as u16;
+            let event = StateEvent::ChangeActionState {
+                action_state: ActionState::Skill,
+                timing,
+            };
+
+            *action_state = ActionState::Skill;
+            let duration = character_attributes.skill_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+            events.push(event);
+        } else if held_input.contains(HeldInput::Attack) && bullet_data.remaining > 0 {
+            let timing = elapsed_time_ms - diff_t as u16;
+            let event = StateEvent::ChangeActionState {
+                action_state: ActionState::Attack,
+                timing,
+            };
+
+            *action_state = ActionState::Attack;
+            let duration = character_attributes.normal_attack_ing_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+            events.push(event);
+        } else if held_input.contains(HeldInput::Reload) {
+            let timing = elapsed_time_ms - diff_t as u16;
+            let event = StateEvent::ChangeActionState {
+                action_state: ActionState::Reload,
+                timing,
+            };
+
+            *action_state = ActionState::Reload;
+            let duration = character_attributes.normal_reload_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+            events.push(event);
+        } else if held_input.contains(HeldInput::Aiming) {
             let timing = elapsed_time_ms - diff_t as u16;
             let event = StateEvent::ChangeActionState {
                 action_state: ActionState::Aiming,

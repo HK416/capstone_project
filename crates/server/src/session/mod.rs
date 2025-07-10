@@ -7,7 +7,7 @@ use std::{
     net::SocketAddr,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU32, Ordering as MemOrdering},
+        atomic::{AtomicBool, AtomicU16, Ordering as MemOrdering},
     },
 };
 
@@ -37,7 +37,7 @@ pub struct Session {
     addr: SocketAddr,
 
     /// 세션 패킷 전송 시간 (단위: ms)
-    ping: AtomicU32,
+    ping: AtomicU16,
 
     /// TCP 패킷 데이터 전송 대기열
     tcp_sender: Queue<RawPacket>,
@@ -61,7 +61,7 @@ impl Session {
     pub fn new(addr: SocketAddr, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) -> Self {
         Self {
             addr,
-            ping: AtomicU32::new(250),
+            ping: AtomicU16::new(250),
             tcp_sender: Queue::new(),
             udp_sender,
             received_packets: Queue::new(),
@@ -116,7 +116,7 @@ impl Session {
     }
 
     /// 세션의 Ping을 반환합니다.
-    pub fn ping(&self) -> u32 {
+    pub fn ping(&self) -> u16 {
         self.ping.load(MemOrdering::Acquire)
     }
 

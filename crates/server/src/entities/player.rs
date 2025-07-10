@@ -251,7 +251,7 @@ pub struct Player {
     /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
     pub skill_cost_timer: u16,
     /// 입력 상태 타이머
-    pub input_timer: InputStateTimer,
+    pub input_state_timer: InputStateTimer,
     /// 게임 입력 비트 플래그
     pub held_input: HeldInput,
 
@@ -294,7 +294,7 @@ impl Player {
             skill_cost_data: SkillCostData::default(),
             attributes: get_character_attributes(CharacterKind::ArisOriginal),
             skill_cost_timer: 0,
-            input_timer: InputStateTimer::new(0),
+            input_state_timer: InputStateTimer::new(0),
             held_input: HeldInput::default(),
             translation: glam::Vec3A::ZERO,
             rotation: glam::Quat::IDENTITY,
@@ -311,7 +311,7 @@ impl Player {
 
     /// 캐릭터 종류를 설정합니다.
     pub fn set_character_kind(&mut self, character_kind: CharacterKind) {
-        let attributes = get_character_attributes(self.character_kind);
+        let attributes = get_character_attributes(character_kind);
         self.character_kind = character_kind;
         self.attributes = attributes;
 
