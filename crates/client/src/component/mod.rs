@@ -1,7 +1,6 @@
 mod bullet;
 mod camera;
 mod character;
-mod control;
 mod damage_font;
 mod deferred;
 mod hierarchy;
@@ -14,14 +13,13 @@ mod stage;
 mod transform;
 mod ui;
 
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use ahash::HashMap;
-use hecs::{Component, ComponentRef, Entity, Query, World};
 
 pub use self::{
-    bullet::*, camera::*, character::*, control::*, damage_font::*, deferred::*, hierarchy::*,
-    light::*, material::*, mesh::*, query::*, skybox::*, stage::*, transform::*, ui::*,
+    bullet::*, camera::*, character::*, damage_font::*, deferred::*, hierarchy::*, light::*,
+    material::*, mesh::*, query::*, skybox::*, stage::*, transform::*, ui::*,
 };
 
 #[derive(Debug, Clone)]
