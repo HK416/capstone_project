@@ -526,6 +526,7 @@ impl InGameRunScene {
             )| {
                 health_data.shield = data.shield_health;
                 health_data.remaining = data.current_health;
+                bullet_data.sequence = data.current_bullet_sequence;
                 bullet_data.remaining = data.current_bullet;
                 skill_cost_data.remaining = data.current_skill_cost;
                 character_flags.set_connected(data.is_connected());
@@ -615,7 +616,6 @@ impl InGameRunScene {
                 character_attributes,
                 bullet_data,
                 skill_cost_data,
-                &mut vec![],
             );
 
             update_movement_state(
@@ -1156,7 +1156,6 @@ impl InGameRunScene {
                                     character_attributes,
                                     &mut new_bullet_data,
                                     &mut new_skill_cost_data,
-                                    &mut vec![],
                                 );
                                 update_movement_state(
                                     curr.held_input,
@@ -1274,7 +1273,6 @@ impl InGameRunScene {
                                 character_attributes,
                                 &mut new_bullet_data,
                                 &mut new_skill_cost_data,
-                                &mut vec![],
                             );
                             update_movement_state(
                                 curr.held_input,
@@ -1505,7 +1503,6 @@ impl InGameRunScene {
                             character_attributes,
                             &mut new_bullet_data,
                             &mut new_skill_cost_data,
-                            &mut vec![],
                         );
                         update_movement_state(
                             new_held_input,
@@ -1544,7 +1541,6 @@ impl InGameRunScene {
                                         character_attributes,
                                         &mut new_bullet_data,
                                         &mut new_skill_cost_data,
-                                        &mut vec![],
                                     );
                                     update_movement_state(
                                         new_held_input,
@@ -1636,7 +1632,6 @@ impl InGameRunScene {
                                     character_attributes,
                                     &mut new_bullet_data,
                                     &mut new_skill_cost_data,
-                                    &mut vec![],
                                 );
                                 update_movement_state(
                                     new_held_input,

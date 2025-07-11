@@ -219,7 +219,10 @@ pub fn update_player_translation(
     if *is_grounded {
         match movement_state {
             MovementState::Landing => {
-                if held_input.is_moved() {
+                if held_input.contains(HeldInput::Jump) {
+                    *movement_state = MovementState::Jumping;
+                    movement_state_timer.0 = 0;
+                } else if held_input.is_moved() {
                     *movement_state = MovementState::Moving;
                     movement_state_timer.0 = 0;
                 } else {

@@ -1,17 +1,27 @@
-use std::{collections::VecDeque, f32::consts::TAU, sync::Arc};
+use std::{
+    collections::VecDeque,
+    f32::consts::TAU,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, BulletKind, DamageLogData, HeldInput, InGamePlayerPullData, InputEvent,
-        InputSnapshot, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS, MIN_LATITUDE,
-        NetworkState, ObjectId, Permission, PlayerSnapshot, StageAttributes, StageKind, Team,
-        UserId, update_action_state, update_action_state_timer, update_movement_state,
-        update_movement_state_timer, update_player_rotation, update_player_translation,
+        ActionEvent, ActionEventDetail, BulletKind, DamageLogData, HeldInput, InGamePlayerPullData,
+        InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS,
+        MIN_LATITUDE, NetworkState, ObjectId, Permission, PlayerSnapshot, StageAttributes,
+        StageKind, Team, UserId, update_action_state, update_action_state_timer,
+        update_movement_state, update_movement_state_timer, update_player_rotation,
+        update_player_translation,
     },
     protocol::{
         InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, MAX_INPUT_SNAPSHOTS, Packet,
     },
+};
+use mod_physics::{
+    collision::{Collider, ColliderTreeIterator, DynamicCollision},
+    object3d::{BoundingBox, Capsule, Sphere},
 };
 use rand::seq::SliceRandom;
 use tokio::time::Duration;
@@ -50,8 +60,13 @@ pub struct GameWorldInGameRunState {
 
     /// 데미지 로그 데이터 목록
     damage_log_data: Vec<DamageLogData>,
+
+    /// 오브젝트 식별자 생성에 사용됩니다.
+    counter: u32,
     /// 총알 오브젝트
     bullets: HashMap<ObjectId, Bullet>,
+    /// 플레이어 총알 맵
+    player_bullet_map: HashMap<UserId, HashMap<u16, ObjectId>>,
 
     /// 플레이어 스냅샷 데이터
     player_snapshots: HashMap<UserId, VecDeque<PlayerSnapshot>>,
@@ -74,7 +89,12 @@ impl GameWorldInGameRunState {
             num_red_players,
             leaved_players,
             damage_log_data: Vec::with_capacity(128),
+            counter: 0,
             bullets: HashMap::with_capacity_and_hasher(1024, RandomState::new()),
+            player_bullet_map: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
             player_snapshots: HashMap::with_capacity_and_hasher(
                 MAX_IN_GAME_PLAYERS,
                 RandomState::new(),
@@ -380,10 +400,10 @@ impl GameWorldInGameRunState {
                 for event in action_events {
                     match event {
                         ActionEvent::Respawn { timing } => {}
-                        ActionEvent::Reloading => {
+                        ActionEvent::Reload => {
                             data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
                         }
-                        ActionEvent::BulletFired { timing } => {}
+                        ActionEvent::Attack { timing } => {}
                         ActionEvent::Skill { timing } => {}
                     }
                 }
@@ -416,7 +436,6 @@ impl GameWorldInGameRunState {
                     }
 
                     // 행동 상태를 갱신합니다.
-                    let mut action_events = Vec::default();
                     update_action_state(
                         data.held_input,
                         &mut data.action_state,
@@ -424,20 +443,7 @@ impl GameWorldInGameRunState {
                         character_attributes,
                         &mut data.bullet_data,
                         &mut data.skill_cost_data,
-                        &mut action_events,
                     );
-                    // 행동 상태 이벤트를 처리합니다.
-                    for event in action_events {
-                        match event {
-                            ActionEvent::Respawn { timing } => {}
-                            ActionEvent::Reloading => {
-                                data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
-                            }
-                            ActionEvent::BulletFired { timing } => {}
-                            ActionEvent::Skill { timing } => {}
-                        }
-                    }
-
                     update_movement_state(
                         data.held_input,
                         data.action_state,
@@ -558,6 +564,7 @@ impl GameWorldInGameRunState {
                 data.dead_count,
                 data.health_data.shield,
                 data.health_data.remaining,
+                data.bullet_data.sequence,
                 data.bullet_data.remaining,
                 data.skill_cost_data.remaining,
                 data.translation.to_array(),
@@ -629,86 +636,442 @@ impl GameWorldInGameRunState {
 }
 
 impl GameWorldInGameRunState {
+    /// 오브젝트 식별자를 생성합니다.
+    pub fn generate_object_id(&mut self) -> ObjectId {
+        let now = SystemTime::now();
+        let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
+
+        self.counter += 1;
+        let cnt = self.counter & 0xFFFF;
+        let time = duration.subsec_nanos() & 0xFFFF;
+
+        ObjectId::new((time << 16) | cnt)
+    }
+
     /// 게임 월드를 갱신합니다.
     fn update(&mut self, world: &mut GameWorld, elapsed: Duration) {
-        // 플레이어를 갱신합니다.
+        let stage_attributes = get_stage_attributes(self.stage_kind);
+        let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
+        let mut event_details = Vec::with_capacity(72);
+
+        // 1. 플레이어 행동 이벤트를 수집합니다.
         for (&uid, data) in world.players.iter_mut() {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
             if self.leaved_players.contains(&uid) {
                 continue;
             }
 
-            let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
-            let stage_attributes = get_stage_attributes(self.stage_kind);
             let character_attributes = data.character_attributes();
 
-            //-----------------------------------------------------------------------
-            // 플레이어를 갱신합니다.
-            let action_events = Self::update_player(stage_attributes, data, elapsed_time_ms);
-            // 행동 상태 이벤트를 처리합니다.
-            for event in action_events {
-                match event {
-                    ActionEvent::Respawn { timing } => {}
-                    ActionEvent::Reloading => {
-                        data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
-                    }
-                    ActionEvent::BulletFired { timing } => {}
-                    ActionEvent::Skill { timing } => {}
-                }
-            }
+            // 플레이어 이동 방향을 갱신합니다.
+            data.direction.update(data.held_input, data.latlon);
 
-            //-----------------------------------------------------------------------
-            // 입력에 따른 상태를 갱신합니다.
-
-            // 행동 상태를 갱신합니다.
-            let mut action_events = Vec::default();
-            update_action_state(
+            // 행동 상태 타이머를 갱신합니다.
+            let mut bullet_data = data.bullet_data;
+            let mut skill_cost_data = data.skill_cost_data;
+            let mut action_state = data.action_state;
+            let mut action_state_timer = data.action_state_timer;
+            let mut events = Vec::default();
+            update_action_state_timer(
                 data.held_input,
-                &mut data.action_state,
-                &mut data.action_state_timer,
+                &mut bullet_data,
+                &mut skill_cost_data,
+                &mut action_state,
+                &mut action_state_timer,
                 character_attributes,
-                &mut data.bullet_data,
-                &mut data.skill_cost_data,
-                &mut action_events,
+                elapsed_time_ms,
+                &mut events,
             );
-            // 행동 상태 이벤트를 처리합니다.
-            for event in action_events {
-                match event {
-                    ActionEvent::Respawn { timing } => {}
-                    ActionEvent::Reloading => {
-                        data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
-                    }
-                    ActionEvent::BulletFired { timing } => {}
-                    ActionEvent::Skill { timing } => {}
+
+            event_details.extend(events.drain(..).map(|e| match e {
+                ActionEvent::Respawn { timing } => ActionEventDetail::Respawn { uid, timing },
+                ActionEvent::Reload => ActionEventDetail::Reload { uid },
+                ActionEvent::Attack { timing } => ActionEventDetail::Attack { uid, timing },
+                ActionEvent::Skill { timing } => ActionEventDetail::Skill { uid, timing },
+            }));
+        }
+
+        // 2. 행동 이벤트를 시간 순으로 정렬합니다.
+        event_details.sort();
+
+        // 3. 시간 순서에 따라 행동 이벤트를 처리합니다.
+        let mut curr_elapsed_time_ms = 0;
+        for event in event_details {
+            let timing = event.timing();
+            let elapsed_time_ms = timing.saturating_sub(curr_elapsed_time_ms);
+            let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+            curr_elapsed_time_ms = curr_elapsed_time_ms.max(timing);
+
+            // 3.1. 모든 플레이어와 오브젝트 데이터를 현재 경과 시간 만큼 갱신합니다.
+            if elapsed_time_ms > 0 {
+                for data in world.players.values_mut() {
+                    // 입력 상태 타이머를 갱신합니다.
+                    data.input_state_timer
+                        .update(data.held_input, elapsed_time_ms);
+
+                    // 행동 상태 타이머를 갱신합니다.
+                    let character_attributes = data.character_attributes();
+                    update_action_state_timer(
+                        data.held_input,
+                        &mut data.bullet_data,
+                        &mut data.skill_cost_data,
+                        &mut data.action_state,
+                        &mut data.action_state_timer,
+                        character_attributes,
+                        elapsed_time_ms,
+                        &mut vec![],
+                    );
+
+                    // 움직임 상태 타이머를 갱신합니다.
+                    update_movement_state_timer(
+                        data.action_state,
+                        &mut data.movement_state,
+                        &mut data.movement_state_timer,
+                        character_attributes,
+                        elapsed_time_ms,
+                    );
+
+                    // 플레이어 캐릭터 방향을 갱신합니다.
+                    let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
+                    look = update_player_rotation(
+                        look,
+                        data.action_state,
+                        data.movement_state,
+                        data.direction,
+                        data.latlon,
+                    );
+                    let z = look.normalize_or(glam::Vec3A::Z);
+                    let x = glam::Vec3A::Y.cross(z);
+                    let y = z.cross(x);
+                    data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
+
+                    // 플레이어 캐릭터 위치를 갱신합니다.
+                    let team = data.team();
+                    let mut is_grounded = data.is_grounded();
+                    let mut is_invincible = data.is_invincible();
+                    update_player_translation(
+                        stage_attributes,
+                        character_attributes,
+                        data.action_state,
+                        &mut data.movement_state,
+                        &mut data.movement_state_timer,
+                        &mut data.velocity,
+                        &mut data.translation,
+                        data.direction,
+                        data.held_input,
+                        team,
+                        &mut is_grounded,
+                        &mut is_invincible,
+                        Some(&mut data.health_data),
+                        data.input_state_timer,
+                        elapsed_time_sec,
+                    );
+                    data.set_grounded(is_grounded);
+                    data.set_invincible(is_invincible);
                 }
             }
 
-            // 움직임 상태를 갱신합니다.
-            update_movement_state(
-                data.held_input,
-                data.action_state,
-                &mut data.movement_state,
-                &mut data.movement_state_timer,
+            // 3.2. 행동 이벤트를 처리합니다.
+            match event {
+                ActionEventDetail::Respawn { uid, .. } => {
+                    // 해당 플레이어 데이터를 가져옵니다.
+                    let data = match world.players.get_mut(&uid) {
+                        Some(data) => data,
+                        None => {
+                            log::error!("Player({}) not found in {}!", &uid, &world);
+                            eprintln!("Player({}) not found in {}!", &uid, &world);
+                            continue;
+                        }
+                    };
+
+                    // 플레이어 위치와 상태를 초기화합니다.
+                    let team = data.team();
+                    let team_index = data.team_index();
+                    let (rotation, translation) = match team {
+                        Team::Blue => (
+                            stage_attributes.blue_team_rotation,
+                            stage_attributes.blue_team_positions[team_index],
+                        ),
+                        Team::Red => (
+                            stage_attributes.red_team_rotation,
+                            stage_attributes.red_team_positions[team_index],
+                        ),
+                    };
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let longitude = glam::Quat::IDENTITY.angle_between(rotation);
+
+                    data.health_data.shield = 0;
+                    data.health_data.remaining = data.health_data.num_maximum_health();
+                    data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
+                    data.skill_cost_data.remaining = 0;
+                    data.skill_cost_timer = 0;
+                    data.input_state_timer.0 = 0;
+                    data.rotation = rotation;
+                    data.velocity.0 = glam::Vec3A::ZERO;
+                    data.direction.0 = direction;
+                    data.translation = translation;
+                    data.dead_count += 1;
+                    data.set_grounded(true);
+                    data.set_invincible(true);
+                    data.latlon = LatLon::new(10f32.to_radians(), longitude);
+                }
+                ActionEventDetail::Reload { uid } => {
+                    // 플레이어 데이터를 가져옵니다.
+                    let data = match world.players.get_mut(&uid) {
+                        Some(data) => data,
+                        None => {
+                            log::error!("Player({}) not found in {}!", &uid, &world);
+                            eprintln!("Player({}) not found in {}!", &uid, &world);
+                            continue;
+                        }
+                    };
+
+                    // 플레이어의 현재 남은 총알을 최대치로 설정합니다.
+                    data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
+                }
+                ActionEventDetail::Attack { uid, .. } => {}
+                ActionEventDetail::Skill { uid, .. } => {}
+            }
+        }
+
+        // 4. 모든 플레이어와 오브젝트 데이터를 현재 경과 시간 만큼 갱신합니다.
+        let elapsed_time_ms = elapsed_time_ms.saturating_sub(curr_elapsed_time_ms);
+        let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+        if elapsed_time_ms > 0 {
+            for data in world.players.values_mut() {
+                // 입력 상태 타이머를 갱신합니다.
+                data.input_state_timer
+                    .update(data.held_input, elapsed_time_ms);
+
+                // 행동 상태 타이머를 갱신합니다.
+                let character_attributes = data.character_attributes();
+                update_action_state_timer(
+                    data.held_input,
+                    &mut data.bullet_data,
+                    &mut data.skill_cost_data,
+                    &mut data.action_state,
+                    &mut data.action_state_timer,
+                    character_attributes,
+                    elapsed_time_ms,
+                    &mut vec![],
+                );
+
+                // 움직임 상태 타이머를 갱신합니다.
+                update_movement_state_timer(
+                    data.action_state,
+                    &mut data.movement_state,
+                    &mut data.movement_state_timer,
+                    character_attributes,
+                    elapsed_time_ms,
+                );
+
+                // 플레이어 캐릭터 방향을 갱신합니다.
+                let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
+                look = update_player_rotation(
+                    look,
+                    data.action_state,
+                    data.movement_state,
+                    data.direction,
+                    data.latlon,
+                );
+                let z = look.normalize_or(glam::Vec3A::Z);
+                let x = glam::Vec3A::Y.cross(z);
+                let y = z.cross(x);
+                data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
+
+                // 플레이어 캐릭터 위치를 갱신합니다.
+                let team = data.team();
+                let mut is_grounded = data.is_grounded();
+                let mut is_invincible = data.is_invincible();
+                update_player_translation(
+                    stage_attributes,
+                    character_attributes,
+                    data.action_state,
+                    &mut data.movement_state,
+                    &mut data.movement_state_timer,
+                    &mut data.velocity,
+                    &mut data.translation,
+                    data.direction,
+                    data.held_input,
+                    team,
+                    &mut is_grounded,
+                    &mut is_invincible,
+                    Some(&mut data.health_data),
+                    data.input_state_timer,
+                    elapsed_time_sec,
+                );
+                data.set_grounded(is_grounded);
+                data.set_invincible(is_invincible);
+            }
+        }
+    }
+
+    /// 0.1m 마다 바닥과의 충돌을 검사하여 바닥과의 충돌을 확인합니다.
+    fn check_bullet_ground_collision(
+        &self,
+        bullet_position: &glam::Vec3A,
+        bullet_radius: f32,
+        move_v_normalized: &glam::Vec3A,
+        move_distance: f32,
+    ) -> Option<f32> {
+        let stage_attributes = get_stage_attributes(self.stage_kind);
+        let mut nearest_distance = None;
+        let mut position = bullet_position.clone();
+        let mut moved = 0.0;
+        let v = move_v_normalized * 0.1;
+        while moved < move_distance {
+            if let Some(height) = stage_attributes.get_area_height(position.x, position.z) {
+                if position.y <= height + bullet_radius {
+                    nearest_distance = Some(moved);
+                    break;
+                }
+            }
+            position += v;
+            moved += 0.1;
+        }
+
+        nearest_distance
+    }
+
+    /// 총알과 충돌하는 건물과의 거리를 리턴합니다.
+    fn check_bullet_building_collision(
+        &self,
+        bullet_collider: &Sphere,
+        move_v: &glam::Vec3A,
+    ) -> Option<f32> {
+        let mut nearest_distance = f32::MAX;
+        let stage_attributes = get_stage_attributes(self.stage_kind);
+        let colliders = &stage_attributes.collider;
+        for collider in ColliderTreeIterator::new(colliders) {
+            // broadphase 검사 - 시작지점과 도착지점을 포함하는 AABB를 생성
+            let rad_box = glam::Vec3A::new(
+                bullet_collider.radius * move_v.x.signum(),
+                bullet_collider.radius * move_v.y.signum(),
+                bullet_collider.radius * move_v.z.signum(),
+            );
+            let center = glam::Vec3A::from(bullet_collider.center);
+            let start = center - rad_box;
+            let end = center + move_v + rad_box;
+            let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
+
+            if collider.check_aabb_collision(&swept_aabb) {
+                // narrowphase 검사 - 총알과 충돌체의 충돌 검사
+                let details = match collider {
+                    Collider::Aabb(aabb) => {
+                        bullet_collider.check_dynamic_collision_details(move_v, aabb)
+                    }
+                    Collider::Obb(obb) => {
+                        bullet_collider.check_dynamic_collision_details(move_v, obb)
+                    }
+                    Collider::Capsule(capsule) => {
+                        bullet_collider.check_dynamic_collision_details(move_v, capsule)
+                    }
+                    Collider::OrientedCapsule(obb) => {
+                        bullet_collider.check_dynamic_collision_details(move_v, obb)
+                    }
+                    Collider::Sphere(sphere) => {
+                        bullet_collider.check_dynamic_collision_details(move_v, sphere)
+                    }
+                };
+                if let Some(details) = details {
+                    // 충돌체와의 충돌이 발생한 경우, 총알의 남은 거리와 충돌체의 거리 비교
+                    let distance = details.distance;
+                    if distance < nearest_distance {
+                        nearest_distance = distance;
+                    }
+                }
+            }
+        }
+
+        if nearest_distance == f32::MAX {
+            None
+        } else {
+            Some(nearest_distance)
+        }
+    }
+
+    /// 총알과 충돌하는 플레이어를 확인합니다.  
+    /// 건물, 바닥 등과 충돌시에는 총알의 남은 거리를 0.0으로 설정하고 None을 리턴합니다.  
+    /// 움직일 벡터(move_v)는 0이 아니어야 합니다.
+    fn check_bullet_collision(
+        &self,
+        world: &GameWorld,
+        id: ObjectId,
+        data: &mut Bullet,
+        move_v: glam::Vec3A,
+    ) -> Option<UserId> {
+        let mut nearest_distance = f32::MAX;
+        let mut move_v = move_v.clone();
+        let move_v_normalized = move_v.normalize();
+
+        // 지형 충돌 검사
+        if let Some(collision_distance) = self.check_bullet_ground_collision(
+            &data.translation,
+            data.radius,
+            &move_v_normalized,
+            move_v.length(),
+        ) {
+            nearest_distance = collision_distance;
+            move_v = move_v_normalized * nearest_distance;
+            data.remaining_distance = 0.0;
+            log::debug!("Bullet({}) hit ground (distance: {})", id, nearest_distance);
+        }
+
+        if nearest_distance == 0.0 {
+            return None;
+        }
+
+        // 건물 충돌 검사
+        let bullet_collider = Sphere {
+            center: data.translation.into(),
+            radius: data.radius,
+        };
+        if let Some(collision_distance) =
+            self.check_bullet_building_collision(&bullet_collider, &move_v)
+        {
+            nearest_distance = collision_distance;
+            move_v = move_v_normalized * nearest_distance;
+            data.remaining_distance = 0.0;
+            log::debug!(
+                "Bullet({}) hit building (distance: {})",
+                id,
+                nearest_distance
             );
         }
 
-        // 총알 오브젝트를 갱신합니다.
-        // let mut removed_bullets = Vec::with_capacity(self.bullets.len());
-        // for (&id, data) in self.bullets.iter_mut() {
-        //     let result = update_bullet_translation(self.stage_kind, world, id, data, elapsed);
-        //     if let Some(log) = result {
-        //         self.damage_log_data.push(log);
-        //     }
+        if nearest_distance == 0.0 {
+            return None;
+        }
 
-        //     if data.remaining_distance <= 0.0 {
-        //         removed_bullets.push(id);
-        //     }
-        // }
+        // 플레이어 충돌 검사
+        let mut nearest_player_id = None;
+        for (&uid, player) in world.players.iter() {
+            if uid == data.shooter_id
+                || player.health_data.remaining == 0
+                || player.team() == data.shooter_team
+                || player.is_invincible()
+            {
+                continue;
+            }
 
-        // 총알 오브젝트를 제거합니다.
-        // while let Some(id) = removed_bullets.pop() {
-        //     self.bullets.remove(&id);
-        // }
+            let character_attributes = player.character_attributes();
+            let mut player_collider = character_attributes.collider.clone();
+            player_collider.center = player.translation.into();
+
+            // 충돌 처리: 플레이어 - 총알
+            if let Some(info) =
+                bullet_collider.check_dynamic_collision_details(&move_v, &player_collider)
+            {
+                if info.distance <= move_v.length() {
+                    if info.distance < nearest_distance {
+                        nearest_distance = info.distance;
+                        nearest_player_id = Some(uid);
+                    }
+                }
+            }
+        }
+
+        nearest_player_id
     }
 
     /// 주어진 시간 만큼 플레이어 데이터를 갱신합니다.

@@ -233,6 +233,8 @@ pub struct InGamePlayerPullData {
     pub shield_health: u16,
     /// 현재 체력
     pub current_health: u16,
+    /// 현재 총알 번호
+    pub current_bullet_sequence: u16,
     /// 현재 남은 총알 수
     pub current_bullet: u16,
     /// 현재 스킬 코스트
@@ -271,6 +273,7 @@ impl InGamePlayerPullData {
         dead_count: u16,
         shield_health: u16,
         current_health: u16,
+        current_bullet_sequence: u16,
         current_bullet: u16,
         current_skill_cost: u16,
         translation: [f32; 3],
@@ -295,6 +298,7 @@ impl InGamePlayerPullData {
             dead_count,
             shield_health,
             current_health,
+            current_bullet_sequence,
             current_bullet,
             current_skill_cost,
             translation,
@@ -361,6 +365,7 @@ impl BigEndian for InGamePlayerPullData {
             + u16::byte_size()
             + u16::byte_size()
             + u16::byte_size()
+            + u16::byte_size()
             + <[f32; 3]>::byte_size()
             + <[f32; 4]>::byte_size()
             + <[f32; 3]>::byte_size()
@@ -407,13 +412,19 @@ impl BigEndian for InGamePlayerPullData {
         offset = offset + size;
         size = u16::byte_size();
         data = &bytes[offset..offset + size];
-        let guard_health = u16::from_big_endian_bytes(data);
+        let shield_health = u16::from_big_endian_bytes(data);
 
         // 현재 체력을 가져옵니다.
         offset = offset + size;
         size = u16::byte_size();
         data = &bytes[offset..offset + size];
         let current_health = u16::from_big_endian_bytes(data);
+
+        // 현재 총알 번호를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let current_bullet_sequence = u16::from_big_endian_bytes(data);
 
         // 현재 남은 총알 수를 가져옵니다.
         offset = offset + size;
@@ -497,8 +508,9 @@ impl BigEndian for InGamePlayerPullData {
             uid,
             kill_count,
             dead_count,
-            shield_health: guard_health,
+            shield_health,
             current_health,
+            current_bullet_sequence,
             current_bullet,
             current_skill_cost,
             translation,
@@ -523,6 +535,7 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.dead_count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.shield_health.to_big_endian_bytes());
         bytes.extend_from_slice(&self.current_health.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.current_bullet_sequence.to_big_endian_bytes());
         bytes.extend_from_slice(&self.current_bullet.to_big_endian_bytes());
         bytes.extend_from_slice(&self.current_skill_cost.to_big_endian_bytes());
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
