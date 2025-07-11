@@ -8,8 +8,8 @@ use std::{
 use ahash::{HashMap, RandomState};
 use hecs::{Entity, World};
 use mod_app::{
-    app::AppHandle,
-    etc::{AppEvent, WindowSize},
+    app::{self, AppHandle},
+    etc::{AppEvent, Viewport, WindowSize},
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
@@ -41,6 +41,7 @@ use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
+        HUD_LAYOUT_URI_02, NOTOSANS_BOLD,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage,
@@ -60,7 +61,8 @@ use crate::{
     config::{Locale, UserConfig},
     player_execute,
     scenes::{
-        FatalErrorSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS,
     },
     SERVER_TCP_ADDR,
 };
@@ -157,14 +159,23 @@ pub struct InGameRunScene {
     /// 조명 쉐이더 리소스
     light_resource: Option<LightSetResource>,
 
-    /// 카메라 뷰 프러스텀 컬링된 엔터티 목록
-    culling_stage_entities: Vec<Entity>,
     /// 조명 렌더링 리소스 집합입니다.
     bake_list: BakeList,
     /// 불투명 메쉬 렌더링 리소스 집합입니다.
     opaque_resources: OpaqueMap,
     /// 투명 메쉬 렌더링 리소스 집합입니다.
     transparent_resources: TransparentMap,
+
+    /// Ui 스케일 값입니다.
+    ui_scale: f32,
+    /// 인터페이스 클립 사각형 영역입니다.
+    clip_rect: egui::Rect,
+
+    /// 인터페이스 배경 레이아웃 텍스처입니다.
+    layout_texture: egui::load::SizedTexture,
+
+    /// 체력 인터페이스 사각형 영역입니다.
+    health_point_rect: egui::Rect,
 
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
@@ -255,10 +266,16 @@ impl InGameRunScene {
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
-            culling_stage_entities: Vec::default(),
             bake_list: BakeList::default(),
             opaque_resources: OpaqueMap::default(),
             transparent_resources: TransparentMap::default(),
+            ui_scale: 1.0,
+            clip_rect: egui::Rect::ZERO,
+            layout_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            health_point_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -1718,16 +1735,417 @@ impl InGameRunScene {
             }
         });
     }
+
+    /// 인터페이스 배경 레이아웃 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_layout_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        // 레이아웃 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(HUD_LAYOUT_URI_02)
+            .expect("HUD_Layout_02 texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.layout_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
+        // 클립 사각형 영역의 크기를 재조정합니다.
+        let viewport = app.viewport();
+        let scale_factor = window.scale_factor() as f32;
+        (self.clip_rect, self.ui_scale) = Self::resize_clip_rect(viewport, scale_factor);
+
+        // 체력 인터페이스 영역의 크기를 재조정합니다.
+        self.health_point_rect = Self::resize_health_point_rect(&self.clip_rect);
+    }
+
+    /// 클립 사각형 영역의 크기를 재조정합니다.
+    fn resize_clip_rect(viewport: &Viewport, scale_factor: f32) -> (egui::Rect, f32) {
+        let scale = viewport.width / scale_factor / BASE_WIDTH;
+        let clip_rect = egui::Rect::from_min_size(
+            egui::pos2(viewport.x, viewport.y) / scale_factor,
+            egui::vec2(viewport.width, viewport.height) / scale_factor,
+        );
+
+        (clip_rect, scale)
+    }
+
+    /// 체력 사각형 영역의 크기를 재조정합니다.
+    fn resize_health_point_rect(clip_rect: &egui::Rect) -> egui::Rect {
+        let width = clip_rect.width() * 0.21875;
+        let height = width * 0.325;
+        let margin = clip_rect.size().min_elem() * 0.03;
+        let left_bottom = clip_rect.left_bottom() + egui::vec2(margin, -margin);
+        let right_top = left_bottom + egui::vec2(width, -height);
+        egui::Rect::from_two_pos(left_bottom, right_top)
+    }
+
+    /// 조준선 인터페이스를 그립니다.
+    fn draw_ui_reticle(&mut self, ctx: &egui::Context) {
+        let center = self.clip_rect.center();
+        let radius = 4.0 * self.ui_scale;
+        egui::Area::new(egui::Id::new("Reticle"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                ui.painter().circle(
+                    center,
+                    radius,
+                    egui::Color32::from_white_alpha(128),
+                    egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::from_black_alpha(128)),
+                );
+            });
+    }
+
+    /// 애니메이션 값을 가져옵니다.
+    fn ui_animation_factor(&self) -> f32 {
+        self.play_elapsed_time_ms.min(500) as f32 / 500.0
+    }
+
+    /// 체력 인터페이스의 콘텐츠 영역을 반환합니다.
+    fn health_point_content_rect(&self) -> egui::Rect {
+        self.health_point_rect
+            .scale_from_center2(egui::vec2(0.82, 0.92))
+    }
+
+    /// 체력 인터페이스를 그립니다.
+    fn draw_health_point(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Health_Point"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_health_point_bg(ui);
+                self.draw_health_point_gauge(ui);
+                self.draw_health_point_label(ui);
+            });
+    }
+
+    /// 체력 인터페이스의 배경을 그립니다.
+    fn draw_health_point_bg(&self, ui: &mut egui::Ui) {
+        const TINT: egui::Color32 = egui::Color32::from_black_alpha(160);
+        const SIZE: f32 = 256.0;
+        const TOP: f32 = 11.0;
+        const LEFT: f32 = 17.0;
+        const BOTTOM: f32 = 242.0;
+        const RIGHT: f32 = 235.0;
+        const INNER_LEFT_TOP: egui::Pos2 = egui::pos2(66.0, 22.0);
+        const INNER_RIGHT_TOP: egui::Pos2 = egui::pos2(222.0, 22.0);
+        const INNER_LEFT_BOTTOM: egui::Pos2 = egui::pos2(30.0, 228.0);
+        const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
+
+        let t = self.ui_animation_factor();
+        let base_x = (self.clip_rect.left() - self.health_point_rect.width()) * (1.0 - t)
+            + self.clip_rect.left() * t;
+        let content_rect = self.health_point_content_rect();
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(RIGHT / SIZE, TOP / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(
+                base_x + self.health_point_rect.left(),
+                self.health_point_rect.top(),
+            ),
+            egui::pos2(base_x + content_rect.left(), content_rect.top()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, TOP / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.left(), self.health_point_rect.top()),
+            egui::pos2(base_x + content_rect.right(), content_rect.top()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, TOP / SIZE),
+            egui::pos2(LEFT / SIZE, INNER_LEFT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.right(), self.health_point_rect.top()),
+            egui::pos2(base_x + self.health_point_rect.right(), content_rect.top()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(RIGHT / SIZE, INNER_RIGHT_TOP.y / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + self.health_point_rect.left(), content_rect.top()),
+            egui::pos2(base_x + content_rect.left(), content_rect.bottom()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_TOP.y / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.left(), content_rect.top()),
+            egui::pos2(base_x + content_rect.right(), content_rect.bottom()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_TOP.y / SIZE),
+            egui::pos2(LEFT / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.right(), content_rect.top()),
+            egui::pos2(
+                base_x + self.health_point_rect.right(),
+                content_rect.bottom(),
+            ),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(RIGHT / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(
+                base_x + self.health_point_rect.left(),
+                content_rect.bottom(),
+            ),
+            egui::pos2(
+                base_x + content_rect.left(),
+                self.health_point_rect.bottom(),
+            ),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.left(), content_rect.bottom()),
+            egui::pos2(
+                base_x + content_rect.right(),
+                self.health_point_rect.bottom(),
+            ),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+            egui::pos2(LEFT / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.right(), content_rect.bottom()),
+            egui::pos2(
+                base_x + self.health_point_rect.right(),
+                self.health_point_rect.bottom(),
+            ),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+    }
+
+    /// 체력 게이지 인터페이스의 배경을 그립니다.
+    fn draw_health_point_gauge(&self, ui: &mut egui::Ui) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        let mut shield_percent = 0.0;
+        let mut health_percent = 1.0;
+        player_execute!(archetype, world, entity, &HealthData, |health_data| {
+            (health_percent, shield_percent) = health_data.percent().unwrap_or((1.0, 0.0));
+        });
+
+        let t = self.ui_animation_factor();
+        let base_x = (self.clip_rect.left() - self.health_point_rect.width()) * (1.0 - t)
+            + self.clip_rect.left() * t;
+        let content_rect = self.health_point_content_rect();
+
+        const NUM_GAUGE: usize = 8;
+        const NUM_INTERVAL: usize = NUM_GAUGE - 1;
+        let interval = content_rect.width() * 0.01;
+        let gauge_size = (content_rect.width() - interval * NUM_INTERVAL as f32) / NUM_GAUGE as f32;
+        let center_y = (content_rect.top() + content_rect.center().y) * 0.5;
+        let health_range = content_rect.width() * health_percent;
+        let shield_range = content_rect.width() * (health_percent + shield_percent);
+        let mut cnt = NUM_GAUGE;
+
+        let begin = base_x + content_rect.left();
+        let end = base_x + content_rect.right();
+        let mut curr = end;
+        while begin + shield_range < curr {
+            let center = egui::pos2(curr - gauge_size * 0.5, center_y);
+            let size = egui::Vec2::splat(gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            ui.painter()
+                .rect_filled(rect, gauge_size * 0.1, egui::Color32::DARK_GRAY);
+            curr = curr - gauge_size - interval;
+            cnt -= 1;
+        }
+
+        let width = (begin + shield_range) - (curr + interval);
+        if shield_percent > 0.0 && width > 0.0 {
+            let center = egui::pos2(curr + interval + width * 0.5, center_y);
+            let size = egui::vec2(width, gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            ui.painter()
+                .rect_filled(rect, gauge_size * 0.1, egui::Color32::from_rgb(255, 192, 0));
+        }
+
+        while begin + health_range < curr {
+            let center = egui::pos2(curr - gauge_size * 0.5, center_y);
+            let size = egui::Vec2::splat(gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            ui.painter()
+                .rect_filled(rect, gauge_size * 0.1, egui::Color32::from_rgb(255, 192, 0));
+            curr = curr - gauge_size - interval;
+            cnt -= 1;
+        }
+
+        let width = (begin + health_range) - (curr + interval);
+        if health_percent > 0.0 && width > 0.0 {
+            let center = egui::pos2(curr + interval + width * 0.5, center_y);
+            let size = egui::vec2(width, gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            let fill_color = match cnt <= 3 {
+                true => egui::Color32::LIGHT_RED,
+                false => egui::Color32::WHITE,
+            };
+            ui.painter().rect_filled(rect, gauge_size * 0.1, fill_color);
+        }
+
+        while begin < curr {
+            let center = egui::pos2(curr - gauge_size * 0.5, center_y);
+            let size = egui::Vec2::splat(gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            let fill_color = match cnt <= 3 {
+                true => egui::Color32::LIGHT_RED,
+                false => egui::Color32::WHITE,
+            };
+            ui.painter().rect_filled(rect, gauge_size * 0.1, fill_color);
+            curr = curr - gauge_size - interval;
+            cnt -= 1;
+        }
+    }
+
+    /// 체력 게이지 인터페이스의 라벨을 그립니다.
+    fn draw_health_point_label(&self, ui: &mut egui::Ui) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        let mut shield = 0;
+        let mut health = 0;
+        player_execute!(archetype, world, entity, &HealthData, |health_data| {
+            shield = health_data.shield;
+            health = health_data.remaining;
+        });
+
+        let t = self.ui_animation_factor();
+        let base_x = (self.clip_rect.left() - self.health_point_rect.width()) * (1.0 - t)
+            + self.clip_rect.left() * t;
+        let content_rect = self.health_point_content_rect();
+        let total_health = (shield + health).min(9999);
+
+        // 체력 텍스트를 생성합니다.
+        let text = format!("{}", total_health);
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(22.0 * self.ui_scale, family);
+        let color = if shield > 0 {
+            egui::Color32::from_rgb(255, 192, 0)
+        } else {
+            egui::Color32::WHITE
+        };
+        let text = egui::RichText::new(text).font(font_id).color(color);
+        let label = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.center().x, content_rect.center().y),
+            egui::pos2(
+                base_x + content_rect.right_bottom().x,
+                content_rect.right_bottom().y,
+            ),
+        );
+        ui.put(rect, label);
+
+        let min = content_rect.left_center();
+        let max = content_rect.right_center();
+        ui.painter().line(
+            vec![min, max],
+            egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::WHITE),
+        );
+    }
 }
 
 impl GameScene for InGameRunScene {
-    fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
+    fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
         let size = app.window_size();
         let device = app.render_device();
 
         let (width, height): (f32, f32) = size.size().into();
         self.camera_aspect_ratio = width / height;
         self.create_camera(device);
+
+        self.regist_layout_texture(device, ui_renderer);
+        self.resize_ui(window, app);
+    }
+
+    fn on_exit(
+        &mut self,
+        _window: Option<&Window>,
+        _app: &dyn AppHandle,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        ui_renderer.free_texture(&self.layout_texture.id);
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1737,7 +2155,7 @@ impl GameScene for InGameRunScene {
         self.first_mouse_pressed = false;
     }
 
-    fn on_window_resized(&mut self, _window: &Window, app: &dyn AppHandle) {
+    fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
         if self.world.is_some() {
             let size = app.window_size();
             let (width, height): (f32, f32) = size.size().into();
@@ -1746,7 +2164,7 @@ impl GameScene for InGameRunScene {
             let device = app.render_device();
             self.create_weighted_blend_oit_resource(size, device);
             self.create_bloom_resource(size, device);
-            // self.resize_ui(window, app);
+            self.resize_ui(window, app);
         }
     }
 
@@ -2705,5 +3123,11 @@ impl GameScene for InGameRunScene {
         self.bake_list.clear();
         self.opaque_resources.clear();
         self.transparent_resources.clear();
+    }
+
+    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+        let ctx = app.egui_ctx();
+        self.draw_ui_reticle(ctx);
+        self.draw_health_point(ctx);
     }
 }
