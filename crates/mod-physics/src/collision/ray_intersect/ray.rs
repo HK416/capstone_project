@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray {
     pub origin: glam::Vec3,
     direction: glam::Vec3,

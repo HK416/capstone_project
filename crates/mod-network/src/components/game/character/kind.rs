@@ -41,6 +41,16 @@ impl CharacterKind {
             _ => None,
         }
     }
+
+    /// 무기 상수를 반환합니다.
+    pub fn weapon_multiplier(self) -> f32 {
+        match self {
+            CharacterKind::ArisOriginal => 1.6,
+            CharacterKind::MomoiOriginal => 1.0,
+            CharacterKind::MidoriOriginal => 1.4,
+            CharacterKind::YuukaOriginal => 0.95,
+        }
+    }
 }
 
 impl BigEndian for CharacterKind {

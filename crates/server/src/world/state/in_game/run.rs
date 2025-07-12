@@ -8,22 +8,25 @@ use std::{
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, ActionEventDetail, BulletKind, DamageLogData, HeldInput, InGamePlayerPullData,
-        InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS,
-        MIN_LATITUDE, NetworkState, ObjectId, Permission, PlayerSnapshot, StageAttributes,
-        StageKind, Team, UserId, update_action_state, update_action_state_timer,
-        update_movement_state, update_movement_state_timer, update_player_rotation,
-        update_player_translation,
+        ActionEvent, ActionEventDetail, ActionState, BulletKind, CharacterKind, DamageLogData,
+        HeldInput, InGamePlayerPullData, InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_PLAYERS,
+        MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS, MIN_LATITUDE, NetworkState, ObjectId, Permission,
+        PlayerSnapshot, StageAttributes, StageKind, Team, UserId, update_action_state,
+        update_action_state_timer, update_movement_state, update_movement_state_timer,
+        update_player_rotation, update_player_translation,
     },
     protocol::{
         InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, MAX_INPUT_SNAPSHOTS, Packet,
     },
 };
 use mod_physics::{
-    collision::{Collider, ColliderTreeIterator, DynamicCollision},
+    collision::{Collider, ColliderTreeIterator, DynamicCollision, Ray},
     object3d::{BoundingBox, Capsule, Sphere},
 };
-use rand::seq::SliceRandom;
+use rand::{
+    distr::{Distribution, uniform},
+    seq::SliceRandom,
+};
 use tokio::time::Duration;
 
 use crate::{
@@ -829,7 +832,154 @@ impl GameWorldInGameRunState {
                     // 플레이어의 현재 남은 총알을 최대치로 설정합니다.
                     data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
                 }
-                ActionEventDetail::Attack { uid, .. } => {}
+                ActionEventDetail::Attack { uid, .. } => {
+                    // 발사한 플레이어 데이터의 소유권을 가져옵니다.
+                    let mut shooter = match world.players.remove(&uid) {
+                        Some(shooter) => shooter,
+                        None => {
+                            log::error!("Player({}) not found in {}!", &uid, &world);
+                            eprintln!("Player({}) not found in {}!", &uid, &world);
+                            continue;
+                        }
+                    };
+
+                    // 발사한 플레이어의 무기 데이터를 가져옵니다.
+                    let character_kind = shooter.character_kind();
+                    let character_attributes = shooter.character_attributes();
+                    let weapon_attributes = match &character_attributes.right_weapon {
+                        Some(weapon_attributes) => weapon_attributes,
+                        None => {
+                            // 발사한 플레이어 데이터의 소유권을 돌려줍니다.
+                            world.players.insert(uid, shooter);
+
+                            log::error!(
+                                "Player character({}) weapon attribute not found!",
+                                &character_kind
+                            );
+                            eprintln!(
+                                "Player character({}) weapon attribute not found!",
+                                &character_kind
+                            );
+                            continue;
+                        }
+                    };
+
+                    // 총알을 발사한 시점의 총알의 위치와 방향을 계산합니다.
+                    let (origin, direction) = weapon_attributes.get_position_and_direction(
+                        character_attributes,
+                        shooter.translation,
+                        shooter.rotation,
+                        shooter.latlon.lat,
+                    );
+                    println!("origin:{}, direction:{}", origin, direction);
+
+                    // 총알의 종류를 가져옵니다.
+                    let bullet_kind: BulletKind = character_kind.into();
+                    match bullet_kind {
+                        // 일반 총알의 경우 Ray-cast로 충돌 처리를 진행합니다.
+                        BulletKind::Common => {
+                            let ray = match Ray::build(origin, direction) {
+                                Ok(ray) => ray,
+                                Err(e) => {
+                                    // 발사한 플레이어 데이터의 소유권을 돌려줍니다.
+                                    world.players.insert(uid, shooter);
+
+                                    log::error!("{}", e);
+                                    eprintln!("{}", e);
+                                    continue;
+                                }
+                            };
+
+                            // 다른 플레이어에 대하여 광선과 충돌하는지 확인합니다.
+                            for (&other_uid, other) in world.players.iter_mut() {
+                                if uid == other_uid {
+                                    continue;
+                                }
+
+                                let other_character_attributes = other.character_attributes();
+                                let mut collider = other_character_attributes.collider.clone();
+                                collider.center = other.translation.into();
+                                println!("ray:{:?}, collider:{:?}", ray, collider);
+
+                                // 다른 플레이어가 총알에 맞은 경우
+                                if let Some(intersect_info) = ray.intersect(&collider) {
+                                    // 1. 명중 판정
+                                    let uniform = rand::distr::StandardUniform;
+                                    let shooter_accuracy =
+                                        character_attributes.accuracy_stat as f32;
+                                    let other_evasion =
+                                        other_character_attributes.evasion_stat as f32;
+                                    let hit_chance =
+                                        shooter_accuracy / (shooter_accuracy + other_evasion);
+                                    let threshold: f32 = uniform.sample(&mut rand::rng());
+                                    if threshold > hit_chance {
+                                        // Miss
+                                        break;
+                                    }
+
+                                    // 2. 치명타 판정
+                                    let shooter_crit_stat =
+                                        character_attributes.critical_rate as f32;
+                                    let crit_change =
+                                        shooter_crit_stat / (shooter_crit_stat + other_evasion);
+                                    let threshold: f32 = uniform.sample(&mut rand::rng());
+
+                                    // 3. 피해량 계산
+                                    let mut final_damage = if threshold <= crit_change {
+                                        let shooter_attack =
+                                            character_attributes.attack_power as f32;
+                                        let weapon_multiplier = character_kind.weapon_multiplier();
+                                        let other_defense =
+                                            other_character_attributes.defense_power as f32;
+                                        let rand_factor = rand::random_range(0.9..1.1);
+                                        let base_damage = (shooter_attack * weapon_multiplier
+                                            - other_defense)
+                                            * rand_factor;
+                                        (base_damage.round() as u16).clamp(1, 9999)
+                                    } else {
+                                        let shooter_attack =
+                                            character_attributes.attack_power as f32;
+                                        let shooter_crit_multiplier =
+                                            character_attributes.critical_damage as f32 / 100.0;
+                                        let weapon_multiplier = character_kind.weapon_multiplier();
+                                        let other_defense =
+                                            other_character_attributes.defense_power as f32;
+                                        let rand_factor = rand::random_range(0.9..1.1);
+                                        let base_damage = (shooter_attack * weapon_multiplier
+                                            - other_defense)
+                                            * rand_factor
+                                            * shooter_crit_multiplier;
+                                        (base_damage.round() as u16).clamp(1, 9999)
+                                    };
+
+                                    // 데미지를 즉시 적용합니다.
+                                    if other.health_data.shield <= final_damage {
+                                        final_damage -= other.health_data.shield;
+                                        other.health_data.shield = 0;
+
+                                        if other.health_data.remaining <= final_damage {
+                                            // 플레이어 행동 불능 처리
+                                            other.dead_count += 1;
+                                            shooter.kill_count += 1;
+                                            other.action_state = ActionState::Death;
+                                            other.action_state_timer.0 = 0;
+                                            other.health_data.remaining = 0;
+                                        } else {
+                                            other.health_data.remaining -= final_damage;
+                                        }
+                                    } else {
+                                        other.health_data.shield -= final_damage;
+                                    }
+
+                                    break;
+                                }
+                            }
+                        }
+                        BulletKind::EnergyBoll => {}
+                    }
+                    // 발사한 플레이어 데이터의 소유권을 돌려줍니다.
+                    world.players.insert(uid, shooter);
+                }
                 ActionEventDetail::Skill { uid, .. } => {}
             }
         }
@@ -904,174 +1054,6 @@ impl GameWorldInGameRunState {
                 data.set_invincible(is_invincible);
             }
         }
-    }
-
-    /// 0.1m 마다 바닥과의 충돌을 검사하여 바닥과의 충돌을 확인합니다.
-    fn check_bullet_ground_collision(
-        &self,
-        bullet_position: &glam::Vec3A,
-        bullet_radius: f32,
-        move_v_normalized: &glam::Vec3A,
-        move_distance: f32,
-    ) -> Option<f32> {
-        let stage_attributes = get_stage_attributes(self.stage_kind);
-        let mut nearest_distance = None;
-        let mut position = bullet_position.clone();
-        let mut moved = 0.0;
-        let v = move_v_normalized * 0.1;
-        while moved < move_distance {
-            if let Some(height) = stage_attributes.get_area_height(position.x, position.z) {
-                if position.y <= height + bullet_radius {
-                    nearest_distance = Some(moved);
-                    break;
-                }
-            }
-            position += v;
-            moved += 0.1;
-        }
-
-        nearest_distance
-    }
-
-    /// 총알과 충돌하는 건물과의 거리를 리턴합니다.
-    fn check_bullet_building_collision(
-        &self,
-        bullet_collider: &Sphere,
-        move_v: &glam::Vec3A,
-    ) -> Option<f32> {
-        let mut nearest_distance = f32::MAX;
-        let stage_attributes = get_stage_attributes(self.stage_kind);
-        let colliders = &stage_attributes.collider;
-        for collider in ColliderTreeIterator::new(colliders) {
-            // broadphase 검사 - 시작지점과 도착지점을 포함하는 AABB를 생성
-            let rad_box = glam::Vec3A::new(
-                bullet_collider.radius * move_v.x.signum(),
-                bullet_collider.radius * move_v.y.signum(),
-                bullet_collider.radius * move_v.z.signum(),
-            );
-            let center = glam::Vec3A::from(bullet_collider.center);
-            let start = center - rad_box;
-            let end = center + move_v + rad_box;
-            let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
-
-            if collider.check_aabb_collision(&swept_aabb) {
-                // narrowphase 검사 - 총알과 충돌체의 충돌 검사
-                let details = match collider {
-                    Collider::Aabb(aabb) => {
-                        bullet_collider.check_dynamic_collision_details(move_v, aabb)
-                    }
-                    Collider::Obb(obb) => {
-                        bullet_collider.check_dynamic_collision_details(move_v, obb)
-                    }
-                    Collider::Capsule(capsule) => {
-                        bullet_collider.check_dynamic_collision_details(move_v, capsule)
-                    }
-                    Collider::OrientedCapsule(obb) => {
-                        bullet_collider.check_dynamic_collision_details(move_v, obb)
-                    }
-                    Collider::Sphere(sphere) => {
-                        bullet_collider.check_dynamic_collision_details(move_v, sphere)
-                    }
-                };
-                if let Some(details) = details {
-                    // 충돌체와의 충돌이 발생한 경우, 총알의 남은 거리와 충돌체의 거리 비교
-                    let distance = details.distance;
-                    if distance < nearest_distance {
-                        nearest_distance = distance;
-                    }
-                }
-            }
-        }
-
-        if nearest_distance == f32::MAX {
-            None
-        } else {
-            Some(nearest_distance)
-        }
-    }
-
-    /// 총알과 충돌하는 플레이어를 확인합니다.  
-    /// 건물, 바닥 등과 충돌시에는 총알의 남은 거리를 0.0으로 설정하고 None을 리턴합니다.  
-    /// 움직일 벡터(move_v)는 0이 아니어야 합니다.
-    fn check_bullet_collision(
-        &self,
-        world: &GameWorld,
-        id: ObjectId,
-        data: &mut Bullet,
-        move_v: glam::Vec3A,
-    ) -> Option<UserId> {
-        let mut nearest_distance = f32::MAX;
-        let mut move_v = move_v.clone();
-        let move_v_normalized = move_v.normalize();
-
-        // 지형 충돌 검사
-        if let Some(collision_distance) = self.check_bullet_ground_collision(
-            &data.translation,
-            data.radius,
-            &move_v_normalized,
-            move_v.length(),
-        ) {
-            nearest_distance = collision_distance;
-            move_v = move_v_normalized * nearest_distance;
-            data.remaining_distance = 0.0;
-            log::debug!("Bullet({}) hit ground (distance: {})", id, nearest_distance);
-        }
-
-        if nearest_distance == 0.0 {
-            return None;
-        }
-
-        // 건물 충돌 검사
-        let bullet_collider = Sphere {
-            center: data.translation.into(),
-            radius: data.radius,
-        };
-        if let Some(collision_distance) =
-            self.check_bullet_building_collision(&bullet_collider, &move_v)
-        {
-            nearest_distance = collision_distance;
-            move_v = move_v_normalized * nearest_distance;
-            data.remaining_distance = 0.0;
-            log::debug!(
-                "Bullet({}) hit building (distance: {})",
-                id,
-                nearest_distance
-            );
-        }
-
-        if nearest_distance == 0.0 {
-            return None;
-        }
-
-        // 플레이어 충돌 검사
-        let mut nearest_player_id = None;
-        for (&uid, player) in world.players.iter() {
-            if uid == data.shooter_id
-                || player.health_data.remaining == 0
-                || player.team() == data.shooter_team
-                || player.is_invincible()
-            {
-                continue;
-            }
-
-            let character_attributes = player.character_attributes();
-            let mut player_collider = character_attributes.collider.clone();
-            player_collider.center = player.translation.into();
-
-            // 충돌 처리: 플레이어 - 총알
-            if let Some(info) =
-                bullet_collider.check_dynamic_collision_details(&move_v, &player_collider)
-            {
-                if info.distance <= move_v.length() {
-                    if info.distance < nearest_distance {
-                        nearest_distance = info.distance;
-                        nearest_player_id = Some(uid);
-                    }
-                }
-            }
-        }
-
-        nearest_player_id
     }
 
     /// 주어진 시간 만큼 플레이어 데이터를 갱신합니다.
