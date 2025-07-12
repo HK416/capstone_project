@@ -8,7 +8,7 @@ use std::{
 use ahash::{HashMap, RandomState};
 use hecs::{Entity, World};
 use mod_app::{
-    app::{self, AppHandle},
+    app::AppHandle,
     etc::{AppEvent, Viewport, WindowSize},
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
@@ -41,7 +41,7 @@ use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, NOTOSANS_BOLD,
+        HUD_LAYOUT_URI_02, NOTOSANS_BOLD, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage,
@@ -177,6 +177,11 @@ pub struct InGameRunScene {
     /// 체력 인터페이스 사각형 영역입니다.
     health_point_rect: egui::Rect,
 
+    /// 무기 아이콘 텍스처입니다.
+    weapon_icon_texture: egui::load::SizedTexture,
+    /// 무기 인터페이스 사각형 영역입니다.
+    weapon_info_rect: egui::Rect,
+
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
     /// 모델 풀 객체입니다.
@@ -276,6 +281,11 @@ impl InGameRunScene {
                 size: egui::Vec2::ZERO,
             },
             health_point_rect: egui::Rect::ZERO,
+            weapon_icon_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
+            weapon_info_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -1761,6 +1771,45 @@ impl InGameRunScene {
         };
     }
 
+    /// 무기 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_weapon_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        let (entity, _archetype) = self.player_entity();
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+        let &character_kind = world
+            .query_one_mut::<&CharacterKind>(entity)
+            .expect("invalid entity or invalid entity component!");
+
+        let texture = self
+            .texture_pool
+            .get(WEAPON_ICON_URI)
+            .expect("Weapon_Icon texture must be preloaded");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self.texture_view_pool.get_or_init(
+            &texture,
+            &wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: character_kind as u32,
+                array_layer_count: Some(1),
+                ..Default::default()
+            },
+        );
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.weapon_icon_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역의 크기를 재조정합니다.
         let viewport = app.viewport();
@@ -1769,6 +1818,14 @@ impl InGameRunScene {
 
         // 체력 인터페이스 영역의 크기를 재조정합니다.
         self.health_point_rect = Self::resize_health_point_rect(&self.clip_rect);
+        // 무기 인터페이스 영역의 크기를 재조정합니다.
+        let texture_size = self.weapon_icon_texture.size;
+        self.weapon_info_rect = Self::resize_weapon_info_rect(&texture_size, &self.clip_rect);
+    }
+
+    /// 애니메이션 값을 가져옵니다.
+    fn ui_animation_factor(&self) -> f32 {
+        self.play_elapsed_time_ms.min(500) as f32 / 500.0
     }
 
     /// 클립 사각형 영역의 크기를 재조정합니다.
@@ -1792,6 +1849,53 @@ impl InGameRunScene {
         egui::Rect::from_two_pos(left_bottom, right_top)
     }
 
+    /// 체력 인터페이스의 콘텐츠 영역을 반환합니다.
+    fn health_point_content_rect(&self) -> egui::Rect {
+        self.health_point_rect
+            .scale_from_center2(egui::vec2(0.82, 0.92))
+    }
+
+    /// 무기 인터페이스 영역의 크기를 재조정합니다.
+    fn resize_weapon_info_rect(texture_size: &egui::Vec2, clip_rect: &egui::Rect) -> egui::Rect {
+        let ratio = texture_size.x / texture_size.y;
+        let width = clip_rect.width() * 0.3;
+        let height = clip_rect.width() * 0.2 / ratio;
+        let margin = clip_rect.size().min_elem() * 0.03;
+        let right_bottom = clip_rect.right_bottom() - egui::Vec2::splat(margin);
+        let left_top = right_bottom - egui::vec2(width, height);
+        egui::Rect::from_min_max(left_top, right_bottom)
+    }
+
+    /// 무기 아이콘의 콘텐츠 영역을 반환합니다.
+    fn weapon_icon_content_rect(&self) -> egui::Rect {
+        let rect = self.weapon_info_content_rect();
+        let texture_size = self.weapon_icon_texture.size;
+        let ratio = texture_size.x / texture_size.y;
+        let height = rect.height();
+        let width = height * ratio;
+        let right_bottom = rect.right_bottom();
+        let left_top = right_bottom - egui::vec2(width, height);
+        egui::Rect::from_min_max(left_top, right_bottom)
+    }
+
+    /// 무기 라벨의 콘텐츠 영역을 반환합니다.
+    fn weapon_label_content_rect(&self) -> egui::Rect {
+        let rect = self.weapon_info_content_rect();
+        let texture_size = self.weapon_icon_texture.size;
+        let ratio = texture_size.x / texture_size.y;
+        let height = rect.height();
+        let width = rect.width() - height * ratio;
+        let left_bottom = rect.left_bottom();
+        let right_top = left_bottom + egui::vec2(width, -height);
+        egui::Rect::from_two_pos(left_bottom, right_top)
+    }
+
+    /// 무기 인터페이스의 콘텐츠 영역을 반환합니다.
+    fn weapon_info_content_rect(&self) -> egui::Rect {
+        self.weapon_info_rect
+            .scale_from_center2(egui::vec2(0.82, 0.92))
+    }
+
     /// 조준선 인터페이스를 그립니다.
     fn draw_ui_reticle(&mut self, ctx: &egui::Context) {
         let center = self.clip_rect.center();
@@ -1808,17 +1912,6 @@ impl InGameRunScene {
                     egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::from_black_alpha(128)),
                 );
             });
-    }
-
-    /// 애니메이션 값을 가져옵니다.
-    fn ui_animation_factor(&self) -> f32 {
-        self.play_elapsed_time_ms.min(500) as f32 / 500.0
-    }
-
-    /// 체력 인터페이스의 콘텐츠 영역을 반환합니다.
-    fn health_point_content_rect(&self) -> egui::Rect {
-        self.health_point_rect
-            .scale_from_center2(egui::vec2(0.82, 0.92))
     }
 
     /// 체력 인터페이스를 그립니다.
@@ -1848,8 +1941,8 @@ impl InGameRunScene {
         const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
 
         let t = self.ui_animation_factor();
-        let base_x = (self.clip_rect.left() - self.health_point_rect.width()) * (1.0 - t)
-            + self.clip_rect.left() * t;
+        let hide_x = self.clip_rect.left() - self.health_point_rect.width();
+        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
         let content_rect = self.health_point_content_rect();
 
         let uv = egui::Rect::from_min_max(
@@ -2109,7 +2202,10 @@ impl InGameRunScene {
             .sense(egui::Sense::empty())
             .selectable(false);
         let rect = egui::Rect::from_min_max(
-            egui::pos2(base_x + content_rect.center().x, content_rect.center().y),
+            egui::pos2(
+                base_x + content_rect.left() + content_rect.width() * 0.68,
+                content_rect.center().y,
+            ),
             egui::pos2(
                 base_x + content_rect.right_bottom().x,
                 content_rect.right_bottom().y,
@@ -2117,12 +2213,215 @@ impl InGameRunScene {
         );
         ui.put(rect, label);
 
-        let min = content_rect.left_center();
-        let max = content_rect.right_center();
+        let mut min = content_rect.left_center();
+        min.x += base_x;
+        let mut max = content_rect.right_center();
+        max.x += base_x;
         ui.painter().line(
             vec![min, max],
             egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::WHITE),
         );
+    }
+
+    /// 무기 정보 인터페이스를 그립니다.
+    fn draw_weapon_info(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Weapon_Info"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_weapon_info_bg(ui);
+                self.draw_weapon_icon(ui);
+            });
+    }
+
+    /// 무기 정보 인터페이스 배경을 그립니다.
+    fn draw_weapon_info_bg(&self, ui: &mut egui::Ui) {
+        const TINT: egui::Color32 = egui::Color32::from_black_alpha(160);
+        const SIZE: f32 = 256.0;
+        const TOP: f32 = 11.0;
+        const LEFT: f32 = 17.0;
+        const BOTTOM: f32 = 242.0;
+        const RIGHT: f32 = 235.0;
+        const INNER_LEFT_TOP: egui::Pos2 = egui::pos2(66.0, 22.0);
+        const INNER_RIGHT_TOP: egui::Pos2 = egui::pos2(222.0, 22.0);
+        const INNER_LEFT_BOTTOM: egui::Pos2 = egui::pos2(30.0, 228.0);
+        const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
+
+        let t = self.ui_animation_factor();
+        let hide_x = self.clip_rect.left() + self.weapon_info_rect.width();
+        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let content_rect = self.weapon_info_content_rect();
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(LEFT / SIZE, TOP / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(
+                base_x + self.weapon_info_rect.left(),
+                self.weapon_info_rect.top(),
+            ),
+            egui::pos2(base_x + content_rect.left(), content_rect.top()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, TOP / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.left(), self.weapon_info_rect.top()),
+            egui::pos2(base_x + content_rect.right(), content_rect.top()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, TOP / SIZE),
+            egui::pos2(RIGHT / SIZE, INNER_RIGHT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.right(), self.weapon_info_rect.top()),
+            egui::pos2(base_x + self.weapon_info_rect.right(), content_rect.top()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(LEFT / SIZE, INNER_LEFT_TOP.y / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + self.weapon_info_rect.left(), content_rect.top()),
+            egui::pos2(base_x + content_rect.left(), content_rect.bottom()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_TOP.y / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.left(), content_rect.top()),
+            egui::pos2(base_x + content_rect.right(), content_rect.bottom()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_TOP.y / SIZE),
+            egui::pos2(RIGHT / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.right(), content_rect.top()),
+            egui::pos2(
+                base_x + self.weapon_info_rect.right(),
+                content_rect.bottom(),
+            ),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(LEFT / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + self.weapon_info_rect.left(), content_rect.bottom()),
+            egui::pos2(base_x + content_rect.left(), self.weapon_info_rect.bottom()),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.left(), content_rect.bottom()),
+            egui::pos2(
+                base_x + content_rect.right(),
+                self.weapon_info_rect.bottom(),
+            ),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+            egui::pos2(RIGHT / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + content_rect.right(), content_rect.bottom()),
+            egui::pos2(
+                base_x + self.weapon_info_rect.right(),
+                self.weapon_info_rect.bottom(),
+            ),
+        );
+        egui::Image::new(self.layout_texture)
+            .tint(TINT)
+            .uv(uv)
+            .paint_at(ui, rect);
+    }
+
+    /// 무기 아이콘을 그립니다.
+    fn draw_weapon_icon(&self, ui: &mut egui::Ui) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        let mut max_bullets = 0;
+        let mut remaining_bullets = 0;
+        player_execute!(archetype, world, entity, &BulletData, |bullet_data| {
+            max_bullets = bullet_data.num_maximum_bullets().min(99);
+            remaining_bullets = bullet_data.remaining.min(99);
+        });
+
+        let t = self.ui_animation_factor();
+        let hide_x = self.clip_rect.left() + self.weapon_info_rect.width();
+        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let mut rect = self.weapon_icon_content_rect();
+        rect.min.x += base_x;
+        rect.max.x += base_x;
+        egui::Image::new(self.weapon_icon_texture)
+            .sense(egui::Sense::empty())
+            .paint_at(ui, rect);
+
+        let mut rect = self.weapon_label_content_rect();
+        rect.min.x += base_x;
+        rect.max.x += base_x;
+        let text = format!("{}/{}", remaining_bullets, max_bullets);
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(24.0 * self.ui_scale, family);
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::WHITE);
+        let label = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .wrap_mode(egui::TextWrapMode::Truncate)
+            .selectable(false);
+        ui.put(rect, label);
     }
 }
 
@@ -2136,6 +2435,7 @@ impl GameScene for InGameRunScene {
         self.create_camera(device);
 
         self.regist_layout_texture(device, ui_renderer);
+        self.regist_weapon_icon_texture(device, ui_renderer);
         self.resize_ui(window, app);
     }
 
@@ -2146,6 +2446,7 @@ impl GameScene for InGameRunScene {
         ui_renderer: &mut UiRenderer,
     ) {
         ui_renderer.free_texture(&self.layout_texture.id);
+        ui_renderer.free_texture(&self.weapon_icon_texture.id);
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -3125,9 +3426,10 @@ impl GameScene for InGameRunScene {
         self.transparent_resources.clear();
     }
 
-    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
+    fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
         let ctx = app.egui_ctx();
         self.draw_ui_reticle(ctx);
         self.draw_health_point(ctx);
+        self.draw_weapon_info(ctx);
     }
 }
