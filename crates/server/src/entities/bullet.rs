@@ -19,20 +19,20 @@ pub struct Bullet {
     /// 총알을 발사한 사용자의 팀
     pub shooter_team: Team,
     /// 총알의 종류
-    pub bullet_kind: BulletKind,
+    pub kind: BulletKind,
 }
 
 impl Bullet {
     /// 새로운 총알 데이터를 생성합니다.
     pub const fn new(
+        shooter_id: UserId,
+        shooter_team: Team,
+        bullet_kind: BulletKind,
         translation: glam::Vec3A,
         rotation: glam::Quat,
         velocity: glam::Vec3A,
         remaining_distance: f32,
         radius: f32,
-        shooter_id: UserId,
-        shooter_team: Team,
-        bullet_kind: BulletKind,
     ) -> Self {
         Self {
             translation,
@@ -42,7 +42,7 @@ impl Bullet {
             radius,
             shooter_id,
             shooter_team,
-            bullet_kind,
+            kind: bullet_kind,
         }
     }
 }

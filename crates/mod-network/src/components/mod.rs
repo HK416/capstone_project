@@ -150,6 +150,44 @@ impl BigEndian for u128 {
     }
 }
 
+impl BigEndian for [i16; 3] {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        [
+            i16::from_big_endian_bytes(&bytes[0..2]),
+            i16::from_big_endian_bytes(&bytes[2..4]),
+            i16::from_big_endian_bytes(&bytes[4..6]),
+        ]
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(6);
+        bytes.extend_from_slice(&self[0].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[1].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[2].to_big_endian_bytes());
+        bytes
+    }
+}
+
+impl BigEndian for [i16; 4] {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        [
+            i16::from_big_endian_bytes(&bytes[0..2]),
+            i16::from_big_endian_bytes(&bytes[2..4]),
+            i16::from_big_endian_bytes(&bytes[4..6]),
+            i16::from_big_endian_bytes(&bytes[6..8]),
+        ]
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(8);
+        bytes.extend_from_slice(&self[0].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[1].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[2].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[3].to_big_endian_bytes());
+        bytes
+    }
+}
+
 impl BigEndian for [f32; 2] {
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
         [

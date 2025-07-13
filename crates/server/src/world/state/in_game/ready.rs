@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{num::NonZeroU32, sync::Arc};
 
 use ahash::HashSet;
 use mod_network::{
@@ -29,6 +29,13 @@ pub struct GameWorldInGameReadyState {
     /// 게임 로드 완료까지 남은 시간
     remaining_time_ms: u16,
 
+    /// x축 방향의 게임 월드 절반 크기
+    half_size_x: NonZeroU32,
+    /// y축 방향의 게임 월드 절반 크기
+    half_size_y: NonZeroU32,
+    /// z축 방향의 게임 월드 절반 크기
+    half_size_z: NonZeroU32,
+
     /// 패킷을 보낸 후 경과 시간
     elapsed_time_sec: f32,
 
@@ -44,12 +51,18 @@ impl GameWorldInGameReadyState {
     /// 새로운 게임 월드 상태를 생성합니다.
     pub fn new(
         stage_kind: StageKind,
+        half_size_x: NonZeroU32,
+        half_size_y: NonZeroU32,
+        half_size_z: NonZeroU32,
         num_blue_players: usize,
         num_red_players: usize,
         leaved_players: HashSet<UserId>,
     ) -> Self {
         Self {
             stage_kind,
+            half_size_x,
+            half_size_y,
+            half_size_z,
             remaining_time_ms: MAX_LOAD_TIME,
             elapsed_time_sec: 0.0,
             num_blue_players,
@@ -227,6 +240,9 @@ impl GameWorldInGameReadyState {
             self.leaved_players.clear();
             let state = GameWorldInGameEnterState::new(
                 self.stage_kind,
+                self.half_size_x,
+                self.half_size_y,
+                self.half_size_z,
                 self.num_blue_players,
                 self.num_red_players,
                 leaved_players,

@@ -64,13 +64,15 @@ impl SessionInGameRunState {
         }
 
         // 이벤트를 전송합니다.
-        let event = GameWorldInGameRunStateEvent::InputSnapshot {
-            session: session.clone(),
-            uid: packet.uid,
-            client_play_elapsed_time_ms: packet.play_elapsed_time_ms,
+        let event = GameWorldInGameRunStateEvent::Input {
+            client_play_elapsed_time: packet.play_elapsed_time_ms,
             snapshots: packet.snapshots,
         };
-        let event = GameWorldEvent::InGameRunState(event);
+        let event = GameWorldEvent::InGameRunState {
+            session: session.clone(),
+            uid: self.uid,
+            event,
+        };
         self.sender.push(event);
     }
 }

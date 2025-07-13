@@ -4,11 +4,12 @@
 mod common;
 mod energy;
 
-use std::{ops::Deref, sync::Arc};
+use std::{num::NonZeroU32, ops::Deref, sync::Arc};
 
 use ahash::HashMap;
-use hecs::{Entity, EntityBuilder, ViewBorrow, World};
+use hecs::{Component, Entity, EntityBuilder, ViewBorrow, World};
 use mod_network::components::InGameBulletPullData;
+use mod_parallelism::collections::Queue;
 use parking_lot::Mutex;
 
 use crate::{
@@ -16,18 +17,13 @@ use crate::{
     component::{
         BoneCollection, BoneTransformUniform, Bullet, BulletMaterialResource,
         BulletMaterialUniform, Child, EnergyBulletMaterialResource, EnergyBulletMaterialUniform,
-        MaterialData, MaterialUniform, MeshResource, Parent, SkinnedMeshResource, ToParentTrans,
-        TransformUniform, WorldTransform, MAX_BONES,
+        MaterialData, MaterialResource, MaterialUniform, MeshFilter, MeshRenderer, MeshResource,
+        Parent, RenderTask, Sibling, SkinnedMeshRenderer, SkinnedMeshResource, ToParentTrans,
+        TransformDataLayout, TransformUniform, WorldTransform, MAX_BONES,
     },
 };
 
 pub use self::{common::*, energy::*};
-
-use super::{
-    AttributeKind, CameraResource, LightSetResource, MaterialKind, MaterialResource, Mesh,
-    MeshFilter, MeshRenderer, OpaqueMap, ShadowMap, Sibling, SkinnedMeshRenderer,
-    TransformDataLayout, TransparentMap,
-};
 
 /// 총알을 구성하는 엔터티를 생성합니다.
 ///
@@ -39,6 +35,9 @@ use super::{
 ///
 pub fn spawn_bullet(
     world: &World,
+    half_size_x: NonZeroU32,
+    half_size_y: NonZeroU32,
+    half_size_z: NonZeroU32,
     model_pool: &ModelPool,
     texture_data_pool: &TextureDataPool,
     bullet: &InGameBulletPullData,
@@ -47,7 +46,7 @@ pub fn spawn_bullet(
     staging_buffers: &mut Vec<wgpu::Buffer>,
 ) -> (Entity, Vec<(Entity, EntityBuilder)>) {
     // 모델 풀 객체에서 총알 모델 노드를 가져옵니다.
-    let i = bullet.bullet_kind as usize;
+    let i = bullet.kind as usize;
     let root = model_pool
         .get(BULLET_URIS[i])
         .expect("the bullet model must exist!");
@@ -57,19 +56,20 @@ pub fn spawn_bullet(
     let mut builder = EntityBuilder::new();
 
     // 컴포넌트를 추가합니다.
-    builder.add(bullet.bullet_kind);
     builder.add((
         Bullet,
         ToParentTrans(glam::Mat4::from_rotation_translation(
-            glam::Quat::from_array(bullet.rotation),
-            glam::Vec3::from_array(bullet.translation),
+            bullet.rotation().into(),
+            bullet
+                .translation(half_size_x, half_size_y, half_size_z)
+                .into(),
         )),
     ));
     builder.add((Bullet, WorldTransform::default()));
 
     // 총알 종류에 따른 총알 모델을 구성하는 엔터티를 생성합니다.
     let (child, mut batch_commands) = spawn_bullet_model(
-        Some(&format!("Bullet({})", bullet.object_id)),
+        Some(&format!("Bullet({})", bullet.id)),
         world,
         entity,
         &root,
@@ -339,6 +339,216 @@ fn create_material_resources(
     }
 
     Some((material_uniforms, material_resources))
+}
+
+/// 캐릭터 엔터티의 계층 구조를 갱신합니다.
+pub fn update_bullet_hierarchy(
+    world: &World,
+    entity: Entity,
+    child_view: &ViewBorrow<'_, &Child>,
+    sibling_view: &ViewBorrow<'_, &Sibling>,
+) {
+    type L<'a> = &'a (Bullet, ToParentTrans);
+    type W<'a> = &'a mut (Bullet, WorldTransform);
+    let parent = glam::Mat4::IDENTITY;
+    let mut local_transform_view = world.view::<L>();
+    let mut world_transform_view = world.view::<W>();
+    update_entity_hierarchy_with_archetype(
+        entity,
+        parent,
+        child_view,
+        sibling_view,
+        &mut local_transform_view,
+        &mut world_transform_view,
+    );
+}
+
+/// 엔터티 계층 구조를 갱신합니다.
+pub fn update_entity_hierarchy_with_archetype<Tag: Copy + Component>(
+    entity: Entity,
+    parent: glam::Mat4,
+    child_view: &ViewBorrow<'_, &Child>,
+    sibling_view: &ViewBorrow<'_, &Sibling>,
+    local_transform_view: &mut ViewBorrow<'_, &(Tag, ToParentTrans)>,
+    world_transform_view: &mut ViewBorrow<'_, &mut (Tag, WorldTransform)>,
+) {
+    // 형제 엔터티가 존재하는 경우 형제 엔터티 계층 구조를 갱신합니다.
+    if let Some(sibling) = sibling_view.get(entity).cloned() {
+        let entity = *sibling;
+        update_entity_hierarchy_with_archetype(
+            entity,
+            parent,
+            child_view,
+            sibling_view,
+            local_transform_view,
+            world_transform_view,
+        );
+    }
+
+    // 현재 엔터티의 월드 변환 행렬을 갱신합니다.
+    let (_, local_transform) = local_transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component!");
+    let (_, world_transform) = world_transform_view
+        .get_mut(entity)
+        .expect("invalid entity or invalid entity component!");
+    let transform = parent * local_transform.0;
+    world_transform.0 = transform;
+
+    // 자식 엔터티가 존재하는 경우 자식 엔터티 계층 구조를 갱신합니다.
+    if let Some(child) = child_view.get(entity).cloned() {
+        let parent = transform;
+        let entity = *child;
+        update_entity_hierarchy_with_archetype(
+            entity,
+            parent,
+            child_view,
+            sibling_view,
+            local_transform_view,
+            world_transform_view,
+        );
+    }
+}
+
+/// 총알 쉐이더 리소스를 갱신합니다.
+///
+/// # Note
+/// 이 함수는 총알 엔터티 계층 구조가 갱신 된 후에 호출되어야 합니다.
+///
+pub fn update_bullet_resource(
+    world: &World,
+    entity: Entity,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+    child_view: &ViewBorrow<'_, &Child>,
+    sibling_view: &ViewBorrow<'_, &Sibling>,
+    mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
+    skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+    draw_tasks: &Queue<RenderTask>,
+) {
+    let transform_view = world.view::<&(Bullet, WorldTransform)>();
+    update_bullet_resource_recursive(
+        entity,
+        device,
+        encoder,
+        staging_buffers,
+        child_view,
+        sibling_view,
+        &transform_view,
+        mesh_filter_view,
+        skinned_mesh_filter_view,
+        &draw_tasks,
+    );
+}
+
+/// 캐릭터 쉐이더 리소스를 갱신합니다.
+fn update_bullet_resource_recursive<Tag: Copy + Component>(
+    entity: Entity,
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    staging_buffers: &mut Vec<wgpu::Buffer>,
+    child_view: &ViewBorrow<'_, &Child>,
+    sibling_view: &ViewBorrow<'_, &Sibling>,
+    transform_view: &ViewBorrow<'_, &(Tag, WorldTransform)>,
+    mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
+    skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
+    draw_tasks: &Queue<RenderTask>,
+) {
+    // 자식 엔터티가 존재하는 경우 자식 엔터티를 갱신합니다.
+    if let Some(child) = child_view.get(entity).cloned() {
+        let entity = *child;
+        update_bullet_resource_recursive(
+            entity,
+            device,
+            encoder,
+            staging_buffers,
+            child_view,
+            sibling_view,
+            transform_view,
+            mesh_filter_view,
+            skinned_mesh_filter_view,
+            draw_tasks,
+        );
+    }
+
+    // 형제 엔터티가 존재하는 경우 형제 엔터티를 갱신합니다.
+    if let Some(sibling) = sibling_view.get(entity).cloned() {
+        let entity = *sibling;
+        update_bullet_resource_recursive(
+            entity,
+            device,
+            encoder,
+            staging_buffers,
+            child_view,
+            sibling_view,
+            transform_view,
+            mesh_filter_view,
+            skinned_mesh_filter_view,
+            draw_tasks,
+        );
+    }
+
+    let result = mesh_filter_view.get(entity);
+    match result {
+        Some((mesh, mesh_resource, mesh_uniform, material_resources)) => {
+            // 메쉬 유니폼 버퍼를 갱신합니다.
+            let (_, transform) = transform_view
+                .get(entity)
+                .expect("invalid entity component");
+            let data = TransformDataLayout {
+                trans: transform.0.to_cols_array(),
+            };
+            mesh_uniform.update(device, encoder, staging_buffers, data);
+
+            for (index, material_resource) in material_resources.iter().enumerate() {
+                // 그리기 작업 목록에 추가합니다.
+                draw_tasks.push(RenderTask {
+                    mesh: mesh.clone(),
+                    mesh_resource: MeshFilter::Mesh(mesh_resource.clone()),
+                    material_index: index,
+                    material_resource: material_resource.clone(),
+                });
+            }
+
+            return;
+        }
+        None => {}
+    };
+
+    let result = skinned_mesh_filter_view.get(entity);
+    match result {
+        Some((
+            mesh,
+            mesh_resource,
+            bone_collection,
+            bone_transform_uniform,
+            material_resources,
+        )) => {
+            // 뼈 변환 행렬 유니폼 버퍼를 갱신합니다.
+            let mut data = Vec::with_capacity(MAX_BONES);
+            for entity in bone_collection.bones.iter().cloned() {
+                let (_, transform) = transform_view
+                    .get(entity)
+                    .expect("invalid entity or invalid entity component!");
+                data.push(transform.0.to_cols_array());
+            }
+            bone_transform_uniform.update(device, encoder, staging_buffers, data);
+
+            for (index, material_resource) in material_resources.iter().enumerate() {
+                // 그리기 작업 목록에 추가합니다.
+                draw_tasks.push(RenderTask {
+                    mesh: mesh.clone(),
+                    mesh_resource: MeshFilter::SkinnedMesh(mesh_resource.clone()),
+                    material_index: index,
+                    material_resource: material_resource.clone(),
+                });
+            }
+
+            return;
+        }
+        None => {}
+    }
 }
 
 // /// 총알의 쉐이더 리소스를 갱신합니다.

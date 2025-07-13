@@ -2,7 +2,10 @@
 //!
 
 use crate::{
-    components::{BigEndian, InGamePlayerPullData, MAX_IN_GAME_PLAYERS},
+    components::{
+        BigEndian, InGameBulletPullData, InGamePlayerPullData, MAX_IN_GAME_BULLETS,
+        MAX_IN_GAME_PLAYERS,
+    },
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -15,6 +18,8 @@ pub struct InGamePullPacket {
     pub play_elapsed_time_ms: u32,
     /// 플레이어 데이터
     pub players: Vec<InGamePlayerPullData>,
+    /// 총알 데이터
+    pub bullets: Vec<InGameBulletPullData>,
 }
 
 impl InGamePullPacket {
@@ -22,15 +27,22 @@ impl InGamePullPacket {
     ///
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
+    /// 주어진 `bullets`의 요소 수가 `MAX_IN_GAME_BULLETS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(play_elapsed_time_ms: u32, players: Vec<InGamePlayerPullData>) -> Self {
+    pub fn new(
+        play_elapsed_time_ms: u32,
+        players: Vec<InGamePlayerPullData>,
+        bullets: Vec<InGameBulletPullData>,
+    ) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
+        assert!(bullets.len() <= MAX_IN_GAME_BULLETS, "too many bullets!");
 
         Self {
             ping: 0,
             play_elapsed_time_ms,
             players,
+            bullets,
         }
     }
 }
@@ -43,10 +55,13 @@ impl Packet for InGamePullPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
+        let num_bullets = self.bullets.len();
         let data_size = u16::byte_size()
             + u32::byte_size()
             + u8::byte_size()
-            + InGamePlayerPullData::byte_size() * num_players;
+            + InGamePlayerPullData::byte_size() * num_players
+            + u16::byte_size()
+            + InGameBulletPullData::byte_size() * num_bullets;
         let num_players = self.players.len();
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.ping.to_big_endian_bytes());
@@ -54,6 +69,10 @@ impl Packet for InGamePullPacket {
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
             data.extend_from_slice(&player.to_big_endian_bytes());
+        }
+        data.extend_from_slice(&(num_bullets as u16).to_big_endian_bytes());
+        for bullet in self.bullets.iter() {
+            data.extend_from_slice(&bullet.to_big_endian_bytes());
         }
 
         // 바이트 배열 유효성을 검증합니다.
@@ -102,28 +121,48 @@ impl Packet for InGamePullPacket {
             return None;
         }
 
+        // 플레이어 데이터를 가져옵니다.
         let mut players = Vec::with_capacity(num_players);
         for _ in 0..num_players {
-            // 플레이어 데이터를 가져옵니다.
             offset = offset + size;
             size = InGamePlayerPullData::byte_size();
             data = &bytes[offset..offset + size];
             players.push(InGamePlayerPullData::from_big_endian_bytes(data));
         }
 
+        // 총알의 수를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let num_bullets = u16::from_big_endian_bytes(data) as usize;
+
+        // 총알 데이터를 가져옵니다.
+        let mut bullets = Vec::with_capacity(num_bullets);
+        for _ in 0..num_bullets {
+            offset = offset + size;
+            size = InGameBulletPullData::byte_size();
+            data = &bytes[offset..offset + size];
+            bullets.push(InGameBulletPullData::from_big_endian_bytes(data));
+        }
+
         Some(Self {
             ping,
             play_elapsed_time_ms,
             players,
+            bullets,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
+    use mod_physics::object3d::Capsule;
+
     use crate::components::{
-        ActionState, ActionStateTimer, HeldInput, InputStateTimer, LatLon, MovementState,
-        MovementStateTimer, NetworkState, Permission, PlayerStateData, UserId,
+        ActionState, ActionStateTimer, BulletKind, CharacterAttributes, Float3, LatLon,
+        MovementState, MovementStateTimer, ObjectId, UserId,
     };
 
     use super::*;
@@ -131,68 +170,120 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_creation_in_game_pull_packet() {
-        InGamePullPacket::new(30_000, vec![]);
+        InGamePullPacket::new(30_000, vec![], vec![]);
     }
 
     #[test]
     fn test_in_game_pull_packet() {
+        let attributes = CharacterAttributes {
+            speed: 5.0,
+            left_weapon: None,
+            right_weapon: None,
+            attack_head_axis: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            attack_spine_axis: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            attack_spine1_axis: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            skill_head_axis: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            skill_spine_axis: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            skill_spine1_axis: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            normal_idle_duration: 1200,
+            cafe_walk_duration: 0,
+            move_ing_duration: 0,
+            move_end_normal_duration: 0,
+            normal_attack_start_duration: 0,
+            normal_attack_end_duration: 0,
+            normal_attack_ing_duration: 400,
+            vital_death_duration: 0,
+            normal_reload_duration: 0,
+            skill_duration: 0,
+            normal_callsign_duration: 0,
+            victory_start_duration: 0,
+            victory_end_duration: 0,
+            normal_attack_timing: vec![],
+            normal_attack_count: 0,
+            max_bullets: 0,
+            max_health_point: 0,
+            attack_power: 0,
+            defense_power: 0,
+            accuracy_stat: 0,
+            evasion_stat: 0,
+            critical_rate: 0,
+            critical_damage: 0,
+            max_skill_cost: 0,
+            skill_cost: 0,
+            attack_range: 0,
+            bullet_radius: 0.0,
+            collider: Capsule {
+                center: glam::vec3(0.0, 0.0, 0.0),
+                height: 0.0,
+                radius: 0.0,
+            },
+        };
         let player_0 = InGamePlayerPullData::new(
             UserId::new(13413451),
-            0,
-            12,
-            10,
-            3100,
-            4,
-            425,
-            0,
-            [10.0241, 0.0111, 5.031413],
-            [0.00134123, 0.0061341, 0.7341341, 0.212341],
-            [0.0, 0.13414132, 0.513411],
-            [0.0, 0.13414132, 0.513411],
-            HeldInput::all(),
-            Permission::Admin,
-            true,
-            true,
-            true,
-            NetworkState::Poor,
-            PlayerStateData::new()
-                .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::Landing),
+            NonZeroU32::new(25).unwrap(),
+            NonZeroU32::new(25).unwrap(),
+            NonZeroU32::new(25).unwrap(),
+            glam::vec3a(10.0241, 0.0111, 5.031413),
+            glam::quat(0.00134123, 0.0061341, 0.7341341, 0.212341),
+            ActionState::Attack,
             ActionStateTimer::new(320),
+            MovementState::Landing,
             MovementStateTimer::new(1200),
-            InputStateTimer::new(123),
+            &attributes,
             LatLon::new(45f32.to_radians(), 72f32.to_radians()),
         );
         let player_1 = InGamePlayerPullData::new(
             UserId::new(98431),
-            12,
-            2,
-            210,
-            1100,
-            12,
-            25,
-            725,
-            [10.0241, 0.0111, 5.031413],
-            [0.00134123, 0.0061341, 0.7341341, 0.212341],
-            [0.0, 0.13414132, 0.513411],
-            [0.0, 0.13414132, 0.513411],
-            HeldInput::Left | HeldInput::Reload | HeldInput::Jump,
-            Permission::User,
-            false,
-            true,
-            false,
-            NetworkState::Good,
-            PlayerStateData::new()
-                .with_action_state(ActionState::Attack)
-                .with_movement_state(MovementState::Landing),
+            NonZeroU32::new(25).unwrap(),
+            NonZeroU32::new(25).unwrap(),
+            NonZeroU32::new(25).unwrap(),
+            glam::vec3a(10.0241, 0.0111, 5.031413),
+            glam::quat(0.00134123, 0.0061341, 0.7341341, 0.212341),
+            ActionState::Attack,
             ActionStateTimer::new(323),
+            MovementState::Landing,
             MovementStateTimer::new(1212),
-            InputStateTimer::new(123),
+            &attributes,
             LatLon::new(-11f32.to_radians(), 63f32.to_radians()),
         );
 
+        let bullet_0 = InGameBulletPullData::new(
+            ObjectId::new(89431),
+            BulletKind::Common,
+            NonZeroU32::new(25).unwrap(),
+            NonZeroU32::new(25).unwrap(),
+            NonZeroU32::new(25).unwrap(),
+            glam::vec3a(0.43124, 0.341341, 10.414321),
+            glam::quat(0.00134123, 0.0061341, 0.7341341, 0.212341),
+        );
+        let bullets = vec![bullet_0];
+
         let players = vec![player_0, player_1];
-        let origin = InGamePullPacket::new(42_123, players);
+        let origin = InGamePullPacket::new(42_123, players, bullets);
         let raw = origin.as_raw();
         let other = InGamePullPacket::from_raw(raw);
 

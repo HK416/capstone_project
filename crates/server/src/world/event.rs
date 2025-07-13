@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use mod_network::components::{
-    BulletKind, CharacterKind, GameTier, HeldInput, InputSnapshot, NetworkState, ProfileIcon,
-    UserId, UserName,
+    CharacterKind, GameTier, HeldInput, InputSnapshot, NetworkState, ProfileIcon, UserId, UserName,
 };
 
 use crate::session::Session;
@@ -39,7 +38,11 @@ pub enum GameWorldEvent {
     },
 
     /// 인게임 이벤트
-    InGameRunState(GameWorldInGameRunStateEvent),
+    InGameRunState {
+        session: Arc<Session>,
+        uid: UserId,
+        event: GameWorldInGameRunStateEvent,
+    },
 }
 
 /// 게임 월드의 시스템 이벤트 목록입니다.
@@ -90,14 +93,8 @@ pub enum GameWorldInGameReadyStateEvent {
 #[derive(Debug, Clone)]
 pub enum GameWorldInGameRunStateEvent {
     /// 플레이어 입력이 발생했을 때 발생되는 입력 이벤트 목록 이벤트입니다.
-    InputSnapshot {
-        /// 요청 세션
-        session: Arc<Session>,
-        /// 사용자 식별자
-        uid: UserId,
-        /// 클라이언트 게임 경과 시간입니다.
-        client_play_elapsed_time_ms: u32,
-        /// 입력 이벤트 목록
+    Input {
+        client_play_elapsed_time: u32,
         snapshots: Vec<InputSnapshot>,
     },
 }

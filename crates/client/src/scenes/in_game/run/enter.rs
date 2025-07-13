@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{num::NonZeroU32, sync::Arc, time::Instant};
 
 use ahash::HashMap;
 use hecs::{Entity, ViewBorrow, World};
@@ -10,9 +10,9 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterFlags,
-        CharacterKind, HealthData, HeldInput, LatLon, LoginToken, MovementState,
-        MovementStateTimer, NetworkState, Permission, SkillCostData, StageAttributes, UserId,
+        update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
+        HeldInput, LatLon, LoginToken, MovementState, MovementStateTimer, SkillCostData,
+        StageAttributes, UserId,
     },
     protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
@@ -76,6 +76,13 @@ pub struct InGameEnterScene {
     animation_time_ms: u16,
     /// 첫 번째 마우스 눌림 여부 플래그
     first_mouse_pressed: bool,
+
+    /// 게임 월드 x축 전체 절반 크기
+    half_size_x: NonZeroU32,
+    /// 게임 월드 y축 전체 절반 크기
+    half_size_y: NonZeroU32,
+    /// 게임 월드 z축 전체 절반 크기
+    half_size_z: NonZeroU32,
 
     /// 게임 월드
     world: Option<World>,
@@ -152,6 +159,9 @@ impl InGameEnterScene {
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         remaining_time_ms: u16,
+        half_size_x: NonZeroU32,
+        half_size_y: NonZeroU32,
+        half_size_z: NonZeroU32,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -181,6 +191,9 @@ impl InGameEnterScene {
             remaining_time_ms,
             animation_time_ms: 0,
             first_mouse_pressed: false,
+            half_size_x,
+            half_size_y,
+            half_size_z,
             world: Some(world),
             camera: Entity::DANGLING,
             players,
@@ -892,8 +905,6 @@ impl GameScene for InGameEnterScene {
 
                 // 플레이어 데이터를 초기화합니다.
                 {
-                    type Q0<'a> = (&'a mut Permission, &'a mut NetworkState);
-                    let mut component_view = world.view::<Q0>();
                     let packet = InGamePullPacket::from_raw(packet);
                     for data in packet.players.iter() {
                         // 해당 플레이어 엔터티를 가져옵니다.
@@ -903,48 +914,39 @@ impl GameScene for InGameEnterScene {
                             .cloned()
                             .expect("player not found!");
 
-                        // 데이터를 저장합니다.
-                        let (permission, network_state) = component_view
-                            .get_mut(entity)
+                        // 캐릭터 속성 데이터를 가져옵니다.
+                        let &character_kind = world
+                            .query_one_mut::<&CharacterKind>(entity)
                             .expect("invalid entity or invalid entity component!");
-                        *permission = data.permission();
-                        *network_state = data.network_state();
+                        let i = character_kind as usize;
+                        let attribute = CHARACTER_ATTRIBUTES[i];
 
-                        type Q1<'a> = (
-                            &'a mut HealthData,
-                            &'a mut BulletData,
-                            &'a mut SkillCostData,
-                            &'a mut CharacterFlags,
+                        type Query<'a> = (
                             &'a mut ActionState,
                             &'a mut ActionStateTimer,
                             &'a mut MovementState,
                             &'a mut MovementStateTimer,
                             &'a mut LatLon,
                         );
-                        player_execute!(archetype, &world, entity, Q1, |(
-                            health_data,
-                            bullet_data,
-                            skill_cost_data,
-                            character_flags,
-                            action_state,
-                            action_state_timer,
-                            movement_state,
-                            movement_state_timer,
-                            latlon,
-                        )| {
-                            health_data.shield = data.shield_health;
-                            health_data.remaining = data.current_health;
-                            bullet_data.remaining = data.current_bullet;
-                            skill_cost_data.remaining = data.current_skill_cost;
-                            *action_state = data.action_state();
-                            *action_state_timer = data.action_state_timer;
-                            *movement_state = data.movement_state();
-                            *movement_state_timer = data.movement_state_timer;
-                            *latlon = data.latlon;
-                            character_flags.set_connected(data.is_connected());
-                            character_flags.set_grounded(data.is_grounded());
-                            character_flags.set_invincible(data.is_invincible());
-                        });
+                        player_execute!(
+                            archetype,
+                            &world,
+                            entity,
+                            Query,
+                            |(
+                                action_state,
+                                action_state_timer,
+                                movement_state,
+                                movement_state_timer,
+                                latlon,
+                            )| {
+                                *action_state = data.action_state();
+                                *action_state_timer = data.action_state_timer(attribute);
+                                *movement_state = data.movement_state();
+                                *movement_state_timer = data.movement_state_timer(attribute);
+                                *latlon = data.latlon();
+                            }
+                        );
                     }
                 }
 
@@ -993,6 +995,9 @@ impl GameScene for InGameEnterScene {
                     self.stage_attributes.clone(),
                     self.max_game_play_time_ms,
                     self.first_mouse_pressed,
+                    self.half_size_x,
+                    self.half_size_y,
+                    self.half_size_z,
                     world,
                     players,
                     stage,

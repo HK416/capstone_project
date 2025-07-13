@@ -348,7 +348,7 @@ pub fn update_character_resource(
     sibling_view: &ViewBorrow<'_, &Sibling>,
     mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
     skinned_mesh_filter_view: &ViewBorrow<'_, SkinnedMeshRenderer>,
-    draw_tasks: &Arc<Queue<RenderTask>>,
+    draw_tasks: &Queue<RenderTask>,
 ) {
     match archetype {
         PlayerArchetype::Player0 => {

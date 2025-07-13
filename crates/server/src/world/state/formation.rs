@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{num::NonZeroU32, sync::Arc};
 
 use ahash::{HashSet, RandomState};
 use mod_network::{
@@ -17,6 +17,7 @@ use rand::seq::SliceRandom;
 use tokio::time::Duration;
 
 use crate::{
+    data::get_stage_attributes,
     session::{Session, SessionInGameReadyState, SessionStateFlow},
     world::{
         GameWorld, GameWorldEvent, GameWorldFormationStateEvent, GameWorldInGameReadyState,
@@ -401,7 +402,25 @@ impl GameWorldFormationState {
                 ));
             }
 
-            let packet = InGameDataInitPacket::new(self.stage_kind, MAX_GAME_TIME, players);
+            let stage_attributes = get_stage_attributes(self.stage_kind);
+            let half_size_x = unsafe {
+                NonZeroU32::new((stage_attributes.total_width * 0.5).ceil() as u32)
+                    .unwrap_unchecked()
+            };
+            let half_size_y = unsafe { NonZeroU32::new(50).unwrap_unchecked() };
+            let half_size_z = unsafe {
+                NonZeroU32::new((stage_attributes.total_depth * 0.5).ceil() as u32)
+                    .unwrap_unchecked()
+            };
+
+            let packet = InGameDataInitPacket::new(
+                self.stage_kind,
+                half_size_x,
+                half_size_y,
+                half_size_z,
+                MAX_GAME_TIME,
+                players,
+            );
             for (session, &uid) in world.sessions.iter() {
                 session.tcp_write(packet.as_raw());
 
@@ -416,6 +435,9 @@ impl GameWorldFormationState {
             self.leaved_players.clear();
             let state = GameWorldInGameReadyState::new(
                 self.stage_kind,
+                half_size_x,
+                half_size_y,
+                half_size_z,
                 self.num_blue_players,
                 self.num_red_players,
                 leaved_players,

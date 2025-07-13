@@ -38,7 +38,7 @@ impl WeaponAttributes {
         translation: glam::Vec3A,
         rotation: glam::Quat,
         latitude: f32,
-    ) -> (glam::Vec3A, glam::Vec3A) {
+    ) -> (glam::Vec3A, glam::Quat) {
         // 노드 계층 구조를 생성합니다.
         let hierarchy = HashMap::from_iter([
             (Self::BIP001, None),
@@ -93,9 +93,9 @@ impl WeaponAttributes {
         let weapon_trans = hand_world_transform * hand_to_weapon_trans * bip001_fire;
 
         let translation = glam::Vec3A::from_vec4(weapon_trans.w_axis);
-        let direction = glam::Vec3A::from_vec4(weapon_trans.z_axis).normalize_or(glam::Vec3A::Z);
+        let rotation = glam::Quat::from_mat4(&weapon_trans).normalize();
 
-        (translation, direction)
+        (translation, rotation)
     }
 
     /// 월드 변환 행렬을 계산합니다.
