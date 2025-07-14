@@ -466,6 +466,7 @@ impl GameScene for InGameReadyScene {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: render_target_view,
                     resolve_target: None,
+                    depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,

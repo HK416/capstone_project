@@ -508,7 +508,7 @@ impl GameScene for InGameLoadScene {
         _ui_renderer: &mut UiRenderer,
     ) {
         let device = app.render_device();
-        device.poll(wgpu::MaintainBase::Wait).unwrap();
+        device.poll(wgpu::PollType::Wait).unwrap();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -624,6 +624,7 @@ impl GameScene for InGameLoadScene {
                 label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: render_target_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),

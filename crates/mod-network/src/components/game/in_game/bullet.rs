@@ -33,8 +33,8 @@ impl InGameBulletPullData {
         let hy = half_size_y.get() as f32;
         let hz = half_size_z.get() as f32;
         let x = translation.x.clamp(-hx, hx) / hx * i16::MAX as f32;
-        let y = translation.x.clamp(-hy, hy) / hy * i16::MAX as f32;
-        let z = translation.x.clamp(-hz, hz) / hz * i16::MAX as f32;
+        let y = translation.y.clamp(-hy, hy) / hy * i16::MAX as f32;
+        let z = translation.z.clamp(-hz, hz) / hz * i16::MAX as f32;
         let translation = [x as i16, y as i16, z as i16];
 
         let rotation = rotation.normalize();

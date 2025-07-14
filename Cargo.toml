@@ -118,7 +118,7 @@ thiserror = "2.0"
 
 # Rusty WebGPU API wrapper
 # License: MIT OR Apache-2.0
-wgpu = "25"
+wgpu = "26"
 
 # Cross-platform window creation library.
 # License: Apache-2.0

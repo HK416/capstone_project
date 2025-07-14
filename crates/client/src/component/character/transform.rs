@@ -169,6 +169,6 @@ fn update_character_rotation_inner(
     latlon: LatLon,
 ) {
     let mut look = local_transform.get_look_vector();
-    look = update_player_rotation(look, action_state, movement_state, direction, latlon);
+    // look = update_player_rotation(look, action_state, movement_state, direction, latlon);
     local_transform.look_to(look, glam::Vec3::Y);
 }

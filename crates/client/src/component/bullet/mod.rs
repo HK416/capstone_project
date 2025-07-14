@@ -341,7 +341,7 @@ fn create_material_resources(
     Some((material_uniforms, material_resources))
 }
 
-/// 캐릭터 엔터티의 계층 구조를 갱신합니다.
+/// 총알 엔터티의 계층 구조를 갱신합니다.
 pub fn update_bullet_hierarchy(
     world: &World,
     entity: Entity,
@@ -364,7 +364,7 @@ pub fn update_bullet_hierarchy(
 }
 
 /// 엔터티 계층 구조를 갱신합니다.
-pub fn update_entity_hierarchy_with_archetype<Tag: Copy + Component>(
+fn update_entity_hierarchy_with_archetype<Tag: Copy + Component>(
     entity: Entity,
     parent: glam::Mat4,
     child_view: &ViewBorrow<'_, &Child>,
@@ -442,7 +442,7 @@ pub fn update_bullet_resource(
     );
 }
 
-/// 캐릭터 쉐이더 리소스를 갱신합니다.
+/// 총알 쉐이더 리소스를 갱신합니다.
 fn update_bullet_resource_recursive<Tag: Copy + Component>(
     entity: Entity,
     device: &wgpu::Device,

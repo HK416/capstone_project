@@ -123,6 +123,7 @@ impl GameScene for GameIntroLogoScene {
                         load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],

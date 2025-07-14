@@ -596,6 +596,7 @@ impl InGameRunScene {
                         rotation.into(),
                         translation.into(),
                     );
+                    println!("{}, {:?}", translation, transform.get_translation());
                 }
                 None => {
                     // 새로운 총알 엔터티를 생성합니다.
@@ -2224,6 +2225,7 @@ impl GameScene for InGameRunScene {
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: render_target_view,
                         resolve_target: None,
                     }),
@@ -2238,6 +2240,7 @@ impl GameScene for InGameRunScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: bright_render_target.view(),
                         resolve_target: None,
                     }),
@@ -2341,6 +2344,7 @@ impl GameScene for InGameRunScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: accum_render_target.view(),
                         resolve_target: None,
                     }),
@@ -2357,6 +2361,7 @@ impl GameScene for InGameRunScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: reveal_render_target.view(),
                         resolve_target: None,
                     }),
@@ -2366,6 +2371,7 @@ impl GameScene for InGameRunScene {
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: bright_render_target.view(),
                         resolve_target: None,
                     }),
@@ -2419,6 +2425,7 @@ impl GameScene for InGameRunScene {
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],

@@ -203,6 +203,7 @@ impl GameScene for InGameBuildScene {
                 label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: render_target_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
