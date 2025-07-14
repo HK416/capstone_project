@@ -1,11 +1,6 @@
-use std::{
-    f32::consts::{PI, TAU},
-    num::NonZeroU32,
-    sync::{atomic::{self, Ordering as MemOrdering}, Arc},
-    time::Instant,
-};
+use std::{f32::consts::TAU, num::NonZeroU32, sync::Arc, time::Instant};
 
-use ahash::{HashMap, RandomState};
+use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Entity, World};
 use mod_app::{
     app::AppHandle,
@@ -15,17 +10,15 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        update_action_state, update_action_state_timer, update_movement_state,
-        update_movement_state_timer, update_player_rotation, update_player_translation,
         ActionState, ActionStateTimer, BulletData, CharacterFlags, CharacterKind, HealthData,
-        HeldInput, InputEvent, InputSnapshot, InputStateTimer, LatLon, LoginToken, MovementState,
-        MovementStateTimer, MovingDirection, NetworkState, ObjectId, Permission, PlayerSnapshot,
-        SkillCostData, StageAttributes, Team, UserId, Velocity, ViewState, ViewStateTimer,
-        MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_JUMP_DURATION,
-        MAX_LATITUDE, MAX_PLAYER_SNAPSHOTS, MIN_LATITUDE, RESPAWN_DELAY,
+        HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
+        MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
+        UserId, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS, MAX_LATITUDE,
+        MIN_LATITUDE,
     },
     protocol::{
-        InGameInputPacket, InGamePullPacket, Packet, PacketType, RawPacket, MAX_INPUT_SNAPSHOTS,
+        InGameInputPacket, InGamePullPacket, InGameStatusPacket, Packet, PacketType, RawPacket,
+        MAX_INPUT_SNAPSHOTS,
     },
 };
 use mod_parallelism::collections::Queue;
@@ -44,7 +37,7 @@ use crate::{
         HUD_LAYOUT_URI_02, NOTOSANS_BOLD, WEAPON_ICON_URI,
     },
     component::{
-        animate_character, bake_character, bake_character_eye_mouth, bake_stage,
+        animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
         draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
@@ -128,6 +121,8 @@ pub struct InGameRunScene {
     /// 카메라 종횡비
     camera_aspect_ratio: f32,
 
+    /// 제거된 총알 식별자
+    removed_bullets: HashSet<ObjectId>,
     /// 총알 엔터티
     bullets: HashMap<ObjectId, Entity>,
     /// 플레이어 엔터티
@@ -180,6 +175,9 @@ pub struct InGameRunScene {
     weapon_icon_texture: egui::load::SizedTexture,
     /// 무기 인터페이스 사각형 영역입니다.
     weapon_info_rect: egui::Rect,
+
+    /// 스킬 코스트 사각형 영역입니다.
+    skill_cost_rect: egui::Rect,
 
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
@@ -256,6 +254,10 @@ impl InGameRunScene {
             camera_fov_y: 45f32.to_radians(),
             camera_rel_position: glam::Vec3A::ZERO,
             camera_aspect_ratio: 1.0,
+            removed_bullets: HashSet::with_capacity_and_hasher(
+                MAX_IN_GAME_BULLETS,
+                RandomState::new(),
+            ),
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             players,
             stage: Some(stage),
@@ -284,6 +286,7 @@ impl InGameRunScene {
                 size: egui::Vec2::ZERO,
             },
             weapon_info_rect: egui::Rect::ZERO,
+            skill_cost_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -533,14 +536,19 @@ impl InGameRunScene {
                 .expect("player not found!");
 
             // 캐릭터 속성 데이터를 가져옵니다.
-            let &character_kind = world
-                .query_one_mut::<&CharacterKind>(entity)
+            let (&character_kind, character_flags) = world
+                .query_one_mut::<(&CharacterKind, &CharacterFlags)>(entity)
                 .expect("invalid entity or invalid entity component!");
+
+            // 서버와 접속 중이지 않은 경우 건너뜁니다.
+            if !character_flags.is_connected() {
+                continue;
+            }
+
             let i = character_kind as usize;
             let attribute = CHARACTER_ATTRIBUTES[i];
 
             type Query<'a> = (
-                &'a CharacterFlags,
                 &'a mut ActionState,
                 &'a mut ActionStateTimer,
                 &'a mut MovementState,
@@ -549,7 +557,6 @@ impl InGameRunScene {
                 &'a mut LatLon,
             );
             player_execute!(archetype, world, entity, Query, |(
-                character_flags,
                 action_state,
                 action_state_timer,
                 movement_state,
@@ -557,26 +564,24 @@ impl InGameRunScene {
                 transform,
                 latlon,
             )| {
-                if character_flags.is_connected() {
-                    *action_state = data.action_state();
-                    *action_state_timer = data.action_state_timer(attribute);
-                    *movement_state = data.movement_state();
-                    *movement_state_timer = data.movement_state_timer(attribute);
+                *action_state = data.action_state();
+                *action_state_timer = data.action_state_timer(attribute);
+                *movement_state = data.movement_state();
+                *movement_state_timer = data.movement_state_timer(attribute);
 
-                    let new_latlon = data.latlon();
-                    let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
-                    let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
-                    latlon.lat = latlon.lat.clamp(min, max);
+                let new_latlon = data.latlon();
+                let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
+                let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
+                latlon.lat = latlon.lat.clamp(min, max);
 
-                    let min = new_latlon.lon - 5f32.to_radians();
-                    let max = new_latlon.lon + 5f32.to_radians();
-                    latlon.lon = latlon.lon.clamp(min, max) % TAU;
+                let min = new_latlon.lon - 5f32.to_radians();
+                let max = new_latlon.lon + 5f32.to_radians();
+                latlon.lon = latlon.lon.clamp(min, max) % TAU;
 
-                    let rotation = data.rotation();
-                    let translation =
-                        data.trasnaltion(self.half_size_x, self.half_size_y, self.half_size_z);
-                    transform.set_rotation_translation(rotation.into(), translation.into());
-                }
+                let rotation = data.rotation();
+                let translation =
+                    data.trasnaltion(self.half_size_x, self.half_size_y, self.half_size_z);
+                transform.set_rotation_translation(rotation.into(), translation.into());
             });
         }
 
@@ -591,14 +596,16 @@ impl InGameRunScene {
                         .query_one_mut::<Query>(entity)
                         .expect("invalid entity or invalid entity component!");
                     let rotation = bullet.rotation();
-                    let translation = bullet.translation(self.half_size_x, self.half_size_y, self.half_size_z);
-                    transform.set_rotation_translation(
-                        rotation.into(),
-                        translation.into(),
-                    );
-                    println!("{}, {:?}", translation, transform.get_translation());
+                    let translation =
+                        bullet.translation(self.half_size_x, self.half_size_y, self.half_size_z);
+                    transform.set_rotation_translation(rotation.into(), translation.into());
                 }
                 None => {
+                    // 이미 제거된 총알의 경우 생략
+                    if self.removed_bullets.remove(&bullet.id) {
+                        continue;
+                    }
+
                     // 새로운 총알 엔터티를 생성합니다.
                     let (entity, commands) = spawn_bullet(
                         world,
@@ -625,61 +632,65 @@ impl InGameRunScene {
         }
     }
 
-    /// 입력 이벤트가 발생했을 때 플레이어 상태를 갱신합니다.
-    fn on_player_input(&mut self) {
-        let (entity, archetype) = self.player_entity();
+    /// 서버로부터 전달받은 데이터로 플레이어 상태를 갱신합니다.
+    fn pull_server_status(&mut self, packet: InGameStatusPacket) {
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
         };
 
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-        let i = character_kind as usize;
-        let character_attributes = CHARACTER_ATTRIBUTES[i];
-
-        // 플레이어 상태를 갱신합니다.
-        type Query<'a> = (
-            &'a mut ActionState,
-            &'a mut ActionStateTimer,
-            &'a mut MovementState,
-            &'a mut MovementStateTimer,
-            &'a mut BulletData,
-            &'a mut SkillCostData,
-        );
-        player_execute!(archetype, world, entity, Query, |(
-            action_state,
-            action_state_timer,
-            movement_state,
-            movement_state_timer,
-            bullet_data,
-            skill_cost_data,
-        )| {
-            update_action_state(
-                self.held_input,
-                action_state,
-                action_state_timer,
-                character_attributes,
-                bullet_data,
-                skill_cost_data,
+        {
+            type Query<'a> = (
+                &'a mut Permission,
+                &'a mut NetworkState,
+                &'a mut CharacterFlags,
             );
+            let mut view = world.view::<Query>();
 
-            update_movement_state(
-                self.held_input,
-                *action_state,
-                movement_state,
-                movement_state_timer,
-            );
+            // 플레이어 상태를 갱신합니다.
+            for data in packet.players.iter() {
+                let (entity, archetype) = self
+                    .players
+                    .get(&data.uid)
+                    .cloned()
+                    .expect("player not found!");
+                let (permission, network_state, character_flags) = view
+                    .get_mut(entity)
+                    .expect("invalid entity or invalid entity component!");
+                *permission = data.permission();
+                *network_state = data.network_state();
+                character_flags.set_connected(data.is_connected());
+                character_flags.set_invincible(data.is_invincible());
 
-            update_view_state(
-                &mut self.view_state,
-                &mut self.view_state_timer,
-                character_attributes,
-                self.held_input,
-            );
-        });
+                type Q<'a> = (
+                    &'a mut HealthData,
+                    &'a mut BulletData,
+                    &'a mut SkillCostData,
+                );
+                player_execute!(archetype, world, entity, Q, |(
+                    health_data,
+                    bullet_data,
+                    skill_cost_data,
+                )| {
+                    health_data.shield = data.shield_health;
+                    health_data.remaining = data.remaining_health;
+                    bullet_data.remaining = data.remaining_bullet;
+                    skill_cost_data.remaining = data.current_skill_cost;
+                });
+            }
+        }
+
+        // 제거된 총알 오브젝트를 게임 월드에서 게저합니다.
+        for id in packet.removed_bullets {
+            match self.bullets.remove(&id) {
+                Some(entity) => {
+                    cleanup(world, entity);
+                }
+                None => {
+                    self.removed_bullets.insert(id);
+                }
+            }
+        }
     }
 
     /// 인터페이스 배경 레이아웃 텍스처를 Ui 렌더러에 등록합니다.
@@ -757,6 +768,9 @@ impl InGameRunScene {
         // 무기 인터페이스 영역의 크기를 재조정합니다.
         let texture_size = self.weapon_icon_texture.size;
         self.weapon_info_rect = Self::resize_weapon_info_rect(&texture_size, &self.clip_rect);
+        // 스킬 인터페이스 영역의 크기를 재조정합니다.
+        self.skill_cost_rect =
+            Self::resize_skill_cost_rect(&self.clip_rect, &self.weapon_info_rect);
     }
 
     /// 애니메이션 값을 가져옵니다.
@@ -797,7 +811,7 @@ impl InGameRunScene {
         let width = clip_rect.width() * 0.3;
         let height = clip_rect.width() * 0.2 / ratio;
         let margin = clip_rect.size().min_elem() * 0.03;
-        let right_bottom = clip_rect.right_bottom() - egui::Vec2::splat(margin);
+        let right_bottom = clip_rect.right_bottom() - egui::vec2(margin * 2.0, margin);
         let left_top = right_bottom - egui::vec2(width, height);
         egui::Rect::from_min_max(left_top, right_bottom)
     }
@@ -830,6 +844,34 @@ impl InGameRunScene {
     fn weapon_info_content_rect(&self) -> egui::Rect {
         self.weapon_info_rect
             .scale_from_center2(egui::vec2(0.82, 0.92))
+    }
+
+    /// 스킬 코스트 인터페이스 영역의 크기를 재조정합니다.
+    fn resize_skill_cost_rect(clip_rect: &egui::Rect, weapon_info_rect: &egui::Rect) -> egui::Rect {
+        let width = weapon_info_rect.width() * 0.9;
+        let height = weapon_info_rect.height();
+        let margin_x = clip_rect.size().min_elem() * 0.035;
+        let margin_y = clip_rect.size().min_elem() * 0.01;
+        let right_bottom = weapon_info_rect.right_top() + egui::vec2(margin_x, -margin_y);
+        let left_top = right_bottom - egui::vec2(width, height);
+        egui::Rect::from_two_pos(left_top, right_bottom)
+    }
+
+    /// 스킬 아이콘 영역을 반환합니다.
+    fn skill_icon_rect(&self) -> egui::Rect {
+        let height = self.skill_cost_rect.height();
+        let left_top = self.skill_cost_rect.left_top();
+        let right_bottom = left_top + egui::vec2(height * 1.5, height);
+        egui::Rect::from_min_max(left_top, right_bottom)
+    }
+
+    /// 스킬 게이지 영역을 반환합니다.
+    fn skill_gauge_rect(&self) -> egui::Rect {
+        let height = self.skill_cost_rect.height();
+        let width = self.skill_cost_rect.width() - height * 1.5;
+        let right_bottom = self.skill_cost_rect.right_bottom();
+        let left_top = right_bottom - egui::vec2(width, height);
+        egui::Rect::from_min_max(left_top, right_bottom)
     }
 
     /// 조준선 인터페이스를 그립니다.
@@ -1029,6 +1071,8 @@ impl InGameRunScene {
         let mut health_percent = 1.0;
         player_execute!(archetype, world, entity, &HealthData, |health_data| {
             (health_percent, shield_percent) = health_data.percent().unwrap_or((1.0, 0.0));
+            shield_percent = shield_percent.clamp(0.0, 1.0);
+            health_percent = health_percent.clamp(0.0, 1.0);
         });
 
         let t = self.ui_animation_factor();
@@ -1041,56 +1085,61 @@ impl InGameRunScene {
         let interval = content_rect.width() * 0.01;
         let gauge_size = (content_rect.width() - interval * NUM_INTERVAL as f32) / NUM_GAUGE as f32;
         let center_y = (content_rect.top() + content_rect.center().y) * 0.5;
-        let health_range = content_rect.width() * health_percent;
-        let shield_range = content_rect.width() * (health_percent + shield_percent);
+        let health_range = gauge_size * NUM_GAUGE as f32 * health_percent;
+        let shield_range = gauge_size * NUM_GAUGE as f32 * (health_percent + shield_percent);
         let mut cnt = NUM_GAUGE;
 
         let begin = base_x + content_rect.left();
         let end = base_x + content_rect.right();
-        let mut curr = end;
-        while begin + shield_range < curr {
-            let center = egui::pos2(curr - gauge_size * 0.5, center_y);
+        let mut x = end;
+        let mut curr = gauge_size * NUM_GAUGE as f32;
+        while shield_range < curr {
+            let center = egui::pos2(x - gauge_size * 0.5, center_y);
             let size = egui::Vec2::splat(gauge_size);
             let rect = egui::Rect::from_center_size(center, size);
             ui.painter()
                 .rect_filled(rect, gauge_size * 0.1, egui::Color32::DARK_GRAY);
-            curr = curr - gauge_size - interval;
+
+            x = x - (gauge_size + interval);
+            curr -= gauge_size;
             cnt -= 1;
         }
 
-        let width = (begin + shield_range) - (curr + interval);
+        let width = shield_range - curr;
         if shield_percent > 0.0 && width > 0.0 {
-            let center = egui::pos2(curr + interval + width * 0.5, center_y);
+            let center = egui::pos2(x + interval + width * 0.5, center_y);
             let size = egui::vec2(width, gauge_size);
             let rect = egui::Rect::from_center_size(center, size);
             ui.painter()
                 .rect_filled(rect, gauge_size * 0.1, egui::Color32::from_rgb(255, 192, 0));
         }
 
-        while begin + health_range < curr {
-            let center = egui::pos2(curr - gauge_size * 0.5, center_y);
+        while health_range < curr {
+            let center = egui::pos2(x - gauge_size * 0.5, center_y);
             let size = egui::Vec2::splat(gauge_size);
             let rect = egui::Rect::from_center_size(center, size);
             ui.painter()
                 .rect_filled(rect, gauge_size * 0.1, egui::Color32::from_rgb(255, 192, 0));
-            curr = curr - gauge_size - interval;
+
+            x = x - (gauge_size + interval);
+            curr -= gauge_size;
             cnt -= 1;
         }
 
-        let width = (begin + health_range) - (curr + interval);
+        let width = health_range - curr;
         if health_percent > 0.0 && width > 0.0 {
-            let center = egui::pos2(curr + interval + width * 0.5, center_y);
+            let center = egui::pos2(x + interval + width * 0.5, center_y);
             let size = egui::vec2(width, gauge_size);
             let rect = egui::Rect::from_center_size(center, size);
-            let fill_color = match cnt <= 3 {
+            let fill_color = match cnt < 3 {
                 true => egui::Color32::LIGHT_RED,
                 false => egui::Color32::WHITE,
             };
             ui.painter().rect_filled(rect, gauge_size * 0.1, fill_color);
         }
 
-        while begin < curr {
-            let center = egui::pos2(curr - gauge_size * 0.5, center_y);
+        while begin < x {
+            let center = egui::pos2(x - gauge_size * 0.5, center_y);
             let size = egui::Vec2::splat(gauge_size);
             let rect = egui::Rect::from_center_size(center, size);
             let fill_color = match cnt <= 3 {
@@ -1098,7 +1147,8 @@ impl InGameRunScene {
                 false => egui::Color32::WHITE,
             };
             ui.painter().rect_filled(rect, gauge_size * 0.1, fill_color);
-            curr = curr - gauge_size - interval;
+
+            x = x - (gauge_size + interval);
             cnt -= 1;
         }
     }
@@ -1359,6 +1409,258 @@ impl InGameRunScene {
             .selectable(false);
         ui.put(rect, label);
     }
+
+    /// 스킬 코스트 정보 인터페이스를 그립니다.
+    fn draw_skill_cost_info(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("SkillCost"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_skill_icon(ui);
+                self.draw_skill_gauge(ui);
+            });
+    }
+
+    /// 스킬 아이콘 인터페이스를 그립니다.
+    fn draw_skill_icon(&self, ui: &mut egui::Ui) {
+        const TINT: egui::Color32 = egui::Color32::from_black_alpha(160);
+        let offset_x =
+            0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
+
+        let t = self.ui_animation_factor();
+        let hide_x = self.clip_rect.left() + self.weapon_info_rect.width();
+        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let outer_rect = self.skill_icon_rect();
+        let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
+        inner_rect.max.x -= offset_x;
+        inner_rect.min.x += offset_x;
+
+        Self::draw_layout(
+            base_x,
+            TINT,
+            &outer_rect,
+            &inner_rect,
+            self.layout_texture,
+            ui,
+        );
+    }
+
+    /// 스킬 게이지 인터페이스를 그립니다.
+    fn draw_skill_gauge(&self, ui: &mut egui::Ui) {
+        const TINT: egui::Color32 = egui::Color32::from_black_alpha(160);
+        let offset =
+            0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
+
+        let t = self.ui_animation_factor();
+        let hide_x = self.clip_rect.left() + self.weapon_info_rect.width();
+        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let outer_rect = self.skill_gauge_rect();
+        let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
+        inner_rect.max.x -= offset;
+        inner_rect.min.x += offset;
+        Self::draw_layout(
+            base_x,
+            TINT,
+            &outer_rect,
+            &inner_rect,
+            self.layout_texture,
+            ui,
+        );
+
+        let mut persent = 0.0;
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+        player_execute!(
+            archetype,
+            world,
+            entity,
+            &SkillCostData,
+            |skill_cost_data| {
+                persent = skill_cost_data.percent().unwrap_or(1f32);
+                persent = persent.clamp(0.0, 1.0);
+            }
+        );
+
+        const NUM_INTERVAL: usize = 7;
+        const NUM_GAGUE: usize = NUM_INTERVAL + 1;
+        let interval = inner_rect.width() * 0.01;
+        let gauge_size = (inner_rect.width() - interval * NUM_INTERVAL as f32) / NUM_GAGUE as f32;
+        let center_y = inner_rect.center().y;
+        let range = gauge_size * NUM_GAGUE as f32 * persent;
+
+        let begin = base_x + inner_rect.left();
+        let end = base_x + inner_rect.right();
+        let mut x = end;
+        let mut curr = gauge_size * NUM_GAGUE as f32;
+        while range < curr {
+            let center = egui::pos2(x - gauge_size * 0.5, center_y);
+            let size = egui::Vec2::splat(gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            ui.painter()
+                .rect_filled(rect, gauge_size * 0.1, egui::Color32::DARK_GRAY);
+            x = x - (gauge_size + interval);
+            curr -= gauge_size;
+        }
+
+        let width = range - curr;
+        if persent > 0.0 && width > 0.0 {
+            let center = egui::pos2(x + interval + width * 0.5, center_y);
+            let size = egui::vec2(width, gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            ui.painter()
+                .rect_filled(rect, gauge_size * 0.1, egui::Color32::from_rgb(255, 192, 0));
+        }
+
+        while begin < x {
+            let center = egui::pos2(x - gauge_size * 0.5, center_y);
+            let size = egui::Vec2::splat(gauge_size);
+            let rect = egui::Rect::from_center_size(center, size);
+            ui.painter()
+                .rect_filled(rect, gauge_size * 0.1, egui::Color32::from_rgb(255, 192, 0));
+            x = x - (gauge_size + interval);
+        }
+    }
+
+    /// 정방향 레이아웃 이미지를 그립니다.
+    fn draw_layout(
+        base_x: f32,
+        tint: egui::Color32,
+        outer_rect: &egui::Rect,
+        inner_rect: &egui::Rect,
+        layout_texture: egui::load::SizedTexture,
+        ui: &mut egui::Ui,
+    ) {
+        const SIZE: f32 = 256.0;
+        const TOP: f32 = 11.0;
+        const LEFT: f32 = 17.0;
+        const BOTTOM: f32 = 242.0;
+        const RIGHT: f32 = 235.0;
+        const INNER_LEFT_TOP: egui::Pos2 = egui::pos2(66.0, 22.0);
+        const INNER_RIGHT_TOP: egui::Pos2 = egui::pos2(222.0, 22.0);
+        const INNER_LEFT_BOTTOM: egui::Pos2 = egui::pos2(30.0, 228.0);
+        const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(LEFT / SIZE, TOP / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + outer_rect.left(), outer_rect.top()),
+            egui::pos2(base_x + inner_rect.left(), inner_rect.top()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, TOP / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + inner_rect.left(), outer_rect.top()),
+            egui::pos2(base_x + inner_rect.right(), inner_rect.top()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, TOP / SIZE),
+            egui::pos2(RIGHT / SIZE, INNER_RIGHT_TOP.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + inner_rect.right(), outer_rect.top()),
+            egui::pos2(base_x + outer_rect.right(), inner_rect.top()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(LEFT / SIZE, INNER_LEFT_TOP.y / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + outer_rect.left(), inner_rect.top()),
+            egui::pos2(base_x + inner_rect.left(), inner_rect.bottom()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_TOP.y / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + inner_rect.left(), inner_rect.top()),
+            egui::pos2(base_x + inner_rect.right(), inner_rect.bottom()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_TOP.y / SIZE),
+            egui::pos2(RIGHT / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + inner_rect.right(), inner_rect.top()),
+            egui::pos2(base_x + outer_rect.right(), inner_rect.bottom()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(LEFT / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + outer_rect.left(), inner_rect.bottom()),
+            egui::pos2(base_x + inner_rect.left(), outer_rect.bottom()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_LEFT_TOP.x / SIZE, INNER_LEFT_BOTTOM.y / SIZE),
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + inner_rect.left(), inner_rect.bottom()),
+            egui::pos2(base_x + inner_rect.right(), outer_rect.bottom()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(INNER_RIGHT_BOTTOM.x / SIZE, INNER_RIGHT_BOTTOM.y / SIZE),
+            egui::pos2(RIGHT / SIZE, BOTTOM / SIZE),
+        );
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(base_x + inner_rect.right(), inner_rect.bottom()),
+            egui::pos2(base_x + outer_rect.right(), outer_rect.bottom()),
+        );
+        egui::Image::new(layout_texture)
+            .tint(tint)
+            .uv(uv)
+            .paint_at(ui, rect);
+    }
 }
 
 impl GameScene for InGameRunScene {
@@ -1426,7 +1728,23 @@ impl GameScene for InGameRunScene {
         if let Some(input) = flags {
             self.held_input |= input.into_bits();
             self.input_events_buffer.push(InputEvent::KeyPress(input));
-            self.on_player_input();
+
+            let (entity, _archetype) = self.player_entity();
+            let world = match self.world.as_mut() {
+                Some(world) => world,
+                None => return true,
+            };
+            let &character_kind = world
+                .query_one_mut::<&CharacterKind>(entity)
+                .expect("invalid entity or invalid entity component!");
+            let i = character_kind as usize;
+            let character_attributes = CHARACTER_ATTRIBUTES[i];
+            update_view_state(
+                &mut self.view_state,
+                &mut self.view_state_timer,
+                character_attributes,
+                self.held_input,
+            );
         }
 
         true
@@ -1457,7 +1775,23 @@ impl GameScene for InGameRunScene {
         if let Some(input) = flags {
             self.held_input &= !input.into_bits();
             self.input_events_buffer.push(InputEvent::KeyRelease(input));
-            self.on_player_input();
+
+            let (entity, _archetype) = self.player_entity();
+            let world = match self.world.as_mut() {
+                Some(world) => world,
+                None => return true,
+            };
+            let &character_kind = world
+                .query_one_mut::<&CharacterKind>(entity)
+                .expect("invalid entity or invalid entity component!");
+            let i = character_kind as usize;
+            let character_attributes = CHARACTER_ATTRIBUTES[i];
+            update_view_state(
+                &mut self.view_state,
+                &mut self.view_state_timer,
+                character_attributes,
+                self.held_input,
+            );
         }
 
         true
@@ -1535,7 +1869,23 @@ impl GameScene for InGameRunScene {
             if let Some(input) = flags {
                 self.held_input |= input.into_bits();
                 self.input_events_buffer.push(InputEvent::KeyPress(input));
-                self.on_player_input();
+
+                let (entity, _archetype) = self.player_entity();
+                let world = match self.world.as_mut() {
+                    Some(world) => world,
+                    None => return true,
+                };
+                let &character_kind = world
+                    .query_one_mut::<&CharacterKind>(entity)
+                    .expect("invalid entity or invalid entity component!");
+                let i = character_kind as usize;
+                let character_attributes = CHARACTER_ATTRIBUTES[i];
+                update_view_state(
+                    &mut self.view_state,
+                    &mut self.view_state_timer,
+                    character_attributes,
+                    self.held_input,
+                );
             }
         }
 
@@ -1565,7 +1915,23 @@ impl GameScene for InGameRunScene {
             if let Some(input) = flags {
                 self.held_input &= !input.into_bits();
                 self.input_events_buffer.push(InputEvent::KeyRelease(input));
-                self.on_player_input();
+
+                let (entity, _archetype) = self.player_entity();
+                let world = match self.world.as_mut() {
+                    Some(world) => world,
+                    None => return true,
+                };
+                let &character_kind = world
+                    .query_one_mut::<&CharacterKind>(entity)
+                    .expect("invalid entity or invalid entity component!");
+                let i = character_kind as usize;
+                let character_attributes = CHARACTER_ATTRIBUTES[i];
+                update_view_state(
+                    &mut self.view_state,
+                    &mut self.view_state_timer,
+                    character_attributes,
+                    self.held_input,
+                );
             }
         }
 
@@ -1615,6 +1981,10 @@ impl GameScene for InGameRunScene {
 
                 queue.submit(Some(encoder.finish()));
                 drop(staging_buffers);
+            }
+            PacketType::InGameStatus => {
+                let packet = InGameStatusPacket::from_raw(packet);
+                self.pull_server_status(packet);
             }
             _ => {
                 log::warn!(
@@ -1728,6 +2098,7 @@ impl GameScene for InGameRunScene {
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
             let character_view = &world.view::<&CharacterKind>();
+            let character_flag_view = &world.view::<&CharacterFlags>();
             let skinning_view = &world.view::<&SkinningAnimation>();
             let collection_view = &world.view::<&BoneCollection>();
             let motion_pool = &self.motion_pool;
@@ -1742,13 +2113,11 @@ impl GameScene for InGameRunScene {
             rayon::in_place_scope(|scope| {
                 // 각 캐릭터의 애니메이션을 재생합니다.
                 for (entity, archetype) in self.players.values().cloned() {
-                    let mut connected = true;
-                    player_execute!(archetype, world, entity, &CharacterFlags, |flags| {
-                        connected = flags.is_connected();
-                    });
-
                     // 플레이어가 접속 중이 아닌 경우 건너뜁니다.
-                    if !connected {
+                    let flag = character_flag_view
+                        .get(entity)
+                        .expect("invalid entity or invalid entity component!");
+                    if !flag.is_connected() {
                         continue;
                     }
 
@@ -1815,6 +2184,7 @@ impl GameScene for InGameRunScene {
 
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
+            let character_flag_view = &world.view::<&CharacterFlags>();
             let mesh_filter_view = &world.view::<MeshRenderer>();
             let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
 
@@ -1841,8 +2211,8 @@ impl GameScene for InGameRunScene {
                 let bullet_entities: Vec<_> = self.bullets.values().cloned().collect();
                 scope.spawn(move |_| {
                     let mut staging_buffers = Vec::default();
-                    let mut encoder = device
-                        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+                    let mut encoder =
+                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
                     for entity in bullet_entities {
                         // 총알 엔터티의 계층 구조를 갱신합니다.
@@ -1868,13 +2238,11 @@ impl GameScene for InGameRunScene {
 
                 // 캐릭터 엔터티의 쉐이더 리소스를 갱신합니다.
                 for (entity, archetype) in self.players.values().cloned() {
-                    let mut connected = true;
-                    player_execute!(archetype, world, entity, &CharacterFlags, |flags| {
-                        connected = flags.is_connected();
-                    });
-
                     // 플레이어가 접속 중이 아닌 경우 건너뜁니다.
-                    if !connected {
+                    let flag = character_flag_view
+                        .get(entity)
+                        .expect("invalid entity or invalid entity component!");
+                    if !flag.is_connected() {
                         continue;
                     }
 
@@ -2012,13 +2380,11 @@ impl GameScene for InGameRunScene {
                         let frustum = Frustum::from_mat4(light_proj_view);
                         let mut transform_resources = ShadowMap::default();
                         for (entity, archetype) in player_entities {
-                            let mut connected = true;
-                            player_execute!(archetype, world, entity, &CharacterFlags, |flags| {
-                                connected = flags.is_connected();
-                            });
-
                             // 플레이어가 접속 중이 아닌 경우 건너뜁니다.
-                            if !connected {
+                            let flag = character_flag_view
+                                .get(entity)
+                                .expect("invalid entity or invalid entity component!");
+                            if !flag.is_connected() {
                                 continue;
                             }
 
@@ -2058,7 +2424,7 @@ impl GameScene for InGameRunScene {
             command_buffers.push(encoder);
             self.frame_staging_buffers.append(&mut buffers);
         }
-        
+
         let queue = app.render_queue();
         queue.submit(command_buffers);
 
@@ -2451,5 +2817,6 @@ impl GameScene for InGameRunScene {
         self.draw_ui_reticle(ctx);
         self.draw_health_point(ctx);
         self.draw_weapon_info(ctx);
+        self.draw_skill_cost_info(ctx);
     }
 }

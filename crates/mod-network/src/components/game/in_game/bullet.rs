@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use crate::components::{BigEndian, BulletKind, ObjectId, TryFromBigEndian};
 
 /// 인게임 총알 오브젝트 갱신 데이터입니다.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InGameBulletPullData {
     /// 오브젝트 식별자
     pub id: ObjectId,

@@ -47,6 +47,9 @@ pub fn spawn_player<Tag: Copy + Component>(
         (data.team(), data.team_index()),
         data.permission(),
         data.network_state(),
+        CharacterFlags::new()
+            .with_connected(data.is_connected())
+            .with_grounded(true),
     ));
     builder.add((
         tag,
@@ -60,12 +63,6 @@ pub fn spawn_player<Tag: Copy + Component>(
         (tag, HealthData::splat(data.maximum_health)),
         (tag, BulletData::splat(data.maximum_bullet)),
         (tag, SkillCostData::new(0, data.maximum_skill_cost)),
-        (
-            tag,
-            CharacterFlags::new()
-                .with_connected(data.is_connected())
-                .with_grounded(true),
-        ),
         (tag, ActionState::Idle),
         (tag, MovementState::Idle),
         (tag, ActionStateTimer::new(0)),

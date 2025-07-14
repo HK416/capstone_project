@@ -3,5 +3,6 @@
 
 mod event;
 mod pull;
+mod status;
 
-pub use self::{event::*, pull::*};
+pub use self::{event::*, pull::*, status::*};

@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// 서버에서 클라이언트로 보내는 인게임 장면 갱신 패킷입니다.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InGamePullPacket {
     /// 현재 클라이언트의 Ping
     pub ping: u16,
@@ -62,7 +62,6 @@ impl Packet for InGamePullPacket {
             + InGamePlayerPullData::byte_size() * num_players
             + u16::byte_size()
             + InGameBulletPullData::byte_size() * num_bullets;
-        let num_players = self.players.len();
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.ping.to_big_endian_bytes());
         data.extend_from_slice(&self.play_elapsed_time_ms.to_big_endian_bytes());

@@ -238,7 +238,7 @@ pub struct Player {
     /// 상대 팀을 처치한 횟수
     pub kill_count: u16,
     /// 상대 팀에게 처치 당한 횟수
-    pub dead_count: u16,
+    pub retreat_count: u16,
     /// 체력 데이터
     pub health_data: HealthData,
     /// 총알 데이터
@@ -288,7 +288,7 @@ impl Player {
             bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
             offset_time: 0,
             kill_count: 0,
-            dead_count: 0,
+            retreat_count: 0,
             health_data: HealthData::default(),
             bullet_data: BulletData::default(),
             skill_cost_data: SkillCostData::default(),

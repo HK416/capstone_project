@@ -9,13 +9,16 @@ use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
         ActionEvent, ActionEventDetail, ActionState, BulletKind, DamageLogData,
-        InGameBulletPullData, InGamePlayerPullData, InputEvent, InputSnapshot, LatLon,
-        MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, MovementState,
-        NetworkState, ObjectId, Permission, StageAttributes, StageKind, Team, UserId,
-        update_action_state, update_action_state_timer, update_movement_state,
-        update_movement_state_timer, update_player_rotation, update_player_translation,
+        InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData, InputEvent,
+        InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
+        MIN_LATITUDE, MovementState, NetworkState, ObjectId, Permission, StageAttributes,
+        StageKind, Team, UserId, update_action_state, update_action_state_timer,
+        update_movement_state, update_movement_state_timer, update_player_rotation,
+        update_player_translation,
     },
-    protocol::{InGamePullPacket, JoinFailedReason, JoinRoomFailedPacket, Packet},
+    protocol::{
+        InGamePullPacket, InGameStatusPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
+    },
 };
 use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
@@ -49,8 +52,10 @@ pub struct GameWorldInGameRunState {
     stage_kind: StageKind,
     /// 게임 플레이 경과 시간
     play_elapsed_time_ms: u32,
-    /// 마지막 패킷을 전송 경과 시간
-    packet_send_elapsed_time_ms: u32,
+    /// 마지막 Pull 패킷 전송 경과 시간
+    pull_send_elapsed_time_ms: u32,
+    /// 마지막 Status 패킷 전송 경과 시간
+    status_send_elapsed_time_ms: u32,
 
     /// x축 방향의 게임 월드 절반 크기
     half_size_x: NonZeroU32,
@@ -65,6 +70,8 @@ pub struct GameWorldInGameRunState {
     num_red_players: usize,
     /// 떠난 플레이어 식별자입니다.
     leaved_players: HashSet<UserId>,
+    /// 제거된 총알 오브젝트 목록
+    removed_bullets: HashSet<ObjectId>,
 
     /// 데미지 로그 데이터 목록
     damage_log_data: Vec<DamageLogData>,
@@ -88,13 +95,18 @@ impl GameWorldInGameRunState {
         Self {
             stage_kind,
             play_elapsed_time_ms: 0,
-            packet_send_elapsed_time_ms: 0,
+            pull_send_elapsed_time_ms: 0,
+            status_send_elapsed_time_ms: 0,
             half_size_x,
             half_size_y,
             half_size_z,
             num_blue_players,
             num_red_players,
             leaved_players,
+            removed_bullets: HashSet::with_capacity_and_hasher(
+                MAX_IN_GAME_BULLETS,
+                RandomState::new(),
+            ),
             damage_log_data: Vec::with_capacity(128),
             counter: 0,
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
@@ -280,8 +292,8 @@ impl GameWorldInGameRunState {
         }
     }
 
-    /// 모든 세션에 패킷 데이터를 전송합니다.
-    fn broadcast(&mut self, world: &GameWorld) {
+    /// 모든 세션에 Pull 패킷 데이터를 전송합니다.
+    fn broadcast_pull_packet(&mut self, world: &GameWorld) {
         // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
         for (&uid, data) in world.players.iter() {
@@ -325,6 +337,51 @@ impl GameWorldInGameRunState {
         for session in world.sessions.keys() {
             packet.ping = session.ping();
             session.tcp_write(packet.as_raw());
+        }
+    }
+
+    /// 모든 세션에 Status 패킷 데이터를 전송합니다.
+    fn broadcast_status_packet(&mut self, world: &GameWorld) {
+        // 플레이어 데이터를 수집합니다.
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for (&uid, data) in world.players.iter() {
+            let connected = !self.leaved_players.contains(&uid);
+            players.push(InGamePlayerStatusPullData::new(
+                uid,
+                data.kill_count,
+                data.retreat_count,
+                data.health_data.shield,
+                data.health_data.remaining,
+                data.bullet_data.remaining,
+                data.skill_cost_data.remaining,
+                data.permission(),
+                connected,
+                data.is_invincible(),
+                data.network_state(),
+            ));
+        }
+
+        // 플레이어가 비어있는 경우 실행을 생략합니다.
+        if players.is_empty() {
+            return;
+        }
+
+        // 상태 변경 패킷을 생성합니다.
+        let mut packet = InGameStatusPacket::new(players, vec![]);
+
+        // 패킷을 전송합니다.
+        let mut removed_bullets: Vec<_> = self.removed_bullets.drain().collect();
+        loop {
+            let count = removed_bullets.len().min(MAX_IN_GAME_BULLETS);
+            packet.removed_bullets = removed_bullets.drain(..count).collect();
+
+            for session in world.sessions.keys() {
+                session.tcp_write(packet.as_raw());
+            }
+
+            if removed_bullets.is_empty() {
+                break;
+            }
         }
     }
 }
@@ -526,6 +583,7 @@ impl GameWorldInGameRunState {
                 // 총알을 제거합니다.
                 for id in removed {
                     self.bullets.remove(&id);
+                    self.removed_bullets.insert(id);
                 }
             }
 
@@ -568,7 +626,7 @@ impl GameWorldInGameRunState {
                     data.velocity.0 = glam::Vec3A::ZERO;
                     data.direction.0 = direction;
                     data.translation = translation;
-                    data.dead_count += 1;
+                    data.retreat_count += 1;
                     data.set_grounded(true);
                     data.set_invincible(true);
                     data.latlon = LatLon::new(10f32.to_radians(), longitude);
@@ -794,6 +852,7 @@ impl GameWorldInGameRunState {
             // 총알을 제거합니다.
             for id in removed {
                 self.bullets.remove(&id);
+                self.removed_bullets.insert(id);
             }
         }
     }
@@ -1022,7 +1081,7 @@ impl GameWorldInGameRunState {
                 player.movement_state_timer.0 = 0;
 
                 // 플레이 데이터 갱신
-                player.dead_count -= 1;
+                player.retreat_count -= 1;
                 shooter.kill_count += 1;
             } else {
                 player.health_data.remaining -= final_damage;
@@ -1038,7 +1097,7 @@ impl GameWorldInGameRunState {
 
 impl GameWorldState for GameWorldInGameRunState {
     fn on_enter(&mut self, world: &mut GameWorld) {
-        self.broadcast(world);
+        self.broadcast_pull_packet(world);
     }
 
     fn on_exit(&mut self, world: &mut GameWorld) {
@@ -1103,15 +1162,24 @@ impl GameWorldState for GameWorldInGameRunState {
             .saturating_add(elapsed_time_ms)
             .min(MAX_GAME_TIME);
         // 패킷 전송 경과 시간을 갱신합니다.
-        self.packet_send_elapsed_time_ms = self
-            .packet_send_elapsed_time_ms
+        self.pull_send_elapsed_time_ms = self
+            .pull_send_elapsed_time_ms
+            .saturating_add(elapsed_time_ms);
+        self.status_send_elapsed_time_ms = self
+            .status_send_elapsed_time_ms
             .saturating_add(elapsed_time_ms);
 
         // 일전 시각마다 패킷을 전송합니다.
-        const TICK: u32 = 5;
-        if self.packet_send_elapsed_time_ms >= TICK {
-            self.packet_send_elapsed_time_ms = 0;
-            self.broadcast(world);
+        const PULL_TICK: u32 = 5;
+        if self.pull_send_elapsed_time_ms >= PULL_TICK {
+            self.pull_send_elapsed_time_ms = 0;
+            self.broadcast_pull_packet(world);
+        }
+
+        const STATUS_TICK: u32 = 16;
+        if self.status_send_elapsed_time_ms >= STATUS_TICK {
+            self.status_send_elapsed_time_ms = 0;
+            self.broadcast_status_packet(world);
         }
 
         // self.try_enter_next_state(world);
