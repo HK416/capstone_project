@@ -311,7 +311,7 @@ impl StageAttributes {
 
         // 레드 팀 안전 지역 충돌체 데이터 파일을 엽니다.
         let mut path = workspace.to_path_buf();
-        path.push(&attributes.blue_team_collider);
+        path.push(&attributes.red_team_collider);
 
         let mut file = OpenOptions::new()
             .read(true)

@@ -406,25 +406,26 @@ impl GameWorldInGameRunState {
         let mut event_details = Vec::with_capacity(72);
 
         // 1. 플레이어 행동 이벤트를 수집합니다.
-        for (&uid, data) in world.players.iter_mut() {
+        for (&uid, player) in world.players.iter_mut() {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
             if self.leaved_players.contains(&uid) {
                 continue;
             }
 
-            let character_attributes = data.character_attributes();
+            // 캐릭터 속성 데이터를 가져옵니다.
+            let character_attributes = player.character_attributes();
 
             // 플레이어 이동 방향을 갱신합니다.
-            data.direction.update(data.held_input, data.latlon);
+            player.direction.update(player.held_input, player.latlon);
 
             // 행동 상태 타이머를 갱신합니다.
-            let mut bullet_data = data.bullet_data;
-            let mut skill_cost_data = data.skill_cost_data;
-            let mut action_state = data.action_state;
-            let mut action_state_timer = data.action_state_timer;
+            let mut bullet_data = player.bullet_data;
+            let mut skill_cost_data = player.skill_cost_data;
+            let mut action_state = player.action_state;
+            let mut action_state_timer = player.action_state_timer;
             let mut events = Vec::default();
             update_action_state_timer(
-                data.held_input,
+                player.held_input,
                 &mut bullet_data,
                 &mut skill_cost_data,
                 &mut action_state,
@@ -450,146 +451,22 @@ impl GameWorldInGameRunState {
         for event in event_details {
             let timing = event.timing();
             let elapsed_time_ms = timing.saturating_sub(curr_elapsed_time_ms);
-            let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
             curr_elapsed_time_ms = curr_elapsed_time_ms.max(timing);
 
             // 3.1. 모든 플레이어와 오브젝트 데이터를 현재 경과 시간 만큼 갱신합니다.
             if elapsed_time_ms > 0 {
-                // 플레이어를 갱신합니다.
-                for data in world.players.values_mut() {
-                    // 입력 상태 타이머를 갱신합니다.
-                    data.input_state_timer
-                        .update(data.held_input, elapsed_time_ms);
-
-                    // 행동 상태 타이머를 갱신합니다.
-                    let character_attributes = data.character_attributes();
-                    update_action_state_timer(
-                        data.held_input,
-                        &mut data.bullet_data,
-                        &mut data.skill_cost_data,
-                        &mut data.action_state,
-                        &mut data.action_state_timer,
-                        character_attributes,
-                        elapsed_time_ms,
-                        &mut vec![],
-                    );
-
-                    // 움직임 상태 타이머를 갱신합니다.
-                    update_movement_state_timer(
-                        data.action_state,
-                        &mut data.movement_state,
-                        &mut data.movement_state_timer,
-                        character_attributes,
-                        elapsed_time_ms,
-                    );
-
-                    // 플레이어 캐릭터 방향을 갱신합니다.
-                    let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
-                    look = update_player_rotation(
-                        look,
-                        data.action_state,
-                        data.movement_state,
-                        data.direction,
-                        data.latlon,
-                    );
-                    let z = look.normalize_or(glam::Vec3A::Z);
-                    let x = glam::Vec3A::Y.cross(z);
-                    let y = z.cross(x);
-                    data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
-
-                    // 플레이어 캐릭터 위치를 갱신합니다.
-                    let team = data.team();
-                    let mut is_grounded = data.is_grounded();
-                    let mut is_invincible = data.is_invincible();
-                    update_player_translation(
-                        stage_attributes,
-                        character_attributes,
-                        data.action_state,
-                        &mut data.movement_state,
-                        &mut data.movement_state_timer,
-                        &mut data.velocity,
-                        &mut data.translation,
-                        data.direction,
-                        data.held_input,
-                        team,
-                        &mut is_grounded,
-                        &mut is_invincible,
-                        Some(&mut data.health_data),
-                        data.input_state_timer,
-                        elapsed_time_sec,
-                    );
-                    data.set_grounded(is_grounded);
-                    data.set_invincible(is_invincible);
-                }
-
-                // 총알 오브젝트를 갱신합니다.
-                let mut removed = HashSet::default();
-                for (&id, bullet) in self.bullets.iter_mut() {
-                    let velocity = bullet.velocity * elapsed_time_sec;
-                    let player_uid = Self::check_bullet_collision(
-                        stage_attributes,
-                        &world.players,
-                        bullet,
-                        velocity,
-                    );
-                    match player_uid {
-                        Some(player_uid) => {
-                            // 발사자의 소유권을 가져옵니다.
-                            let mut shooter = match world.players.remove(&bullet.shooter_id) {
-                                Some(data) => data,
-                                None => {
-                                    log::error!(
-                                        "Player({}) not found in {}!",
-                                        &bullet.shooter_id,
-                                        &world,
-                                    );
-                                    eprintln!(
-                                        "Player({}) not found in {}!",
-                                        &bullet.shooter_id, &world,
-                                    );
-                                    continue;
-                                }
-                            };
-                            // 피격자를 가져옵니다.
-                            let player = match world.players.get_mut(&player_uid) {
-                                Some(data) => data,
-                                None => {
-                                    // 발사자의 소유권을 돌려놓습니다.
-                                    world.players.insert(bullet.shooter_id, shooter);
-
-                                    log::error!("Player({}) not found in {}!", &player_uid, &world,);
-                                    eprintln!("Player({}) not found in {}!", &player_uid, &world,);
-                                    continue;
-                                }
-                            };
-
-                            Self::bullet_hit_player(bullet, &mut shooter, player);
-
-                            // 발사자의 소유권을 돌려놓습니다.
-                            world.players.insert(bullet.shooter_id, shooter);
-                        }
-                        None => {
-                            bullet.translation += velocity;
-                            bullet.remaining_distance -= velocity.length();
-                        }
-                    }
-
-                    // 수명이 다 된 총알을 제거합니다.
-                    if bullet.remaining_distance <= 0.0 {
-                        removed.insert(id);
-                    }
-                }
-
-                // 총알을 제거합니다.
-                for id in removed {
-                    self.bullets.remove(&id);
-                    self.removed_bullets.insert(id);
-                }
+                self.update_player(world, elapsed_time_ms);
+                self.update_bullet(world, elapsed_time_ms);
             }
 
             // 3.2. 행동 이벤트를 처리합니다.
             match event {
                 ActionEventDetail::Respawn { uid, .. } => {
+                    // 서버와 연결이 끊어진 경우 건너뜁니다.
+                    if self.leaved_players.contains(&uid) {
+                        continue;
+                    }
+
                     // 해당 플레이어 데이터를 가져옵니다.
                     let data = match world.players.get_mut(&uid) {
                         Some(data) => data,
@@ -626,12 +503,16 @@ impl GameWorldInGameRunState {
                     data.velocity.0 = glam::Vec3A::ZERO;
                     data.direction.0 = direction;
                     data.translation = translation;
-                    data.retreat_count += 1;
                     data.set_grounded(true);
                     data.set_invincible(true);
                     data.latlon = LatLon::new(10f32.to_radians(), longitude);
                 }
                 ActionEventDetail::Reload { uid } => {
+                    // 서버와 연결이 끊어진 경우 건너뜁니다.
+                    if self.leaved_players.contains(&uid) {
+                        continue;
+                    }
+
                     // 플레이어 데이터를 가져옵니다.
                     let data = match world.players.get_mut(&uid) {
                         Some(data) => data,
@@ -646,6 +527,11 @@ impl GameWorldInGameRunState {
                     data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
                 }
                 ActionEventDetail::Attack { uid, .. } => {
+                    // 서버와 연결이 끊어진 경우 건너뜁니다.
+                    if self.leaved_players.contains(&uid) {
+                        continue;
+                    }
+
                     // 발사한 플레이어 데이터의 소유권을 가져옵니다.
                     let shooter = match world.players.remove(&uid) {
                         Some(shooter) => shooter,
@@ -665,14 +551,8 @@ impl GameWorldInGameRunState {
                             // 발사한 플레이어 데이터의 소유권을 돌려줍니다.
                             world.players.insert(uid, shooter);
 
-                            log::error!(
-                                "Player character({}) weapon attribute not found!",
-                                &character_kind
-                            );
-                            eprintln!(
-                                "Player character({}) weapon attribute not found!",
-                                &character_kind
-                            );
+                            log::error!("{} weapon attribute not found!", &character_kind);
+                            eprintln!("{} weapon attribute not found!", &character_kind);
                             continue;
                         }
                     };
@@ -717,143 +597,172 @@ impl GameWorldInGameRunState {
                     // 발사한 플레이어 데이터의 소유권을 돌려줍니다.
                     world.players.insert(uid, shooter);
                 }
-                ActionEventDetail::Skill { uid, .. } => {}
+                ActionEventDetail::Skill { uid, .. } => {
+                    // 서버와 연결이 끊어진 경우 건너뜁니다.
+                    if self.leaved_players.contains(&uid) {
+                        continue;
+                    }
+                }
             }
         }
 
         // 4. 모든 플레이어와 오브젝트 데이터를 현재 경과 시간 만큼 갱신합니다.
         let elapsed_time_ms = elapsed_time_ms.saturating_sub(curr_elapsed_time_ms);
-        let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
         if elapsed_time_ms > 0 {
-            for data in world.players.values_mut() {
-                // 입력 상태 타이머를 갱신합니다.
-                data.input_state_timer
-                    .update(data.held_input, elapsed_time_ms);
+            self.update_player(world, elapsed_time_ms);
+            self.update_bullet(world, elapsed_time_ms);
+        }
+    }
 
-                // 행동 상태 타이머를 갱신합니다.
-                let character_attributes = data.character_attributes();
-                update_action_state_timer(
-                    data.held_input,
-                    &mut data.bullet_data,
-                    &mut data.skill_cost_data,
-                    &mut data.action_state,
-                    &mut data.action_state_timer,
-                    character_attributes,
-                    elapsed_time_ms,
-                    &mut vec![],
-                );
+    /// 플레이어 데이터를 주어진 시간 만큼 갱신합니다.
+    fn update_player(&mut self, world: &mut GameWorld, elapsed_time_ms: u16) {
+        let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+        let stage_attributes = get_stage_attributes(self.stage_kind);
 
-                // 움직임 상태 타이머를 갱신합니다.
-                update_movement_state_timer(
-                    data.action_state,
-                    &mut data.movement_state,
-                    &mut data.movement_state_timer,
-                    character_attributes,
-                    elapsed_time_ms,
-                );
-
-                // 플레이어 캐릭터 방향을 갱신합니다.
-                let mut look = data.rotation.mul_vec3a(glam::Vec3A::Z);
-                look = update_player_rotation(
-                    look,
-                    data.action_state,
-                    data.movement_state,
-                    data.direction,
-                    data.latlon,
-                );
-                let z = look.normalize_or(glam::Vec3A::Z);
-                let x = glam::Vec3A::Y.cross(z);
-                let y = z.cross(x);
-                data.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
-
-                // 플레이어 캐릭터 위치를 갱신합니다.
-                let team = data.team();
-                let mut is_grounded = data.is_grounded();
-                let mut is_invincible = data.is_invincible();
-                update_player_translation(
-                    stage_attributes,
-                    character_attributes,
-                    data.action_state,
-                    &mut data.movement_state,
-                    &mut data.movement_state_timer,
-                    &mut data.velocity,
-                    &mut data.translation,
-                    data.direction,
-                    data.held_input,
-                    team,
-                    &mut is_grounded,
-                    &mut is_invincible,
-                    Some(&mut data.health_data),
-                    data.input_state_timer,
-                    elapsed_time_sec,
-                );
-                data.set_grounded(is_grounded);
-                data.set_invincible(is_invincible);
+        // 플레이어를 갱신합니다.
+        for (&uid, player) in world.players.iter_mut() {
+            // 서버와 연결이 끊어진 경우 건너뜁니다.
+            if self.leaved_players.contains(&uid) {
+                continue;
             }
 
-            // 총알 오브젝트를 갱신합니다.
-            let mut removed = HashSet::default();
-            for (&id, bullet) in self.bullets.iter_mut() {
-                let velocity = bullet.velocity * elapsed_time_sec;
-                let player_uid = Self::check_bullet_collision(
-                    stage_attributes,
-                    &world.players,
-                    bullet,
-                    velocity,
-                );
-                match player_uid {
-                    Some(player_uid) => {
-                        // 발사자의 소유권을 가져옵니다.
-                        let mut shooter = match world.players.remove(&bullet.shooter_id) {
-                            Some(data) => data,
-                            None => {
-                                log::error!(
-                                    "Player({}) not found in {}!",
-                                    &bullet.shooter_id,
-                                    &world,
-                                );
-                                eprintln!(
-                                    "Player({}) not found in {}!",
-                                    &bullet.shooter_id, &world,
-                                );
-                                continue;
-                            }
-                        };
-                        // 피격자를 가져옵니다.
-                        let player = match world.players.get_mut(&player_uid) {
-                            Some(data) => data,
-                            None => {
-                                // 발사자의 소유권을 돌려놓습니다.
-                                world.players.insert(bullet.shooter_id, shooter);
+            // 플레이어 스킬 코스트 타이머를 증가시킵니다.
+            player.skill_cost_timer = player.skill_cost_timer + elapsed_time_ms;
+            if player.skill_cost_timer >= SKILL_COST_TICK {
+                player.skill_cost_timer -= SKILL_COST_TICK;
+                player.skill_cost_data.remaining = (player.skill_cost_data.remaining + 1)
+                    .min(player.skill_cost_data.num_maximum_cost());
+            }
 
-                                log::error!("Player({}) not found in {}!", &player_uid, &world,);
-                                eprintln!("Player({}) not found in {}!", &player_uid, &world,);
-                                continue;
-                            }
-                        };
+            // 입력 상태 타이머를 갱신합니다.
+            player
+                .input_state_timer
+                .update(player.held_input, elapsed_time_ms);
 
-                        Self::bullet_hit_player(bullet, &mut shooter, player);
+            // 행동 상태 타이머를 갱신합니다.
+            let character_attributes = player.character_attributes();
+            update_action_state_timer(
+                player.held_input,
+                &mut player.bullet_data,
+                &mut player.skill_cost_data,
+                &mut player.action_state,
+                &mut player.action_state_timer,
+                character_attributes,
+                elapsed_time_ms,
+                &mut vec![],
+            );
 
-                        // 발사자의 소유권을 돌려놓습니다.
-                        world.players.insert(bullet.shooter_id, shooter);
-                    }
-                    None => {
-                        bullet.translation += velocity;
-                        bullet.remaining_distance -= velocity.length();
-                    }
+            // 움직임 상태 타이머를 갱신합니다.
+            update_movement_state_timer(
+                player.action_state,
+                &mut player.movement_state,
+                &mut player.movement_state_timer,
+                character_attributes,
+                elapsed_time_ms,
+            );
+
+            // 플레이어 캐릭터 방향을 갱신합니다.
+            let mut look = player.rotation.mul_vec3a(glam::Vec3A::Z);
+            look = update_player_rotation(
+                look,
+                player.action_state,
+                player.movement_state,
+                player.direction,
+                player.latlon,
+            );
+            let z = look.normalize_or(glam::Vec3A::Z);
+            let x = glam::Vec3A::Y.cross(z);
+            let y = z.cross(x);
+            player.rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
+
+            // 플레이어 캐릭터 위치를 갱신합니다.
+            let team = player.team();
+            let mut is_grounded = player.is_grounded();
+            let mut is_invincible = player.is_invincible();
+            update_player_translation(
+                stage_attributes,
+                character_attributes,
+                player.action_state,
+                &mut player.movement_state,
+                &mut player.movement_state_timer,
+                &mut player.velocity,
+                &mut player.translation,
+                player.direction,
+                player.held_input,
+                team,
+                &mut is_grounded,
+                &mut is_invincible,
+                Some(&mut player.health_data),
+                player.input_state_timer,
+                elapsed_time_sec,
+            );
+            player.set_grounded(is_grounded);
+            player.set_invincible(is_invincible);
+
+            // 자신 팀의 진영인 경우 체력을 회복시킵니다.
+            if stage_attributes.is_safe_area(team, player.translation.x, player.translation.z) {
+                let healing = 10 * elapsed_time_ms;
+                player.health_data.remaining = (player.health_data.remaining + healing)
+                    .min(player.health_data.num_maximum_health());
+            }
+        }
+    }
+
+    fn update_bullet(&mut self, world: &mut GameWorld, elapsed_time_ms: u16) {
+        let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+        let stage_attributes = get_stage_attributes(self.stage_kind);
+
+        // 총알 오브젝트를 갱신합니다.
+        let mut removed = HashSet::default();
+        for (&id, bullet) in self.bullets.iter_mut() {
+            let velocity = bullet.velocity * elapsed_time_sec;
+            let player_uid =
+                Self::check_bullet_collision(stage_attributes, &world.players, bullet, velocity);
+            match player_uid {
+                Some(player_uid) => {
+                    // 발사자의 소유권을 가져옵니다.
+                    let mut shooter = match world.players.remove(&bullet.shooter_id) {
+                        Some(data) => data,
+                        None => {
+                            log::error!("Player({}) not found in {}!", &bullet.shooter_id, &world,);
+                            eprintln!("Player({}) not found in {}!", &bullet.shooter_id, &world,);
+                            continue;
+                        }
+                    };
+                    // 피격자를 가져옵니다.
+                    let hitted = match world.players.get_mut(&player_uid) {
+                        Some(data) => data,
+                        None => {
+                            // 발사자의 소유권을 돌려놓습니다.
+                            world.players.insert(bullet.shooter_id, shooter);
+
+                            log::error!("Player({}) not found in {}!", &player_uid, &world,);
+                            eprintln!("Player({}) not found in {}!", &player_uid, &world,);
+                            continue;
+                        }
+                    };
+
+                    Self::bullet_hit_player(bullet, &mut shooter, hitted);
+
+                    // 발사자의 소유권을 돌려놓습니다.
+                    world.players.insert(bullet.shooter_id, shooter);
                 }
-
-                // 수명이 다 된 총알을 제거합니다.
-                if bullet.remaining_distance <= 0.0 {
-                    removed.insert(id);
+                None => {
+                    bullet.translation += velocity;
+                    bullet.remaining_distance -= velocity.length();
                 }
             }
 
-            // 총알을 제거합니다.
-            for id in removed {
-                self.bullets.remove(&id);
-                self.removed_bullets.insert(id);
+            // 수명이 다 된 총알을 제거합니다.
+            if bullet.remaining_distance <= 0.0 {
+                removed.insert(id);
             }
+        }
+
+        // 총알을 제거합니다.
+        for id in removed {
+            self.bullets.remove(&id);
+            self.removed_bullets.insert(id);
         }
     }
 
@@ -1034,16 +943,16 @@ impl GameWorldInGameRunState {
     }
 
     /// 총알과 플레이어의 충돌 후처리를 수행합니다.
-    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, player: &mut Player) {
+    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, hitted: &mut Player) {
         let uniform_distribution = Uniform::new(0.0, 1.0).unwrap();
         let shooter_attributes = shooter.character_attributes();
-        let player_attributes = player.character_attributes();
+        let hitted_attributes = hitted.character_attributes();
         bullet.remaining_distance = 0.0;
 
         // 1. 회피 계산
         let shooter_accuracy = shooter_attributes.accuracy_stat as f32;
-        let player_evasion = player_attributes.evasion_stat as f32;
-        let hit_chance = shooter_accuracy / (shooter_accuracy + player_evasion);
+        let hitted_evasion = hitted_attributes.evasion_stat as f32;
+        let hit_chance = shooter_accuracy / (shooter_accuracy + hitted_evasion);
         let val = uniform_distribution.sample(&mut rand::rng());
         if val >= hit_chance {
             // Miss 처리
@@ -1052,14 +961,14 @@ impl GameWorldInGameRunState {
 
         // 2. 치명타 판정
         let shooter_crit = shooter_attributes.critical_rate as f32;
-        let crit_change = shooter_crit / (shooter_crit + player_evasion * 1.5);
+        let crit_change = shooter_crit / (shooter_crit + hitted_evasion * 1.5);
         let val = uniform_distribution.sample(&mut rand::rng());
         let ciritical = val < crit_change;
 
         // 3. 기본 피해량 계산
         let shooter_attack = shooter_attributes.attack_power as f32;
-        let player_defense = player_attributes.defense_power as f32;
-        let base_damage = (shooter_attack - player_defense) * rand::random_range(0.9..=1.1);
+        let hitted_defense = hitted_attributes.defense_power as f32;
+        let base_damage = (shooter_attack - hitted_defense) * rand::random_range(0.9..=1.1);
         let mut final_damage = if ciritical {
             let shooter_crit_multi = shooter_attributes.critical_damage as f32 / 100.0;
             (base_damage * shooter_crit_multi).round() as u16
@@ -1069,28 +978,28 @@ impl GameWorldInGameRunState {
         .clamp(1, 9999);
 
         // 4. 데미지 적용
-        if player.health_data.shield < final_damage {
-            final_damage -= player.health_data.shield;
-            player.health_data.shield = 0;
-            if player.health_data.remaining <= final_damage {
+        if hitted.health_data.shield < final_damage {
+            final_damage -= hitted.health_data.shield;
+            hitted.health_data.shield = 0;
+            if hitted.health_data.remaining <= final_damage {
                 // 플레이어 행동 불능 처리
-                player.health_data.remaining = 0;
-                player.action_state = ActionState::Death;
-                player.action_state_timer.0 = 0;
-                player.movement_state = MovementState::Idle;
-                player.movement_state_timer.0 = 0;
+                hitted.health_data.remaining = 0;
+                hitted.action_state = ActionState::Death;
+                hitted.action_state_timer.0 = 0;
+                hitted.movement_state = MovementState::Idle;
+                hitted.movement_state_timer.0 = 0;
 
                 // 플레이 데이터 갱신
-                player.retreat_count -= 1;
+                hitted.retreat_count += 1;
                 shooter.kill_count += 1;
             } else {
-                player.health_data.remaining -= final_damage;
+                hitted.health_data.remaining -= final_damage;
             }
         } else {
-            player.health_data.shield -= final_damage;
+            hitted.health_data.shield -= final_damage;
         }
 
-        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 100)
+        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
             .min(shooter.skill_cost_data.num_maximum_cost());
     }
 }
@@ -1153,9 +1062,6 @@ impl GameWorldState for GameWorldInGameRunState {
     fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {
         let elapsed_time_ms = elapsed.as_millis().min(MAX_GAME_TIME as u128) as u32;
 
-        // 게임 월드를 갱신합니다.
-        self.update(world, elapsed);
-
         // 플레이 경과 시간을 갱신합니다.
         self.play_elapsed_time_ms = self
             .play_elapsed_time_ms
@@ -1168,6 +1074,9 @@ impl GameWorldState for GameWorldInGameRunState {
         self.status_send_elapsed_time_ms = self
             .status_send_elapsed_time_ms
             .saturating_add(elapsed_time_ms);
+
+        // 게임 월드를 갱신합니다.
+        self.update(world, elapsed);
 
         // 일전 시각마다 패킷을 전송합니다.
         const PULL_TICK: u32 = 5;
