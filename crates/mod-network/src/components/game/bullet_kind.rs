@@ -32,8 +32,8 @@ impl BulletKind {
 
     pub fn speed(self) -> f32 {
         match self {
-            BulletKind::Common => 20.0,
-            BulletKind::EnergyBoll => 10.0,
+            BulletKind::Common => 100.0,
+            BulletKind::EnergyBoll => 50.0,
         }
     }
 }

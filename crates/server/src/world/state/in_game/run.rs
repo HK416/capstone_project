@@ -12,7 +12,7 @@ use mod_network::{
         InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData, InputEvent,
         InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
         MIN_LATITUDE, MovementState, NetworkState, ObjectId, Permission, StageAttributes,
-        StageKind, Team, UserId, update_action_state, update_action_state_timer,
+        StageKind, Team, UserId, VictoryType, update_action_state, update_action_state_timer,
         update_movement_state, update_movement_state_timer, update_player_rotation,
         update_player_translation,
     },
@@ -32,7 +32,7 @@ use tokio::time::Duration;
 
 use crate::{
     data::get_stage_attributes,
-    entities::{Bullet, Player},
+    entities::{Bullet, CapturePointObject, Player},
     session::Session,
     world::{
         GameWorld, GameWorldEvent, GameWorldInGameRunStateEvent, GameWorldState,
@@ -80,6 +80,9 @@ pub struct GameWorldInGameRunState {
     counter: u32,
     /// 총알 오브젝트
     bullets: HashMap<ObjectId, Bullet>,
+
+    /// 점령지 관리 오브젝트
+    capture_point: CapturePointObject,
 }
 
 impl GameWorldInGameRunState {
@@ -92,6 +95,10 @@ impl GameWorldInGameRunState {
         num_red_players: usize,
         leaved_players: HashSet<UserId>,
     ) -> Self {
+        // 스테이지 속성 데이터를 가져옵니다.
+        let stage_attributes = get_stage_attributes(stage_kind);
+        let capture_point = CapturePointObject::new(stage_attributes.capture_zone.clone());
+
         Self {
             stage_kind,
             play_elapsed_time_ms: 0,
@@ -110,6 +117,7 @@ impl GameWorldInGameRunState {
             damage_log_data: Vec::with_capacity(128),
             counter: 0,
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
+            capture_point,
         }
     }
 
@@ -367,7 +375,8 @@ impl GameWorldInGameRunState {
         }
 
         // 상태 변경 패킷을 생성합니다.
-        let mut packet = InGameStatusPacket::new(players, vec![]);
+        let mut packet =
+            InGameStatusPacket::new(self.capture_point.capture_point().clone(), players, vec![]);
 
         // 패킷을 전송합니다.
         let mut removed_bullets: Vec<_> = self.removed_bullets.drain().collect();
@@ -457,6 +466,7 @@ impl GameWorldInGameRunState {
             if elapsed_time_ms > 0 {
                 self.update_player(world, elapsed_time_ms);
                 self.update_bullet(world, elapsed_time_ms);
+                self.update_capture_point(world, elapsed_time_ms);
             }
 
             // 3.2. 행동 이벤트를 처리합니다.
@@ -611,6 +621,7 @@ impl GameWorldInGameRunState {
         if elapsed_time_ms > 0 {
             self.update_player(world, elapsed_time_ms);
             self.update_bullet(world, elapsed_time_ms);
+            self.update_capture_point(world, elapsed_time_ms);
         }
     }
 
@@ -764,6 +775,60 @@ impl GameWorldInGameRunState {
             self.bullets.remove(&id);
             self.removed_bullets.insert(id);
         }
+    }
+
+    /// 점령 상태를 갱신합니다.
+    fn update_capture_point(&mut self, world: &mut GameWorld, elapsed_time_ms: u16) {
+        let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
+        let (new_capture_team, capturing_count) = self.get_new_capture_team(world);
+
+        // 점령 수행
+        let winner =
+            self.capture_point
+                .capture(new_capture_team, elapsed_time_sec, capturing_count);
+        if let Some(winner) = winner {
+            log::info!("capture complete");
+            self.game_over(world, winner, VictoryType::JudgmentWin);
+        }
+    }
+
+    /// 점령지 안에 존재하는 팀과 인원수를 반환합니다.
+    /// 점령지 안에 존재하는 팀이 없거나, 두 팀 모두 존재하는 경우 팀은 `None`을 반환합니다.
+    /// 점령지 안에 두 팀이 모두 존재하는 경우 인원수는 0이 아닌 양의 정수입니다.
+    fn get_new_capture_team(&self, world: &GameWorld) -> (Option<Team>, usize) {
+        let collider = self.capture_point.collider();
+        let mut in_capture_point: Vec<_> = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for player in world.players.values() {
+            if collider.check_point_collision(&player.translation) {
+                in_capture_point.push(player.team());
+            }
+        }
+
+        let mut capturing_point = 0;
+        let mut new_capture_team = None;
+        for team in in_capture_point {
+            match new_capture_team {
+                Some(capturing_team) => {
+                    if team == capturing_team {
+                        capturing_point += 1;
+                    } else {
+                        new_capture_team = None;
+                        break;
+                    }
+                }
+                None => {
+                    new_capture_team = Some(team);
+                    capturing_point += 1;
+                }
+            }
+        }
+
+        (new_capture_team, capturing_point)
+    }
+
+    /// 게임을 종료합니다.
+    fn game_over(&mut self, world: &GameWorld, winner: Team, victory_type: VictoryType) {
+        log::info!("{} game over (winner: {:?})", &world, winner);
     }
 
     /// 총알과 충돌하는 플레이어를 확인합니다.  

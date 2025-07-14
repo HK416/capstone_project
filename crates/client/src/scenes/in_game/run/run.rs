@@ -10,11 +10,11 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, BulletData, CharacterFlags, CharacterKind, HealthData,
-        HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
+        ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags, CharacterKind,
+        HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
         MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
-        UserId, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS, MAX_LATITUDE,
-        MIN_LATITUDE,
+        Team, UserId, ViewState, ViewStateTimer, MAX_CAPTURE_SCORE, MAX_INPUT_EVENTS,
+        MAX_IN_GAME_BULLETS, MAX_LATITUDE, MIN_LATITUDE,
     },
     protocol::{
         InGameInputPacket, InGamePullPacket, InGameStatusPacket, Packet, PacketType, RawPacket,
@@ -56,7 +56,7 @@ use crate::{
     player_execute,
     scenes::{
         FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
     },
     SERVER_TCP_ADDR,
 };
@@ -82,6 +82,8 @@ pub struct InGameRunScene {
     play_elapsed_time_ms: u32,
     /// 이전 스냅샷 전송 후 경과 시간
     snapshot_elapsed_time_ms: u32,
+    /// 점령 데이터
+    capture_point: CapturePoint,
 
     /// 임시로 생성된 스냅샷 데이터를 저장하는 버퍼입니다.
     input_snapshot_buffer: Vec<InputSnapshot>,
@@ -179,6 +181,13 @@ pub struct InGameRunScene {
     /// 스킬 코스트 사각형 영역입니다.
     skill_cost_rect: egui::Rect,
 
+    /// 타이머 사각형 영역입니다.
+    timer_rect: egui::Rect,
+    /// 블루 팀 점수 사각형 영역입니다.
+    blue_score_rect: egui::Rect,
+    /// 레드 팀 점수 사각형 영역입니다.
+    red_score_rect: egui::Rect,
+
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
     /// 모델 풀 객체입니다.
@@ -237,6 +246,7 @@ impl InGameRunScene {
             max_game_play_time_ms,
             play_elapsed_time_ms: 0,
             snapshot_elapsed_time_ms: 0,
+            capture_point: CapturePoint::default(),
             input_snapshot_buffer: Vec::with_capacity(MAX_INPUT_SNAPSHOTS + 1),
             input_events_buffer: Vec::with_capacity(MAX_INPUT_EVENTS + 1),
             delta_lat: 0.0,
@@ -287,6 +297,9 @@ impl InGameRunScene {
             },
             weapon_info_rect: egui::Rect::ZERO,
             skill_cost_rect: egui::Rect::ZERO,
+            timer_rect: egui::Rect::ZERO,
+            blue_score_rect: egui::Rect::ZERO,
+            red_score_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -639,6 +652,9 @@ impl InGameRunScene {
             None => return,
         };
 
+        // 점령 데이터를 갱신합니다.
+        self.capture_point = packet.capture_point;
+
         {
             type Query<'a> = (
                 &'a mut Permission,
@@ -771,6 +787,12 @@ impl InGameRunScene {
         // 스킬 인터페이스 영역의 크기를 재조정합니다.
         self.skill_cost_rect =
             Self::resize_skill_cost_rect(&self.clip_rect, &self.weapon_info_rect);
+        // 타이머 영역의 크기를 재조정합니다.
+        self.timer_rect = Self::resize_timer_rect(&self.clip_rect);
+        // 블루 팀 스코어 영역의 크기를 재조정합니다.
+        self.blue_score_rect = Self::resize_blue_score_rect(&self.clip_rect);
+        // 레드 팀 스코어 영역의 크기를 재조정합니다.
+        self.red_score_rect = Self::resize_red_score_rect(&self.clip_rect);
     }
 
     /// 애니메이션 값을 가져옵니다.
@@ -855,6 +877,41 @@ impl InGameRunScene {
         let right_bottom = weapon_info_rect.right_top() + egui::vec2(margin_x, -margin_y);
         let left_top = right_bottom - egui::vec2(width, height);
         egui::Rect::from_two_pos(left_top, right_bottom)
+    }
+
+    /// 타이머 사각형 영역의 크기를 재조정합니다.
+    fn resize_timer_rect(clip_rect: &egui::Rect) -> egui::Rect {
+        let margin = clip_rect.size().min_elem() * 0.04;
+        let width = clip_rect.width() * 0.1;
+        let height = 0.5 * width;
+        let center = egui::pos2(
+            clip_rect.center().x,
+            clip_rect.top() + margin + 0.5 * height,
+        );
+        let size = egui::vec2(width, height);
+        egui::Rect::from_center_size(center, size)
+    }
+
+    /// 블루팀 스코어 영역의 크기를 재조정합니다.
+    fn resize_blue_score_rect(clip_rect: &egui::Rect) -> egui::Rect {
+        let margin = clip_rect.size().min_elem() * 0.06;
+        let size = clip_rect.width() * 0.1;
+        let width = clip_rect.width() * 0.26;
+        let height = width * 0.04;
+        let left_top = egui::pos2(clip_rect.center().x + 0.5 * size, clip_rect.top() + margin);
+        let right_bottom = left_top + egui::vec2(width, height);
+        egui::Rect::from_min_max(left_top, right_bottom)
+    }
+
+    /// 레드팀 스코어 영역의 크기를 재조정합니다.
+    fn resize_red_score_rect(clip_rect: &egui::Rect) -> egui::Rect {
+        let margin = clip_rect.size().min_elem() * 0.06;
+        let size = clip_rect.width() * 0.1;
+        let width = clip_rect.width() * 0.26;
+        let height = width * 0.04;
+        let right_top = egui::pos2(clip_rect.center().x - 0.5 * size, clip_rect.top() + margin);
+        let left_bottom = right_top + egui::vec2(-width, height);
+        egui::Rect::from_two_pos(right_top, left_bottom)
     }
 
     /// 스킬 아이콘 영역을 반환합니다.
@@ -1660,6 +1717,212 @@ impl InGameRunScene {
             .tint(tint)
             .uv(uv)
             .paint_at(ui, rect);
+    }
+
+    /// 게임 정보 인터페이스를 그립니다.
+    fn draw_score(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Game_Info"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_timer(ui);
+                self.draw_blue_team_gauge(ui);
+                self.draw_red_team_gauge(ui);
+            });
+    }
+
+    fn draw_timer(&self, ui: &mut egui::Ui) {
+        let outer_rect = self.timer_rect;
+        let size = egui::Vec2::splat(outer_rect.size().min_elem() * 0.05);
+        let mut inner_rect = outer_rect;
+        inner_rect.min += size;
+        inner_rect.max -= size;
+
+        let remaining_time_ms = self
+            .max_game_play_time_ms
+            .saturating_sub(self.play_elapsed_time_ms);
+        let remaining_time_sec = remaining_time_ms as f32 / 1000.0;
+        let text = format!("{}", remaining_time_sec.floor() as u32);
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(48.0 * self.ui_scale, family);
+        let center = egui::pos2(
+            inner_rect.center().x,
+            0.5 * (self.clip_rect.top() + inner_rect.center().y),
+        );
+        let offsets = [
+            egui::vec2(-4.0, 0.0),
+            egui::vec2(4.0, 0.0),
+            egui::vec2(0.0, -4.0),
+            egui::vec2(0.0, 4.0),
+            egui::vec2(4.0, 4.0),
+            egui::vec2(-4.0, 4.0),
+            egui::vec2(4.0, -4.0),
+            egui::vec2(-4.0, -4.0),
+        ];
+
+        for offset in offsets {
+            ui.painter().text(
+                center + offset * self.ui_scale,
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font_id.clone(),
+                FONT_COLOR,
+            );
+        }
+
+        ui.painter().text(
+            center,
+            egui::Align2::CENTER_CENTER,
+            &text,
+            font_id.clone(),
+            egui::Color32::WHITE,
+        );
+    }
+
+    fn draw_blue_team_gauge(&self, ui: &mut egui::Ui) {
+        let outer_rect = self.blue_score_rect;
+        let size = egui::Vec2::splat(outer_rect.size().min_elem() * 0.2);
+        let mut inner_rect = outer_rect;
+        inner_rect.min += size;
+        inner_rect.max -= size;
+
+        // 블루 팀 점령도 게이지
+        let capture_team = self.capture_point.capture_team;
+        let percent = self.capture_point.capture_progress.floor() / 100.0;
+        let corner_radius = outer_rect.height() * 0.5;
+        let width = outer_rect.width() * percent;
+        let right_bottom = outer_rect.right_bottom();
+        let left_top = right_bottom - egui::vec2(width, outer_rect.height());
+        let rect = egui::Rect::from_min_max(left_top, right_bottom);
+        ui.painter()
+            .rect_filled(outer_rect, corner_radius, egui::Color32::WHITE);
+        if let Some(team) = capture_team
+            && team == Team::Blue
+        {
+            const GUAGE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 200, 120);
+            ui.painter().rect_filled(rect, corner_radius, GUAGE_COLOR);
+        }
+
+        // 블루 팀 게이지를 그립니다.
+        let i = Team::Blue as usize;
+        let score = self.capture_point.capture_score[i];
+        let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
+        let width = inner_rect.width() * percent;
+        let height = inner_rect.height();
+        let corner_radius = inner_rect.height() * 0.5;
+        let left_top = inner_rect.left_top();
+        let right_bottom = left_top + egui::vec2(width, height);
+        let rect = egui::Rect::from_min_max(left_top, right_bottom);
+        ui.painter()
+            .rect_filled(inner_rect, corner_radius, egui::Color32::GRAY);
+        ui.painter().rect_filled(rect, corner_radius, TEAM_COLOR[i]);
+
+        // 블루팀 라벨을 그립니다.
+        let text = "BLUE";
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(24.0 * self.ui_scale, family);
+        let center = egui::pos2(
+            outer_rect.center().x,
+            0.5 * (self.clip_rect.top() + outer_rect.top()),
+        );
+        let offsets = [
+            egui::vec2(-1.0, 0.0),
+            egui::vec2(1.0, 0.0),
+            egui::vec2(0.0, -1.0),
+            egui::vec2(0.0, 1.0),
+        ];
+
+        for offset in offsets {
+            ui.painter().text(
+                center + offset * self.ui_scale,
+                egui::Align2::CENTER_CENTER,
+                text,
+                font_id.clone(),
+                FONT_COLOR,
+            );
+        }
+
+        ui.painter().text(
+            center,
+            egui::Align2::CENTER_CENTER,
+            text,
+            font_id.clone(),
+            TEAM_COLOR[Team::Blue as usize],
+        );
+    }
+
+    /// 레드 팀 점령도 게이지를 그립니다.
+    fn draw_red_team_gauge(&self, ui: &mut egui::Ui) {
+        let outer_rect = self.red_score_rect;
+        let size = egui::Vec2::splat(outer_rect.size().min_elem() * 0.2);
+        let mut inner_rect = outer_rect;
+        inner_rect.min += size;
+        inner_rect.max -= size;
+
+        // 레드 팀 점령도 게이지
+        let capture_team = self.capture_point.capture_team;
+        let percent = self.capture_point.capture_progress.floor() / 100.0;
+        let corner_radius = outer_rect.height() * 0.5;
+        let width = outer_rect.width() * percent;
+        let left_top = outer_rect.left_top();
+        let right_bottom = left_top + egui::vec2(width, outer_rect.height());
+        let rect = egui::Rect::from_min_max(left_top, right_bottom);
+        ui.painter()
+            .rect_filled(outer_rect, corner_radius, egui::Color32::WHITE);
+        if let Some(team) = capture_team
+            && team == Team::Red
+        {
+            const GUAGE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 200, 120);
+            ui.painter().rect_filled(rect, corner_radius, GUAGE_COLOR);
+        }
+
+        // 레드 팀 게이지를 그립니다.
+        let i = Team::Red as usize;
+        let score = self.capture_point.capture_score[i];
+        let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
+        let width = inner_rect.width() * percent;
+        let height = inner_rect.height();
+        let corner_radius = inner_rect.height() * 0.5;
+        let right_bottom = inner_rect.right_bottom();
+        let left_top = right_bottom - egui::vec2(width, height);
+        let rect = egui::Rect::from_min_max(left_top, right_bottom);
+        ui.painter()
+            .rect_filled(inner_rect, corner_radius, egui::Color32::GRAY);
+        ui.painter().rect_filled(rect, corner_radius, TEAM_COLOR[i]);
+
+        // 레드 팀 라벨을 그립니다.
+        let text = "RED";
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(24.0 * self.ui_scale, family);
+        let center = egui::pos2(
+            outer_rect.center().x,
+            0.5 * (self.clip_rect.top() + outer_rect.top()),
+        );
+        let offsets = [
+            egui::vec2(-1.0, 0.0),
+            egui::vec2(1.0, 0.0),
+            egui::vec2(0.0, -1.0),
+            egui::vec2(0.0, 1.0),
+        ];
+
+        for offset in offsets {
+            ui.painter().text(
+                center + offset * self.ui_scale,
+                egui::Align2::CENTER_CENTER,
+                text,
+                font_id.clone(),
+                FONT_COLOR,
+            );
+        }
+
+        ui.painter().text(
+            center,
+            egui::Align2::CENTER_CENTER,
+            text,
+            font_id.clone(),
+            TEAM_COLOR[Team::Red as usize],
+        );
     }
 }
 
@@ -2818,5 +3081,6 @@ impl GameScene for InGameRunScene {
         self.draw_health_point(ctx);
         self.draw_weapon_info(ctx);
         self.draw_skill_cost_info(ctx);
+        self.draw_score(ctx);
     }
 }
