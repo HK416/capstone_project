@@ -12,7 +12,7 @@ use mod_network::{
         InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData, InputEvent,
         InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
         MIN_LATITUDE, MovementState, NetworkState, ObjectId, Permission, StageAttributes,
-        StageKind, Team, UserId, VictoryType, update_action_state, update_action_state_timer,
+        StageKind, Team, UserId, update_action_state, update_action_state_timer,
         update_movement_state, update_movement_state_timer, update_player_rotation,
         update_player_translation,
     },
@@ -35,8 +35,8 @@ use crate::{
     entities::{Bullet, CapturePointObject, Player},
     session::Session,
     world::{
-        GameWorld, GameWorldEvent, GameWorldInGameRunStateEvent, GameWorldState,
-        GameWorldSystemEvent,
+        GameWorld, GameWorldEvent, GameWorldInGameFinishState, GameWorldInGameRunStateEvent,
+        GameWorldState, GameWorldStateFlow, GameWorldSystemEvent,
     },
 };
 
@@ -72,9 +72,8 @@ pub struct GameWorldInGameRunState {
     leaved_players: HashSet<UserId>,
     /// 제거된 총알 오브젝트 목록
     removed_bullets: HashSet<ObjectId>,
-
     /// 데미지 로그 데이터 목록
-    damage_log_data: Vec<DamageLogData>,
+    damage_logs: Vec<DamageLogData>,
 
     /// 오브젝트 식별자 생성에 사용됩니다.
     counter: u32,
@@ -114,7 +113,7 @@ impl GameWorldInGameRunState {
                 MAX_IN_GAME_BULLETS,
                 RandomState::new(),
             ),
-            damage_log_data: Vec::with_capacity(128),
+            damage_logs: Vec::with_capacity(128),
             counter: 0,
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             capture_point,
@@ -376,7 +375,7 @@ impl GameWorldInGameRunState {
 
         // 상태 변경 패킷을 생성합니다.
         let mut packet =
-            InGameStatusPacket::new(self.capture_point.capture_point().clone(), players, vec![]);
+            InGameStatusPacket::new(self.capture_point.as_ref().clone(), players, vec![]);
 
         // 패킷을 전송합니다.
         let mut removed_bullets: Vec<_> = self.removed_bullets.drain().collect();
@@ -466,7 +465,8 @@ impl GameWorldInGameRunState {
             if elapsed_time_ms > 0 {
                 self.update_player(world, elapsed_time_ms);
                 self.update_bullet(world, elapsed_time_ms);
-                self.update_capture_point(world, elapsed_time_ms);
+                self.capture_point
+                    .update(world.players.values(), elapsed_time_ms);
             }
 
             // 3.2. 행동 이벤트를 처리합니다.
@@ -621,7 +621,8 @@ impl GameWorldInGameRunState {
         if elapsed_time_ms > 0 {
             self.update_player(world, elapsed_time_ms);
             self.update_bullet(world, elapsed_time_ms);
-            self.update_capture_point(world, elapsed_time_ms);
+            self.capture_point
+                .update(world.players.values(), elapsed_time_ms);
         }
     }
 
@@ -760,7 +761,22 @@ impl GameWorldInGameRunState {
                 }
                 None => {
                     bullet.translation += velocity;
-                    bullet.remaining_distance -= velocity.length();
+
+                    // 갱신된 총알의 위치가 게임 월드 위치 제한을 넘은 경우 제거합니다.
+                    let half_size_x = self.half_size_x.get() as f32;
+                    let half_size_y = self.half_size_y.get() as f32;
+                    let half_size_z = self.half_size_z.get() as f32;
+                    if bullet.translation.x > half_size_x
+                        || bullet.translation.x < -half_size_x
+                        || bullet.translation.y > half_size_y
+                        || bullet.translation.y < -half_size_y
+                        || bullet.translation.z > half_size_z
+                        || bullet.translation.z < -half_size_z
+                    {
+                        bullet.remaining_distance = 0.0;
+                    } else {
+                        bullet.remaining_distance -= velocity.length();
+                    }
                 }
             }
 
@@ -775,60 +791,6 @@ impl GameWorldInGameRunState {
             self.bullets.remove(&id);
             self.removed_bullets.insert(id);
         }
-    }
-
-    /// 점령 상태를 갱신합니다.
-    fn update_capture_point(&mut self, world: &mut GameWorld, elapsed_time_ms: u16) {
-        let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
-        let (new_capture_team, capturing_count) = self.get_new_capture_team(world);
-
-        // 점령 수행
-        let winner =
-            self.capture_point
-                .capture(new_capture_team, elapsed_time_sec, capturing_count);
-        if let Some(winner) = winner {
-            log::info!("capture complete");
-            self.game_over(world, winner, VictoryType::JudgmentWin);
-        }
-    }
-
-    /// 점령지 안에 존재하는 팀과 인원수를 반환합니다.
-    /// 점령지 안에 존재하는 팀이 없거나, 두 팀 모두 존재하는 경우 팀은 `None`을 반환합니다.
-    /// 점령지 안에 두 팀이 모두 존재하는 경우 인원수는 0이 아닌 양의 정수입니다.
-    fn get_new_capture_team(&self, world: &GameWorld) -> (Option<Team>, usize) {
-        let collider = self.capture_point.collider();
-        let mut in_capture_point: Vec<_> = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        for player in world.players.values() {
-            if collider.check_point_collision(&player.translation) {
-                in_capture_point.push(player.team());
-            }
-        }
-
-        let mut capturing_point = 0;
-        let mut new_capture_team = None;
-        for team in in_capture_point {
-            match new_capture_team {
-                Some(capturing_team) => {
-                    if team == capturing_team {
-                        capturing_point += 1;
-                    } else {
-                        new_capture_team = None;
-                        break;
-                    }
-                }
-                None => {
-                    new_capture_team = Some(team);
-                    capturing_point += 1;
-                }
-            }
-        }
-
-        (new_capture_team, capturing_point)
-    }
-
-    /// 게임을 종료합니다.
-    fn game_over(&mut self, world: &GameWorld, winner: Team, victory_type: VictoryType) {
-        log::info!("{} game over (winner: {:?})", &world, winner);
     }
 
     /// 총알과 충돌하는 플레이어를 확인합니다.  
@@ -1067,6 +1029,97 @@ impl GameWorldInGameRunState {
         shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
             .min(shooter.skill_cost_data.num_maximum_cost());
     }
+
+    /// 다음 게임 월드 상태로 전환을 시도합니다.
+    fn try_enter_next_state(&mut self, world: &mut GameWorld) {
+        // 경과 시간이 5초 미만인 경우 전환을 시도하지 않습니다.
+        if self.play_elapsed_time_ms < 5_000 {
+            return;
+        }
+
+        // 블루 팀 플레이어가 비어있는 경우 레드 팀을 부전승으로 처리합니다.
+        if self.num_blue_players == 0 {
+            // 다음 상태로 전환합니다.
+            let winner = Some(Team::Red);
+            let play_time_ms = self.play_elapsed_time_ms;
+            let leaved_players = self.leaved_players.drain().collect();
+            let state = GameWorldInGameFinishState::new(winner, play_time_ms, leaved_players);
+
+            let flow = GameWorldStateFlow::Change(Box::new(state));
+            world.flows.push(flow);
+        }
+        // 레드 팀 플레이어가 비어있는 경우 블루 팀을 부전승으로 처리합니다.
+        else if self.num_red_players == 0 {
+            // 다음 상태로 전환합니다.
+            let winner = Some(Team::Blue);
+            let play_time_ms = self.play_elapsed_time_ms;
+            let leaved_players = self.leaved_players.drain().collect();
+            let state = GameWorldInGameFinishState::new(winner, play_time_ms, leaved_players);
+
+            let flow = GameWorldStateFlow::Change(Box::new(state));
+            world.flows.push(flow);
+        }
+
+        // 게임 진행 시간을 초과한 경우
+        if self.play_elapsed_time_ms >= MAX_GAME_TIME {
+            // 현재 점령 점수가 높은 팀을 가져옵니다.
+            let capture_point = self.capture_point.as_ref();
+            let max_score_team = capture_point.max_score_team();
+
+            // 다음 상태로 전환합니다.
+            let winner = max_score_team;
+            let play_time_ms = self.play_elapsed_time_ms;
+            let leaved_players = self.leaved_players.drain().collect();
+            let state = GameWorldInGameFinishState::new(winner, play_time_ms, leaved_players);
+
+            let flow = GameWorldStateFlow::Change(Box::new(state));
+            world.flows.push(flow);
+        } else {
+            // 현재 점령 점수가 높은 팀을 가져옵니다.
+            let capture_point = self.capture_point.as_ref();
+            let max_score_team = capture_point.max_score_team();
+            if let Some(team) = max_score_team {
+                match team {
+                    Team::Blue => {
+                        // 최대 점령 점수를 달성한 경우 다음 상태로 전환합니다.
+                        let percent = capture_point.blue_score();
+                        if percent >= 1.0 {
+                            // 다음 상태로 전환합니다.
+                            let winner = Some(Team::Blue);
+                            let play_time_ms = self.play_elapsed_time_ms;
+                            let leaved_players = self.leaved_players.drain().collect();
+                            let state = GameWorldInGameFinishState::new(
+                                winner,
+                                play_time_ms,
+                                leaved_players,
+                            );
+
+                            let flow = GameWorldStateFlow::Change(Box::new(state));
+                            world.flows.push(flow);
+                        }
+                    }
+                    Team::Red => {
+                        // 최대 점령 점수를 달성한 경우 다음 상태로 전환합니다.
+                        let percent = capture_point.red_score();
+                        if percent >= 1.0 {
+                            // 다음 상태로 전환합니다.
+                            let winner = Some(Team::Red);
+                            let play_time_ms = self.play_elapsed_time_ms;
+                            let leaved_players = self.leaved_players.drain().collect();
+                            let state = GameWorldInGameFinishState::new(
+                                winner,
+                                play_time_ms,
+                                leaved_players,
+                            );
+
+                            let flow = GameWorldStateFlow::Change(Box::new(state));
+                            world.flows.push(flow);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl GameWorldState for GameWorldInGameRunState {
@@ -1156,6 +1209,6 @@ impl GameWorldState for GameWorldInGameRunState {
             self.broadcast_status_packet(world);
         }
 
-        // self.try_enter_next_state(world);
+        self.try_enter_next_state(world);
     }
 }

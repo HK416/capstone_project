@@ -2,7 +2,8 @@
 //!
 
 mod event;
+mod finish;
 mod pull;
 mod status;
 
-pub use self::{event::*, pull::*, status::*};
+pub use self::{event::*, finish::*, pull::*, status::*};

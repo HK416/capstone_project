@@ -1,9 +1,9 @@
 mod core;
 mod game;
 mod rendering;
-mod system;
+mod version;
 
-pub use self::{core::*, game::*, rendering::*, system::*};
+pub use self::{core::*, game::*, rendering::*, version::*};
 
 use serde::{Deserialize, Serialize};
 
@@ -155,6 +155,22 @@ impl BigEndian for [u16; 2] {
         [
             u16::from_big_endian_bytes(&bytes[0..2]),
             u16::from_big_endian_bytes(&bytes[2..4]),
+        ]
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(4);
+        bytes.extend_from_slice(&self[0].to_big_endian_bytes());
+        bytes.extend_from_slice(&self[1].to_big_endian_bytes());
+        bytes
+    }
+}
+
+impl BigEndian for [i16; 2] {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        [
+            i16::from_big_endian_bytes(&bytes[0..2]),
+            i16::from_big_endian_bytes(&bytes[2..4]),
         ]
     }
 

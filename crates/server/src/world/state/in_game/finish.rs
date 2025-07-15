@@ -1,66 +1,41 @@
-use std::{num::NonZeroU32, sync::Arc};
+use std::sync::Arc;
 
 use ahash::HashSet;
 use mod_network::{
-    components::{NetworkState, Permission, StageKind, Team, UserId},
-    protocol::{InGameEnterNotifyPacket, JoinFailedReason, JoinRoomFailedPacket, Packet},
+    components::{NetworkState, Permission, Team, UserId},
+    protocol::{JoinFailedReason, JoinRoomFailedPacket, Packet},
 };
 use rand::seq::SliceRandom;
 use tokio::time::Duration;
 
 use crate::{
-    session::{Session, SessionInGameRunState, SessionStateFlow},
-    world::{
-        GameWorld, GameWorldEvent, GameWorldInGameRunState, GameWorldState, GameWorldStateFlow,
-        GameWorldSystemEvent,
-    },
+    session::Session,
+    world::{GameWorld, GameWorldEvent, GameWorldState, GameWorldSystemEvent},
 };
 
 /// 최대 게임 대기 시간 (단위: ms)
-const MAX_WAIT_TIME: u16 = 6_000;
+const MAX_WAIT_TIME: u16 = 16_000;
 
-/// 인게임 상태 게임 월드입니다.
-/// 게임 월드 진입 후 대기합니다.
-pub struct GameWorldInGameEnterState {
-    /// 게임 스테이지 종류
-    stage_kind: StageKind,
+pub struct GameWorldInGameFinishState {
     /// 남은 게임 상태 시간
     remaining_time_ms: u16,
 
-    /// x축 방향의 게임 월드 절반 크기
-    half_size_x: NonZeroU32,
-    /// y축 방향의 게임 월드 절반 크기
-    half_size_y: NonZeroU32,
-    /// z축 방향의 게임 월드 절반 크기
-    half_size_z: NonZeroU32,
+    /// 우승 팀 데이터
+    winner: Option<Team>,
+    /// 총 게임 플레이 시간
+    play_time_ms: u32,
 
-    /// 블루 팀 플레이어 수
-    num_blue_players: usize,
-    /// 레드 팀 플레이어 수
-    num_red_players: usize,
     /// 떠난 플레이어 식별자
     leaved_players: HashSet<UserId>,
 }
 
-impl GameWorldInGameEnterState {
+impl GameWorldInGameFinishState {
     /// 새로운 게임 월드 상태를 생성합니다.
-    pub fn new(
-        stage_kind: StageKind,
-        half_size_x: NonZeroU32,
-        half_size_y: NonZeroU32,
-        half_size_z: NonZeroU32,
-        num_blue_players: usize,
-        num_red_players: usize,
-        leaved_players: HashSet<UserId>,
-    ) -> Self {
+    pub fn new(winner: Option<Team>, play_time_ms: u32, leaved_players: HashSet<UserId>) -> Self {
         Self {
-            stage_kind,
-            half_size_x,
-            half_size_y,
-            half_size_z,
             remaining_time_ms: MAX_WAIT_TIME,
-            num_blue_players,
-            num_red_players,
+            winner,
+            play_time_ms,
             leaved_players,
         }
     }
@@ -113,17 +88,6 @@ impl GameWorldInGameEnterState {
         let permission = data.permission();
         data.set_permission(Permission::User);
 
-        // 플레이어가 속한 팀의 인원 수를 감소시킵니다.
-        let team = data.team();
-        match team {
-            Team::Blue => {
-                self.num_blue_players -= 1;
-            }
-            Team::Red => {
-                self.num_red_players -= 1;
-            }
-        }
-
         // 떠난 플레이어 식별자를 추가합니다.
         self.leaved_players.insert(uid);
 
@@ -170,53 +134,12 @@ impl GameWorldInGameEnterState {
         // 네트워크 상태를 설정합니다.
         data.set_network_state(state);
     }
-
-    /// 다음 게임 월드 상태로 전환을 시도합니다.
-    fn try_enter_next_state(&mut self, world: &mut GameWorld) {
-        // 남은 시간이 없는 경우
-        if self.remaining_time_ms <= 0 {
-            // 다음 게임 상태로 전환합니다.
-            let leaved_players = self.leaved_players.clone();
-            self.leaved_players.clear();
-            let state = GameWorldInGameRunState::new(
-                self.stage_kind,
-                self.half_size_x,
-                self.half_size_y,
-                self.half_size_z,
-                self.num_blue_players,
-                self.num_red_players,
-                leaved_players,
-            );
-
-            let flow = GameWorldStateFlow::Change(Box::new(state));
-            world.flows.push(flow);
-
-            // 모든 세션의 상태를 전환합니다.
-            for (session, &uid) in world.sessions.iter() {
-                let sender = world.events.clone();
-                let state = SessionInGameRunState::new(uid, sender);
-                let flow = SessionStateFlow::Change(Box::new(state));
-                session.add_flow(flow);
-            }
-        }
-    }
 }
 
-impl GameWorldState for GameWorldInGameEnterState {
-    fn on_enter(&mut self, world: &mut GameWorld) {
-        // 모든 세션에 패킷 데이터를 전송합니다.
-        let packet = InGameEnterNotifyPacket::new(self.remaining_time_ms);
-        for session in world.sessions.keys() {
-            session.tcp_write(packet.as_raw());
-        }
-    }
+impl GameWorldState for GameWorldInGameFinishState {
+    fn on_enter(&mut self, world: &mut GameWorld) {}
 
-    fn on_exit(&mut self, world: &mut GameWorld) {
-        // 떠난 플레이어 데이터를 정리합니다.
-        for uid in self.leaved_players.iter() {
-            world.players.remove(uid);
-        }
-    }
+    fn on_exit(&mut self, world: &mut GameWorld) {}
 
     fn handle_event(&mut self, world: &mut GameWorld, event: GameWorldEvent) {
         match event {
@@ -225,7 +148,11 @@ impl GameWorldState for GameWorldInGameEnterState {
                 uid,
                 event,
             } => match event {
-                GameWorldSystemEvent::PlayerJoin { .. } => {
+                GameWorldSystemEvent::PlayerJoin {
+                    name,
+                    tier,
+                    profile_icon,
+                } => {
                     self.handle_player_join_event(session, uid);
                 }
                 GameWorldSystemEvent::PlayerLeave => {
@@ -249,7 +176,5 @@ impl GameWorldState for GameWorldInGameEnterState {
         // 남은 시간을 갱신합니다.
         let elapsed_time_ms = elapsed.as_millis().min(MAX_WAIT_TIME as u128) as u16;
         self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
-
-        self.try_enter_next_state(world);
     }
 }

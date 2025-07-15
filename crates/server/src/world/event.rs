@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use mod_network::components::{
-    CharacterKind, GameTier, HeldInput, InputSnapshot, NetworkState, ProfileIcon, UserId, UserName,
+    CharacterKind, GameTier, InputSnapshot, NetworkState, ProfileIcon, UserId, UserName,
 };
 
 use crate::session::Session;

@@ -167,11 +167,7 @@ mod tests {
         let removed_bullets = vec![ObjectId::new(95143), ObjectId::new(95144)];
 
         let origin = InGameStatusPacket::new(
-            CapturePoint {
-                capture_progress: 63.12,
-                capture_score: [21.111, 2.111],
-                capture_team: None,
-            },
+            CapturePoint::new(6312, [2111, 2111], None),
             players,
             removed_bullets,
         );

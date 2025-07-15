@@ -228,3 +228,9 @@ impl fmt::Debug for GameWorldInGameRunState {
         write!(f, "{}", stringify!(GameWorldInGameRunState))
     }
 }
+
+impl fmt::Debug for GameWorldInGameFinishState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldInGameFinishState))
+    }
+}

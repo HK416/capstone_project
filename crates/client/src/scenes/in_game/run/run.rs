@@ -1,4 +1,10 @@
-use std::{f32::consts::TAU, num::NonZeroU32, sync::Arc, time::Instant};
+use std::{
+    f32::consts::{PI, TAU},
+    num::NonZeroU32,
+    ptr::NonNull,
+    sync::Arc,
+    time::Instant,
+};
 
 use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Entity, World};
@@ -14,7 +20,7 @@ use mod_network::{
         HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
         MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
         Team, UserId, ViewState, ViewStateTimer, MAX_CAPTURE_SCORE, MAX_INPUT_EVENTS,
-        MAX_IN_GAME_BULLETS, MAX_LATITUDE, MIN_LATITUDE,
+        MAX_IN_GAME_BULLETS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
         InGameInputPacket, InGamePullPacket, InGameStatusPacket, Packet, PacketType, RawPacket,
@@ -26,6 +32,7 @@ use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
 use winit::{
     event::{Modifiers, MouseButton},
+    event_loop::EventLoopProxy,
     keyboard::{KeyCode, KeyLocation},
     window::Window,
 };
@@ -34,7 +41,7 @@ use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, NOTOSANS_BOLD, WEAPON_ICON_URI,
+        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -52,7 +59,7 @@ use crate::{
         ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans,
         TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
     },
-    config::{Locale, UserConfig},
+    config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
     scenes::{
         FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
@@ -60,6 +67,9 @@ use crate::{
     },
     SERVER_TCP_ADDR,
 };
+
+/// 애플리케이션 언어에 따른 리스폰 대기 타이틀 텍스트
+const RESPAWN_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["행동 불능"];
 
 /// 게임을 진행하는 장면입니다.
 pub struct InGameRunScene {
@@ -75,6 +85,8 @@ pub struct InGameRunScene {
     flip_horizontal: bool,
     /// 시야 조작의 좌우 반전 여부입니다.
     flip_vertical: bool,
+    /// 게임 장면의 일시정지 여부입니다.
+    is_paused: bool,
 
     /// 최대 게임 플레이 시간
     max_game_play_time_ms: u32,
@@ -173,6 +185,9 @@ pub struct InGameRunScene {
     /// 체력 인터페이스 사각형 영역입니다.
     health_point_rect: egui::Rect,
 
+    /// 시작 이미지 폰트 텍스처입니다.
+    start_img_font_texture: egui::load::SizedTexture,
+
     /// 무기 아이콘 텍스처입니다.
     weapon_icon_texture: egui::load::SizedTexture,
     /// 무기 인터페이스 사각형 영역입니다.
@@ -243,6 +258,7 @@ impl InGameRunScene {
             control_sensitivity: 0.5,
             flip_horizontal: false,
             flip_vertical: false,
+            is_paused: false,
             max_game_play_time_ms,
             play_elapsed_time_ms: 0,
             snapshot_elapsed_time_ms: 0,
@@ -291,6 +307,10 @@ impl InGameRunScene {
                 size: egui::Vec2::ZERO,
             },
             health_point_rect: egui::Rect::ZERO,
+            start_img_font_texture: egui::load::SizedTexture {
+                id: egui::TextureId::User(0),
+                size: egui::Vec2::ZERO,
+            },
             weapon_icon_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
@@ -773,6 +793,34 @@ impl InGameRunScene {
         };
     }
 
+    /// 시작 이미지 폰트 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_start_img_font_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        let texture = self
+            .texture_pool
+            .get(IMG_FONT_START_URI)
+            .expect("ImgFont_Start texture must be preloaded");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.start_img_font_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역의 크기를 재조정합니다.
         let viewport = app.viewport();
@@ -933,6 +981,22 @@ impl InGameRunScene {
 
     /// 조준선 인터페이스를 그립니다.
     fn draw_ui_reticle(&mut self, ctx: &egui::Context) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        let mut curr_action_state = ActionState::Idle;
+        player_execute!(archetype, world, entity, &ActionState, |action_state| {
+            curr_action_state = *action_state;
+        });
+
+        // 현재 플레이어가 행동 불능 상태인 경우 생략합니다.
+        if curr_action_state == ActionState::Death {
+            return;
+        }
+
         let center = self.clip_rect.center();
         let radius = 4.0 * self.ui_scale;
         egui::Area::new(egui::Id::new("Reticle"))
@@ -1745,20 +1809,16 @@ impl InGameRunScene {
         let remaining_time_sec = remaining_time_ms as f32 / 1000.0;
         let text = format!("{}", remaining_time_sec.floor() as u32);
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let font_id = egui::FontId::new(48.0 * self.ui_scale, family);
+        let font_id = egui::FontId::new(42.0 * self.ui_scale, family);
         let center = egui::pos2(
             inner_rect.center().x,
             0.5 * (self.clip_rect.top() + inner_rect.center().y),
         );
         let offsets = [
-            egui::vec2(-4.0, 0.0),
-            egui::vec2(4.0, 0.0),
-            egui::vec2(0.0, -4.0),
-            egui::vec2(0.0, 4.0),
-            egui::vec2(4.0, 4.0),
-            egui::vec2(-4.0, 4.0),
-            egui::vec2(4.0, -4.0),
-            egui::vec2(-4.0, -4.0),
+            egui::vec2(-1.0, 0.0),
+            egui::vec2(1.0, 0.0),
+            egui::vec2(0.0, -1.0),
+            egui::vec2(0.0, 1.0),
         ];
 
         for offset in offsets {
@@ -1788,26 +1848,22 @@ impl InGameRunScene {
         inner_rect.max -= size;
 
         // 블루 팀 점령도 게이지
-        let capture_team = self.capture_point.capture_team;
-        let percent = self.capture_point.capture_progress.floor() / 100.0;
+        let percent = self.capture_point.blue_progress();
         let corner_radius = outer_rect.height() * 0.5;
-        let width = outer_rect.width() * percent;
-        let right_bottom = outer_rect.right_bottom();
-        let left_top = right_bottom - egui::vec2(width, outer_rect.height());
-        let rect = egui::Rect::from_min_max(left_top, right_bottom);
         ui.painter()
             .rect_filled(outer_rect, corner_radius, egui::Color32::WHITE);
-        if let Some(team) = capture_team
-            && team == Team::Blue
-        {
+        if percent > 0.0 {
+            let width = outer_rect.width() * percent;
+            let right_bottom = outer_rect.right_bottom();
+            let left_top = right_bottom - egui::vec2(width, outer_rect.height());
+            let rect = egui::Rect::from_min_max(left_top, right_bottom);
             const GUAGE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 200, 120);
             ui.painter().rect_filled(rect, corner_radius, GUAGE_COLOR);
         }
 
         // 블루 팀 게이지를 그립니다.
         let i = Team::Blue as usize;
-        let score = self.capture_point.capture_score[i];
-        let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
+        let percent = self.capture_point.blue_score();
         let width = inner_rect.width() * percent;
         let height = inner_rect.height();
         let corner_radius = inner_rect.height() * 0.5;
@@ -1861,26 +1917,22 @@ impl InGameRunScene {
         inner_rect.max -= size;
 
         // 레드 팀 점령도 게이지
-        let capture_team = self.capture_point.capture_team;
-        let percent = self.capture_point.capture_progress.floor() / 100.0;
+        let percent = self.capture_point.red_progress();
         let corner_radius = outer_rect.height() * 0.5;
-        let width = outer_rect.width() * percent;
-        let left_top = outer_rect.left_top();
-        let right_bottom = left_top + egui::vec2(width, outer_rect.height());
-        let rect = egui::Rect::from_min_max(left_top, right_bottom);
         ui.painter()
             .rect_filled(outer_rect, corner_radius, egui::Color32::WHITE);
-        if let Some(team) = capture_team
-            && team == Team::Red
-        {
+        if percent > 0.0 {
+            let width = outer_rect.width() * percent;
+            let left_top = outer_rect.left_top();
+            let right_bottom = left_top + egui::vec2(width, outer_rect.height());
+            let rect = egui::Rect::from_min_max(left_top, right_bottom);
             const GUAGE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 200, 120);
             ui.painter().rect_filled(rect, corner_radius, GUAGE_COLOR);
         }
 
         // 레드 팀 게이지를 그립니다.
         let i = Team::Red as usize;
-        let score = self.capture_point.capture_score[i];
-        let percent = (score / MAX_CAPTURE_SCORE * 100.0).floor() / 100.0;
+        let percent = self.capture_point.red_score();
         let width = inner_rect.width() * percent;
         let height = inner_rect.height();
         let corner_radius = inner_rect.height() * 0.5;
@@ -1924,6 +1976,130 @@ impl InGameRunScene {
             TEAM_COLOR[Team::Red as usize],
         );
     }
+
+    /// 게임 시작 이미지 폰트를 화면에 출력합니다.
+    fn draw_start_font(&mut self, ctx: &egui::Context) {
+        const DURATION: u32 = 800;
+        if self.play_elapsed_time_ms > DURATION {
+            return;
+        }
+
+        let t = self.play_elapsed_time_ms as f32 / DURATION as f32;
+        let t = t * t * (3.0 - 2.0 * t);
+        let alpha = (255.0 * (t * PI).sin()).round();
+        let tint = egui::Color32::from_white_alpha(alpha as u8);
+
+        let texture_size = self.start_img_font_texture.size;
+        let ratio = texture_size.x / texture_size.y;
+        let width = self.clip_rect.width() * 0.7;
+        let height = width / ratio;
+        let center = self.clip_rect.center();
+        let size = egui::vec2(width, height);
+        let rect = egui::Rect::from_center_size(center, size);
+
+        egui::Area::new(egui::Id::new("Start_Img_Font"))
+            .order(egui::Order::Middle)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                egui::Image::new(self.start_img_font_texture)
+                    .tint(tint)
+                    .sense(egui::Sense::empty())
+                    .paint_at(ui, rect);
+            });
+    }
+
+    /// 남은 리스폰 대기 시간을 화면에 출력합니다.
+    fn draw_respawn_timer(&mut self, ctx: &egui::Context) {
+        const OFFSETS: [egui::Vec2; 4] = [
+            egui::vec2(-1.0, 0.0),
+            egui::vec2(1.0, 0.0),
+            egui::vec2(0.0, -1.0),
+            egui::vec2(0.0, 1.0),
+        ];
+
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        let mut wait_time_ms = 0;
+        let mut curr_action_state = ActionState::Idle;
+        type Q<'a> = (&'a ActionState, &'a ActionStateTimer);
+        player_execute!(archetype, world, entity, Q, |(
+            action_state,
+            action_state_timer,
+        )| {
+            wait_time_ms = RESPAWN_DELAY.saturating_sub(action_state_timer.0);
+            curr_action_state = *action_state;
+        });
+
+        // 현재 플레이어가 행동 불능 상태가 아닌 경우 생략합니다.
+        if curr_action_state != ActionState::Death {
+            return;
+        }
+
+        egui::Area::new(egui::Id::new("Respawn_Wait"))
+            .order(egui::Order::Middle)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                ui.painter()
+                    .rect_filled(self.clip_rect, 0.0, egui::Color32::from_black_alpha(96));
+
+                let i = self.locale as usize;
+                let wait_time_sec = wait_time_ms / 1000;
+
+                let text = RESPAWN_TITLE_TEXTS[i];
+                let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+                let font_id = egui::FontId::new(48.0 * self.ui_scale, family);
+                let center = egui::pos2(
+                    self.clip_rect.center().x,
+                    (self.clip_rect.top() + self.clip_rect.center().y) * 0.5,
+                );
+                for offset in OFFSETS {
+                    ui.painter().text(
+                        center + offset * self.ui_scale,
+                        egui::Align2::CENTER_CENTER,
+                        &text,
+                        font_id.clone(),
+                        FONT_COLOR,
+                    );
+                }
+
+                ui.painter().text(
+                    center,
+                    egui::Align2::CENTER_CENTER,
+                    &text,
+                    font_id.clone(),
+                    egui::Color32::WHITE,
+                );
+
+                let text = match self.locale {
+                    Locale::KOR => format!("{}초 뒤에 리스폰됩니다", wait_time_sec),
+                };
+                let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+                let center = self.clip_rect.center();
+                for offset in OFFSETS {
+                    ui.painter().text(
+                        center + offset * self.ui_scale,
+                        egui::Align2::CENTER_CENTER,
+                        &text,
+                        font_id.clone(),
+                        FONT_COLOR,
+                    );
+                }
+
+                ui.painter().text(
+                    center,
+                    egui::Align2::CENTER_CENTER,
+                    &text,
+                    font_id.clone(),
+                    egui::Color32::WHITE,
+                );
+            });
+    }
 }
 
 impl GameScene for InGameRunScene {
@@ -1937,6 +2113,7 @@ impl GameScene for InGameRunScene {
 
         self.regist_layout_texture(device, ui_renderer);
         self.regist_weapon_icon_texture(device, ui_renderer);
+        self.regist_start_img_font_texture(device, ui_renderer);
         self.resize_ui(window, app);
     }
 
@@ -1948,6 +2125,7 @@ impl GameScene for InGameRunScene {
     ) {
         ui_renderer.free_texture(&self.layout_texture.id);
         ui_renderer.free_texture(&self.weapon_icon_texture.id);
+        ui_renderer.free_texture(&self.start_img_font_texture.id);
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1992,7 +2170,7 @@ impl GameScene for InGameRunScene {
             self.held_input |= input.into_bits();
             self.input_events_buffer.push(InputEvent::KeyPress(input));
 
-            let (entity, _archetype) = self.player_entity();
+            let (entity, archetype) = self.player_entity();
             let world = match self.world.as_mut() {
                 Some(world) => world,
                 None => return true,
@@ -2002,12 +2180,15 @@ impl GameScene for InGameRunScene {
                 .expect("invalid entity or invalid entity component!");
             let i = character_kind as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
-            update_view_state(
-                &mut self.view_state,
-                &mut self.view_state_timer,
-                character_attributes,
-                self.held_input,
-            );
+            player_execute!(archetype, world, entity, &ActionState, |action_state| {
+                update_view_state(
+                    *action_state,
+                    &mut self.view_state,
+                    &mut self.view_state_timer,
+                    character_attributes,
+                    self.held_input,
+                );
+            });
         }
 
         true
@@ -2039,7 +2220,7 @@ impl GameScene for InGameRunScene {
             self.held_input &= !input.into_bits();
             self.input_events_buffer.push(InputEvent::KeyRelease(input));
 
-            let (entity, _archetype) = self.player_entity();
+            let (entity, archetype) = self.player_entity();
             let world = match self.world.as_mut() {
                 Some(world) => world,
                 None => return true,
@@ -2049,12 +2230,15 @@ impl GameScene for InGameRunScene {
                 .expect("invalid entity or invalid entity component!");
             let i = character_kind as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
-            update_view_state(
-                &mut self.view_state,
-                &mut self.view_state_timer,
-                character_attributes,
-                self.held_input,
-            );
+            player_execute!(archetype, world, entity, &ActionState, |action_state| {
+                update_view_state(
+                    *action_state,
+                    &mut self.view_state,
+                    &mut self.view_state_timer,
+                    character_attributes,
+                    self.held_input,
+                );
+            });
         }
 
         true
@@ -2133,7 +2317,7 @@ impl GameScene for InGameRunScene {
                 self.held_input |= input.into_bits();
                 self.input_events_buffer.push(InputEvent::KeyPress(input));
 
-                let (entity, _archetype) = self.player_entity();
+                let (entity, archetype) = self.player_entity();
                 let world = match self.world.as_mut() {
                     Some(world) => world,
                     None => return true,
@@ -2143,12 +2327,15 @@ impl GameScene for InGameRunScene {
                     .expect("invalid entity or invalid entity component!");
                 let i = character_kind as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
-                update_view_state(
-                    &mut self.view_state,
-                    &mut self.view_state_timer,
-                    character_attributes,
-                    self.held_input,
-                );
+                player_execute!(archetype, world, entity, &ActionState, |action_state| {
+                    update_view_state(
+                        *action_state,
+                        &mut self.view_state,
+                        &mut self.view_state_timer,
+                        character_attributes,
+                        self.held_input,
+                    );
+                });
             }
         }
 
@@ -2179,7 +2366,7 @@ impl GameScene for InGameRunScene {
                 self.held_input &= !input.into_bits();
                 self.input_events_buffer.push(InputEvent::KeyRelease(input));
 
-                let (entity, _archetype) = self.player_entity();
+                let (entity, archetype) = self.player_entity();
                 let world = match self.world.as_mut() {
                     Some(world) => world,
                     None => return true,
@@ -2189,12 +2376,15 @@ impl GameScene for InGameRunScene {
                     .expect("invalid entity or invalid entity component!");
                 let i = character_kind as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
-                update_view_state(
-                    &mut self.view_state,
-                    &mut self.view_state_timer,
-                    character_attributes,
-                    self.held_input,
-                );
+                player_execute!(archetype, world, entity, &ActionState, |action_state| {
+                    update_view_state(
+                        *action_state,
+                        &mut self.view_state,
+                        &mut self.view_state_timer,
+                        character_attributes,
+                        self.held_input,
+                    );
+                });
             }
         }
 
@@ -2230,6 +2420,7 @@ impl GameScene for InGameRunScene {
 
                 let queue = app.render_queue();
                 let device = app.render_device();
+
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                 let mut staging_buffers = Vec::default();
@@ -2287,7 +2478,7 @@ impl GameScene for InGameRunScene {
             .saturating_add(elapsed_time_ms)
             .min(self.max_game_play_time_ms);
 
-        let (entity, _archetype) = self.player_entity();
+        let (entity, archetype) = self.player_entity();
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
@@ -2299,14 +2490,23 @@ impl GameScene for InGameRunScene {
             .expect("invalid entity or invalid entity component!");
         let i = character_kind as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
-
-        // 시야 상태 타이머를 갱신합니다.
-        update_view_state_timer(
-            &mut self.view_state,
-            &mut self.view_state_timer,
-            character_attributes,
-            elapsed_time_ms as u16,
-        );
+        player_execute!(archetype, world, entity, &ActionState, |action_state| {
+            // 시야 상태 타이머를 갱신합니다.
+            update_view_state_timer(
+                *action_state,
+                &mut self.view_state,
+                &mut self.view_state_timer,
+                character_attributes,
+                elapsed_time_ms as u16,
+            );
+            update_view_state(
+                *action_state,
+                &mut self.view_state,
+                &mut self.view_state_timer,
+                character_attributes,
+                self.held_input,
+            );
+        });
     }
 
     fn on_post_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
@@ -3082,5 +3282,7 @@ impl GameScene for InGameRunScene {
         self.draw_weapon_info(ctx);
         self.draw_skill_cost_info(ctx);
         self.draw_score(ctx);
+        self.draw_start_font(ctx);
+        self.draw_respawn_timer(ctx);
     }
 }

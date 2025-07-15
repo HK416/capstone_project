@@ -4,8 +4,8 @@
 use mod_network::components::{
     ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind, GameTier,
     HealthData, HeldInput, InputStateTimer, LatLon, MovementState, MovementStateTimer,
-    MovingDirection, NetworkState, Permission, PlayerStateData, ProfileIcon, SkillCostData, Team,
-    UserName, Velocity,
+    MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData, Team, UserName,
+    Velocity,
 };
 
 use crate::data::get_character_attributes;
@@ -26,6 +26,7 @@ use crate::data::get_character_attributes;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Bitfield(u16);
 
+#[allow(dead_code)]
 impl Bitfield {
     const TEAM_BIT_MASK: u16 = 0x0001;
     const TEAM_SHIFT: usize = 0;
@@ -214,60 +215,41 @@ impl Default for Bitfield {
 #[repr(C, align(16))]
 #[derive(Debug, Clone)]
 pub struct Player {
-    /// 사용자 이름
-    pub name: UserName,
-    /// 사용자 프로필 아이콘
-    pub profile_icon: ProfileIcon,
-    /// 캐릭터 종류
-    character_kind: CharacterKind,
-    /// 행동 상태
-    pub action_state: ActionState,
-    /// 움직임 상태
-    pub movement_state: MovementState,
-    /// 행동 상태 타이머
-    pub action_state_timer: ActionStateTimer,
-    /// 움직임 상태 타이머
-    pub movement_state_timer: MovementStateTimer,
-    /// 플레이어 시야 각도
-    pub latlon: LatLon,
+    pub rotation: glam::Quat,       // 16B
+    pub translation: glam::Vec3A,   // 12B + 4B padding
+    pub velocity: Velocity,         // 12B + 4B padding
+    pub direction: MovingDirection, // 12B + 4B padding
 
-    /// 비트 필드 데이터입니다.
-    bitfield: Bitfield,
+    pub attributes: &'static CharacterAttributes, // 8B
+    pub latlon: LatLon,                           // 8B
 
-    pub offset_time: i32,
-    /// 상대 팀을 처치한 횟수
-    pub kill_count: u16,
-    /// 상대 팀에게 처치 당한 횟수
-    pub retreat_count: u16,
-    /// 체력 데이터
-    pub health_data: HealthData,
-    /// 총알 데이터
-    pub bullet_data: BulletData,
+    pub damage_dealt: u32,
+    pub damage_taken: u32,
+    pub healing_given: u32,
+    pub skill_cost_data: SkillCostData, // 4B
 
-    /// 스킬 코스트 데이터
-    pub skill_cost_data: SkillCostData,
-    /// 캐릭터 속성 데이터
-    attributes: &'static CharacterAttributes,
-    /// 스킬 코스트 갱신에 사용되는 타이머입니다. (단위: ms)
+    pub action_state_timer: ActionStateTimer,     // 2B
+    pub movement_state_timer: MovementStateTimer, // 2B
     pub skill_cost_timer: u16,
-    /// 입력 상태 타이머
-    pub input_state_timer: InputStateTimer,
-    /// 게임 입력 비트 플래그
-    pub held_input: HeldInput,
+    pub input_state_timer: InputStateTimer, // 2B
+    pub kill_count: u16,
+    pub retreat_count: u16,
+    bitfield: Bitfield,
+    pub held_input: HeldInput, // 위까지 모두 2B
 
-    /// 플레이어 월드 공간 위치
-    pub translation: glam::Vec3A,
+    pub health_data: HealthData, // 6B
+    pub bullet_data: BulletData, // 6B
 
-    /// 플레이어 월드 공간 방향
-    pub rotation: glam::Quat,
-
-    /// 플레이어 월드 공간 이동 속도
-    pub velocity: Velocity,
-
-    /// 플레이어 월드 공간 이동 방향
-    pub direction: MovingDirection,
+    // 2B padding 삽입 필요 (health + bullet = 12B → 다음은 16B 정렬 맞춰야 함)
+    pub name: UserName,            // 34B
+    pub profile_icon: ProfileIcon, // 1B
+    character_kind: CharacterKind, // 1B
+    pub action_state: ActionState, // 1B
+    pub movement_state: MovementState, // 1B
+                                   // 총 38B → 패딩 6B 추가해서 44B → 다음 16B align 맞춤
 }
 
+#[allow(dead_code)]
 impl Player {
     /// 플레이어 데이터를 생성합니다.
     pub fn new(
@@ -277,29 +259,36 @@ impl Player {
         tier: GameTier,
     ) -> Self {
         Self {
+            rotation: glam::Quat::IDENTITY,
+            translation: glam::Vec3A::ZERO,
+            velocity: Velocity::new(),
+            direction: MovingDirection::new(),
+
+            attributes: get_character_attributes(CharacterKind::ArisOriginal),
+            latlon: LatLon::default(),
+
+            damage_dealt: 0,
+            damage_taken: 0,
+            healing_given: 0,
+            skill_cost_data: SkillCostData::default(),
+
+            action_state_timer: ActionStateTimer(0),
+            movement_state_timer: MovementStateTimer(0),
+            skill_cost_timer: 0,
+            input_state_timer: InputStateTimer::new(0),
+            kill_count: 0,
+            retreat_count: 0,
+            bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
+            held_input: HeldInput::default(),
+
+            health_data: HealthData::default(),
+            bullet_data: BulletData::default(),
+
             name,
             profile_icon,
             character_kind: CharacterKind::ArisOriginal,
             action_state: ActionState::Idle,
             movement_state: MovementState::Idle,
-            action_state_timer: ActionStateTimer(0),
-            movement_state_timer: MovementStateTimer(0),
-            latlon: LatLon::default(),
-            bitfield: Bitfield::new().with_permission(permission).with_tier(tier),
-            offset_time: 0,
-            kill_count: 0,
-            retreat_count: 0,
-            health_data: HealthData::default(),
-            bullet_data: BulletData::default(),
-            skill_cost_data: SkillCostData::default(),
-            attributes: get_character_attributes(CharacterKind::ArisOriginal),
-            skill_cost_timer: 0,
-            input_state_timer: InputStateTimer::new(0),
-            held_input: HeldInput::default(),
-            translation: glam::Vec3A::ZERO,
-            rotation: glam::Quat::IDENTITY,
-            velocity: Velocity::new(),
-            direction: MovingDirection::new(),
         }
     }
 
@@ -334,12 +323,6 @@ impl Player {
     /// 캐릭터 속성 데이터를 반환합니다.
     pub fn character_attributes(&self) -> &'static CharacterAttributes {
         self.attributes
-    }
-
-    pub fn player_states(&self) -> PlayerStateData {
-        PlayerStateData::new()
-            .with_action_state(self.action_state)
-            .with_movement_state(self.movement_state)
     }
 
     /// 팀 종류를 반환합니다.
