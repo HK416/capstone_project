@@ -23,8 +23,8 @@ use mod_network::{
         MAX_IN_GAME_BULLETS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
-        InGameInputPacket, InGamePullPacket, InGameStatusPacket, Packet, PacketType, RawPacket,
-        MAX_INPUT_SNAPSHOTS,
+        InGameControlLosePacket, InGameInputPacket, InGamePullPacket, InGameStatusPacket, Packet,
+        PacketType, RawPacket, MAX_INPUT_SNAPSHOTS,
     },
 };
 use mod_parallelism::collections::Queue;
@@ -62,7 +62,7 @@ use crate::{
     config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        FatalErrorSceneLayer, InGamePauseLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
         ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
     },
     SERVER_TCP_ADDR,
@@ -2129,6 +2129,37 @@ impl GameScene for InGameRunScene {
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 캐릭터 속성 데이터를 가져옵니다.
+        let &character_kind = world
+            .query_one_mut::<&CharacterKind>(entity)
+            .expect("invalid entity or invalid entity component!");
+        let i = character_kind as usize;
+        let character_attributes = CHARACTER_ATTRIBUTES[i];
+
+        // 입력을 초기화합니다.
+        self.held_input = HeldInput::empty();
+        player_execute!(archetype, world, entity, &ActionState, |action_state| {
+            update_view_state(
+                *action_state,
+                &mut self.view_state,
+                &mut self.view_state_timer,
+                character_attributes,
+                self.held_input,
+            );
+        });
+
+        // 입력 초기화 패킷을 전송합니다.
+        let packet = InGameControlLosePacket::new(self.uid, self.token);
+        let net = app.net_manager();
+        let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+        socket.push_packet(packet.as_raw());
+
         let event = AppEvent::CursorEnable;
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
@@ -2349,9 +2380,51 @@ impl GameScene for InGameRunScene {
         _modifiers: Modifiers,
         repeat: bool,
         _window: &Window,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
     ) -> bool {
         if !repeat {
+            if code == KeyCode::Escape {
+                let (entity, archetype) = self.player_entity();
+                let world = match self.world.as_mut() {
+                    Some(world) => world,
+                    None => return true,
+                };
+
+                // 캐릭터 속성 데이터를 가져옵니다.
+                let &character_kind = world
+                    .query_one_mut::<&CharacterKind>(entity)
+                    .expect("invalid entity or invalid entity component!");
+                let i = character_kind as usize;
+                let character_attributes = CHARACTER_ATTRIBUTES[i];
+
+                // 입력을 초기화합니다.
+                self.held_input = HeldInput::empty();
+                player_execute!(archetype, world, entity, &ActionState, |action_state| {
+                    update_view_state(
+                        *action_state,
+                        &mut self.view_state,
+                        &mut self.view_state_timer,
+                        character_attributes,
+                        self.held_input,
+                    );
+                });
+
+                // 입력 초기화 패킷을 전송합니다.
+                let packet = InGameControlLosePacket::new(self.uid, self.token);
+                let net = app.net_manager();
+                let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                socket.push_packet(packet.as_raw());
+
+                // 일시정지 게임 장면 레이어를 추가합니다.
+                let in_game_scene = unsafe { NonNull::new_unchecked(self as *mut Self) };
+                let scene = InGamePauseLayer::new(self.uid, self.token, self.locale, in_game_scene);
+                let flow = GameSceneFlow::Push(Box::new(scene));
+                let event = AppEvent::AddGameSceneFlow(flow);
+                let event_loop_proxy = app.event_loop_proxy();
+                event_loop_proxy.send_event(event).unwrap();
+                return true;
+            }
+
             let flags = {
                 let config = UserConfig::get();
                 config
@@ -3284,5 +3357,17 @@ impl GameScene for InGameRunScene {
         self.draw_score(ctx);
         self.draw_start_font(ctx);
         self.draw_respawn_timer(ctx);
+    }
+}
+
+impl InGameRunScene {
+    /// 클립 사각형 영역을 반환합니다.
+    pub(super) fn get_clip_rect(&self) -> egui::Rect {
+        self.clip_rect
+    }
+
+    /// 인터페이스 스케일 값을 반환합니다.
+    pub(super) fn get_ui_scale(&self) -> f32 {
+        self.ui_scale
     }
 }

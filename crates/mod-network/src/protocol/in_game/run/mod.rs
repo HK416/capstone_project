@@ -3,7 +3,8 @@
 
 mod event;
 mod finish;
+mod notify;
 mod pull;
 mod status;
 
-pub use self::{event::*, finish::*, pull::*, status::*};
+pub use self::{event::*, finish::*, notify::*, pull::*, status::*};

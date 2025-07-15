@@ -97,4 +97,6 @@ pub enum GameWorldInGameRunStateEvent {
         client_play_elapsed_time: u32,
         snapshots: Vec<InputSnapshot>,
     },
+    /// 플레이어 입력 초기화 요청이 수신시 발생되는 이벤트입니다.
+    InputReset,
 }

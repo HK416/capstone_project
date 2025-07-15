@@ -677,9 +677,8 @@ impl ApplicationHandler<AppEvent> for Application {
             return;
         }
 
-        // 게임 장면 스택이 비어있는 경우 함수 실행을 생략합니다.
-        if scene_stack.is_empty() {
-            log::debug!("window event ignored >> the current scene is empty.");
+        // 게임 장면 스택이 비어있거나, 장면 흐름이 비어있지 않은 경우 함수 실행을 생략합니다.
+        if scene_stack.is_empty() || !self.scene_flow.is_empty() {
             // 애플리케이션 창과 장면 스택의 `소유권`을 돌려 놓습니다.
             self.app_window = Some(app_window);
             self.scene_stack = Some(scene_stack);

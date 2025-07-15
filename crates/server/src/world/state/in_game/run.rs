@@ -8,7 +8,7 @@ use std::{
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, ActionEventDetail, ActionState, BulletKind, DamageLogData,
+        ActionEvent, ActionEventDetail, ActionState, BulletKind, DamageLogData, HeldInput,
         InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData, InputEvent,
         InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
         MIN_LATITUDE, MovementState, NetworkState, ObjectId, Permission, StageAttributes,
@@ -297,6 +297,45 @@ impl GameWorldInGameRunState {
                 }
             }
         }
+    }
+
+    /// [`GameWorldInGameRunStateEvent::InputReset`] 이벤트를 처리합니다.
+    fn handle_input_reset_event(
+        &mut self,
+        world: &mut GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+    ) {
+        // 플레이어 데이터를 가져옵니다.
+        let data = match world.players.get_mut(&uid) {
+            Some(data) => data,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                session.close();
+                return;
+            }
+        };
+
+        // 입력을 초기화합니다.
+        data.held_input = HeldInput::empty();
+
+        // 상태를 갱신합니다.
+        let character_attributes = data.character_attributes();
+        update_action_state(
+            data.held_input, 
+            &mut data.action_state, 
+            &mut data.action_state_timer, 
+            character_attributes, 
+            &mut data.bullet_data, 
+            &mut data.skill_cost_data
+        );
+        update_movement_state(
+            data.held_input, 
+            data.action_state, 
+            &mut data.movement_state, 
+            &mut data.movement_state_timer
+        );
     }
 
     /// 모든 세션에 Pull 패킷 데이터를 전송합니다.
@@ -1166,6 +1205,9 @@ impl GameWorldState for GameWorldInGameRunState {
                     client_play_elapsed_time,
                     snapshots,
                 ),
+                GameWorldInGameRunStateEvent::InputReset => {
+                    self.handle_input_reset_event(world, session, uid)
+                }
             },
             _ => {
                 log::warn!(

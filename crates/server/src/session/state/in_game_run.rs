@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use mod_network::{
     components::UserId,
-    protocol::{InGameInputPacket, Packet, PacketType, RawPacket},
+    protocol::{InGameControlLosePacket, InGameInputPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 
@@ -35,7 +35,7 @@ impl SessionInGameRunState {
         }
     }
 
-    /// [`InGameInputEventPacket`]을 처리합니다.
+    /// [`InGameInputPacket`]을 처리합니다.
     fn handle_in_game_input_event_packet(
         &mut self,
         session: &Arc<Session>,
@@ -75,6 +75,44 @@ impl SessionInGameRunState {
         };
         self.sender.push(event);
     }
+
+    /// [`InGameControlLosePacket`]을 처리합니다.
+    fn handle_in_game_control_lose_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: InGameControlLosePacket,
+    ) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::InGameInput
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::InGameInput
+            );
+            session.close();
+            return;
+        }
+
+        // 이벤트를 전송합니다.
+        let event = GameWorldInGameRunStateEvent::InputReset;
+        let event = GameWorldEvent::InGameRunState {
+            session: session.clone(),
+            uid: self.uid,
+            event,
+        };
+        self.sender.push(event);
+    }
 }
 
 impl SessionState for SessionInGameRunState {
@@ -91,6 +129,17 @@ impl SessionState for SessionInGameRunState {
                 };
 
                 self.handle_in_game_input_event_packet(session, packet);
+            }
+            PacketType::InGameControlLose => {
+                let packet = match InGameControlLosePacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_in_game_control_lose_packet(session, packet);
             }
             _ => {
                 log::warn!(
