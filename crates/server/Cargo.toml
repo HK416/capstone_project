@@ -1,6 +1,6 @@
 [package]
 name = "server"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -8,19 +8,17 @@ authors.workspace = true
 publish.workspace = true
 build = "build.rs"
 
-# [[bin]]
-# name = "stress_test"
-# path = "dummies/stress_test.rs"
+[[bin]]
+name = "stress_test"
+path = "dummies/stress_test.rs"
 
 [dependencies]
 ahash = { workspace = true }
 chrono = { workspace = true }
-dashmap = { workspace = true }
 glam = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 num_cpus = { workspace = true }
-parking_lot = { workspace = true }
 rand = { workspace = true }
 redis = { workspace = true }
 serde = { workspace = true }

@@ -1,5 +1,7 @@
-use mod_network::components::{CapturePoint, MAX_CAPTURE_SCORE, Team};
+use mod_network::components::{ActionState, CapturePoint, Team};
 use mod_physics::collision::Collider;
+
+use crate::entities::Player;
 
 pub struct CapturePointObject {
     /// 점령지 데이터
@@ -16,80 +18,48 @@ impl CapturePointObject {
         }
     }
 
-    pub fn capture_point(&self) -> &CapturePoint {
+    /// 점령도를 갱신합니다.
+    pub fn update<'a, I>(&mut self, players: I, elapsed_time_ms: u16)
+    where
+        I: Iterator<Item = &'a Player>,
+    {
+        // 점령지 안에 있는 플레이어 수를 계산합니다.
+        let mut num_blue_players = 0;
+        let mut num_red_players = 0;
+        for player in players {
+            if player.action_state != ActionState::Death {
+                if self.collider.check_point_collision(&player.translation) {
+                    match player.team() {
+                        Team::Blue => {
+                            num_blue_players += 1;
+                        }
+                        Team::Red => {
+                            num_red_players += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 레드 팀만 점령지 안에 존재하는 경우
+        if num_red_players > 0 && num_blue_players == 0 {
+            let offset = num_red_players as u16;
+            self.capture_point.set_capture_team(Some(Team::Red));
+            self.capture_point.update(elapsed_time_ms, offset);
+        }
+        // 블루 팀만 점령지 안에 존재하는 경우
+        else if num_blue_players > 0 && num_red_players == 0 {
+            let offset = num_blue_players as u16;
+            self.capture_point.set_capture_team(Some(Team::Blue));
+            self.capture_point.update(elapsed_time_ms, offset);
+        }
+        // 점령지 안에 두 팀 모두 존재하거나, 또는 아무도 존재하지 않은 경우
+        else {
+            self.capture_point.set_capture_team(None);
+        }
+    }
+
+    pub fn as_ref(&self) -> &CapturePoint {
         &self.capture_point
-    }
-
-    pub fn capture_progress(&self) -> f32 {
-        self.capture_point.capture_progress
-    }
-
-    pub fn capture_score(&self) -> &[f32; 2] {
-        &self.capture_point.capture_score
-    }
-
-    pub fn capture_team(&self) -> &Option<Team> {
-        &self.capture_point.capture_team
-    }
-
-    pub fn collider(&self) -> &Collider {
-        &self.collider
-    }
-
-    pub fn capture(
-        &mut self,
-        new_capture_team: Option<Team>,
-        elapsed_time_sec: f32,
-        capturing_count: usize,
-    ) -> Option<Team> {
-        if new_capture_team.is_none() {
-            // 아무도 없는 경우
-            if capturing_count == 0 {
-                // 현재 점령완료한 팀의 점령시간 증가
-                return self.checked_increase_capture_score(elapsed_time_sec);
-            }
-
-            // 두 팀 모두 있는 경우
-            return None;
-        }
-
-        if new_capture_team == self.capture_point.capture_team {
-            if self.capture_point.capture_progress == 100.0 {
-                let team = new_capture_team.unwrap();
-                self.capture_point.capture_score[team as usize] += elapsed_time_sec;
-                if self.capture_point.capture_score[team as usize] >= MAX_CAPTURE_SCORE {
-                    self.capture_point.capture_score[team as usize] = MAX_CAPTURE_SCORE;
-                    return self.capture_point.capture_team;
-                }
-            } else {
-                self.capture_point.capture_progress +=
-                    10.0 * capturing_count as f32 * elapsed_time_sec;
-                self.capture_point.capture_progress =
-                    self.capture_point.capture_progress.min(100.0);
-            }
-        } else {
-            // 인원수에 비례해서 점령도 증가
-            self.capture_point.capture_progress -= 10.0 * capturing_count as f32 * elapsed_time_sec;
-            if self.capture_point.capture_progress <= 0.0 {
-                self.capture_point.capture_team = new_capture_team;
-                self.capture_point.capture_progress = self.capture_point.capture_progress.abs();
-            }
-        }
-
-        None
-    }
-
-    /// 점령지의 점수를 증가시키고 점령이 완료되었는지 확인합니다.
-    fn checked_increase_capture_score(&mut self, elapsed_time_sec: f32) -> Option<Team> {
-        if let Some(team) = self.capture_point.capture_team {
-            if self.capture_point.capture_progress == 100.0 {
-                self.capture_point.capture_score[team as usize] += elapsed_time_sec;
-                if self.capture_point.capture_score[team as usize] >= MAX_CAPTURE_SCORE {
-                    self.capture_point.capture_score[team as usize] = MAX_CAPTURE_SCORE;
-                    return Some(team);
-                }
-            }
-        }
-        None
     }
 }

@@ -56,6 +56,66 @@ impl ActionState {
             _ => None,
         }
     }
+
+    pub fn is_next_state(self, state: Self) -> bool {
+        match (self, state) {
+            (ActionState::Idle, ActionState::Idle)
+            | (ActionState::Idle, ActionState::AimAt)
+            | (ActionState::Idle, ActionState::AimOff)
+            | (ActionState::Idle, ActionState::Attack)
+            | (ActionState::Idle, ActionState::Death)
+            | (ActionState::Idle, ActionState::Reload)
+            | (ActionState::Idle, ActionState::Skill)
+            | (ActionState::Aiming, ActionState::Aiming)
+            | (ActionState::Aiming, ActionState::AimAt)
+            | (ActionState::Aiming, ActionState::AimOff)
+            | (ActionState::Aiming, ActionState::Attack)
+            | (ActionState::Aiming, ActionState::Death)
+            | (ActionState::Aiming, ActionState::Skill)
+            | (ActionState::AimAt, ActionState::Idle)
+            | (ActionState::AimAt, ActionState::Aiming)
+            | (ActionState::AimAt, ActionState::AimAt)
+            | (ActionState::AimAt, ActionState::AimOff)
+            | (ActionState::AimAt, ActionState::Death)
+            | (ActionState::AimOff, ActionState::Idle)
+            | (ActionState::AimOff, ActionState::Aiming)
+            | (ActionState::AimOff, ActionState::AimAt)
+            | (ActionState::AimOff, ActionState::AimOff)
+            | (ActionState::AimOff, ActionState::Death)
+            | (ActionState::Attack, ActionState::Idle)
+            | (ActionState::Attack, ActionState::Aiming)
+            | (ActionState::Attack, ActionState::AimAt)
+            | (ActionState::Attack, ActionState::AimOff)
+            | (ActionState::Attack, ActionState::Attack)
+            | (ActionState::Attack, ActionState::Death)
+            | (ActionState::Attack, ActionState::Reload)
+            | (ActionState::Attack, ActionState::Skill)
+            | (ActionState::Death, ActionState::Idle)
+            | (ActionState::Death, ActionState::Aiming)
+            | (ActionState::Death, ActionState::AimAt)
+            | (ActionState::Death, ActionState::AimOff)
+            | (ActionState::Death, ActionState::Attack)
+            | (ActionState::Death, ActionState::Death)
+            | (ActionState::Death, ActionState::Reload)
+            | (ActionState::Reload, ActionState::Idle)
+            | (ActionState::Reload, ActionState::Aiming)
+            | (ActionState::Reload, ActionState::AimAt)
+            | (ActionState::Reload, ActionState::AimOff)
+            | (ActionState::Reload, ActionState::Attack)
+            | (ActionState::Reload, ActionState::Death)
+            | (ActionState::Reload, ActionState::Reload)
+            | (ActionState::Reload, ActionState::Skill)
+            | (ActionState::Skill, ActionState::Idle)
+            | (ActionState::Skill, ActionState::Aiming)
+            | (ActionState::Skill, ActionState::AimAt)
+            | (ActionState::Skill, ActionState::AimOff)
+            | (ActionState::Skill, ActionState::Attack)
+            | (ActionState::Skill, ActionState::Death)
+            | (ActionState::Skill, ActionState::Reload)
+            | (ActionState::Skill, ActionState::Skill) => true,
+            _ => false,
+        }
+    }
 }
 
 /// 움직임 상태의 개수입니다.
@@ -91,6 +151,34 @@ impl MovementState {
             3 => Some(MovementState::Jumping),
             4 => Some(MovementState::Landing),
             _ => None,
+        }
+    }
+
+    pub fn is_next_state(self, state: Self) -> bool {
+        match (self, state) {
+            (MovementState::Idle, MovementState::Idle)
+            | (MovementState::Idle, MovementState::Moving)
+            | (MovementState::Idle, MovementState::MoveToEnd)
+            | (MovementState::Idle, MovementState::Jumping)
+            | (MovementState::Moving, MovementState::Idle)
+            | (MovementState::Moving, MovementState::Moving)
+            | (MovementState::Moving, MovementState::MoveToEnd)
+            | (MovementState::Moving, MovementState::Jumping)
+            | (MovementState::MoveToEnd, MovementState::Idle)
+            | (MovementState::MoveToEnd, MovementState::Moving)
+            | (MovementState::MoveToEnd, MovementState::MoveToEnd)
+            | (MovementState::MoveToEnd, MovementState::Jumping)
+            | (MovementState::Jumping, MovementState::Idle)
+            | (MovementState::Jumping, MovementState::Moving)
+            | (MovementState::Jumping, MovementState::MoveToEnd)
+            | (MovementState::Jumping, MovementState::Jumping)
+            | (MovementState::Jumping, MovementState::Landing)
+            | (MovementState::Landing, MovementState::Idle)
+            | (MovementState::Landing, MovementState::Moving)
+            | (MovementState::Landing, MovementState::MoveToEnd)
+            | (MovementState::Landing, MovementState::Jumping)
+            | (MovementState::Landing, MovementState::Landing) => true,
+            _ => false,
         }
     }
 }

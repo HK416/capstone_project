@@ -32,7 +32,7 @@ use crate::{
     asset::{
         TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
         HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02,
-        IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -822,6 +822,8 @@ impl CustomGameRoomScene {
         egui::Area::new(egui::Id::new("Handle_Input"))
             .order(egui::Order::Middle)
             .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+
                 // 취소 버튼 입력을 처리합니다.
                 let response = ui.allocate_rect(self.cancel_icon_rect, egui::Sense::all());
                 if response.clicked() {
@@ -1222,7 +1224,7 @@ impl CustomGameRoomScene {
                     Permission::Admin => START_TEXTS[i],
                     Permission::User => READY_TEXTS[i],
                 };
-                let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
                 let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
                 let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
                 let label = egui::Label::new(text)

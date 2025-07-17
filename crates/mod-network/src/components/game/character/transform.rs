@@ -118,8 +118,8 @@ pub fn update_player_translation(
     team: Team,
     is_grounded: &mut bool,
     is_invincible: &mut bool,
-    health_data: &mut HealthData,
-    input_timer: InputStateTimer,
+    health_data: Option<&mut HealthData>,
+    input_state_timer: InputStateTimer,
     elapsed_time_sec: f32,
 ) {
     // 플레이어 위치를 가져옵니다.
@@ -127,8 +127,8 @@ pub fn update_player_translation(
 
     // 플레이어 속도를 갱신합니다.
     velocity.update(
-        &direction,
-        input_timer,
+        direction,
+        input_state_timer,
         action_state,
         *movement_state,
         *movement_state_timer,
@@ -206,7 +206,9 @@ pub fn update_player_translation(
     // 플레이어가 안전 구역 안에 있는 경우
     let in_safe_area = stage_attributes.is_safe_area(team, new_p.x, new_p.z);
     *is_invincible = in_safe_area;
-    if in_safe_area {
+    if let Some(health_data) = health_data
+        && in_safe_area
+    {
         /// 초당 회복량
         const HEALING: f32 = 500.0 / 1000.0;
         let healing = (HEALING * elapsed_time_sec).floor() as u16;
@@ -217,7 +219,10 @@ pub fn update_player_translation(
     if *is_grounded {
         match movement_state {
             MovementState::Landing => {
-                if held_input.is_moved() {
+                if held_input.contains(HeldInput::Jump) {
+                    *movement_state = MovementState::Jumping;
+                    movement_state_timer.0 = 0;
+                } else if held_input.is_moved() {
                     *movement_state = MovementState::Moving;
                     movement_state_timer.0 = 0;
                 } else {

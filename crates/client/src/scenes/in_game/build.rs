@@ -203,6 +203,7 @@ impl GameScene for InGameBuildScene {
                 label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: render_target_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -344,6 +345,9 @@ fn build_next_scene(
             token,
             stage_attributes.clone(),
             packet.max_game_play_time_ms,
+            packet.half_size_x,
+            packet.half_size_y,
+            packet.half_size_z,
             mesh_pool,
             model_pool,
             motion_pool,

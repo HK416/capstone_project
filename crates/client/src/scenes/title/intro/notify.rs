@@ -109,6 +109,7 @@ impl GameScene for GameIntroNotifyScene {
                         load: wgpu::LoadOp::Clear(self.get_background_color()),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],

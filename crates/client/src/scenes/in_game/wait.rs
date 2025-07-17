@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{num::NonZeroU32, sync::Arc, time::Instant};
 
 use ahash::{HashMap, RandomState};
 use hecs::{Entity, World};
@@ -50,6 +50,13 @@ pub struct InGameReadySceneBuilder {
     /// 최대 게임 플레이 시간
     max_game_play_time_ms: u32,
 
+    /// 게임 월드 x축 전체 절반 크기
+    half_size_x: NonZeroU32,
+    /// 게임 월드 y축 전체 절반 크기
+    half_size_y: NonZeroU32,
+    /// 게임 월드 z축 전체 절반 크기
+    half_size_z: NonZeroU32,
+
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
     /// 스테이지 엔터티
@@ -84,6 +91,9 @@ impl InGameReadySceneBuilder {
         token: LoginToken,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
+        half_size_x: NonZeroU32,
+        half_size_y: NonZeroU32,
+        half_size_z: NonZeroU32,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -98,6 +108,9 @@ impl InGameReadySceneBuilder {
             token,
             stage_attributes,
             max_game_play_time_ms,
+            half_size_x,
+            half_size_y,
+            half_size_z,
             players: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             stage: None,
             skybox: None,
@@ -139,6 +152,9 @@ impl InGameReadySceneBuilder {
             token: self.token,
             stage_attributes: self.stage_attributes,
             max_game_play_time_ms: self.max_game_play_time_ms,
+            half_size_x: self.half_size_x,
+            half_size_y: self.half_size_y,
+            half_size_z: self.half_size_z,
             world: Some(world),
             players: self.players,
             stage: self.stage,
@@ -175,6 +191,13 @@ pub struct InGameReadyScene {
 
     /// 최대 게임 플레이 시간
     max_game_play_time_ms: u32,
+
+    /// 게임 월드 x축 전체 절반 크기
+    half_size_x: NonZeroU32,
+    /// 게임 월드 y축 전체 절반 크기
+    half_size_y: NonZeroU32,
+    /// 게임 월드 z축 전체 절반 크기
+    half_size_z: NonZeroU32,
 
     /// 게임 월드
     world: Option<World>,
@@ -390,6 +413,9 @@ impl GameScene for InGameReadyScene {
                     self.stage_attributes.clone(),
                     self.max_game_play_time_ms,
                     packet.remaining_time_ms,
+                    self.half_size_x,
+                    self.half_size_y,
+                    self.half_size_z,
                     world,
                     players,
                     stage,
@@ -440,6 +466,7 @@ impl GameScene for InGameReadyScene {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: render_target_view,
                     resolve_target: None,
+                    depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{num::NonZeroU32, sync::Arc, time::Instant};
 
 use ahash::HashMap;
 use hecs::{Entity, ViewBorrow, World};
@@ -11,9 +11,10 @@ use mod_app::{
 use mod_network::{
     components::{
         update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
-        HeldInput, LoginToken, SkillCostData, StageAttributes, UserId,
+        HeldInput, LatLon, LoginToken, MovementState, MovementStateTimer, SkillCostData,
+        StageAttributes, UserId,
     },
-    protocol::{PacketType, RawPacket},
+    protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
@@ -31,17 +32,17 @@ use crate::{
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
         draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree,
-        local_transform_query_mut, update_character_hierarchy, update_character_resource,
-        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
-        AnimationQuery, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera,
-        CameraDataLayout, CameraResource, CameraUniform, Child, DirectionLight,
-        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
-        MaterialKind, MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask,
-        RevealRenderTarget, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer, Skybox,
-        SkyboxDataLayout, ToParentTrans, TransparentMap, WeaponQuery, WorldTransform,
-        CHARACTER_ATTRIBUTES,
+        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
+        update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
+        CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
+        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, ShadowResource,
+        Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, ToParentTrans,
+        TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
+    player_execute,
     scenes::{
         FatalErrorSceneLayer, InGameRunScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
         ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
@@ -75,6 +76,13 @@ pub struct InGameEnterScene {
     animation_time_ms: u16,
     /// 첫 번째 마우스 눌림 여부 플래그
     first_mouse_pressed: bool,
+
+    /// 게임 월드 x축 전체 절반 크기
+    half_size_x: NonZeroU32,
+    /// 게임 월드 y축 전체 절반 크기
+    half_size_y: NonZeroU32,
+    /// 게임 월드 z축 전체 절반 크기
+    half_size_z: NonZeroU32,
 
     /// 게임 월드
     world: Option<World>,
@@ -151,6 +159,9 @@ impl InGameEnterScene {
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         remaining_time_ms: u16,
+        half_size_x: NonZeroU32,
+        half_size_y: NonZeroU32,
+        half_size_z: NonZeroU32,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -180,6 +191,9 @@ impl InGameEnterScene {
             remaining_time_ms,
             animation_time_ms: 0,
             first_mouse_pressed: false,
+            half_size_x,
+            half_size_y,
+            half_size_z,
             world: Some(world),
             camera: Entity::DANGLING,
             players,
@@ -229,13 +243,11 @@ impl InGameEnterScene {
     /// 플레이어 캐릭터를 설정합니다.
     fn setup_player(&mut self) {
         // 플레이어 캐릭터를 초기화 설정합니다.
-        let (entity, _archetype) = self.player_entity();
+        let (entity, archetype) = self.player_entity();
         let world = self.world.as_mut().expect("the world must be exists!");
-        let action_state = world
-            .query_one_mut::<&mut ActionState>(entity)
-            .expect("invalid entity or invalid entity component!");
-
-        *action_state = ActionState::Callsign;
+        player_execute!(archetype, world, entity, &mut ActionState, |action_state| {
+            *action_state = ActionState::Callsign;
+        });
     }
 
     /// 카메라 엔터티를 생성합니다.
@@ -243,9 +255,12 @@ impl InGameEnterScene {
         // 플레이어 캐릭터의 위치를 가져옵니다.
         let (entity, archetype) = self.player_entity();
         let world = self.world.as_mut().expect("the world must be exists!");
-        let transform = local_transform_query_mut(world, entity, archetype);
 
-        // 카메라의 위치와 방향을 설정합니다.
+        let mut transform = ToParentTrans::default();
+        player_execute!(archetype, world, entity, &ToParentTrans, |trans| {
+            transform = trans.clone();
+        });
+
         let pivot = transform.get_translation() + glam::Vec3A::Y * 0.6;
         let translation = pivot
             + transform.get_right_vector() * 1.0
@@ -458,37 +473,44 @@ impl InGameEnterScene {
     }
 
     /// 캐릭터 애니메이션을 재생합니다.
-    fn update_player_character(&self, elapsed_time_ms: u16) {
+    fn update_player_character(&mut self, elapsed_time_ms: u16) {
+        let (entity, archetype) = self.player_entity();
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 캐릭터 종류를 가져옵니다.
+        let &character_kind = world
+            .query_one_mut::<&CharacterKind>(entity)
+            .expect("invalid entity or invalid entity component!");
+
         type Q<'a> = (
-            &'a CharacterKind,
             &'a mut BulletData,
             &'a mut SkillCostData,
             &'a mut ActionState,
             &'a mut ActionStateTimer,
         );
-
-        let world = match self.world.as_ref() {
-            Some(world) => world,
-            None => return,
-        };
-        let (entity, _archetype) = self.player_entity();
-        let mut query = world.query_one::<Q>(entity).expect("invalid entity!");
-        let (&character_kind, bullet_data, skill_cost_data, action_state, action_state_timer) =
-            query.get().expect("invalid entity component!");
-
-        // 플레이어 엔터티의 행동 상태를 갱신합니다.
-        let i = character_kind as usize;
-        let character_attributes = CHARACTER_ATTRIBUTES[i];
-        update_action_state_timer(
-            HeldInput::empty(),
+        player_execute!(archetype, world, entity, Q, |(
             bullet_data,
             skill_cost_data,
             action_state,
             action_state_timer,
-            character_attributes,
-            elapsed_time_ms,
-            &mut Vec::new(),
-        );
+        )| {
+            // 플레이어 엔터티의 행동 상태를 갱신합니다.
+            let i = character_kind as usize;
+            let character_attributes = CHARACTER_ATTRIBUTES[i];
+            update_action_state_timer(
+                HeldInput::empty(),
+                bullet_data,
+                skill_cost_data,
+                action_state,
+                action_state_timer,
+                character_attributes,
+                elapsed_time_ms,
+                &mut Vec::new(),
+            );
+        });
     }
 
     /// 조명 쉐이더 리소스를 갱신합니다.
@@ -881,6 +903,53 @@ impl GameScene for InGameEnterScene {
                     None => return None,
                 };
 
+                // 플레이어 데이터를 초기화합니다.
+                {
+                    let packet = InGamePullPacket::from_raw(packet);
+                    for data in packet.players.iter() {
+                        // 해당 플레이어 엔터티를 가져옵니다.
+                        let (entity, archetype) = self
+                            .players
+                            .get(&data.uid)
+                            .cloned()
+                            .expect("player not found!");
+
+                        // 캐릭터 속성 데이터를 가져옵니다.
+                        let &character_kind = world
+                            .query_one_mut::<&CharacterKind>(entity)
+                            .expect("invalid entity or invalid entity component!");
+                        let i = character_kind as usize;
+                        let attribute = CHARACTER_ATTRIBUTES[i];
+
+                        type Query<'a> = (
+                            &'a mut ActionState,
+                            &'a mut ActionStateTimer,
+                            &'a mut MovementState,
+                            &'a mut MovementStateTimer,
+                            &'a mut LatLon,
+                        );
+                        player_execute!(
+                            archetype,
+                            &world,
+                            entity,
+                            Query,
+                            |(
+                                action_state,
+                                action_state_timer,
+                                movement_state,
+                                movement_state_timer,
+                                latlon,
+                            )| {
+                                *action_state = data.action_state();
+                                *action_state_timer = data.action_state_timer(attribute);
+                                *movement_state = data.movement_state();
+                                *movement_state_timer = data.movement_state_timer(attribute);
+                                *latlon = data.latlon();
+                            }
+                        );
+                    }
+                }
+
                 // 생성한 카메라를 제거합니다.
                 cleanup(&mut world, self.camera);
 
@@ -926,6 +995,9 @@ impl GameScene for InGameEnterScene {
                     self.stage_attributes.clone(),
                     self.max_game_play_time_ms,
                     self.first_mouse_pressed,
+                    self.half_size_x,
+                    self.half_size_y,
+                    self.half_size_z,
                     world,
                     players,
                     stage,
@@ -985,27 +1057,52 @@ impl GameScene for InGameEnterScene {
 
         // 캐릭터 애니메이션을 재생합니다.
         let (entity, archetype) = self.player_entity();
-        let weapon_view = world.view::<WeaponQuery>();
-        let animation_view = world.view::<AnimationQuery>();
+        let character_view = world.view::<&CharacterKind>();
+        let skinning_view = world.view::<&SkinningAnimation>();
         let collection_view = world.view::<&BoneCollection>();
-        animate_character(
-            world,
-            entity,
-            archetype,
-            &self.motion_pool,
-            &animation_view,
-            &collection_view,
-        );
 
-        // 캐릭터 계층 구조를 갱신합니다.
-        update_character_hierarchy(
-            world,
-            entity,
-            archetype,
-            &child_view,
-            &sibling_view,
-            &weapon_view,
+        type Query<'a> = (
+            &'a ActionState,
+            &'a MovementState,
+            &'a ActionStateTimer,
+            &'a MovementStateTimer,
+            &'a LatLon,
         );
+        player_execute!(archetype, world, entity, Query, |(
+            &action_state,
+            &movement_state,
+            &action_state_timer,
+            &movement_state_timer,
+            &latlon,
+        )| {
+            // 캐릭터 애니메이션을 재생합니다.
+            animate_character(
+                world,
+                entity,
+                archetype,
+                &self.motion_pool,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                &character_view,
+                &skinning_view,
+                &collection_view,
+            );
+
+            // 캐릭터 계층 구조를 갱신합니다.
+            update_character_hierarchy(
+                world,
+                entity,
+                archetype,
+                action_state,
+                &child_view,
+                &sibling_view,
+                &character_view,
+                &skinning_view,
+            );
+        });
 
         let draw_tasks = &Arc::new(Queue::new());
         rayon::in_place_scope(move |scope| {
@@ -1233,6 +1330,7 @@ impl GameScene for InGameEnterScene {
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: render_target_view,
                         resolve_target: None,
                     }),
@@ -1247,6 +1345,7 @@ impl GameScene for InGameEnterScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: bright_render_target.view(),
                         resolve_target: None,
                     }),
@@ -1340,6 +1439,7 @@ impl GameScene for InGameEnterScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: accum_render_target.view(),
                         resolve_target: None,
                     }),
@@ -1356,6 +1456,7 @@ impl GameScene for InGameEnterScene {
                             }),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: reveal_render_target.view(),
                         resolve_target: None,
                     }),
@@ -1365,6 +1466,7 @@ impl GameScene for InGameEnterScene {
                             load: wgpu::LoadOp::Load,
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                         view: bright_render_target.view(),
                         resolve_target: None,
                     }),
@@ -1402,6 +1504,7 @@ impl GameScene for InGameEnterScene {
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],

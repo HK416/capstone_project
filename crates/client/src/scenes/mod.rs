@@ -1,4 +1,3 @@
-// mod finish;
 mod formation;
 mod in_game;
 mod layer;
@@ -199,41 +198,23 @@ impl fmt::Debug for InGameRunScene {
     }
 }
 
-// impl fmt::Debug for InGameDominationModePrepareScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameDominationModePrepareScene))
-//     }
-// }
+impl fmt::Debug for InGamePauseLayer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGamePauseLayer))
+    }
+}
 
-// impl fmt::Debug for InGameDominationModeScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameDominationModeScene))
-//     }
-// }
+impl fmt::Debug for InGameExitScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameExitScene))
+    }
+}
 
-// impl fmt::Debug for InGamePauseLayer {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGamePauseLayer))
-//     }
-// }
-
-// impl fmt::Debug for InGameDominationModeStatusLayer {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameDominationModeStatusLayer))
-//     }
-// }
-
-// impl fmt::Debug for InGameResultEnterScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameResultEnterScene))
-//     }
-// }
-
-// impl fmt::Debug for InGameResultScene {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", stringify!(InGameResultScene))
-//     }
-// }
+impl fmt::Debug for InGameResultScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InGameResultScene))
+    }
+}
 
 impl fmt::Debug for FatalErrorSceneLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

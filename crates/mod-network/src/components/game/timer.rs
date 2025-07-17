@@ -93,7 +93,7 @@ pub const MAX_INPUT_STATE_TIME: u16 = 250;
 /// 플레이어 입력 상태 타이머입니다.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct InputStateTimer(u16);
+pub struct InputStateTimer(pub u16);
 
 impl InputStateTimer {
     /// 새로운 입력 상태 타이머를 생성합니다.

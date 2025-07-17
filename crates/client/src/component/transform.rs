@@ -45,6 +45,11 @@ impl ToParentTrans {
         glam::Vec3A::from_vec4(self.0.w_axis)
     }
 
+    /// 로컬 변환 회전량을 반환합니다.
+    pub fn get_rotation(&self) -> glam::Quat {
+        glam::Quat::from_mat4(&self.0).normalize()
+    }
+
     /// 로컬 변환 행렬의 앞쪽 방향 벡터를 반환합니다.
     pub fn get_look_vector(&self) -> glam::Vec3A {
         glam::Vec3A::from_vec4(self.0.z_axis).normalize_or(glam::Vec3A::Z)

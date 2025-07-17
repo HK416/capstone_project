@@ -6,6 +6,7 @@ use crate::components::{BigEndian, TryFromBigEndian};
 /// 남은 총알 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BulletData {
+    /// 공격 당 총알 발사 횟수
     pub fires_per_attack: u16,
     /// 남은 총알 수 입니다.
     pub remaining: u16,

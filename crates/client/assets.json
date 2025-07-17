@@ -185,6 +185,8 @@
         },
         "font" : {
             "files" : [
+                "ImgFont_Draw.dds",
+                "ImgFont_Draw.texD",
                 "ImgFont_Host.dds",
                 "ImgFont_Host.texD",
                 "ImgFont_Lose_Small.dds",

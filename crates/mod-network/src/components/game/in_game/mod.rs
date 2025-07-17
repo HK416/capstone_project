@@ -5,11 +5,16 @@ mod bullet;
 mod capture_point;
 mod damage;
 mod player;
+mod snapshot;
 
-pub use self::{bullet::*, capture_point::*, damage::*, player::*};
+pub use self::{bullet::*, capture_point::*, damage::*, player::*, snapshot::*};
 
 /// 게임에 참여 가능한 최대 플레이어 수 입니다.
 pub const MAX_IN_GAME_PLAYERS: usize = 10;
+static_assertions::const_assert!(MAX_IN_GAME_PLAYERS > 0);
+
+/// 게임에 존재 가능한 최대 총알의 수 입니다.
+pub const MAX_IN_GAME_BULLETS: usize = u16::MAX as usize;
 static_assertions::const_assert!(MAX_IN_GAME_PLAYERS > 0);
 
 /// 게임에 참여 가능한 한 팀당 최대 플레이어 수 입니다.

@@ -1,12 +1,6 @@
-use std::{
-    f32::consts::{PI, TAU},
-    num::NonZeroU32,
-    ptr::NonNull,
-    sync::Arc,
-    time::Instant,
-};
+use std::{f32::consts::TAU, num::NonZeroU32, sync::Arc, time::Instant};
 
-use ahash::{HashMap, HashSet, RandomState};
+use ahash::HashMap;
 use hecs::{Entity, World};
 use mod_app::{
     app::AppHandle,
@@ -17,61 +11,53 @@ use mod_app::{
 use mod_network::{
     components::{
         ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags, CharacterKind,
-        HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
-        MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
-        Team, UserId, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS,
-        MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+        HealthData, HeldInput, LatLon, LoginToken, MovementState, MovementStateTimer, ObjectId,
+        SkillCostData, StageAttributes, Team, UserId, ViewState, ViewStateTimer, MAX_LATITUDE,
+        MIN_LATITUDE,
     },
-    protocol::{
-        InGameControlLosePacket, InGameFinishPacket, InGameInputPacket, InGamePullPacket,
-        InGameStatusPacket, Packet, PacketType, RawPacket, MAX_INPUT_SNAPSHOTS,
-    },
+    protocol::{InGameFinishPacket, InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
-use winit::{
-    event::{Modifiers, MouseButton},
-    keyboard::{KeyCode, KeyLocation},
-    window::Window,
-};
+use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, WEAPON_ICON_URI,
+        HUD_LAYOUT_URI_02, IMG_FONT_DRAW, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD,
+        WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
         draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_stage, draw_tree, spawn_bullet, update_bullet_hierarchy, update_bullet_resource,
+        draw_stage, draw_tree, update_bullet_hierarchy, update_bullet_resource,
         update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
         update_character_hierarchy, update_character_resource, update_stage_hierarchy,
         update_stage_resource, update_view_state, update_view_state_timer, AccumRenderTarget,
-        AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Bullet,
-        Camera, CameraResource, CameraUniform, Child, DirectionLight, GaussianBlurPipeline,
-        GlobalLightDataLayout, LightSetResource, LightTransformDataLayout, MaterialKind,
-        MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
-        ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans,
-        TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera,
+        CameraResource, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
+        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
+        WorldTransform, CHARACTER_ATTRIBUTES,
     },
-    config::{Locale, UserConfig, NUM_LOCALE},
+    config::Locale,
     player_execute,
     scenes::{
-        FatalErrorSceneLayer, InGameExitScene, InGamePauseLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
+        FatalErrorSceneLayer, InGameResultScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
         ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
     },
-    SERVER_TCP_ADDR,
 };
 
-/// 애플리케이션 언어에 따른 리스폰 대기 타이틀 텍스트
-const RESPAWN_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["행동 불능"];
+/// 게임 장면 지속 시간
+const SCENE_DURATION: u32 = 4_000;
 
-/// 게임을 진행하는 장면입니다.
-pub struct InGameRunScene {
+/// 게임 종료 후 대기하는 장면입니다.
+pub struct InGameExitScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
     /// 사용자 식별자
@@ -88,20 +74,14 @@ pub struct InGameRunScene {
     /// 최대 게임 플레이 시간
     max_game_play_time_ms: u32,
     /// 클라이언트 게임 플레이 경과 시간
-    play_elapsed_time_ms: u32,
-    /// 이전 스냅샷 전송 후 경과 시간
-    snapshot_elapsed_time_ms: u32,
+    elapsed_time_ms: u32,
     /// 점령 데이터
     capture_point: CapturePoint,
 
-    /// 임시로 생성된 스냅샷 데이터를 저장하는 버퍼입니다.
-    input_snapshot_buffer: Vec<InputSnapshot>,
-    /// 임시로 입력 이벤트를 저장하는 버퍼입니다.
-    input_events_buffer: Vec<InputEvent>,
-    /// 위도의 변위
-    delta_lat: f32,
-    /// 경도의 변위
-    delta_lon: f32,
+    /// 게임 완료 패킷
+    packet: Option<InGameFinishPacket>,
+    /// 플레이어 우승 여부, 비겼을 경우 `None`
+    is_player_win: Option<bool>,
 
     /// 첫 번쨰 마우스 눌림 여부 플래그
     first_mouse_pressed: bool,
@@ -113,8 +93,6 @@ pub struct InGameRunScene {
     half_size_y: NonZeroU32,
     /// 게임 월드 z축 전체 절반 크기
     half_size_z: NonZeroU32,
-    /// 사용자 입력 상태 플래그 변수입니다.
-    held_input: HeldInput,
     /// 플레이어 시야 상태입니다.
     view_state: ViewState,
     /// 플레이어 시야 상태 타이머입니다.
@@ -132,8 +110,6 @@ pub struct InGameRunScene {
     /// 카메라 종횡비
     camera_aspect_ratio: f32,
 
-    /// 제거된 총알 식별자
-    removed_bullets: HashSet<ObjectId>,
     /// 총알 엔터티
     bullets: HashMap<ObjectId, Entity>,
     /// 플레이어 엔터티
@@ -178,12 +154,11 @@ pub struct InGameRunScene {
 
     /// 인터페이스 배경 레이아웃 텍스처입니다.
     layout_texture: egui::load::SizedTexture,
+    /// 이미지 폰트 텍스처입니다.
+    img_font_texture: egui::load::SizedTexture,
 
     /// 체력 인터페이스 사각형 영역입니다.
     health_point_rect: egui::Rect,
-
-    /// 시작 이미지 폰트 텍스처입니다.
-    start_img_font_texture: egui::load::SizedTexture,
 
     /// 무기 아이콘 텍스처입니다.
     weapon_icon_texture: egui::load::SizedTexture,
@@ -216,19 +191,32 @@ pub struct InGameRunScene {
     sampler_pool: SamplerPool,
 }
 
-impl InGameRunScene {
-    /// 새로운 `InGameRunScene`을 생성합니다.
+impl InGameExitScene {
+    /// 새로운 `InGameExitScene`을 생성합니다.
     pub fn new(
         locale: Locale,
         uid: UserId,
         token: LoginToken,
-        stage_attributes: Arc<StageAttributes>,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
         max_game_play_time_ms: u32,
+        capture_point: CapturePoint,
+        packet: InGameFinishPacket,
+        is_player_win: Option<bool>,
         first_mouse_pressed: bool,
+        stage_attributes: Arc<StageAttributes>,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
+        view_state: ViewState,
+        view_state_timer: ViewStateTimer,
         world: World,
+        camera: Entity,
+        camera_fov_y: f32,
+        camera_rel_position: glam::Vec3A,
+        camera_aspect_ratio: f32,
+        bullets: HashMap<ObjectId, Entity>,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
         accum_render_target: AccumRenderTarget,
@@ -252,38 +240,30 @@ impl InGameRunScene {
             locale,
             uid,
             token,
-            control_sensitivity: 0.5,
-            flip_horizontal: false,
-            flip_vertical: false,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             max_game_play_time_ms,
-            play_elapsed_time_ms: 0,
-            snapshot_elapsed_time_ms: 0,
-            capture_point: CapturePoint::default(),
-            input_snapshot_buffer: Vec::with_capacity(MAX_INPUT_SNAPSHOTS + 1),
-            input_events_buffer: Vec::with_capacity(MAX_INPUT_EVENTS + 1),
-            delta_lat: 0.0,
-            delta_lon: 0.0,
+            capture_point,
+            elapsed_time_ms: 0,
+            packet: Some(packet),
+            is_player_win,
             first_mouse_pressed,
             stage_attributes,
             half_size_x,
             half_size_y,
             half_size_z,
-            held_input: HeldInput::new(),
-            view_state: ViewState::Idle,
-            view_state_timer: ViewStateTimer(0),
+            view_state,
+            view_state_timer,
             world: Some(world),
-            camera: Entity::DANGLING,
-            camera_fov_y: 45f32.to_radians(),
-            camera_rel_position: glam::Vec3A::ZERO,
-            camera_aspect_ratio: 1.0,
-            removed_bullets: HashSet::with_capacity_and_hasher(
-                MAX_IN_GAME_BULLETS,
-                RandomState::new(),
-            ),
-            bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
+            camera,
+            camera_fov_y,
+            camera_rel_position,
+            camera_aspect_ratio,
+            bullets,
             players,
             stage: Some(stage),
-            frame_staging_buffers: Vec::with_capacity(128),
+            frame_staging_buffers: Vec::default(),
             accum_render_target: Some(accum_render_target),
             reveal_render_target: Some(reveal_render_target),
             bright_render_target: Some(bright_render_target),
@@ -302,11 +282,11 @@ impl InGameRunScene {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
-            health_point_rect: egui::Rect::ZERO,
-            start_img_font_texture: egui::load::SizedTexture {
+            img_font_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
             },
+            health_point_rect: egui::Rect::ZERO,
             weapon_icon_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
                 size: egui::Vec2::ZERO,
@@ -332,44 +312,6 @@ impl InGameRunScene {
             .get(&self.uid)
             .cloned()
             .expect("no such entity!")
-    }
-
-    /// 카메라 엔터티를 생성합니다.
-    fn create_camera(&mut self, device: &wgpu::Device) {
-        // 플레이어 캐릭터의 종류를 가져옵니다.
-        let (entity, _archetype) = self.player_entity();
-        let world = self.world.as_mut().expect("the world must be exists!");
-        let character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .cloned()
-            .expect("invalid entity or invalid entity component!");
-
-        let i = character_kind as usize;
-        self.camera_fov_y = CAMERA_DEF_FOV_Y[i];
-        self.camera_rel_position = CAMERA_DEF_REL_POS[i];
-
-        // 카메라 컴포넌트 데이터를 생성합니다.
-        let local_transform = ToParentTrans::default();
-        let world_transform = WorldTransform::default();
-        let projection =
-            Projection::perspective(self.camera_fov_y, self.camera_aspect_ratio, 0.1, 200.0);
-        let proj_view = projection.0 * world_transform.to_view_trans();
-        let frustum = Frustum::from_mat4(proj_view);
-
-        // 카메라 쉐이더 리소스를 생성합니다.
-        let label = format!("InGameRunScene(Camera)");
-        let camera_uniform = CameraUniform::uninit(Some(&label), device);
-        let camera_resource = CameraResource::new(Some(&label), device, &camera_uniform);
-
-        // 엔터티를 생성합니다.
-        self.camera = world.spawn((
-            (Camera, local_transform),
-            (Camera, world_transform),
-            projection,
-            frustum,
-            camera_uniform,
-            camera_resource,
-        ));
     }
 
     /// 카메라 파라미터 데이터를 갱신합니다.
@@ -521,14 +463,7 @@ impl InGameRunScene {
     }
 
     /// 서버로부터 전달받은 데이터로 플레이어를 갱신합니다.
-    fn pull_server_data(
-        &mut self,
-        time_stamp: Instant,
-        packet: InGamePullPacket,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-        staging_buffers: &mut Vec<wgpu::Buffer>,
-    ) {
+    fn pull_server_data(&mut self, time_stamp: Instant, packet: InGamePullPacket) {
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
@@ -538,7 +473,7 @@ impl InGameRunScene {
         let delay_time = Instant::now()
             .saturating_duration_since(time_stamp)
             .as_millis()
-            .min(self.max_game_play_time_ms as u128) as u32;
+            .min(SCENE_DURATION as u128) as u32;
         let rtt_time = (packet.ping) as u32 / 2;
         let latency = delay_time + rtt_time;
 
@@ -546,14 +481,14 @@ impl InGameRunScene {
         let server_play_elapsed_time_ms = packet
             .play_elapsed_time_ms
             .saturating_add(latency)
-            .min(self.max_game_play_time_ms);
-        let offset = server_play_elapsed_time_ms as i32 - self.play_elapsed_time_ms as i32;
+            .min(SCENE_DURATION);
+        let offset = server_play_elapsed_time_ms as i32 - self.elapsed_time_ms as i32;
 
         // 클라이언트 시간을 보정합니다.
-        self.play_elapsed_time_ms = self
-            .play_elapsed_time_ms
+        self.elapsed_time_ms = self
+            .elapsed_time_ms
             .saturating_add_signed(offset)
-            .min(self.max_game_play_time_ms);
+            .min(SCENE_DURATION);
 
         // 플레이어 데이터를 갱신합니다.
         for data in packet.players.iter() {
@@ -583,7 +518,6 @@ impl InGameRunScene {
                 &'a mut MovementState,
                 &'a mut MovementStateTimer,
                 &'a mut ToParentTrans,
-                &'a mut LatLon,
             );
             player_execute!(archetype, world, entity, Query, |(
                 action_state,
@@ -591,137 +525,17 @@ impl InGameRunScene {
                 movement_state,
                 movement_state_timer,
                 transform,
-                latlon,
             )| {
                 *action_state = data.action_state();
                 *action_state_timer = data.action_state_timer(attribute);
                 *movement_state = data.movement_state();
                 *movement_state_timer = data.movement_state_timer(attribute);
 
-                let new_latlon = data.latlon();
-                let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
-                let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
-                latlon.lat = latlon.lat.clamp(min, max);
-
-                let min = new_latlon.lon - 5f32.to_radians();
-                let max = new_latlon.lon + 5f32.to_radians();
-                latlon.lon = latlon.lon.clamp(min, max) % TAU;
-
                 let rotation = data.rotation();
                 let translation =
                     data.trasnaltion(self.half_size_x, self.half_size_y, self.half_size_z);
                 transform.set_rotation_translation(rotation.into(), translation.into());
             });
-        }
-
-        // 총알 데이터를 갱신합니다.
-        for bullet in packet.bullets.iter() {
-            // 해당 총알 엔터티를 가져옵니다.
-            match self.bullets.get(&bullet.id).cloned() {
-                Some(entity) => {
-                    // 엔터티 데이터를 갱신합니다.
-                    type Query<'a> = &'a mut (Bullet, ToParentTrans);
-                    let (_, transform) = world
-                        .query_one_mut::<Query>(entity)
-                        .expect("invalid entity or invalid entity component!");
-                    let rotation = bullet.rotation();
-                    let translation =
-                        bullet.translation(self.half_size_x, self.half_size_y, self.half_size_z);
-                    transform.set_rotation_translation(rotation.into(), translation.into());
-                }
-                None => {
-                    // 이미 제거된 총알의 경우 생략
-                    if self.removed_bullets.remove(&bullet.id) {
-                        continue;
-                    }
-
-                    // 새로운 총알 엔터티를 생성합니다.
-                    let (entity, commands) = spawn_bullet(
-                        world,
-                        self.half_size_x,
-                        self.half_size_y,
-                        self.half_size_z,
-                        &self.model_pool,
-                        &self.texture_data_pool,
-                        bullet,
-                        device,
-                        encoder,
-                        staging_buffers,
-                    );
-
-                    for (entity, mut builder) in commands {
-                        world
-                            .insert(entity, builder.build())
-                            .expect("invalid entity!");
-                    }
-
-                    self.bullets.insert(bullet.id, entity);
-                }
-            }
-        }
-    }
-
-    /// 서버로부터 전달받은 데이터로 플레이어 상태를 갱신합니다.
-    fn pull_server_status(&mut self, packet: InGameStatusPacket) {
-        let world = match self.world.as_mut() {
-            Some(world) => world,
-            None => return,
-        };
-
-        // 점령 데이터를 갱신합니다.
-        self.capture_point = packet.capture_point;
-
-        {
-            type Query<'a> = (
-                &'a mut Permission,
-                &'a mut NetworkState,
-                &'a mut CharacterFlags,
-            );
-            let mut view = world.view::<Query>();
-
-            // 플레이어 상태를 갱신합니다.
-            for data in packet.players.iter() {
-                let (entity, archetype) = self
-                    .players
-                    .get(&data.uid)
-                    .cloned()
-                    .expect("player not found!");
-                let (permission, network_state, character_flags) = view
-                    .get_mut(entity)
-                    .expect("invalid entity or invalid entity component!");
-                *permission = data.permission();
-                *network_state = data.network_state();
-                character_flags.set_connected(data.is_connected());
-                character_flags.set_invincible(data.is_invincible());
-
-                type Q<'a> = (
-                    &'a mut HealthData,
-                    &'a mut BulletData,
-                    &'a mut SkillCostData,
-                );
-                player_execute!(archetype, world, entity, Q, |(
-                    health_data,
-                    bullet_data,
-                    skill_cost_data,
-                )| {
-                    health_data.shield = data.shield_health;
-                    health_data.remaining = data.remaining_health;
-                    bullet_data.remaining = data.remaining_bullet;
-                    skill_cost_data.remaining = data.current_skill_cost;
-                });
-            }
-        }
-
-        // 제거된 총알 오브젝트를 게임 월드에서 게저합니다.
-        for id in packet.removed_bullets {
-            match self.bullets.remove(&id) {
-                Some(entity) => {
-                    cleanup(world, entity);
-                }
-                None => {
-                    self.removed_bullets.insert(id);
-                }
-            }
         }
     }
 
@@ -745,6 +559,41 @@ impl InGameRunScene {
 
         // 등록된 텍스처 정보를 저장합니다.
         self.layout_texture = egui::load::SizedTexture {
+            id: texture_id,
+            size: texture_size,
+        };
+    }
+
+    fn regist_img_font_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+        let uri = match self.is_player_win {
+            Some(is_player_win) => {
+                if is_player_win {
+                    IMG_FONT_WIN_URI
+                } else {
+                    IMG_FONT_LOSE_URI
+                }
+            }
+            None => IMG_FONT_DRAW,
+        };
+
+        // 레이아웃 텍스처를 가져옵니다.
+        let texture = self
+            .texture_pool
+            .get(uri)
+            .expect("ImgFont_Win, ImgFont_Lose and ImgFont_Draw texture must be preloaded!");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        // 텍스처의 텍스처 뷰를 생성합니다.
+        let texture = self
+            .texture_view_pool
+            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+
+        // egui 렌더러에 텍스처를 등록합니다.
+        let texture_id =
+            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+        // 등록된 텍스처 정보를 저장합니다.
+        self.img_font_texture = egui::load::SizedTexture {
             id: texture_id,
             size: texture_size,
         };
@@ -789,34 +638,6 @@ impl InGameRunScene {
         };
     }
 
-    /// 시작 이미지 폰트 텍스처를 Ui 렌더러에 등록합니다.
-    fn regist_start_img_font_texture(
-        &mut self,
-        device: &wgpu::Device,
-        ui_renderer: &mut UiRenderer,
-    ) {
-        let texture = self
-            .texture_pool
-            .get(IMG_FONT_START_URI)
-            .expect("ImgFont_Start texture must be preloaded");
-        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
-
-        // 텍스처의 텍스처 뷰를 생성합니다.
-        let texture = self
-            .texture_view_pool
-            .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
-
-        // egui 렌더러에 텍스처를 등록합니다.
-        let texture_id =
-            ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
-
-        // 등록된 텍스처 정보를 저장합니다.
-        self.start_img_font_texture = egui::load::SizedTexture {
-            id: texture_id,
-            size: texture_size,
-        };
-    }
-
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역의 크기를 재조정합니다.
         let viewport = app.viewport();
@@ -841,7 +662,7 @@ impl InGameRunScene {
 
     /// 애니메이션 값을 가져옵니다.
     fn ui_animation_factor(&self) -> f32 {
-        self.play_elapsed_time_ms.min(750) as f32 / 750.0
+        1.0 - self.elapsed_time_ms.min(1000) as f32 / 1000.0
     }
 
     /// 클립 사각형 영역의 크기를 재조정합니다.
@@ -980,40 +801,6 @@ impl InGameRunScene {
         let right_bottom = self.skill_cost_rect.right_bottom();
         let left_top = right_bottom - egui::vec2(width, height);
         egui::Rect::from_min_max(left_top, right_bottom)
-    }
-
-    /// 조준선 인터페이스를 그립니다.
-    fn draw_ui_reticle(&mut self, ctx: &egui::Context) {
-        let (entity, archetype) = self.player_entity();
-        let world = match self.world.as_ref() {
-            Some(world) => world,
-            None => return,
-        };
-
-        let mut curr_action_state = ActionState::Idle;
-        player_execute!(archetype, world, entity, &ActionState, |action_state| {
-            curr_action_state = *action_state;
-        });
-
-        // 현재 플레이어가 행동 불능 상태인 경우 생략합니다.
-        if curr_action_state == ActionState::Death {
-            return;
-        }
-
-        let center = self.clip_rect.center();
-        let radius = 4.0 * self.ui_scale;
-        egui::Area::new(egui::Id::new("Reticle"))
-            .order(egui::Order::Background)
-            .sense(egui::Sense::empty())
-            .show(ctx, |ui| {
-                ui.shrink_clip_rect(self.clip_rect);
-                ui.painter().circle(
-                    center,
-                    radius,
-                    egui::Color32::from_white_alpha(128),
-                    egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::from_black_alpha(128)),
-                );
-            });
     }
 
     /// 체력 인터페이스를 그립니다.
@@ -1800,9 +1587,15 @@ impl InGameRunScene {
     }
 
     fn draw_timer(&self, ui: &mut egui::Ui) {
+        let packet = match self.packet.as_ref() {
+            Some(packet) => packet,
+            None => return,
+        };
+
         let union_rect = self.score_union_rect();
         let t = self.ui_animation_factor();
-        let base_y = -union_rect.height() * (1.0 - t);
+        let hide_y = self.clip_rect.top() - union_rect.bottom();
+        let base_y = hide_y * (1.0 - t) + self.clip_rect.top() * t;
 
         let outer_rect = self.timer_rect;
         let size = egui::Vec2::splat(outer_rect.size().min_elem() * 0.05);
@@ -1810,10 +1603,10 @@ impl InGameRunScene {
         inner_rect.min += size;
         inner_rect.max -= size;
 
-        let remaining_time_ms = self
+        let play_time_ms = self
             .max_game_play_time_ms
-            .saturating_sub(self.play_elapsed_time_ms);
-        let remaining_time_sec = remaining_time_ms as f32 / 1000.0;
+            .saturating_sub(packet.play_time_ms);
+        let remaining_time_sec = play_time_ms as f32 / 1000.0;
         let text = format!("{}", remaining_time_sec.ceil() as u32);
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(42.0 * self.ui_scale, family);
@@ -1850,7 +1643,8 @@ impl InGameRunScene {
     fn draw_blue_team_gauge(&self, ui: &mut egui::Ui) {
         let union_rect = self.score_union_rect();
         let t = self.ui_animation_factor();
-        let base_y = -union_rect.height() * (1.0 - t);
+        let hide_y = self.clip_rect.top() - union_rect.bottom();
+        let base_y = hide_y * (1.0 - t) + self.clip_rect.top() * t;
 
         let mut outer_rect = self.blue_score_rect;
         let font_center = (self.clip_rect.top() + outer_rect.top()) * 0.5;
@@ -1924,7 +1718,8 @@ impl InGameRunScene {
     fn draw_red_team_gauge(&self, ui: &mut egui::Ui) {
         let union_rect = self.score_union_rect();
         let t = self.ui_animation_factor();
-        let base_y = -union_rect.height() * (1.0 - t);
+        let hide_y = self.clip_rect.top() - union_rect.bottom();
+        let base_y = hide_y * (1.0 - t) + self.clip_rect.top() * t;
 
         let mut outer_rect = self.red_score_rect;
         let font_center = (self.clip_rect.top() + outer_rect.top()) * 0.5;
@@ -1994,143 +1789,42 @@ impl InGameRunScene {
         );
     }
 
-    /// 게임 시작 이미지 폰트를 화면에 출력합니다.
-    fn draw_start_font(&mut self, ctx: &egui::Context) {
-        const DURATION: u32 = 800;
-        if self.play_elapsed_time_ms > DURATION {
-            return;
-        }
-
-        let t = self.play_elapsed_time_ms as f32 / DURATION as f32;
-        let t = t * t * (3.0 - 2.0 * t);
-        let alpha = (255.0 * (t * PI).sin()).round();
-        let tint = egui::Color32::from_white_alpha(alpha as u8);
-
-        let texture_size = self.start_img_font_texture.size;
+    /// 이미지 폰트를 출력합니다.
+    fn draw_img_font(&mut self, ctx: &egui::Context) {
+        let texture_size = self.img_font_texture.size;
         let ratio = texture_size.x / texture_size.y;
-        let width = self.clip_rect.width() * 0.7;
-        let height = width / ratio;
-        let center = self.clip_rect.center();
+        let height = self.clip_rect.height() * 0.4;
+        let width = height * ratio;
         let size = egui::vec2(width, height);
+        let center = self.clip_rect.center();
         let rect = egui::Rect::from_center_size(center, size);
 
-        egui::Area::new(egui::Id::new("Start_Img_Font"))
-            .order(egui::Order::Middle)
-            .sense(egui::Sense::empty())
-            .show(ctx, |ui| {
-                egui::Image::new(self.start_img_font_texture)
-                    .tint(tint)
-                    .sense(egui::Sense::empty())
-                    .paint_at(ui, rect);
-            });
-    }
+        const HALF_SCENE_DURATION: u32 = SCENE_DURATION / 2;
+        const FADE_IN_DURATION: u32 = 500;
+        let time = self.elapsed_time_ms.saturating_sub(HALF_SCENE_DURATION);
+        let t = (time as f32 / FADE_IN_DURATION as f32).min(1.0);
+        let t = t * t * (3.0 - 2.0 * t);
+        let tint = egui::Color32::from_white_alpha((255.0 * t) as u8);
 
-    /// 남은 리스폰 대기 시간을 화면에 출력합니다.
-    fn draw_respawn_timer(&mut self, ctx: &egui::Context) {
-        const OFFSETS: [egui::Vec2; 4] = [
-            egui::vec2(-1.0, 0.0),
-            egui::vec2(1.0, 0.0),
-            egui::vec2(0.0, -1.0),
-            egui::vec2(0.0, 1.0),
-        ];
-
-        let (entity, archetype) = self.player_entity();
-        let world = match self.world.as_ref() {
-            Some(world) => world,
-            None => return,
-        };
-
-        let mut wait_time_ms = 0;
-        let mut curr_action_state = ActionState::Idle;
-        type Q<'a> = (&'a ActionState, &'a ActionStateTimer);
-        player_execute!(archetype, world, entity, Q, |(
-            action_state,
-            action_state_timer,
-        )| {
-            wait_time_ms = RESPAWN_DELAY.saturating_sub(action_state_timer.0);
-            curr_action_state = *action_state;
-        });
-
-        // 현재 플레이어가 행동 불능 상태가 아닌 경우 생략합니다.
-        if curr_action_state != ActionState::Death {
-            return;
-        }
-
-        egui::Area::new(egui::Id::new("Respawn_Wait"))
-            .order(egui::Order::Middle)
+        egui::Area::new(egui::Id::new("Result_ImgFont"))
+            .order(egui::Order::Foreground)
             .sense(egui::Sense::empty())
             .show(ctx, |ui| {
                 ui.shrink_clip_rect(self.clip_rect);
-                ui.painter()
-                    .rect_filled(self.clip_rect, 0.0, egui::Color32::from_black_alpha(96));
-
-                let i = self.locale as usize;
-                let wait_time_sec = wait_time_ms / 1000;
-
-                let text = RESPAWN_TITLE_TEXTS[i];
-                let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-                let font_id = egui::FontId::new(48.0 * self.ui_scale, family);
-                let center = egui::pos2(
-                    self.clip_rect.center().x,
-                    (self.clip_rect.top() + self.clip_rect.center().y) * 0.5,
-                );
-                for offset in OFFSETS {
-                    ui.painter().text(
-                        center + offset * self.ui_scale,
-                        egui::Align2::CENTER_CENTER,
-                        &text,
-                        font_id.clone(),
-                        FONT_COLOR,
-                    );
-                }
-
-                ui.painter().text(
-                    center,
-                    egui::Align2::CENTER_CENTER,
-                    &text,
-                    font_id.clone(),
-                    egui::Color32::WHITE,
-                );
-
-                let text = match self.locale {
-                    Locale::KOR => format!("{}초 뒤에 리스폰됩니다", wait_time_sec),
-                };
-                let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-                let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
-                let center = self.clip_rect.center();
-                for offset in OFFSETS {
-                    ui.painter().text(
-                        center + offset * self.ui_scale,
-                        egui::Align2::CENTER_CENTER,
-                        &text,
-                        font_id.clone(),
-                        FONT_COLOR,
-                    );
-                }
-
-                ui.painter().text(
-                    center,
-                    egui::Align2::CENTER_CENTER,
-                    &text,
-                    font_id.clone(),
-                    egui::Color32::WHITE,
-                );
+                egui::Image::new(self.img_font_texture)
+                    .sense(egui::Sense::empty())
+                    .tint(tint)
+                    .paint_at(ui, rect);
             });
     }
 }
 
-impl GameScene for InGameRunScene {
+impl GameScene for InGameExitScene {
     fn on_enter(&mut self, window: &Window, app: &dyn AppHandle, ui_renderer: &mut UiRenderer) {
-        let size = app.window_size();
         let device = app.render_device();
-
-        let (width, height): (f32, f32) = size.size().into();
-        self.camera_aspect_ratio = width / height;
-        self.create_camera(device);
-
         self.regist_layout_texture(device, ui_renderer);
+        self.regist_img_font_texture(device, ui_renderer);
         self.regist_weapon_icon_texture(device, ui_renderer);
-        self.regist_start_img_font_texture(device, ui_renderer);
         self.resize_ui(window, app);
     }
 
@@ -2141,42 +1835,11 @@ impl GameScene for InGameRunScene {
         ui_renderer: &mut UiRenderer,
     ) {
         ui_renderer.free_texture(&self.layout_texture.id);
+        ui_renderer.free_texture(&self.img_font_texture.id);
         ui_renderer.free_texture(&self.weapon_icon_texture.id);
-        ui_renderer.free_texture(&self.start_img_font_texture.id);
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
-        let (entity, archetype) = self.player_entity();
-        let world = match self.world.as_mut() {
-            Some(world) => world,
-            None => return,
-        };
-
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-        let i = character_kind as usize;
-        let character_attributes = CHARACTER_ATTRIBUTES[i];
-
-        // 입력을 초기화합니다.
-        self.held_input = HeldInput::empty();
-        player_execute!(archetype, world, entity, &ActionState, |action_state| {
-            update_view_state(
-                *action_state,
-                &mut self.view_state,
-                &mut self.view_state_timer,
-                character_attributes,
-                self.held_input,
-            );
-        });
-
-        // 입력 초기화 패킷을 전송합니다.
-        let packet = InGameControlLosePacket::new(self.uid, self.token);
-        let net = app.net_manager();
-        let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-        socket.push_packet(packet.as_raw());
-
         let event = AppEvent::CursorEnable;
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
@@ -2196,55 +1859,47 @@ impl GameScene for InGameRunScene {
         }
     }
 
-    fn on_mouse_btn_pressed(
-        &mut self,
-        button: MouseButton,
-        _window: &Window,
-        _app: &dyn AppHandle,
-    ) -> bool {
-        if !self.first_mouse_pressed {
-            return true;
-        }
-
-        let flags = {
-            let config = UserConfig::get();
-            config
-                .get_mouse_input(&button)
-                .map(|input| (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input))
-                .flatten()
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
-        if let Some(input) = flags {
-            self.held_input |= input.into_bits();
-            self.input_events_buffer.push(InputEvent::KeyPress(input));
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+        let event = AppEvent::AddGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+    }
 
-            let (entity, archetype) = self.player_entity();
-            let world = match self.world.as_mut() {
-                Some(world) => world,
-                None => return true,
-            };
-            let &character_kind = world
-                .query_one_mut::<&CharacterKind>(entity)
-                .expect("invalid entity or invalid entity component!");
-            let i = character_kind as usize;
-            let character_attributes = CHARACTER_ATTRIBUTES[i];
-            player_execute!(archetype, world, entity, &ActionState, |action_state| {
-                update_view_state(
-                    *action_state,
-                    &mut self.view_state,
-                    &mut self.view_state_timer,
-                    character_attributes,
-                    self.held_input,
+    fn on_received_packet(
+        &mut self,
+        time_stamp: Instant,
+        packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
+        let packet_type = packet.packet_type();
+        match packet_type {
+            PacketType::InGamePull => {
+                let packet = InGamePullPacket::from_raw(packet);
+                self.pull_server_data(time_stamp, packet);
+            }
+            _ => {
+                log::warn!(
+                    "ignored >> invalid packet received! (TYPE:{:?})",
+                    packet_type,
                 );
-            });
+            }
         }
-
-        true
+        None
     }
 
     fn on_mouse_btn_released(
         &mut self,
-        button: MouseButton,
+        _button: MouseButton,
         _window: &Window,
         app: &dyn AppHandle,
     ) -> bool {
@@ -2253,43 +1908,9 @@ impl GameScene for InGameRunScene {
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
             self.first_mouse_pressed = true;
-            return true;
         }
 
-        let flags = {
-            let config = UserConfig::get();
-            config
-                .get_mouse_input(&button)
-                .map(|input| (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input))
-                .flatten()
-        };
-
-        if let Some(input) = flags {
-            self.held_input &= !input.into_bits();
-            self.input_events_buffer.push(InputEvent::KeyRelease(input));
-
-            let (entity, archetype) = self.player_entity();
-            let world = match self.world.as_mut() {
-                Some(world) => world,
-                None => return true,
-            };
-            let &character_kind = world
-                .query_one_mut::<&CharacterKind>(entity)
-                .expect("invalid entity or invalid entity component!");
-            let i = character_kind as usize;
-            let character_attributes = CHARACTER_ATTRIBUTES[i];
-            player_execute!(archetype, world, entity, &ActionState, |action_state| {
-                update_view_state(
-                    *action_state,
-                    &mut self.view_state,
-                    &mut self.view_state_timer,
-                    character_attributes,
-                    self.held_input,
-                );
-            });
-        }
-
-        true
+        return true;
     }
 
     fn on_cursor_moved(
@@ -2328,10 +1949,7 @@ impl GameScene for InGameRunScene {
         };
 
         let delta_lat = dy.to_radians() * offset;
-        self.delta_lat += delta_lat;
-
         let delta_lon = dx.to_radians() * offset;
-        self.delta_lon += delta_lon;
 
         player_execute!(archetype, world, entity, &mut LatLon, |latlon| {
             latlon.lat = (latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
@@ -2341,330 +1959,9 @@ impl GameScene for InGameRunScene {
         true
     }
 
-    fn on_keyboard_pressed(
-        &mut self,
-        code: KeyCode,
-        location: KeyLocation,
-        _modifiers: Modifiers,
-        repeat: bool,
-        _window: &Window,
-        _app: &dyn AppHandle,
-    ) -> bool {
-        if !repeat {
-            let flags = {
-                let config = UserConfig::get();
-                config
-                    .get_keyboard_input(&(code, location))
-                    .map(|input| {
-                        (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input)
-                    })
-                    .flatten()
-            };
-
-            if let Some(input) = flags {
-                self.held_input |= input.into_bits();
-                self.input_events_buffer.push(InputEvent::KeyPress(input));
-
-                let (entity, archetype) = self.player_entity();
-                let world = match self.world.as_mut() {
-                    Some(world) => world,
-                    None => return true,
-                };
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
-                let character_attributes = CHARACTER_ATTRIBUTES[i];
-                player_execute!(archetype, world, entity, &ActionState, |action_state| {
-                    update_view_state(
-                        *action_state,
-                        &mut self.view_state,
-                        &mut self.view_state_timer,
-                        character_attributes,
-                        self.held_input,
-                    );
-                });
-            }
-        }
-
-        true
-    }
-
-    fn on_keyboard_released(
-        &mut self,
-        code: KeyCode,
-        location: KeyLocation,
-        _modifiers: Modifiers,
-        repeat: bool,
-        _window: &Window,
-        app: &dyn AppHandle,
-    ) -> bool {
-        if !repeat {
-            if code == KeyCode::Escape {
-                let (entity, archetype) = self.player_entity();
-                let world = match self.world.as_mut() {
-                    Some(world) => world,
-                    None => return true,
-                };
-
-                // 캐릭터 속성 데이터를 가져옵니다.
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
-                let character_attributes = CHARACTER_ATTRIBUTES[i];
-
-                // 입력을 초기화합니다.
-                self.held_input = HeldInput::empty();
-                player_execute!(archetype, world, entity, &ActionState, |action_state| {
-                    update_view_state(
-                        *action_state,
-                        &mut self.view_state,
-                        &mut self.view_state_timer,
-                        character_attributes,
-                        self.held_input,
-                    );
-                });
-
-                // 입력 초기화 패킷을 전송합니다.
-                let packet = InGameControlLosePacket::new(self.uid, self.token);
-                let net = app.net_manager();
-                let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-                socket.push_packet(packet.as_raw());
-
-                // 일시정지 게임 장면 레이어를 추가합니다.
-                let in_game_scene = unsafe { NonNull::new_unchecked(self as *mut Self) };
-                let scene = InGamePauseLayer::new(self.locale, in_game_scene);
-                let flow = GameSceneFlow::Push(Box::new(scene));
-                let event = AppEvent::AddGameSceneFlow(flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
-                return true;
-            }
-
-            let flags = {
-                let config = UserConfig::get();
-                config
-                    .get_keyboard_input(&(code, location))
-                    .map(|input| {
-                        (self.input_events_buffer.len() < MAX_INPUT_EVENTS).then_some(input)
-                    })
-                    .flatten()
-            };
-
-            if let Some(input) = flags {
-                self.held_input &= !input.into_bits();
-                self.input_events_buffer.push(InputEvent::KeyRelease(input));
-
-                let (entity, archetype) = self.player_entity();
-                let world = match self.world.as_mut() {
-                    Some(world) => world,
-                    None => return true,
-                };
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
-                let character_attributes = CHARACTER_ATTRIBUTES[i];
-                player_execute!(archetype, world, entity, &ActionState, |action_state| {
-                    update_view_state(
-                        *action_state,
-                        &mut self.view_state,
-                        &mut self.view_state_timer,
-                        character_attributes,
-                        self.held_input,
-                    );
-                });
-            }
-        }
-
-        true
-    }
-
-    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
-        let i = self.locale as usize;
-        let title = ERR_NETWORK_TITLE_TEXTS[i];
-        let message = match error {
-            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
-            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
-        };
-
-        // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
-        let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
-        let event = AppEvent::AddGameSceneFlow(scene_flow);
-        let event_loop_proxy = app.event_loop_proxy();
-        event_loop_proxy.send_event(event).unwrap();
-    }
-
-    fn on_received_packet(
-        &mut self,
-        time_stamp: Instant,
-        packet: RawPacket,
-        app: &dyn AppHandle,
-    ) -> Option<RawPacket> {
-        let packet_type = packet.packet_type();
-        match packet_type {
-            PacketType::InGamePull => {
-                let packet = InGamePullPacket::from_raw(packet);
-
-                let queue = app.render_queue();
-                let device = app.render_device();
-
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-                let mut staging_buffers = Vec::default();
-
-                self.pull_server_data(
-                    time_stamp,
-                    packet,
-                    &device,
-                    &mut encoder,
-                    &mut staging_buffers,
-                );
-
-                queue.submit(Some(encoder.finish()));
-                drop(staging_buffers);
-            }
-            PacketType::InGameStatus => {
-                let packet = InGameStatusPacket::from_raw(packet);
-                self.pull_server_status(packet);
-            }
-            PacketType::InGameFinish => {
-                let packet = InGameFinishPacket::from_raw(packet);
-                let (entity, _archetype) = self.player_entity();
-                let mut world = match self.world.take() {
-                    Some(world) => world,
-                    None => return None,
-                };
-
-                // 플레이어가 속한 팀을 가져옵니다.
-                let &(team, _team_index) = world
-                    .query_one_mut::<&(Team, usize)>(entity)
-                    .expect("invalid entity or invalid entity component!");
-
-                // 플레이어 승리 여부를 판단합니다.
-                let is_player_win = packet.winner.map(|winner| winner == team);
-
-                let stage = self.stage.take().expect("the stage must be exists!");
-                let accum_render_target = self
-                    .accum_render_target
-                    .take()
-                    .expect("the accumulate render target must be exists!");
-                let reveal_render_target = self
-                    .reveal_render_target
-                    .take()
-                    .expect("the revealage render target must be exists!");
-                let bright_render_target = self
-                    .bright_render_target
-                    .take()
-                    .expect("the brightness render target must be exists!");
-                let alpha_blend_pipeline = self
-                    .alpha_blend_pipeline
-                    .take()
-                    .expect("the alpha blending render pipeline must be exists!");
-                let gaussian_blur_pipeline = self
-                    .gaussian_blur_pipeline
-                    .take()
-                    .expect("the gaussian blur compute pipeline must be exists!");
-                let bloom_pipeline = self
-                    .bloom_pipeline
-                    .take()
-                    .expect("the bloom render pipeline must be exists!");
-                let skybox = self.skybox.take().expect("the skybox must be exists!");
-                let direction_light = self
-                    .direction_light
-                    .take()
-                    .expect("the direction light must be exists!");
-                let light_resource = self
-                    .light_resource
-                    .take()
-                    .expect("the light shader resource must be exists!");
-                let scene = InGameExitScene::new(
-                    self.locale,
-                    self.uid,
-                    self.token,
-                    self.control_sensitivity,
-                    self.flip_horizontal,
-                    self.flip_vertical,
-                    self.max_game_play_time_ms,
-                    self.capture_point,
-                    packet,
-                    is_player_win,
-                    self.first_mouse_pressed,
-                    self.stage_attributes.clone(),
-                    self.half_size_x,
-                    self.half_size_y,
-                    self.half_size_z,
-                    self.view_state,
-                    self.view_state_timer,
-                    world,
-                    self.camera,
-                    self.camera_fov_y,
-                    self.camera_rel_position,
-                    self.camera_aspect_ratio,
-                    self.bullets.clone(),
-                    self.players.clone(),
-                    stage,
-                    accum_render_target,
-                    reveal_render_target,
-                    bright_render_target,
-                    alpha_blend_pipeline,
-                    gaussian_blur_pipeline,
-                    bloom_pipeline,
-                    skybox,
-                    direction_light,
-                    light_resource,
-                    self.mesh_pool.clone(),
-                    self.model_pool.clone(),
-                    self.motion_pool.clone(),
-                    self.texture_pool.clone(),
-                    self.texture_data_pool.clone(),
-                    self.texture_view_pool.clone(),
-                    self.sampler_pool.clone(),
-                );
-                let flow = GameSceneFlow::Change(Box::new(scene));
-                let event = AppEvent::AddGameSceneFlow(flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
-            }
-            _ => {
-                log::warn!(
-                    "ignored >> invalid packet received! (TYPE:{:?})",
-                    packet_type,
-                );
-            }
-        }
-        None
-    }
-
-    fn on_pre_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        while self.input_events_buffer.len() > 0 {
-            // 스냅샷 데이터를 생성합니다.
-            let count = self.input_events_buffer.len().min(MAX_INPUT_EVENTS);
-            let events: Vec<_> = self.input_events_buffer.drain(..count).collect();
-            let snapshot = InputSnapshot::KeyEvent {
-                play_elapsed_time_ms: self.play_elapsed_time_ms,
-                events,
-            };
-
-            // 임시 스냅샷 버퍼에 추가합니다.
-            if self.input_snapshot_buffer.len() < MAX_INPUT_SNAPSHOTS {
-                self.input_snapshot_buffer.push(snapshot);
-            }
-        }
-    }
-
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u32;
-        self.play_elapsed_time_ms = self
-            .play_elapsed_time_ms
-            .saturating_add(elapsed_time_ms)
-            .min(self.max_game_play_time_ms);
-        self.snapshot_elapsed_time_ms = self
-            .snapshot_elapsed_time_ms
-            .saturating_add(elapsed_time_ms)
-            .min(self.max_game_play_time_ms);
+        self.elapsed_time_ms = self.elapsed_time_ms.saturating_add(elapsed_time_ms);
 
         let (entity, archetype) = self.player_entity();
         let world = match self.world.as_mut() {
@@ -2692,50 +1989,104 @@ impl GameScene for InGameRunScene {
                 &mut self.view_state,
                 &mut self.view_state_timer,
                 character_attributes,
-                self.held_input,
+                HeldInput::empty(),
             );
         });
     }
 
-    fn on_post_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        const TICK: u32 = 22;
-        if self.snapshot_elapsed_time_ms >= TICK {
-            // 스냅샷 데이터를 생성합니다.
-            let snapshot = InputSnapshot::CameraOrientation {
-                play_elapsed_time_ms: self.play_elapsed_time_ms,
-                delta_lat: self.delta_lat,
-                delta_lon: self.delta_lon,
-            };
-
-            // 임시 스냅샷 버퍼에 추가합니다.
-            if self.input_snapshot_buffer.len() < MAX_INPUT_SNAPSHOTS {
-                self.input_snapshot_buffer.push(snapshot);
-            }
-
-            self.snapshot_elapsed_time_ms = 0;
-            self.delta_lat = 0.0;
-            self.delta_lon = 0.0;
+    fn on_post_update(&mut self, _window: &Window, app: &dyn AppHandle) {
+        // 게임 장면 지속 시간을 초과한 경우 생략
+        if self.elapsed_time_ms < SCENE_DURATION {
+            return;
         }
+
+        // 게임 월드를 가져옵니다.
+        let mut world = match self.world.take() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 카메라 엔터티를 정리합니다.
+        cleanup(&mut world, self.camera);
+
+        // 총알 엔터티를 정리합니다.
+        for entity in self.bullets.values().cloned() {
+            cleanup(&mut world, entity);
+        }
+
+        let packet = self
+            .packet
+            .take()
+            .expect("the result packet must be exists!");
+        let stage = self.stage.take().expect("the stage must be exists!");
+        let accum_render_target = self
+            .accum_render_target
+            .take()
+            .expect("the accumulate render target must be exists!");
+        let reveal_render_target = self
+            .reveal_render_target
+            .take()
+            .expect("the revealage render target must be exists!");
+        let bright_render_target = self
+            .bright_render_target
+            .take()
+            .expect("the brightness render target must be exists!");
+        let alpha_blend_pipeline = self
+            .alpha_blend_pipeline
+            .take()
+            .expect("the alpha blending render pipeline must be exists!");
+        let gaussian_blur_pipeline = self
+            .gaussian_blur_pipeline
+            .take()
+            .expect("the gaussian blur compute pipeline must be exists!");
+        let bloom_pipeline = self
+            .bloom_pipeline
+            .take()
+            .expect("the bloom render pipeline must be exists!");
+        let skybox = self.skybox.take().expect("the skybox must be exists!");
+        let direction_light = self
+            .direction_light
+            .take()
+            .expect("the direction light must be exists!");
+        let light_resource = self
+            .light_resource
+            .take()
+            .expect("the light shader resource must be exists!");
+        // 다음 게임 장면으로 전환합니다.
+        let scene = InGameResultScene::new(
+            self.locale,
+            self.uid,
+            self.token,
+            packet,
+            self.is_player_win,
+            self.stage_attributes.clone(),
+            world,
+            self.players.clone(),
+            stage,
+            accum_render_target,
+            reveal_render_target,
+            bright_render_target,
+            alpha_blend_pipeline,
+            gaussian_blur_pipeline,
+            bloom_pipeline,
+            skybox,
+            direction_light,
+            light_resource,
+            self.mesh_pool.clone(),
+            self.model_pool.clone(),
+            self.motion_pool.clone(),
+            self.texture_pool.clone(),
+            self.texture_data_pool.clone(),
+            self.texture_view_pool.clone(),
+            self.sampler_pool.clone(),
+        );
+        let flow = GameSceneFlow::Change(Box::new(scene));
+        let event = AppEvent::AddGameSceneFlow(flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
     }
 
     fn on_prepare_draw(&mut self, _window: &Window, app: &dyn AppHandle) {
-        let count = self.input_snapshot_buffer.len();
-        if count > 0 {
-            // 한 프레임 내의 스냅샷 데이터를 가져옵니다.
-            let snapshots: Vec<_> = self.input_snapshot_buffer.drain(..count).collect();
-            let packet = InGameInputPacket::new(
-                self.uid,
-                self.token,
-                self.play_elapsed_time_ms,
-                snapshots.clone(),
-            );
-
-            // 패킷을 전송합니다.
-            let net = app.net_manager();
-            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
-            socket.push_packet(packet.as_raw());
-        }
-
         // 이전 프레임에서 사용한 Staging Buffer를 모두 제거합니다.
         self.frame_staging_buffers.clear();
 
@@ -3469,24 +2820,10 @@ impl GameScene for InGameRunScene {
         }
 
         let ctx = app.egui_ctx();
-        self.draw_ui_reticle(ctx);
         self.draw_health_point(ctx);
         self.draw_weapon_info(ctx);
         self.draw_skill_cost_info(ctx);
         self.draw_score(ctx);
-        self.draw_start_font(ctx);
-        self.draw_respawn_timer(ctx);
-    }
-}
-
-impl InGameRunScene {
-    /// 클립 사각형 영역을 반환합니다.
-    pub(super) fn get_clip_rect(&self) -> egui::Rect {
-        self.clip_rect
-    }
-
-    /// 인터페이스 스케일 값을 반환합니다.
-    pub(super) fn get_ui_scale(&self) -> f32 {
-        self.ui_scale
+        self.draw_img_font(ctx);
     }
 }

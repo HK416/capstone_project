@@ -135,6 +135,8 @@ pub const HUD_OPTION_ICON_DATA: &'static [u8; 2181] = include_bytes!(concat!(
 
 /// 이미지 폰트의 작업공간입니다.
 pub const IMG_FONT_WORKSPACE: &'static str = "font";
+/// Draw 이미지 폰트 텍스처의 `Uri`입니다.
+pub const IMG_FONT_DRAW: &'static str = "ImgFont_Draw";
 /// Host 이미지 폰트 텍스처의 `Uri`입니다.
 pub const IMG_FONT_HOST_URI: &'static str = "ImgFont_Host";
 /// Lose(Small) 폰트 텍스처의 `Uri`입니다.

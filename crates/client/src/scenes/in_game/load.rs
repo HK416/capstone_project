@@ -24,11 +24,12 @@ use crate::{
     asset::{
         AssetError, MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
         TextureViewPool, BG_SKY_URI, BG_SKY_WORKSPACE, BULLET_URIS, BULLET_WORKSPACE,
-        CHARACTER_IMG_SMALL_URI, CHARACTER_URIS, CHARACTER_WORKSPACES, HUD_LAYOUT_URI_02,
-        HUD_LAYOUT_URI_03, ICON_WORKSPACE, IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI,
-        IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI,
-        IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD,
-        SCHALE_ICON_URI, STAGE_URI, STAGE_WORKSPACES, WEAPON_ICON_URI,
+        CHARACTER_IMG_SMALL_URI, CHARACTER_IMG_URI, CHARACTER_URIS, CHARACTER_WORKSPACES,
+        EMBLEM_BG_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, ICON_WORKSPACE,
+        IMG_FONT_DRAW, IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI,
+        IMG_FONT_MISS_URI, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI,
+        IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI,
+        STAGE_URI, STAGE_WORKSPACES, WEAPON_ICON_URI,
     },
     component::MaterialDataPool,
     config::{Locale, NUM_LOCALE},
@@ -124,15 +125,33 @@ impl InGameLoadScene {
 
         // HUD_Layout_02
         let texture = previous_texture_pool
-            .remove(HUD_LAYOUT_URI_02)
+            .get(HUD_LAYOUT_URI_02)
             .expect("HUD_Layout_02 texture must be preloaded!");
         texture_pool.insert(HUD_LAYOUT_URI_02, texture);
 
         // HUD_Layout_03
         let texture = previous_texture_pool
-            .remove(HUD_LAYOUT_URI_03)
+            .get(HUD_LAYOUT_URI_03)
             .expect("HUD_Layout_03 texture must be preloaded!");
         texture_pool.insert(HUD_LAYOUT_URI_03, texture);
+
+        // Emblem_BG
+        let texture = previous_texture_pool
+            .get(EMBLEM_BG_URI)
+            .expect("Emblem_BG texture must be preloaded!");
+        texture_pool.insert(EMBLEM_BG_URI, texture);
+
+        // Profile_Icon
+        let texture = previous_texture_pool
+            .get(PROFILE_ICON_URI)
+            .expect("Profile_Icon texture must be preloaded!");
+        texture_pool.insert(PROFILE_ICON_URI, texture);
+
+        // Character_Img
+        let texture = previous_texture_pool
+            .get(CHARACTER_IMG_URI)
+            .expect("Character_Img texture must be preloaded!");
+        texture_pool.insert(CHARACTER_IMG_URI, texture);
 
         Self {
             locale,
@@ -166,6 +185,7 @@ impl InGameLoadScene {
             (BG_SKY_WORKSPACE, BG_SKY_URI),
             (ICON_WORKSPACE, WEAPON_ICON_URI),
             (ICON_WORKSPACE, SCHALE_ICON_URI),
+            (IMG_FONT_WORKSPACE, IMG_FONT_DRAW),
             (IMG_FONT_WORKSPACE, IMG_FONT_LOSE_SMALL_URI),
             (IMG_FONT_WORKSPACE, IMG_FONT_LOSE_URI),
             (IMG_FONT_WORKSPACE, IMG_FONT_MISS_URI),
@@ -508,7 +528,7 @@ impl GameScene for InGameLoadScene {
         _ui_renderer: &mut UiRenderer,
     ) {
         let device = app.render_device();
-        device.poll(wgpu::MaintainBase::Wait).unwrap();
+        device.poll(wgpu::PollType::Wait).unwrap();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -624,6 +644,7 @@ impl GameScene for InGameLoadScene {
                 label: Some(&format!("RenderPass({:?})", &self)),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: render_target_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
