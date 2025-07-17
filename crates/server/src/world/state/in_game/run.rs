@@ -50,6 +50,8 @@ pub const SKILL_COST_TICK: u16 = 100;
 pub struct GameWorldInGameRunState {
     /// 게임 스테이지 종류
     stage_kind: StageKind,
+    /// 커스텀 게임 여부
+    custom_game: bool,
     /// 게임 플레이 경과 시간
     play_elapsed_time_ms: u32,
     /// 마지막 Pull 패킷 전송 경과 시간
@@ -87,6 +89,7 @@ pub struct GameWorldInGameRunState {
 impl GameWorldInGameRunState {
     pub fn new(
         stage_kind: StageKind,
+        custom_game: bool,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
@@ -100,6 +103,7 @@ impl GameWorldInGameRunState {
 
         Self {
             stage_kind,
+            custom_game,
             play_elapsed_time_ms: 0,
             pull_send_elapsed_time_ms: 0,
             status_send_elapsed_time_ms: 0,
@@ -323,18 +327,18 @@ impl GameWorldInGameRunState {
         // 상태를 갱신합니다.
         let character_attributes = data.character_attributes();
         update_action_state(
-            data.held_input, 
-            &mut data.action_state, 
-            &mut data.action_state_timer, 
-            character_attributes, 
-            &mut data.bullet_data, 
-            &mut data.skill_cost_data
+            data.held_input,
+            &mut data.action_state,
+            &mut data.action_state_timer,
+            character_attributes,
+            &mut data.bullet_data,
+            &mut data.skill_cost_data,
         );
         update_movement_state(
-            data.held_input, 
-            data.action_state, 
-            &mut data.movement_state, 
-            &mut data.movement_state_timer
+            data.held_input,
+            data.action_state,
+            &mut data.movement_state,
+            &mut data.movement_state_timer,
         );
     }
 
@@ -1082,7 +1086,20 @@ impl GameWorldInGameRunState {
             let winner = Some(Team::Red);
             let play_time_ms = self.play_elapsed_time_ms;
             let leaved_players = self.leaved_players.drain().collect();
-            let state = GameWorldInGameFinishState::new(winner, play_time_ms, leaved_players);
+            let removed_bullets = self.removed_bullets.drain().collect();
+            let bullets = self.bullets.drain().collect();
+            let state = GameWorldInGameFinishState::new(
+                winner,
+                play_time_ms,
+                self.stage_kind,
+                self.custom_game,
+                self.half_size_x,
+                self.half_size_y,
+                self.half_size_z,
+                leaved_players,
+                removed_bullets,
+                bullets,
+            );
 
             let flow = GameWorldStateFlow::Change(Box::new(state));
             world.flows.push(flow);
@@ -1093,7 +1110,20 @@ impl GameWorldInGameRunState {
             let winner = Some(Team::Blue);
             let play_time_ms = self.play_elapsed_time_ms;
             let leaved_players = self.leaved_players.drain().collect();
-            let state = GameWorldInGameFinishState::new(winner, play_time_ms, leaved_players);
+            let removed_bullets = self.removed_bullets.drain().collect();
+            let bullets = self.bullets.drain().collect();
+            let state = GameWorldInGameFinishState::new(
+                winner,
+                play_time_ms,
+                self.stage_kind,
+                self.custom_game,
+                self.half_size_x,
+                self.half_size_y,
+                self.half_size_z,
+                leaved_players,
+                removed_bullets,
+                bullets,
+            );
 
             let flow = GameWorldStateFlow::Change(Box::new(state));
             world.flows.push(flow);
@@ -1109,7 +1139,20 @@ impl GameWorldInGameRunState {
             let winner = max_score_team;
             let play_time_ms = self.play_elapsed_time_ms;
             let leaved_players = self.leaved_players.drain().collect();
-            let state = GameWorldInGameFinishState::new(winner, play_time_ms, leaved_players);
+            let removed_bullets = self.removed_bullets.drain().collect();
+            let bullets = self.bullets.drain().collect();
+            let state = GameWorldInGameFinishState::new(
+                winner,
+                play_time_ms,
+                self.stage_kind,
+                self.custom_game,
+                self.half_size_x,
+                self.half_size_y,
+                self.half_size_z,
+                leaved_players,
+                removed_bullets,
+                bullets,
+            );
 
             let flow = GameWorldStateFlow::Change(Box::new(state));
             world.flows.push(flow);
@@ -1127,10 +1170,19 @@ impl GameWorldInGameRunState {
                             let winner = Some(Team::Blue);
                             let play_time_ms = self.play_elapsed_time_ms;
                             let leaved_players = self.leaved_players.drain().collect();
+                            let removed_bullets = self.removed_bullets.drain().collect();
+                            let bullets = self.bullets.drain().collect();
                             let state = GameWorldInGameFinishState::new(
                                 winner,
                                 play_time_ms,
+                                self.stage_kind,
+                                self.custom_game,
+                                self.half_size_x,
+                                self.half_size_y,
+                                self.half_size_z,
                                 leaved_players,
+                                removed_bullets,
+                                bullets,
                             );
 
                             let flow = GameWorldStateFlow::Change(Box::new(state));
@@ -1145,10 +1197,19 @@ impl GameWorldInGameRunState {
                             let winner = Some(Team::Red);
                             let play_time_ms = self.play_elapsed_time_ms;
                             let leaved_players = self.leaved_players.drain().collect();
+                            let removed_bullets = self.removed_bullets.drain().collect();
+                            let bullets = self.bullets.drain().collect();
                             let state = GameWorldInGameFinishState::new(
                                 winner,
                                 play_time_ms,
+                                self.stage_kind,
+                                self.custom_game,
+                                self.half_size_x,
+                                self.half_size_y,
+                                self.half_size_z,
                                 leaved_players,
+                                removed_bullets,
+                                bullets,
                             );
 
                             let flow = GameWorldStateFlow::Change(Box::new(state));
@@ -1238,13 +1299,14 @@ impl GameWorldState for GameWorldInGameRunState {
         // 게임 월드를 갱신합니다.
         self.update(world, elapsed);
 
-        // 일전 시각마다 패킷을 전송합니다.
+        // 일정 시각마다 패킷을 전송합니다.
         const PULL_TICK: u32 = 5;
         if self.pull_send_elapsed_time_ms >= PULL_TICK {
             self.pull_send_elapsed_time_ms = 0;
             self.broadcast_pull_packet(world);
         }
 
+        // 일정 시각마다 패킷을 전송합니다.
         const STATUS_TICK: u32 = 16;
         if self.status_send_elapsed_time_ms >= STATUS_TICK {
             self.status_send_elapsed_time_ms = 0;

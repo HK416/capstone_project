@@ -37,6 +37,8 @@ pub struct GameWorldFormationState {
     allow_duplicates: bool,
     /// 게임 스테이지 종류
     stage_kind: StageKind,
+    /// 커스텀 게임 여부
+    custom_game: bool,
 
     /// 패킷을 보낸 후 경과 시간
     elapsed_time_sec: f32,
@@ -60,6 +62,7 @@ impl GameWorldFormationState {
     pub fn new(
         allow_duplicates: bool,
         stage_kind: StageKind,
+        custom_game: bool,
         num_blue_players: usize,
         num_red_players: usize,
     ) -> Self {
@@ -67,6 +70,7 @@ impl GameWorldFormationState {
             remaining_time_ms: MAX_FORMATION_TIME,
             allow_duplicates,
             stage_kind,
+            custom_game,
             elapsed_time_sec: 0.0,
             num_blue_players,
             blue_characters: HashSet::with_capacity_and_hasher(
@@ -435,6 +439,7 @@ impl GameWorldFormationState {
             self.leaved_players.clear();
             let state = GameWorldInGameReadyState::new(
                 self.stage_kind,
+                self.custom_game,
                 half_size_x,
                 half_size_y,
                 half_size_z,

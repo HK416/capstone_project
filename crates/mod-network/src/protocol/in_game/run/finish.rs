@@ -124,7 +124,7 @@ impl Packet for InGameFinishPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::UserId;
+    use crate::components::{CharacterKind, GameTier, ProfileIcon, UserId, UserName};
 
     use super::*;
 
@@ -136,10 +136,38 @@ mod tests {
 
     #[test]
     fn test_in_game_finish_packet() {
-        let player_0 =
-            InGamePlayerResultData::new(UserId::new(543141), 123, 4321, 4513, 56414, 133412, true);
-        let player_1 =
-            InGamePlayerResultData::new(UserId::new(1341), 641, 414, 43221, 8154, 4312, false);
+        let player_0 = InGamePlayerResultData::new(
+            UserId::new(543141),
+            UserName::from_str("모모이"),
+            ProfileIcon::CharacterMomoi,
+            CharacterKind::MomoiOriginal,
+            123,
+            4321,
+            4513,
+            56414,
+            133412,
+            false,
+            -10,
+            Team::Blue,
+            0,
+            GameTier::Bronze,
+        );
+        let player_1 = InGamePlayerResultData::new(
+            UserId::new(1341),
+            UserName::from_str("미도리"),
+            ProfileIcon::CharacterMidori,
+            CharacterKind::MidoriOriginal,
+            641,
+            414,
+            43221,
+            8154,
+            4312,
+            true,
+            0,
+            Team::Red,
+            0,
+            GameTier::Bronze,
+        );
         let players = vec![player_0, player_1];
 
         let origin = InGameFinishPacket::new(84312, None, players);

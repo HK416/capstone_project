@@ -19,13 +19,15 @@ use crate::{
 };
 
 /// 최대 게임 로드 시간 (단위: ms)
-pub const MAX_LOAD_TIME: u16 = 60_000;
+pub const MAX_LOAD_TIME: u16 = 45_000;
 
 /// 인게임 상태 게임 월드입니다.
 /// 모든 플레이어의 로딩이 완료될 때 까지 대기합니다.
 pub struct GameWorldInGameReadyState {
     /// 게임 스테이지 종류
     stage_kind: StageKind,
+    /// 커스텀 게임 여부
+    custom_game: bool,
     /// 게임 로드 완료까지 남은 시간
     remaining_time_ms: u16,
 
@@ -51,6 +53,7 @@ impl GameWorldInGameReadyState {
     /// 새로운 게임 월드 상태를 생성합니다.
     pub fn new(
         stage_kind: StageKind,
+        custom_game: bool,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
@@ -60,6 +63,7 @@ impl GameWorldInGameReadyState {
     ) -> Self {
         Self {
             stage_kind,
+            custom_game,
             half_size_x,
             half_size_y,
             half_size_z,
@@ -240,6 +244,7 @@ impl GameWorldInGameReadyState {
             self.leaved_players.clear();
             let state = GameWorldInGameEnterState::new(
                 self.stage_kind,
+                self.custom_game,
                 self.half_size_x,
                 self.half_size_y,
                 self.half_size_z,

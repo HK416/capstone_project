@@ -6,10 +6,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{
-    components::{LoginToken, UserId},
-    protocol::RawPacket,
-};
+use mod_network::protocol::{PacketType, RawPacket};
 use mod_render::UiRenderer;
 use winit::{
     event::Modifiers,
@@ -23,8 +20,7 @@ use crate::{
     config::{Locale, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, InGameRunScene, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
-        POSI_COLOR, POSI_FOCUS_COLOR,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NEG_COLOR, NEG_FOCUS_COLOR,
     },
 };
 
@@ -36,10 +32,6 @@ const RESUME_TEXTS: [&'static str; NUM_LOCALE] = ["계속 하기"];
 
 /// 인게임에서 일시정지 대화상자를 출력하는 게임 장면입니다.
 pub struct InGamePauseLayer {
-    /// 사용자 식별자
-    uid: UserId,
-    /// 로그인 토큰
-    token: LoginToken,
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
 
@@ -56,15 +48,8 @@ pub struct InGamePauseLayer {
 
 impl InGamePauseLayer {
     /// 새로운 게임 장면 레이어를 생성합니다.
-    pub fn new(
-        uid: UserId,
-        token: LoginToken,
-        locale: Locale,
-        in_game_scene: NonNull<InGameRunScene>,
-    ) -> Self {
+    pub fn new(locale: Locale, in_game_scene: NonNull<InGameRunScene>) -> Self {
         Self {
-            uid,
-            token,
             locale,
             in_game_scene,
             resume_btn_state: ButtonState::Idle,
@@ -116,10 +101,19 @@ impl GameScene for InGamePauseLayer {
 
     fn on_received_packet(
         &mut self,
-        time_stamp: Instant,
+        _time_stamp: Instant,
         packet: RawPacket,
         app: &dyn AppHandle,
     ) -> Option<RawPacket> {
+        let packet_type = packet.packet_type();
+        if packet_type == PacketType::InGameFinish {
+            // 현재 장면에서 빠져나옵니다.
+            let flow = GameSceneFlow::Pop;
+            let event = AppEvent::AddGameSceneFlow(flow);
+            let event_loop_proxy = app.event_loop_proxy();
+            event_loop_proxy.send_event(event).unwrap();
+        }
+
         Some(packet)
     }
 
@@ -171,9 +165,9 @@ impl GameScene for InGamePauseLayer {
 
         // 계속하기 버튼
         let (bg_color, line_color) = match self.resume_btn_state {
-            ButtonState::Idle => (NORM_COLOR, egui::Color32::BLACK),
-            ButtonState::Hovered => (NORM_FOCUS_COLOR, egui::Color32::BLACK),
-            ButtonState::Pressed | ButtonState::Clicked => (NORM_EXP_COLOR, egui::Color32::BLACK),
+            ButtonState::Idle => (NEG_COLOR, egui::Color32::TRANSPARENT),
+            ButtonState::Hovered => (NEG_COLOR, NEG_FOCUS_COLOR),
+            ButtonState::Pressed | ButtonState::Clicked => (NEG_FOCUS_COLOR, NEG_FOCUS_COLOR),
         };
         let resume_button = egui::Button::new(text)
             .sense(egui::Sense::all())

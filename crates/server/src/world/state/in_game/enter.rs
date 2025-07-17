@@ -26,6 +26,8 @@ pub struct GameWorldInGameEnterState {
     stage_kind: StageKind,
     /// 남은 게임 상태 시간
     remaining_time_ms: u16,
+    /// 커스텀 게임 여부
+    custom_game: bool,
 
     /// x축 방향의 게임 월드 절반 크기
     half_size_x: NonZeroU32,
@@ -46,6 +48,7 @@ impl GameWorldInGameEnterState {
     /// 새로운 게임 월드 상태를 생성합니다.
     pub fn new(
         stage_kind: StageKind,
+        custom_game: bool,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
@@ -55,6 +58,7 @@ impl GameWorldInGameEnterState {
     ) -> Self {
         Self {
             stage_kind,
+            custom_game,
             half_size_x,
             half_size_y,
             half_size_z,
@@ -180,6 +184,7 @@ impl GameWorldInGameEnterState {
             self.leaved_players.clear();
             let state = GameWorldInGameRunState::new(
                 self.stage_kind,
+                self.custom_game,
                 self.half_size_x,
                 self.half_size_y,
                 self.half_size_z,

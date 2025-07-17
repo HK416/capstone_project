@@ -1,4 +1,4 @@
-use mod_network::components::{CapturePoint, Team};
+use mod_network::components::{ActionState, CapturePoint, Team};
 use mod_physics::collision::Collider;
 
 use crate::entities::Player;
@@ -27,13 +27,15 @@ impl CapturePointObject {
         let mut num_blue_players = 0;
         let mut num_red_players = 0;
         for player in players {
-            if self.collider.check_point_collision(&player.translation) {
-                match player.team() {
-                    Team::Blue => {
-                        num_blue_players += 1;
-                    }
-                    Team::Red => {
-                        num_red_players += 1;
+            if player.action_state != ActionState::Death {
+                if self.collider.check_point_collision(&player.translation) {
+                    match player.team() {
+                        Team::Blue => {
+                            num_blue_players += 1;
+                        }
+                        Team::Red => {
+                            num_red_players += 1;
+                        }
                     }
                 }
             }

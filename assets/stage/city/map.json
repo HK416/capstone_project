@@ -9104,5 +9104,50 @@
             "z": -33
         }
     ],
-    "red_team_collider": "red_collider.json"
+    "red_team_collider": "red_collider.json",
+    "winner_positions": [
+        {
+            "x": 0,
+            "y": 0,
+            "z": 0
+        },
+        {
+            "x": -0.75,
+            "y": 0,
+            "z": 0
+        },
+        {
+            "x": 0.75,
+            "y": 0,
+            "z": 0
+        },
+        {
+            "x": -1.5,
+            "y": 0,
+            "z": 0
+        },
+        {
+            "x": 1.5,
+            "y": 0,
+            "z": 0
+        }
+    ],
+    "winner_rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+    },
+    "camera_position": {
+        "x": 0,
+        "y": 1,
+        "z": 4.25
+    },
+    "camera_rotation": {
+        "x": 0,
+        "y": 0.9978589,
+        "z": -0.0654031,
+        "w": 0
+    },
+    "camera_fov_y": 0.523599
 }

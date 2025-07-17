@@ -491,6 +491,7 @@ impl GameWorldRoomState {
             let state = GameWorldFormationState::new(
                 self.allow_duplicates,
                 self.stage_kind,
+                true,
                 self.blue_players.len(),
                 self.red_players.len(),
             );

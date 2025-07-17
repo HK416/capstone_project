@@ -90,9 +90,8 @@ pub enum PacketType {
     InGameInput = 0x67,
     /// 클라이언트에서 서버로 보내는 입력 초기화 알림 패킷
     InGameControlLose = 0x68,
-
     /// 서버에서 클라이언트로 보내는 인게임 종료 패킷
-    InGameFinish = 0x80,
+    InGameFinish = 0x79,
 }
 
 impl PacketType {
@@ -134,7 +133,7 @@ impl PacketType {
             0x66 => Some(PacketType::InGameStatus),
             0x67 => Some(PacketType::InGameInput),
             0x68 => Some(PacketType::InGameControlLose),
-            0x80 => Some(PacketType::InGameFinish),
+            0x79 => Some(PacketType::InGameFinish),
             _ => None,
         }
     }
