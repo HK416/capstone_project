@@ -1,14 +1,14 @@
 use std::{
     collections::HashMap,
     env,
-    io::Write, 
+    io::{ErrorKind, Write},
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
-        Arc, Mutex
+        atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering}, Arc
     },
 };
 
+use mod_parallelism::collections::Queue;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -17,23 +17,16 @@ use tokio::{
 use mod_network::{
     addr::Addr,
     components::{
-        CharacterKind, Email, GameInputBits, 
-        LatLon, LoginToken, Passwd, Permission, 
-        SelectResult, UserAccount, UserId, 
-        ViewState, ViewStateTimer, WorldId
+        InputEvent, InputKind, InputSnapshot, LoginToken, Permission, SelectResult, UserId, WorldId,
     },
     protocol::{
-        AvailableWorldsPacket, 
-        CustomGameJoinFailedPacket, CustomGameJoinRequestPacket,
-        CustomGamePullPacket, CustomGameReadyPacket, 
-        FormationSelectPacket, FormationSelectResponsePacket,
-        LoginRequestPacket, LoginSuccessPacket, 
-        Packet, PacketParser, PacketType, 
-        PingPacket, PushStatusPacket, 
-        PushSyncPacket, RequestAvailableWorldsPacket
-    }
+        CharacterSelectRequestPacket, CharacterSelectResponsePacket, InGameInputPacket,
+        InGamePullPacket, InGameReadyNotifyPacket, JoinRoomFailedPacket, JoinRoomRequestPacket,
+        LoginRequestPacket, LoginSuccessPacket, Packet, PacketParser, PacketType, 
+        QueryWorldListPacket, RawPacket, RoomDataUpdatePacket, RoomReadyRequestPacket,
+        WorldListPacket,
+    },
 };
-
 
 lazy_static::lazy_static! {
     /// milliseconds
@@ -44,24 +37,23 @@ lazy_static::lazy_static! {
 
 }
 
-
 struct ReadyClient {
-    account: UserAccount,
+    uid: UserId,
     token: LoginToken,
-    
+
     reader: tokio::net::tcp::OwnedReadHalf,
     writer: tokio::net::tcp::OwnedWriteHalf,
     packet_parser: PacketParser,
 }
 
 impl ReadyClient {
-    fn new(account: UserAccount, stream: tokio::net::TcpStream) -> Self {
+    fn new(stream: tokio::net::TcpStream) -> Self {
         let (reader, writer) = stream.into_split();
 
         Self {
-            account,
+            uid: UserId::default(),
             token: LoginToken::default(),
-            
+
             reader,
             writer,
             packet_parser: PacketParser::new(),
@@ -70,9 +62,9 @@ impl ReadyClient {
 
     async fn run(mut self) -> Result<Self, std::io::Error> {
         // 일단 기본값으로 로그인. 나중에 DB에서 불러온 정보로 로그인하도록 해야함
-        self.login(Email::default(), Passwd::default()).await?;
+        self.login().await?;
 
-        // 방 접속 시도 
+        // 방 접속 시도
         loop {
             // 접속 가능한 월드 목록 불러오기
             let available = self.request_available_worlds().await?;
@@ -83,12 +75,15 @@ impl ReadyClient {
             } else {
                 // 랜덤으로 방 선택
                 // *available.choose(&mut rand::rng()).unwrap()
-                available[0]    // 접속가능한 첫번째 방으로 접속
+                available[0] // 접속가능한 첫번째 방으로 접속
             };
 
             // 방 접속
             match self.join(world_id).await {
                 Ok(_) => break,
+                Err(ref e) if e.kind() == ErrorKind::NotConnected => {
+                    continue;
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -118,11 +113,11 @@ impl ReadyClient {
         match self.reader.read(&mut buf).await {
             Ok(0) => {
                 return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof, 
+                    std::io::ErrorKind::UnexpectedEof,
                     format!(
                         "ReadyClient({})::read - Connection closed by server",
-                        self.account.uid,
-                    )
+                        self.uid,
+                    ),
                 ));
             }
             Ok(n) => {
@@ -135,8 +130,8 @@ impl ReadyClient {
         }
     }
 
-    async fn login(&mut self, email: Email, passwd: Passwd) -> Result<(), std::io::Error> {
-        let packet = LoginRequestPacket::new(email, passwd).as_raw();
+    async fn login(&mut self) -> Result<(), std::io::Error> {
+        let packet = LoginRequestPacket::new().as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
@@ -146,17 +141,20 @@ impl ReadyClient {
                 match packet.packet_type() {
                     PacketType::LoginSuccess => {
                         let p = LoginSuccessPacket::from_raw(packet);
-                        self.account = p.account;
+                        self.uid = p.uid;
                         self.token = p.token;
                         break 'readloop;
                     }
+                    PacketType::Ping => {
+                        self.writer.write_all(&packet.as_bytes()).await?;
+                    }
                     _ => {
                         return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData, 
+                            std::io::ErrorKind::InvalidData,
                             format!(
-                                "Login failed - Invalid packet received: {:?}", 
+                                "Login failed - Invalid packet received: {:?}",
                                 packet.packet_type()
-                            )
+                            ),
                         ));
                     }
                 }
@@ -167,7 +165,7 @@ impl ReadyClient {
     }
 
     async fn request_available_worlds(&mut self) -> Result<Vec<WorldId>, std::io::Error> {
-        let packet = RequestAvailableWorldsPacket::new(self.account.uid, self.token).as_raw();
+        let packet = QueryWorldListPacket::new(self.uid, self.token).as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         loop {
@@ -175,17 +173,21 @@ impl ReadyClient {
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
-                    PacketType::AvailableWorlds => {
-                        let p = AvailableWorldsPacket::from_raw(packet);
+                    PacketType::WorldListResponse => {
+                        let p = WorldListPacket::from_raw(packet);
                         return Ok(p.worlds);
                     }
+                    PacketType::Ping => {
+                        self.writer.write_all(&packet.as_bytes()).await?;
+                    }
+                    PacketType::LobbyDataUpdate => { }
                     _ => {
                         return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData, 
+                            std::io::ErrorKind::InvalidData,
                             format!(
-                                "RequestAvailableWorlds failed - Invalid packet received: {:?}", 
+                                "RequestAvailableWorlds failed - Invalid packet received: {:?}",
                                 packet.packet_type()
-                            )
+                            ),
                         ));
                     }
                 }
@@ -193,8 +195,8 @@ impl ReadyClient {
         }
     }
 
-    async fn join(&mut self, world_id: WorldId) -> Result<(), std::io::Error> {
-        let packet = CustomGameJoinRequestPacket::new(world_id, self.account.uid, self.token).as_raw();
+    async fn join(&mut self, id: WorldId) -> Result<(), std::io::Error> {
+        let packet = JoinRoomRequestPacket::new(id, self.uid, self.token).as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
@@ -202,30 +204,27 @@ impl ReadyClient {
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
-                    PacketType::CustomGameJoinSuccess => {
-                        // let _p = CustomGameJoinSuccessPacket::from_raw(packet);
-                        break 'readloop;
-                    }
-                    PacketType::CustomGameJoinFailed => {
-                        let p = CustomGameJoinFailedPacket::from_raw(packet);
-                        // println!("Join failed: {:?}", p.reason);
-                        // continue;
+                    PacketType::JoinRoomFailed => {
+                        let p = JoinRoomFailedPacket::from_raw(packet);
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::NotConnected,
-                            format!("Join failed: {:?}", p.reason)
+                            format!("Join failed: {:?}", p.reason),
                         ));
                     }
-                    // Success보다 먼저 도착할 수도?
-                    PacketType::CustomGamePull => {
-                        continue;
+                    PacketType::RoomDataUpdate => {
+                        break 'readloop;
                     }
+                    PacketType::Ping => {
+                        self.writer.write_all(&packet.as_bytes()).await?;
+                    }
+                    PacketType::LobbyDataUpdate => { }
                     _ => {
                         return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData, 
+                            std::io::ErrorKind::InvalidData,
                             format!(
-                                "Join failed - Invalid packet received: {:?}", 
+                                "Join failed - Invalid packet received: {:?}",
                                 packet.packet_type()
-                            )
+                            ),
                         ));
                     }
                 }
@@ -236,7 +235,7 @@ impl ReadyClient {
     }
 
     async fn ready(&mut self) -> Result<(), std::io::Error> {
-        let ready_packet = CustomGameReadyPacket::new(self.account.uid, self.token, true).as_raw();
+        let ready_packet = RoomReadyRequestPacket::new(self.uid, self.token).as_raw();
 
         'writeloop: loop {
             self.writer.write_all(&ready_packet.as_bytes()).await?;
@@ -246,18 +245,20 @@ impl ReadyClient {
 
                 while let Some(packet) = self.packet_parser.pop() {
                     match packet.packet_type() {
-                        // 플레이어들의 상태에 업데이트가 있다면 
-                        PacketType::CustomGamePull => {
-                            let p = CustomGamePullPacket::from_raw(packet);
+                        // 플레이어들의 상태에 업데이트가 있다면
+                        PacketType::RoomDataUpdate => {
+                            let p = RoomDataUpdatePacket::from_raw(packet);
 
-                            if p.players.iter()
-                                .find(|p| p.account.uid == self.account.uid)
+                            if p.players
+                                .iter()
+                                .find(|p| p.uid == self.uid)
                                 .filter(|p| p.permission() == Permission::Admin)
-                                .is_some() 
+                                .is_some()
                             {
-                                if p.players.iter()
-                                    .filter(|p| p.account.uid != self.account.uid)
-                                    .all(|p| p.is_ready())
+                                if p.players
+                                    .iter()
+                                    .filter(|p| p.uid != self.uid)
+                                    .all(|p| p.is_ready_to_play())
                                 {
                                     // 방장이면 게임 시작 신호(ready packet) 재전송
                                     continue 'writeloop;
@@ -268,24 +269,27 @@ impl ReadyClient {
                             }
                         }
                         // 이 메세지를 받는다면 방장임
-                        PacketType::CustomGameStartFailed => {
+                        PacketType::StartGameFailed => {
                             // let p = CustomGameStartFailedPacket::from_raw(packet);
                             // println!("Game start failed: {:?}", p.reason);
                             tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                             continue 'writeloop;
                         }
                         // 이 메세지를 받는다면 게임이 시작된것임
-                        PacketType::FormationPull => {
+                        PacketType::FormationDataInit => {
                             // let _p = FormationPullPacket::from_raw(packet);
                             break 'writeloop;
                         }
+                        PacketType::Ping => {
+                            self.writer.write_all(&packet.as_bytes()).await?;
+                        }
                         _ => {
                             return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData, 
+                                std::io::ErrorKind::InvalidData,
                                 format!(
-                                    "Ready failed - Invalid packet received: {:?}", 
+                                    "Ready failed - Invalid packet received: {:?}",
                                     packet.packet_type()
-                                )
+                                ),
                             ));
                         }
                     }
@@ -297,11 +301,8 @@ impl ReadyClient {
     }
 
     async fn select_character(&mut self) -> Result<(), std::io::Error> {
-        let select_packet = FormationSelectPacket::new(
-            self.account.uid,
-            self.token,
-            CharacterKind::default(),
-        ).as_raw();
+        let select_packet =
+            CharacterSelectRequestPacket::new(self.uid, self.token, rand::random()).as_raw();
 
         'writeloop: loop {
             // 캐릭터 선택 패킷 전송
@@ -314,11 +315,11 @@ impl ReadyClient {
                 while let Some(packet) = self.packet_parser.pop() {
                     match packet.packet_type() {
                         // 캐릭터 선택 완료 패킷
-                        PacketType::FormationPull => {
+                        PacketType::FormationDataUpdate => {
                             // let _p = FormationPullPacket::from_raw(packet);
                         }
-                        PacketType::FormationSelectResponse => {
-                            let p = FormationSelectResponsePacket::from_raw(packet);
+                        PacketType::CharacterSelectResponse => {
+                            let p = CharacterSelectResponsePacket::from_raw(packet);
                             if p.result == SelectResult::Success {
                                 // println!("Character selected successfully");
                                 continue 'readloop;
@@ -327,25 +328,28 @@ impl ReadyClient {
                                 continue 'writeloop;
                             }
                         }
-                        PacketType::InitStage => {
+                        PacketType::InGameDataInit => {
                             // let _p = InitStagePacket::from_raw(packet);
                             // println!("Stage initialized");
                             break 'writeloop;
                         }
-                        PacketType::GamePlayStop => {
+                        PacketType::EnterGameFailed => {
                             // let _p = CustomGamePullPacket::from_raw(packet);
                             return Err(std::io::Error::new(
-                                std::io::ErrorKind::NotFound, 
-                                "Game stopped"
+                                std::io::ErrorKind::NotFound,
+                                "Game stopped",
                             ));
+                        }
+                        PacketType::Ping => {
+                            self.writer.write_all(&packet.as_bytes()).await?;
                         }
                         _ => {
                             return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData, 
+                                std::io::ErrorKind::InvalidData,
                                 format!(
-                                    "Character selection failed - Invalid packet received: {:?}", 
+                                    "Character selection failed - Invalid packet received: {:?}",
                                     packet.packet_type()
-                                )
+                                ),
                             ));
                         }
                     }
@@ -357,11 +361,7 @@ impl ReadyClient {
     }
 
     async fn sync(&mut self) -> Result<(), std::io::Error> {
-        let packet = PushSyncPacket::new(
-            self.account.uid,
-            self.token,
-            true,
-        ).as_raw();
+        let packet = InGameReadyNotifyPacket::new(self.uid, self.token).as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
@@ -369,23 +369,27 @@ impl ReadyClient {
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
-                    PacketType::PrepareStage => {
+                    PacketType::InGameEnterNotify => {
                         // let _p = PrepareStagePacket::from_raw(packet);
                         // println!("Stage prepared");
                         // break 'readloop;
                     }
-                    PacketType::PullStage => {
+                    PacketType::InGamePull => {
                         // let _p = PullStagePacket::from_raw(packet);
                         // println!("Stage pulled");
                         break 'readloop;
                     }
+                    PacketType::Ping => {
+                        self.writer.write_all(&packet.as_bytes()).await?;
+                    }
+                    PacketType::InGameReadyStatus => { }
                     _ => {
                         return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData, 
+                            std::io::ErrorKind::InvalidData,
                             format!(
                                 "Sync failed - Invalid packet received: {:?}",
                                 packet.packet_type()
-                            )
+                            ),
                         ));
                     }
                 }
@@ -396,60 +400,60 @@ impl ReadyClient {
     }
 }
 
-
 struct Client {
-    account: UserAccount,
-    // token: LoginToken,
-    connected: AtomicBool,
+    connected: Arc<AtomicBool>,
 }
 
 impl Client {
-    async fn new(account: UserAccount) -> Result<Client, std::io::Error> {
+    async fn new() -> Result<Client, std::io::Error> {
         Ok(Self {
-            account,
-            // token: LoginToken::default(),
-            connected: AtomicBool::new(false),
+            connected: Arc::new(AtomicBool::new(true)),
         })
     }
 
     async fn run(&self, addr: &str) {
         let stream = TcpStream::connect(addr).await.unwrap();
-        self.connected.store(true, Ordering::Relaxed);
         NUM_CLIENTS.fetch_add(1, Ordering::Relaxed);
 
-        let ready_client = ReadyClient::new(self.account.clone(), stream);
+        let ready_client = ReadyClient::new(stream);
         let ready_client = match ready_client.run().await {
             Ok(client) => client,
-            Err(_e) => {
+            Err(e) => {
                 self.connected.store(false, Ordering::Relaxed);
-                // println!("Client ready failed: {:?}", e);
+                println!("Client ready failed: {:?}", e);
                 return;
             }
         };
 
-        // self.account = ready_client.account;
-        // self.token = ready_client.token;
-
-        let packet_parser = Arc::new(Mutex::new(ready_client.packet_parser));
-
+        let packet_sender = Arc::new(Queue::new());
+        let packet_receiver = Arc::new(Queue::new());
         let read_handle = tokio::spawn(
             // 읽기 루프 시작
             Client::start_read_loop(
                 ready_client.reader,
-                Arc::clone(&packet_parser),
-            )
+                Arc::clone(&self.connected),
+                Arc::clone(&packet_sender),
+                Arc::clone(&packet_receiver),
+            ),
         );
         let write_handle = tokio::spawn(
             // 쓰기 루프 시작
             Client::start_write_loop(
-                ready_client.account.uid,
-                ready_client.token,
                 ready_client.writer,
-            )
+                Arc::clone(&self.connected),
+                Arc::clone(&packet_sender),
+            ),
         );
 
         // 게임 시작
-        let _ = self.start_game(Arc::clone(&packet_parser)).await;
+        let _ = self
+            .start_game(
+                ready_client.uid,
+                ready_client.token,
+                packet_sender,
+                packet_receiver,
+            )
+            .await;
 
         read_handle.abort();
         write_handle.abort();
@@ -457,56 +461,64 @@ impl Client {
 
     async fn start_read_loop(
         mut reader: tokio::net::tcp::OwnedReadHalf,
-        packet_parser: Arc<Mutex<PacketParser>>,
+        connected: Arc<AtomicBool>,
+        packet_sender: Arc<Queue<RawPacket>>,
+        packet_receiver: Arc<Queue<RawPacket>>,
     ) -> Result<(), std::io::Error> {
-        let mut buf = [0; 32];
+        let mut parser = PacketParser::new();
+        let mut buf = [0; 1024];
 
-        loop {
+        while connected.load(Ordering::Relaxed) {
+            buf[..].fill(0);
+
             match reader.read(&mut buf).await {
                 Ok(0) => {
+                    connected.store(false, Ordering::Release);
                     return Err(std::io::Error::new(
-                        std::io::ErrorKind::UnexpectedEof, "Connection closed by server"
+                        std::io::ErrorKind::UnexpectedEof,
+                        "Connection closed by server",
                     ));
                 }
                 Ok(n) => {
-                    packet_parser.lock().unwrap().push(&buf[..n]);
+                    parser.push(&buf[..n]);
                 }
                 Err(e) => {
+                    connected.store(false, Ordering::Release);
                     return Err(e);
                 }
             }
+
+            while let Some(packet) = parser.pop() {
+                if packet.packet_type() == PacketType::Ping {
+                    packet_sender.push(packet);
+                    continue;
+                }
+                packet_receiver.push(packet);
+            }
         }
-        
-        // Ok(())
+
+        Ok(())
     }
 
     async fn start_write_loop(
-        user_id: UserId,
-        token: LoginToken,
         mut writer: tokio::net::tcp::OwnedWriteHalf,
+        connected: Arc<AtomicBool>,
+        packet_sender: Arc<Queue<RawPacket>>,
     ) -> Result<(), std::io::Error> {
-        let packet = PushStatusPacket {
-            user_id,
-            token,
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            direction: [0.0, 0.0, 0.0],
-            input_flags: GameInputBits::Forward,
-            view_state: ViewState::default(),
-            view_state_timer: ViewStateTimer::default(),
-            view_rotation: LatLon::default(),
-        };
-        let packet = packet.as_raw().as_bytes();
-
         loop {
-            writer.write_all(&packet).await?;
+            if !connected.load(Ordering::Relaxed) {
+                return Ok(());
+            }
 
-            let ping_packet = PingPacket {
-                send_time: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos(),
-            };
-            writer.write_all(&ping_packet.as_raw().as_bytes()).await?;
+            if let Some(packet) = packet_sender.pop() {
+                match writer.write_all(&packet.as_bytes()).await {
+                    Ok(()) => {}
+                    Err(e) => {
+                        connected.store(false, Ordering::Release);
+                        return Err(e);
+                    }
+                }
+            }
 
             // 1초마다 패킷 전송
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -514,49 +526,63 @@ impl Client {
     }
 
     async fn start_game(
-        &self, 
-        packet_parser: Arc<Mutex<PacketParser>>,
+        &self,
+        uid: UserId,
+        token: LoginToken,
+        packet_sender: Arc<Queue<RawPacket>>,
+        packet_receiver: Arc<Queue<RawPacket>>,
     ) -> Result<(), std::io::Error> {
+        let mut count = 0;
         while self.connected.load(Ordering::Relaxed) {
-            while let Some(packet) = packet_parser.lock().unwrap().pop() {
+            while let Some(packet) = packet_receiver.pop() {
                 match packet.packet_type() {
-                    PacketType::PullStage => {
-                        // let p = PullStagePacket::from_raw(packet);
-                    }
-                    PacketType::FinishStage => {
-                        // let p = FinishStagePacket::from_raw(packet);
-                        self.connected.store(false, Ordering::Relaxed);
-                        return Ok(());
-                    }
-                    PacketType::Ping => {
-                        let p = PingPacket::from_raw(packet);
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_nanos();
-
-                        let delay = (now - p.send_time) as f32 / 1_000_000.0; // ms
-                        if delay >= 0.0 {
-                            let global_delay = GLOBAL_DELAY.load(Ordering::Relaxed) as f32;
-                            if delay > global_delay {
-                                GLOBAL_DELAY.fetch_add(1, Ordering::Relaxed);
-                            } else if delay < global_delay {
-                                GLOBAL_DELAY.fetch_sub(1, Ordering::Relaxed);
-                            }
+                    PacketType::InGamePull => {
+                        let p = InGamePullPacket::from_raw(packet);
+                        let global_delay = GLOBAL_DELAY.load(Ordering::Relaxed) as u16;
+                        if p.ping > global_delay {
+                            GLOBAL_DELAY.fetch_add(1, Ordering::Relaxed);
+                        } else if p.ping < global_delay {
+                            GLOBAL_DELAY.fetch_sub(1, Ordering::Relaxed);
                         }
+
+                        let snapshot = if count != 0 {
+                            InputSnapshot::KeyEvent {
+                                play_elapsed_time_ms: p.play_elapsed_time_ms,
+                                events: vec![InputEvent::KeyPress(InputKind::Attack)],
+                            }
+                        } else {
+                            InputSnapshot::KeyEvent {
+                                play_elapsed_time_ms: p.play_elapsed_time_ms,
+                                events: vec![
+                                    InputEvent::KeyRelease(InputKind::Attack),
+                                    InputEvent::KeyPress(InputKind::Reload),
+                                    InputEvent::KeyRelease(InputKind::Reload),
+                                ],
+                            }
+                        };
+                        let packet = InGameInputPacket::new(
+                            uid,
+                            token,
+                            p.play_elapsed_time_ms,
+                            vec![snapshot],
+                        );
+                        packet_sender.push(packet.as_raw());
+                        count = (count + 1) % 10;
                     }
-                    PacketType::UdpDamageLog => {
-                        // udp 패킷이 tcp로 오고있음
+                    PacketType::InGameStatus => {}
+                    PacketType::InGameFinish => {
+                        self.connected.store(false, Ordering::Release);
+                        return Ok(());
                     }
                     _ => {
                         // println!("InGame - Invalid packet received: {:?}", packet.packet_type());
                         self.connected.store(false, Ordering::Relaxed);
                         return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData, 
+                            std::io::ErrorKind::InvalidData,
                             format!(
                                 "InGame - Invalid packet received: {:?}",
                                 packet.packet_type()
-                            )
+                            ),
                         ));
                     }
                 }
@@ -574,7 +600,6 @@ impl Drop for Client {
         NUM_CLIENTS.fetch_sub(1, Ordering::Relaxed);
     }
 }
-
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u32)]
@@ -596,11 +621,10 @@ impl AcceptState {
 }
 
 const MAX_CLIENTS: usize = 10000;
-const IDLE_DELAY: u32 = 10;  // ms
-const STABLE_DELAY: u32 = 50;  // ms
-const DELAY_LIMIT1: u32 = 100;  // ms
-const DELAY_LIMIT2: u32 = 150;  // ms
-
+const IDLE_DELAY: u32 = 10; // ms
+const STABLE_DELAY: u32 = 50; // ms
+const DELAY_LIMIT1: u32 = 100; // ms
+const DELAY_LIMIT2: u32 = 150; // ms
 
 async fn stress_test(addr: Addr) {
     let accept_state = Arc::new(AtomicU32::new(AcceptState::Accept as u32));
@@ -608,8 +632,9 @@ async fn stress_test(addr: Addr) {
 
     let _printer_handle = tokio::spawn(async move {
         loop {
-            print!("\rDelay: {:?}ms  \tClients: {}  \t\t{:?}          ", 
-                GLOBAL_DELAY.load(Ordering::Relaxed), 
+            print!(
+                "\rDelay: {:?}ms  \tClients: {}  \t\t{:?}          ",
+                GLOBAL_DELAY.load(Ordering::Relaxed),
                 NUM_CLIENTS.load(Ordering::Relaxed),
                 AcceptState::from(state.load(Ordering::Relaxed))
             );
@@ -633,7 +658,7 @@ async fn stress_test(addr: Addr) {
                 } else {
                     // accept
                     if NUM_CLIENTS.load(Ordering::Relaxed) < MAX_CLIENTS as u16 {
-                        let client = Arc::new(Client::new(UserAccount::default()).await.unwrap());
+                        let client = Arc::new(Client::new().await.unwrap());
                         clients.insert(client_id, Arc::clone(&client));
                         client_id += 1;
                         let a = addr.to_string();
@@ -689,7 +714,6 @@ async fn stress_test(addr: Addr) {
     // Ok(())
 }
 
-
 fn main() {
     println!("Stress test started");
 
@@ -729,7 +753,5 @@ fn main() {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async {
-            stress_test(addr).await
-        });
+        .block_on(async { stress_test(addr).await });
 }
