@@ -1,6 +1,7 @@
 mod hierarchy;
 mod mesh;
 mod motion;
+mod sound;
 mod stage;
 mod texture;
 
@@ -8,7 +9,7 @@ use std::io;
 
 use mod_network::components::{StageLoadError, NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES};
 
-pub use self::{hierarchy::*, mesh::*, motion::*, stage::*, texture::*};
+pub use self::{hierarchy::*, mesh::*, motion::*, sound::*, stage::*, texture::*};
 
 /// 사용자 구성 파일의 상대 경로입니다.
 pub const USER_CONFIG: &'static str = "user_config";
@@ -209,17 +210,87 @@ pub const SCHALE_ICON_URI: &'static str = "Schale_Icon";
 
 /// 총알 모델의 작업 공간입니다.
 pub const BULLET_WORKSPACE: &'static str = "common";
-
 /// 총알 모델의 `Uri`입니다.
 pub const BULLET_URIS: [&'static str; NUM_BULLETS] = ["Bullet_01_Warhead", "Bullet_02_EnergyBoll"];
 
 pub const STAGE_WORKSPACES: [&'static str; NUM_STAGES] = ["stage/city"];
-
 /// 지형 데이터의 `Uri`입니다.
 pub const STAGE_URI: &'static str = "map";
 
 /// 점령 지역의 `Uri`입니다.
 pub const CAPTURE_ZONE_URI: &'static str = "Capture_Zone";
+
+/// 배경음 사운드의 작업 공간입니다.
+pub const BG_SOUND_WORKSPACE: &'static str = "sound/bg";
+/// Theme_01("Constant Moderato") 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_01: &'static str = "Theme_01";
+/// Theme_01("Constant Moderato") 배경 사운드의 데이터입니다.
+pub const BG_SOUND_THEME_01_DATA: &'static [u8; 1283368] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/bg/Theme_01.ogg"
+));
+
+/// 캐릭터 목소리 사운드의 작업 공간입니다.
+pub const CV_SOUND_WORKSPACES: [&'static str; NUM_CHARACTERS] = [
+    "sound/cv/aris_original",
+    "sound/cv/momoi_original",
+    "sound/cv/midori_original",
+    "sound/cv/yuuka_original",
+];
+/// 캐릭터 타이틀 대사 사운드의 `Uri`입니다.
+pub const CV_SOUND_TITLE: [&'static str; NUM_CHARACTERS] =
+    ["Aris_Title", "Momoi_Title", "Midori_Title", "Yuuka_Title"];
+/// `Aris_Original` 캐릭터 타이틀 대사 사운드의 데이터입니다.
+pub const CV_ARIS_TITLE_DATA: &'static [u8; 13897] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/cv/aris_original/Aris_Title.ogg"
+));
+/// `Momoi_Original` 캐릭터 타이틀 대사 사운드의 데이터입니다.
+pub const CV_MOMOI_TITLE_DATA: &'static [u8; 16485] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/cv/momoi_original/Momoi_Title.ogg"
+));
+/// `Midori_Original` 캐릭터 타이틀 대사 사운드의 데이터입니다.
+pub const CV_MIDORI_TITLE_DATA: &'static [u8; 14853] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/cv/midori_original/Midori_Title.ogg"
+));
+/// `Yuuka_Original` 캐릭터 타이틀 대사 사운드의 데이터입니다.
+pub const CV_YUUKA_TITLE_DATA: &'static [u8; 10628] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/cv/yuuka_original/Yuuka_Title.ogg"
+));
+/// `Yuuka_Original` 캐릭터 옵션 대사 사운드의 `Uri`입니다.
+pub const CV_YUUKA_OPTION: &'static str = "Yuuka_Option";
+/// `Yuuka_Original` 캐릭터 옵션 대사 사운드의 데이터입니다.
+pub const CV_YUUKA_OPTION_DATA: &'static [u8; 22877] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/cv/yuuka_original/Yuuka_Option.ogg"
+));
+
+/// Ui 사운드의 작업 공간입니다.
+pub const UI_SOUND_WORKSPACE: &'static str = "sound/ui";
+/// 뒤로가기 버튼을 누를때 발생하는 Ui 사운드의 `Uri`입니다.
+pub const UI_BUTTON_BACK: &'static str = "UI_Button_Back";
+/// 뒤로가기 버튼을 누를때 발생하는 Ui 사운드의 데이터입니다.
+pub const UI_BUTTON_BACK_DATA: &'static [u8; 4119] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/ui/UI_Button_Back.ogg"
+));
+/// 클릭할 때 발생하는 Ui 사운드의 `Uri`입니다.
+pub const UI_BUTTON_TOUCH: &'static str = "UI_Button_Touch";
+/// 클릭할 때 발생하는 Ui 사운드의 데이터입니다.
+pub const UI_BUTTON_TOUCH_DATA: &'static [u8; 4021] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/ui/UI_Button_Touch.ogg"
+));
+/// 로딩시 발생하는 Ui 사운드의 `Uri`입니다.
+pub const UI_LOADING: &'static str = "UI_Loading";
+/// 로딩시 발생하는 Ui 사운드의 데이터입니다.
+pub const UI_LOADING_DATA: &'static [u8; 4611] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/ui/UI_Loading.ogg"
+));
 
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]
@@ -238,6 +309,9 @@ pub enum AssetError {
     /// 파일을 열거나 읽을 때 발생하는 오류입니다.
     #[error("failed to read asset for the following reason:{0})")]
     IOError(#[from] io::Error),
+
+    #[error("failed to decode sound for the following reason:{0}")]
+    DecodeFailed(#[from] rodio::decoder::DecoderError),
 }
 
 impl From<StageLoadError> for AssetError {

@@ -1,6 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use rayon::ThreadPool;
+use rodio::mixer::Mixer;
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
@@ -39,6 +40,9 @@ pub trait AppHandle {
 
     /// 애플리케이션 게임 타이머를 가져옵니다.
     fn timer(&self) -> &GameTimer;
+
+    /// 소리 장치 오디오 믹서를 가져옵니다.
+    fn audio_mixer(&self) -> &Mixer;
 
     /// `wgpu` 렌더링 인스턴스를 가져옵니다.
     fn render_instance(&self) -> &Arc<wgpu::Instance>;

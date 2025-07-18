@@ -7,7 +7,7 @@ use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, TexturePool, NOTOSANS_REGULAR},
     config::{Locale, UserConfig},
     scenes::BASE_WIDTH,
 };
@@ -24,15 +24,18 @@ pub struct InitLocaleScene {
 
     // 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InitLocaleScene {
     /// 새로운 `InitLocaleScene`을 생성합니다.
-    pub fn new(texture_pool: TexturePool) -> Self {
+    pub fn new(texture_pool: TexturePool, sound_data_pool: SoundDataPool) -> Self {
         Self {
             locale: Locale::default(),
             selected: false,
             texture_pool,
+            sound_data_pool,
         }
     }
 }
@@ -57,7 +60,11 @@ impl GameScene for InitLocaleScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.selected {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = InitWindowScene::new(self.texture_pool.clone());
+            let next_scene = InitWindowScene::new(
+                self.locale,
+                self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();

@@ -19,6 +19,7 @@ use mod_app::{
     etc::{AppEvent, WindowSize},
     scene::{GameScene, GameSceneFlow},
 };
+use mod_network::components::CharacterKind;
 use mod_parallelism::collections::Queue;
 use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use rayon::ThreadPool;
@@ -26,14 +27,18 @@ use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     asset::{
-        TexturePool, BG_GROWTH_EFFECT_LABEL_DATA, BG_GROWTH_EFFECT_LABEL_URI,
-        BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI,
-        BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI,
-        BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI,
-        GAME_LOGO_DATA, GAME_LOGO_URI, HUD_CANCEL_ICON_DATA, HUD_CANCEL_ICON_URI,
-        HUD_CHANGE_ICON_DATA, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_DATA, HUD_DETAIL_ICON_URI,
-        HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI, HUD_OPTION_ICON_DATA, HUD_OPTION_ICON_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG,
+        DecodedSound, SoundDataPool, TexturePool, BG_GROWTH_EFFECT_LABEL_DATA,
+        BG_GROWTH_EFFECT_LABEL_URI, BG_LOGIN_TITLE_0_DATA, BG_LOGIN_TITLE_0_URI,
+        BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI,
+        BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI,
+        BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI, BG_SOUND_THEME_01, BG_SOUND_THEME_01_DATA,
+        CV_ARIS_TITLE_DATA, CV_MIDORI_TITLE_DATA, CV_MOMOI_TITLE_DATA, CV_SOUND_TITLE,
+        CV_YUUKA_OPTION, CV_YUUKA_OPTION_DATA, CV_YUUKA_TITLE_DATA, GAME_LOGO_DATA, GAME_LOGO_URI,
+        HUD_CANCEL_ICON_DATA, HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_DATA, HUD_CHANGE_ICON_URI,
+        HUD_DETAIL_ICON_DATA, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI,
+        HUD_OPTION_ICON_DATA, HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK,
+        UI_BUTTON_BACK_DATA, UI_BUTTON_TOUCH, UI_BUTTON_TOUCH_DATA, UI_LOADING, UI_LOADING_DATA,
+        USER_CONFIG,
     },
     component::{
         BulletRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
@@ -61,6 +66,7 @@ enum TaskResult {
     },
     Pipeline,
     Failed,
+    Sound,
 }
 
 /// 클라이언트 실행시 가장 첫 번째로 진입하는 게임 장면입니다.  
@@ -80,6 +86,8 @@ pub struct GameStartupScene {
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl GameStartupScene {
@@ -92,6 +100,7 @@ impl GameStartupScene {
             task_results: Arc::new(Queue::new()),
             font_asset_data: HashMap::default(),
             texture_pool: TexturePool::new(),
+            sound_data_pool: SoundDataPool::new(),
         }
     }
 
@@ -368,6 +377,35 @@ impl GameStartupScene {
         self.num_remaining_tasks += 1;
     }
 
+    /// 사운드 데이터를 로드합니다.
+    fn load_sound_data(
+        &mut self,
+        thread_pool: &ThreadPool,
+        uri: &'static str,
+        bytes: &'static [u8],
+    ) {
+        let sound_data_pool = self.sound_data_pool.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            // 사운드 데이터를 생성합니다.
+            let decoded = match DecodedSound::from_bytes(bytes) {
+                Ok(decoded) => decoded,
+                Err(e) => {
+                    log::error!("{}", e);
+                    task_results.push(TaskResult::Failed);
+                    return;
+                }
+            };
+
+            // 사운드 데이터를 풀 객체에 등록합니다.
+            sound_data_pool.insert(uri, decoded);
+
+            // 결과를 전송합니다.
+            task_results.push(TaskResult::Sound);
+        });
+        self.num_remaining_tasks += 1;
+    }
+
     /// 사용자 구성 파일을 로드합니다.
     fn load_user_config<P>(&mut self, root_dir: P)
     where
@@ -462,6 +500,15 @@ impl GameScene for GameStartupScene {
         self.create_texture(thread_pool, device, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_4_DATA);
         self.create_texture(thread_pool, device, BG_LOGIN_TITLE_5_URI, BG_LOGIN_TITLE_5_DATA);
         self.create_texture(thread_pool, device, BG_GROWTH_EFFECT_LABEL_URI, BG_GROWTH_EFFECT_LABEL_DATA);
+        self.load_sound_data(thread_pool, BG_SOUND_THEME_01, BG_SOUND_THEME_01_DATA);
+        self.load_sound_data(thread_pool, CV_SOUND_TITLE[CharacterKind::ArisOriginal as usize], CV_ARIS_TITLE_DATA);
+        self.load_sound_data(thread_pool, CV_SOUND_TITLE[CharacterKind::MomoiOriginal as usize], CV_MOMOI_TITLE_DATA);
+        self.load_sound_data(thread_pool, CV_SOUND_TITLE[CharacterKind::MidoriOriginal as usize], CV_MIDORI_TITLE_DATA);
+        self.load_sound_data(thread_pool, CV_SOUND_TITLE[CharacterKind::YuukaOriginal as usize], CV_YUUKA_TITLE_DATA);
+        self.load_sound_data(thread_pool, CV_YUUKA_OPTION, CV_YUUKA_OPTION_DATA);
+        self.load_sound_data(thread_pool, UI_BUTTON_BACK, UI_BUTTON_BACK_DATA);
+        self.load_sound_data(thread_pool, UI_BUTTON_TOUCH, UI_BUTTON_TOUCH_DATA);
+        self.load_sound_data(thread_pool, UI_LOADING, UI_LOADING_DATA);
         self.load_user_config(root_dir);
     }
 
@@ -494,7 +541,7 @@ impl GameScene for GameStartupScene {
                     app.render_queue().submit(Some(command));
                     self.staging_buffers.append(&mut staging_buffers);
                 }
-                TaskResult::Pipeline => { /* empty */ }
+                TaskResult::Pipeline | TaskResult::Sound => { /* empty */ }
                 TaskResult::Failed => {
                     let title = "Initialize failed".into();
                     let message = "Failed to initialize game data.".into();
@@ -509,11 +556,17 @@ impl GameScene for GameStartupScene {
         // 모든 작업이 완료된 경우 다음 게임 장면으로 전환합니다.
         if self.num_remaining_tasks == 0 {
             let next_scene: Box<dyn GameScene> = match self.needs_initial_setup {
-                true => Box::new(InitLocaleScene::new(self.texture_pool.clone())),
+                true => Box::new(InitLocaleScene::new(
+                    self.texture_pool.clone(),
+                    self.sound_data_pool.clone(),
+                )),
                 false => {
                     let config = UserConfig::get();
                     Box::new(GameIntroNotifyScene::new(
                         config.locale,
+                        config.background_volume,
+                        config.effect_volume,
+                        config.voice_volume,
                         self.texture_pool.clone(),
                     ))
                 }

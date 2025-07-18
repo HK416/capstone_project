@@ -7,9 +7,9 @@ use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{InitSoundScene, BASE_WIDTH},
 };
 
 use super::InitFinishScene;
@@ -50,20 +50,22 @@ pub struct InitWindowScene {
 
     // 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InitWindowScene {
     /// 새로운 `InitWindowScene`을 생성합니다.
-    pub fn new(texture_pool: TexturePool) -> Self {
-        let config = UserConfig::get();
+    pub fn new(locale: Locale, texture_pool: TexturePool, sound_data_pool: SoundDataPool) -> Self {
         Self {
-            locale: config.locale,
+            locale,
             max_window_size: WindowSize::MAX,
             window_size: WindowSize::MAX,
             is_fullscreen: true,
             completed: false,
             delay_time_sec: 0.3,
             texture_pool,
+            sound_data_pool,
         }
     }
 
@@ -266,7 +268,11 @@ impl GameScene for InitWindowScene {
 
         if self.completed {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = InitFinishScene::new(self.texture_pool.clone());
+            let next_scene = InitSoundScene::new(
+                self.locale,
+                self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();

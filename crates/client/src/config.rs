@@ -102,6 +102,13 @@ pub struct UserConfig {
     /// 마우스와 게임 입력 매핑 정보를 저장합니다.
     #[serde(skip)]
     mouse_input_map: HashMap<MouseButton, InputKind>,
+
+    /// 배경음 음량
+    pub background_volume: u8,
+    /// 이펙트 음량
+    pub effect_volume: u8,
+    /// 목소리 음량
+    pub voice_volume: u8,
 }
 
 impl UserConfig {
@@ -295,6 +302,9 @@ impl Default for UserConfig {
                 (MouseButton::Right, InputKind::Aiming),
                 (MouseButton::Left, InputKind::Attack),
             ]),
+            background_volume: 204,
+            effect_volume: 204,
+            voice_volume: 204,
         }
     }
 }

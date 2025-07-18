@@ -34,6 +34,12 @@ const SUB_TEXTS: [&'static str; NUM_LOCALE] =
 pub struct GameIntroNotifyScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
@@ -44,9 +50,18 @@ pub struct GameIntroNotifyScene {
 
 impl GameIntroNotifyScene {
     /// 새로운 `GameIntroNotifyScene`을 생성합니다.
-    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
+    pub fn new(
+        locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        texture_pool: TexturePool,
+    ) -> Self {
         Self {
             locale,
+            background_volume,
+            effect_volume,
+            voice_volume,
             elapsed_time_sec: 0.0,
             texture_pool,
         }
