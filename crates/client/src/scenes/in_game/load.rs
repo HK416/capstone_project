@@ -18,18 +18,20 @@ use mod_network::{
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        AssetError, MeshPool, ModelPool, MotionPool, SamplerPool, TextureDataPool, TexturePool,
-        TextureViewPool, BG_SKY_URI, BG_SKY_WORKSPACE, BULLET_URIS, BULLET_WORKSPACE,
+        AssetError, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool, TextureDataPool,
+        TexturePool, TextureViewPool, BG_SKY_URI, BG_SKY_WORKSPACE, BULLET_URIS, BULLET_WORKSPACE,
         CHARACTER_IMG_SMALL_URI, CHARACTER_IMG_URI, CHARACTER_URIS, CHARACTER_WORKSPACES,
         EMBLEM_BG_URI, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, ICON_WORKSPACE, IMG_FONT_DRAW,
         IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI,
         IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI,
         IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI, STAGE_URI,
-        STAGE_WORKSPACES, WEAPON_ICON_URI,
+        STAGE_WORKSPACES, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE,
+        UI_TURN_DOWN, UI_TURN_UP, WEAPON_ICON_URI,
     },
     component::MaterialDataPool,
     config::{Locale, NUM_LOCALE},
@@ -79,6 +81,12 @@ pub struct InGameLoadScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 초기화 패킷
     packet: Option<InGameDataInitPacket>,
@@ -109,54 +117,63 @@ pub struct InGameLoadScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameLoadScene {
     /// 새로운 `InGameLoadScene`을 생성합니다.
     pub fn new(
         locale: Locale,
-        user_id: UserId,
+        uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         packet: InGameDataInitPacket,
         previous_texture_pool: &TexturePool,
+        previous_sound_data_pool: &SoundDataPool,
     ) -> Self {
         // 새로운 텍스처 풀을 생성하고 이전 텍스처 풀에서 필요한 데이터를 취합니다.
         let texture_pool = TexturePool::new();
+        const TEXTURE_URIS: [&'static str; 5] = [
+            HUD_LAYOUT_URI_02,
+            HUD_LAYOUT_URI_03,
+            EMBLEM_BG_URI,
+            PROFILE_ICON_URI,
+            CHARACTER_IMG_URI,
+        ];
+        for uri in TEXTURE_URIS {
+            let texture = previous_texture_pool
+                .get(uri)
+                .expect(&format!("{} texture must be preloaded!", uri));
+            texture_pool.insert(uri, texture);
+        }
 
-        // HUD_Layout_02
-        let texture = previous_texture_pool
-            .get(HUD_LAYOUT_URI_02)
-            .expect("HUD_Layout_02 texture must be preloaded!");
-        texture_pool.insert(HUD_LAYOUT_URI_02, texture);
-
-        // HUD_Layout_03
-        let texture = previous_texture_pool
-            .get(HUD_LAYOUT_URI_03)
-            .expect("HUD_Layout_03 texture must be preloaded!");
-        texture_pool.insert(HUD_LAYOUT_URI_03, texture);
-
-        // Emblem_BG
-        let texture = previous_texture_pool
-            .get(EMBLEM_BG_URI)
-            .expect("Emblem_BG texture must be preloaded!");
-        texture_pool.insert(EMBLEM_BG_URI, texture);
-
-        // Profile_Icon
-        let texture = previous_texture_pool
-            .get(PROFILE_ICON_URI)
-            .expect("Profile_Icon texture must be preloaded!");
-        texture_pool.insert(PROFILE_ICON_URI, texture);
-
-        // Character_Img
-        let texture = previous_texture_pool
-            .get(CHARACTER_IMG_URI)
-            .expect("Character_Img texture must be preloaded!");
-        texture_pool.insert(CHARACTER_IMG_URI, texture);
+        let sound_data_pool = SoundDataPool::new();
+        const SOUND_URIS: [&'static str; 7] = [
+            UI_LOADING,
+            UI_NOTICE,
+            UI_BUTTON_BACK,
+            UI_BUTTON_TOUCH,
+            UI_PAUSE,
+            UI_TURN_UP,
+            UI_TURN_DOWN,
+        ];
+        for uri in SOUND_URIS {
+            let decoded = previous_sound_data_pool
+                .get(uri)
+                .expect(&format!("{} sound must be preloaded!", uri));
+            sound_data_pool.insert(uri, decoded);
+        }
 
         Self {
             locale,
-            uid: user_id,
+            uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             packet: Some(packet),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
@@ -170,6 +187,7 @@ impl InGameLoadScene {
             texture_data_pool: TextureDataPool::new(),
             texture_view_pool: TextureViewPool::new(),
             sampler_pool: SamplerPool::new(),
+            sound_data_pool,
         }
     }
 
@@ -540,11 +558,31 @@ impl GameScene for InGameLoadScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -594,13 +632,29 @@ impl GameScene for InGameLoadScene {
                     let i = self.locale as usize;
                     let next_scene = FatalErrorSceneLayer::new(
                         self.locale,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
                         ERR_TITLE_TEXTS[i],
                         ERR_MSG_TEXTS[i],
+                        self.sound_data_pool.clone(),
                     );
                     let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_NOTICE)
+                        .expect("UI_Notice sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
                 }
             };
         }
@@ -613,6 +667,9 @@ impl GameScene for InGameLoadScene {
                     self.locale,
                     self.uid,
                     self.token,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     packet,
                     self.stage_layout_data.clone(),
                     self.mesh_pool.clone(),
@@ -622,11 +679,24 @@ impl GameScene for InGameLoadScene {
                     self.texture_data_pool.clone(),
                     self.texture_view_pool.clone(),
                     self.sampler_pool.clone(),
+                    self.sound_data_pool.clone(),
                 ));
                 let scene_flow = GameSceneFlow::Change(next_scene);
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_LOADING)
+                    .expect("UI_Loading sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             }
         }
     }

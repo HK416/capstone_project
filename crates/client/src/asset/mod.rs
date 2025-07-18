@@ -222,24 +222,32 @@ pub const CAPTURE_ZONE_URI: &'static str = "Capture_Zone";
 
 /// 배경음 사운드의 작업 공간입니다.
 pub const BG_SOUND_WORKSPACE: &'static str = "sound/bg";
-/// Theme_01("Constant Moderato") 배경 사운드의 `Uri`입니다.
+/// Theme_01(`Constant_Moderato`) 배경 사운드의 `Uri`입니다.
 pub const BG_SOUND_THEME_01: &'static str = "Theme_01";
-/// Theme_01("Constant Moderato") 배경 사운드의 데이터입니다.
+/// Theme_01(`Constant_Moderato`) 배경 사운드의 데이터입니다.
 pub const BG_SOUND_THEME_01_DATA: &'static [u8; 1283368] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/sound/bg/Theme_01.ogg"
 ));
-
-// Theme_14("Step by Step") 배경 사운드의 `Uri`입니다.
+/// Theme_03(`Mischievous_Step`) 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_03: &'static str = "Theme_03";
+/// Theme_14(`Step_By_Step`) 배경 사운드의 `Uri`입니다.
 pub const BG_SOUND_THEME_14: &'static str = "Theme_14";
-
-/// Theme_31("Hello to Halo") 배경 사운드의 `Uri`입니다.
+/// Theme_18(`Mechanical_JUNGLE`) 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_18: &'static str = "Theme_18";
+/// Theme_19(`Virtual_Storm`) 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_19: &'static str = "Theme_19";
+/// Theme_23(`Party_Time`) 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_23: &'static str = "Theme_23";
+/// Theme_31(`Hello_to_Halo`) 배경 사운드의 `Uri`입니다.
 pub const BG_SOUND_THEME_31: &'static str = "Theme_31";
-/// Theme_31("Hello to Halo") 배경 사운드의 데이터입니다.
+/// Theme_31(`Hello_to_Halo`) 배경 사운드의 데이터입니다.
 pub const BG_SOUND_THEME_31_DATA: &'static [u8; 1056048] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/sound/bg/Theme_31.ogg"
 ));
+/// Theme_40(`Neo_City_Dive`) 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_40: &'static str = "Theme_40";
 
 /// 캐릭터 목소리 사운드의 작업 공간입니다.
 pub const CV_SOUND_WORKSPACES: [&'static str; NUM_CHARACTERS] = [
@@ -310,6 +318,12 @@ pub const UI_NOTICE: &'static str = "UI_Notice";
 pub const UI_NOTICE_DATA: &'static [u8; 4735] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/sound/ui/UI_Notice.ogg"
+));
+
+pub const UI_PAUSE: &'static str = "UI_Pause";
+pub const UI_PAUSE_DATA: &'static [u8; 5035] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/ui/UI_Pause.ogg"
 ));
 
 /// 모달 종료시 발생하는 Ui 사운드의 `Uri`입니다.

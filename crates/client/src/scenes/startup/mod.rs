@@ -39,7 +39,8 @@ use crate::{
         HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI, HUD_OPTION_ICON_DATA,
         HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK, UI_BUTTON_BACK_DATA,
         UI_BUTTON_TOUCH, UI_BUTTON_TOUCH_DATA, UI_LOADING, UI_LOADING_DATA, UI_NOTICE,
-        UI_NOTICE_DATA, UI_TURN_DOWN, UI_TURN_DOWN_DATA, UI_TURN_UP, UI_TURN_UP_DATA, USER_CONFIG,
+        UI_NOTICE_DATA, UI_PAUSE, UI_PAUSE_DATA, UI_TURN_DOWN, UI_TURN_DOWN_DATA, UI_TURN_UP,
+        UI_TURN_UP_DATA, USER_CONFIG,
     },
     component::{
         BulletRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
@@ -511,6 +512,7 @@ impl GameScene for GameStartupScene {
         self.load_sound_data(thread_pool, UI_BUTTON_BACK, UI_BUTTON_BACK_DATA);
         self.load_sound_data(thread_pool, UI_BUTTON_TOUCH, UI_BUTTON_TOUCH_DATA);
         self.load_sound_data(thread_pool, UI_LOADING, UI_LOADING_DATA);
+        self.load_sound_data(thread_pool, UI_PAUSE, UI_PAUSE_DATA);
         self.load_sound_data(thread_pool, UI_NOTICE, UI_NOTICE_DATA);
         self.load_sound_data(thread_pool, UI_TURN_DOWN, UI_TURN_DOWN_DATA);
         self.load_sound_data(thread_pool, UI_TURN_UP, UI_TURN_UP_DATA);

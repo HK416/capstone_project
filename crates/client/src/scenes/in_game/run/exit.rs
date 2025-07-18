@@ -20,14 +20,15 @@ use mod_network::{
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use rodio::Sink;
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
+        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         HUD_LAYOUT_URI_02, IMG_FONT_DRAW, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD,
-        WEAPON_ICON_URI,
+        UI_NOTICE, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -64,6 +65,12 @@ pub struct InGameExitScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 시야 조작 민감도입니다.
     control_sensitivity: f32,
     /// 시야 조작의 상하 반전 여부입니다.
@@ -189,6 +196,8 @@ pub struct InGameExitScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameExitScene {
@@ -197,6 +206,9 @@ impl InGameExitScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         control_sensitivity: f32,
         flip_horizontal: bool,
         flip_vertical: bool,
@@ -235,11 +247,15 @@ impl InGameExitScene {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             control_sensitivity,
             flip_horizontal,
             flip_vertical,
@@ -303,6 +319,7 @@ impl InGameExitScene {
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         }
     }
 
@@ -1868,11 +1885,31 @@ impl GameScene for InGameExitScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -2057,6 +2094,9 @@ impl GameScene for InGameExitScene {
             self.locale,
             self.uid,
             self.token,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
             packet,
             self.is_player_win,
             self.stage_attributes.clone(),
@@ -2079,6 +2119,7 @@ impl GameScene for InGameExitScene {
             self.texture_data_pool.clone(),
             self.texture_view_pool.clone(),
             self.sampler_pool.clone(),
+            self.sound_data_pool.clone(),
         );
         let flow = GameSceneFlow::Change(Box::new(scene));
         let event = AppEvent::AddGameSceneFlow(flow);

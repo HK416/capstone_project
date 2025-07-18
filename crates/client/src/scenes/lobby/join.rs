@@ -13,6 +13,7 @@ use mod_network::{
         RawPacket, RoomDataUpdatePacket,
     },
 };
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -20,7 +21,10 @@ use winit::{
 };
 
 use crate::{
-    asset::{TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{
+        SoundDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_NOTICE,
+    },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -53,6 +57,12 @@ pub struct MainLobbyJoinModalScene {
     uid: UserId,
     /// 현재 클라이언트의 로그인 토큰입니다.
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 입력된 번호 데이터입니다.
     input_number: String,
@@ -70,6 +80,8 @@ pub struct MainLobbyJoinModalScene {
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
     texture_view_pool: TextureViewPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl MainLobbyJoinModalScene {
@@ -78,13 +90,20 @@ impl MainLobbyJoinModalScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             input_number: String::with_capacity(9),
             okay_btn_state: ButtonState::Idle,
             cancel_btn_state: ButtonState::Idle,
@@ -92,6 +111,7 @@ impl MainLobbyJoinModalScene {
             delay_time_sec: 0.3,
             texture_pool,
             texture_view_pool,
+            sound_data_pool,
         }
     }
 }
@@ -110,11 +130,31 @@ impl GameScene for MainLobbyJoinModalScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -133,9 +173,13 @@ impl GameScene for MainLobbyJoinModalScene {
                     self.locale,
                     self.uid,
                     self.token,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     packet.id,
                     self.texture_pool.clone(),
                     self.texture_view_pool.clone(),
+                    self.sound_data_pool.clone(),
                     packet.stage_kind(),
                     packet.allow_duplicates(),
                     packet.allow_unbalanced(),
@@ -145,6 +189,18 @@ impl GameScene for MainLobbyJoinModalScene {
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_BUTTON_TOUCH)
+                    .expect("UI_Button_Touch sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             }
             PacketType::JoinRoomFailed => {
                 // 패킷을 생성합니다
@@ -154,6 +210,9 @@ impl GameScene for MainLobbyJoinModalScene {
                 let i = self.locale as usize;
                 let next_scene = Box::new(MessageSceneLayer::new(
                     self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     MSG_MODAL_TEXTS[i],
                     match packet.reason {
                         JoinFailedReason::NotFound => ERR_NOT_FOUND_TEXTS[i],
@@ -163,11 +222,24 @@ impl GameScene for MainLobbyJoinModalScene {
                         JoinFailedReason::Banned => ERR_BANNED_TEXTS[i],
                     },
                     None,
+                    self.sound_data_pool.clone(),
                 ));
                 let scene_flow = GameSceneFlow::Change(next_scene);
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_NOTICE)
+                    .expect("UI_Notice sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             }
             PacketType::LobbyDataUpdate => return Some(packet),
             _ => {
@@ -213,6 +285,18 @@ impl GameScene for MainLobbyJoinModalScene {
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_BACK)
+                        .expect("UI_Button_Back sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
                 }
                 _ => {}
             }
@@ -382,6 +466,18 @@ impl GameScene for MainLobbyJoinModalScene {
 
                                 self.cancel_btn_state = ButtonState::Clicked;
                                 self.wait_for_response = true;
+
+                                // 효과음을 재생합니다.
+                                let decoded = self
+                                    .sound_data_pool
+                                    .get(UI_BUTTON_BACK)
+                                    .expect("UI_Button_Back sound must be preloaded!");
+                                let source = decoded.as_source();
+                                let sink = Sink::connect_new(app.audio_mixer());
+                                sink.set_volume(self.effect_volume as f32 / 255.0);
+                                sink.append(source);
+                                sink.play();
+                                sink.detach();
                             } else if response.is_pointer_button_down_on() {
                                 self.cancel_btn_state = ButtonState::Pressed;
                             } else if response.hovered() | response.has_focus() {

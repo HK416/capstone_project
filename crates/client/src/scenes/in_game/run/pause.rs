@@ -8,6 +8,7 @@ use mod_app::{
 };
 use mod_network::protocol::{PacketType, RawPacket};
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -15,7 +16,7 @@ use winit::{
 };
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_NOTICE},
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -44,15 +45,23 @@ pub struct InGamePauseLayer {
 
     /// 계속 하기 버튼 상태
     resume_btn_state: ButtonState,
+
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGamePauseLayer {
     /// 새로운 게임 장면 레이어를 생성합니다.
-    pub fn new(locale: Locale, in_game_scene: NonNull<InGameRunScene>) -> Self {
+    pub fn new(
+        locale: Locale,
+        in_game_scene: NonNull<InGameRunScene>,
+        sound_data_pool: SoundDataPool,
+    ) -> Self {
         Self {
             locale,
             in_game_scene,
             resume_btn_state: ButtonState::Idle,
+            sound_data_pool,
         }
     }
 }
@@ -84,6 +93,8 @@ impl GameScene for InGamePauseLayer {
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let scene = unsafe { self.in_game_scene.as_ref() };
+
         let i = self.locale as usize;
         let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
@@ -92,11 +103,31 @@ impl GameScene for InGamePauseLayer {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            scene.get_background_volume(),
+            scene.get_effect_volume(),
+            scene.get_voice_volume(),
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(scene.get_effect_volume() as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(

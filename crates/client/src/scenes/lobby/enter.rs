@@ -22,7 +22,7 @@ use crate::{
         HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, HUD_OPTION_ICON_URI,
         ICON_WORKSPACE, IMG_FONT_HOST_URI, IMG_FONT_READY_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD,
         PROFILE_ICON_URI, RANK_ICON_URI, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
-        UI_TURN_DOWN, UI_TURN_UP,
+        UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -122,12 +122,13 @@ impl MainLobbyEnterScene {
 
         // 새로운 사운드 데이터 풀을 생성하고 이전 사운드 풀에서 필요한 데이터를 취합니다.
         let sound_data_pool = SoundDataPool::new();
-        const SOUND_URIS: [&'static str; 7] = [
+        const SOUND_URIS: [&'static str; 8] = [
             CV_YUUKA_OPTION,
             UI_BUTTON_BACK,
             UI_BUTTON_TOUCH,
             UI_LOADING,
             UI_NOTICE,
+            UI_PAUSE,
             UI_TURN_DOWN,
             UI_TURN_UP,
         ];
@@ -749,7 +750,15 @@ impl GameScene for MainLobbyEnterScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
@@ -788,8 +797,12 @@ impl GameScene for MainLobbyEnterScene {
                     let i = self.locale as usize;
                     let next_scene = FatalErrorSceneLayer::new(
                         self.locale,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
                         ERR_TITLE_TEXTS[i],
                         ERR_MSG_TEXTS[i],
+                        self.sound_data_pool.clone(),
                     );
                     let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
                     let event = AppEvent::AddGameSceneFlow(scene_flow);

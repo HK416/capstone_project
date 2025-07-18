@@ -13,12 +13,13 @@ use mod_network::{
     protocol::{InGameEnterNotifyPacket, InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumnHierarchy,
-        TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD,
+        MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool, StageBoundingVolumnHierarchy,
+        TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD, UI_NOTICE,
     },
     component::{
         AccumRenderTarget, AlphaBlendPipeline, BloomPipeline, BrightRenderTarget, DirectionLight,
@@ -44,6 +45,12 @@ pub struct InGameReadySceneBuilder {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 스테이지 속성 데이터
     stage_attributes: Arc<StageAttributes>,
 
@@ -81,6 +88,8 @@ pub struct InGameReadySceneBuilder {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameReadySceneBuilder {
@@ -89,6 +98,9 @@ impl InGameReadySceneBuilder {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         half_size_x: NonZeroU32,
@@ -101,11 +113,15 @@ impl InGameReadySceneBuilder {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             stage_attributes,
             max_game_play_time_ms,
             half_size_x,
@@ -122,6 +138,7 @@ impl InGameReadySceneBuilder {
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         }
     }
 
@@ -150,6 +167,9 @@ impl InGameReadySceneBuilder {
             locale: self.locale,
             uid: self.uid,
             token: self.token,
+            background_volume: self.background_volume,
+            effect_volume: self.effect_volume,
+            voice_volume: self.voice_volume,
             stage_attributes: self.stage_attributes,
             max_game_play_time_ms: self.max_game_play_time_ms,
             half_size_x: self.half_size_x,
@@ -174,6 +194,7 @@ impl InGameReadySceneBuilder {
             texture_data_pool: self.texture_data_pool,
             texture_view_pool: self.texture_view_pool,
             sampler_pool: self.sampler_pool,
+            sound_data_pool: self.sound_data_pool,
         }
     }
 }
@@ -186,6 +207,12 @@ pub struct InGameReadyScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 스테이지 종류
     stage_attributes: Arc<StageAttributes>,
 
@@ -241,6 +268,8 @@ pub struct InGameReadyScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameReadyScene {
@@ -348,11 +377,31 @@ impl GameScene for InGameReadyScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -410,6 +459,9 @@ impl GameScene for InGameReadyScene {
                     self.locale,
                     self.uid,
                     self.token,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     self.stage_attributes.clone(),
                     self.max_game_play_time_ms,
                     packet.remaining_time_ms,
@@ -435,6 +487,7 @@ impl GameScene for InGameReadyScene {
                     self.texture_data_pool.clone(),
                     self.texture_view_pool.clone(),
                     self.sampler_pool.clone(),
+                    self.sound_data_pool.clone(),
                 );
                 let flow = GameSceneFlow::Change(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);

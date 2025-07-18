@@ -30,6 +30,7 @@ use mod_network::{
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use rodio::Sink;
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -38,9 +39,10 @@ use winit::{
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
+        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, WEAPON_ICON_URI,
+        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_NOTICE,
+        UI_PAUSE, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -78,6 +80,12 @@ pub struct InGameRunScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 시야 조작 민감도입니다.
     control_sensitivity: f32,
     /// 시야 조작의 상하 반전 여부입니다.
@@ -214,6 +222,8 @@ pub struct InGameRunScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameRunScene {
@@ -222,6 +232,9 @@ impl InGameRunScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         first_mouse_pressed: bool,
@@ -247,11 +260,15 @@ impl InGameRunScene {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             control_sensitivity: 0.5,
             flip_horizontal: false,
             flip_vertical: false,
@@ -323,6 +340,7 @@ impl InGameRunScene {
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         }
     }
 
@@ -2434,11 +2452,25 @@ impl GameScene for InGameRunScene {
 
                 // 일시정지 게임 장면 레이어를 추가합니다.
                 let in_game_scene = unsafe { NonNull::new_unchecked(self as *mut Self) };
-                let scene = InGamePauseLayer::new(self.locale, in_game_scene);
+                let scene =
+                    InGamePauseLayer::new(self.locale, in_game_scene, self.sound_data_pool.clone());
                 let flow = GameSceneFlow::Push(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_PAUSE)
+                    .expect("UI_Pause sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+
                 return true;
             }
 
@@ -2490,11 +2522,31 @@ impl GameScene for InGameRunScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -2584,6 +2636,9 @@ impl GameScene for InGameRunScene {
                     self.locale,
                     self.uid,
                     self.token,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     self.control_sensitivity,
                     self.flip_horizontal,
                     self.flip_vertical,
@@ -2622,6 +2677,7 @@ impl GameScene for InGameRunScene {
                     self.texture_data_pool.clone(),
                     self.texture_view_pool.clone(),
                     self.sampler_pool.clone(),
+                    self.sound_data_pool.clone(),
                 );
                 let flow = GameSceneFlow::Change(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
@@ -3488,5 +3544,20 @@ impl InGameRunScene {
     /// 인터페이스 스케일 값을 반환합니다.
     pub(super) fn get_ui_scale(&self) -> f32 {
         self.ui_scale
+    }
+
+    /// 현재 배경음 음량을 반환합니다.
+    pub(super) fn get_background_volume(&self) -> u8 {
+        self.background_volume
+    }
+
+    /// 현재 효과음 음량을 반환합니다.
+    pub(super) fn get_effect_volume(&self) -> u8 {
+        self.effect_volume
+    }
+
+    /// 현재 보이스 음량을 반환합니다.
+    pub(super) fn get_voice_volume(&self) -> u8 {
+        self.voice_volume
     }
 }
