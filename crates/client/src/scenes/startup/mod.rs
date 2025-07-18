@@ -32,13 +32,14 @@ use crate::{
         BG_LOGIN_TITLE_1_DATA, BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_DATA, BG_LOGIN_TITLE_2_URI,
         BG_LOGIN_TITLE_3_DATA, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_DATA, BG_LOGIN_TITLE_4_URI,
         BG_LOGIN_TITLE_5_DATA, BG_LOGIN_TITLE_5_URI, BG_SOUND_THEME_01, BG_SOUND_THEME_01_DATA,
-        CV_ARIS_TITLE_DATA, CV_MIDORI_TITLE_DATA, CV_MOMOI_TITLE_DATA, CV_SOUND_TITLE,
-        CV_YUUKA_OPTION, CV_YUUKA_OPTION_DATA, CV_YUUKA_TITLE_DATA, GAME_LOGO_DATA, GAME_LOGO_URI,
-        HUD_CANCEL_ICON_DATA, HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_DATA, HUD_CHANGE_ICON_URI,
-        HUD_DETAIL_ICON_DATA, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI,
-        HUD_OPTION_ICON_DATA, HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK,
-        UI_BUTTON_BACK_DATA, UI_BUTTON_TOUCH, UI_BUTTON_TOUCH_DATA, UI_LOADING, UI_LOADING_DATA,
-        USER_CONFIG,
+        BG_SOUND_THEME_31, BG_SOUND_THEME_31_DATA, CV_ARIS_TITLE_DATA, CV_MIDORI_TITLE_DATA,
+        CV_MOMOI_TITLE_DATA, CV_SOUND_TITLE, CV_YUUKA_OPTION, CV_YUUKA_OPTION_DATA,
+        CV_YUUKA_TITLE_DATA, GAME_LOGO_DATA, GAME_LOGO_URI, HUD_CANCEL_ICON_DATA,
+        HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_DATA, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_DATA,
+        HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_DATA, HUD_EXIT_ICON_URI, HUD_OPTION_ICON_DATA,
+        HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK, UI_BUTTON_BACK_DATA,
+        UI_BUTTON_TOUCH, UI_BUTTON_TOUCH_DATA, UI_LOADING, UI_LOADING_DATA, UI_NOTICE,
+        UI_NOTICE_DATA, UI_TURN_DOWN, UI_TURN_DOWN_DATA, UI_TURN_UP, UI_TURN_UP_DATA, USER_CONFIG,
     },
     component::{
         BulletRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
@@ -501,6 +502,7 @@ impl GameScene for GameStartupScene {
         self.create_texture(thread_pool, device, BG_LOGIN_TITLE_5_URI, BG_LOGIN_TITLE_5_DATA);
         self.create_texture(thread_pool, device, BG_GROWTH_EFFECT_LABEL_URI, BG_GROWTH_EFFECT_LABEL_DATA);
         self.load_sound_data(thread_pool, BG_SOUND_THEME_01, BG_SOUND_THEME_01_DATA);
+        self.load_sound_data(thread_pool, BG_SOUND_THEME_31, BG_SOUND_THEME_31_DATA);
         self.load_sound_data(thread_pool, CV_SOUND_TITLE[CharacterKind::ArisOriginal as usize], CV_ARIS_TITLE_DATA);
         self.load_sound_data(thread_pool, CV_SOUND_TITLE[CharacterKind::MomoiOriginal as usize], CV_MOMOI_TITLE_DATA);
         self.load_sound_data(thread_pool, CV_SOUND_TITLE[CharacterKind::MidoriOriginal as usize], CV_MIDORI_TITLE_DATA);
@@ -509,6 +511,9 @@ impl GameScene for GameStartupScene {
         self.load_sound_data(thread_pool, UI_BUTTON_BACK, UI_BUTTON_BACK_DATA);
         self.load_sound_data(thread_pool, UI_BUTTON_TOUCH, UI_BUTTON_TOUCH_DATA);
         self.load_sound_data(thread_pool, UI_LOADING, UI_LOADING_DATA);
+        self.load_sound_data(thread_pool, UI_NOTICE, UI_NOTICE_DATA);
+        self.load_sound_data(thread_pool, UI_TURN_DOWN, UI_TURN_DOWN_DATA);
+        self.load_sound_data(thread_pool, UI_TURN_UP, UI_TURN_UP_DATA);
         self.load_user_config(root_dir);
     }
 
@@ -568,6 +573,7 @@ impl GameScene for GameStartupScene {
                         config.effect_volume,
                         config.voice_volume,
                         self.texture_pool.clone(),
+                        self.sound_data_pool.clone(),
                     ))
                 }
             };

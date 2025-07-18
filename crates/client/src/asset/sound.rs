@@ -143,7 +143,7 @@ impl SoundDataPool {
         Uri: AsRef<str>,
     {
         let mut path = workspace.as_ref().to_path_buf();
-        path.push(format!("{}.dds", uri.as_ref()));
+        path.push(format!("{}.ogg", uri.as_ref()));
 
         log::debug!("open texture pixel asset (PATH:{})", path.display());
         let mut file = OpenOptions::new()
@@ -215,11 +215,11 @@ impl SoundDataPool {
 
     /// 사운드 데이터 풀 객체에 사운드 데이터를 등록합니다.  
     /// 이미 Uri에 해당하는 사운드 데이터가 존재할 경우 기존의 사운드 데이터를 반환합니다.
-    pub fn insert<Uri>(&self, uri: Uri, data: DecodedSound) -> Option<DecodedSound>
+    pub fn insert<Uri>(&self, uri: Uri, decoded: DecodedSound) -> Option<DecodedSound>
     where
         Uri: AsRef<str>,
     {
-        self.lock().insert(uri.as_ref().into(), data)
+        self.lock().insert(uri.as_ref().into(), decoded)
     }
 
     /// 주어진 Uri에 해당하는 사운드 데이터를 풀 객체에서 제거합니다.  

@@ -3,11 +3,13 @@ use mod_app::{
     etc::AppEvent,
     scene::{GameScene, GameSceneFlow},
 };
+use mod_network::components::CharacterKind;
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, TextureViewPool, GAME_LOGO_URI},
+    asset::{SoundDataPool, TexturePool, TextureViewPool, CV_SOUND_TITLE, GAME_LOGO_URI},
     config::Locale,
     scenes::BASE_WIDTH,
 };
@@ -22,6 +24,12 @@ const SCENE_DURATION: f32 = 2.8;
 pub struct GameIntroLogoScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
@@ -33,13 +41,25 @@ pub struct GameIntroLogoScene {
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
     texture_view_pool: TextureViewPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl GameIntroLogoScene {
     /// 새로운 `GameIntroLogoScene`을 생성합니다.
-    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
+    pub fn new(
+        locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        texture_pool: TexturePool,
+        sound_data_pool: SoundDataPool,
+    ) -> Self {
         Self {
             locale,
+            background_volume,
+            effect_volume,
+            voice_volume,
             elapsed_time_sec: 0.0,
             game_logo_texture_id: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
@@ -47,6 +67,7 @@ impl GameIntroLogoScene {
             },
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
+            sound_data_pool,
         }
     }
 }
@@ -71,6 +92,21 @@ impl GameScene for GameIntroLogoScene {
             &texture,
             wgpu::FilterMode::Linear,
         );
+
+        // 무작위 타이틀 보이스를 출력합니다.
+        let character: CharacterKind = rand::random();
+        let i = character as usize;
+        let uri = CV_SOUND_TITLE[i];
+        let decoded = self
+            .sound_data_pool
+            .get(uri)
+            .expect("Character Title sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.voice_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
 
         // 등록된 텍스처 정보를 저장합니다.
         self.game_logo_texture_id = egui::load::SizedTexture {
@@ -97,8 +133,12 @@ impl GameScene for GameIntroLogoScene {
         if self.elapsed_time_sec >= SCENE_DURATION {
             let next_scene = GameIntroConnectScene::new(
                 self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
                 self.texture_pool.clone(),
                 self.texture_view_pool.clone(),
+                self.sound_data_pool.clone(),
             );
             let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);

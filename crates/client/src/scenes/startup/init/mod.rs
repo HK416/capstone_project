@@ -92,6 +92,7 @@ impl GameScene for InitFinishScene {
                 self.effect_volume,
                 self.voice_volume,
                 self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
             );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);

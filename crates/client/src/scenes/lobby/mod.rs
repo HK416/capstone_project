@@ -18,6 +18,7 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -26,9 +27,9 @@ use winit::{
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
-        HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        SoundDataPool, TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI,
+        BG_SOUND_THEME_14, EMBLEM_BG_URI, HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
+        HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -76,6 +77,15 @@ pub struct MainLobbyScene {
     profile_icon: ProfileIcon,
     /// 현재 클라이언트의 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
+
+    /// 재생 중인 배경음
+    background_sounds: Vec<Sink>,
 
     /// Ui 스케일
     ui_scale: f32,
@@ -147,6 +157,8 @@ pub struct MainLobbyScene {
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
     texture_view_pool: TextureViewPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl MainLobbyScene {
@@ -158,7 +170,11 @@ impl MainLobbyScene {
         tier: GameTier,
         profile_icon: ProfileIcon,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         texture_pool: TexturePool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
@@ -167,6 +183,10 @@ impl MainLobbyScene {
             tier,
             profile_icon,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
+            background_sounds: Vec::with_capacity(8),
             ui_scale: 1.0,
             clip_rect: egui::Rect::ZERO,
             bg_texture: egui::load::SizedTexture {
@@ -220,6 +240,7 @@ impl MainLobbyScene {
             delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
+            sound_data_pool,
         }
     }
 
@@ -972,6 +993,19 @@ impl GameScene for MainLobbyScene {
         let device = app.render_device();
         self.regist_textures(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 배경음을 출력합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(BG_SOUND_THEME_14)
+            .expect("Theme_14 sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.background_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+
+        self.background_sounds.push(sink);
     }
 
     fn on_exit(

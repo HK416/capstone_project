@@ -7,7 +7,7 @@ use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };
@@ -46,6 +46,8 @@ pub struct GameIntroNotifyScene {
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl GameIntroNotifyScene {
@@ -56,6 +58,7 @@ impl GameIntroNotifyScene {
         effect_volume: u8,
         voice_volume: u8,
         texture_pool: TexturePool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
@@ -64,6 +67,7 @@ impl GameIntroNotifyScene {
             voice_volume,
             elapsed_time_sec: 0.0,
             texture_pool,
+            sound_data_pool,
         }
     }
 
@@ -100,7 +104,14 @@ impl GameScene for GameIntroNotifyScene {
 
         // 다음 게임 장면으로 전환합니다.
         if self.elapsed_time_sec >= SCENE_DURATION {
-            let next_scene = GameIntroLogoScene::new(self.locale, self.texture_pool.clone());
+            let next_scene = GameIntroLogoScene::new(
+                self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
+                self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();

@@ -302,8 +302,8 @@ impl Default for UserConfig {
                 (MouseButton::Right, InputKind::Aiming),
                 (MouseButton::Left, InputKind::Attack),
             ]),
-            background_volume: 204,
-            effect_volume: 204,
+            background_volume: 102,
+            effect_volume: 255,
             voice_volume: 204,
         }
     }

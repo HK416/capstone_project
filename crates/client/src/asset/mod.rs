@@ -230,6 +230,17 @@ pub const BG_SOUND_THEME_01_DATA: &'static [u8; 1283368] = include_bytes!(concat
     "assets/sound/bg/Theme_01.ogg"
 ));
 
+// Theme_14("Step by Step") 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_14: &'static str = "Theme_14";
+
+/// Theme_31("Hello to Halo") 배경 사운드의 `Uri`입니다.
+pub const BG_SOUND_THEME_31: &'static str = "Theme_31";
+/// Theme_31("Hello to Halo") 배경 사운드의 데이터입니다.
+pub const BG_SOUND_THEME_31_DATA: &'static [u8; 1056048] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/bg/Theme_31.ogg"
+));
+
 /// 캐릭터 목소리 사운드의 작업 공간입니다.
 pub const CV_SOUND_WORKSPACES: [&'static str; NUM_CHARACTERS] = [
     "sound/cv/aris_original",
@@ -277,6 +288,7 @@ pub const UI_BUTTON_BACK_DATA: &'static [u8; 4119] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/sound/ui/UI_Button_Back.ogg"
 ));
+
 /// 클릭할 때 발생하는 Ui 사운드의 `Uri`입니다.
 pub const UI_BUTTON_TOUCH: &'static str = "UI_Button_Touch";
 /// 클릭할 때 발생하는 Ui 사운드의 데이터입니다.
@@ -284,12 +296,34 @@ pub const UI_BUTTON_TOUCH_DATA: &'static [u8; 4021] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/sound/ui/UI_Button_Touch.ogg"
 ));
+
 /// 로딩시 발생하는 Ui 사운드의 `Uri`입니다.
 pub const UI_LOADING: &'static str = "UI_Loading";
 /// 로딩시 발생하는 Ui 사운드의 데이터입니다.
 pub const UI_LOADING_DATA: &'static [u8; 4611] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/sound/ui/UI_Loading.ogg"
+));
+
+/// 알림시 발생하는 Ui 사운드의 `Uri`입니다.
+pub const UI_NOTICE: &'static str = "UI_Notice";
+pub const UI_NOTICE_DATA: &'static [u8; 4735] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/ui/UI_Notice.ogg"
+));
+
+/// 모달 종료시 발생하는 Ui 사운드의 `Uri`입니다.
+pub const UI_TURN_DOWN: &'static str = "UI_Turn_Down";
+pub const UI_TURN_DOWN_DATA: &'static [u8; 9770] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/ui/UI_Turn_Down.ogg"
+));
+
+/// 모달 생성시 발생하는 Ui 사운드의 `Uri`입니다.
+pub const UI_TURN_UP: &'static str = "UI_Turn_Up";
+pub const UI_TURN_UP_DATA: &'static [u8; 10028] = include_bytes!(concat!(
+    env!("CARGO_WORKSPACE_DIR"),
+    "assets/sound/ui/UI_Turn_Up.ogg"
 ));
 
 /// ## Asset Load Error List

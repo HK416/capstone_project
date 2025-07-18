@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -5,6 +7,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_render::UiRenderer;
+use rodio::{Sink, Source};
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -13,9 +16,10 @@ use winit::{
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_GROWTH_EFFECT_LABEL_URI, BG_LOGIN_TITLE_0_URI,
-        BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_URI,
-        BG_LOGIN_TITLE_5_URI, NOTOSANS_BOLD,
+        SoundDataPool, TexturePool, TextureViewPool, BG_GROWTH_EFFECT_LABEL_URI,
+        BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI,
+        BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_URI, BG_SOUND_THEME_31, NOTOSANS_BOLD,
+        UI_BUTTON_TOUCH, UI_NOTICE,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -48,6 +52,12 @@ const BG_TEXTURE_URI: [&'static str; 6] = [
 pub struct GameLoginTitleScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
@@ -55,6 +65,9 @@ pub struct GameLoginTitleScene {
     visible_label: bool,
     /// 로그인 모달 진입 여부
     pressed_any_keys: bool,
+
+    /// 현재 재생중인 사운드
+    background_sounds: VecDeque<Sink>,
 
     /// 게임 배경화면 텍스처의 텍스처 식별자입니다.
     bg_textures: Vec<egui::load::SizedTexture>,
@@ -67,20 +80,30 @@ pub struct GameLoginTitleScene {
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
     texture_view_pool: TextureViewPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl GameLoginTitleScene {
     /// 새로운 `GameLoginTitleScene`을 생성합니다.
     pub fn new(
         locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
+            background_volume,
+            effect_volume,
+            voice_volume,
             elapsed_time_sec: 0.0,
             visible_label: true,
             pressed_any_keys: false,
+            background_sounds: VecDeque::with_capacity(8),
             bg_textures: Vec::with_capacity(6),
             bg_label_texture: egui::load::SizedTexture {
                 id: egui::TextureId::User(0),
@@ -89,6 +112,7 @@ impl GameLoginTitleScene {
             delay_time_sec: 0.3,
             texture_pool,
             texture_view_pool,
+            sound_data_pool,
         }
     }
 
@@ -152,6 +176,21 @@ impl GameScene for GameLoginTitleScene {
             self.bg_textures
                 .push(self.register_texture(uri, device, texture_filter, ui_renderer));
         }
+
+        // 배경 음악을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(BG_SOUND_THEME_31)
+            .expect("Theme_31 sound must be preloaded!");
+        let source = decoded.as_source();
+        let source = source.repeat_infinite();
+
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.background_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+
+        self.background_sounds.push_back(sink);
     }
 
     fn on_exit(
@@ -190,6 +229,18 @@ impl GameScene for GameLoginTitleScene {
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_keyboard_pressed(
@@ -216,12 +267,28 @@ impl GameScene for GameLoginTitleScene {
         if self.pressed_any_keys {
             let next_scene = Box::new(GameLoginModalScene::new(
                 self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
                 self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
             ));
             let scene_flow = GameSceneFlow::Push(next_scene);
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
         }
     }
 

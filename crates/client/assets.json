@@ -212,6 +212,17 @@
             ],
             "directories" : {}
         },
+        "sound": {
+            "files": [],
+            "directories": {
+                "bg": {
+                    "files": [
+                        "Theme_14.ogg"
+                    ],
+                    "directories": {}
+                }
+            }
+        },
         "stage" : {
             "files" : [
                 "BG_Sky.dds",

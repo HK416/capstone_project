@@ -60,12 +60,19 @@ pub struct InitSoundScene {
 
 impl InitSoundScene {
     /// 새로운 `InitSoundScene`을 생성합니다.
-    pub fn new(locale: Locale, texture_pool: TexturePool, sound_data_pool: SoundDataPool) -> Self {
+    pub fn new(
+        locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        texture_pool: TexturePool,
+        sound_data_pool: SoundDataPool,
+    ) -> Self {
         Self {
             locale,
-            background_volume: 204,
-            effect_volume: 204,
-            voice_volume: 204,
+            background_volume,
+            effect_volume,
+            voice_volume,
             delay_time_sec: 0.3,
             count: 0,
             background_sounds: VecDeque::with_capacity(8),
