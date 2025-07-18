@@ -1,6 +1,7 @@
 use std::{f32::EPSILON, num::NonZeroU32, sync::Arc};
 
 use ahash::{HashMap, HashSet};
+use futures::executor::block_on;
 use mod_network::{
     components::{
         HeldInput, InGameBulletPullData, InGamePlayerPullData, InGamePlayerResultData,
@@ -17,11 +18,11 @@ use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
-use rand::seq::SliceRandom;
+use rand::{rand_core::block, seq::SliceRandom};
 use tokio::time::Duration;
 
 use crate::{
-    data::get_stage_attributes,
+    data::{get_stage_attributes, DbConnection},
     entities::{Bullet, Player},
     session::{Session, SessionStateFlow},
     world::{GameWorld, GameWorldEvent, GameWorldState, GameWorldStateFlow, GameWorldSystemEvent},
@@ -562,6 +563,9 @@ impl GameWorldInGameFinishState {
 
 impl GameWorldState for GameWorldInGameFinishState {
     fn on_enter(&mut self, world: &mut GameWorld) {
+        // 결과 저장을 위해 DB에 접속합니다.
+        let conn = DbConnection::get_connection();
+
         let mut players = Vec::with_capacity(world.players.len());
         for (&uid, player) in world.players.iter_mut() {
             // 플레이어의 입력을 초기화합니다.
@@ -603,6 +607,12 @@ impl GameWorldState for GameWorldInGameFinishState {
                 player.tier(),
             ));
         }
+
+        // 게임 결과를 DB에 저장합니다.
+        block_on(async {
+            conn.save_game_result(self.play_time_ms, self.winner, &players).await
+                .expect("Failed to save game result");
+        });
 
         // 게임 종료 패킷을 전송합니다.
         let packet = InGameFinishPacket::new(self.play_time_ms, self.winner, players);

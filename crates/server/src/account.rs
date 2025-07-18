@@ -26,9 +26,15 @@ pub struct AccountManager;
 impl AccountManager {
     /// 사용자 계정을 할당하는 **"임시"** 함수입니다.
     pub fn alloc() -> Account {
-        static COUNT: AtomicU32 = AtomicU32::new(1);
-        let id = COUNT.fetch_add(1, MemOrdering::AcqRel);
-        let uid = UserId::new(id);
+        // DB 연결을 가져옵니다.
+        let conn = DbConnection::get_connection();
+        
+        // DB에서 다음 uid를 가져옵니다.
+        let uid = block_on(async {
+            conn.get_next_uid().await
+                .expect("Failed to get next uid")
+        });
+
         let name = UserName::from_str(&format!("플레이어_{}", uid));
         let tier = GameTier::default();
         let profile_icon = ProfileIcon::default();
@@ -40,7 +46,6 @@ impl AccountManager {
         };
 
         // DB에 정보를 저장합니다.
-        let conn = DbConnection::get_connection();
         let user_info = UserInfo {
             name: account.name.to_string(),
             tier: account.tier as u8,
