@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicU32, Ordering as MemOrdering};
-
 use mod_network::components::{GameTier, ProfileIcon, UserId, UserName};
 use crate::data::{DbConnection, UserInfo};
 use futures::executor::block_on;
@@ -56,10 +54,6 @@ impl AccountManager {
         tokio::spawn(async move {
             conn.set_user_info(&uid, &user_info).await
                 .expect("Failed to set user info in database");
-
-            // 새로 계정이 생성되는 경우에는 즉시 DB 백업
-            conn.save().await
-                .expect("Failed to save database");
         });
 
         account

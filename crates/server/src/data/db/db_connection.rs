@@ -22,8 +22,25 @@ impl DbConnection {
     fn new() -> Self {
         log::info!("Database connection initialized.");
         
-        let client = redis::Client::open("redis://127.0.0.1/")
+        let mut client = redis::Client::open("redis://127.0.0.1/")
             .expect("Failed to create Redis client");
+
+        // redis appendonly 설정
+        let _: () = redis::cmd("CONFIG")
+            .arg("SET")
+            .arg("appendonly")
+            .arg("yes")
+            .query(&mut client)
+            .expect("Failed to set Redis appendonly configuration");
+
+        // redis RDB + AOF 설정
+        let _: () = redis::cmd("CONFIG")
+            .arg("SET")
+            .arg("aof-use-rdb-preamble")
+            .arg("yes")
+            .query(&mut client)
+            .expect("Failed to set Redis aof-use-rdb-preamble configuration");
+
         let manager = block_on(ConnectionManager::new(client))
             .expect("Failed to create Redis connection manager");
 
@@ -37,6 +54,7 @@ impl DbConnection {
 }
 
 impl DbConnection {
+    #[deprecated(note = "AOF 백업을 사용하므로 이 함수는 필요하지 않습니다.")]
     pub async fn save(&self) -> RedisResult<()> {
         let mut conn = self.manager.clone();
 
@@ -52,8 +70,6 @@ impl DbConnection {
 
         // DB에 "next_uid" 키가 없으면 1로 초기화 된다.
         let next_uid: u32 = conn.incr("next_uid", 1).await?;
-
-        self.save().await?;
 
         Ok(UserId::new(next_uid))
     }

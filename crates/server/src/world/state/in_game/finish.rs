@@ -18,7 +18,7 @@ use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
     object3d::{BoundingBox, Sphere},
 };
-use rand::{rand_core::block, seq::SliceRandom};
+use rand::seq::SliceRandom;
 use tokio::time::Duration;
 
 use crate::{
