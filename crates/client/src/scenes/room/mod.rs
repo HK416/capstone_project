@@ -26,15 +26,16 @@ use mod_network::{
     },
 };
 use mod_render::UiRenderer;
-use rodio::Sink;
+use rodio::{Sink, Source};
 use winit::window::Window;
 
 use crate::{
     asset::{
-        SoundDataPool, TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
-        HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02,
-        IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, UI_BUTTON_BACK,
-        UI_BUTTON_TOUCH, UI_NOTICE,
+        SoundDataPool, TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI,
+        BG_SOUND_THEME_03, BG_SOUND_THEME_14, EMBLEM_BG_URI, HUD_CANCEL_ICON_URI,
+        HUD_CHANGE_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02, IMG_FONT_HOST_URI,
+        IMG_FONT_READY_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, UI_BUTTON_BACK, UI_BUTTON_TOUCH,
+        UI_NOTICE,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -857,6 +858,24 @@ impl CustomGameRoomScene {
                     let event_loop_event = app.event_loop_proxy();
                     event_loop_event.send_event(event).unwrap();
 
+                    // 현재 재생 중인 배경 음악을 중지합니다.
+                    let sink_list = app.sink_list();
+                    while let Some(sink) = sink_list.pop() {
+                        sink.stop();
+                    }
+
+                    // 이전 장면 배경 음악을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(BG_SOUND_THEME_14)
+                        .expect("Theme_14 sound must be preloaded!");
+                    let source = decoded.as_source().repeat_infinite();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.background_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink_list.push(sink);
+
                     // 효과음을 재생합니다.
                     let decoded = self
                         .sound_data_pool
@@ -1534,6 +1553,19 @@ impl GameScene for CustomGameRoomScene {
         self.regist_img_font_host_texture(device, ui_renderer);
         self.regist_button_texture(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 배경 음악을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(BG_SOUND_THEME_03)
+            .expect("Theme_03 sound must be preloaded!");
+        let source = decoded.as_source().repeat_infinite();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.background_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+
+        app.sink_list().push(sink);
     }
 
     fn on_exit(
@@ -1557,6 +1589,24 @@ impl GameScene for CustomGameRoomScene {
         ui_renderer.free_texture(&self.img_font_ready_texture.id);
         ui_renderer.free_texture(&self.img_font_host_texture.id);
         ui_renderer.free_texture(&self.button_texture.id);
+    }
+
+    fn on_resume(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let sink_list = app.sink_list();
+        if sink_list.len() == 0 {
+            // 배경 음악을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(BG_SOUND_THEME_03)
+                .expect("Theme_03 sound must be preloaded!");
+            let source = decoded.as_source().repeat_infinite();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.background_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+
+            sink_list.push(sink);
+        }
     }
 
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -1608,11 +1658,31 @@ impl GameScene for CustomGameRoomScene {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::JoinRoomFailed => {
+                // 강제 퇴장 당할시
                 // 이전 게임 장면으로 전환합니다.
                 let scene_flow = GameSceneFlow::Pop;
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 현재 재생 중인 배경 음악을 중지합니다.
+                let sink_list = app.sink_list();
+                while let Some(sink) = sink_list.pop() {
+                    sink.stop();
+                }
+
+                // 이전 장면 배경 음악을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(BG_SOUND_THEME_14)
+                    .expect("Theme_14 sound must be preloaded!");
+                let source = decoded.as_source().repeat_infinite();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.background_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink_list.push(sink);
+
                 return Some(packet);
             }
             PacketType::RoomDataUpdate => {

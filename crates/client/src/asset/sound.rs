@@ -3,7 +3,6 @@
 //!
 
 use std::{
-    fmt,
     fs::OpenOptions,
     io::{Cursor, Read},
     path::Path,
@@ -13,7 +12,7 @@ use std::{
 
 use ahash::{HashMap, RandomState};
 use parking_lot::{FairMutex, FairMutexGuard};
-use rodio::{decoder::DecoderError, ChannelCount, Decoder, SampleRate, Sink, Source};
+use rodio::{decoder::DecoderError, ChannelCount, Decoder, SampleRate, Source};
 
 use crate::asset::AssetError;
 

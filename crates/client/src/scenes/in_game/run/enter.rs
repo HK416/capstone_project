@@ -12,20 +12,21 @@ use mod_network::{
     components::{
         update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
         HeldInput, LatLon, LoginToken, MovementState, MovementStateTimer, SkillCostData,
-        StageAttributes, UserId,
+        StageAttributes, Team, UserId,
     },
     protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use rand::seq::SliceRandom;
 use rodio::Sink;
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
-        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
+        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool, CV_TACTIC_IN,
         HUD_LAYOUT_URI_03, IMG_FONT_MISSION_URI, NOTOSANS_BOLD, UI_NOTICE,
     },
     component::{
@@ -72,6 +73,12 @@ pub struct InGameEnterScene {
     effect_volume: u8,
     /// 목소리 음량
     voice_volume: u8,
+    /// 시야 조작 민감도입니다.
+    control_sensitivity: f32,
+    /// 시야 조작의 상하 반전 여부입니다.
+    flip_horizontal: bool,
+    /// 시야 조작의 좌우 반전 여부입니다.
+    flip_vertical: bool,
 
     /// 스테이지 속성 데이터
     stage_attributes: Arc<StageAttributes>,
@@ -90,6 +97,11 @@ pub struct InGameEnterScene {
     half_size_y: NonZeroU32,
     /// 게임 월드 z축 전체 절반 크기
     half_size_z: NonZeroU32,
+
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 게임 월드
     world: Option<World>,
@@ -168,12 +180,17 @@ impl InGameEnterScene {
         background_volume: u8,
         effect_volume: u8,
         voice_volume: u8,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         remaining_time_ms: u16,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
+        player_character: CharacterKind,
+        player_team: Team,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -202,6 +219,9 @@ impl InGameEnterScene {
             background_volume,
             effect_volume,
             voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             stage_attributes,
             max_game_play_time_ms,
             remaining_time_ms,
@@ -210,6 +230,8 @@ impl InGameEnterScene {
             half_size_x,
             half_size_y,
             half_size_z,
+            player_character,
+            player_team,
             world: Some(world),
             camera: Entity::DANGLING,
             players,
@@ -843,6 +865,38 @@ impl GameScene for InGameEnterScene {
         let queue = app.render_queue();
         queue.submit(Some(encoder.finish()));
         drop(staging_buffers);
+
+        // 배경 음악을 재생합니다.
+        let sink_list = app.sink_list();
+        let mut temp = Vec::with_capacity(sink_list.len());
+        while let Some(sink) = sink_list.pop() {
+            sink.play();
+            temp.push(sink);
+        }
+
+        for sink in temp {
+            sink_list.push(sink);
+        }
+
+        // 캐릭터 목소리를 재생합니다.
+        let i = self.player_character as usize;
+        let mut decodeds = Vec::with_capacity(CV_TACTIC_IN[i].len());
+        for j in 0..CV_TACTIC_IN[i].len() {
+            let decoded = self
+                .sound_data_pool
+                .remove(CV_TACTIC_IN[i][j])
+                .expect(&format!("{} voice must be preloaded!", CV_TACTIC_IN[i][j]));
+            decodeds.push(decoded);
+        }
+        decodeds.shuffle(&mut rand::rng());
+
+        let decoded = decodeds.pop().unwrap();
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.voice_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_exit(
@@ -1032,12 +1086,17 @@ impl GameScene for InGameEnterScene {
                     self.background_volume,
                     self.effect_volume,
                     self.voice_volume,
+                    self.control_sensitivity,
+                    self.flip_horizontal,
+                    self.flip_vertical,
                     self.stage_attributes.clone(),
                     self.max_game_play_time_ms,
                     self.first_mouse_pressed,
                     self.half_size_x,
                     self.half_size_y,
                     self.half_size_z,
+                    self.player_character,
+                    self.player_team,
                     world,
                     players,
                     stage,

@@ -9,7 +9,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{LoginToken, StageAttributes, UserId, MAX_IN_GAME_PLAYERS},
+    components::{CharacterKind, LoginToken, StageAttributes, Team, UserId, MAX_IN_GAME_PLAYERS},
     protocol::{InGameEnterNotifyPacket, InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
 };
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
@@ -51,6 +51,13 @@ pub struct InGameReadySceneBuilder {
     effect_volume: u8,
     /// 목소리 음량
     voice_volume: u8,
+    /// 시야 조작 민감도입니다.
+    control_sensitivity: f32,
+    /// 시야 조작의 상하 반전 여부입니다.
+    flip_horizontal: bool,
+    /// 시야 조작의 좌우 반전 여부입니다.
+    flip_vertical: bool,
+
     /// 스테이지 속성 데이터
     stage_attributes: Arc<StageAttributes>,
 
@@ -63,6 +70,11 @@ pub struct InGameReadySceneBuilder {
     half_size_y: NonZeroU32,
     /// 게임 월드 z축 전체 절반 크기
     half_size_z: NonZeroU32,
+
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
@@ -101,11 +113,16 @@ impl InGameReadySceneBuilder {
         background_volume: u8,
         effect_volume: u8,
         voice_volume: u8,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
+        player_character: CharacterKind,
+        player_team: Team,
         mesh_pool: MeshPool,
         model_pool: ModelPool,
         motion_pool: MotionPool,
@@ -122,11 +139,16 @@ impl InGameReadySceneBuilder {
             background_volume,
             effect_volume,
             voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             stage_attributes,
             max_game_play_time_ms,
             half_size_x,
             half_size_y,
             half_size_z,
+            player_character,
+            player_team,
             players: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             stage: None,
             skybox: None,
@@ -170,11 +192,16 @@ impl InGameReadySceneBuilder {
             background_volume: self.background_volume,
             effect_volume: self.effect_volume,
             voice_volume: self.voice_volume,
+            control_sensitivity: self.control_sensitivity,
+            flip_horizontal: self.flip_horizontal,
+            flip_vertical: self.flip_vertical,
             stage_attributes: self.stage_attributes,
             max_game_play_time_ms: self.max_game_play_time_ms,
             half_size_x: self.half_size_x,
             half_size_y: self.half_size_y,
             half_size_z: self.half_size_z,
+            player_character: self.player_character,
+            player_team: self.player_team,
             world: Some(world),
             players: self.players,
             stage: self.stage,
@@ -213,6 +240,12 @@ pub struct InGameReadyScene {
     effect_volume: u8,
     /// 목소리 음량
     voice_volume: u8,
+    /// 시야 조작 민감도입니다.
+    control_sensitivity: f32,
+    /// 시야 조작의 상하 반전 여부입니다.
+    flip_horizontal: bool,
+    /// 시야 조작의 좌우 반전 여부입니다.
+    flip_vertical: bool,
     /// 스테이지 종류
     stage_attributes: Arc<StageAttributes>,
 
@@ -225,6 +258,11 @@ pub struct InGameReadyScene {
     half_size_y: NonZeroU32,
     /// 게임 월드 z축 전체 절반 크기
     half_size_z: NonZeroU32,
+
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 게임 월드
     world: Option<World>,
@@ -462,12 +500,17 @@ impl GameScene for InGameReadyScene {
                     self.background_volume,
                     self.effect_volume,
                     self.voice_volume,
+                    self.control_sensitivity,
+                    self.flip_horizontal,
+                    self.flip_vertical,
                     self.stage_attributes.clone(),
                     self.max_game_play_time_ms,
                     packet.remaining_time_ms,
                     self.half_size_x,
                     self.half_size_y,
                     self.half_size_z,
+                    self.player_character,
+                    self.player_team,
                     world,
                     players,
                     stage,

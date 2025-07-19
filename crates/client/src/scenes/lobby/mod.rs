@@ -18,7 +18,7 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
-use rodio::Sink;
+use rodio::{Sink, Source};
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -1071,6 +1071,19 @@ impl GameScene for MainLobbyScene {
         let device = app.render_device();
         self.regist_textures(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 배경 음악을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(BG_SOUND_THEME_14)
+            .expect("Theme_14 sound must be preloaded!");
+        let source = decoded.as_source().repeat_infinite();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.background_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+
+        app.sink_list().push(sink);
     }
 
     fn on_exit(

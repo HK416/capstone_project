@@ -21,6 +21,8 @@ pub struct StageAttributesData {
 
     /// 게임 월드 스테이지에서 사용되는 모델의 목록
     pub model_list: Vec<String>,
+    /// 게임 월드 스테이지에서 사용되는 배경음 목록
+    pub sound_list: Vec<String>,
 
     /// 전역 조명 데이터입니다.
     pub global_light: Option<GlobalLightData>,

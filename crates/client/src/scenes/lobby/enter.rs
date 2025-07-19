@@ -16,13 +16,13 @@ use winit::window::Window;
 use crate::{
     asset::{
         SamplerPool, SoundDataPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI,
-        BG_DECO_URI, BG_FORMATION_URI, BG_MAIN_LOBBY_URI, BG_SOUND_THEME_14, BG_SOUND_WORKSPACE,
-        CHARACTER_IMG_URI, CV_YUUKA_OPTION, EMBLEM_BG_URI, GAME_LOGO_URI, HUD_CANCEL_ICON_URI,
-        HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00,
-        HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, HUD_OPTION_ICON_URI,
-        ICON_WORKSPACE, IMG_FONT_HOST_URI, IMG_FONT_READY_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD,
-        PROFILE_ICON_URI, RANK_ICON_URI, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
-        UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
+        BG_DECO_URI, BG_FORMATION_URI, BG_MAIN_LOBBY_URI, BG_SOUND_THEME_03, BG_SOUND_THEME_14,
+        BG_SOUND_WORKSPACE, CHARACTER_IMG_URI, CV_YUUKA_OPTION, EMBLEM_BG_URI, GAME_LOGO_URI,
+        HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI,
+        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03,
+        HUD_OPTION_ICON_URI, ICON_WORKSPACE, IMG_FONT_HOST_URI, IMG_FONT_READY_URI,
+        IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI, UI_BUTTON_BACK,
+        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -684,6 +684,29 @@ impl MainLobbyEnterScene {
         self.num_remaining_tasks += 1;
     }
 
+    fn create_theme_03_sound<Dir>(&mut self, root_dir: Dir, thread_pool: &ThreadPool)
+    where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push(BG_SOUND_WORKSPACE);
+
+        let task_results = self.task_results.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
+        thread_pool.spawn(move || {
+            let result = sound_data_pool.get_or_init(workspace, BG_SOUND_THEME_03);
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
+
+            task_results.push(TaskResult::Sound);
+        });
+
+        self.num_remaining_tasks += 1;
+    }
+
     fn create_theme_14_sound<Dir>(&mut self, root_dir: Dir, thread_pool: &ThreadPool)
     where
         Dir: AsRef<Path>,
@@ -726,6 +749,7 @@ impl GameScene for MainLobbyEnterScene {
         self.create_img_font_ready_textures(&root_dir, io_thread_pool, device.clone());
         self.create_img_font_host_textures(&root_dir, io_thread_pool, device.clone());
         self.create_arona_sad_texture(&root_dir, io_thread_pool, device.clone());
+        self.create_theme_03_sound(&root_dir, io_thread_pool);
         self.create_theme_14_sound(&root_dir, io_thread_pool);
 
         // 효과음을 출력합니다.

@@ -20,15 +20,15 @@ use mod_network::{
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
-use rodio::Sink;
+use rodio::{Sink, Source};
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, IMG_FONT_DRAW, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD,
-        UI_NOTICE, WEAPON_ICON_URI,
+        BG_SOUND_THEME_23, HUD_LAYOUT_URI_02, IMG_FONT_DRAW, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI,
+        NOTOSANS_BOLD, UI_NOTICE, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -123,6 +123,9 @@ pub struct InGameExitScene {
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
     /// 스테이지 엔터티
     stage: Option<StageBoundingVolumnHierarchy>,
+
+    /// 재생 중인 배경음 목록
+    background_sounds: Vec<Sink>,
 
     /// 이번 프레임에 사용된 모든 Staging Buffer를 담음
     frame_staging_buffers: Vec<wgpu::Buffer>,
@@ -279,6 +282,7 @@ impl InGameExitScene {
             bullets,
             players,
             stage: Some(stage),
+            background_sounds: Vec::with_capacity(1),
             frame_staging_buffers: Vec::default(),
             accum_render_target: Some(accum_render_target),
             reveal_render_target: Some(reveal_render_target),
@@ -1843,14 +1847,31 @@ impl GameScene for InGameExitScene {
         self.regist_img_font_texture(device, ui_renderer);
         self.regist_weapon_icon_texture(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 배경음을 추가합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(BG_SOUND_THEME_23)
+            .expect("Theme_23 sound must be preloaded!");
+        let source = decoded.as_source().repeat_infinite();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.background_volume as f32 / 255.0);
+        sink.append(source);
+        sink.pause();
+        self.background_sounds.push(sink);
     }
 
     fn on_exit(
         &mut self,
         _window: Option<&Window>,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
         ui_renderer: &mut UiRenderer,
     ) {
+        let sink_list = app.sink_list();
+        for sink in self.background_sounds.drain(..) {
+            sink_list.push(sink);
+        }
+
         ui_renderer.free_texture(&self.layout_texture.id);
         ui_renderer.free_texture(&self.img_font_texture.id);
         ui_renderer.free_texture(&self.weapon_icon_texture.id);
@@ -1996,10 +2017,37 @@ impl GameScene for InGameExitScene {
         true
     }
 
-    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u32;
         self.elapsed_time_ms = self.elapsed_time_ms.saturating_add(elapsed_time_ms);
 
+        // 배경 음악을 줄입니다.
+        let sink_list = app.sink_list();
+        if !sink_list.is_empty() {
+            let i = self.ui_animation_factor();
+            let mut temp = Vec::with_capacity(sink_list.len());
+            while let Some(sink) = sink_list.pop() {
+                let value = self.background_volume as f32 / 255.0 * i;
+                sink.set_volume(value);
+                temp.push(sink);
+            }
+
+            if self.elapsed_time_ms > 1000 {
+                for sink in temp {
+                    sink.stop();
+                }
+
+                for sink in self.background_sounds.iter() {
+                    sink.play();
+                }
+            } else {
+                for sink in temp {
+                    sink_list.push(sink);
+                }
+            }
+        }
+
+        // 플레이어를 갱신합니다.
         let (entity, archetype) = self.player_entity();
         let world = match self.world.as_mut() {
             Some(world) => world,

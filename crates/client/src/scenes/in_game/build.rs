@@ -11,7 +11,9 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{InGamePlayerInitData, LoginToken, StageAttributes, StageKind, UserId},
+    components::{
+        CharacterKind, InGamePlayerInitData, LoginToken, StageAttributes, StageKind, Team, UserId,
+    },
     protocol::{InGameDataInitPacket, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
@@ -73,6 +75,17 @@ pub struct InGameBuildScene {
     effect_volume: u8,
     /// 목소리 음량
     voice_volume: u8,
+    /// 시야 조작 민감도입니다.
+    control_sensitivity: f32,
+    /// 시야 조작의 상하 반전 여부입니다.
+    flip_horizontal: bool,
+    /// 시야 조작의 좌우 반전 여부입니다.
+    flip_vertical: bool,
+
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 초기화 패킷
     packet: Option<InGameDataInitPacket>,
@@ -106,6 +119,11 @@ impl InGameBuildScene {
         background_volume: u8,
         effect_volume: u8,
         voice_volume: u8,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
+        player_character: CharacterKind,
+        player_team: Team,
         packet: InGameDataInitPacket,
         stage_layout_data: Arc<OnceLock<Arc<StageAttributes>>>,
         mesh_pool: MeshPool,
@@ -124,6 +142,11 @@ impl InGameBuildScene {
             background_volume,
             effect_volume,
             voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
+            player_character,
+            player_team,
             packet: Some(packet),
             stage_layout_data,
             mesh_pool,
@@ -161,6 +184,11 @@ impl GameScene for InGameBuildScene {
             self.background_volume,
             self.effect_volume,
             self.voice_volume,
+            self.control_sensitivity,
+            self.flip_horizontal,
+            self.flip_vertical,
+            self.player_character,
+            self.player_team,
             packet,
             device,
             queue,
@@ -305,6 +333,11 @@ fn build_next_scene(
     background_volume: u8,
     effect_volume: u8,
     voice_volume: u8,
+    control_sensitivity: f32,
+    flip_horizontal: bool,
+    flip_vertical: bool,
+    player_character: CharacterKind,
+    player_team: Team,
     packet: InGameDataInitPacket,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
@@ -392,11 +425,16 @@ fn build_next_scene(
             background_volume,
             effect_volume,
             voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             stage_attributes.clone(),
             packet.max_game_play_time_ms,
             packet.half_size_x,
             packet.half_size_y,
             packet.half_size_z,
+            player_character,
+            player_team,
             mesh_pool,
             model_pool,
             motion_pool,

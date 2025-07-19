@@ -5,11 +5,12 @@ use std::{
     sync::Arc,
 };
 
+use mod_parallelism::collections::Queue;
 use mod_render::{
     config_swapchain, init_wgpu, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use rodio::{mixer::Mixer, OutputStream, OutputStreamBuilder};
+use rodio::{mixer::Mixer, OutputStream, OutputStreamBuilder, Sink};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalPosition,
@@ -88,6 +89,9 @@ pub struct Application {
 
     /// 소리 출력 디바이스의 핸들입니다.
     stream_handle: OutputStream,
+
+    /// 재생 중인 [`Sink`]를 저장합니다.
+    sink_list: Queue<Sink>,
 
     /// `egui`의 컨텍스트입니다.
     egui_ctx: egui::Context,
@@ -172,6 +176,7 @@ impl Application {
             scene_stack: Some(VecDeque::with_capacity(8)),
             timer: GameTimer::start(),
             stream_handle,
+            sink_list: Queue::new(),
             egui_ctx: egui::Context::default(),
             egui_renderer: Some(UiRenderer::new(&device, SWAPCHAIN_FORMAT, None, 1, false)),
             instance,
@@ -1155,6 +1160,10 @@ impl AppHandle for Application {
 
     fn audio_mixer(&self) -> &Mixer {
         self.stream_handle.mixer()
+    }
+
+    fn sink_list(&self) -> &Queue<Sink> {
+        &self.sink_list
     }
 
     fn render_instance(&self) -> &Arc<wgpu::Instance> {

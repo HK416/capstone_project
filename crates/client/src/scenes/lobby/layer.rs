@@ -165,6 +165,11 @@ impl GameScene for MainLobbyWaitLayer {
                 let event: AppEvent = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 현재 재생 중인 배경음을 중단합니다.
+                while let Some(sink) = app.sink_list().pop() {
+                    sink.stop();
+                }
             }
             PacketType::JoinRoomFailed => {
                 // 패킷을 생성합니다

@@ -91,6 +91,8 @@ pub struct UserConfig {
     pub flip_horizontal: bool,
     /// 상하 움직임 반전 여부입니다.
     pub flip_vertical: bool,
+    /// 마우스 움직임 정도
+    pub control_sensitivity: u8,
 
     /// 게임 입력과 키보드 매핑 정보를 저장합니다.
     input_keyboard_map: HashMap<InputKind, (KeyCode, KeyLocation)>,
@@ -272,6 +274,7 @@ impl Default for UserConfig {
             is_fullscreen: true,
             flip_horizontal: false,
             flip_vertical: false,
+            control_sensitivity: 128,
             input_keyboard_map: HashMap::from_iter([
                 (InputKind::Left, (KeyCode::KeyA, KeyLocation::Standard)),
                 (InputKind::Right, (KeyCode::KeyD, KeyLocation::Standard)),

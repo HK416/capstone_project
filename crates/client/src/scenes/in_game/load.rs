@@ -12,29 +12,34 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{BulletKind, CharacterKind, LoginToken, StageAttributes, StageKind, UserId},
+    components::{BulletKind, CharacterKind, LoginToken, StageAttributes, StageKind, Team, UserId},
     protocol::{InGameDataInitPacket, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
+use rand::seq::SliceRandom;
 use rayon::ThreadPool;
-use rodio::Sink;
+use rodio::{Sink, Source};
 use winit::window::Window;
 
 use crate::{
     asset::{
-        AssetError, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool, TextureDataPool,
-        TexturePool, TextureViewPool, BG_SKY_URI, BG_SKY_WORKSPACE, BULLET_URIS, BULLET_WORKSPACE,
+        AssetError, DecodedSound, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
+        TextureDataPool, TexturePool, TextureViewPool, BG_SKY_URI, BG_SKY_WORKSPACE,
+        BG_SOUND_THEME_23, BG_SOUND_WORKSPACE, BULLET_URIS, BULLET_WORKSPACE,
         CHARACTER_IMG_SMALL_URI, CHARACTER_IMG_URI, CHARACTER_URIS, CHARACTER_WORKSPACES,
-        EMBLEM_BG_URI, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, ICON_WORKSPACE, IMG_FONT_DRAW,
+        CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_MOVE, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT,
+        CV_COMMONSKILL, CV_EXSKILL_LEVEL, CV_SOUND_WORKSPACES, CV_TACTIC_IN, EMBLEM_BG_URI,
+        HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, ICON_WORKSPACE, IMG_FONT_DRAW,
         IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI,
         IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI,
-        IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI, STAGE_URI,
-        STAGE_WORKSPACES, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE,
-        UI_TURN_DOWN, UI_TURN_UP, WEAPON_ICON_URI,
+        IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON,
+        SFX_COMMON_RELOAD, SFX_SKILL, SFX_WORKSPACE, STAGE_URI, STAGE_WORKSPACES, UI_BUTTON_BACK,
+        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
+        WEAPON_ICON_URI,
     },
     component::MaterialDataPool,
-    config::{Locale, NUM_LOCALE},
+    config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, InGameBuildScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
         ERR_NETWORK_TITLE_TEXTS,
@@ -56,10 +61,12 @@ enum TaskResult {
         staging_buffers: Vec<wgpu::Buffer>,
         command: wgpu::CommandBuffer,
     },
+    Sound,
     /// 캐릭터 애니메이션
     CharacterMotions,
     /// 스테이지 데이터
     Stage {
+        decoded: DecodedSound,
         attributes: StageAttributes,
         staging_buffers: Vec<wgpu::Buffer>,
         command: wgpu::CommandBuffer,
@@ -87,9 +94,20 @@ pub struct InGameLoadScene {
     effect_volume: u8,
     /// 목소리 음량
     voice_volume: u8,
+    /// 시야 조작 민감도입니다.
+    control_sensitivity: f32,
+    /// 시야 조작의 상하 반전 여부입니다.
+    flip_horizontal: bool,
+    /// 시야 조작의 좌우 반전 여부입니다.
+    flip_vertical: bool,
 
     /// 초기화 패킷
     packet: Option<InGameDataInitPacket>,
+
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 작업 결과를 저장합니다.
     task_results: Arc<Queue<TaskResult>>,
@@ -167,6 +185,7 @@ impl InGameLoadScene {
             sound_data_pool.insert(uri, decoded);
         }
 
+        let config = UserConfig::get();
         Self {
             locale,
             uid,
@@ -174,6 +193,11 @@ impl InGameLoadScene {
             background_volume,
             effect_volume,
             voice_volume,
+            control_sensitivity: config.control_sensitivity as f32 / 255.0,
+            flip_horizontal: config.flip_horizontal,
+            flip_vertical: config.flip_vertical,
+            player_character: CharacterKind::default(),
+            player_team: Team::default(),
             packet: Some(packet),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
@@ -253,6 +277,241 @@ impl InGameLoadScene {
                 staging_buffers,
                 command: encoder.finish(),
             });
+        });
+        self.num_remaining_tasks += 1;
+    }
+
+    /// 사운드 데이터를 로드합니다.
+    fn load_sounds(
+        &mut self,
+        root_dir: &Path,
+        thread_pool: &ThreadPool,
+        character_kinds: HashSet<CharacterKind>,
+    ) {
+        // 인게임에서 플레이어 캐릭터 목소리를 로드합니다.
+        let i = self.player_character as usize;
+        let path = root_dir.to_path_buf();
+        let task_results = self.task_results.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
+        thread_pool.spawn(move || {
+            // 인게임 종료시 재생되는 배경음을 로드합니다.
+            let mut workspace = path.clone();
+            workspace.push(BG_SOUND_WORKSPACE);
+            {
+                // 사운드 데이터를 로드합니다.
+                let result = sound_data_pool.get_or_init(workspace, BG_SOUND_THEME_23);
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            let mut workspace = path.clone();
+            workspace.push(CV_SOUND_WORKSPACES[i]);
+
+            // 인게임 진입시 발생하는 목소리를 로드합니다.
+            for uri in CV_TACTIC_IN[i] {
+                // 사운드 데이터를 로드합니다.
+                let result = sound_data_pool.get_or_init(&workspace, uri);
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            // 인게임 이동시 발생하는 목소리를 로드합니다.
+            for uri in CV_BATTLE_MOVE[i] {
+                // 사운드 데이터를 로드합니다.
+                let result = sound_data_pool.get_or_init(&workspace, uri);
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            // 인게임 일반공격시 발생하는 목소리를 로드합니다.
+            for uri in CV_BATTLE_SHOUT[i] {
+                // 사운드 데이터를 로드합니다.
+                let result = sound_data_pool.get_or_init(&workspace, uri);
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            // 인게임 스킬 발동 조건 충족시 발생하는 목소리를 로드합니다.
+            {
+                // 사운드 데이터를 로드합니다.
+                let result = sound_data_pool.get_or_init(&workspace, CV_COMMONSKILL[i]);
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            // 결과를 전송합니다.
+            task_results.push(TaskResult::Sound);
+        });
+        self.num_remaining_tasks += 1;
+
+        // 인게임 캐릭터 목소리를 로드합니다.
+        let path = root_dir.to_path_buf();
+        let task_results = self.task_results.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
+        let characters = character_kinds.clone();
+        thread_pool.spawn(move || {
+            // 인게임 캐릭터 피격시 발생하는 캐릭터 목소리를 로드합니다.
+            for kind in characters.iter().cloned() {
+                let i = kind as usize;
+                let uris = CV_BATTLE_DAMAGE[i];
+                let workspace = CV_SOUND_WORKSPACES[i];
+                for uri in uris {
+                    let mut path = path.clone();
+                    path.push(workspace);
+
+                    // 사운드 데이터를 로드합니다.
+                    let result = sound_data_pool.get_or_init(path, uri);
+
+                    // 오류를 전송합니다.
+                    if let Err(e) = result {
+                        task_results.push(TaskResult::Failed(e));
+                        return;
+                    }
+                }
+            }
+
+            // 인게임 캐릭터 스킬 시전시 발생하는 캐릭터 목소리를 로드합니다.
+            for kind in characters.iter().cloned() {
+                let i = kind as usize;
+                let uris = CV_EXSKILL_LEVEL[i];
+                let workspace = CV_SOUND_WORKSPACES[i];
+                for uri in uris {
+                    let mut path = path.clone();
+                    path.push(workspace);
+
+                    // 사운드 데이터를 로드합니다.
+                    let result = sound_data_pool.get_or_init(path, uri);
+
+                    // 오류를 전송합니다.
+                    if let Err(e) = result {
+                        task_results.push(TaskResult::Failed(e));
+                        return;
+                    }
+                }
+            }
+
+            // 인게임 캐릭터 방어시 발생하는 캐릭터 목소리를 로드합니다.
+            for kind in characters.iter().cloned() {
+                let i = kind as usize;
+                let uri = CV_BATTLE_DEFENSE[i];
+                let workspace = CV_SOUND_WORKSPACES[i];
+                {
+                    let mut path = path.clone();
+                    path.push(workspace);
+
+                    // 사운드 데이터를 로드합니다.
+                    let result = sound_data_pool.get_or_init(path, uri);
+
+                    // 오류를 전송합니다.
+                    if let Err(e) = result {
+                        task_results.push(TaskResult::Failed(e));
+                        return;
+                    }
+                }
+            }
+
+            // 인게임 캐릭터 행동 불능시 발생하는 캐릭터 목소리를 로드합니다.
+            for kind in characters.iter().cloned() {
+                let i = kind as usize;
+                let uri = CV_BATTLE_RETIRE[i];
+                let workspace = CV_SOUND_WORKSPACES[i];
+                {
+                    let mut path = path.clone();
+                    path.push(workspace);
+
+                    // 사운드 데이터를 로드합니다.
+                    let result = sound_data_pool.get_or_init(path, uri);
+
+                    // 오류를 전송합니다.
+                    if let Err(e) = result {
+                        task_results.push(TaskResult::Failed(e));
+                        return;
+                    }
+                }
+            }
+
+            // 인게임 캐릭터 스킬 사용시 발생하는 효과음을 로드합니다.
+            for kind in characters.iter().cloned() {
+                let i = kind as usize;
+                let uri = SFX_SKILL[i];
+                let workspace = SFX_WORKSPACE;
+                {
+                    let mut path = path.clone();
+                    path.push(workspace);
+
+                    // 사운드 데이터를 로드합니다.
+                    let result = sound_data_pool.get_or_init(path, uri);
+
+                    // 오류를 전송합니다.
+                    if let Err(e) = result {
+                        task_results.push(TaskResult::Failed(e));
+                        return;
+                    }
+                }
+            }
+
+            // 인게임 캐릭터 공격시 발생하는 효과음을 로드합니다.
+            for kind in characters.iter().cloned() {
+                let i = kind as usize;
+                let uri = SFX_COMMON[i];
+                let workspace = SFX_WORKSPACE;
+                {
+                    let mut path = path.clone();
+                    path.push(workspace);
+
+                    // 사운드 데이터를 로드합니다.
+                    let result = sound_data_pool.get_or_init(path, uri);
+
+                    // 오류를 전송합니다.
+                    if let Err(e) = result {
+                        task_results.push(TaskResult::Failed(e));
+                        return;
+                    }
+                }
+            }
+
+            // 인게임 캐릭터 재장전시 발생하는 효과음을 로드합니다.
+            for kind in characters.iter().cloned() {
+                let i = kind as usize;
+                let uri = SFX_COMMON_RELOAD[i];
+                let workspace = SFX_WORKSPACE;
+                {
+                    let mut path = path.clone();
+                    path.push(workspace);
+
+                    // 사운드 데이터를 로드합니다.
+                    let result = sound_data_pool.get_or_init(path, uri);
+
+                    // 오류를 전송합니다.
+                    if let Err(e) = result {
+                        task_results.push(TaskResult::Failed(e));
+                        return;
+                    }
+                }
+            }
+
+            // 결과를 전송합니다.
+            task_results.push(TaskResult::Sound);
         });
         self.num_remaining_tasks += 1;
     }
@@ -426,6 +685,7 @@ impl InGameLoadScene {
         let texture_pool = self.texture_pool.clone();
         let texture_view_pool = self.texture_view_pool.clone();
         let sampler_pool = self.sampler_pool.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
         let root_dir = root_dir.to_path_buf();
         thread_pool.spawn(move || {
             let i = stage_kind as usize;
@@ -437,7 +697,7 @@ impl InGameLoadScene {
             path.push(format!("{}.json", STAGE_URI));
 
             let result = StageAttributes::load_from_file(path);
-            let attributes = match result {
+            let mut attributes = match result {
                 Ok(attributes) => attributes,
                 Err(e) => {
                     // 오류를 전송합니다.
@@ -495,8 +755,30 @@ impl InGameLoadScene {
                 }
             }
 
+            // 스테이지 배경 음악을 로드합니다.
+            let mut sound_list: Vec<_> = attributes.sound_list.drain(..).collect();
+            sound_list.shuffle(&mut rand::rng());
+            let sound_uri = match sound_list.pop() {
+                Some(sound_uri) => sound_uri,
+                None => {
+                    task_results.push(TaskResult::Failed(AssetError::InvalidData));
+                    return;
+                }
+            };
+            let mut workspace = root_dir.clone();
+            workspace.push(BG_SOUND_WORKSPACE);
+            let result = sound_data_pool.get_or_init(workspace, sound_uri);
+            let decoded = match result {
+                Ok(decoded) => decoded,
+                Err(e) => {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            };
+
             // 결과를 전송합니다.
             task_results.push(TaskResult::Stage {
+                decoded,
                 attributes,
                 staging_buffers,
                 command: encoder.finish(),
@@ -509,6 +791,14 @@ impl InGameLoadScene {
 impl GameScene for InGameLoadScene {
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
         let packet = self.packet.as_ref().expect("the packet must exist!");
+
+        // 플레이어 캐릭터 종류와 속한 팀 데이터를 찾습니다.
+        (self.player_character, self.player_team) = packet
+            .players
+            .iter()
+            .find(|data| data.uid == self.uid)
+            .map(|data| (data.character_kind, data.team()))
+            .expect("player not found!");
 
         // 인게임에서 사용되는 캐릭터를 수집합니다.
         let character_kinds: HashSet<CharacterKind> = packet
@@ -533,6 +823,7 @@ impl GameScene for InGameLoadScene {
         let device = app.render_device();
         let io_thread_pool = app.io_threads();
         self.create_textures(&root_dir, io_thread_pool, device.clone());
+        self.load_sounds(&root_dir, io_thread_pool, character_kinds.clone());
         self.load_character_motions(&root_dir, io_thread_pool, character_kinds.clone());
         self.load_character_models(&root_dir, io_thread_pool, device.clone(), character_kinds);
         self.load_bullet_models(&root_dir, io_thread_pool, device.clone(), bullet_kinds);
@@ -601,7 +892,7 @@ impl GameScene for InGameLoadScene {
             self.num_remaining_tasks -= 1;
 
             match result {
-                TaskResult::CharacterMotions => { /* empty */ }
+                TaskResult::CharacterMotions | TaskResult::Sound => { /* empty */ }
                 TaskResult::Model {
                     mut staging_buffers,
                     command,
@@ -610,10 +901,17 @@ impl GameScene for InGameLoadScene {
                     queue.submit(Some(command));
                 }
                 TaskResult::Stage {
+                    decoded,
                     attributes,
                     mut staging_buffers,
                     command,
                 } => {
+                    let source = decoded.as_source().repeat_infinite();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.background_volume as f32 / 255.0);
+                    sink.append(source);
+                    app.sink_list().push(sink);
+
                     self.stage_layout_data
                         .set(Arc::new(attributes))
                         .expect("data already exist!");
@@ -670,6 +968,11 @@ impl GameScene for InGameLoadScene {
                     self.background_volume,
                     self.effect_volume,
                     self.voice_volume,
+                    self.control_sensitivity,
+                    self.flip_horizontal,
+                    self.flip_vertical,
+                    self.player_character,
+                    self.player_team,
                     packet,
                     self.stage_layout_data.clone(),
                     self.mesh_pool.clone(),

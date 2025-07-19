@@ -286,6 +286,148 @@ pub const CV_YUUKA_OPTION_DATA: &'static [u8; 22877] = include_bytes!(concat!(
     env!("CARGO_WORKSPACE_DIR"),
     "assets/sound/cv/yuuka_original/Yuuka_Option.ogg"
 ));
+/// 인게임에서 데미지를 입을 때 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_BATTLE_DAMAGE: [[&'static str; 3]; NUM_CHARACTERS] = [
+    [
+        "Aris_Battle_Damage_1",
+        "Aris_Battle_Damage_2",
+        "Aris_Battle_Damage_3",
+    ], // Aris_Original
+    [
+        "Momoi_Battle_Damage_1",
+        "Momoi_Battle_Damage_2",
+        "Momoi_Battle_Damage_3",
+    ], // Momoi_Original
+    [
+        "Midori_Battle_Damage_1",
+        "Midori_Battle_Damage_2",
+        "Midori_Battle_Damage_3",
+    ], // Midori_Original
+    [
+        "Yuuka_Battle_Damage_1",
+        "Yuuka_Battle_Damage_2",
+        "Yuuka_Battle_Damage_3",
+    ], // Yuuka_Original
+];
+/// 인게임에서 방어막이 있을 때 데미지를 입는 경우 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_BATTLE_DEFENSE: [&'static str; NUM_CHARACTERS] = [
+    "Aris_Battle_Defense_1",
+    "Momoi_Battle_Defense_1",
+    "Midori_Battle_Defense_1",
+    "Yuuka_Battle_Defense_1",
+];
+/// 인게임에서 이동시 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_BATTLE_MOVE: [[&'static str; 2]; NUM_CHARACTERS] = [
+    ["Aris_Battle_Move_1", "Aris_Battle_Move_2"],
+    ["Momoi_Battle_Move_1", "Momoi_Battle_Move_2"],
+    ["Midori_Battle_Move_1", "Midori_Battle_Move_2"],
+    ["Yuuka_Battle_Move_1", "Yuuka_Battle_Move_2"],
+];
+/// 인게임에서 행동 불능시 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_BATTLE_RETIRE: [&'static str; NUM_CHARACTERS] = [
+    "Aris_Battle_Retire",
+    "Momoi_Battle_Retire",
+    "Midori_Battle_Retire",
+    "Yuuka_Battle_Retire",
+];
+/// 인게임에서 일반 공격시 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_BATTLE_SHOUT: [[&'static str; 3]; NUM_CHARACTERS] = [
+    [
+        "Aris_Battle_Shout_1",
+        "Aris_Battle_Shout_2",
+        "Aris_Battle_Shout_3",
+    ],
+    [
+        "Momoi_Battle_Shout_1",
+        "Momoi_Battle_Shout_2",
+        "Momoi_Battle_Shout_3",
+    ],
+    [
+        "Midori_Battle_Shout_1",
+        "Midori_Battle_Shout_2",
+        "Midori_Battle_Shout_3",
+    ],
+    [
+        "Yuuka_Battle_Shout_1",
+        "Yuuka_Battle_Shout_2",
+        "Yuuka_Battle_Shout_3",
+    ],
+];
+/// 인게임에서 스킬 발동 조건을 만족한 경우 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_COMMONSKILL: [&'static str; NUM_CHARACTERS] = [
+    "Aris_CommonSkill",
+    "Momoi_CommonSkill",
+    "Midori_CommonSkill",
+    "Yuuka_CommonSkill",
+];
+/// 인게임에서 스킬을 사용할 경우 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_EXSKILL_LEVEL: [[&'static str; 3]; NUM_CHARACTERS] = [
+    [
+        "Aris_ExSkill_Level_1",
+        "Aris_ExSkill_Level_2",
+        "Aris_ExSkill_Level_3",
+    ],
+    [
+        "Momoi_ExSkill_Level_1",
+        "Momoi_ExSkill_Level_2",
+        "Momoi_ExSkill_Level_3",
+    ],
+    [
+        "Midori_ExSkill_Level_1",
+        "Midori_ExSkill_Level_2",
+        "Midori_ExSkill_Level_3",
+    ],
+    [
+        "Yuuka_ExSkill_Level_1",
+        "Yuuka_ExSkill_Level_2",
+        "Yuuka_ExSkill_Level_3",
+    ],
+];
+/// 캐릭터 편성시 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_FORMATION_IN: [[&'static str; 2]; NUM_CHARACTERS] = [
+    ["Aris_Formation_In_1", "Aris_Formation_In_2"],
+    ["Momoi_Formation_In_1", "Momoi_Formation_In_2"],
+    ["Midori_Formation_In_1", "Midori_Formation_In_2"],
+    ["Yuuka_Formation_In_1", "Yuuka_Formation_In_2"],
+];
+/// 캐릭터 선택시 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_FORMATION_SELECT: [&'static str; NUM_CHARACTERS] = [
+    "Aris_Formation_Select",
+    "Momoi_Formation_Select",
+    "Midori_Formation_Select",
+    "Yuuka_Formation_Select",
+];
+/// 인게임 진입시 발생하는 캐릭터 목소리의 `Uri`입니다.
+pub const CV_TACTIC_IN: [[&'static str; 2]; NUM_CHARACTERS] = [
+    ["Aris_Tactic_In_1", "Aris_Tactic_In_2"],
+    ["Momoi_Tactic_In_1", "Momoi_Tactic_In_2"],
+    ["Midori_Tactic_In_1", "Midori_Tactic_In_2"],
+    ["Yuuka_Tactic_In_1", "Yuuka_Tactic_In_2"],
+];
+
+/// 인게임 효과음의 작업공간입니다.
+pub const SFX_WORKSPACE: &'static str = "sound/sfx";
+/// 인게임에서 스킬 사용시 발생하는 효과음의 `Uri`입니다.
+pub const SFX_SKILL: [&'static str; NUM_CHARACTERS] = [
+    "SFX_Skill_Aris_Ex",
+    "SFX_Skill_Momoi_Ex",
+    "SFX_Skill_Midori_Ex",
+    "SFX_Skill_Yuuka_Ex",
+];
+/// 인게임에서 총알 발사시 발생하는 효과음의 `Uri`입니다.
+pub const SFX_COMMON: [&'static str; NUM_CHARACTERS] = [
+    "SFX_Common_RG_aris_Attack",
+    "SFX_Common_AR_01",
+    "SFX_Common_SR_01",
+    "SFX_Common_SMG_01",
+];
+/// 인게임에서 재장전시 발생하는 효과음의 `Uri`입니다.
+pub const SFX_COMMON_RELOAD: [&'static str; NUM_CHARACTERS] = [
+    "SFX_Common_RG_aris_Reload",
+    "SFX_Common_AR_Reload_01",
+    "SFX_Common_SR_Reload_01",
+    "SFX_Common_SMG_Reload_01",
+];
 
 /// Ui 사운드의 작업 공간입니다.
 pub const UI_SOUND_WORKSPACE: &'static str = "sound/ui";

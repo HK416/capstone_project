@@ -128,6 +128,11 @@ pub struct InGameRunScene {
     /// 플레이어 시야 상태 타이머입니다.
     view_state_timer: ViewStateTimer,
 
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
+
     /// 게임 월드
     world: Option<World>,
 
@@ -235,12 +240,17 @@ impl InGameRunScene {
         background_volume: u8,
         effect_volume: u8,
         voice_volume: u8,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         first_mouse_pressed: bool,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
+        player_character: CharacterKind,
+        player_team: Team,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -269,9 +279,9 @@ impl InGameRunScene {
             background_volume,
             effect_volume,
             voice_volume,
-            control_sensitivity: 0.5,
-            flip_horizontal: false,
-            flip_vertical: false,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             max_game_play_time_ms,
             play_elapsed_time_ms: 0,
             snapshot_elapsed_time_ms: 0,
@@ -288,6 +298,8 @@ impl InGameRunScene {
             held_input: HeldInput::new(),
             view_state: ViewState::Idle,
             view_state_timer: ViewStateTimer(0),
+            player_character,
+            player_team,
             world: Some(world),
             camera: Entity::DANGLING,
             camera_fov_y: 45f32.to_radians(),

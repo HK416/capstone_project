@@ -1234,6 +1234,11 @@ impl GameScene for CharacterFormationScene {
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
 
+                // 현재 재생 중인 배경 음악을 중지합니다.
+                while let Some(sink) = app.sink_list().pop() {
+                    sink.stop();
+                }
+
                 // 효과음을 재생합니다.
                 let decoded = self
                     .sound_data_pool

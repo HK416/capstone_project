@@ -1,7 +1,8 @@
 use std::{path::Path, sync::Arc};
 
+use mod_parallelism::collections::Queue;
 use rayon::ThreadPool;
-use rodio::mixer::Mixer;
+use rodio::{mixer::Mixer, Sink};
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
@@ -43,6 +44,9 @@ pub trait AppHandle {
 
     /// 소리 장치 오디오 믹서를 가져옵니다.
     fn audio_mixer(&self) -> &Mixer;
+
+    /// 재생 중인 [`Sink`] 대기열을 가져옵니다.
+    fn sink_list(&self) -> &Queue<Sink>;
 
     /// `wgpu` 렌더링 인스턴스를 가져옵니다.
     fn render_instance(&self) -> &Arc<wgpu::Instance>;

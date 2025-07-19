@@ -1009,9 +1009,15 @@ impl GameScene for InGameResultScene {
     fn on_exit(
         &mut self,
         _window: Option<&Window>,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
         ui_renderer: &mut UiRenderer,
     ) {
+        // 현재 재생 중인 배경 음을 중지합니다.
+        let sink_list = app.sink_list();
+        while let Some(sink) = sink_list.pop() {
+            sink.stop();
+        }
+
         let iterator = self
             .profile_bg_textures
             .values()

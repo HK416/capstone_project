@@ -1,11 +1,11 @@
 {
-    "files" : [],
-    "directories" : {
-        "characters" : {
-            "files" : [],
-            "directories" : {
-                "aris_original" : {
-                    "files" : [
+    "files": [],
+    "directories": {
+        "characters": {
+            "files": [],
+            "directories": {
+                "aris_original": {
+                    "files": [
                         "Aris_Original_Body_Mask.dds",
                         "Aris_Original_Body_Mask.texD",
                         "Aris_Original_Body.dds",
@@ -35,18 +35,18 @@
                         "Aris_Original_Weapon_Mask.texD",
                         "Aris_Original_Weapon.dds",
                         "Aris_Original_Weapon.material",
-                        "Aris_Original_Weapon.mesh", 
-                        "Aris_Original_Weapon.texD", 
+                        "Aris_Original_Weapon.mesh",
+                        "Aris_Original_Weapon.texD",
                         "Aris_Original.hierarchy",
                         "Aris_Original.motion",
                         "Character_Mouth.dds",
                         "Character_Mouth.texD",
                         "FX_Aris_Original_Weapon.mesh"
-                    ], 
-                    "directories" : {}
+                    ],
+                    "directories": {}
                 },
-                "midori_original" : {
-                    "files" : [
+                "midori_original": {
+                    "files": [
                         "Character_Mouth.dds",
                         "Character_Mouth.texD",
                         "Midori_Original_Body_Mask.dds",
@@ -82,10 +82,10 @@
                         "Midori_Original.hierarchy",
                         "Midori_Original.motion"
                     ],
-                    "directories" : {}
+                    "directories": {}
                 },
-                "momoi_original" : {
-                    "files" : [
+                "momoi_original": {
+                    "files": [
                         "Character_Mouth.dds",
                         "Character_Mouth.texD",
                         "Momoi_Original_Body_Mask.dds",
@@ -121,10 +121,10 @@
                         "Momoi_Original.hierarchy",
                         "Momoi_Original.motion"
                     ],
-                    "directories" : {}
+                    "directories": {}
                 },
-                "yuuka_original" : {
-                    "files" : [
+                "yuuka_original": {
+                    "files": [
                         "Character_Mouth.dds",
                         "Character_Mouth.texD",
                         "Yuuka_Original_Body_Mask.dds",
@@ -166,12 +166,12 @@
                         "Yuuka_Original.hierarchy",
                         "Yuuka_Original.motion"
                     ],
-                    "directories" : {}
+                    "directories": {}
                 }
             }
-        }, 
-        "common" : {
-            "files" : [
+        },
+        "common": {
+            "files": [
                 "Bullet_01_Shell.hierarchy",
                 "Bullet_01_Shell.mesh",
                 "Bullet_01_Warhead.hierarchy",
@@ -181,10 +181,10 @@
                 "Bullet_Common.material",
                 "Bullet_Energy.material"
             ],
-            "directories" : {}
+            "directories": {}
         },
-        "font" : {
-            "files" : [
+        "font": {
+            "files": [
                 "ImgFont_Draw.dds",
                 "ImgFont_Draw.texD",
                 "ImgFont_Host.dds",
@@ -210,27 +210,175 @@
                 "NotoSans_Bold.ttf",
                 "NotoSans_Regular.ttf"
             ],
-            "directories" : {}
+            "directories": {}
         },
         "sound": {
             "files": [],
             "directories": {
                 "bg": {
                     "files": [
-                        "Theme_14.ogg"
+                        "Theme_03.ogg",
+                        "Theme_14.ogg",
+                        "Theme_18.ogg",
+                        "Theme_19.ogg",
+                        "Theme_23.ogg",
+                        "Theme_40.ogg"
+                    ],
+                    "directories": {}
+                },
+                "cv": {
+                    "files": [],
+                    "directories": {
+                        "aris_original": {
+                            "files": [
+                                "Aris_Battle_Damage_1.ogg",
+                                "Aris_Battle_Damage_2.ogg",
+                                "Aris_Battle_Damage_3.ogg",
+                                "Aris_Battle_Defense_1.ogg",
+                                "Aris_Battle_Move_1.ogg",
+                                "Aris_Battle_Move_2.ogg",
+                                "Aris_Battle_Retire.ogg",
+                                "Aris_Battle_Shout_1.ogg",
+                                "Aris_Battle_Shout_2.ogg",
+                                "Aris_Battle_Shout_3.ogg",
+                                "Aris_CommonSkill.ogg",
+                                "Aris_ExSkill_Level_1.ogg",
+                                "Aris_ExSkill_Level_2.ogg",
+                                "Aris_ExSkill_Level_3.ogg",
+                                "Aris_Formation_In_1.ogg",
+                                "Aris_Formation_In_2.ogg",
+                                "Aris_Formation_Select.ogg",
+                                "Aris_Tactic_In_1.ogg",
+                                "Aris_Tactic_In_2.ogg"
+                            ],
+                            "directories": {}
+                        },
+                        "midori_original": {
+                            "files": [
+                                "Midori_Battle_Damage_1.ogg",
+                                "Midori_Battle_Damage_2.ogg",
+                                "Midori_Battle_Damage_3.ogg",
+                                "Midori_Battle_Defense_1.ogg",
+                                "Midori_Battle_Move_1.ogg",
+                                "Midori_Battle_Move_2.ogg",
+                                "Midori_Battle_Retire.ogg",
+                                "Midori_Battle_Shout_1.ogg",
+                                "Midori_Battle_Shout_2.ogg",
+                                "Midori_Battle_Shout_3.ogg",
+                                "Midori_CommonSkill.ogg",
+                                "Midori_ExSkill_Level_1.ogg",
+                                "Midori_ExSkill_Level_2.ogg",
+                                "Midori_ExSkill_Level_3.ogg",
+                                "Midori_Formation_In_1.ogg",
+                                "Midori_Formation_In_2.ogg",
+                                "Midori_Formation_Select.ogg",
+                                "Midori_Tactic_In_1.ogg",
+                                "Midori_Tactic_In_2.ogg"
+                            ],
+                            "directories": {}
+                        },
+                        "momoi_original": {
+                            "files": [
+                                "Momoi_Battle_Damage_1.ogg",
+                                "Momoi_Battle_Damage_2.ogg",
+                                "Momoi_Battle_Damage_3.ogg",
+                                "Momoi_Battle_Defense_1.ogg",
+                                "Momoi_Battle_Move_1.ogg",
+                                "Momoi_Battle_Move_2.ogg",
+                                "Momoi_Battle_Retire.ogg",
+                                "Momoi_Battle_Shout_1.ogg",
+                                "Momoi_Battle_Shout_2.ogg",
+                                "Momoi_Battle_Shout_3.ogg",
+                                "Momoi_CommonSkill.ogg",
+                                "Momoi_ExSkill_Level_1.ogg",
+                                "Momoi_ExSkill_Level_2.ogg",
+                                "Momoi_ExSkill_Level_3.ogg",
+                                "Momoi_Formation_In_1.ogg",
+                                "Momoi_Formation_In_2.ogg",
+                                "Momoi_Formation_Select.ogg",
+                                "Momoi_Tactic_In_1.ogg",
+                                "Momoi_Tactic_In_2.ogg"
+                            ],
+                            "directories": {}
+                        },
+                        "yuuka_original": {
+                            "files": [
+                                "Yuuka_Battle_Damage_1.ogg",
+                                "Yuuka_Battle_Damage_2.ogg",
+                                "Yuuka_Battle_Damage_3.ogg",
+                                "Yuuka_Battle_Defense_1.ogg",
+                                "Yuuka_Battle_Move_1.ogg",
+                                "Yuuka_Battle_Move_2.ogg",
+                                "Yuuka_Battle_Retire.ogg",
+                                "Yuuka_Battle_Shout_1.ogg",
+                                "Yuuka_Battle_Shout_2.ogg",
+                                "Yuuka_Battle_Shout_3.ogg",
+                                "Yuuka_CommonSkill.ogg",
+                                "Yuuka_ExSkill_Level_1.ogg",
+                                "Yuuka_ExSkill_Level_2.ogg",
+                                "Yuuka_ExSkill_Level_3.ogg",
+                                "Yuuka_Formation_In_1.ogg",
+                                "Yuuka_Formation_In_2.ogg",
+                                "Yuuka_Formation_Select.ogg",
+                                "Yuuka_Tactic_In_1.ogg",
+                                "Yuuka_Tactic_In_2.ogg"
+                            ],
+                            "directories": {}
+                        }
+                    }
+                },
+                "sfx": {
+                    "files": [
+                        "SFX_Common_AR_01.ogg",
+                        "SFX_Common_AR_02.ogg",
+                        "SFX_Common_AR_03.ogg",
+                        "SFX_Common_AR_04.ogg",
+                        "SFX_Common_AR_05.ogg",
+                        "SFX_Common_AR_Reload_01.ogg",
+                        "SFX_Common_AR_Reload_02.ogg",
+                        "SFX_Common_AR_Reload_03.ogg",
+                        "SFX_Common_AR_Reload_04.ogg",
+                        "SFX_Common_AR_Reload_05.ogg",
+                        "SFX_Common_RG_aris_Attack.ogg",
+                        "SFX_Common_RG_aris_Delay.ogg",
+                        "SFX_Common_RG_aris_Reload.ogg",
+                        "SFX_Common_SMG_01.ogg",
+                        "SFX_Common_SMG_02.ogg",
+                        "SFX_Common_SMG_03.ogg",
+                        "SFX_Common_SMG_04.ogg",
+                        "SFX_Common_SMG_05.ogg",
+                        "SFX_Common_SMG_Reload_01.ogg",
+                        "SFX_Common_SMG_Reload_02.ogg",
+                        "SFX_Common_SMG_Reload_03.ogg",
+                        "SFX_Common_SMG_Reload_04.ogg",
+                        "SFX_Common_SMG_Reload_05.ogg",
+                        "SFX_Common_SR_01.ogg",
+                        "SFX_Common_SR_02.ogg",
+                        "SFX_Common_SR_03.ogg",
+                        "SFX_Common_SR_04.ogg",
+                        "SFX_Common_SR_05.ogg",
+                        "SFX_Common_SR_Reload_01.ogg",
+                        "SFX_Common_SR_Reload_02.ogg",
+                        "SFX_Common_SR_Reload_03.ogg",
+                        "SFX_Common_SR_Reload_04.ogg",
+                        "SFX_Common_SR_Reload_05.ogg",
+                        "SFX_Skill_Aris_Ex.ogg",
+                        "SFX_Skill_Midori_Ex.ogg",
+                        "SFX_Skill_Momoi_Ex.ogg",
+                        "SFX_Skill_Yuuka_Ex.ogg"
                     ],
                     "directories": {}
                 }
             }
         },
-        "stage" : {
-            "files" : [
+        "stage": {
+            "files": [
                 "BG_Sky.dds",
                 "BG_Sky.texD"
             ],
-            "directories" : {
-                "city" : {
-                    "files" : [
+            "directories": {
+                "city": {
+                    "files": [
                         "Capture_Zone.hierarchy",
                         "Capture_Zone.material",
                         "Capture_Zone.mesh",
@@ -339,12 +487,12 @@
                         "blue_collider.json",
                         "red_collider.json"
                     ],
-                    "directories" : {}
+                    "directories": {}
                 }
             }
         },
-        "ui" : {
-            "files" : [
+        "ui": {
+            "files": [
                 "Arona_Sad.dds",
                 "Arona_Sad.texD",
                 "BG_Deco_00.dds",
@@ -380,7 +528,7 @@
                 "Weapon_Icon.dds",
                 "Weapon_Icon.texD"
             ],
-            "directories" : {}
+            "directories": {}
         }
     }
 }

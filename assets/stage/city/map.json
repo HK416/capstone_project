@@ -46,6 +46,11 @@
         "Common_Prop_Baricade_00",
         "Common_Prop_Container_00"
     ],
+    "sound_list": [
+        "Theme_18",
+        "Theme_19",
+        "Theme_40"
+    ],
     "global_light": {
         "color": {
             "x": 1,
