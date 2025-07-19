@@ -41,7 +41,7 @@ impl BigEndian for LatLon {
 
         // 경도 데이터를 가져옵니다.
         offset = offset + size;
-        size = u16::byte_size();
+        size = f32::byte_size();
         data = &bytes[offset..offset + size];
         let lon = f32::from_big_endian_bytes(data);
 

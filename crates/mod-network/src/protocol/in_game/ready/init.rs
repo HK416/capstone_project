@@ -1,6 +1,8 @@
 //! 인게임 장면을 초기화 하는 패킷과 관련된 코드를 관리합니다.
 //!
 
+use std::num::NonZeroU32;
+
 use crate::{
     components::{
         BigEndian, InGamePlayerInitData, StageKind, TryFromBigEndian, MAX_IN_GAME_PLAYERS,
@@ -13,6 +15,14 @@ use crate::{
 pub struct InGameDataInitPacket {
     /// 스테이지 종류
     pub stage_kind: StageKind,
+    /// x축 방향 최대 월드 절반 크기
+    pub half_size_x: NonZeroU32,
+    /// y축 방향 최대 월드 절반 크기
+    pub half_size_y: NonZeroU32,
+    /// z축 방향 최대 월드 절반 크기
+    pub half_size_z: NonZeroU32,
+    /// 최대 게임 플레이 시간
+    pub max_game_play_time_ms: u32,
     /// 플레이어 초기화 데이터
     pub players: Vec<InGamePlayerInitData>,
 }
@@ -23,12 +33,23 @@ impl InGameDataInitPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn new(stage_kind: StageKind, players: Vec<InGamePlayerInitData>) -> Self {
+    pub fn new(
+        stage_kind: StageKind,
+        half_size_x: NonZeroU32,
+        half_size_y: NonZeroU32,
+        half_size_z: NonZeroU32,
+        max_game_play_time_ms: u32,
+        players: Vec<InGamePlayerInitData>,
+    ) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
 
         Self {
             stage_kind,
+            half_size_x,
+            half_size_y,
+            half_size_z,
+            max_game_play_time_ms,
             players,
         }
     }
@@ -38,12 +59,26 @@ impl InGameDataInitPacket {
     /// # Panics
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn from_iter<I>(stage_kind: StageKind, iter: I) -> Self
+    pub fn from_iter<I>(
+        stage_kind: StageKind,
+        half_size_x: NonZeroU32,
+        half_size_y: NonZeroU32,
+        half_size_z: NonZeroU32,
+        max_game_play_time_ms: u32,
+        iter: I,
+    ) -> Self
     where
         I: IntoIterator<Item = InGamePlayerInitData>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(stage_kind, iter.into_iter().collect())
+        Self::new(
+            stage_kind,
+            half_size_x,
+            half_size_y,
+            half_size_z,
+            max_game_play_time_ms,
+            iter.into_iter().collect(),
+        )
     }
 }
 
@@ -56,10 +91,18 @@ impl Packet for InGameDataInitPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
         let data_size = StageKind::byte_size()
+            + u32::byte_size()
+            + u32::byte_size()
+            + u32::byte_size()
+            + u32::byte_size()
             + u8::byte_size()
             + InGamePlayerInitData::byte_size() * num_players;
         let mut data = Vec::with_capacity(data_size);
         data.extend_from_slice(&self.stage_kind.to_big_endian_bytes());
+        data.extend_from_slice(&self.half_size_x.get().to_big_endian_bytes());
+        data.extend_from_slice(&self.half_size_y.get().to_big_endian_bytes());
+        data.extend_from_slice(&self.half_size_z.get().to_big_endian_bytes());
+        data.extend_from_slice(&self.max_game_play_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
             data.extend_from_slice(&player.to_big_endian_bytes());
@@ -96,6 +139,30 @@ impl Packet for InGameDataInitPacket {
         let mut data = &bytes[offset..offset + size];
         let stage_kind = StageKind::try_from_big_endian_bytes(data)?;
 
+        // x축 최대 게임 월드 절반 크기를 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let half_size_x = NonZeroU32::new(u32::from_big_endian_bytes(data))?;
+
+        // y축 최대 게임 월드 절반 크기를 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let half_size_y = NonZeroU32::new(u32::from_big_endian_bytes(data))?;
+
+        // z축 최대 게임 월드 절반 크기를 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let half_size_z = NonZeroU32::new(u32::from_big_endian_bytes(data))?;
+
+        // 최대 게임 플레이 시간을 가져옵니다.
+        offset = offset + size;
+        size = u32::byte_size();
+        data = &bytes[offset..offset + size];
+        let max_game_play_time_ms = u32::from_big_endian_bytes(data);
+
         // 플레이어 수를 가져옵니다.
         offset = offset + size;
         size = u8::byte_size();
@@ -116,6 +183,10 @@ impl Packet for InGameDataInitPacket {
 
         Some(Self {
             stage_kind,
+            half_size_x,
+            half_size_y,
+            half_size_z,
+            max_game_play_time_ms,
             players,
         })
     }
@@ -130,7 +201,14 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_creation_in_game_init_packet() {
-        InGameDataInitPacket::new(StageKind::City, vec![]);
+        InGameDataInitPacket::new(
+            StageKind::City,
+            NonZeroU32::new(35).unwrap(),
+            NonZeroU32::new(35).unwrap(),
+            NonZeroU32::new(35).unwrap(),
+            100_000,
+            vec![],
+        );
     }
 
     #[test]
@@ -167,7 +245,14 @@ mod tests {
         );
 
         let players = vec![player_0, player_1];
-        let origin = InGameDataInitPacket::new(StageKind::City, players);
+        let origin = InGameDataInitPacket::new(
+            StageKind::City,
+            NonZeroU32::new(35).unwrap(),
+            NonZeroU32::new(35).unwrap(),
+            NonZeroU32::new(35).unwrap(),
+            123_345,
+            players,
+        );
         let raw = origin.as_raw();
         let other = InGameDataInitPacket::from_raw(raw);
 

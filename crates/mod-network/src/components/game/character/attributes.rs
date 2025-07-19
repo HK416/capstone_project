@@ -1,6 +1,7 @@
 //! 캐릭터 속성과 관련된 코드를 관리합니다.
 //!
 
+use ahash::{HashMap, RandomState};
 use mod_physics::object3d::Capsule;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +19,122 @@ pub struct WeaponAttributes {
     pub bip001_hand: Float4x4,
     pub hand_to_weapon_offset: Float4x4,
     pub bip001_fire: Float4x4,
+}
+
+impl WeaponAttributes {
+    const BIP001: &'static str = "Bip001";
+    const BIP001_PELVIS: &'static str = "Bip001_Pelvis";
+    const BIP001_SPINE: &'static str = "Bip001_Spine";
+    const BIP001_SPINE1: &'static str = "Bip001_Spine1";
+    const BIP001_CLAVICLE: &'static str = "Bip001_Clavicle";
+    const BIP001_UPPER_ARM: &'static str = "Bip001_UpperArm";
+    const BIP001_FOREARM: &'static str = "Bip001_Forearm";
+    const BIP001_HAND: &'static str = "Bip001_Hand";
+
+    /// 총구의 위치와 총알 발사 방향을 반환합니다.
+    pub fn get_position_and_direction(
+        &self,
+        character_attributes: &CharacterAttributes,
+        translation: glam::Vec3A,
+        rotation: glam::Quat,
+        latitude: f32,
+    ) -> (glam::Vec3A, glam::Quat) {
+        // 노드 계층 구조를 생성합니다.
+        let hierarchy = HashMap::from_iter([
+            (Self::BIP001, None),
+            (Self::BIP001_PELVIS, Some(Self::BIP001)),
+            (Self::BIP001_SPINE, Some(Self::BIP001_PELVIS)),
+            (Self::BIP001_SPINE1, Some(Self::BIP001_SPINE)),
+            (Self::BIP001_CLAVICLE, Some(Self::BIP001_SPINE1)),
+            (Self::BIP001_UPPER_ARM, Some(Self::BIP001_CLAVICLE)),
+            (Self::BIP001_FOREARM, Some(Self::BIP001_UPPER_ARM)),
+            (Self::BIP001_HAND, Some(Self::BIP001_FOREARM)),
+        ]);
+
+        // 로컬 변환 행렬을 생성합니다.
+        let parent = glam::Mat4::from_rotation_translation(rotation.into(), translation.into());
+        let root_bone = glam::Mat4::from_quat(glam::quat(-0.7071068, 0.0, 0.0, 0.7071068));
+        let mut bip001: glam::Mat4 = self.bip001.into();
+        bip001 = parent * root_bone * bip001;
+
+        let angle = 3.0 * latitude / 7.0;
+        let axis: glam::Vec3 = character_attributes.attack_spine_axis.into();
+        let mut spine: glam::Mat4 = self.bip001_spine.into();
+        spine *= glam::Mat4::from_axis_angle(axis, angle);
+
+        let axis: glam::Vec3 = character_attributes.attack_spine1_axis.into();
+        let mut spine1: glam::Mat4 = self.bip001_spine1.into();
+        spine1 *= glam::Mat4::from_axis_angle(axis, angle);
+
+        let local_trans: HashMap<_, glam::Mat4> = HashMap::from_iter([
+            (Self::BIP001, bip001),
+            (Self::BIP001_PELVIS, self.bip001_pelvis.into()),
+            (Self::BIP001_SPINE, spine),
+            (Self::BIP001_SPINE1, spine1),
+            (Self::BIP001_CLAVICLE, self.bip001_clavicle.into()),
+            (Self::BIP001_UPPER_ARM, self.bip001_upperarm.into()),
+            (Self::BIP001_FOREARM, self.bip001_forearm.into()),
+            (Self::BIP001_HAND, self.bip001_hand.into()),
+        ]);
+
+        // 월드 변환 행렬을 계산합니다.
+        let mut world_trans = HashMap::with_capacity_and_hasher(8, RandomState::new());
+        let current = Self::BIP001_HAND;
+        let parent = hierarchy.get(current).cloned().flatten();
+        Self::compute_world_transform(current, parent, &hierarchy, &local_trans, &mut world_trans);
+
+        // 무기의 위치를 계산합니다.
+        let hand_world_transform = world_trans
+            .get(Self::BIP001_HAND)
+            .cloned()
+            .unwrap_or_default();
+        let hand_to_weapon_trans: glam::Mat4 = self.hand_to_weapon_offset.into();
+        let bip001_fire: glam::Mat4 = self.bip001_fire.into();
+        let weapon_trans = hand_world_transform * hand_to_weapon_trans * bip001_fire;
+
+        let translation = glam::Vec3A::from_vec4(weapon_trans.w_axis);
+        let rotation = glam::Quat::from_mat4(&weapon_trans).normalize();
+
+        (translation, rotation)
+    }
+
+    /// 월드 변환 행렬을 계산합니다.
+    fn compute_world_transform(
+        current: &'static str,
+        parent: Option<&'static str>,
+        hierarchy: &HashMap<&'static str, Option<&'static str>>,
+        local_transforms: &HashMap<&'static str, glam::Mat4>,
+        world_transforms: &mut HashMap<&'static str, glam::Mat4>,
+    ) -> glam::Mat4 {
+        if let Some(parent) = parent {
+            match world_transforms.get(parent).cloned() {
+                Some(parent_trans) => {
+                    let local_trans = local_transforms.get(current).cloned().unwrap_or_default();
+                    let world_trans = parent_trans * local_trans;
+                    world_transforms.insert(current, world_trans);
+                    world_trans
+                }
+                None => {
+                    let grand_parent = hierarchy.get(parent).cloned().flatten();
+                    let parent_trans = Self::compute_world_transform(
+                        parent,
+                        grand_parent,
+                        hierarchy,
+                        local_transforms,
+                        world_transforms,
+                    );
+                    let local_trans = local_transforms.get(&current).cloned().unwrap_or_default();
+                    let world_trans = parent_trans * local_trans;
+                    world_transforms.insert(current, world_trans);
+                    world_trans
+                }
+            }
+        } else {
+            let local_trans = local_transforms.get(current).cloned().unwrap_or_default();
+            world_transforms.insert(current, local_trans);
+            local_trans
+        }
+    }
 }
 
 /// 캐릭터 속성 데이터를 저장합니다.

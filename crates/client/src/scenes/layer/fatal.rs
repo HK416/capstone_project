@@ -7,6 +7,7 @@ use mod_app::{
 };
 use mod_network::protocol::RawPacket;
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -14,7 +15,7 @@ use winit::{
 };
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_TOUCH},
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{BASE_WIDTH, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR},
@@ -27,6 +28,12 @@ const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
 pub struct FatalErrorSceneLayer {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
+    /// 배경음 음량
+    _background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    _voice_volume: u8,
 
     /// 모달 대화상자의 타이틀 텍스트입니다.
     title: String,
@@ -37,21 +44,36 @@ pub struct FatalErrorSceneLayer {
     okay_button_state: ButtonState,
     /// 입력 지연 시간입니다.
     delay_time_sec: f32,
+
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl FatalErrorSceneLayer {
     /// 새로운 게임 장면 레이어를 생성합니다.
-    pub fn new<T, M>(locale: Locale, title: T, message: M) -> Self
+    pub fn new<T, M>(
+        locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        title: T,
+        message: M,
+        sound_data_pool: SoundDataPool,
+    ) -> Self
     where
         T: Into<String>,
         M: Into<String>,
     {
         Self {
             locale,
+            _background_volume: background_volume,
+            effect_volume,
+            _voice_volume: voice_volume,
             title: title.into(),
             message: message.into(),
             okay_button_state: ButtonState::Idle,
             delay_time_sec: 0.3,
+            sound_data_pool,
         }
     }
 }
@@ -99,6 +121,18 @@ impl GameScene for FatalErrorSceneLayer {
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_BUTTON_TOUCH)
+                    .expect("UI_Button_Touch sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             }
         }
 

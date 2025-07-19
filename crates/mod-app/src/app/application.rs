@@ -5,10 +5,12 @@ use std::{
     sync::Arc,
 };
 
+use mod_parallelism::collections::Queue;
 use mod_render::{
     config_swapchain, init_wgpu, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use rayon::{ThreadPool, ThreadPoolBuilder};
+use rodio::{mixer::Mixer, OutputStream, OutputStreamBuilder, Sink};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalPosition,
@@ -85,6 +87,12 @@ pub struct Application {
     /// 업데이트 경과 시간을 측정하는 타이머입니다.
     timer: GameTimer,
 
+    /// 소리 출력 디바이스의 핸들입니다.
+    stream_handle: OutputStream,
+
+    /// 재생 중인 [`Sink`]를 저장합니다.
+    sink_list: Queue<Sink>,
+
     /// `egui`의 컨텍스트입니다.
     egui_ctx: egui::Context,
 
@@ -142,7 +150,11 @@ impl Application {
         // 네트워크 매니저를 생성합니다.
         let network = NetManager::new(event_loop_proxy.clone());
 
-        // 에셋 관리자를 생성합니다.
+        // 오디오 장치를 생성합니다.
+        let stream_handle = OutputStreamBuilder::open_default_stream()
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 최상위 에셋 디렉토리를 가져옵니다.
         let mut root_dir = unsafe { builder.current_dir.clone().unwrap_unchecked() }; // Safe: 빌더를 생성할 때 존재 유무를 확인함.
         root_dir.push("assets");
 
@@ -163,6 +175,8 @@ impl Application {
             scene_flow: VecDeque::from_iter([GameSceneFlow::Reset(builder.start_scene)]),
             scene_stack: Some(VecDeque::with_capacity(8)),
             timer: GameTimer::start(),
+            stream_handle,
+            sink_list: Queue::new(),
             egui_ctx: egui::Context::default(),
             egui_renderer: Some(UiRenderer::new(&device, SWAPCHAIN_FORMAT, None, 1, false)),
             instance,
@@ -360,6 +374,7 @@ impl Application {
                         },
                         view: &frame_render_target_view,
                         resolve_target: None,
+                        depth_slice: None,
                     })],
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
@@ -676,9 +691,8 @@ impl ApplicationHandler<AppEvent> for Application {
             return;
         }
 
-        // 게임 장면 스택이 비어있는 경우 함수 실행을 생략합니다.
-        if scene_stack.is_empty() {
-            log::debug!("window event ignored >> the current scene is empty.");
+        // 게임 장면 스택이 비어있거나, 장면 흐름이 비어있지 않은 경우 함수 실행을 생략합니다.
+        if scene_stack.is_empty() || !self.scene_flow.is_empty() {
             // 애플리케이션 창과 장면 스택의 `소유권`을 돌려 놓습니다.
             self.app_window = Some(app_window);
             self.scene_stack = Some(scene_stack);
@@ -1142,6 +1156,14 @@ impl AppHandle for Application {
 
     fn timer(&self) -> &GameTimer {
         &self.timer
+    }
+
+    fn audio_mixer(&self) -> &Mixer {
+        self.stream_handle.mixer()
+    }
+
+    fn sink_list(&self) -> &Queue<Sink> {
+        &self.sink_list
     }
 
     fn render_instance(&self) -> &Arc<wgpu::Instance> {

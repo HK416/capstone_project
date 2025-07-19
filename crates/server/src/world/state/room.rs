@@ -3,9 +3,11 @@ use std::sync::Arc;
 use ahash::{HashMap, RandomState};
 use mod_network::{
     components::{
-        CustomRoomPlayerData, FormationPlayerInitData, GameTier, LatLon, MAX_IN_GAME_PLAYERS,
-        MAX_IN_GAME_TEAM_PLAYERS, NetworkState, Permission, ProfileIcon, StageKind, Team, UserId,
-        UserName,
+        ActionState, ActionStateTimer, BulletData, CharacterKind, CustomRoomPlayerData,
+        FormationPlayerInitData, GameTier, HealthData, HeldInput, InputStateTimer, LatLon,
+        MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, MovementState, MovementStateTimer,
+        MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData, StageKind, Team,
+        UserId, UserName, Velocity,
     },
     protocol::{
         FormationDataInitPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -430,15 +432,16 @@ impl GameWorldRoomState {
             let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
             for (&uid, data) in world.players.iter_mut() {
                 // 플레이어 데이터를 설정합니다.
-                let (index, translation, roataion) = match data.team() {
+                let (index, translation, roataion, lon) = match data.team() {
                     Team::Blue => {
                         let index = num_blue;
                         num_blue += 1;
 
                         let translation = attribute.blue_team_positions[index];
                         let rotation = attribute.blue_team_rotation;
+                        let lon = rotation.angle_between(glam::Quat::IDENTITY);
 
-                        (index, translation, rotation)
+                        (index, translation, rotation, lon)
                     }
                     Team::Red => {
                         let index = num_red;
@@ -446,14 +449,15 @@ impl GameWorldRoomState {
 
                         let translation = attribute.red_team_positions[index];
                         let rotation = attribute.red_team_rotation;
+                        let lon = rotation.angle_between(glam::Quat::IDENTITY);
 
-                        (index, translation, rotation)
+                        (index, translation, rotation, lon)
                     }
                 };
                 data.set_team_index(index);
                 data.translation = translation;
                 data.rotation = roataion;
-                data.latlon = LatLon::default();
+                data.latlon = LatLon::new(10f32.to_radians(), lon);
 
                 // 플레이어 초기화 데이터를 생성합니다.
                 players.push(FormationPlayerInitData::new(
@@ -487,6 +491,7 @@ impl GameWorldRoomState {
             let state = GameWorldFormationState::new(
                 self.allow_duplicates,
                 self.stage_kind,
+                true,
                 self.blue_players.len(),
                 self.red_players.len(),
             );
@@ -554,11 +559,37 @@ impl GameWorldState for GameWorldRoomState {
             HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new());
         let mut red_players =
             HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new());
+
+        // 플레이어 데이터를 초기화합니다.
         for (&uid, data) in world.players.iter_mut() {
-            // 모든 플레이어의 인덱스를 0으로 설정합니다.
+            // 게임 월드 데이터를 초기화합니다.
+            data.rotation = glam::Quat::IDENTITY;
+            data.translation = glam::Vec3A::ZERO;
+            data.velocity = Velocity::new();
+            data.direction = MovingDirection::new();
+            data.latlon = LatLon::default();
+            data.damage_dealt = 0;
+            data.damage_taken = 0;
+            data.healing_given = 0;
+            data.skill_cost_data = SkillCostData::splat(0);
+            data.action_state_timer = ActionStateTimer::new(0);
+            data.movement_state_timer = MovementStateTimer::new(0);
+            data.skill_cost_timer = 0;
+            data.input_state_timer = InputStateTimer::new(0);
+            data.kill_count = 0;
+            data.retreat_count = 0;
+            data.held_input = HeldInput::empty();
+            data.health_data = HealthData::splat(0);
+            data.bullet_data = BulletData::splat(0);
+            data.action_state = ActionState::Idle;
+            data.movement_state = MovementState::Idle;
+            data.set_character_kind(CharacterKind::default());
             data.set_team_index(0);
-            // 모든 플레이어의 준비 상태를 `false`로 설정합니다.
             data.set_ready_to_play(false);
+            data.set_invincible(true);
+            data.set_grounded(true);
+
+            // 남아있는 플레이어 데이터를 재구축합니다.
             match data.team() {
                 Team::Blue => {
                     let index = match self.blue_players.remove(&uid) {
@@ -584,6 +615,7 @@ impl GameWorldState for GameWorldRoomState {
                 }
             }
         }
+
         self.blue_players = blue_players;
         self.red_players = red_players;
         world.closed = false;

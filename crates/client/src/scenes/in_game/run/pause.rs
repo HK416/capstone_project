@@ -1,3 +1,5 @@
+use std::{ptr::NonNull, time::Instant};
+
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
@@ -6,6 +8,7 @@ use mod_app::{
 };
 use mod_network::protocol::{PacketType, RawPacket};
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -13,9 +16,13 @@ use winit::{
 };
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_NOTICE},
+    component::ButtonState,
     config::{Locale, NUM_LOCALE},
-    scenes::{FatalErrorSceneLayer, BASE_WIDTH},
+    scenes::{
+        FatalErrorSceneLayer, InGameRunScene, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NEG_COLOR, NEG_FOCUS_COLOR,
+    },
 };
 
 /// 애플리케이션 표시 언어에 따른 대화 상자 타이틀 텍스트입니다.
@@ -29,16 +36,32 @@ pub struct InGamePauseLayer {
     /// 애플리케이션 표시 언어입니다.
     locale: Locale,
 
-    /// UI의 활성화 여부입니다.
-    ui_enabled: bool,
+    /// `InGameRunScene`의 포인터입니다.
+    ///
+    /// # Safety
+    /// `InGameRunScene`이 해제될 경우 정의되지 않은 동작을 수행합니다.
+    ///
+    in_game_scene: NonNull<InGameRunScene>,
+
+    /// 계속 하기 버튼 상태
+    resume_btn_state: ButtonState,
+
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGamePauseLayer {
     /// 새로운 게임 장면 레이어를 생성합니다.
-    pub fn new(locale: Locale) -> Self {
+    pub fn new(
+        locale: Locale,
+        in_game_scene: NonNull<InGameRunScene>,
+        sound_data_pool: SoundDataPool,
+    ) -> Self {
         Self {
             locale,
-            ui_enabled: true,
+            in_game_scene,
+            resume_btn_state: ButtonState::Idle,
+            sound_data_pool,
         }
     }
 }
@@ -70,25 +93,54 @@ impl GameScene for InGamePauseLayer {
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let scene = unsafe { self.in_game_scene.as_ref() };
+
         let i = self.locale as usize;
         let title = ERR_NETWORK_TITLE_TEXTS[i];
         let message = match error {
             NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
-            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i]
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            scene.get_background_volume(),
+            scene.get_effect_volume(),
+            scene.get_voice_volume(),
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(scene.get_effect_volume() as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
-        if packet.packet_type() == PacketType::FinishStage {
-            let scene_flow = GameSceneFlow::Pop;
-            let event = AppEvent::AddGameSceneFlow(scene_flow);
+    fn on_received_packet(
+        &mut self,
+        _time_stamp: Instant,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
+        let packet_type = packet.packet_type();
+        if packet_type == PacketType::InGameFinish {
+            // 현재 장면에서 빠져나옵니다.
+            let flow = GameSceneFlow::Pop;
+            let event = AppEvent::AddGameSceneFlow(flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
         }
@@ -107,7 +159,6 @@ impl GameScene for InGamePauseLayer {
     ) -> bool {
         if !repeat && code == KeyCode::Escape {
             // 이전 게임 장면으로 되돌아갑니다.
-            self.ui_enabled = false;
             let scene_flow = GameSceneFlow::Pop;
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
@@ -117,68 +168,84 @@ impl GameScene for InGamePauseLayer {
         true
     }
 
-    fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {
-        let (width, _): (f32, f32) = window.inner_size().into();
-        let scale_factor = window.scale_factor() as f32;
-        let scale = width / scale_factor / BASE_WIDTH;
+    fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
+        let scene = unsafe { self.in_game_scene.as_ref() };
+        let clip_rect = scene.get_clip_rect();
+        let scale = scene.get_ui_scale();
         let i = self.locale as usize;
 
-        // 폰트 속성
-        let head_font_family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
-        let main_font_family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let ctx = app.egui_ctx();
+        let modal_width = clip_rect.width() * 0.25;
 
         // 타이틀 텍스트
-        let font_id = egui::FontId::new(36.0 * scale, head_font_family.clone());
-        let title_text = egui::RichText::new(TITLE_TEXTS[i])
+        let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+        let font_id = egui::FontId::new(36.0 * scale, family);
+        let text = egui::RichText::new(TITLE_TEXTS[i])
             .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
+            .color(FONT_COLOR);
+        let title = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
 
-        // 버튼 속성
-        let btn_width = 300.0 * scale;
-        let btn_height = 40.0 * scale;
+        // 계속하기 버튼 텍스트
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(18.0 * scale, family);
+        let text = egui::RichText::new(RESUME_TEXTS[i])
+            .font(font_id)
+            .color(FONT_COLOR);
 
         // 계속하기 버튼
-        let font_id = egui::FontId::new(18.0 * scale, main_font_family.clone());
-        let resume_btn_text = egui::RichText::new(RESUME_TEXTS[i])
-            .font(font_id)
-            .color(egui::Color32::DARK_GRAY);
-        let resume_btn = egui::Button::new(resume_btn_text)
-            .corner_radius(3.0)
-            .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK))
-            .fill(egui::Color32::LIGHT_GRAY);
+        let (bg_color, line_color) = match self.resume_btn_state {
+            ButtonState::Idle => (NEG_COLOR, egui::Color32::TRANSPARENT),
+            ButtonState::Hovered => (NEG_COLOR, NEG_FOCUS_COLOR),
+            ButtonState::Pressed | ButtonState::Clicked => (NEG_FOCUS_COLOR, NEG_FOCUS_COLOR),
+        };
+        let resume_button = egui::Button::new(text)
+            .sense(egui::Sense::all())
+            .fill(bg_color)
+            .corner_radius(5.0 * scale)
+            .min_size((modal_width * 0.9, modal_width * 0.9 * 0.2).into())
+            .stroke(egui::Stroke::new(1.0 * scale, line_color));
 
-        // 대화 상자 속성
-        let wnd_width = 320.0 * scale;
-        let wnd_height = 480.0 * scale;
         let frame = egui::Frame::new()
-            .corner_radius(3.0)
             .fill(egui::Color32::WHITE)
+            .corner_radius(20.0 * scale)
             .stroke(egui::Stroke::new(1.0 * scale, egui::Color32::BLACK));
-
-        egui::Modal::new(egui::Id::new("Modal_Window_Layout"))
+        egui::Modal::new(egui::Id::new("Pause_Modal"))
             .frame(frame)
-            .backdrop_color(egui::Color32::from_black_alpha(64))
-            .show(app.egui_ctx(), |ui| {
-                ui.set_width(wnd_width);
-                ui.set_height(wnd_height);
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+            .backdrop_color(egui::Color32::from_black_alpha(96))
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(clip_rect);
+                ui.set_min_width(modal_width);
+                ui.set_max_width(modal_width);
+
+                ui.vertical_centered(|ui| {
                     ui.add_space(8.0 * scale);
-                    ui.label(title_text);
-                    ui.add_space(24.0 * scale);
+                    ui.add(title);
+                    ui.separator();
 
-                    ui.add_enabled_ui(self.ui_enabled, |ui| {
-                        if ui.add_sized((btn_width, btn_height), resume_btn).clicked() {
-                            // 이전 게임 장면으로 되돌아갑니다.
-                            self.ui_enabled = false;
-                            let scene_flow = GameSceneFlow::Pop;
-                            let event = AppEvent::AddGameSceneFlow(scene_flow);
-                            let event_loop_proxy = app.event_loop_proxy();
-                            event_loop_proxy.send_event(event).unwrap();
-                        }
+                    ui.add_space(8.0 * scale);
+                    // 계속 하기 버튼
+                    let response = ui.add(resume_button);
+                    if response.clicked() {
+                        self.resume_btn_state = ButtonState::Clicked;
 
-                        ui.add_space(8.0 * scale);
-                    });
+                        // 이전 게임 장면으로 되돌아갑니다.
+                        let scene_flow = GameSceneFlow::Pop;
+                        let event = AppEvent::AddGameSceneFlow(scene_flow);
+                        let event_loop_proxy = app.event_loop_proxy();
+                        event_loop_proxy.send_event(event).unwrap();
+                    } else if response.is_pointer_button_down_on() {
+                        self.resume_btn_state = ButtonState::Pressed;
+                    } else if response.hovered() | response.has_focus() {
+                        self.resume_btn_state = ButtonState::Hovered;
+                    } else {
+                        self.resume_btn_state = ButtonState::Idle;
+                    }
+                    ui.add_space(8.0 * scale);
                 });
             });
     }
 }
+
+unsafe impl Send for InGamePauseLayer {}

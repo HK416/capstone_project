@@ -1,11 +1,7 @@
 use std::sync::Arc;
 
-use mod_network::{
-    components::{
-        BulletKind, CharacterKind, GameTier, LatLon, NetworkState, ObjectId, ProfileIcon, UserId,
-        UserName,
-    },
-    protocol::StateHistory,
+use mod_network::components::{
+    CharacterKind, GameTier, InputSnapshot, NetworkState, ProfileIcon, UserId, UserName,
 };
 
 use crate::session::Session;
@@ -42,7 +38,11 @@ pub enum GameWorldEvent {
     },
 
     /// 인게임 이벤트
-    InGameRunState(GameWorldInGameRunStateEvent),
+    InGameRunState {
+        session: Arc<Session>,
+        uid: UserId,
+        event: GameWorldInGameRunStateEvent,
+    },
 }
 
 /// 게임 월드의 시스템 이벤트 목록입니다.
@@ -92,31 +92,11 @@ pub enum GameWorldInGameReadyStateEvent {
 
 #[derive(Debug, Clone)]
 pub enum GameWorldInGameRunStateEvent {
-    /// 플레이어 상태를 갱신시 발생되는 이벤트입니다.
-    PlayerUpdate {
-        /// 요청 세션
-        session: Arc<Session>,
-        /// 사용자 식별자
-        uid: UserId,
-        /// 현재 시대
-        epoch: u64,
-        /// 현재 시대로부터 경과한 시간 (단위: ms)
-        elapsed_time_ms: u16,
-        /// 월드 공간 위치
-        translation: glam::Vec3A,
-        /// 카메라 회전 각도
-        latlon: LatLon,
-        /// 상태 기록 데이터
-        histories: Vec<StateHistory>,
+    /// 플레이어 입력이 발생했을 때 발생되는 입력 이벤트 목록 이벤트입니다.
+    Input {
+        client_play_elapsed_time: u32,
+        snapshots: Vec<InputSnapshot>,
     },
-    /// 플레이어가 리스폰될 때 발생되는 이벤트입니다.
-    PlayerRespawn(UserId),
-    /// 플레이어가 총알을 발사할 때 발생되는 이벤트입니다.
-    BulletSpawn {
-        shooter_id: UserId,
-        delay_time_ms: u16,
-        bullet_kind: BulletKind,
-        translation: glam::Vec3A,
-        rotation: glam::Quat,
-    },
+    /// 플레이어 입력 초기화 요청이 수신시 발생되는 이벤트입니다.
+    InputReset,
 }

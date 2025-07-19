@@ -1,6 +1,5 @@
 mod bullet_kind;
 mod character;
-mod finish;
 mod formation;
 mod health;
 mod icon;
@@ -20,9 +19,9 @@ mod timer;
 mod weapon;
 
 pub use self::{
-    bullet_kind::*, character::*, finish::*, formation::*, health::*, icon::*, in_game::*,
-    input::*, latlon::*, name::*, network::*, permission::*, room::*, skill::*, stage::*, state::*,
-    team::*, tier::*, timer::*, weapon::*,
+    bullet_kind::*, character::*, formation::*, health::*, icon::*, in_game::*, input::*,
+    latlon::*, name::*, network::*, permission::*, room::*, skill::*, stage::*, state::*, team::*,
+    tier::*, timer::*, weapon::*,
 };
 
 /// 최대 카메라 Fov-Y 값 (단위: 라디안)

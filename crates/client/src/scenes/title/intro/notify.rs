@@ -7,7 +7,7 @@ use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
     config::{Locale, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };
@@ -34,21 +34,40 @@ const SUB_TEXTS: [&'static str; NUM_LOCALE] =
 pub struct GameIntroNotifyScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 게임 장면의 경과 시간입니다.
     elapsed_time_sec: f32,
 
     /// 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl GameIntroNotifyScene {
     /// 새로운 `GameIntroNotifyScene`을 생성합니다.
-    pub fn new(locale: Locale, texture_pool: TexturePool) -> Self {
+    pub fn new(
+        locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        texture_pool: TexturePool,
+        sound_data_pool: SoundDataPool,
+    ) -> Self {
         Self {
             locale,
+            background_volume,
+            effect_volume,
+            voice_volume,
             elapsed_time_sec: 0.0,
             texture_pool,
+            sound_data_pool,
         }
     }
 
@@ -85,7 +104,14 @@ impl GameScene for GameIntroNotifyScene {
 
         // 다음 게임 장면으로 전환합니다.
         if self.elapsed_time_sec >= SCENE_DURATION {
-            let next_scene = GameIntroLogoScene::new(self.locale, self.texture_pool.clone());
+            let next_scene = GameIntroLogoScene::new(
+                self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
+                self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
@@ -109,6 +135,7 @@ impl GameScene for GameIntroNotifyScene {
                         load: wgpu::LoadOp::Clear(self.get_background_color()),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],

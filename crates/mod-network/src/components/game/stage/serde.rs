@@ -21,6 +21,8 @@ pub struct StageAttributesData {
 
     /// 게임 월드 스테이지에서 사용되는 모델의 목록
     pub model_list: Vec<String>,
+    /// 게임 월드 스테이지에서 사용되는 배경음 목록
+    pub sound_list: Vec<String>,
 
     /// 전역 조명 데이터입니다.
     pub global_light: Option<GlobalLightData>,
@@ -47,6 +49,17 @@ pub struct StageAttributesData {
     pub red_team_positions: Vec<Float3>,
     /// 레드 팀 안전 지역 충돌체 데이터 파일 Uri입니다.
     pub red_team_collider: String,
+
+    /// 승리 팀 방향입니다.
+    pub winner_rotation: Float4,
+    /// 승리 팀 위치입니다.
+    pub winner_positions: Vec<Float3>,
+    /// 카메라 위치
+    pub camera_position: Float3,
+    /// 카메라 방향
+    pub camera_rotation: Float4,
+    /// 카메라 Fov-y
+    pub camera_fov_y: f32,
 }
 
 /// 게임 월드 전역 조명 데이터입니다.

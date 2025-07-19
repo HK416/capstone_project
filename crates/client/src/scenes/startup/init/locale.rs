@@ -4,10 +4,11 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, TexturePool, NOTOSANS_REGULAR, UI_BUTTON_TOUCH},
     config::{Locale, UserConfig},
     scenes::BASE_WIDTH,
 };
@@ -21,18 +22,30 @@ pub struct InitLocaleScene {
     locale: Locale,
     /// 언어가 선택된 여부
     selected: bool,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     // 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InitLocaleScene {
     /// 새로운 `InitLocaleScene`을 생성합니다.
-    pub fn new(texture_pool: TexturePool) -> Self {
+    pub fn new(texture_pool: TexturePool, sound_data_pool: SoundDataPool) -> Self {
         Self {
             locale: Locale::default(),
+            background_volume: 51,
+            effect_volume: 255,
+            voice_volume: 204,
             selected: false,
             texture_pool,
+            sound_data_pool,
         }
     }
 }
@@ -57,7 +70,14 @@ impl GameScene for InitLocaleScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.selected {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = InitWindowScene::new(self.texture_pool.clone());
+            let next_scene = InitWindowScene::new(
+                self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
+                self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
@@ -81,6 +101,7 @@ impl GameScene for InitLocaleScene {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],
@@ -148,6 +169,18 @@ impl GameScene for InitLocaleScene {
                         if ui.add(kor_btn).clicked() {
                             self.locale = Locale::KOR;
                             self.selected = true;
+
+                            // 효과음을 재생합니다.
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_BUTTON_TOUCH)
+                                .expect("UI_Button_Touch sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(app.audio_mixer());
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
                         }
                     });
                 });

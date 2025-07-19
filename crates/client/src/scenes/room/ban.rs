@@ -10,6 +10,7 @@ use mod_network::{
     components::{LoginToken, UserId, UserName},
     protocol::{Packet, PacketType, RawPacket, RoomPlayerBanRequestPacket},
 };
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -17,7 +18,9 @@ use winit::{
 };
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{
+        SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_NOTICE,
+    },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -44,6 +47,12 @@ pub struct RoomPlayerBanOnemoreLayer {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 대상 사용자 식별자
     target: UserId,
     /// 대상 사용자 이름
@@ -55,6 +64,9 @@ pub struct RoomPlayerBanOnemoreLayer {
     cancel_btn_state: ButtonState,
     /// 입력 지연 시간
     delay_time_sec: f32,
+
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl RoomPlayerBanOnemoreLayer {
@@ -63,18 +75,26 @@ impl RoomPlayerBanOnemoreLayer {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         target: UserId,
         target_name: UserName,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             target,
             target_name,
             okay_btn_state: ButtonState::Idle,
             cancel_btn_state: ButtonState::Idle,
             delay_time_sec: 0.3,
+            sound_data_pool,
         }
     }
 }
@@ -93,11 +113,31 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -130,6 +170,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_BACK)
+                        .expect("UI_Button_Back sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
                 }
                 KeyCode::Enter => {
                     // 패킷을 전송합니다.
@@ -143,6 +195,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_TOUCH)
+                        .expect("UI_Button_Touch sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
                 }
                 _ => {}
             }
@@ -276,6 +340,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                                         let event = AppEvent::AddGameSceneFlow(scene_flow);
                                         let event_loop_proxy = app.event_loop_proxy();
                                         event_loop_proxy.send_event(event).unwrap();
+
+                                        // 효과음을 재생합니다.
+                                        let decoded = self
+                                            .sound_data_pool
+                                            .get(UI_BUTTON_TOUCH)
+                                            .expect("UI_Button_Touch sound must be preloaded!");
+                                        let source = decoded.as_source();
+                                        let sink = Sink::connect_new(app.audio_mixer());
+                                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                                        sink.append(source);
+                                        sink.play();
+                                        sink.detach();
                                     } else if response.is_pointer_button_down_on() {
                                         self.okay_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {
@@ -299,6 +375,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                                         let event = AppEvent::AddGameSceneFlow(scene_flow);
                                         let event_loop_proxy = app.event_loop_proxy();
                                         event_loop_proxy.send_event(event).unwrap();
+
+                                        // 효과음을 재생합니다.
+                                        let decoded = self
+                                            .sound_data_pool
+                                            .get(UI_BUTTON_BACK)
+                                            .expect("UI_Button_Back sound must be preloaded!");
+                                        let source = decoded.as_source();
+                                        let sink = Sink::connect_new(app.audio_mixer());
+                                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                                        sink.append(source);
+                                        sink.play();
+                                        sink.detach();
                                     } else if response.is_pointer_button_down_on() {
                                         self.cancel_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {

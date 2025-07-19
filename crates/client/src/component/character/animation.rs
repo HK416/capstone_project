@@ -160,37 +160,27 @@ pub struct BoneCollection {
     pub bones: Vec<Entity>,
 }
 
-pub type WeaponQuery<'a> = (&'a CharacterKind, &'a ActionState, &'a SkinningAnimation);
-
-pub type AnimationQuery<'a> = (
-    &'a CharacterKind,
-    &'a ActionState,
-    &'a MovementState,
-    &'a ActionStateTimer,
-    &'a MovementStateTimer,
-    &'a SkinningAnimation,
-    &'a LatLon,
-);
-
 /// 캐릭터 애니메이션을 재생합니다.
 pub fn animate_character(
     world: &World,
     entity: Entity,
     archetype: PlayerArchetype,
     motion_pool: &MotionPool,
-    animation_view: &ViewBorrow<AnimationQuery>,
+    action_state: ActionState,
+    movement_state: MovementState,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    latlon: LatLon,
+    character_view: &ViewBorrow<&CharacterKind>,
+    skinning_view: &ViewBorrow<&SkinningAnimation>,
     collection_view: &ViewBorrow<&BoneCollection>,
 ) {
-    // 컴포넌트를 가져옵니다.
-    let (
-        &character_kind,
-        &action_state,
-        &movement_state,
-        &action_state_timer,
-        &movement_state_timer,
-        skinning_animation,
-        &latlon,
-    ) = animation_view
+    // 캐릭터 종류를 가져옵니다.
+    let &character_kind = character_view
+        .get(entity)
+        .expect("invalid entity or invalid entity component!");
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = skinning_view
         .get(entity)
         .expect("invalid entity or invalid entity component!");
 

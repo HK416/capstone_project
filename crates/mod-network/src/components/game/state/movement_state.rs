@@ -2,31 +2,27 @@
 //!
 
 use crate::components::{
-    ActionState, CharacterAttributes, GameInputBits, MovementState, MovementStateTimer, StateEvent,
+    ActionState, CharacterAttributes, HeldInput, MovementState, MovementStateTimer,
     MAX_JUMP_DURATION,
 };
 
 pub fn update_movement_state(
-    input_bits: GameInputBits,
+    held_input: HeldInput,
     action_state: ActionState,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
-    events: &mut Vec<StateEvent>,
 ) {
     match action_state {
         ActionState::Idle => match movement_state {
             MovementState::Idle => {
-                update_state_when_idle(input_bits, movement_state, movement_state_timer, events)
+                update_state_when_idle(held_input, movement_state, movement_state_timer)
             }
             MovementState::Moving => {
-                update_state_when_moving(input_bits, movement_state, movement_state_timer, events)
+                update_state_when_moving(held_input, movement_state, movement_state_timer)
             }
-            MovementState::MoveToEnd => update_state_when_move_to_end(
-                input_bits,
-                movement_state,
-                movement_state_timer,
-                events,
-            ),
+            MovementState::MoveToEnd => {
+                update_state_when_move_to_end(held_input, movement_state, movement_state_timer)
+            }
             _ => {}
         },
         ActionState::Aiming
@@ -36,17 +32,14 @@ pub fn update_movement_state(
         | ActionState::Reload
         | ActionState::Skill => match movement_state {
             MovementState::Idle => {
-                update_state_when_idle(input_bits, movement_state, movement_state_timer, events)
+                update_state_when_idle(held_input, movement_state, movement_state_timer)
             }
             MovementState::Moving => {
-                update_state_when_walking(input_bits, movement_state, movement_state_timer, events)
+                update_state_when_walking(held_input, movement_state, movement_state_timer)
             }
-            MovementState::MoveToEnd => update_state_when_move_to_end(
-                input_bits,
-                movement_state,
-                movement_state_timer,
-                events,
-            ),
+            MovementState::MoveToEnd => {
+                update_state_when_move_to_end(held_input, movement_state, movement_state_timer)
+            }
             _ => {}
         },
         ActionState::Death
@@ -58,153 +51,61 @@ pub fn update_movement_state(
 
 /// [`MovementState::Idle`]일 때 [`MovementState`]와 [`MovementStateTimer`]를 갱신합니다.
 fn update_state_when_idle(
-    input_bits: GameInputBits,
+    held_input: HeldInput,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
-    events: &mut Vec<StateEvent>,
 ) {
-    if input_bits.is_moved() {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Moving;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    if held_input.is_moved() {
         *movement_state = MovementState::Moving;
         movement_state_timer.0 = 0;
-
-        events.push(event);
-    } else if input_bits.contains(GameInputBits::Jump) {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Jumping;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    } else if held_input.contains(HeldInput::Jump) {
         *movement_state = MovementState::Jumping;
         movement_state_timer.0 = 0;
-
-        events.push(event);
     }
 }
 
 /// [`MovementState::Moving`]일 때 [`MovementState`]와 [`MovementStateTimer`]를 갱신합니다.
 fn update_state_when_moving(
-    input_bits: GameInputBits,
+    held_input: HeldInput,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
-    events: &mut Vec<StateEvent>,
 ) {
-    if !input_bits.is_moved() {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::MoveToEnd;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    if !held_input.is_moved() {
         *movement_state = MovementState::MoveToEnd;
         movement_state_timer.0 = 0;
-
-        events.push(event);
-    } else if input_bits.contains(GameInputBits::Jump) {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Jumping;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    } else if held_input.contains(HeldInput::Jump) {
         *movement_state = MovementState::Jumping;
         movement_state_timer.0 = 0;
-
-        events.push(event);
     }
 }
 
 /// [`ActionState::Idle`]이 아니고, [`MovementState::Moving`]일 때 [`MovementState`]와 [`MovementStateTimer`]를 갱신합니다.
 fn update_state_when_walking(
-    input_bits: GameInputBits,
+    held_input: HeldInput,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
-    events: &mut Vec<StateEvent>,
 ) {
-    if !input_bits.is_moved() {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Idle;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    if !held_input.is_moved() {
         *movement_state = MovementState::Idle;
         movement_state_timer.0 = 0;
-
-        events.push(event);
-    } else if input_bits.contains(GameInputBits::Jump) {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Jumping;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    } else if held_input.contains(HeldInput::Jump) {
         *movement_state = MovementState::Jumping;
         movement_state_timer.0 = 0;
-
-        events.push(event);
     }
 }
 
 /// [`MovementState::MoveToEnd`]일 때 [`MovementState`]와 [`MovementStateTimer`]를 갱신합니다.
 fn update_state_when_move_to_end(
-    input_bits: GameInputBits,
+    held_input: HeldInput,
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
-    events: &mut Vec<StateEvent>,
 ) {
-    if input_bits.is_moved() {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Moving;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    if held_input.is_moved() {
         *movement_state = MovementState::Moving;
         movement_state_timer.0 = 0;
-
-        events.push(event);
-    } else if input_bits.contains(GameInputBits::Jump) {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Jumping;
-        let event = StateEvent::ChangeMovementState {
-            from,
-            to,
-            timing: 0,
-        };
-
+    } else if held_input.contains(HeldInput::Jump) {
         *movement_state = MovementState::Jumping;
         movement_state_timer.0 = 0;
-
-        events.push(event);
     }
 }
 
@@ -215,7 +116,6 @@ pub fn update_movement_state_timer(
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    events: &mut Vec<StateEvent>,
 ) {
     match action_state {
         ActionState::Idle => match movement_state {
@@ -224,35 +124,30 @@ pub fn update_movement_state_timer(
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::Moving => update_timer_when_moving(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::MoveToEnd => update_timer_when_move_to_end(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::Jumping => update_timer_when_jumping(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::Landing => update_timer_when_landing(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
         },
         ActionState::Aiming
@@ -266,35 +161,30 @@ pub fn update_movement_state_timer(
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::Moving => update_timer_when_walking(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::MoveToEnd => update_timer_when_move_to_end(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::Jumping => update_timer_when_jumping(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
             MovementState::Landing => update_timer_when_landing(
                 movement_state,
                 movement_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                events,
             ),
         },
         ActionState::Death
@@ -310,11 +200,15 @@ fn update_timer_when_idle(
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    _events: &mut Vec<StateEvent>,
 ) {
     // 움직임 상태를 갱신합니다.
     let duration = character_attributes.normal_idle_duration;
-    movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms) % duration;
+    movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms);
+
+    let diff_t = movement_state_timer.0 as i32 - duration as i32;
+    if diff_t >= 0 {
+        movement_state_timer.0 = diff_t as u16 % duration;
+    }
 }
 
 /// [`MovementState::Moving`]일 때 [`MovementState`]와 [`MovementStateTimer`]를 갱신합니다.
@@ -323,11 +217,15 @@ fn update_timer_when_moving(
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    _events: &mut Vec<StateEvent>,
 ) {
     // 움직임 상태를 갱신합니다.
     let duration = character_attributes.move_ing_duration;
-    movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms) % duration;
+    movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms);
+
+    let diff_t = movement_state_timer.0 as i32 - duration as i32;
+    if diff_t >= 0 {
+        movement_state_timer.0 = diff_t as u16 % duration;
+    }
 }
 
 /// [`ActionState::Idle``]이 아니고, [`MovementState::Moving`]일 때 [`MovementState`]와 [`MovementStateTimer`]를 갱신합니다.
@@ -336,11 +234,15 @@ fn update_timer_when_walking(
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    _events: &mut Vec<StateEvent>,
 ) {
     // 움직임 상태를 갱신합니다.
     let duration = character_attributes.cafe_walk_duration;
-    movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms) % duration;
+    movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms);
+
+    let diff_t = movement_state_timer.0 as i32 - duration as i32;
+    if diff_t >= 0 {
+        movement_state_timer.0 = diff_t as u16 % duration;
+    }
 }
 
 /// [`MovementState::MoveToEnd`]일 때 [`MovementState`]와 [`MovementStateTimer`]를 갱신합니다.
@@ -349,7 +251,6 @@ fn update_timer_when_move_to_end(
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    events: &mut Vec<StateEvent>,
 ) {
     // 움직임 상태를 갱신합니다.
     let duration = character_attributes.move_end_normal_duration;
@@ -357,17 +258,9 @@ fn update_timer_when_move_to_end(
 
     let diff_t = movement_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Idle;
-        let timing = elapsed_time_ms - diff_t as u16;
-        let event = StateEvent::ChangeMovementState { from, to, timing };
-
-        let duration = character_attributes.normal_idle_duration;
         *movement_state = MovementState::Idle;
+        let duration = character_attributes.normal_idle_duration;
         movement_state_timer.0 = diff_t as u16 % duration;
-
-        events.push(event);
     }
 }
 
@@ -377,24 +270,15 @@ fn update_timer_when_jumping(
     movement_state_timer: &mut MovementStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    events: &mut Vec<StateEvent>,
 ) {
     // 움직임 상태를 갱신합니다.
     movement_state_timer.0 = movement_state_timer.0.saturating_add(elapsed_time_ms);
 
     let diff_t = movement_state_timer.0 as i32 - MAX_JUMP_DURATION as i32;
     if diff_t >= 0 {
-        // 움직임 상태를 변경합니다.
-        let from = movement_state.clone();
-        let to = MovementState::Landing;
-        let timing = elapsed_time_ms - diff_t as u16;
-        let event = StateEvent::ChangeMovementState { from, to, timing };
-
-        let duration = character_attributes.normal_idle_duration;
         *movement_state = MovementState::Landing;
+        let duration = character_attributes.normal_idle_duration;
         movement_state_timer.0 = diff_t as u16 % duration;
-
-        events.push(event);
     }
 }
 
@@ -404,7 +288,6 @@ fn update_timer_when_landing(
     movement_state_timer: &mut MovementStateTimer,
     _character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    _events: &mut Vec<StateEvent>,
 ) {
     // 움직임 상태를 갱신합니다.
     movement_state_timer.0 = movement_state_timer

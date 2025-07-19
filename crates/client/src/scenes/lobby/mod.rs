@@ -18,6 +18,7 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
+use rodio::{Sink, Source};
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -26,9 +27,10 @@ use winit::{
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI, EMBLEM_BG_URI,
-        HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_OPTION_ICON_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        SoundDataPool, TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI,
+        BG_SOUND_THEME_14, EMBLEM_BG_URI, HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
+        HUD_OPTION_ICON_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI, UI_BUTTON_TOUCH,
+        UI_NOTICE, UI_TURN_UP,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -76,6 +78,12 @@ pub struct MainLobbyScene {
     profile_icon: ProfileIcon,
     /// 현재 클라이언트의 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// Ui 스케일
     ui_scale: f32,
@@ -147,6 +155,8 @@ pub struct MainLobbyScene {
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
     texture_view_pool: TextureViewPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl MainLobbyScene {
@@ -158,7 +168,11 @@ impl MainLobbyScene {
         tier: GameTier,
         profile_icon: ProfileIcon,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         texture_pool: TexturePool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
@@ -167,6 +181,9 @@ impl MainLobbyScene {
             tier,
             profile_icon,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             ui_scale: 1.0,
             clip_rect: egui::Rect::ZERO,
             bg_texture: egui::load::SizedTexture {
@@ -220,6 +237,7 @@ impl MainLobbyScene {
             delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool: TextureViewPool::new(),
+            sound_data_pool,
         }
     }
 
@@ -778,12 +796,31 @@ impl MainLobbyScene {
                 let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
                 self.option_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
                     // 게임 장면을 전환합니다.
-                    let scene =
-                        LobbyCommonOptionModalLayer::new(self.locale, 0, Arc::new(Queue::new()));
+                    let scene = LobbyCommonOptionModalLayer::new(
+                        self.locale,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
+                        0,
+                        Arc::new(Queue::new()),
+                        self.sound_data_pool.clone(),
+                    );
                     let flow = GameSceneFlow::Push(Box::new(scene));
                     let event = AppEvent::AddGameSceneFlow(flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_TURN_UP)
+                        .expect("UI_Turn_Up sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
 
                     ButtonState::Clicked
                 } else if response.is_pointer_button_down_on() {
@@ -800,13 +837,29 @@ impl MainLobbyScene {
                     // 게임 장면을 전환합니다.
                     let next_scene = Box::new(MainLobbyExitModalScene::new(
                         self.locale,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
                         self.texture_pool.clone(),
                         self.texture_view_pool.clone(),
+                        self.sound_data_pool.clone(),
                     ));
                     let scene_flow = GameSceneFlow::Push(next_scene);
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_TOUCH)
+                        .expect("UI_Button_Touch sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
 
                     ButtonState::Clicked
                 } else if response.is_pointer_button_down_on() {
@@ -825,13 +878,29 @@ impl MainLobbyScene {
                         self.locale,
                         self.uid,
                         self.token,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
                         self.texture_pool.clone(),
                         self.texture_view_pool.clone(),
+                        self.sound_data_pool.clone(),
                     );
                     let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_TOUCH)
+                        .expect("UI_Button_Touch sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
 
                     ButtonState::Clicked
                 } else if response.is_pointer_button_down_on() {
@@ -850,13 +919,29 @@ impl MainLobbyScene {
                         self.locale,
                         self.uid,
                         self.token,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
                         self.texture_pool.clone(),
                         self.texture_view_pool.clone(),
+                        self.sound_data_pool.clone(),
                     );
                     let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_TOUCH)
+                        .expect("UI_Button_Touch sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
 
                     ButtonState::Clicked
                 } else if response.is_pointer_button_down_on() {
@@ -870,6 +955,20 @@ impl MainLobbyScene {
                 // 게임 매칭 버튼의 이벤트를 처리합니다.
                 let response = ui.allocate_rect(self.matching_btn_rect, egui::Sense::all());
                 self.matching_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                    // TODO
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_TOUCH)
+                        .expect("UI_Button_Touch sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+
                     ButtonState::Clicked
                 } else if response.is_pointer_button_down_on() {
                     ButtonState::Pressed
@@ -972,6 +1071,19 @@ impl GameScene for MainLobbyScene {
         let device = app.render_device();
         self.regist_textures(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 배경 음악을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(BG_SOUND_THEME_14)
+            .expect("Theme_14 sound must be preloaded!");
+        let source = decoded.as_source().repeat_infinite();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.background_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+
+        app.sink_list().push(sink);
     }
 
     fn on_exit(
@@ -1001,11 +1113,31 @@ impl GameScene for MainLobbyScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -1024,6 +1156,9 @@ impl GameScene for MainLobbyScene {
                 let i = self.locale as usize;
                 let next_scene = Box::new(MessageSceneLayer::new(
                     self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     MSG_MODAL_TEXTS[i],
                     match packet.reason {
                         JoinFailedReason::NotFound => ERR_NOT_FOUND_TEXTS[i],
@@ -1033,11 +1168,24 @@ impl GameScene for MainLobbyScene {
                         JoinFailedReason::Banned => ERR_BANNED_TEXTS[i],
                     },
                     None,
+                    self.sound_data_pool.clone(),
                 ));
                 let scene_flow = GameSceneFlow::Push(next_scene);
                 let event = AppEvent::AddGameSceneFlow(scene_flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_NOTICE)
+                    .expect("UI_Notice sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             }
             PacketType::RoomDataUpdate => { /* IGNORED */ }
             PacketType::LobbyDataUpdate => {}
@@ -1067,13 +1215,29 @@ impl GameScene for MainLobbyScene {
                     // 게임 장면을 전환합니다.
                     let next_scene = Box::new(MainLobbyExitModalScene::new(
                         self.locale,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
                         self.texture_pool.clone(),
                         self.texture_view_pool.clone(),
+                        self.sound_data_pool.clone(),
                     ));
                     let scene_flow = GameSceneFlow::Push(next_scene);
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
                     let event_loop_proxy = app.event_loop_proxy();
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_TOUCH)
+                        .expect("UI_Button_Touch sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
                 }
                 _ => {}
             }

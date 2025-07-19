@@ -54,6 +54,8 @@ pub struct StageAttributes {
 
     /// 게임 월드 스테이지에서 사용되는 모델의 목록
     pub model_list: Vec<String>,
+    /// 게임 월드 스테이지에서 사용되는 배경음 목록
+    pub sound_list: Vec<String>,
 
     /// 전역 조명 데이터입니다.
     pub global_light: Option<GlobalLightData>,
@@ -81,6 +83,17 @@ pub struct StageAttributes {
     pub red_team_rotation: glam::Quat,
     /// 레드 팀 안전 지역 충돌체입니다.
     pub red_team_collider: ColliderTree,
+
+    /// 승리 팀 위치
+    pub winner_positions: Vec<glam::Vec3A>,
+    /// 승리 팀 방향
+    pub winner_rotation: glam::Quat,
+    /// 카메라 위치
+    pub camera_position: glam::Vec3A,
+    /// 카메라 방향
+    pub camera_rotation: glam::Quat,
+    /// 카메라 Fov-y
+    pub camera_fov_y: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -230,6 +243,16 @@ impl StageAttributes {
             .map(|v| v.into())
             .collect();
         let red_team_rotation = attributes.red_team_rotation.into();
+        let winner_positions = attributes
+            .winner_positions
+            .iter()
+            .copied()
+            .map(|v| v.into())
+            .collect();
+        let winner_rotation = attributes.winner_rotation.into();
+        let camera_position = attributes.camera_position.into();
+        let camera_rotation = attributes.camera_rotation.into();
+        let camera_fov_y = attributes.camera_fov_y;
 
         // 충돌체 데이터 파일을 엽니다.
         let mut path = workspace.to_path_buf();
@@ -311,7 +334,7 @@ impl StageAttributes {
 
         // 레드 팀 안전 지역 충돌체 데이터 파일을 엽니다.
         let mut path = workspace.to_path_buf();
-        path.push(&attributes.blue_team_collider);
+        path.push(&attributes.red_team_collider);
 
         let mut file = OpenOptions::new()
             .read(true)
@@ -357,6 +380,7 @@ impl StageAttributes {
             total_depth: d,
             total_width: w,
             model_list: attributes.model_list,
+            sound_list: attributes.sound_list,
             global_light: attributes.global_light,
             area,
             prop: attributes.prop,
@@ -368,6 +392,11 @@ impl StageAttributes {
             red_team_positions,
             red_team_rotation,
             red_team_collider,
+            winner_positions,
+            winner_rotation,
+            camera_position,
+            camera_rotation,
+            camera_fov_y,
         })
     }
 

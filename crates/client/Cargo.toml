@@ -32,7 +32,9 @@ hecs = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 parking_lot = { workspace = true }
+rand = { workspace = true }
 rayon = { workspace = true }
+rodio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 spin = { workspace = true }
