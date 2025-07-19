@@ -563,9 +563,6 @@ impl GameWorldInGameFinishState {
 
 impl GameWorldState for GameWorldInGameFinishState {
     fn on_enter(&mut self, world: &mut GameWorld) {
-        // 결과 저장을 위해 DB에 접속합니다.
-        let conn = DbConnection::get_connection();
-
         let mut players = Vec::with_capacity(world.players.len());
         for (&uid, player) in world.players.iter_mut() {
             // 플레이어의 입력을 초기화합니다.
@@ -609,8 +606,12 @@ impl GameWorldState for GameWorldInGameFinishState {
         }
 
         // 게임 결과를 DB에 저장합니다.
-        block_on(async {
-            conn.save_game_result(self.play_time_ms, self.winner, &players).await
+        let ps = players.clone();
+        let pt = self.play_time_ms;
+        let winner = self.winner;
+        tokio::spawn(async move {
+            let conn = DbConnection::get_connection();
+            conn.save_game_result(pt, winner, &ps).await
                 .expect("Failed to save game result");
         });
 

@@ -99,7 +99,8 @@ impl DbConnection {
         }
     }
 
-    pub async fn save_game_result(&self, 
+    pub async fn save_game_result(
+        &self, 
         play_time_ms: u32,
         winner: Option<Team>,
         result_data: &Vec<InGamePlayerResultData>
