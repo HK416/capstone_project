@@ -519,11 +519,6 @@ impl InGameEnterScene {
             None => return,
         };
 
-        // 캐릭터 종류를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         type Q<'a> = (
             &'a mut BulletData,
             &'a mut SkillCostData,
@@ -537,7 +532,7 @@ impl InGameEnterScene {
             action_state_timer,
         )| {
             // 플레이어 엔터티의 행동 상태를 갱신합니다.
-            let i = character_kind as usize;
+            let i = self.player_character as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
             update_action_state_timer(
                 HeldInput::empty(),

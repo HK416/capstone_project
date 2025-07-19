@@ -367,14 +367,7 @@ impl InGameRunScene {
     /// 카메라 엔터티를 생성합니다.
     fn create_camera(&mut self, device: &wgpu::Device) {
         // 플레이어 캐릭터의 종류를 가져옵니다.
-        let (entity, _archetype) = self.player_entity();
-        let world = self.world.as_mut().expect("the world must be exists!");
-        let character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .cloned()
-            .expect("invalid entity or invalid entity component!");
-
-        let i = character_kind as usize;
+        let i = self.player_character as usize;
         self.camera_fov_y = CAMERA_DEF_FOV_Y[i];
         self.camera_rel_position = CAMERA_DEF_REL_POS[i];
 
@@ -392,6 +385,7 @@ impl InGameRunScene {
         let camera_resource = CameraResource::new(Some(&label), device, &camera_uniform);
 
         // 엔터티를 생성합니다.
+        let world = self.world.as_mut().expect("the world must be exists!");
         self.camera = world.spawn((
             (Camera, local_transform),
             (Camera, world_transform),
@@ -410,11 +404,6 @@ impl InGameRunScene {
             None => return,
         };
 
-        // 플레이어 엔터티의 캐릭터 종류를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         let mut latitude = 0.0;
         let mut longitude = 0.0;
         type Query<'a> = (&'a ActionState, &'a ActionStateTimer, &'a LatLon);
@@ -430,7 +419,7 @@ impl InGameRunScene {
             update_camera_param(
                 &mut self.camera_rel_position,
                 &mut self.camera_fov_y,
-                character_kind,
+                self.player_character,
                 action_state,
                 self.view_state,
                 action_state_timer,
@@ -782,15 +771,6 @@ impl InGameRunScene {
 
     /// 무기 아이콘 텍스처를 Ui 렌더러에 등록합니다.
     fn regist_weapon_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
-        let (entity, _archetype) = self.player_entity();
-        let world = match self.world.as_mut() {
-            Some(world) => world,
-            None => return,
-        };
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         let texture = self
             .texture_pool
             .get(WEAPON_ICON_URI)
@@ -802,7 +782,7 @@ impl InGameRunScene {
             &texture,
             &wgpu::TextureViewDescriptor {
                 dimension: Some(wgpu::TextureViewDimension::D2),
-                base_array_layer: character_kind as u32,
+                base_array_layer: self.player_character as u32,
                 array_layer_count: Some(1),
                 ..Default::default()
             },
@@ -2182,11 +2162,7 @@ impl GameScene for InGameRunScene {
             None => return,
         };
 
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-        let i = character_kind as usize;
+        let i = self.player_character as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
 
         // 입력을 초기화합니다.
@@ -2253,10 +2229,7 @@ impl GameScene for InGameRunScene {
                 Some(world) => world,
                 None => return true,
             };
-            let &character_kind = world
-                .query_one_mut::<&CharacterKind>(entity)
-                .expect("invalid entity or invalid entity component!");
-            let i = character_kind as usize;
+            let i = self.player_character as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
             player_execute!(archetype, world, entity, &ActionState, |action_state| {
                 update_view_state(
@@ -2303,10 +2276,7 @@ impl GameScene for InGameRunScene {
                 Some(world) => world,
                 None => return true,
             };
-            let &character_kind = world
-                .query_one_mut::<&CharacterKind>(entity)
-                .expect("invalid entity or invalid entity component!");
-            let i = character_kind as usize;
+            let i = self.player_character as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
             player_execute!(archetype, world, entity, &ActionState, |action_state| {
                 update_view_state(
@@ -2400,10 +2370,7 @@ impl GameScene for InGameRunScene {
                     Some(world) => world,
                     None => return true,
                 };
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
+                let i = self.player_character as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
                 player_execute!(archetype, world, entity, &ActionState, |action_state| {
                     update_view_state(
@@ -2437,11 +2404,7 @@ impl GameScene for InGameRunScene {
                     None => return true,
                 };
 
-                // 캐릭터 속성 데이터를 가져옵니다.
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
+                let i = self.player_character as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
 
                 // 입력을 초기화합니다.
@@ -2505,10 +2468,7 @@ impl GameScene for InGameRunScene {
                     Some(world) => world,
                     None => return true,
                 };
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
+                let i = self.player_character as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
                 player_execute!(archetype, world, entity, &ActionState, |action_state| {
                     update_view_state(
@@ -2596,19 +2556,13 @@ impl GameScene for InGameRunScene {
             }
             PacketType::InGameFinish => {
                 let packet = InGameFinishPacket::from_raw(packet);
-                let (entity, _archetype) = self.player_entity();
-                let mut world = match self.world.take() {
+                let world = match self.world.take() {
                     Some(world) => world,
                     None => return None,
                 };
 
-                // 플레이어가 속한 팀을 가져옵니다.
-                let &(team, _team_index) = world
-                    .query_one_mut::<&(Team, usize)>(entity)
-                    .expect("invalid entity or invalid entity component!");
-
                 // 플레이어 승리 여부를 판단합니다.
-                let is_player_win = packet.winner.map(|winner| winner == team);
+                let is_player_win = packet.winner.map(|winner| winner == self.player_team);
 
                 let stage = self.stage.take().expect("the stage must be exists!");
                 let accum_render_target = self
@@ -2665,6 +2619,8 @@ impl GameScene for InGameRunScene {
                     self.half_size_z,
                     self.view_state,
                     self.view_state_timer,
+                    self.player_character,
+                    self.player_team,
                     world,
                     self.camera,
                     self.camera_fov_y,
@@ -2740,11 +2696,7 @@ impl GameScene for InGameRunScene {
             None => return,
         };
 
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-        let i = character_kind as usize;
+        let i = self.player_character as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         player_execute!(archetype, world, entity, &ActionState, |action_state| {
             // 시야 상태 타이머를 갱신합니다.
