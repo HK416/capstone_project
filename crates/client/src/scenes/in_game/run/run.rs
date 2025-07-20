@@ -44,7 +44,7 @@ use crate::{
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         CHARACTER_IMG_SMALL_URI, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL,
         HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON,
-        SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, WEAPON_ICON_URI,
+        SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -2439,6 +2439,18 @@ impl GameScene for InGameRunScene {
         self.regist_start_img_font_texture(device, ui_renderer);
         self.regist_character_icon_texture(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_START)
+            .expect("UI_START sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_exit(

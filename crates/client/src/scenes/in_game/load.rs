@@ -35,8 +35,8 @@ use crate::{
         IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI,
         IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON,
         SFX_COMMON_RELOAD, SFX_SKILL, SFX_WORKSPACE, STAGE_URI, STAGE_WORKSPACES, UI_BUTTON_BACK,
-        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
-        WEAPON_ICON_URI,
+        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_SOUND_WORKSPACE, UI_START,
+        UI_TURN_DOWN, UI_TURN_UP, UI_VICTORY_ST_01, WEAPON_ICON_URI,
     },
     component::MaterialDataPool,
     config::{Locale, UserConfig, NUM_LOCALE},
@@ -281,8 +281,44 @@ impl InGameLoadScene {
         self.num_remaining_tasks += 1;
     }
 
-    /// 사운드 데이터를 로드합니다.
-    fn load_sounds(
+    /// 효과음 데이터를 로드합니다.
+    fn load_effect_sounds(&mut self, root_dir: &Path, thread_pool: &ThreadPool) {
+        let path = root_dir.to_path_buf();
+        let task_results = self.task_results.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
+        thread_pool.spawn(move || {
+            let mut workspace = path.clone();
+            workspace.push(UI_SOUND_WORKSPACE);
+            // 인게임 시작 효과음을 로드합니다.
+            {
+                let result = sound_data_pool.get_or_init(&workspace, UI_START);
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            // 인게임 종료 효과음을 로드합니다.
+            {
+                let result = sound_data_pool.get_or_init(&workspace, UI_VICTORY_ST_01);
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            // 결과를 전송합니다.
+            task_results.push(TaskResult::Sound);
+        });
+        self.num_remaining_tasks += 1;
+    }
+
+    /// 보이스 사운드 데이터를 로드합니다.
+    fn load_voice_sounds(
         &mut self,
         root_dir: &Path,
         thread_pool: &ThreadPool,
@@ -823,7 +859,8 @@ impl GameScene for InGameLoadScene {
         let device = app.render_device();
         let io_thread_pool = app.io_threads();
         self.create_textures(&root_dir, io_thread_pool, device.clone());
-        self.load_sounds(&root_dir, io_thread_pool, character_kinds.clone());
+        self.load_effect_sounds(&root_dir, io_thread_pool);
+        self.load_voice_sounds(&root_dir, io_thread_pool, character_kinds.clone());
         self.load_character_motions(&root_dir, io_thread_pool, character_kinds.clone());
         self.load_character_models(&root_dir, io_thread_pool, device.clone(), character_kinds);
         self.load_bullet_models(&root_dir, io_thread_pool, device.clone(), bullet_kinds);

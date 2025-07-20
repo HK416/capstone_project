@@ -482,6 +482,11 @@ pub const UI_TURN_UP_DATA: &'static [u8; 10028] = include_bytes!(concat!(
     "assets/sound/ui/UI_Turn_Up.ogg"
 ));
 
+/// 게임 시작시 발생하는 UI 사운드의 `Uri`입니다.
+pub const UI_START: &'static str = "UI_START_01";
+/// 게임 종료시 발생하는 UI 사운드의 `Uri`입니다.
+pub const UI_VICTORY_ST_01: &'static str = "UI_Victory_ST_01";
+
 /// ## Asset Load Error List
 #[derive(Debug, thiserror::Error)]
 pub enum AssetError {

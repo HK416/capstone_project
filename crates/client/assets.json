@@ -368,6 +368,13 @@
                         "SFX_Skill_Yuuka_Ex.ogg"
                     ],
                     "directories": {}
+                },
+                "ui": {
+                    "files": [
+                        "UI_START_01.ogg",
+                        "UI_Victory_ST_01.ogg"
+                    ],
+                    "directories": {}
                 }
             }
         },

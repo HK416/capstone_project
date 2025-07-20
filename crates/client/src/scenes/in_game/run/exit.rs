@@ -29,7 +29,7 @@ use crate::{
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         BG_SOUND_THEME_23, CHARACTER_IMG_SMALL_URI, HUD_LAYOUT_URI_02, IMG_FONT_DRAW,
         IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_NOTICE,
-        WEAPON_ICON_URI,
+        UI_VICTORY_ST_01, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -132,6 +132,8 @@ pub struct InGameExitScene {
 
     /// 재생 중인 배경음 목록
     background_sounds: Vec<Sink>,
+    /// 이펙트 사운드 재생 여부
+    play_effect_sound: bool,
 
     /// 이번 프레임에 사용된 모든 Staging Buffer를 담음
     frame_staging_buffers: Vec<wgpu::Buffer>,
@@ -298,6 +300,7 @@ impl InGameExitScene {
             players,
             stage: Some(stage),
             background_sounds: Vec::with_capacity(1),
+            play_effect_sound: false,
             frame_staging_buffers: Vec::default(),
             accum_render_target: Some(accum_render_target),
             reveal_render_target: Some(reveal_render_target),
@@ -2245,6 +2248,21 @@ impl GameScene for InGameExitScene {
             }
         }
 
+        if self.elapsed_time_ms > 2000 && !self.play_effect_sound {
+            // 효과음을 재생합니다.
+            self.play_effect_sound = true;
+            let decoded = self
+                .sound_data_pool
+                .get(UI_VICTORY_ST_01)
+                .expect("UI_Victory_ST_01 sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
+
         // 플레이어를 갱신합니다.
         let (entity, archetype) = self.player_entity();
         let world = match self.world.as_mut() {
@@ -3109,6 +3127,7 @@ impl GameScene for InGameExitScene {
         self.draw_weapon_info(ctx);
         self.draw_skill_cost_info(ctx);
         self.draw_score(ctx);
+        self.draw_team_status(ctx);
         self.draw_img_font(ctx);
     }
 }
