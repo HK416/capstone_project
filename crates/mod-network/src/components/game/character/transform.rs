@@ -51,7 +51,7 @@ pub fn update_player_rotation(
         ActionState::Aiming | ActionState::Attack | ActionState::Reload | ActionState::Skill => {
             update_rotation_when_to_camera(look, direction, latlon)
         }
-        ActionState::Death
+        ActionState::Retreat
         | ActionState::Callsign
         | ActionState::VictoryStart
         | ActionState::VictoryEnd => update_rotation_when_none(look, direction, latlon),

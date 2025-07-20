@@ -13,9 +13,10 @@ default-run = "client"
 name = "client"
 path = "src/main.rs"
 
-[[bin]]
-name = "shadow_tool"
-path = "src/shadow_tool.rs"
+# 필요시에만 주석을 해제하세요.
+# [[bin]]
+# name = "shadow_tool"
+# path = "src/shadow_tool.rs"
 
 
 [dependencies]

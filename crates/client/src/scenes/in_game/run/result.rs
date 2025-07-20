@@ -1088,7 +1088,7 @@ impl GameScene for InGameResultScene {
         let world = &self.world;
         let character_view = &world.view::<&CharacterKind>();
         rayon::in_place_scope(|scope| {
-            for (entity, archetype) in self.winner.values().cloned() {
+            for (&uid, &(entity, archetype)) in self.winner.iter() {
                 scope.spawn(move |_| {
                     // 캐릭터 속성 데이터를 가져옵니다.
                     let &character_kind = character_view
@@ -1104,6 +1104,7 @@ impl GameScene for InGameResultScene {
                         movement_state_timer,
                     )| {
                         update_action_state_timer(
+                            uid,
                             HeldInput::empty(),
                             &mut BulletData::default(),
                             &mut SkillCostData::default(),

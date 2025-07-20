@@ -519,7 +519,7 @@ pub fn animate_character<Tag: Copy + Component>(
                 );
             }
         },
-        ActionState::Death => {
+        ActionState::Retreat => {
             animate_character_when_death(
                 motions,
                 skinning_animation,

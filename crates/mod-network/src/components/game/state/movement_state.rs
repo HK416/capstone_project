@@ -42,7 +42,7 @@ pub fn update_movement_state(
             }
             _ => {}
         },
-        ActionState::Death
+        ActionState::Retreat
         | ActionState::Callsign
         | ActionState::VictoryStart
         | ActionState::VictoryEnd => {}
@@ -187,7 +187,7 @@ pub fn update_movement_state_timer(
                 elapsed_time_ms,
             ),
         },
-        ActionState::Death
+        ActionState::Retreat
         | ActionState::Callsign
         | ActionState::VictoryStart
         | ActionState::VictoryEnd => {}
@@ -268,7 +268,7 @@ fn update_timer_when_move_to_end(
 fn update_timer_when_jumping(
     movement_state: &mut MovementState,
     movement_state_timer: &mut MovementStateTimer,
-    character_attributes: &CharacterAttributes,
+    _character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
 ) {
     // 움직임 상태를 갱신합니다.
@@ -277,8 +277,7 @@ fn update_timer_when_jumping(
     let diff_t = movement_state_timer.0 as i32 - MAX_JUMP_DURATION as i32;
     if diff_t >= 0 {
         *movement_state = MovementState::Landing;
-        let duration = character_attributes.normal_idle_duration;
-        movement_state_timer.0 = diff_t as u16 % duration;
+        movement_state_timer.0 = MAX_JUMP_DURATION;
     }
 }
 

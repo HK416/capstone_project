@@ -535,6 +535,7 @@ impl InGameEnterScene {
             let i = self.player_character as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
             update_action_state_timer(
+                self.uid,
                 HeldInput::empty(),
                 bullet_data,
                 skill_cost_data,
@@ -542,7 +543,7 @@ impl InGameEnterScene {
                 action_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                &mut Vec::new(),
+                &mut vec![],
             );
         });
     }

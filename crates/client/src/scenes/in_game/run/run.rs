@@ -3,7 +3,7 @@ use std::{
     num::NonZeroU32,
     ptr::NonNull,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use ahash::{HashMap, HashSet, RandomState};
@@ -16,11 +16,11 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags, CharacterKind,
-        HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
-        MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
-        Team, UserId, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS,
-        MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+        ActionNotify, ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags,
+        CharacterKind, HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken,
+        MovementState, MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData,
+        StageAttributes, Team, UserId, ViewState, ViewStateTimer, MAX_INPUT_EVENTS,
+        MAX_IN_GAME_BULLETS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
         InGameControlLosePacket, InGameFinishPacket, InGameInputPacket, InGamePullPacket,
@@ -30,7 +30,7 @@ use mod_network::{
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
-use rodio::Sink;
+use rodio::{mixer::Mixer, Sink};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -41,8 +41,9 @@ use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_NOTICE,
-        UI_PAUSE, WEAPON_ICON_URI,
+        CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL, HUD_LAYOUT_URI_02, IMG_FONT_START_URI,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE,
+        WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -542,6 +543,7 @@ impl InGameRunScene {
     /// 서버로부터 전달받은 데이터로 플레이어를 갱신합니다.
     fn pull_server_data(
         &mut self,
+        mixer: &Mixer,
         time_stamp: Instant,
         packet: InGamePullPacket,
         device: &wgpu::Device,
@@ -587,14 +589,106 @@ impl InGameRunScene {
             let (&character_kind, character_flags) = world
                 .query_one_mut::<(&CharacterKind, &CharacterFlags)>(entity)
                 .expect("invalid entity or invalid entity component!");
+            let i = character_kind as usize;
+            let attribute = CHARACTER_ATTRIBUTES[i];
 
             // 서버와 접속 중이지 않은 경우 건너뜁니다.
             if !character_flags.is_connected() {
                 continue;
             }
 
-            let i = character_kind as usize;
-            let attribute = CHARACTER_ATTRIBUTES[i];
+            // 행동 상태 알림을 처리합니다.
+            if data.uid == self.uid {
+                match data.action_notify() {
+                    ActionNotify::None => {}
+                    ActionNotify::EnterAttack => {
+                        let val: f32 = rand::random();
+                        if val < 0.1 {
+                            let i = character_kind as usize;
+                            let j = rand::random_range(0..3);
+                            let decoded = self
+                                .sound_data_pool
+                                .get(CV_BATTLE_SHOUT[i][j])
+                                .expect("CV_Battle_Shout sound must be preloaded!");
+                            let time_t = data.action_state_timer(attribute).0;
+                            let duration = Duration::from_millis(time_t as u64);
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.voice_volume as f32 / 255.0);
+                            sink.append(source);
+                            let _ = sink.try_seek(duration);
+                            sink.play();
+                            sink.detach();
+                        }
+                    }
+                    ActionNotify::Retreat => {
+                        let i = character_kind as usize;
+                        let decoded = self
+                            .sound_data_pool
+                            .get(CV_BATTLE_RETIRE[i])
+                            .expect("CV_Battle_Retire sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.voice_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+                    ActionNotify::Reload => {
+                        let i = character_kind as usize;
+                        let decoded = self
+                            .sound_data_pool
+                            .get(SFX_COMMON_RELOAD[i])
+                            .expect("SFX_Common_Reload sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+                    ActionNotify::EnterSkill => {
+                        let i = character_kind as usize;
+                        let j = rand::random_range(0..3);
+                        let decoded = self
+                            .sound_data_pool
+                            .get(CV_EXSKILL_LEVEL[i][j])
+                            .expect("CV_ExSkill_Level sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.voice_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+                    ActionNotify::FirstAttack => {
+                        let i = character_kind as usize;
+                        let decoded = self
+                            .sound_data_pool
+                            .get(SFX_COMMON[i])
+                            .expect("SFX_Common sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+                    ActionNotify::FirstSkill => {}
+                }
+            }
 
             type Query<'a> = (
                 &'a mut ActionState,
@@ -1006,7 +1100,7 @@ impl InGameRunScene {
         });
 
         // 현재 플레이어가 행동 불능 상태인 경우 생략합니다.
-        if curr_action_state == ActionState::Death {
+        if curr_action_state == ActionState::Retreat {
             return;
         }
 
@@ -2062,7 +2156,7 @@ impl InGameRunScene {
         });
 
         // 현재 플레이어가 행동 불능 상태가 아닌 경우 생략합니다.
-        if curr_action_state != ActionState::Death {
+        if curr_action_state != ActionState::Retreat {
             return;
         }
 
@@ -2540,6 +2634,7 @@ impl GameScene for InGameRunScene {
                 let mut staging_buffers = Vec::default();
 
                 self.pull_server_data(
+                    app.audio_mixer(),
                     time_stamp,
                     packet,
                     &device,

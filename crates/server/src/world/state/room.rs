@@ -3,11 +3,11 @@ use std::sync::Arc;
 use ahash::{HashMap, RandomState};
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, BulletData, CharacterKind, CustomRoomPlayerData,
-        FormationPlayerInitData, GameTier, HealthData, HeldInput, InputStateTimer, LatLon,
-        MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, MovementState, MovementStateTimer,
-        MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData, StageKind, Team,
-        UserId, UserName, Velocity,
+        ActionNotify, ActionState, ActionStateTimer, BulletData, CharacterKind,
+        CustomRoomPlayerData, FormationPlayerInitData, GameTier, HealthData, HeldInput,
+        InputStateTimer, LatLon, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, MovementState,
+        MovementStateTimer, MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData,
+        StageKind, Team, UserId, UserName, Velocity,
     },
     protocol::{
         FormationDataInitPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -582,6 +582,7 @@ impl GameWorldState for GameWorldRoomState {
             data.health_data = HealthData::splat(0);
             data.bullet_data = BulletData::splat(0);
             data.action_state = ActionState::Idle;
+            data.action_notify = ActionNotify::None;
             data.movement_state = MovementState::Idle;
             data.set_character_kind(CharacterKind::default());
             data.set_team_index(0);
