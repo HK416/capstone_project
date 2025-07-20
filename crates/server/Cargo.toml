@@ -13,6 +13,7 @@ name = "stress_test"
 path = "dummies/stress_test.rs"
 
 [dependencies]
+uuid = { version = "1.8", features = ["v4"] }
 ahash = { workspace = true }
 chrono = { workspace = true }
 glam = { workspace = true }
@@ -40,7 +41,6 @@ mod-parallelism = { path = "../mod-parallelism" }
 mod-network = { path = "../mod-network" }
 mod-physics = { path = "../mod-physics" }
 mod-math = { path = "../mod-math" }
-uuid = "1.17.0"
 
 [build-dependencies]
 serde = { workspace = true }

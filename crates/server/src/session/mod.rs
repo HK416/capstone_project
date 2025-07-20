@@ -1,3 +1,15 @@
+// Removed duplicate is_ai and addr methods
+impl Session {
+    /// Returns true if this session is an AI session.
+    pub fn is_ai(&self) -> bool {
+        self.is_ai
+    }
+
+    /// Returns the socket address for this session.
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+}
 mod pool;
 mod state;
 
@@ -33,8 +45,11 @@ pub const MAX_QUEUE_CAPACITY: usize = 64;
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
+    pub(crate) is_ai: bool,
     /// 클라이언트 소켓 주소
-    addr: SocketAddr,
+    pub(crate) addr: SocketAddr,
+    /// AI 세션의 UserId (None for human players)
+    user_id: Option<mod_network::components::UserId>,
 
     /// 세션 패킷 전송 시간 (단위: ms)
     ping: AtomicU16,
@@ -58,9 +73,11 @@ pub struct Session {
 
 impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
+
     pub fn new(addr: SocketAddr, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) -> Self {
         Self {
             addr,
+            user_id: None,
             ping: AtomicU16::new(250),
             tcp_sender: Queue::new(),
             udp_sender,
@@ -68,6 +85,26 @@ impl Session {
             flows: Queue::new(),
             cancel_token: AtomicBool::new(false),
             running: AtomicBool::new(true),
+            is_ai: false,
+        }
+    }
+
+    /// Creates a session for AI players
+    pub fn ai(uid: mod_network::components::UserId) -> Self {
+        use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0); // Reserved address for dummy
+        let udp_sender = Arc::new(mod_parallelism::collections::Queue::new());
+        Self {
+            addr,
+            user_id: Some(uid),
+            ping: AtomicU16::new(0),
+            tcp_sender: mod_parallelism::collections::Queue::new(),
+            udp_sender,
+            received_packets: mod_parallelism::collections::Queue::new(),
+            flows: mod_parallelism::collections::Queue::new(),
+            cancel_token: AtomicBool::new(false),
+            running: AtomicBool::new(true),
+            is_ai: true,
         }
     }
 
@@ -78,7 +115,6 @@ impl Session {
     pub fn tcp_write(&self, packet: RawPacket) {
         self.tcp_sender.push(packet);
     }
-
     /// UDP 통신으로 패킷을 전송합니다.
     ///
     /// # Panics
@@ -92,7 +128,6 @@ impl Session {
             "the size of the UDP packet to be transmitted from {} is greather than or equal to 1KB.",
             &self
         );
-        self.udp_sender.push((self.addr, packet));
     }
 
     /// 수신된 패킷 데이터를 세션에 추가합니다.  
@@ -110,7 +145,6 @@ impl Session {
         match self.ping() {
             0..=50 => NetworkState::Good,
             51..=100 => NetworkState::Fair,
-            101..=200 => NetworkState::Poor,
             _ => NetworkState::Critical,
         }
     }
@@ -119,12 +153,10 @@ impl Session {
     pub fn ping(&self) -> u16 {
         self.ping.load(MemOrdering::Acquire)
     }
-
     /// 수신된 패킷의 처리가 취소됐는지 여부를 반환합니다.
     pub fn packet_canceled(&self) -> bool {
         self.cancel_token.load(MemOrdering::Acquire)
     }
-
     /// 클라이언트 세션이 동작중인지 여부를 반환합니다.
     pub fn is_running(&self) -> bool {
         self.running.load(MemOrdering::Relaxed)
@@ -146,25 +178,37 @@ impl cmp::Eq for Session {}
 
 impl cmp::PartialEq for Session {
     fn eq(&self, other: &Self) -> bool {
-        self.addr.eq(&other.addr)
+        match (&self.user_id, &other.user_id) {
+            (Some(a), Some(b)) => a == b,
+            (None, None) => self.addr == other.addr,
+            _ => false,
+        }
     }
 }
 
 impl cmp::Ord for Session {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.addr.cmp(&other.addr)
+        match (&self.user_id, &other.user_id) {
+            (Some(a), Some(b)) => a.cmp(b),
+            (None, None) => self.addr.cmp(&other.addr),
+            (Some(_), None) => cmp::Ordering::Greater,
+            (None, Some(_)) => cmp::Ordering::Less,
+        }
     }
 }
 
 impl cmp::PartialOrd for Session {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        self.addr.partial_cmp(&other.addr)
+        Some(self.cmp(other))
     }
 }
 
 impl hash::Hash for Session {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.addr.hash(state)
+        match &self.user_id {
+            Some(uid) => uid.hash(state),
+            None => self.addr.hash(state),
+        }
     }
 }
 

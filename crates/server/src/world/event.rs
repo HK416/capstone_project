@@ -70,6 +70,8 @@ pub enum GameWorldRoomStateEvent {
     ChangeDuplicateOption,
     /// 방장이 팀 균형 옵션을 변경할 때 발생되는 이벤트입니다.
     ChangeUnbalanceOption,
+    /// 방장이 빈 자리 AI 채우기 옵션을 변경할 때 발생되는 이벤트입니다.
+    ChangeFillEmptySlotsOption,
     /// 방장이 커스텀 게임 대기실에서 플레이어를 차단할 때 발생되는 이벤트입니다.
     PlayerBan(UserId),
 }

@@ -142,7 +142,6 @@ impl GameWorldInGameReadyState {
         if permission == Permission::Admin {
             let mut remainings: Vec<_> = world.sessions.values().cloned().collect();
             remainings.shuffle(&mut rand::rng());
-
             if let Some(uid) = remainings.pop() {
                 match world.players.get_mut(&uid) {
                     Some(data) => {
@@ -208,21 +207,16 @@ impl GameWorldInGameReadyState {
         // 남은 시간이 없는 경우
         if self.remaining_time_ms <= 0 {
             // 준비되지 않은 플레이어의 서버 연결을 해제합니다.
-            for (session, &uid) in world.sessions.iter() {
-                match world.players.get_mut(&uid) {
-                    Some(data) => {
+            let uids: Vec<UserId> = world.players.keys().cloned().collect();
+            for uid in uids {
+                if let Some(session) = world.get_session_by_userid(&uid) {
+                    if let Some(data) = world.players.get_mut(&uid) {
                         if !data.is_ready_to_play() {
                             self.leaved_players.insert(uid);
                             session.close();
                         }
                     }
-                    None => {
-                        log::error!("player data for the {} not found in {}!", &session, &world);
-                        eprintln!("player data for the {} not found in {}!", &session, &world);
-                        session.close();
-                        continue;
-                    }
-                };
+                }
             }
         }
 
@@ -284,9 +278,15 @@ impl GameWorldInGameReadyState {
 
 impl GameWorldState for GameWorldInGameReadyState {
     fn on_enter(&mut self, world: &mut GameWorld) {
-        // 모든 플레이어의 준비 상태를 `false`로 설정합니다.
-        for data in world.players.values_mut() {
-            data.set_ready_to_play(false);
+        // 모든 플레이어의 준비 상태를 초기화합니다.
+        for (&uid, data) in world.players.iter_mut() {
+            if uid.into_inner() >= 10000 {
+                // AI 플레이어는 즉시 준비 상태로 설정
+                data.set_ready_to_play(true);
+            } else {
+                // 실제 플레이어는 기존대로 false
+                data.set_ready_to_play(false);
+            }
         }
     }
 

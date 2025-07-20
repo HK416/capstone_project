@@ -61,59 +61,18 @@ pub struct AIPlayerContext {
     pub q: SimpleQLearning,
 }
 
-pub trait AIPlayerState {
-    fn on_enter(&mut self, ctx: &mut AIPlayerContext);
-    fn on_update(&mut self, ctx: &mut AIPlayerContext) -> Option<AIEvent>;
-    fn on_exit(&mut self, ctx: &mut AIPlayerContext);
-}
 
-pub enum AIEvent {
-    MoveTo(Vec3A),
-    Attack,
+#[derive(Debug, Clone)]
+pub enum AIStateEnum {
     Idle,
+    Move,
+    Attack,
 }
 
-pub struct IdleState;
-impl AIPlayerState for IdleState {
-    fn on_enter(&mut self, _ctx: &mut AIPlayerContext) {}
-    fn on_update(&mut self, ctx: &mut AIPlayerContext) -> Option<AIEvent> {
-        Some(AIEvent::MoveTo(ctx.target))
-    }
-    fn on_exit(&mut self, _ctx: &mut AIPlayerContext) {}
-}
-
-pub struct MoveState;
-impl AIPlayerState for MoveState {
-    fn on_enter(&mut self, _ctx: &mut AIPlayerContext) {}
-    fn on_update(&mut self, ctx: &mut AIPlayerContext) -> Option<AIEvent> {
-        if (ctx.position - ctx.target).length() < 1.0 {
-            Some(AIEvent::Idle)
-        } else {
-            None
-        }
-    }
-    fn on_exit(&mut self, _ctx: &mut AIPlayerContext) {}
-}
-
-pub struct AttackState;
-impl AIPlayerState for AttackState {
-    fn on_enter(&mut self, _ctx: &mut AIPlayerContext) {
-        // 공격 시작 시 필요한 초기화 (예: 쿨타임, 애니메이션 등)
-    }
-    fn on_update(&mut self, ctx: &mut AIPlayerContext) -> Option<AIEvent> {
-        // 공격 로직: 예시로 바로 Idle로 전환
-        // 실제로는 타격 판정, 쿨타임, 타겟 확인 등 구현 가능
-        Some(AIEvent::Idle)
-    }
-    fn on_exit(&mut self, _ctx: &mut AIPlayerContext) {
-        // 공격 종료 시 처리
-    }
-}
-
-// FSM Manager
+#[derive(Debug, Clone)]
 pub struct AIPlayerFSM {
     pub ctx: AIPlayerContext,
-    pub state: Box<dyn AIPlayerState>,
+    pub state: AIStateEnum,
 }
 
 impl AIPlayerFSM {
@@ -121,22 +80,28 @@ impl AIPlayerFSM {
         let q = SimpleQLearning::new(vec!["MoveTo".into(), "Attack".into(), "Idle".into()]);
         Self {
             ctx: AIPlayerContext { user_id, position, target, q },
-            state: Box::new(IdleState),
+            state: AIStateEnum::Idle,
         }
     }
     pub fn update(&mut self) {
-        if let Some(event) = self.state.on_update(&mut self.ctx) {
-            match event {
-                AIEvent::MoveTo(target) => {
-                    self.ctx.target = target;
-                    self.state = Box::new(MoveState);
+        match self.state {
+            AIStateEnum::Idle => {
+                // Idle 상태: 타겟 위치로 이동 명령
+                self.state = AIStateEnum::Move;
+            }
+            AIStateEnum::Move => {
+                let dir = (self.ctx.target - self.ctx.position).normalize_or_zero();
+                let step_size = 0.5; // 이동 속도
+                self.ctx.position += dir * step_size;
+                if (self.ctx.position - self.ctx.target).length() < 1.0 {
+                    self.state = AIStateEnum::Idle;
+                } else {
+                    // 실제 이동 로직은 외부에서 처리
                 }
-                AIEvent::Idle => {
-                    self.state = Box::new(IdleState);
-                }
-                AIEvent::Attack => {
-                    self.state = Box::new(AttackState);
-                }
+            }
+            AIStateEnum::Attack => {
+                // Attack 상태: 예시로 바로 Idle로 전환
+                self.state = AIStateEnum::Idle;
             }
         }
     }

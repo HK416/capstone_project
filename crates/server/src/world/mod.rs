@@ -1,3 +1,31 @@
+use std::net::SocketAddr;
+impl GameWorld {
+    /// Returns a session for a given UserId, checking both networked and AI sessions.
+    pub fn get_session_by_userid(&self, uid: &UserId) -> Option<Arc<Session>> {
+        // Check networked sessions first
+        if let Some(session) = self.sessions.iter().find_map(|(session, user)| if user == uid { Some(session.clone()) } else { None }) {
+            return Some(session);
+        }
+        // Check AI sessions
+        self.ai_sessions.get(uid).cloned()
+    }
+
+    /// Returns a session for a given SocketAddr (human player).
+    pub fn get_session_by_addr(&self, addr: &SocketAddr) -> Option<Arc<Session>> {
+        self.sessions.keys().find_map(|session| {
+            let s = &**session;
+            if !s.is_ai() && s.addr() == *addr {
+                Some(session.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    // Refactored usage example for session lookup by user ID:
+    // let session = self.get_session_by_userid(&uid);
+    // if let Some(session) = session { /* use session safely */ }
+}
 mod event;
 mod pool;
 mod state;
@@ -27,15 +55,24 @@ pub struct GameWorld {
 
     // 게임 월드에 참여한 세션 집합입니다.
     sessions: HashMap<Arc<Session>, UserId>,
+    /// AI 세션 집합입니다.
+    ai_sessions: HashMap<UserId, Arc<Session>>,
     /// 플레이어 오브젝트 집합입니다.
     players: HashMap<UserId, Player>,
 
     events: Arc<Queue<GameWorldEvent>>,
+    /// AI 플레이어 오브젝트 집합입니다.
+    pub ai_players: std::collections::HashMap<uuid::Uuid, crate::ai::ai_player::AiPlayer, std::hash::RandomState>,
     /// 게임 월드 상태 흐름 대기열입니다.
     flows: Queue<GameWorldStateFlow>,
 }
 
 impl GameWorld {
+    /// AI 플레이어와 세션을 추가합니다.
+    pub fn add_ai_player(&mut self, uid: UserId, player: crate::entities::player::Player, session: Arc<crate::session::Session>) {
+        self.players.insert(uid, player);
+        self.ai_sessions.insert(uid, session.clone());
+    }
     /// 새로운 게임 월드를 생성합니다.
     pub fn new(world_id: WorldId) -> Self {
         Self {
@@ -44,7 +81,9 @@ impl GameWorld {
             closed: true,
             admin: UserId::NULL,
             sessions: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
+            ai_sessions: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             players: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS * 2, RandomState::new()),
+            ai_players: std::collections::HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, std::hash::RandomState::new()),
             events: Arc::new(Queue::new()),
             flows: Queue::new(),
         }
@@ -66,3 +105,4 @@ impl fmt::Display for GameWorld {
         write!(f, "GameWorld({})", self.id)
     }
 }
+

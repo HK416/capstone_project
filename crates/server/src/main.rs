@@ -150,6 +150,7 @@ fn main() {
     // 서버를 실행하기 전에 필요한 모든 데이터를 여기서 초기화합니다.
     //
     let _guard = init_log_system();
+
     init_character_attributes();
     init_stage_attributes();
 
@@ -235,6 +236,7 @@ fn init_log_system() -> Option<WorkerGuard> {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::DEBUG.into())
         .from_env_lossy();
+
 
     // 로그 시스템을 초기화합니다.
     tracing_subscriber::fmt()

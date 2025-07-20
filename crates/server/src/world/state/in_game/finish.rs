@@ -147,7 +147,6 @@ impl GameWorldInGameFinishState {
         if permission == Permission::Admin {
             let mut remainings: Vec<_> = world.sessions.values().cloned().collect();
             remainings.shuffle(&mut rand::rng());
-
             if let Some(uid) = remainings.pop() {
                 match world.players.get_mut(&uid) {
                     Some(data) => {
