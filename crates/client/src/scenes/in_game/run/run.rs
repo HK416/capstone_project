@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     f32::consts::{PI, TAU},
     num::NonZeroU32,
     ptr::NonNull,
@@ -19,8 +20,8 @@ use mod_network::{
         ActionNotify, ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags,
         CharacterKind, HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken,
         MovementState, MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData,
-        StageAttributes, Team, UserId, ViewState, ViewStateTimer, MAX_INPUT_EVENTS,
-        MAX_IN_GAME_BULLETS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+        StageAttributes, Team, UserId, UserName, ViewState, ViewStateTimer, MAX_INPUT_EVENTS,
+        MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
         InGameControlLosePacket, InGameFinishPacket, InGameInputPacket, InGamePullPacket,
@@ -41,9 +42,9 @@ use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL, HUD_LAYOUT_URI_02, IMG_FONT_START_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE,
-        WEAPON_ICON_URI,
+        CHARACTER_IMG_SMALL_URI, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL,
+        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON,
+        SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -214,6 +215,11 @@ pub struct InGameRunScene {
     /// 레드 팀 점수 사각형 영역입니다.
     red_score_rect: egui::Rect,
 
+    /// 캐릭터 아이콘 텍스터입니다.
+    character_icon_textures: HashMap<CharacterKind, egui::load::SizedTexture>,
+    /// 팀 상황 사각형 영역입니다.
+    team_status_rect: egui::Rect,
+
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
     /// 모델 풀 객체입니다.
@@ -346,6 +352,11 @@ impl InGameRunScene {
             timer_rect: egui::Rect::ZERO,
             blue_score_rect: egui::Rect::ZERO,
             red_score_rect: egui::Rect::ZERO,
+            character_icon_textures: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
+            team_status_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -865,7 +876,7 @@ impl InGameRunScene {
 
     /// 무기 아이콘 텍스처를 Ui 렌더러에 등록합니다.
     fn regist_weapon_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
-        let texture = self
+        let texture: Arc<wgpu::Texture> = self
             .texture_pool
             .get(WEAPON_ICON_URI)
             .expect("Weapon_Icon texture must be preloaded");
@@ -921,6 +932,59 @@ impl InGameRunScene {
         };
     }
 
+    /// 캐릭터 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_character_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        let texture = self
+            .texture_pool
+            .get(CHARACTER_IMG_SMALL_URI)
+            .expect("Weapon_Icon texture must be preloaded");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        let character_kinds: HashSet<_> = {
+            let world = self.world.as_mut().expect("the world must be exists!");
+            let character_view = world.view_mut::<&CharacterKind>();
+            self.players
+                .values()
+                .map(|&(entity, _archetype)| {
+                    character_view
+                        .get(entity)
+                        .cloned()
+                        .expect("invalid entity or invalid entity component!")
+                })
+                .collect()
+        };
+
+        for kind in character_kinds {
+            // 텍스처의 텍스처 뷰를 생성합니다.
+            let texture = self.texture_view_pool.get_or_init(
+                &texture,
+                &wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: kind as u32,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                },
+            );
+
+            // egui 렌더러에 텍스처를 등록합니다.
+            let texture_id =
+                ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+            // 등록된 텍스처 정보를 저장합니다.
+            self.character_icon_textures.insert(
+                kind,
+                egui::load::SizedTexture {
+                    id: texture_id,
+                    size: texture_size,
+                },
+            );
+        }
+    }
+
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역의 크기를 재조정합니다.
         let viewport = app.viewport();
@@ -941,6 +1005,8 @@ impl InGameRunScene {
         self.blue_score_rect = Self::resize_blue_score_rect(&self.clip_rect);
         // 레드 팀 스코어 영역의 크기를 재조정합니다.
         self.red_score_rect = Self::resize_red_score_rect(&self.clip_rect);
+        // 팀 상태 영역의 크기를 재조정합니다.
+        self.team_status_rect = Self::resize_team_status_rect(&self.clip_rect);
     }
 
     /// 애니메이션 값을 가져옵니다.
@@ -1069,6 +1135,16 @@ impl InGameRunScene {
             .union(self.timer_rect)
     }
 
+    /// 팀 상태를 표시하는 영역을 반환합니다.
+    fn resize_team_status_rect(clip_rect: &egui::Rect) -> egui::Rect {
+        let margin = clip_rect.size().min_elem() * 0.05;
+        let height = clip_rect.height() * 0.3;
+        let width = clip_rect.width() * 0.16;
+        let size = egui::vec2(width, height);
+        let min = clip_rect.left_center() + egui::vec2(margin, -0.75 * height);
+        egui::Rect::from_min_size(min, size)
+    }
+
     /// 스킬 아이콘 영역을 반환합니다.
     fn skill_icon_rect(&self) -> egui::Rect {
         let height = self.skill_cost_rect.height();
@@ -1147,8 +1223,7 @@ impl InGameRunScene {
         const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
 
         let uv = egui::Rect::from_min_max(
@@ -1304,8 +1379,7 @@ impl InGameRunScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
 
         const NUM_GAUGE: usize = 8;
@@ -1397,8 +1471,7 @@ impl InGameRunScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
         let total_health = (shield + health).min(9999);
 
@@ -1463,8 +1536,7 @@ impl InGameRunScene {
         const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.weapon_info_content_rect();
 
         let uv = egui::Rect::from_min_max(
@@ -1613,8 +1685,7 @@ impl InGameRunScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let mut rect = self.weapon_icon_content_rect();
         rect.min.x += base_x;
         rect.max.x += base_x;
@@ -1657,8 +1728,7 @@ impl InGameRunScene {
             0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let outer_rect = self.skill_icon_rect();
         let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
         inner_rect.max.x -= offset_x;
@@ -1681,8 +1751,7 @@ impl InGameRunScene {
             0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let outer_rect = self.skill_gauge_rect();
         let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
         inner_rect.max.x -= offset;
@@ -2221,6 +2290,139 @@ impl InGameRunScene {
                 );
             });
     }
+
+    /// 팀 상태 인터페이스를 그립니다.
+    fn draw_team_status(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Team_Status"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_player_status(ui);
+            });
+    }
+
+    /// 플레이어 상태 인터페이스를 그립니다.
+    fn draw_player_status(&self, ui: &mut egui::Ui) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 데이터를 수집합니다.
+        type Query<'a> = (&'a CharacterKind, &'a UserName, &'a (Team, usize));
+        let view = world.view::<Query>();
+        let mut map = BTreeMap::new();
+        for (&uid, &(entity, archetype)) in self.players.iter() {
+            if uid == self.uid {
+                continue;
+            }
+
+            let (&kind, &name, &(team, team_index)) = view
+                .get(entity)
+                .expect("invalid entity or invalid entity component");
+            if team == self.player_team {
+                player_execute!(
+                    archetype,
+                    world,
+                    entity,
+                    (&HealthData, &SkillCostData),
+                    |(health_data, skill_cost_data)| {
+                        map.insert(
+                            team_index,
+                            (kind, name, health_data.percent(), skill_cost_data.percent()),
+                        );
+                    }
+                );
+            }
+        }
+
+        let t = self.ui_animation_factor();
+        let interval = self.clip_rect.height() * 0.01;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
+        let status_width = self.team_status_rect.width();
+        let status_height = (self.team_status_rect.height() - interval * 3.0) / 4.0;
+
+        let mut pos = self.team_status_rect.min + egui::vec2(base_x, 0.0);
+        for (kind, name, health, skill_cost) in map.values() {
+            // 캐릭터 아이콘
+            let texture = self
+                .character_icon_textures
+                .get(kind)
+                .cloned()
+                .expect("character icon texture must be preloaded!");
+            let ratio = texture.size.x / texture.size.y;
+            let icon_height = status_height * 0.7;
+            let icon_width = status_height * ratio;
+            let size = egui::vec2(icon_width, icon_height);
+            let rect = egui::Rect::from_min_size(pos, size);
+            egui::Image::new(texture)
+                .sense(egui::Sense::empty())
+                .paint_at(ui, rect);
+
+            // 닉네임
+            let p0 = pos + egui::vec2(icon_width, 0.0);
+            let name_width = (status_width - icon_width).max(0.0);
+            let name_height = icon_height;
+            let center = p0 + egui::vec2(name_width, name_height) * 0.5;
+            let text = name.to_string();
+            let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+            let font_id = egui::FontId::new(14.0 * self.ui_scale, family);
+            const OFFSET: [egui::Vec2; 4] = [
+                egui::vec2(-1.0, 0.0),
+                egui::vec2(1.0, 0.0),
+                egui::vec2(0.0, -1.0),
+                egui::vec2(0.0, 1.0),
+            ];
+            for offset in OFFSET {
+                ui.painter().text(
+                    center + offset * self.ui_scale,
+                    egui::Align2::CENTER_CENTER,
+                    &text,
+                    font_id.clone(),
+                    FONT_COLOR,
+                );
+            }
+            ui.painter().text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font_id,
+                egui::Color32::WHITE,
+            );
+
+            // 체력
+            let (health_p, shield_p) = health.unwrap_or((1.0, 0.0));
+            let p1 = pos + egui::vec2(0.0, icon_height);
+            let height = status_height * 0.15;
+            let size = egui::vec2(status_width, height);
+            let rect = egui::Rect::from_min_size(p1, size);
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
+            let content_rect = rect.scale_from_center(0.95);
+            let size = content_rect.size() * egui::vec2(health_p + shield_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::from_rgb(255, 192, 0));
+            let size = content_rect.size() * egui::vec2(health_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::LIGHT_GREEN);
+
+            // 스킬 게이지
+            let skill_p = skill_cost.unwrap_or(1.0);
+            let p2 = p1 + egui::vec2(0.0, height);
+            let size = egui::vec2(status_width, height);
+            let rect = egui::Rect::from_min_size(p2, size);
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
+            let content_rect = rect.scale_from_center(0.95);
+            let size = content_rect.size() * egui::vec2(skill_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::from_rgb(255, 192, 0));
+
+            pos = pos + egui::vec2(0.0, status_height + interval);
+        }
+    }
 }
 
 impl GameScene for InGameRunScene {
@@ -2235,6 +2437,7 @@ impl GameScene for InGameRunScene {
         self.regist_layout_texture(device, ui_renderer);
         self.regist_weapon_icon_texture(device, ui_renderer);
         self.regist_start_img_font_texture(device, ui_renderer);
+        self.regist_character_icon_texture(device, ui_renderer);
         self.resize_ui(window, app);
     }
 
@@ -2247,6 +2450,9 @@ impl GameScene for InGameRunScene {
         ui_renderer.free_texture(&self.layout_texture.id);
         ui_renderer.free_texture(&self.weapon_icon_texture.id);
         ui_renderer.free_texture(&self.start_img_font_texture.id);
+        for texture in self.character_icon_textures.values() {
+            ui_renderer.free_texture(&texture.id);
+        }
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -3589,6 +3795,7 @@ impl GameScene for InGameRunScene {
         self.draw_weapon_info(ctx);
         self.draw_skill_cost_info(ctx);
         self.draw_score(ctx);
+        self.draw_team_status(ctx);
         self.draw_start_font(ctx);
         self.draw_respawn_timer(ctx);
     }
