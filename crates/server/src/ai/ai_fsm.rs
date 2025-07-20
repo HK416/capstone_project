@@ -59,6 +59,9 @@ pub struct AIPlayerContext {
     pub position: Vec3A,
     pub target: Vec3A,
     pub q: SimpleQLearning,
+ // 경로 캐싱 및 경로 계산 주기 관리
+ pub path: Option<Vec<Vec3A>>,
+ pub last_pathfind_time: Option<u32>,
 }
 
 
@@ -79,24 +82,41 @@ impl AIPlayerFSM {
     pub fn new(user_id: Uuid, position: Vec3A, target: Vec3A) -> Self {
         let q = SimpleQLearning::new(vec!["MoveTo".into(), "Attack".into(), "Idle".into()]);
         Self {
-            ctx: AIPlayerContext { user_id, position, target, q },
+            ctx: AIPlayerContext {
+                user_id,
+                position,
+                target,
+                q,
+                path: None,
+                last_pathfind_time: None,
+            },
             state: AIStateEnum::Idle,
         }
     }
+
+    /// AI FSM 업데이트: 일정 주기마다만 호출되도록 설계
     pub fn update(&mut self) {
+        // 프로파일링용: 실제 호출 횟수 및 상태 출력
+        // log::debug!("[AI FSM] user_id: {:?}, state: {:?}", self.ctx.user_id, self.state);
+
         match self.state {
             AIStateEnum::Idle => {
                 // Idle 상태: 타겟 위치로 이동 명령
                 self.state = AIStateEnum::Move;
             }
             AIStateEnum::Move => {
+                // 프로젝트 이동 단위와 일치하도록 수정
                 let dir = (self.ctx.target - self.ctx.position).normalize_or_zero();
-                let step_size = 0.5; // 이동 속도
-                self.ctx.position += dir * step_size;
-                if (self.ctx.position - self.ctx.target).length() < 1.0 {
-                    self.state = AIStateEnum::Idle;
+                let move_speed = 0.2; // 실제 이동 로직과 동일한 속도
+                let dist_to_target = (self.ctx.target - self.ctx.position).length();
+                if dist_to_target <= move_speed {
+                    self.ctx.position = self.ctx.target;
                 } else {
-                    // 실제 이동 로직은 외부에서 처리
+                    self.ctx.position += dir * move_speed;
+                }
+                // 도달 판정도 실제 이동 로직과 맞춤
+                if (self.ctx.position - self.ctx.target).length() < 0.2 {
+                    self.state = AIStateEnum::Idle;
                 }
             }
             AIStateEnum::Attack => {

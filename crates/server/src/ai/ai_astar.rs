@@ -14,7 +14,7 @@ impl Eq for Node3D {}
 
 impl PartialOrd for Node3D {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        // BinaryHeap is max-heap, so reverse order for min-heap
+
         other.f.partial_cmp(&self.f)
     }
 }
@@ -57,8 +57,8 @@ where
 
     while let Some(current) = open.pop() {
         let curr_idx = to_idx(current.pos, step);
-        if curr_idx == goal_idx || (current.pos - goal).length() < step {
-            // 경로 복원
+        // 목표 좌표에 충분히 가까우면 경로 복원 (step * 1.5 이내)
+        if (current.pos - goal).length() < step * 1.5 {
             let mut path = vec![current.pos];
             let mut p = current.parent;
             while let Some(prev) = p {

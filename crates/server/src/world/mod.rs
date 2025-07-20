@@ -58,7 +58,7 @@ pub struct GameWorld {
     /// AI 세션 집합입니다.
     ai_sessions: HashMap<UserId, Arc<Session>>,
     /// 플레이어 오브젝트 집합입니다.
-    players: HashMap<UserId, Player>,
+    pub(crate) players: HashMap<UserId, Player>,
 
     events: Arc<Queue<GameWorldEvent>>,
     /// AI 플레이어 오브젝트 집합입니다.

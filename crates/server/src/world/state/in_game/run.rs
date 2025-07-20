@@ -38,8 +38,8 @@ use crate::{
         GameWorld, GameWorldEvent, GameWorldInGameFinishState, GameWorldInGameRunStateEvent,
         GameWorldState, GameWorldStateFlow, GameWorldSystemEvent,
     },
-    // ...existing code...
 };
+use crate::ai::ai_player::update_ai_players;
 
 /// 최대 게임 진행 시간 (단위: ms)
 pub const MAX_GAME_TIME: u32 = 1_000 * 60 * 5;
@@ -85,33 +85,9 @@ pub struct GameWorldInGameRunState {
 
     /// 점령지 관리 오브젝트
     capture_point: CapturePointObject,
-    // No separate AI player map; all players (human and AI) are in world.players
 }
 
 impl GameWorldInGameRunState {
-    /// Updates AI player logic for FPS movement and shooting
-    fn update_ai_player(player: &mut Player) {
-        // Skip if dead
-        if player.action_state == ActionState::Death {
-            return;
-        }
-
-        // Move forward (simulate holding W)
-        player.held_input |= HeldInput::Forward;
-
-        // Randomly rotate (simulate mouse movement)
-        let delta_lat = rand::random_range(-0.01..=0.01);
-        let delta_lon = rand::random_range(-0.05..=0.05);
-        player.latlon.lat = (player.latlon.lat + delta_lat).clamp(-1.57, 1.57); // Clamp to [-pi/2, pi/2]
-        player.latlon.lon = (player.latlon.lon + delta_lon) % std::f32::consts::TAU;
-
-        // Randomly shoot if bullets available
-        if player.bullet_data.remaining > 0 && rand::random_bool(0.05) {
-            // Simulate shooting (set action state to attack)
-            player.action_state = ActionState::Attack;
-            player.action_state_timer.0 = 0;
-        }
-    }
     pub fn new(
         stage_kind: StageKind,
         custom_game: bool,
@@ -125,9 +101,6 @@ impl GameWorldInGameRunState {
         // 스테이지 속성 데이터를 가져옵니다.
         let stage_attributes = get_stage_attributes(stage_kind);
         let capture_point = CapturePointObject::new(stage_attributes.capture_zone.clone());
-
-        // Unified AI player creation: store (UserId, Player, Uuid) tuples for later insertion
-        // No AI player creation here; handled in on_enter
 
         Self {
             stage_kind,
@@ -149,7 +122,6 @@ impl GameWorldInGameRunState {
             counter: 0,
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             capture_point,
-            // No separate AI player map; all players (human and AI) are in world.players
         }
     }
 
@@ -220,6 +192,7 @@ impl GameWorldInGameRunState {
         if permission == Permission::Admin {
             let mut remainings: Vec<_> = world.sessions.values().cloned().collect();
             remainings.shuffle(&mut rand::rng());
+
             if let Some(uid) = remainings.pop() {
                 match world.players.get_mut(&uid) {
                     Some(data) => {
@@ -431,7 +404,7 @@ impl GameWorldInGameRunState {
 
     /// 모든 세션에 Status 패킷 데이터를 전송합니다.
     fn broadcast_status_packet(&mut self, world: &GameWorld) {
-        // 플레이어 데이터를 수집합니다. (AI 플레이어도 포함)
+        // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
         for (&uid, data) in world.players.iter() {
             let connected = !self.leaved_players.contains(&uid);
@@ -491,6 +464,7 @@ impl GameWorldInGameRunState {
 
     /// 게임 월드를 갱신합니다.
     fn update(&mut self, world: &mut GameWorld, elapsed: Duration) {
+
         let stage_attributes = get_stage_attributes(self.stage_kind);
         let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
         let mut events = Vec::with_capacity(64);
@@ -525,11 +499,9 @@ impl GameWorldInGameRunState {
                 &mut events,
             );
         }
-        
-        // 커스텀 게임일 때 FSM 기반 AI 플레이어 업데이트
-        if self.custom_game {
-            crate::ai::ai_player::update_ai_players(&mut world.ai_players);
-        }
+
+        // AI FSM 업데이트: 플레이어 이동 해금과 동시에 AI도 이동
+        update_ai_players(world);
 
         // 2. 행동 이벤트를 시간 순으로 정렬합니다.
         events.sort();
@@ -1323,17 +1295,25 @@ impl GameWorldInGameRunState {
 
 impl GameWorldState for GameWorldInGameRunState {
     fn on_enter(&mut self, world: &mut GameWorld) {
-        // Add AI players just before the game starts
-        if self.custom_game {
-            crate::ai::ai_player::insert_ai_players(
-                world,
-                self.num_blue_players,
-                self.num_red_players,
-            );
+        if world.ai_players.is_empty() {
+            let mut restored = 0;
+            for (uid, player) in world.players.iter() {
+                let name_str = player.name.to_string();
+                if name_str.contains("AI") && player.permission() == Permission::User {
+                    let ai_id = uuid::Uuid::new_v4();
+                    let ai_player = crate::ai::ai_player::AiPlayer {
+                        ai_id,
+                        user_id: *uid,
+                        fsm: crate::ai::ai_fsm::AIPlayerFSM::new(ai_id, player.translation, player.translation),
+                    };
+                    world.ai_players.insert(ai_id, ai_player);
+                    restored += 1;
+                }
+            }
+            log::info!("[AI CONTINUITY PATCH] Reconstructed and inserted {} AI players from world.players", restored);
         }
         self.broadcast_pull_packet(world);
     }
-
 
     fn on_exit(&mut self, world: &mut GameWorld) {
         // 떠난 플레이어 데이터를 정리합니다.
