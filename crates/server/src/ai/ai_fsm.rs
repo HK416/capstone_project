@@ -96,8 +96,6 @@ impl AIPlayerFSM {
 
     /// AI FSM 업데이트: 일정 주기마다만 호출되도록 설계
     pub fn update(&mut self) {
-        // 프로파일링용: 실제 호출 횟수 및 상태 출력
-        // log::debug!("[AI FSM] user_id: {:?}, state: {:?}", self.ctx.user_id, self.state);
 
         match self.state {
             AIStateEnum::Idle => {

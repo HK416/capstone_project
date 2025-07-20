@@ -1,30 +1,14 @@
 use std::net::SocketAddr;
 impl GameWorld {
-    /// Returns a session for a given UserId, checking both networked and AI sessions.
     pub fn get_session_by_userid(&self, uid: &UserId) -> Option<Arc<Session>> {
-        // Check networked sessions first
         if let Some(session) = self.sessions.iter().find_map(|(session, user)| if user == uid { Some(session.clone()) } else { None }) {
             return Some(session);
         }
-        // Check AI sessions
         self.ai_sessions.get(uid).cloned()
     }
 
-    /// Returns a session for a given SocketAddr (human player).
-    pub fn get_session_by_addr(&self, addr: &SocketAddr) -> Option<Arc<Session>> {
-        self.sessions.keys().find_map(|session| {
-            let s = &**session;
-            if !s.is_ai() && s.addr() == *addr {
-                Some(session.clone())
-            } else {
-                None
-            }
-        })
-    }
 
-    // Refactored usage example for session lookup by user ID:
-    // let session = self.get_session_by_userid(&uid);
-    // if let Some(session) = session { /* use session safely */ }
+
 }
 mod event;
 mod pool;
