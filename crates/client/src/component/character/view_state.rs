@@ -143,7 +143,7 @@ pub fn update_view_state_timer(
             character_attributes,
             elapsed_time_ms,
         ),
-        ActionState::Death | ActionState::Reload | ActionState::Skill => match view_state {
+        ActionState::Retreat | ActionState::Reload | ActionState::Skill => match view_state {
             ViewState::Idle => {}
             ViewState::ZoomIn => {
                 *view_state = ViewState::ZoomOut;

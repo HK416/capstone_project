@@ -114,7 +114,7 @@ impl Velocity {
                 ),
                 _ => {}
             },
-            ActionState::Death
+            ActionState::Retreat
             | ActionState::Callsign
             | ActionState::VictoryStart
             | ActionState::VictoryEnd => {}

@@ -90,6 +90,11 @@ pub struct InGameResultScene {
     /// 지형 속성 데이터입니다.
     stage_attributes: Arc<StageAttributes>,
 
+    /// 플레이어 캐릭터 종류
+    _player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
+
     /// 게임 월드
     world: World,
 
@@ -187,6 +192,8 @@ impl InGameResultScene {
         packet: InGameFinishPacket,
         is_player_win: Option<bool>,
         stage_attributes: Arc<StageAttributes>,
+        player_character: CharacterKind,
+        player_team: Team,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -219,6 +226,8 @@ impl InGameResultScene {
             packet,
             is_player_win,
             stage_attributes,
+            _player_character: player_character,
+            player_team,
             world,
             camera: Entity::DANGLING,
             camera_fov_y: 1.0,
@@ -261,27 +270,12 @@ impl InGameResultScene {
         }
     }
 
-    /// 플레이어 엔터티를 반환합니다.
-    fn player_entity(&self) -> (Entity, PlayerArchetype) {
-        self.players
-            .get(&self.uid)
-            .cloned()
-            .expect("no such entity!")
-    }
-
     // 플레이어를 초기화합니다.
     fn setup_players(&mut self) {
         // 우승 팀을 판단합니다.
         let winner_team = match self.packet.winner {
             Some(team) => team,
-            None => {
-                let (entity, _archetype) = self.player_entity();
-                let &(team, _team_index) = self
-                    .world
-                    .query_one_mut::<&(Team, usize)>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                team
-            }
+            None => self.player_team,
         };
 
         // 우승팀 플레이어 캐릭터의 위치와 상태를 초기화합니다.
@@ -986,19 +980,12 @@ impl GameScene for InGameResultScene {
             self.regist_character_img_texture(device, ui_renderer, kind);
         }
 
-        // 플레이어가 속한 팀을 가져옵니다.
-        let (entity, _archetype) = self.player_entity();
-        let &(team, _team_index) = self
-            .world
-            .query_one_mut::<&(Team, usize)>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         // 팀 데이터를 가져옵니다.
         (self.my_team, self.other_team) = self
             .packet
             .players
             .drain(..)
-            .partition(|data| data.team() == team);
+            .partition(|data| data.team() == self.player_team);
 
         self.my_team.sort_by_key(|data| data.team_index());
         self.other_team.sort_by_key(|data| data.team_index());
@@ -1101,7 +1088,7 @@ impl GameScene for InGameResultScene {
         let world = &self.world;
         let character_view = &world.view::<&CharacterKind>();
         rayon::in_place_scope(|scope| {
-            for (entity, archetype) in self.winner.values().cloned() {
+            for (&uid, &(entity, archetype)) in self.winner.iter() {
                 scope.spawn(move |_| {
                     // 캐릭터 속성 데이터를 가져옵니다.
                     let &character_kind = character_view
@@ -1117,6 +1104,7 @@ impl GameScene for InGameResultScene {
                         movement_state_timer,
                     )| {
                         update_action_state_timer(
+                            uid,
                             HeldInput::empty(),
                             &mut BulletData::default(),
                             &mut SkillCostData::default(),

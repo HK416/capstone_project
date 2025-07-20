@@ -186,10 +186,10 @@ impl GameWorldInGameFinishState {
     }
 
     /// 모든 세션에 Pull 패킷 데이터를 전송합니다.
-    fn broadcast_pull_packet(&mut self, world: &GameWorld) {
+    fn broadcast_pull_packet(&mut self, world: &mut GameWorld) {
         // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        for (&uid, data) in world.players.iter() {
+        for (&uid, data) in world.players.iter_mut() {
             players.push(InGamePlayerPullData::new(
                 uid,
                 self.half_size_x,
@@ -198,6 +198,7 @@ impl GameWorldInGameFinishState {
                 data.translation,
                 data.rotation,
                 data.action_state,
+                data.action_notify.take(),
                 data.action_state_timer,
                 data.movement_state,
                 data.movement_state_timer,
@@ -264,6 +265,7 @@ impl GameWorldInGameFinishState {
             // 행동 상태 타이머를 갱신합니다.
             let character_attributes = player.character_attributes();
             update_action_state_timer(
+                uid,
                 HeldInput::empty(),
                 &mut player.bullet_data,
                 &mut player.skill_cost_data,
@@ -575,6 +577,7 @@ impl GameWorldState for GameWorldInGameFinishState {
                 character_attributes,
                 &mut player.bullet_data,
                 &mut player.skill_cost_data,
+                &mut vec![],
             );
             update_movement_state(
                 player.held_input,

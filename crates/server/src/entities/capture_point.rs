@@ -27,7 +27,7 @@ impl CapturePointObject {
         let mut num_blue_players = 0;
         let mut num_red_players = 0;
         for player in players {
-            if player.action_state != ActionState::Death {
+            if player.action_state != ActionState::Retreat {
                 if self.collider.check_point_collision(&player.translation) {
                     match player.team() {
                         Team::Blue => {

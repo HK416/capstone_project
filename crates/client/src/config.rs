@@ -169,10 +169,16 @@ impl UserConfig {
         global.locale = config.locale;
         global.window_size = config.window_size;
         global.is_fullscreen = config.is_fullscreen;
+        global.control_sensitivity = config.control_sensitivity;
+        global.flip_horizontal = config.flip_horizontal;
+        global.flip_vertical = config.flip_vertical;
         global.input_keyboard_map = config.input_keyboard_map;
         global.input_mouse_map = config.input_mouse_map;
         global.keyboard_input_map = config.keyboard_input_map;
         global.mouse_input_map = config.mouse_input_map;
+        global.background_volume = config.background_volume;
+        global.effect_volume = config.effect_volume;
+        global.voice_volume = config.voice_volume;
 
         Ok(global)
     }

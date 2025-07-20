@@ -8,9 +8,9 @@ use std::{
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, ActionEventDetail, ActionState, BulletKind, DamageLogData, HeldInput,
-        InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData, InputEvent,
-        InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
+        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, DamageLogData,
+        HeldInput, InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData,
+        InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
         MIN_LATITUDE, MovementState, NetworkState, ObjectId, Permission, StageAttributes,
         StageKind, Team, UserId, update_action_state, update_action_state_timer,
         update_movement_state, update_movement_state_timer, update_player_rotation,
@@ -287,8 +287,12 @@ impl GameWorldInGameRunState {
         // 입력을 시간순으로 정렬합니다.
         snapshots.sort_by_key(|s| s.play_elapsed_time_ms());
 
+        // 입력을 처리합니다.
+        let character_attributes = data.character_attributes();
+        let mut action_events = Vec::with_capacity(snapshots.len());
         for snapshot in snapshots {
             match snapshot {
+                // 카메라 이동 입력을 처리합니다.
                 InputSnapshot::CameraOrientation {
                     delta_lat,
                     delta_lon,
@@ -298,6 +302,7 @@ impl GameWorldInGameRunState {
                         (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
                     data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
                 }
+                // 키 입력을 처리합니다.
                 InputSnapshot::KeyEvent { events, .. } => {
                     for event in events {
                         match event {
@@ -309,8 +314,6 @@ impl GameWorldInGameRunState {
                             }
                         }
 
-                        // 행동 상태와 움직임 상태를 갱신합니다.
-                        let character_attributes = data.character_attributes();
                         update_action_state(
                             data.held_input,
                             &mut data.action_state,
@@ -318,6 +321,7 @@ impl GameWorldInGameRunState {
                             character_attributes,
                             &mut data.bullet_data,
                             &mut data.skill_cost_data,
+                            &mut action_events,
                         );
                         update_movement_state(
                             data.held_input,
@@ -327,6 +331,26 @@ impl GameWorldInGameRunState {
                         );
                     }
                 }
+            }
+        }
+
+        // 행동 이벤트를 처리합니다.
+        for event in action_events {
+            match event {
+                ActionEvent::Changed(action_state) => match action_state {
+                    ActionState::Attack => data.action_notify = ActionNotify::EnterAttack,
+                    ActionState::Retreat => {
+                        data.action_notify = ActionNotify::Retreat;
+                    }
+                    ActionState::Reload => {
+                        data.action_notify = ActionNotify::Reload;
+                    }
+                    ActionState::Skill => {
+                        data.action_notify = ActionNotify::EnterSkill;
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
     }
@@ -351,30 +375,13 @@ impl GameWorldInGameRunState {
 
         // 입력을 초기화합니다.
         data.held_input = HeldInput::empty();
-
-        // 상태를 갱신합니다.
-        let character_attributes = data.character_attributes();
-        update_action_state(
-            data.held_input,
-            &mut data.action_state,
-            &mut data.action_state_timer,
-            character_attributes,
-            &mut data.bullet_data,
-            &mut data.skill_cost_data,
-        );
-        update_movement_state(
-            data.held_input,
-            data.action_state,
-            &mut data.movement_state,
-            &mut data.movement_state_timer,
-        );
     }
 
     /// 모든 세션에 Pull 패킷 데이터를 전송합니다.
-    fn broadcast_pull_packet(&mut self, world: &GameWorld) {
-        // 플레이어 데이터를 수집합니다. (AI 플레이어도 포함)
+    fn broadcast_pull_packet(&mut self, world: &mut GameWorld) {
+        // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        for (&uid, data) in world.players.iter() {
+        for (&uid, data) in world.players.iter_mut() {
             players.push(InGamePlayerPullData::new(
                 uid,
                 self.half_size_x,
@@ -383,8 +390,12 @@ impl GameWorldInGameRunState {
                 data.translation,
                 data.rotation,
                 data.action_state,
+                data.action_notify.take(),
                 data.action_state_timer,
-                data.movement_state,
+                match data.movement_state {
+                    MovementState::Landing => MovementState::Jumping,
+                    _ => data.movement_state,
+                },
                 data.movement_state_timer,
                 data.character_attributes(),
                 data.latlon,
@@ -482,7 +493,7 @@ impl GameWorldInGameRunState {
     fn update(&mut self, world: &mut GameWorld, elapsed: Duration) {
         let stage_attributes = get_stage_attributes(self.stage_kind);
         let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
-        let mut event_details = Vec::with_capacity(72);
+        let mut events = Vec::with_capacity(64);
 
         // 1. 플레이어 행동 이벤트를 수집합니다.
         for (&uid, player) in world.players.iter_mut() {
@@ -502,8 +513,8 @@ impl GameWorldInGameRunState {
             let mut skill_cost_data = player.skill_cost_data;
             let mut action_state = player.action_state;
             let mut action_state_timer = player.action_state_timer;
-            let mut events = Vec::default();
             update_action_state_timer(
+                uid,
                 player.held_input,
                 &mut bullet_data,
                 &mut skill_cost_data,
@@ -513,27 +524,24 @@ impl GameWorldInGameRunState {
                 elapsed_time_ms,
                 &mut events,
             );
-
-            event_details.extend(events.drain(..).map(|e| match e {
-                ActionEvent::Respawn { timing } => ActionEventDetail::Respawn { uid, timing },
-                ActionEvent::Reload => ActionEventDetail::Reload { uid },
-                ActionEvent::Attack { timing } => ActionEventDetail::Attack { uid, timing },
-                ActionEvent::Skill { timing } => ActionEventDetail::Skill { uid, timing },
-            }));
         }
-
+        
         // 커스텀 게임일 때 FSM 기반 AI 플레이어 업데이트
         if self.custom_game {
             crate::ai::ai_player::update_ai_players(&mut world.ai_players);
         }
 
         // 2. 행동 이벤트를 시간 순으로 정렬합니다.
-        event_details.sort();
+        events.sort();
 
         // 3. 시간 순서에 따라 행동 이벤트를 처리합니다.
         let mut curr_elapsed_time_ms = 0;
-        for event in event_details {
-            let timing = event.timing();
+        for ActionEventDetail { uid, timing, event } in events {
+            // 서버와 연결이 끊어진 경우 건너뜁니다.
+            if self.leaved_players.contains(&uid) {
+                continue;
+            }
+
             let elapsed_time_ms = timing.saturating_sub(curr_elapsed_time_ms);
             curr_elapsed_time_ms = curr_elapsed_time_ms.max(timing);
 
@@ -547,79 +555,9 @@ impl GameWorldInGameRunState {
 
             // 3.2. 행동 이벤트를 처리합니다.
             match event {
-                ActionEventDetail::Respawn { uid, .. } => {
-                    // 서버와 연결이 끊어진 경우 건너뜁니다.
-                    if self.leaved_players.contains(&uid) {
-                        continue;
-                    }
-
-                    // 해당 플레이어 데이터를 가져옵니다.
-                    let data = match world.players.get_mut(&uid) {
-                        Some(data) => data,
-                        None => {
-                            log::error!("Player({}) not found in {}!", &uid, &world);
-                            eprintln!("Player({}) not found in {}!", &uid, &world);
-                            continue;
-                        }
-                    };
-
-                    // 플레이어 위치와 상태를 초기화합니다.
-                    let team = data.team();
-                    let team_index = data.team_index();
-                    let (rotation, translation) = match team {
-                        Team::Blue => (
-                            stage_attributes.blue_team_rotation,
-                            stage_attributes.blue_team_positions[team_index],
-                        ),
-                        Team::Red => (
-                            stage_attributes.red_team_rotation,
-                            stage_attributes.red_team_positions[team_index],
-                        ),
-                    };
-                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
-                    let longitude = glam::Quat::IDENTITY.angle_between(rotation);
-
-                    data.health_data.shield = 0;
-                    data.health_data.remaining = data.health_data.num_maximum_health();
-                    data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
-                    data.skill_cost_data.remaining = 0;
-                    data.skill_cost_timer = 0;
-                    data.input_state_timer.0 = 0;
-                    data.rotation = rotation;
-                    data.velocity.0 = glam::Vec3A::ZERO;
-                    data.direction.0 = direction;
-                    data.translation = translation;
-                    data.set_grounded(true);
-                    data.set_invincible(true);
-                    data.latlon = LatLon::new(10f32.to_radians(), longitude);
-                }
-                ActionEventDetail::Reload { uid } => {
-                    // 서버와 연결이 끊어진 경우 건너뜁니다.
-                    if self.leaved_players.contains(&uid) {
-                        continue;
-                    }
-
-                    // 플레이어 데이터를 가져옵니다.
-                    let data = match world.players.get_mut(&uid) {
-                        Some(data) => data,
-                        None => {
-                            log::error!("Player({}) not found in {}!", &uid, &world);
-                            eprintln!("Player({}) not found in {}!", &uid, &world);
-                            continue;
-                        }
-                    };
-
-                    // 플레이어의 현재 남은 총알을 최대치로 설정합니다.
-                    data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
-                }
-                ActionEventDetail::Attack { uid, .. } => {
-                    // 서버와 연결이 끊어진 경우 건너뜁니다.
-                    if self.leaved_players.contains(&uid) {
-                        continue;
-                    }
-
+                ActionEvent::Attack => {
                     // 발사한 플레이어 데이터의 소유권을 가져옵니다.
-                    let shooter = match world.players.remove(&uid) {
+                    let mut shooter = match world.players.remove(&uid) {
                         Some(shooter) => shooter,
                         None => {
                             log::error!("Player({}) not found in {}!", &uid, &world);
@@ -627,6 +565,9 @@ impl GameWorldInGameRunState {
                             continue;
                         }
                     };
+                    if shooter.bullet_data.fires_per_attack <= 1 {
+                        shooter.action_notify = ActionNotify::FirstAttack;
+                    }
 
                     // 발사한 플레이어의 무기 데이터를 가져옵니다.
                     let character_kind = shooter.character_kind();
@@ -683,11 +624,132 @@ impl GameWorldInGameRunState {
                     // 발사한 플레이어 데이터의 소유권을 돌려줍니다.
                     world.players.insert(uid, shooter);
                 }
-                ActionEventDetail::Skill { uid, .. } => {
-                    // 서버와 연결이 끊어진 경우 건너뜁니다.
-                    if self.leaved_players.contains(&uid) {
-                        continue;
+                ActionEvent::Changed(action_state) => match action_state {
+                    ActionState::Attack => {
+                        // 플레이어 데이터를 가져옵니다.
+                        let data = match world.players.get_mut(&uid) {
+                            Some(data) => data,
+                            None => {
+                                log::error!("Player({}) not found in {}!", &uid, &world);
+                                eprintln!("Player({}) not found in {}!", &uid, &world);
+                                continue;
+                            }
+                        };
+
+                        data.action_notify = ActionNotify::EnterAttack
                     }
+                    ActionState::Retreat => {
+                        // 플레이어 데이터를 가져옵니다.
+                        let data = match world.players.get_mut(&uid) {
+                            Some(data) => data,
+                            None => {
+                                log::error!("Player({}) not found in {}!", &uid, &world);
+                                eprintln!("Player({}) not found in {}!", &uid, &world);
+                                continue;
+                            }
+                        };
+
+                        data.action_notify = ActionNotify::Retreat;
+                    }
+                    ActionState::Reload => {
+                        // 플레이어 데이터를 가져옵니다.
+                        let data = match world.players.get_mut(&uid) {
+                            Some(data) => data,
+                            None => {
+                                log::error!("Player({}) not found in {}!", &uid, &world);
+                                eprintln!("Player({}) not found in {}!", &uid, &world);
+                                continue;
+                            }
+                        };
+
+                        data.action_notify = ActionNotify::Reload;
+                    }
+                    ActionState::Skill => {
+                        // 플레이어 데이터를 가져옵니다.
+                        let data = match world.players.get_mut(&uid) {
+                            Some(data) => data,
+                            None => {
+                                log::error!("Player({}) not found in {}!", &uid, &world);
+                                eprintln!("Player({}) not found in {}!", &uid, &world);
+                                continue;
+                            }
+                        };
+
+                        let character_attributes = data.character_attributes();
+                        data.skill_cost_data.remaining = data
+                            .skill_cost_data
+                            .remaining
+                            .saturating_sub(character_attributes.skill_cost);
+                    }
+                    _ => {}
+                },
+                ActionEvent::Reload => {
+                    // 플레이어 데이터를 가져옵니다.
+                    let data = match world.players.get_mut(&uid) {
+                        Some(data) => data,
+                        None => {
+                            log::error!("Player({}) not found in {}!", &uid, &world);
+                            eprintln!("Player({}) not found in {}!", &uid, &world);
+                            continue;
+                        }
+                    };
+
+                    // 플레이어의 현재 남은 총알을 최대치로 설정합니다.
+                    data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
+                }
+                ActionEvent::Respawn => {
+                    // 해당 플레이어 데이터를 가져옵니다.
+                    let data = match world.players.get_mut(&uid) {
+                        Some(data) => data,
+                        None => {
+                            log::error!("Player({}) not found in {}!", &uid, &world);
+                            eprintln!("Player({}) not found in {}!", &uid, &world);
+                            continue;
+                        }
+                    };
+
+                    // 플레이어 위치와 상태를 초기화합니다.
+                    let team = data.team();
+                    let team_index = data.team_index();
+                    let (rotation, translation) = match team {
+                        Team::Blue => (
+                            stage_attributes.blue_team_rotation,
+                            stage_attributes.blue_team_positions[team_index],
+                        ),
+                        Team::Red => (
+                            stage_attributes.red_team_rotation,
+                            stage_attributes.red_team_positions[team_index],
+                        ),
+                    };
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let longitude = glam::Quat::IDENTITY.angle_between(rotation);
+
+                    data.health_data.shield = 0;
+                    data.health_data.remaining = data.health_data.num_maximum_health();
+                    data.bullet_data.remaining = data.bullet_data.num_maximum_bullets();
+                    data.skill_cost_data.remaining = 0;
+                    data.skill_cost_timer = 0;
+                    data.input_state_timer.0 = 0;
+                    data.rotation = rotation;
+                    data.velocity.0 = glam::Vec3A::ZERO;
+                    data.direction.0 = direction;
+                    data.translation = translation;
+                    data.set_grounded(true);
+                    data.set_invincible(true);
+                    data.latlon = LatLon::new(10f32.to_radians(), longitude);
+                }
+                ActionEvent::Skill => {
+                    // 플레이어 데이터를 가져옵니다.
+                    let data = match world.players.get_mut(&uid) {
+                        Some(data) => data,
+                        None => {
+                            log::error!("Player({}) not found in {}!", &uid, &world);
+                            eprintln!("Player({}) not found in {}!", &uid, &world);
+                            continue;
+                        }
+                    };
+
+                    data.action_notify = ActionNotify::FirstSkill;
                 }
             }
         }
@@ -729,7 +791,9 @@ impl GameWorldInGameRunState {
 
             // 행동 상태 타이머를 갱신합니다.
             let character_attributes = player.character_attributes();
+            let mut events = Vec::default();
             update_action_state_timer(
+                uid,
                 player.held_input,
                 &mut player.bullet_data,
                 &mut player.skill_cost_data,
@@ -737,9 +801,8 @@ impl GameWorldInGameRunState {
                 &mut player.action_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                &mut vec![],
+                &mut events,
             );
-
             // 움직임 상태 타이머를 갱신합니다.
             update_movement_state_timer(
                 player.action_state,
@@ -947,17 +1010,19 @@ impl GameWorldInGameRunState {
             let details =
                 bullet_collider.check_dynamic_collision_details(&velocity, &player_collider);
             if let Some(details) = details {
-                match nearest_distance.as_mut() {
-                    Some(distance) => {
-                        if *distance > details.distance {
-                            *distance = details.distance;
+                if details.distance <= length {
+                    match nearest_distance.as_mut() {
+                        Some(distance) => {
+                            if *distance > details.distance {
+                                *distance = details.distance;
+                                player_uid = Some(uid);
+                            }
+                        }
+                        None => {
+                            nearest_distance = Some(details.distance);
+                            bullet.remaining_distance = 0.0;
                             player_uid = Some(uid);
                         }
-                    }
-                    None => {
-                        nearest_distance = Some(details.distance);
-                        bullet.remaining_distance = 0.0;
-                        player_uid = Some(uid);
                     }
                 }
             }
@@ -1087,10 +1152,11 @@ impl GameWorldInGameRunState {
             if hitted.health_data.remaining <= final_damage {
                 // 플레이어 행동 불능 처리
                 hitted.health_data.remaining = 0;
-                hitted.action_state = ActionState::Death;
+                hitted.action_state = ActionState::Retreat;
                 hitted.action_state_timer.0 = 0;
                 hitted.movement_state = MovementState::Idle;
                 hitted.movement_state_timer.0 = 0;
+                hitted.action_notify = ActionNotify::Retreat;
 
                 // 플레이 데이터 갱신
                 hitted.retreat_count += 1;

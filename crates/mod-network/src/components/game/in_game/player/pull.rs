@@ -4,9 +4,9 @@
 use std::{f32::consts::TAU, i16, num::NonZeroU32};
 
 use crate::components::{
-    ActionState, ActionStateTimer, BigEndian, CharacterAttributes, LatLon, MovementState,
-    MovementStateTimer, NetworkState, Permission, PlayerStateData, UserId, MAX_JUMP_DURATION,
-    MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+    ActionNotify, ActionState, ActionStateTimer, BigEndian, CharacterAttributes, LatLon,
+    MovementState, MovementStateTimer, NetworkState, Permission, PlayerStateData, UserId,
+    MAX_JUMP_DURATION, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
 };
 
 /// 서버에서 클라이언트로 전달되는 플레이어 갱신 데이터입니다.
@@ -40,6 +40,7 @@ impl InGamePlayerPullData {
         translation: glam::Vec3A,
         rotation: glam::Quat,
         action_state: ActionState,
+        action_notify: ActionNotify,
         action_state_timer: ActionStateTimer,
         movement_state: MovementState,
         movement_state_timer: MovementStateTimer,
@@ -67,7 +68,7 @@ impl InGamePlayerPullData {
             ActionState::AimAt => attributes.normal_attack_start_duration,
             ActionState::AimOff => attributes.normal_attack_end_duration,
             ActionState::Attack => attributes.normal_attack_ing_duration,
-            ActionState::Death => RESPAWN_DELAY,
+            ActionState::Retreat => RESPAWN_DELAY,
             ActionState::Reload => attributes.normal_reload_duration,
             ActionState::Skill => attributes.skill_duration,
             ActionState::Callsign => attributes.normal_callsign_duration,
@@ -99,7 +100,8 @@ impl InGamePlayerPullData {
             rotation,
             player_state: PlayerStateData::new()
                 .with_action_state(action_state)
-                .with_movement_state(movement_state),
+                .with_movement_state(movement_state)
+                .with_action_notify(action_notify),
             action_state_timer,
             movement_state_timer,
             latitude,
@@ -146,6 +148,11 @@ impl InGamePlayerPullData {
         self.player_state.movement_state()
     }
 
+    /// 행동 상태 알림을 반환합니다.
+    pub fn action_notify(&self) -> ActionNotify {
+        self.player_state.action_notify()
+    }
+
     /// 플레이어의 행동 상태 타이머를 반환합니다.
     pub fn action_state_timer(&self, attribute: &CharacterAttributes) -> ActionStateTimer {
         let duration = match self.action_state() {
@@ -154,7 +161,7 @@ impl InGamePlayerPullData {
             ActionState::AimAt => attribute.normal_attack_start_duration,
             ActionState::AimOff => attribute.normal_attack_end_duration,
             ActionState::Attack => attribute.normal_attack_ing_duration,
-            ActionState::Death => RESPAWN_DELAY,
+            ActionState::Retreat => RESPAWN_DELAY,
             ActionState::Reload => attribute.normal_reload_duration,
             ActionState::Skill => attribute.skill_duration,
             ActionState::Callsign => attribute.normal_callsign_duration,
@@ -647,6 +654,7 @@ mod tests {
             glam::vec3a(-1.4123, 1.3422, 20.411),
             glam::quat(0.0, 0.7071068, 0.0, 0.7071068),
             ActionState::Idle,
+            ActionNotify::EnterAttack,
             ActionStateTimer::new(132),
             MovementState::Idle,
             MovementStateTimer(132),

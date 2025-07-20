@@ -160,8 +160,8 @@ mod tests {
     use mod_physics::object3d::Capsule;
 
     use crate::components::{
-        ActionState, ActionStateTimer, BulletKind, CharacterAttributes, Float3, LatLon,
-        MovementState, MovementStateTimer, ObjectId, UserId,
+        ActionNotify, ActionState, ActionStateTimer, BulletKind, CharacterAttributes, Float3,
+        LatLon, MovementState, MovementStateTimer, ObjectId, UserId,
     };
 
     use super::*;
@@ -249,6 +249,7 @@ mod tests {
             glam::vec3a(10.0241, 0.0111, 5.031413),
             glam::quat(0.00134123, 0.0061341, 0.7341341, 0.212341),
             ActionState::Attack,
+            ActionNotify::None,
             ActionStateTimer::new(320),
             MovementState::Landing,
             MovementStateTimer::new(1200),
@@ -263,6 +264,7 @@ mod tests {
             glam::vec3a(10.0241, 0.0111, 5.031413),
             glam::quat(0.00134123, 0.0061341, 0.7341341, 0.212341),
             ActionState::Attack,
+            ActionNotify::EnterAttack,
             ActionStateTimer::new(323),
             MovementState::Landing,
             MovementStateTimer::new(1212),
