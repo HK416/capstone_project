@@ -7,21 +7,25 @@ use crate::{
 };
 
 /// 랜덤매치 참여 거부 사유 목록의 개수입니다.
-pub const NUM_MATCH_REQUEST_REJECTED_REASONS: usize = 4;
+pub const NUM_MATCH_REQUEST_REJECTED_REASONS: usize = 5;
 
 /// 랜덤매치 참여 거부 사유 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum MatchRequestRejectedReason {
     /// 유효하지 않은 사용자 식별자입니다.
-    #[default]
+    #[deprecated(note = "유효하지 않은 uid를 받으면 세션이 종료됩니다.")]
     InvalidUserId = 0,
     /// 유효하지 않은 로그인 토큰입니다.
+    #[deprecated(note = "유효하지 않은 로그인 토큰을 받으면 세션이 종료됩니다.")]
     InvalidLoginToken = 1,
     /// 이미 대기열에 등록되어 있습니다.
+    #[default]
     AlreadyInQueue = 2,
     /// 이용이 제한된 사용자 입니다.
     Banned = 3,
+    /// 게임 생성이 제한됐습니다.
+    CreationLimited = 4,
 }
 
 impl MatchRequestRejectedReason {
@@ -29,12 +33,14 @@ impl MatchRequestRejectedReason {
     ///
     /// 주어진 정수가 범위를 벗어나는 경우 `None`을 반환합니다.
     ///
+    #[allow(deprecated)]
     pub fn new(val: u8) -> Option<Self> {
         match val {
             0 => Some(Self::InvalidUserId),
             1 => Some(Self::InvalidLoginToken),
             2 => Some(Self::AlreadyInQueue),
             3 => Some(Self::Banned),
+            4 => Some(Self::CreationLimited),
             _ => None,
         }
     }
@@ -128,6 +134,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_match_request_rejected_reason_invalid_user_id() {
         let val = MatchRequestRejectedReason::InvalidUserId as u8;
         let reason = MatchRequestRejectedReason::new(val).unwrap();
@@ -135,6 +142,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_match_request_rejected_reason_invalid_login_token() {
         let val = MatchRequestRejectedReason::InvalidLoginToken as u8;
         let reason = MatchRequestRejectedReason::new(val).unwrap();
@@ -153,6 +161,13 @@ mod tests {
         let val = MatchRequestRejectedReason::Banned as u8;
         let reason = MatchRequestRejectedReason::new(val).unwrap();
         assert_eq!(MatchRequestRejectedReason::Banned, reason);
+    }
+
+    #[test]
+    fn test_match_request_rejected_reason_creation_limited() {
+        let val = MatchRequestRejectedReason::CreationLimited as u8;
+        let reason = MatchRequestRejectedReason::new(val).unwrap();
+        assert_eq!(MatchRequestRejectedReason::CreationLimited, reason);
     }
 
     #[test]

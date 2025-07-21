@@ -2,6 +2,7 @@ mod account;
 mod data;
 mod entities;
 mod formula;
+mod matching;
 mod session;
 mod token;
 mod world;

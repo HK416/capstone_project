@@ -35,7 +35,7 @@ use crate::{
     scenes::{
         lobby::option::LobbyCommonOptionModalLayer, FatalErrorSceneLayer, MessageSceneLayer,
         ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
-    },
+    }, SERVER_TCP_ADDR,
 };
 
 pub use self::{enter::*, exit::*, join::*, layer::*};
@@ -870,6 +870,19 @@ impl MainLobbyScene {
                 // 게임 매칭 버튼의 이벤트를 처리합니다.
                 let response = ui.allocate_rect(self.matching_btn_rect, egui::Sense::all());
                 self.matching_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
+                    // 다음 게임 장면으로 전환합니다.
+                    let next_scene = MainLobbyWaitLayer::new(
+                        self.locale,
+                        self.uid,
+                        self.token,
+                        self.texture_pool.clone(),
+                        self.texture_view_pool.clone(),
+                    );
+                    let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
+
                     ButtonState::Clicked
                 } else if response.is_pointer_button_down_on() {
                     ButtonState::Pressed
