@@ -8,13 +8,13 @@ use std::{
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, DamageLogData,
-        HeldInput, InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData,
-        InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
-        MIN_LATITUDE, MovementState, NetworkState, ObjectId, Permission, StageAttributes,
-        StageKind, Team, UserId, update_action_state, update_action_state_timer,
-        update_movement_state, update_movement_state_timer, update_player_rotation,
-        update_player_translation,
+        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, Damage,
+        DamageLogData, HeldInput, InGameBulletPullData, InGamePlayerPullData,
+        InGamePlayerStatusPullData, InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS,
+        MAX_IN_GAME_LOGS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, MovementState,
+        NetworkState, ObjectId, Permission, StageAttributes, StageKind, Team, UserId,
+        update_action_state, update_action_state_timer, update_movement_state,
+        update_movement_state_timer, update_player_rotation, update_player_translation,
     },
     protocol::{
         InGamePullPacket, InGameStatusPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -72,6 +72,7 @@ pub struct GameWorldInGameRunState {
     num_red_players: usize,
     /// 떠난 플레이어 식별자입니다.
     leaved_players: HashSet<UserId>,
+
     /// 제거된 총알 오브젝트 목록
     removed_bullets: HashSet<ObjectId>,
     /// 데미지 로그 데이터 목록
@@ -117,7 +118,7 @@ impl GameWorldInGameRunState {
                 MAX_IN_GAME_BULLETS,
                 RandomState::new(),
             ),
-            damage_logs: Vec::with_capacity(128),
+            damage_logs: Vec::with_capacity(MAX_IN_GAME_LOGS),
             counter: 0,
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             capture_point,
@@ -429,11 +430,15 @@ impl GameWorldInGameRunState {
 
         // 상태 변경 패킷을 생성합니다.
         let mut packet =
-            InGameStatusPacket::new(self.capture_point.as_ref().clone(), players, vec![]);
+            InGameStatusPacket::new(self.capture_point.as_ref().clone(), players, vec![], vec![]);
 
         // 패킷을 전송합니다.
+        let mut damage_logs: Vec<_> = self.damage_logs.drain(..).collect();
         let mut removed_bullets: Vec<_> = self.removed_bullets.drain().collect();
         loop {
+            let count = damage_logs.len().min(MAX_IN_GAME_LOGS);
+            packet.damage_logs = damage_logs.drain(..count).collect();
+
             let count = removed_bullets.len().min(MAX_IN_GAME_BULLETS);
             packet.removed_bullets = removed_bullets.drain(..count).collect();
 
@@ -441,7 +446,7 @@ impl GameWorldInGameRunState {
                 session.tcp_write(packet.as_raw());
             }
 
-            if removed_bullets.is_empty() {
+            if damage_logs.is_empty() && removed_bullets.is_empty() {
                 break;
             }
         }
@@ -826,6 +831,7 @@ impl GameWorldInGameRunState {
         }
     }
 
+    /// 총알 오브젝트를 갱신합니다.
     fn update_bullet(&mut self, world: &mut GameWorld, elapsed_time_ms: u16) {
         let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
         let stage_attributes = get_stage_attributes(self.stage_kind);
@@ -834,10 +840,10 @@ impl GameWorldInGameRunState {
         let mut removed = HashSet::default();
         for (&id, bullet) in self.bullets.iter_mut() {
             let velocity = bullet.velocity * elapsed_time_sec;
-            let player_uid =
+            let target_id =
                 Self::check_bullet_collision(stage_attributes, &world.players, bullet, velocity);
-            match player_uid {
-                Some(player_uid) => {
+            match target_id {
+                Some(target_id) => {
                     // 발사자의 소유권을 가져옵니다.
                     let mut shooter = match world.players.remove(&bullet.shooter_id) {
                         Some(data) => data,
@@ -848,19 +854,21 @@ impl GameWorldInGameRunState {
                         }
                     };
                     // 피격자를 가져옵니다.
-                    let hitted = match world.players.get_mut(&player_uid) {
+                    let hitted = match world.players.get_mut(&target_id) {
                         Some(data) => data,
                         None => {
                             // 발사자의 소유권을 돌려놓습니다.
                             world.players.insert(bullet.shooter_id, shooter);
 
-                            log::error!("Player({}) not found in {}!", &player_uid, &world,);
-                            eprintln!("Player({}) not found in {}!", &player_uid, &world,);
+                            log::error!("Player({}) not found in {}!", &target_id, &world,);
+                            eprintln!("Player({}) not found in {}!", &target_id, &world,);
                             continue;
                         }
                     };
 
-                    Self::bullet_hit_player(bullet, &mut shooter, hitted);
+                    // 데미지 처리 및 로그를 추가합니다.
+                    let damage = Self::bullet_hit_player(bullet, &mut shooter, hitted);
+                    self.damage_logs.push(DamageLogData::new(target_id, damage));
 
                     // 발사자의 소유권을 돌려놓습니다.
                     world.players.insert(bullet.shooter_id, shooter);
@@ -1078,7 +1086,7 @@ impl GameWorldInGameRunState {
     }
 
     /// 총알과 플레이어의 충돌 후처리를 수행합니다.
-    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, hitted: &mut Player) {
+    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, hitted: &mut Player) -> Damage {
         let uniform_distribution = Uniform::new(0.0, 1.0).unwrap();
         let shooter_attributes = shooter.character_attributes();
         let hitted_attributes = hitted.character_attributes();
@@ -1091,7 +1099,7 @@ impl GameWorldInGameRunState {
         let val = uniform_distribution.sample(&mut rand::rng());
         if val >= hit_chance {
             // Miss 처리
-            return;
+            return Damage::Miss;
         }
 
         // 2. 치명타 판정
@@ -1104,13 +1112,14 @@ impl GameWorldInGameRunState {
         let shooter_attack = shooter_attributes.attack_power as f32;
         let hitted_defense = hitted_attributes.defense_power as f32;
         let base_damage = (shooter_attack - hitted_defense) * rand::random_range(0.9..=1.1);
-        let mut final_damage = if ciritical {
+        let (damage, mut final_damage) = if ciritical {
             let shooter_crit_multi = shooter_attributes.critical_damage as f32 / 100.0;
-            (base_damage * shooter_crit_multi).round() as u16
+            let final_damage = ((base_damage * shooter_crit_multi).round() as u16).clamp(1, 9999);
+            (Damage::Critial(final_damage), final_damage)
         } else {
-            base_damage.round() as u16
-        }
-        .clamp(1, 9999);
+            let final_damage = (base_damage.round() as u16).clamp(1, 9999);
+            (Damage::Common(final_damage), final_damage)
+        };
 
         // 4. 데미지 적용
         if hitted.health_data.shield < final_damage {
@@ -1137,6 +1146,8 @@ impl GameWorldInGameRunState {
 
         shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
             .min(shooter.skill_cost_data.num_maximum_cost());
+
+        return damage;
     }
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.

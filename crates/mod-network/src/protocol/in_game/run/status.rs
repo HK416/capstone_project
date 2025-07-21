@@ -3,8 +3,8 @@
 
 use crate::{
     components::{
-        BigEndian, CapturePoint, InGamePlayerStatusPullData, ObjectId, TryFromBigEndian,
-        MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS,
+        BigEndian, CapturePoint, DamageLogData, InGamePlayerStatusPullData, ObjectId,
+        TryFromBigEndian, MAX_IN_GAME_BULLETS, MAX_IN_GAME_LOGS, MAX_IN_GAME_PLAYERS,
     },
     protocol::{Packet, PacketType, RawPacket},
 };
@@ -15,6 +15,8 @@ pub struct InGameStatusPacket {
     pub capture_point: CapturePoint,
     /// 플레이어 데이터
     pub players: Vec<InGamePlayerStatusPullData>,
+    /// 데미지 로그 데이터
+    pub damage_logs: Vec<DamageLogData>,
     /// 제거된 총알 오브젝트 식별자
     pub removed_bullets: Vec<ObjectId>,
 }
@@ -23,16 +25,19 @@ impl InGameStatusPacket {
     /// 새로운 패킷을 생성합니다.
     ///
     /// # Panics
-    /// 주어진 `player`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
-    /// 주어진 `removed_bullets`의 요소 수가 `MAX_IN_GAME_BULLETS`보다 클 경우 [`panic!`]을 호출합니다.
+    /// - 주어진 `player`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
+    /// - 주어진 `removed_bullets`의 요소 수가 `MAX_IN_GAME_BULLETS`보다 클 경우 [`panic!`]을 호출합니다.
+    /// - 주어진 `damage_logs`의 요소 수가 `MAX_IN_GAME_LOGS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
     pub fn new(
         capture_point: CapturePoint,
         players: Vec<InGamePlayerStatusPullData>,
+        damage_logs: Vec<DamageLogData>,
         removed_bullets: Vec<ObjectId>,
     ) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
+        assert!(damage_logs.len() <= MAX_IN_GAME_LOGS, "too many logs!");
         assert!(
             removed_bullets.len() <= MAX_IN_GAME_BULLETS,
             "too many bullets!"
@@ -41,6 +46,7 @@ impl InGameStatusPacket {
         Self {
             capture_point,
             players,
+            damage_logs,
             removed_bullets,
         }
     }
@@ -54,10 +60,13 @@ impl Packet for InGameStatusPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
+        let num_logs = self.damage_logs.len();
         let num_removed_bullets = self.removed_bullets.len();
         let data_size = CapturePoint::byte_size()
             + u8::byte_size()
             + InGamePlayerStatusPullData::byte_size() * num_players
+            + u16::byte_size()
+            + DamageLogData::byte_size() * num_logs
             + u16::byte_size()
             + ObjectId::byte_size() * num_removed_bullets;
         let mut data = Vec::with_capacity(data_size);
@@ -65,6 +74,10 @@ impl Packet for InGameStatusPacket {
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
             data.extend_from_slice(&player.to_big_endian_bytes());
+        }
+        data.extend_from_slice(&(num_logs as u16).to_big_endian_bytes());
+        for log in self.damage_logs.iter() {
+            data.extend_from_slice(&log.to_big_endian_bytes());
         }
         data.extend_from_slice(&(num_removed_bullets as u16).to_big_endian_bytes());
         for id in self.removed_bullets.iter() {
@@ -95,13 +108,14 @@ impl Packet for InGameStatusPacket {
             return None;
         }
 
-        // 플레이어의 수를 가져옵니다.
+        // 점령 상태를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
         let mut size = CapturePoint::byte_size();
         let mut data = &bytes[offset..offset + size];
         let capture_point = CapturePoint::try_from_big_endian_bytes(data)?;
 
+        // 플레이어의 수를 가져옵니다.
         offset = offset + size;
         size = u8::byte_size();
         data = &bytes[offset..offset + size];
@@ -117,6 +131,21 @@ impl Packet for InGameStatusPacket {
             size = InGamePlayerStatusPullData::byte_size();
             data = &bytes[offset..offset + size];
             players.push(InGamePlayerStatusPullData::from_big_endian_bytes(data));
+        }
+
+        // 로그의 개수를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
+        let num_logs = u16::from_big_endian_bytes(data) as usize;
+
+        // 로그 데이터를 가져옵니다.
+        let mut damage_logs = Vec::with_capacity(num_logs);
+        for _ in 0..num_logs {
+            offset = offset + size;
+            size = DamageLogData::byte_size();
+            data = &bytes[offset..offset + size];
+            damage_logs.push(DamageLogData::try_from_big_endian_bytes(data)?);
         }
 
         // 제거된 총알 식별자의 수를 가져옵니다.
@@ -137,6 +166,7 @@ impl Packet for InGameStatusPacket {
         Some(Self {
             capture_point,
             players,
+            damage_logs,
             removed_bullets,
         })
     }
@@ -144,7 +174,7 @@ impl Packet for InGameStatusPacket {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{NetworkState, Permission, UserId};
+    use crate::components::{Damage, NetworkState, Permission, UserId};
 
     use super::*;
 
@@ -164,11 +194,16 @@ mod tests {
             NetworkState::Fair,
         );
         let players = vec![player_0];
+        let damage_logs = vec![
+            DamageLogData::new(UserId::new(831), Damage::Miss),
+            DamageLogData::new(UserId::new(831), Damage::Critial(12)),
+        ];
         let removed_bullets = vec![ObjectId::new(95143), ObjectId::new(95144)];
 
         let origin = InGameStatusPacket::new(
             CapturePoint::new(6312, [2111, 2111], None),
             players,
+            damage_logs,
             removed_bullets,
         );
         let raw = origin.as_raw();

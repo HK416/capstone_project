@@ -139,6 +139,9 @@ impl Damage {
     }
 }
 
+/// 데미지 로그의 최대 개수
+pub const MAX_IN_GAME_LOGS: usize = u16::MAX as usize;
+
 /// 데미지 로그 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DamageLogData {
