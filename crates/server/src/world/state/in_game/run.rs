@@ -1121,7 +1121,13 @@ impl GameWorldInGameRunState {
             (Damage::Common(final_damage), final_damage)
         };
 
+        // Shooter의 데이터 갱신
+        shooter.damage_dealt = shooter.damage_dealt.saturating_add(final_damage as u32);
+        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
+            .min(shooter.skill_cost_data.num_maximum_cost());
+
         // 4. 데미지 적용
+        hitted.damage_taken = hitted.damage_taken.saturating_add(final_damage as u32);
         if hitted.health_data.shield < final_damage {
             final_damage -= hitted.health_data.shield;
             hitted.health_data.shield = 0;
@@ -1143,9 +1149,6 @@ impl GameWorldInGameRunState {
         } else {
             hitted.health_data.shield -= final_damage;
         }
-
-        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
-            .min(shooter.skill_cost_data.num_maximum_cost());
 
         return damage;
     }

@@ -586,13 +586,13 @@ impl InGameRunScene {
                     let (mesh, _) = self
                         .mesh_pool
                         .get(IMG_FONT_NUMBER_URI)
-                        .expect("the damage particle mesh must exist!");
+                        .expect("the ImgFont_Number particle mesh must exist!");
 
                     // 데미지 폰트 텍스처를 가져옵니다.
                     let texture = self
                         .texture_pool
                         .get(IMG_FONT_NUMBER_URI)
-                        .expect("the damage font texture must exist!");
+                        .expect("the ImgFont_Number texture must exist!");
                     let view = self
                         .texture_view_pool
                         .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
@@ -701,7 +701,66 @@ impl InGameRunScene {
                         self.damage_particles.push_back(entity);
                     }
                 }
-                Damage::Miss => {}
+                Damage::Miss => {
+                    // 데미지 파티클 메쉬를 가져옵니다.
+                    let (mesh, _) = self
+                        .mesh_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number particle mesh must exist!");
+
+                    // 데미지 폰트 텍스처를 가져옵니다.
+                    let texture = self
+                        .texture_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number texture must exist!");
+                    let view = self
+                        .texture_view_pool
+                        .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                    let sampler = self
+                        .sampler_pool
+                        .get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+                    let str = 0.to_string();
+                    let len = str.trim().len() as f32;
+                    for (i, ch) in str.trim().chars().enumerate() {
+                        let number = ch.to_digit(10).expect("invalid data");
+
+                        // 파티클 위치를 계산합니다.
+                        const ORIGIN: f32 = -0.1;
+                        const WIDTH: f32 = 0.05;
+                        const HALF_WIDTH: f32 = WIDTH * 0.5;
+                        let x = ORIGIN - HALF_WIDTH * len + WIDTH * i as f32 + HALF_WIDTH;
+
+                        // 엔터티 요소를 생성합니다.
+                        let parent = Parent(head);
+                        let particle = DamageParticle {
+                            elapsed_time_sec: 0.0,
+                            duration_sec: 2.0,
+                            begin_offset: glam::vec3a(x, 0.0, -0.6),
+                            end_offset: glam::vec3a(x, 0.5, -0.4),
+                            number,
+                        };
+                        let label = format!("DamageLog({})", uid);
+                        let damage_uniform = DamageFontUniform::uninit(Some(&label), device);
+                        let damage_resource = DamageFontResource::new(
+                            Some(&label),
+                            device,
+                            &view,
+                            &sampler,
+                            &damage_uniform,
+                        );
+
+                        // 새로운 엔터티를 생성합니다.
+                        let entity = world.spawn((
+                            mesh.clone(),
+                            (parent, archetype),
+                            particle,
+                            damage_uniform,
+                            damage_resource,
+                        ));
+                        self.damage_particles.push_back(entity);
+                    }
+                }
             }
         }
     }
