@@ -14,23 +14,41 @@ use crate::component::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TreeMaterialData {
     pub uri: String,
-    pub threshold: f32,
     pub main_color: String,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+}
+
+impl TreeMaterialData {
+    pub fn as_layout(&self) -> TreeMaterialDataLayout {
+        TreeMaterialDataLayout {
+            metallic: self.metallic,
+            roughness: self.roughness,
+            diffuse_steps: self.diffuse_steps,
+            specular_steps: self.specular_steps,
+        }
+    }
 }
 
 /// 나무 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct TreeMaterialDataLayout {
-    pub threshold: f32,
-    pub _padding0: [u8; 12],
+    metallic: f32,
+    roughness: f32,
+    diffuse_steps: f32,
+    specular_steps: f32,
 }
 
 impl Default for TreeMaterialDataLayout {
     fn default() -> Self {
         Self {
-            threshold: 0.5,
-            _padding0: [0; 12],
+            metallic: 0.22,
+            roughness: 0.62,
+            diffuse_steps: 4.2,
+            specular_steps: 2.2,
         }
     }
 }

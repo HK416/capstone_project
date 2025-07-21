@@ -13,7 +13,7 @@ pub struct Plane {
 impl Plane {
     /// 새로운 평면을 생성합니다.  
     ///
-    /// # Panics
+    /// # Debug
     /// 주어진 `normal`이 정규화되지 않은 경우 `panic!`을 호출합니다.
     ///
     pub fn new<N>(normal: N, d: f32) -> Self
@@ -21,7 +21,7 @@ impl Plane {
         N: Into<glam::Vec3A>,
     {
         let normal: glam::Vec3A = normal.into();
-        assert!(
+        debug_assert!(
             normal.is_normalized(),
             "the given `normal` must be normalized!"
         );

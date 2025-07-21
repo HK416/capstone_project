@@ -1,22 +1,23 @@
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use mod_network::{
     components::UserId,
     protocol::{InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
 };
+use mod_parallelism::collections::Queue;
 
 use crate::{
     session::{Session, SessionState},
     token::UserTokenMap,
-    world::{GameWorld, GameWorldEvent, GameWorldInGameReadyStateEvent},
+    world::{GameWorldEvent, GameWorldInGameReadyStateEvent, GameWorldSystemEvent},
 };
 
 /// 클라이언트가 인게임 준비 장면에 위치하고 있는 상태입니다.
 pub struct SessionInGameReadyState {
     /// 사용자 식별자
     uid: UserId,
-    /// 참가한 게임 월드
-    world: Weak<GameWorld>,
+    /// 게임 월드 이벤트 전송자
+    sender: Arc<Queue<GameWorldEvent>>,
     // 네트워크 상태 갱신을 위한 경과 시간
     elapsed_time_sec: f32,
     /// 유효하지 않은 패킷 경고 횟수
@@ -25,10 +26,10 @@ pub struct SessionInGameReadyState {
 
 impl SessionInGameReadyState {
     /// 새로운 세션 상태를 생성합니다.
-    pub fn new(uid: UserId, world: &Arc<GameWorld>) -> Self {
+    pub fn new(uid: UserId, sender: Arc<Queue<GameWorldEvent>>) -> Self {
         Self {
             uid,
-            world: Arc::downgrade(world),
+            sender,
             elapsed_time_sec: 0.0,
             packet_warn_count: 0,
         }
@@ -62,21 +63,14 @@ impl SessionInGameReadyState {
             return;
         }
 
-        // 커스텀 게임 대기실 객체를 가져옵니다.
-        if let Some(world) = self.world.upgrade() {
-            // 캐릭터 선택 요청을 보냅니다.
-            let event = GameWorldInGameReadyStateEvent::ReadyToPlay;
-            let event = GameWorldEvent::InGameReadyState {
-                session: session.clone(),
-                uid: packet.uid,
-                event,
-            };
-            world.push_event(event);
-        } else {
-            log::error!("{} accesses an invalid custom game", session);
-            session.close();
-            return;
-        }
+        // 로드 완료 요청을 보냅니다.
+        let event = GameWorldInGameReadyStateEvent::ReadyToPlay;
+        let event = GameWorldEvent::InGameReadyState {
+            session: session.clone(),
+            uid: packet.uid,
+            event,
+        };
+        self.sender.push(event);
     }
 }
 
@@ -122,10 +116,15 @@ impl SessionState for SessionInGameReadyState {
 
         const TICK: f32 = 1.0;
         if self.elapsed_time_sec >= TICK {
+            // 핑 갱신 요청을 보냅니다.
             self.elapsed_time_sec = 0.0;
-            if let Some(world) = self.world.upgrade() {
-                world.update_network_state(self.uid, session.clone(), session.network_state());
-            }
+            let event = GameWorldSystemEvent::UpdatePing(session.network_state());
+            let event = GameWorldEvent::System {
+                session: session.clone(),
+                uid: self.uid,
+                event,
+            };
+            self.sender.push(event);
         }
     }
 }

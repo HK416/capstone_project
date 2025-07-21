@@ -48,28 +48,6 @@ pub struct SkinningData {
     pub bindposes: Vec<Matrix>,
 }
 
-/// 모델 메쉬의 재질 데이터
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct MaterialData {
-    pub name: String,
-    pub kind: MaterialKind,
-    pub glossiness: Option<f32>,
-    pub smoothness: Option<f32>,
-    pub metallic: Option<f32>,
-    pub bump_scale: Option<f32>,
-    pub parallax: Option<f32>,
-    pub strength: Option<f32>,
-    pub albedo: Option<Float4>,
-    pub specular: Option<Float4>,
-    pub emissive: Option<Float4>,
-    pub albedo_map: Option<TextureData>,
-    pub specular_map: Option<TextureData>,
-    pub emissive_map: Option<TextureData>,
-    pub normal_map: Option<TextureData>,
-    pub height_map: Option<TextureData>,
-    pub occlusion_map: Option<TextureData>,
-}
-
 /// 재질 텍스처 데이터
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TextureData {
@@ -79,20 +57,6 @@ pub struct TextureData {
     pub address_v: AddressMode,
     pub address_w: AddressMode,
     pub filter_mode: FilterMode,
-}
-
-/// 재질의 종류 목록입니다.
-#[repr(u8)]
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum MaterialKind {
-    Opaque = 0,
-    Transparent = 1,
-}
-
-impl Default for MaterialKind {
-    fn default() -> Self {
-        Self::Opaque
-    }
 }
 
 /// 텍스처 뷰 차원

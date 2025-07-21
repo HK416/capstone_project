@@ -23,30 +23,54 @@ use super::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CharacterMaterialData {
     pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
     pub main_color: String,
     pub detail_mask: String,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+    pub rim_strength: f32,
+    pub rim_power: f32,
+}
+
+impl CharacterMaterialData {
+    pub fn as_layout(&self) -> CharacterMaterialDataLayout {
+        CharacterMaterialDataLayout {
+            metallic: self.metallic,
+            roughness: self.roughness,
+            diffuse_steps: self.diffuse_steps,
+            specular_steps: self.specular_steps,
+            rim_strength: self.rim_strength,
+            rim_power: self.rim_power,
+            ..Default::default()
+        }
+    }
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct CharacterMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
     pub metallic: f32,
-    pub _padding0: [u8; 4],
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+
+    pub rim_strength: f32,
+    pub rim_power: f32,
+    pub _padding0: [u8; 8],
 }
 
 impl Default for CharacterMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
             metallic: 0.0,
-            _padding0: [0; 4],
+            roughness: 0.5527864,
+            diffuse_steps: 4.2,
+            specular_steps: 2.2,
+            rim_strength: 0.8,
+            rim_power: 4.0,
+            _padding0: [0; 8],
         }
     }
 }
@@ -234,7 +258,7 @@ impl CharacterMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        character_uniform: &CharacterMaterialUniform,
+        material_uniform: &CharacterMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
         detail_mask_view: &wgpu::TextureView,
@@ -248,7 +272,7 @@ impl CharacterMaterialResource {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: character_uniform.as_entire_binding(),
+                        resource: material_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

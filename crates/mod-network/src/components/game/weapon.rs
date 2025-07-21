@@ -6,8 +6,10 @@ use crate::components::{BigEndian, TryFromBigEndian};
 /// 남은 총알 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BulletData {
+    /// 공격 당 총알 발사 횟수
+    pub fires_per_attack: u16,
     /// 남은 총알 수 입니다.
-    remaining: u16,
+    pub remaining: u16,
     /// 최대 총알 수 입니다. 최대 총알 수가 0인 경우 무한대를 의미합니다.
     maximum: u16,
 }
@@ -20,46 +22,20 @@ impl BulletData {
     ///
     pub const fn new(remaining: u16, maximum: u16) -> Self {
         assert!(remaining <= maximum, "invalid data!");
-        Self { remaining, maximum }
+        Self {
+            fires_per_attack: 0,
+            remaining,
+            maximum,
+        }
     }
 
     /// 새로운 남은 총알 데이터를 생성합니다.
     pub const fn splat(maximum: u16) -> Self {
         Self {
+            fires_per_attack: 0,
             remaining: maximum,
             maximum,
         }
-    }
-
-    /// 플레이어가 재장전 했을 때 호출되는 함수로
-    /// 남은 총알 수를 최대 총알 수로 초기화합니다.
-    pub fn on_reload(&mut self) {
-        self.remaining = self.maximum;
-    }
-
-    /// 플레이어가 일반 공격 했을 때 호출되는 함수로
-    /// 남은 총알 수를 하나 줄입니다.
-    ///
-    /// 총알이 발사될 수 있는 경우 `true`를 반환합니다.
-    ///
-    pub fn on_fired(&mut self) -> bool {
-        // 남은 총알이 무한대인 경우 항상 `true`를 반환합니다.
-        if self.maximum == 0 {
-            return true;
-        }
-
-        // 남은 총알이 0보다 큰 경우 `true`를 반환합니다.
-        if self.remaining > 0 {
-            self.remaining -= 1;
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    /// 남은 총알의 수를 가져옵니다.
-    pub fn num_remaining_bullets(&self) -> u16 {
-        self.remaining
     }
 
     /// 최대 총알의 수를 가져옵니다.
@@ -78,7 +54,7 @@ impl BulletData {
 
 impl BigEndian for BulletData {
     fn byte_size() -> usize {
-        u16::byte_size() + u16::byte_size()
+        u16::byte_size() + u16::byte_size() + u16::byte_size()
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -88,6 +64,7 @@ impl BigEndian for BulletData {
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
+        bytes.extend_from_slice(&self.fires_per_attack.to_big_endian_bytes());
         bytes.extend_from_slice(&self.remaining.to_big_endian_bytes());
         bytes.extend_from_slice(&self.maximum.to_big_endian_bytes());
 
@@ -108,6 +85,7 @@ impl BigEndian for BulletData {
 impl Default for BulletData {
     fn default() -> Self {
         Self {
+            fires_per_attack: 0,
             remaining: 0,
             maximum: 0,
         }
@@ -126,10 +104,16 @@ impl TryFromBigEndian for BulletData {
             )
         };
 
-        // 남은 총알 수를 가져옵니다.
+        // 공격당 발사 횟수를 가져옵니다.
         let mut offset = 0;
         let mut size = u16::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let fires_per_attack = u16::from_big_endian_bytes(data);
+
+        // 남은 총알 수를 가져옵니다.
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
         let remaining = u16::from_big_endian_bytes(data);
 
         // 최대 총알 수를 가져옵니다.
@@ -138,7 +122,11 @@ impl TryFromBigEndian for BulletData {
         data = &bytes[offset..offset + size];
         let maximum = u16::from_big_endian_bytes(data);
 
-        (remaining <= maximum).then(|| Self { remaining, maximum })
+        (remaining <= maximum).then(|| Self {
+            fires_per_attack,
+            remaining,
+            maximum,
+        })
     }
 }
 

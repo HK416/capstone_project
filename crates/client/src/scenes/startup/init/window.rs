@@ -4,15 +4,14 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{SoundDataPool, TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_TOUCH},
     config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::BASE_WIDTH,
+    scenes::{InitSoundScene, BASE_WIDTH},
 };
-
-use super::InitFinishScene;
 
 /// 애플리케이션 표시 언어에 따른 타이틀 텍스트입니다.
 const TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["창 설정"];
@@ -35,6 +34,12 @@ const OKAY_TEXTS: [&'static str; NUM_LOCALE] = ["확인"];
 pub struct InitWindowScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 최대 창 크기
     max_window_size: WindowSize,
 
@@ -50,20 +55,32 @@ pub struct InitWindowScene {
 
     // 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InitWindowScene {
     /// 새로운 `InitWindowScene`을 생성합니다.
-    pub fn new(texture_pool: TexturePool) -> Self {
-        let config = UserConfig::get();
+    pub fn new(
+        locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        texture_pool: TexturePool,
+        sound_data_pool: SoundDataPool,
+    ) -> Self {
         Self {
-            locale: config.locale,
+            locale,
+            background_volume,
+            effect_volume,
+            voice_volume,
             max_window_size: WindowSize::MAX,
             window_size: WindowSize::MAX,
             is_fullscreen: true,
             completed: false,
             delay_time_sec: 0.3,
             texture_pool,
+            sound_data_pool,
         }
     }
 
@@ -124,6 +141,18 @@ impl InitWindowScene {
             let event = AppEvent::FullScreenRequest(self.is_fullscreen);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
         }
 
         let text = FULLSCREEN_MODE_TEXTS[i];
@@ -144,6 +173,18 @@ impl InitWindowScene {
             let event = AppEvent::FullScreenRequest(self.is_fullscreen);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
         }
     }
 
@@ -200,10 +241,22 @@ impl InitWindowScene {
             let event = AppEvent::ResizeRequest(self.window_size);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
         }
     }
 
-    fn draw_okay_button(&mut self, ui: &mut egui::Ui, scale: f32, i: usize) {
+    fn draw_okay_button(&mut self, ui: &mut egui::Ui, scale: f32, i: usize, app: &dyn AppHandle) {
         let text = OKAY_TEXTS[i];
         let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
         let font_id = egui::FontId::new(22.0 * scale, family);
@@ -220,6 +273,18 @@ impl InitWindowScene {
             // 설정을 변경합니다.
             self.completed = true;
             self.delay_time_sec = 0.3;
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
         }
     }
 }
@@ -266,11 +331,30 @@ impl GameScene for InitWindowScene {
 
         if self.completed {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = InitFinishScene::new(self.texture_pool.clone());
+            let next_scene = InitSoundScene::new(
+                self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
+                self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
         }
     }
 
@@ -290,6 +374,7 @@ impl GameScene for InitWindowScene {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],
@@ -403,7 +488,7 @@ impl GameScene for InitWindowScene {
                     ui.add_space(4.0 * scale);
                     ui.separator();
                     ui.add_space(8.0 * scale);
-                    self.draw_okay_button(ui, scale, i);
+                    self.draw_okay_button(ui, scale, i, app);
                 });
             });
         ctx.set_style(old_style);

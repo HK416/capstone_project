@@ -6,7 +6,7 @@ use std::{
         atomic::{AtomicBool, Ordering as MemOrdering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use ahash::RandomState;
@@ -326,7 +326,7 @@ fn tcp_packet_receive_loop(
             }
 
             if event_loop_proxy
-                .send_event(AppEvent::PacketReceived(packet))
+                .send_event(AppEvent::PacketReceived(Instant::now(), packet))
                 .is_err()
             {
                 status.is_connected.store(false, MemOrdering::Release);
@@ -369,7 +369,7 @@ fn udp_packet_receive_loop(
                     match RawPacket::try_from_bytes(received_data) {
                         Ok(packet) => {
                             event_loop_proxy
-                                .send_event(AppEvent::PacketReceived(packet))
+                                .send_event(AppEvent::PacketReceived(Instant::now(), packet))
                                 .unwrap();
                         }
                         Err(e) => {

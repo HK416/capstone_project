@@ -10,12 +10,12 @@ use mod_network::{
 
 use crate::{
     account::Account,
-    session::{Session, state::room::SessionRoomState},
+    session::Session,
     token::UserTokenMap,
-    world::GameWorldPool,
+    world::{GameWorldEvent, GameWorldPool, GameWorldSystemEvent},
 };
 
-use super::{SessionState, SessionStateFlow};
+use super::SessionState;
 
 /// 클라이언트가 게임 로비 장면에 위치하고 있는 상태입니다.
 pub struct SessionLobbyState {
@@ -108,25 +108,17 @@ impl SessionLobbyState {
                 self.account.profile_icon,
                 session.clone(),
             );
-            match result {
-                Some(world) => {
-                    // 다음 세션 상태로 전환합니다.
-                    let state = Box::new(SessionRoomState::new(self.account.uid, world));
-                    let flow = SessionStateFlow::Push(state);
-                    session.flows.push(flow);
-                }
-                None => {
-                    // 패킷을 생성하고 전송합니다.
-                    let reason = JoinFailedReason::CreationLimited;
-                    let packet = JoinRoomFailedPacket::new(reason);
-                    session.tcp_write(packet.as_raw());
-                }
+            if result.is_none() {
+                // 패킷을 생성하고 전송합니다.
+                let reason = JoinFailedReason::CreationLimited;
+                let packet = JoinRoomFailedPacket::new(reason);
+                session.tcp_write(packet.as_raw());
             }
         } else {
             // 커스텀 게임을 가져옵니다.
             let result = GameWorldPool::get(&packet.id);
-            let world = match result {
-                Some(world) => world,
+            let sender = match result {
+                Some(sender) => sender,
                 None => {
                     // 패킷을 생성하고 전송합니다.
                     let reason = JoinFailedReason::NotFound;
@@ -136,27 +128,18 @@ impl SessionLobbyState {
                 }
             };
 
-            // 커스텀 게임 참여를 시도합니다.
-            let result = world.try_join(
-                self.account.uid,
-                self.account.name,
-                self.account.tier,
-                self.account.profile_icon,
-                session.clone(),
-            );
-            match result {
-                Ok(_) => {
-                    // 다음 세션 상태로 전환합니다.
-                    let state = Box::new(SessionRoomState::new(self.account.uid, world));
-                    let flow = SessionStateFlow::Push(state);
-                    session.flows.push(flow);
-                }
-                Err(reason) => {
-                    // 패킷을 생성하고 전송합니다.
-                    let packet = JoinRoomFailedPacket::new(reason);
-                    session.tcp_write(packet.as_raw());
-                }
+            // 커스텀 게임 참여 이벤트를 전송합니다.
+            let event = GameWorldSystemEvent::PlayerJoin {
+                name: self.account.name,
+                tier: self.account.tier,
+                profile_icon: self.account.profile_icon,
             };
+            let event = GameWorldEvent::System {
+                session: session.clone(),
+                uid: self.account.uid,
+                event,
+            };
+            sender.push(event);
         }
     }
 }

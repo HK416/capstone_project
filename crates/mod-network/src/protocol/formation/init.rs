@@ -73,7 +73,7 @@ impl BigEndian for Bitfield {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FormationDataInitPacket {
     // 총 남은 시간입니다.
-    pub remaining_time_sec: f32,
+    pub remaining_time_ms: u16,
     /// 비트 필드 데이터입니다.
     bitfield: Bitfield,
     /// 플레이어 초기화 데이터
@@ -87,7 +87,7 @@ impl FormationDataInitPacket {
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
     pub fn new(
-        remaining_time_sec: f32,
+        remaining_time_ms: u16,
         stage_kind: StageKind,
         duplicates: bool,
         players: Vec<FormationPlayerInitData>,
@@ -96,7 +96,7 @@ impl FormationDataInitPacket {
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
 
         Self {
-            remaining_time_sec,
+            remaining_time_ms,
             players,
             bitfield: Bitfield::new()
                 .with_stage_kind(stage_kind)
@@ -110,7 +110,7 @@ impl FormationDataInitPacket {
     /// 주어진 `players`의 요소 수가 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
     pub fn from_iter<I>(
-        remaining_time_sec: f32,
+        remaining_time_ms: u16,
         stage_kind: StageKind,
         duplicates: bool,
         iter: I,
@@ -120,7 +120,7 @@ impl FormationDataInitPacket {
         I::IntoIter: ExactSizeIterator,
     {
         Self::new(
-            remaining_time_sec,
+            remaining_time_ms,
             stage_kind,
             duplicates,
             iter.into_iter().collect(),
@@ -146,12 +146,12 @@ impl Packet for FormationDataInitPacket {
     fn as_raw(&self) -> RawPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
-        let data_size = f32::byte_size()
+        let data_size = u16::byte_size()
             + u8::byte_size()
             + u8::byte_size()
             + FormationPlayerInitData::byte_size() * num_players;
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes());
+        data.extend_from_slice(&self.remaining_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&self.bitfield.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
@@ -185,9 +185,9 @@ impl Packet for FormationDataInitPacket {
         // 게임 월드 식별자를 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = f32::byte_size();
+        let mut size = u16::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let remaining_time_sec = f32::from_big_endian_bytes(data);
+        let remaining_time_ms = u16::from_big_endian_bytes(data);
 
         // 비트 필드를 가져옵니다.
         offset = offset + size;
@@ -214,7 +214,7 @@ impl Packet for FormationDataInitPacket {
         }
 
         Some(Self {
-            remaining_time_sec,
+            remaining_time_ms,
             bitfield,
             players,
         })
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_creation_formation_data_init_packet() {
-        FormationDataInitPacket::new(60.0, StageKind::City, true, vec![]);
+        FormationDataInitPacket::new(60_000, StageKind::City, true, vec![]);
     }
 
     #[test]
@@ -269,7 +269,7 @@ mod tests {
         );
 
         let players = vec![player_0, player_1, player_2, player_3];
-        let origin = FormationDataInitPacket::new(50.0, StageKind::City, true, players);
+        let origin = FormationDataInitPacket::new(50_000, StageKind::City, true, players);
         let raw = origin.as_raw();
         let other = FormationDataInitPacket::from_raw(raw);
 

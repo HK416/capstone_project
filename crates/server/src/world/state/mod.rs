@@ -1,14 +1,14 @@
 mod formation;
-mod in_game_ready;
+mod in_game;
 mod room;
 
-use std::{collections::VecDeque, fmt, sync::Arc};
+use std::{collections::VecDeque, fmt};
 
 use tokio::time::{Duration, Instant};
 
-use crate::world::get_retires;
+use crate::world::{get_pool, get_retires};
 
-pub use self::{formation::*, in_game_ready::*, room::*};
+pub use self::{formation::*, in_game::*, room::*};
 
 use super::{GameWorld, GameWorldEvent};
 
@@ -16,22 +16,22 @@ use super::{GameWorld, GameWorldEvent};
 #[allow(unused_variables)]
 pub trait GameWorldState: fmt::Debug + Send {
     /// 게임 월드 상태에 진입할 때 호출되는 함수입니다.
-    fn on_enter(&mut self, world: &Arc<GameWorld>) {}
+    fn on_enter(&mut self, world: &mut GameWorld) {}
 
     /// 게임 월드 상태에서 빠져나올 때 호출되는 함수입니다.
-    fn on_exit(&mut self, world: &Arc<GameWorld>) {}
+    fn on_exit(&mut self, world: &mut GameWorld) {}
 
     /// 게임 월드 상태가 일시정지할 때 호출되는 함수입니다.
-    fn on_pause(&mut self, world: &Arc<GameWorld>) {}
+    fn on_pause(&mut self, world: &mut GameWorld) {}
 
     /// 게임 월드 상태가 재개될 때 호출되는 함수입니다.
-    fn on_resume(&mut self, world: &Arc<GameWorld>) {}
+    fn on_resume(&mut self, world: &mut GameWorld) {}
 
     /// 게임 월드 이벤트를 처리합니다.
-    fn handle_event(&mut self, world: &Arc<GameWorld>, event: GameWorldEvent) {}
+    fn handle_event(&mut self, world: &mut GameWorld, event: GameWorldEvent) {}
 
     /// 게임 월드 상태를 갱신할 때 호출되는 함수입니다.
-    fn on_advanced(&mut self, world: &Arc<GameWorld>, elapsed_time_sec: f32) {}
+    fn on_advanced(&mut self, world: &mut GameWorld, elapsed: Duration) {}
 }
 
 /// 게임 월드의 상태를 제어합니다.
@@ -46,7 +46,7 @@ pub enum GameWorldStateFlow {
 }
 
 /// 게임 월드 상태를 실행하는 루프 함수입니다.
-pub async fn world_state_loop(mut world: Arc<GameWorld>) {
+pub async fn world_state_loop(mut world: GameWorld) {
     // tick 초기화
     const TICK: Duration = Duration::from_millis(1);
     let mut interval = tokio::time::interval(TICK);
@@ -58,42 +58,33 @@ pub async fn world_state_loop(mut world: Arc<GameWorld>) {
     let flow = GameWorldStateFlow::Reset(state);
     world.flows.push(flow);
 
-    while world.is_running() {
+    'running: while world.running {
         let current_time_pt = interval.tick().await;
         let elapsed = current_time_pt.saturating_duration_since(previous_time_pt);
         previous_time_pt = current_time_pt;
 
         // 현재 게임 월드 상태에 대한 소유권을 가져옵니다.
         if let Some(mut state) = states.pop_back() {
-            (state, world) = tokio::task::spawn_blocking(move || {
-                // 현재 게임 월드 상태에서 이벤트를 처리합니다.
-                while let Some(event) = world.received_events.pop() {
-                    // 게임 월드가 비활성화된 경우 반복문을 탈출합니다.
-                    if !world.is_running() {
-                        return (state, world);
-                    }
-
-                    // 게임 월드 상태가 변경된 경우 이벤트 처리를 생략합니다
-                    if !world.flows.is_empty() {
-                        return (state, world);
-                    }
-
-                    state.handle_event(&world, event);
+            // 현재 게임 월드 상태에서 이벤트를 처리합니다.
+            while let Some(event) = world.events.pop() {
+                // 게임 월드가 비활성화된 경우 반복문을 탈출합니다.
+                if !world.running {
+                    states.push_back(state);
+                    break 'running;
                 }
 
-                // 게임 월드가 비활성화 되었거나 게임 월드 상태가 변경된 경우
-                // 현재 상태 갱신을 생략합니다.
-                if !world.is_running() || !world.flows.is_empty() {
-                    return (state, world);
+                // 게임 월드 상태가 변경된 경우 이벤트 처리를 생략합니다
+                if !world.flows.is_empty() {
+                    break;
                 }
 
+                state.handle_event(&mut world, event);
+            }
+
+            if world.running && world.flows.is_empty() {
                 // 현재 상태를 갱신합니다.
-                state.on_advanced(&world, elapsed.as_secs_f32());
-
-                (state, world)
-            })
-            .await
-            .unwrap();
+                state.on_advanced(&mut world, elapsed);
+            }
 
             // 가져온 게임 월드 상태에 대한 소유권을 돌려줍니다.
             states.push_back(state);
@@ -101,23 +92,27 @@ pub async fn world_state_loop(mut world: Arc<GameWorld>) {
 
         // 게임 월드 상태 흐름을 처리합니다.
         while let Some(flow) = world.flows.pop() {
-            handle_world_state_flow(&mut states, &world, flow);
+            handle_world_state_flow(&mut states, &mut world, flow);
         }
 
         // 게임 월드 상태가 비어있는 경우 루프를 탈출합니다.
         if states.is_empty() {
-            break;
+            break 'running;
         }
     }
 
-    handle_clear_world_state_flow(&mut states, &world);
+    log::info!("{} disabled.", &world);
+    println!("{} disabled.", &world);
+
+    handle_clear_world_state_flow(&mut states, &mut world);
+    get_pool().remove(&world.id);
     get_retires().push(world);
 }
 
 /// 세션 상태 흐름을 처리합니다.
 fn handle_world_state_flow(
     states: &mut VecDeque<Box<dyn GameWorldState>>,
-    world: &Arc<GameWorld>,
+    world: &mut GameWorld,
     flow: GameWorldStateFlow,
 ) {
     match flow {
@@ -132,7 +127,7 @@ fn handle_world_state_flow(
 /// [`GameWorldStateFlow::Clear`]를 처리합니다.
 fn handle_clear_world_state_flow(
     states: &mut VecDeque<Box<dyn GameWorldState>>,
-    world: &Arc<GameWorld>,
+    world: &mut GameWorld,
 ) {
     while let Some(mut state) = states.pop_back() {
         log::info!("{} exit GameWorldState({:?})", &world, &state);
@@ -143,7 +138,7 @@ fn handle_clear_world_state_flow(
 /// [`GameWorldStateFlow::Change`]를 처리합니다.
 fn handle_change_session_state_flow(
     states: &mut VecDeque<Box<dyn GameWorldState>>,
-    world: &Arc<GameWorld>,
+    world: &mut GameWorld,
     mut new: Box<dyn GameWorldState>,
 ) {
     if let Some(mut state) = states.pop_back() {
@@ -159,7 +154,7 @@ fn handle_change_session_state_flow(
 /// [`GameWorldStateFlow::Push`]를 처리합니다.
 fn handle_push_session_state_flow(
     states: &mut VecDeque<Box<dyn GameWorldState>>,
-    world: &Arc<GameWorld>,
+    world: &mut GameWorld,
     mut new: Box<dyn GameWorldState>,
 ) {
     if let Some(state) = states.back_mut() {
@@ -175,7 +170,7 @@ fn handle_push_session_state_flow(
 /// [`GameWorldStateFlow::Pop`]을 처리합니다.
 fn handle_pop_session_state_flow(
     states: &mut VecDeque<Box<dyn GameWorldState>>,
-    world: &Arc<GameWorld>,
+    world: &mut GameWorld,
 ) {
     if let Some(mut state) = states.pop_back() {
         log::info!("{} exit GameWorldState({:?})", &world, &state);
@@ -191,7 +186,7 @@ fn handle_pop_session_state_flow(
 /// [`GameWorldStateFlow::Reset`]을 처리합니다.
 fn handle_reset_session_state_flow(
     states: &mut VecDeque<Box<dyn GameWorldState>>,
-    world: &Arc<GameWorld>,
+    world: &mut GameWorld,
     mut new: Box<dyn GameWorldState>,
 ) {
     while let Some(mut state) = states.pop_back() {
@@ -219,5 +214,23 @@ impl fmt::Debug for GameWorldFormationState {
 impl fmt::Debug for GameWorldInGameReadyState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(GameWorldInGameReadyState))
+    }
+}
+
+impl fmt::Debug for GameWorldInGameEnterState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldInGameEnterState))
+    }
+}
+
+impl fmt::Debug for GameWorldInGameRunState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldInGameRunState))
+    }
+}
+
+impl fmt::Debug for GameWorldInGameFinishState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldInGameFinishState))
     }
 }

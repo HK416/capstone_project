@@ -9,7 +9,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use mod_network::components::Float4;
+use mod_network::components::{Float3, Float4};
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
@@ -19,23 +19,62 @@ use crate::component::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EnergyBulletMaterialData {
     pub uri: String,
-    pub emissive: Float4,
     pub main_color: Float4,
+    pub emissive_color: Float3,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub specular_steps: f32,
+    pub rim_strength: f32,
+    pub rim_power: f32,
+}
+
+impl EnergyBulletMaterialData {
+    pub fn as_layout(&self) -> EnergyBulletMaterialDataLayout {
+        EnergyBulletMaterialDataLayout {
+            main_color: self.main_color.into(),
+            emissive: self.emissive_color.into(),
+            metallic: self.metallic,
+            roughness: self.roughness,
+            specular_steps: self.specular_steps,
+            rim_strength: self.rim_strength,
+            rim_power: self.rim_power,
+            ..Default::default()
+        }
+    }
 }
 
 /// 에너지 볼 형태의 총알 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct EnergyBulletMaterialDataLayout {
-    pub emissive: [f32; 4],
     pub main_color: [f32; 4],
+
+    pub emissive: [f32; 3],
+    pub _padding0: [u8; 4],
+
+    pub metallic: f32,
+    pub roughness: f32,
+    pub _padding1: [u8; 4],
+    pub specular_steps: f32,
+
+    pub rim_strength: f32,
+    pub rim_power: f32,
+    pub _padding2: [u8; 8],
 }
 
 impl Default for EnergyBulletMaterialDataLayout {
     fn default() -> Self {
         Self {
-            emissive: [0.0; 4],
-            main_color: [0.0; 4],
+            main_color: [0.0, 0.0, 0.0, 0.0],
+            emissive: [0.0, 0.0, 0.0],
+            _padding0: [0; 4],
+            metallic: 0.0,
+            roughness: 0.2,
+            _padding1: [0; 4],
+            specular_steps: 2.2,
+            rim_strength: 0.8,
+            rim_power: 4.0,
+            _padding2: [0; 8],
         }
     }
 }
@@ -190,7 +229,7 @@ impl EnergyBulletMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        bullet_uniform: &EnergyBulletMaterialUniform,
+        material_uniform: &EnergyBulletMaterialUniform,
     ) -> MaterialResource {
         MaterialResource {
             kind: MaterialKind::EnergyBullet,
@@ -199,7 +238,7 @@ impl EnergyBulletMaterialResource {
                 layout: Self::bind_group_layout(device),
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: bullet_uniform.as_entire_binding(),
+                    resource: material_uniform.as_entire_binding(),
                 }],
             })),
         }

@@ -13,6 +13,7 @@
 
 mod formation;
 mod in_game_ready;
+mod in_game_run;
 mod lobby;
 mod login;
 mod room;
@@ -27,7 +28,9 @@ use std::{
 use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
 use tokio::time::{Duration, Instant};
 
-pub use self::{formation::*, in_game_ready::*, lobby::*, login::*, room::*, verify::*};
+pub use self::{
+    formation::*, in_game_ready::*, in_game_run::*, lobby::*, login::*, room::*, verify::*,
+};
 
 use super::Session;
 
@@ -84,7 +87,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
 
     // 핑 측정 초기화
     const MAX_SAMPLES: usize = 20;
-    const MAX_PING_TIME: u32 = 250;
+    const MAX_PING_TIME: u16 = 250;
     let mut samples = vec![0; MAX_SAMPLES];
     let mut num_samples = 0;
     let mut elapsed_time_ms = 0;
@@ -97,7 +100,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
         previous_time_pt = current_time_pt;
 
         // 핑 측정 경과 시간을 갱신합니다.
-        elapsed_time_ms += elapsed.as_millis() as u32;
+        elapsed_time_ms += elapsed.as_millis() as u16;
         if elapsed_time_ms >= MAX_PING_TIME {
             elapsed_time_ms = 0;
 
@@ -110,7 +113,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
 
                 // 평균 핑 계산합니다.
                 let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
-                let ping = (total as f32 / num_samples as f32).round() as u32;
+                let ping = (total as f32 / num_samples as f32).round() as u16;
                 session.ping.store(ping, MemOrdering::Release);
             }
 
@@ -158,7 +161,7 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
 
                                     // 평균 핑을 계산합니다.
                                     let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
-                                    let ping = (total as f32 / num_samples as f32).round() as u32;
+                                    let ping = (total as f32 / num_samples as f32).round() as u16;
                                     session.ping.store(ping, MemOrdering::Release);
 
                                     log::debug!(
@@ -334,5 +337,11 @@ impl fmt::Debug for SessionFormationState {
 impl fmt::Debug for SessionInGameReadyState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(SessionInGameReadyState))
+    }
+}
+
+impl fmt::Debug for SessionInGameRunState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(SessionInGameRunState))
     }
 }

@@ -6,6 +6,7 @@ mod pipeline;
 mod resource;
 mod uniform;
 
+use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use wgpu::util::DeviceExt;
 
 pub use self::{cube::*, pipeline::*, resource::*, uniform::*};
@@ -69,10 +70,14 @@ impl Skybox {
 ///
 pub fn clear_render_target_with_skybox<'a>(
     skybox: &'a Skybox,
-    pipeline: &'a wgpu::RenderPipeline,
+    device: &wgpu::Device,
     rpass: &mut wgpu::RenderPass<'a>,
 ) {
-    rpass.set_pipeline(&pipeline);
+    rpass.set_pipeline(SkyboxRenderPipeline::get_or_init(
+        &device,
+        SWAPCHAIN_FORMAT,
+        DEPTH_FORMAT,
+    ));
     rpass.set_vertex_buffer(0, skybox.vertex.slice(..));
     rpass.set_bind_group(0, skybox.resource.bind_group(), &[]);
     rpass.draw(0..NUM_CUBE_VERTICES as u32, 0..1);

@@ -6,13 +6,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use mod_network::components::{
-    GameTier, MAX_IN_GAME_PLAYERS, Permission, ProfileIcon, UserId, UserName, WorldId,
-};
+use mod_network::components::{GameTier, ProfileIcon, UserId, UserName, WorldId};
 use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::{
-    entities::Player,
     session::Session,
     world::{GameWorldEvent, GameWorldSystemEvent, world_state_loop},
 };
@@ -24,17 +21,17 @@ const MAX_GAME_WORLDS: usize = 999;
 static_assertions::const_assert!(0 < MAX_GAME_WORLDS);
 
 /// 생성된 게임 월드를 관리하는 풀 객체입니다.
-static POOL: OnceLock<SkipMap<WorldId, Arc<GameWorld>>> = OnceLock::new();
+static POOL: OnceLock<SkipMap<WorldId, Arc<Queue<GameWorldEvent>>>> = OnceLock::new();
 /// 비활성화된 게임 월드를 재사용하기 위해 저장합니다.
-static RETIRES: OnceLock<Queue<Arc<GameWorld>>> = OnceLock::new();
+static RETIRES: OnceLock<Queue<GameWorld>> = OnceLock::new();
 
 /// 풀 객체를 가져옵니다.
-fn get_pool() -> &'static SkipMap<WorldId, Arc<GameWorld>> {
+pub(super) fn get_pool() -> &'static SkipMap<WorldId, Arc<Queue<GameWorldEvent>>> {
     POOL.get_or_init(|| SkipMap::default())
 }
 
 /// 비활성화된 게임 월드를 저장하는 대기열을 가져옵니다.
-pub(super) fn get_retires() -> &'static Queue<Arc<GameWorld>> {
+pub(super) fn get_retires() -> &'static Queue<GameWorld> {
     RETIRES.get_or_init(|| Queue::default())
 }
 
@@ -111,11 +108,8 @@ impl GameWorldPool {
     }
 
     /// 주어진 식별자에 해당하는 활성화된 게임 월드를 가져옵니다.
-    pub fn get(id: &WorldId) -> Option<Arc<GameWorld>> {
-        get_pool()
-            .get(id)
-            .filter(|world| world.is_running() && world.admin() != UserId::NULL)
-            .map(|world| world.clone())
+    pub fn get(id: &WorldId) -> Option<Arc<Queue<GameWorldEvent>>> {
+        get_pool().get(id).map(|guard| guard.clone())
     }
 
     /// 새로운 게임 월드를 생성합니다.
@@ -134,19 +128,17 @@ impl GameWorldPool {
         tier: GameTier,
         profile_icon: ProfileIcon,
         session: Arc<Session>,
-    ) -> Option<Arc<GameWorld>> {
+    ) -> Option<()> {
         assert_ne!(uid, UserId::NULL, "the given uid cannot be null!");
 
         // 게임 월드를 할당받습니다.
-        let world = match get_retires().pop() {
+        let mut world = match get_retires().pop() {
             Some(world) => world,
             None => {
                 // 게임 월드 식별자를 할당 받습니다.
                 let world_id = generate_id()?;
                 // 게임 월드를 생성합니다.
-                let world = Arc::new(GameWorld::new(world_id));
-                // 풀 객체에 게임 월드를 추가합니다.
-                get_pool().insert(world_id, world.clone());
+                let world = GameWorld::new(world_id);
 
                 log::info!("{} is allocated.", &world);
                 println!("{} is allocated.", &world);
@@ -154,64 +146,39 @@ impl GameWorldPool {
             }
         };
 
-        // 락을 획득합니다.
-        // 주의: tokio 런타임에서 호출될 경우 스케쥴링 과정에서 데드락이 발생할 수 있음.
-        let mut num_players = world.num_players.lock();
-
-        // 게임 월드 관리자를 설정합니다.
-        world.set_admin(uid);
-
-        // 게임 월드 세션 집합에 현재 세션을 추가합니다.
-        world.sessions.insert(session.clone(), uid);
-
-        // 게임 월드 플레이어 집합에 플레이어 데이터를 추가합니다.
-        world.players.insert(
-            uid,
-            Player::new(name)
-                .with_tier(tier)
-                .with_profile_icon(profile_icon)
-                .with_permission(Permission::Admin),
-        );
-
-        *num_players += 1;
-        log::info!("{} joined the {}", &session, &world);
-        println!("{} joined the {}", &session, &world);
+        // 게임 월드를 초기화합니다.
+        world.admin = uid;
+        world.running = true;
+        world.closed = false;
 
         // 게임 월드 이벤트를 추가합니다.
-        let event = GameWorldSystemEvent::PlayerJoin;
+        let queue = world.events.clone();
+        let event = GameWorldSystemEvent::PlayerJoin {
+            name,
+            tier,
+            profile_icon,
+        };
         let event = GameWorldEvent::System {
             session,
             uid,
             event,
         };
-        world.received_events.push(event);
-        drop(num_players);
-
-        // 게임 월드를 활성화합니다.
-        world.is_running.store(true, MemOrdering::Release);
-        world.is_closed.store(false, MemOrdering::Release);
-        log::info!("{} enabled.", &world);
-        println!("{} enabled.", &world);
+        queue.push(event);
 
         // 게임 월드를 실행합니다.
-        tokio::spawn(world_state_loop(world.clone()));
+        let id = world.id;
+        log::info!("{} enabled.", &world);
+        println!("{} enabled.", &world);
+        tokio::spawn(world_state_loop(world));
 
-        Some(world)
+        // 게임 월드 이벤트 송신기를 등록합니다.
+        get_pool().insert(id, queue);
+
+        Some(())
     }
 
     /// 접속 가능한 월드 아이디 목록을 가져옵니다.
     pub fn get_world_lists() -> Vec<WorldId> {
-        let mut ids = Vec::new();
-        for w in get_pool().iter() {
-            let id = w.key();
-            let world = w.value();
-
-            if world.is_closed() || *world.num_players.lock() == MAX_IN_GAME_PLAYERS {
-                continue;
-            }
-
-            ids.push(*id);
-        }
-        ids
+        get_pool().iter().map(|guard| guard.key().clone()).collect()
     }
 }

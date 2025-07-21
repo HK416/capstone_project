@@ -1,6 +1,6 @@
 [package]
 name = "mod-app"
-version = "0.6.2"
+version = "0.7.0"
 edition.workspace = true
 rust-version.workspace = true
 description.workspace = true
@@ -21,6 +21,7 @@ log = { workspace = true }
 num_cpus = { workspace = true }
 parking_lot = { workspace = true }
 rayon = { workspace = true }
+rodio = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 wgpu = { workspace = true }
@@ -32,10 +33,11 @@ rfd = "0.15"
 
 # Utilities for handling networking sockets with a maximal amount of configuration possible intended.
 # License: MIT OR Apache-2.0
-socket2 = { version = "0.5", features = ["all"]}
+socket2 = { version = "0.6", features = ["all"]}
 
 # 자체 프레임워크 라이브러리
 mod-network = { path = "../mod-network" }
+mod-parallelism = { path = "../mod-parallelism"}
 mod-render = { path = "../mod-render" }
 
 

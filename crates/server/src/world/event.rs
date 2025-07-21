@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use mod_network::components::{CharacterKind, ObjectId, UserId};
+use mod_network::components::{
+    CharacterKind, GameTier, InputSnapshot, NetworkState, ProfileIcon, UserId, UserName,
+};
 
 use crate::session::Session;
 
@@ -35,22 +37,26 @@ pub enum GameWorldEvent {
         event: GameWorldInGameReadyStateEvent,
     },
 
-    /// 총알 오브젝트를 추가합니다.
-    AddBullet { shooter_id: UserId, delay: f32 },
-    /// 총알 오브젝트를 제거합니다.
-    RemoveBullet(ObjectId),
-
-    /// 플레이어 리스폰 요청
-    RespawnPlayer { uid: UserId },
+    /// 인게임 이벤트
+    InGameRunState {
+        session: Arc<Session>,
+        uid: UserId,
+        event: GameWorldInGameRunStateEvent,
+    },
 }
 
 /// 게임 월드의 시스템 이벤트 목록입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameWorldSystemEvent {
     /// 플레이어가 게임 월드에 참여할 때 발생되는 이벤트입니다.
-    PlayerJoin,
+    PlayerJoin {
+        name: UserName,
+        tier: GameTier,
+        profile_icon: ProfileIcon,
+    },
     /// 플레이어가 게임 월드에서 떠날 때 발생되는 이벤트입니다.
     PlayerLeave,
+    UpdatePing(NetworkState),
 }
 
 /// 커스텀 게임 대기실 상태의 이벤트 목록입니다.
@@ -82,4 +88,15 @@ pub enum GameWorldFormationStateEvent {
 pub enum GameWorldInGameReadyStateEvent {
     /// 클라이언트가 게임 준비를 마쳤을 때 발생되는 이벤트입니다.
     ReadyToPlay,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameWorldInGameRunStateEvent {
+    /// 플레이어 입력이 발생했을 때 발생되는 입력 이벤트 목록 이벤트입니다.
+    Input {
+        client_play_elapsed_time: u32,
+        snapshots: Vec<InputSnapshot>,
+    },
+    /// 플레이어 입력 초기화 요청이 수신시 발생되는 이벤트입니다.
+    InputReset,
 }

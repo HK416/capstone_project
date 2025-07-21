@@ -1,17 +1,15 @@
 //! 나무를 그리는 쉐이더 코드를 관리합니다.
 //!
 
-// 최대 지역 조명의 개수입니다.
-const max_lights: u32 = 8u;
-
-// 깊이 bias입니다.
-const bias: f32 = 0.001;
+const PI: f32 = 3.14159265359;
+const BIAS: f32 = 0.001;
+const MAX_LIGHTS: u32 = 8u;
 
 // 정점 입력 속성입니다.
 struct InputAttributes {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) texcoord: vec2<f32>,
+    @location(2) uv: vec2<f32>,
 };
 
 // 버텍스 쉐이더 출력 데이터입니다.
@@ -20,48 +18,66 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) position_w: vec3<f32>,
     @location(1) normal_w: vec3<f32>,
-    @location(2) texcoord: vec2<f32>,
+    @location(2) view_dir: vec3<f32>,
+    @location(3) uv: vec2<f32>,
+    @location(4) dist: f32,
 };
 
 // 프래그먼트 쉐이더 출력 데이터입니다.
 struct RenderTarget {
     @location(0) color: vec4<f32>,
-    @location(1) bloom: vec4<f32>,
+    @location(1) emissive: vec4<f32>,
 };
 
 // 카메라 데이터 유니폼 버퍼입니다.
 struct CameraDataLayout {
     proj_view: mat4x4<f32>,
+
     position_w: vec3<f32>,
+    _padding0: u32,
 };
 
 // 나무 재질 데이터 유니폼 버퍼입니다.
 struct TreeMaterialDataLayout {
-    threshold: f32,
+    metallic: f32,
+    roughness: f32,
+    diffuse_steps: f32,
+    specular_steps: f32,
 };
 
 // 전역 조명 데이터 유니폼 버퍼입니다.
 struct GlobalLightDataLayout {
-    static_proj_view: mat4x4<f32>,
-    proj_view: mat4x4<f32>,
+    static_light_proj_view: mat4x4<f32>,
+
+    light_proj_view: mat4x4<f32>,
+
     direction_w: vec3<f32>,
+    intensity: f32,
+
     color: vec3<f32>,
+    _padding0: u32,
 };
 
 // 지역 조명 데이터 유니폼 버퍼입니다.
 struct LocalLightDataLayout {
-    proj_view: mat4x4<f32>,
+    light_proj_view: mat4x4<f32>,
+
     position_w: vec3<f32>,
     constant: f32,
+
     color: vec3<f32>,
     linear: f32,
+
     quadratic: f32,
+    _padding0: vec3<u32>,
 };
 
 // 지역 조명 데이터 집합 유니폼 버퍼입니다.
 struct LocalLightSetDataLayout {
-    lights: array<LocalLightDataLayout, max_lights>,
     num_lights: u32,
+    _padding0: vec3<u32>,
+
+    lights: array<LocalLightDataLayout, MAX_LIGHTS>,
 };
 
 @group(0) @binding(0)
@@ -106,69 +122,65 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
     var out: VertexOutput;
 
     let position_w = (u_trans * vec4<f32>(input.position, 1.0)).xyz;
-    let normal_w = (u_trans * vec4<f32>(input.normal, 0.0)).xyz;
+    let normal_w = normalize((u_trans * vec4<f32>(input.normal, 0.0)).xyz);
+    let view_dir = normalize(u_camera.position_w - position_w);
+    let dist = distance(u_camera.position_w, position_w);
 
     out.clip_position = u_camera.proj_view * vec4<f32>(position_w, 1.0);
     out.position_w = position_w;
     out.normal_w = normal_w;
-    out.texcoord = input.texcoord;
+    out.view_dir = view_dir;
+    out.uv = input.uv;
+    out.dist = dist;
 
     return out;
 }
 
-
-// 지형을 그리는 프래그먼트 쉐이더입니다.
-@fragment
-fn fs_main(input: VertexOutput) -> RenderTarget {
-    // 메인 텍스처를 가져옵니다.
-    let main_tex = textureSample(t_main_color, s_main_color, input.texcoord);
-
-    // 알파 값이 threshold보다 낮은 경우 그리지 않습니다.
-    if (main_tex.a < u_material.threshold) {
-        discard;
-    }
-
-    // 노멀을 계산합니다.
-    let normal = normalize(input.normal_w);
-    // 카메라로부터 거리를 계산합니다.
-    let distance = distance(u_camera.position_w, input.position_w);
-    
-    // 메인 색상을 가져옵니다.
-    let main_color = main_tex.rgb;
-
-    // 전역 조명의 그림자 색상을 계산합니다.
-    var shadow = 1.0;
-    var diffuse = max(0.0, dot(normal, normalize(-u_global_light.direction_w)));
-    var color = main_color * 0.75; // ambient 조명
-
-    var light_space_position: vec4<f32>;
-    if (distance > 10.0) {
-        // 정적인 오브젝트의 그림자를 계산합니다.
-        light_space_position = u_global_light.static_proj_view * vec4<f32>(input.position_w, 1.0);
-        shadow = min(shadow, calculate_static_shadow(light_space_position));
-        color += main_color * u_global_light.color * diffuse * shadow;
-    } else {
-        // 전역 조명의 그림자를 계산합니다.
-        light_space_position = u_global_light.proj_view * vec4<f32>(input.position_w, 1.0);
-        shadow = min(shadow, calculate_global_shadow(light_space_position));
-        color += main_color * u_global_light.color * diffuse * shadow;
-    }
-
-    var out: RenderTarget;
-    out.color = vec4<f32>(pow(color.rgb, vec3(1.0 / 2.2)), 1.0); // 감마 보정
-    out.bloom = vec4<f32>(0.0, 0.0, 0.0, 0.0);
-    return out;
+fn toon_step(value: f32, steps: f32) -> f32 {
+    return floor(value * steps) / steps;
 }
 
-/// 정적인 오브젝트의 전역 조명 그림자를 계산합니다.
-fn calculate_static_shadow(light_space_position: vec4<f32>) -> f32 {
-    if (light_space_position.w <= 0.0) {
+fn fresnel_schlick(cos_theta: f32, F0: vec3<f32>) -> vec3<f32> {
+    return F0 + (1.0 - F0) * pow(1.0 - cos_theta, 5.0);
+}
+
+fn distribution_ggx(N: vec3<f32>, H: vec3<f32>, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let NdotH = max(dot(N, H), 0.0);
+    let NdotH2 = NdotH * NdotH;
+
+    let denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    return a2 / (PI * denom * denom);
+}
+
+fn geometry_schlick_ggx(NdotV: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f32 {
+    let NdotV = max(dot(N, V), 0.0);
+    let NdotL = max(dot(N, L), 0.0);
+    let ggx1 = geometry_schlick_ggx(NdotV, roughness);
+    let ggx2 = geometry_schlick_ggx(NdotL, roughness);
+    return ggx1 * ggx2;
+}
+
+fn rim_light(N: vec3<f32>, V: vec3<f32>, strength: f32, power: f32) -> f32 {
+    let rim = 1.0 - max(dot(N, V), 0.0);
+    return pow(rim, power) * strength;
+}
+
+fn compute_static_shadow(light_space_pos: vec4<f32>) -> f32 {
+    if (light_space_pos.w <= 0.0) {
         return 1.0;
     }
 
-    let curr_depth = clamp(light_space_position.z / light_space_position.w - bias, 0.0, 1.0);
-    var proj_coords = light_space_position.xy / light_space_position.w;
-    proj_coords = proj_coords * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    let proj = light_space_pos / light_space_pos.w;
+    let proj_coords = proj.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    let curr_depth = clamp(proj.z - BIAS, 0.0, 1.0);
 
     var uv: vec2<f32>;
     var depth: f32;
@@ -188,16 +200,15 @@ fn calculate_static_shadow(light_space_position: vec4<f32>) -> f32 {
     return shadow;
 }
 
-/// 전역 조명의 그림자를 계산합니다.
-fn calculate_global_shadow(light_space_position: vec4<f32>) -> f32 {
-    if (light_space_position.w <= 0.0) {
+fn compute_global_shadow(light_space_pos: vec4<f32>) -> f32 {
+    if (light_space_pos.w <= 0.0) {
         return 1.0;
     }
     
-    let curr_depth = clamp(light_space_position.z / light_space_position.w - bias, 0.0, 1.0);
-    var proj_coords = light_space_position.xy / light_space_position.w;
-    proj_coords = proj_coords * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
-    
+    let proj = light_space_pos / light_space_pos.w;
+    let proj_coords = proj.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    let curr_depth = clamp(proj.z - BIAS, 0.0, 1.0);
+
     // 그림자 맵 경계 확인
     if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || 
         proj_coords.y < 0.0 || proj_coords.y > 1.0) {
@@ -207,21 +218,62 @@ fn calculate_global_shadow(light_space_position: vec4<f32>) -> f32 {
     return textureSampleCompare(t_global_light, s_lights, proj_coords, curr_depth);
 }
 
-/// 지역 조명의 그림자를 계산합니다.
-fn calculate_local_shadow(index: u32, light_space_position: vec4<f32>) -> f32 {
-    if (light_space_position.w <= 0.0) {
-        return 1.0;
+// 지형을 그리는 프래그먼트 쉐이더입니다.
+@fragment
+fn fs_main(input: VertexOutput) -> RenderTarget {
+    let N = normalize(input.normal_w);
+    let V = normalize(input.view_dir);
+    let L = normalize(-u_global_light.direction_w);
+    let H = normalize(V + L);
+
+    let NdotL = max(dot(N, L), 0.0);
+    let NdotV = max(dot(N, V), 0.0);
+    let VdotH = max(dot(V, H), 0.0);
+
+    let tex = textureSample(t_main_color, s_main_color, input.uv);
+    let main_color = tex.rgb;
+    if (tex.w < 0.5) {
+        discard;
     }
-    
-    let curr_depth = clamp(light_space_position.z / light_space_position.w - bias, 0.0, 1.0);
-    var proj_coords = light_space_position.xy / light_space_position.w;
-    proj_coords = proj_coords * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
-    
-    // 그림자 맵 경계 확인
-    if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || 
-        proj_coords.y < 0.0 || proj_coords.y > 1.0) {
-        return 1.0; // 그림자 맵 밖은 그림자 없음
+
+    // Fresnel
+    let F0 = mix(vec3<f32>(0.04), main_color, u_material.metallic);
+    let F = fresnel_schlick(VdotH, F0);
+
+    // Microfacet BRDF
+    let D = distribution_ggx(N, H, u_material.roughness);
+    let G = geometry_smith(N, V, L, u_material.roughness);
+    let numerator = D * G * F;
+    let denominator = max(4.0 * NdotV * NdotL, 0.001);
+    let spec = numerator / denominator;
+
+    let kS = F;
+    let kD = vec3<f32>(1.0);
+
+    // Toon Banding
+    let diffuse_banded = toon_step(NdotL, u_material.diffuse_steps);
+    let specular_banded = toon_step(max(max(spec.x, spec.y), spec.z), u_material.specular_steps);
+
+    let diffuse = kD * main_color * diffuse_banded;
+    let specular = kS * specular_banded;
+
+    // Shadow
+    var shadow = 1.0;
+    if (input.dist > 10.0) {
+        let light_space_pos = u_global_light.static_light_proj_view * vec4<f32>(input.position_w, 1.0);
+        shadow = min(shadow, compute_static_shadow(light_space_pos));
+    } else {
+        let light_space_pos = u_global_light.light_proj_view * vec4<f32>(input.position_w, 1.0);
+        shadow = min(shadow, compute_global_shadow(light_space_pos));
     }
-    
-    return textureSampleCompare(t_local_lights, s_lights, proj_coords, i32(index), curr_depth);
+
+    // 최종 색상
+    let color = (diffuse + specular) * u_global_light.color * u_global_light.intensity * shadow;
+    let ambient = main_color * 0.8;
+    let final_color = color + ambient;
+
+    var out: RenderTarget;
+    out.color = vec4(final_color, 1.0);
+    out.emissive = vec4<f32>(0.0);
+    return out;
 }

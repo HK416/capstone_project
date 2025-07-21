@@ -121,7 +121,7 @@ impl TransformUniform {
         });
 
         // 버퍼의 내용을 복사합니다.
-        encoder.copy_buffer_to_buffer(&self.0, 0, &buffer, 0, copy_size);
+        encoder.copy_buffer_to_buffer(&buffer, 0, &self.0, 0, copy_size);
         staging_buffers.push(buffer);
     }
 

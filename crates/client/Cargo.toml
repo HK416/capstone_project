@@ -13,6 +13,7 @@ default-run = "client"
 name = "client"
 path = "src/main.rs"
 
+# 필요시에만 주석을 해제하세요.
 # [[bin]]
 # name = "shadow_tool"
 # path = "src/shadow_tool.rs"
@@ -32,7 +33,9 @@ hecs = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 parking_lot = { workspace = true }
+rand = { workspace = true }
 rayon = { workspace = true }
+rodio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 spin = { workspace = true }

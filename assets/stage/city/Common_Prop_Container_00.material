@@ -1,9 +1,10 @@
 {
     "Stage": {
         "uri": "Common_Prop_Container_00",
-        "glossiness": 0.5,
-        "smoothness": 0.3,
-        "metallic": 0.5,
-        "main_color": "Common_Prop_Container_00"
+        "main_color": "Common_Prop_Container_00",
+        "metallic": 7.243,
+        "roughness": 5.542,
+        "diffuse_steps": 4.2,
+        "specular_steps": 2.2
     }
 }

@@ -1,1 +1,21 @@
-{ "EnergyBullet": { "uri": "Bullet_Energy", "emissive": { "x": 0.5330075, "y": 3.56161, "z": 4.883966, "w": 2 }, "main_color": { "x": 0.361635, "y": 0.8875314, "z": 1, "w": 0.85 } } }
+{
+    "EnergyBullet": {
+        "uri": "Bullet_Energy",
+        "main_color": {
+            "x": 0.361635,
+            "y": 0.8875314,
+            "z": 1,
+            "w": 0.85
+        },
+        "emissive_color": {
+            "x": 0.5330075,
+            "y": 3.56161,
+            "z": 4.883966
+        },
+        "metallic": 0,
+        "roughness": 0.2,
+        "specular_steps": 2.2,
+        "rim_strength": 0.8,
+        "rim_power": 4
+    }
+}

@@ -6,10 +6,10 @@ mod bullet;
 mod character;
 mod stage;
 
-use std::{fs::OpenOptions, io::Read, ops::RangeBounds, path::Path, sync::Arc};
+use std::{fs::OpenOptions, io::Read, path::Path, sync::Arc};
 
 use ahash::{HashMap, RandomState};
-use parking_lot::{FairMutex, FairMutexGuard};
+use parking_lot::{FairMutex, FairMutexGuard, Mutex};
 use serde::{Deserialize, Serialize};
 
 use crate::asset::AssetError;
@@ -28,6 +28,36 @@ pub enum MaterialKind {
     CaptureZone,
     Stage,
     Tree,
+}
+
+impl MaterialKind {
+    /// 불투명 여부를 반환합니다.
+    pub fn is_opaque(&self) -> bool {
+        match self {
+            MaterialKind::Bullet => true,
+            MaterialKind::EnergyBullet => false,
+            MaterialKind::Character => true,
+            MaterialKind::CharacterEyeMouth => true,
+            MaterialKind::CharacterHalo => true,
+            MaterialKind::CaptureZone => false,
+            MaterialKind::Stage => true,
+            MaterialKind::Tree => true,
+        }
+    }
+
+    /// 그림자 그림 여부를 반환합니다.
+    pub fn is_shadowed(&self) -> bool {
+        match self {
+            MaterialKind::Bullet => true,
+            MaterialKind::EnergyBullet => false,
+            MaterialKind::Character => true,
+            MaterialKind::CharacterEyeMouth => true,
+            MaterialKind::CharacterHalo => false,
+            MaterialKind::CaptureZone => false,
+            MaterialKind::Stage => true,
+            MaterialKind::Tree => true,
+        }
+    }
 }
 
 /// 재질 데이터입니다.
@@ -170,61 +200,37 @@ impl MaterialDataPool {
 }
 
 /// 재질 유니폼 버퍼입니다.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum MaterialUniform {
     Bullet {
-        data: BulletMaterialDataLayout,
-        buffer: BulletMaterialUniform,
+        data: Mutex<BulletMaterialDataLayout>,
+        material_uniform: BulletMaterialUniform,
     },
     EnergyBullet {
-        data: EnergyBulletMaterialDataLayout,
-        buffer: EnergyBulletMaterialUniform,
+        data: Mutex<EnergyBulletMaterialDataLayout>,
+        material_uniform: EnergyBulletMaterialUniform,
     },
-    Character(CharacterMaterialUniform),
+    Character {
+        data: Mutex<CharacterMaterialDataLayout>,
+        material_uniform: CharacterMaterialUniform,
+    },
     CharacterEyeMouth {
-        data: EyeMouthMaterialDataLayout,
-        buffer: EyeMouthMaterialUniform,
+        data: Mutex<EyeMouthMaterialDataLayout>,
+        material_uniform: EyeMouthMaterialUniform,
     },
-    CharacterHalo(HaloMaterialUniform),
+    CharacterHalo,
     CaptureZone {
-        data: CaptureZoneMaterialDataLayout,
-        buffer: CaptureZoneMaterialUniform,
+        data: Mutex<CaptureZoneMaterialDataLayout>,
+        material_uniform: CaptureZoneMaterialUniform,
     },
-    Stage(StageMaterialUniform),
-    Tree(TreeMaterialUniform),
-}
-
-impl MaterialUniform {
-    /// 범위에 해당하는 슬라이스된 유니폼 버퍼를 반환합니다.
-    pub fn slice<S>(&self, bounds: S) -> wgpu::BufferSlice
-    where
-        S: RangeBounds<wgpu::BufferAddress>,
-    {
-        match self {
-            MaterialUniform::Bullet { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::EnergyBullet { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::Character(uniform) => uniform.slice(bounds),
-            MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::CharacterHalo(uniform) => uniform.slice(bounds),
-            MaterialUniform::CaptureZone { buffer, .. } => buffer.slice(bounds),
-            MaterialUniform::Stage(uniform) => uniform.slice(bounds),
-            MaterialUniform::Tree(uniform) => uniform.slice(bounds),
-        }
-    }
-
-    /// 유니폼 버퍼의 [`wgpu::BindingResource`]를 반환합니다.
-    pub fn as_entire_binding(&self) -> wgpu::BindingResource<'_> {
-        match self {
-            MaterialUniform::Bullet { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::EnergyBullet { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::Character(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::CharacterEyeMouth { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::CharacterHalo(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::CaptureZone { buffer, .. } => buffer.as_entire_binding(),
-            MaterialUniform::Stage(uniform) => uniform.as_entire_binding(),
-            MaterialUniform::Tree(uniform) => uniform.as_entire_binding(),
-        }
-    }
+    Stage {
+        data: Mutex<StageMaterialDataLayout>,
+        material_uniform: StageMaterialUniform,
+    },
+    Tree {
+        data: Mutex<TreeMaterialDataLayout>,
+        material_uniform: TreeMaterialUniform,
+    },
 }
 
 /// 재질 쉐이더 리소스입니다.

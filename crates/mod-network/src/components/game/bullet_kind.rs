@@ -29,6 +29,13 @@ impl BulletKind {
             _ => None,
         }
     }
+
+    pub fn speed(self) -> f32 {
+        match self {
+            BulletKind::Common => 200.0,
+            BulletKind::EnergyBoll => 100.0,
+        }
+    }
 }
 
 impl BigEndian for BulletKind {

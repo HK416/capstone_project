@@ -1,12 +1,14 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use mod_app::{
     app::AppHandle,
     etc::AppEvent,
+    net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::protocol::{PacketType, RawPacket};
 use mod_parallelism::collections::Queue;
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -14,28 +16,38 @@ use winit::{
 };
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{
+        SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
+        UI_TURN_DOWN, USER_CONFIG,
+    },
     component::ButtonState,
-    config::Locale,
+    config::{Locale, UserConfig},
     scenes::{
-        MessageSceneLayer, BASE_WIDTH, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
-        POSI_COLOR, POSI_FOCUS_COLOR,
+        FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
+        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR,
+        NORM_FOCUS_COLOR, POSI_COLOR, POSI_FOCUS_COLOR,
     },
 };
 
 use super::*;
 
-/// 애플리케이션 표시 언어에 따른 배경 볼륨 설정 텍스트입니다.
+/// 애플리케이션 표시 언어에 따른 배경음 음량 설정 텍스트입니다.
 const BACKGROUND_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["배경음"];
-/// 애플리케이션 표시 언어에 따른 이팩트 볼륨 설정 텍스트입니다.
-const EFFECT_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["이팩트"];
-/// 애플리케이션 표시 언어에 따른 보이스 볼륨 설정 텍스트입니다.
+/// 애플리케이션 표시 언어에 따른 효과음 음량 설정 텍스트입니다.
+const EFFECT_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["효과음"];
+/// 애플리케이션 표시 언어에 따른 보이스 음량 설정 텍스트입니다.
 const VOICE_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["보이스"];
 
 /// 일반 설정 모달 레이어
 pub struct LobbySoundOptionModalLayer {
     /// 현재 애플리케이션 언어
     locale: Locale,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 지연 시간
     delay_time_sec: f32,
@@ -49,22 +61,33 @@ pub struct LobbySoundOptionModalLayer {
     num_remaining_tasks: usize,
     /// 작업 결과 목록
     task_results: Arc<Queue<TaskResult>>,
+
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl LobbySoundOptionModalLayer {
     /// 새로운 `LobbySoundOptionModalLayer`를 생성합니다.
     pub fn new(
         locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         num_remaining_tasks: usize,
         task_results: Arc<Queue<TaskResult>>,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
+            background_volume,
+            effect_volume,
+            voice_volume,
             delay_time_sec: 0.3,
             exit_btn_state: ButtonState::Idle,
             save_btn_state: ButtonState::Idle,
             num_remaining_tasks,
             task_results,
+            sound_data_pool,
         }
     }
 
@@ -98,19 +121,42 @@ impl LobbySoundOptionModalLayer {
             let event_loop_proxy = app.event_loop_proxy();
             let scene = LobbyCommonOptionModalLayer::new(
                 self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
                 self.num_remaining_tasks,
                 self.task_results.clone(),
+                self.sound_data_pool.clone(),
             );
             let flow = GameSceneFlow::Change(Box::new(scene));
             let event = if !self.is_changed() {
                 AppEvent::AddGameSceneFlow(flow)
             } else {
-                let scene =
-                    LobbyOptionSaveGuardLayer::new(self.locale, ChangeOption::Sound {}, flow);
+                let scene = LobbyOptionSaveGuardLayer::new(
+                    self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
+                    ChangeOption::Sound {},
+                    flow,
+                    self.sound_data_pool.clone(),
+                );
                 let flow = GameSceneFlow::Push(Box::new(scene));
                 AppEvent::AddGameSceneFlow(flow)
             };
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
 
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
@@ -150,19 +196,42 @@ impl LobbySoundOptionModalLayer {
             let event_loop_proxy = app.event_loop_proxy();
             let scene = LobbyGraphicsOptionModalLayer::new(
                 self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
                 self.num_remaining_tasks,
                 self.task_results.clone(),
+                self.sound_data_pool.clone(),
             );
             let flow = GameSceneFlow::Change(Box::new(scene));
             let event = if !self.is_changed() {
                 AppEvent::AddGameSceneFlow(flow)
             } else {
-                let scene =
-                    LobbyOptionSaveGuardLayer::new(self.locale, ChangeOption::Sound {}, flow);
+                let scene = LobbyOptionSaveGuardLayer::new(
+                    self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
+                    ChangeOption::Sound {},
+                    flow,
+                    self.sound_data_pool.clone(),
+                );
                 let flow = GameSceneFlow::Push(Box::new(scene));
                 AppEvent::AddGameSceneFlow(flow)
             };
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
 
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
@@ -202,19 +271,42 @@ impl LobbySoundOptionModalLayer {
             let event_loop_proxy = app.event_loop_proxy();
             let scene = LobbyControlOptionModalLayer::new(
                 self.locale,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
                 self.num_remaining_tasks,
                 self.task_results.clone(),
+                self.sound_data_pool.clone(),
             );
             let flow = GameSceneFlow::Change(Box::new(scene));
             let event = if !self.is_changed() {
                 AppEvent::AddGameSceneFlow(flow)
             } else {
-                let scene =
-                    LobbyOptionSaveGuardLayer::new(self.locale, ChangeOption::Sound {}, flow);
+                let scene = LobbyOptionSaveGuardLayer::new(
+                    self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
+                    ChangeOption::Sound {},
+                    flow,
+                    self.sound_data_pool.clone(),
+                );
                 let flow = GameSceneFlow::Push(Box::new(scene));
                 AppEvent::AddGameSceneFlow(flow)
             };
             event_loop_proxy.send_event(event).unwrap();
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_BUTTON_TOUCH)
+                .expect("UI_Button_Touch sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
 
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
@@ -393,17 +485,29 @@ impl LobbySoundOptionModalLayer {
             // }
 
             // 사용자 구성 설정을 저장합니다.
-            // let mut path = app.current_dir().to_path_buf();
-            // path.push(format!("assets/{}", USER_CONFIG));
+            let mut path = app.current_dir().to_path_buf();
+            path.push(format!("assets/{}", USER_CONFIG));
 
-            // let task_results = self.task_results.clone();
-            // app.io_threads().spawn(move || {
-            //     let result = match UserConfig::store_from_file(path) {
-            //         Ok(_) => TaskResult::Success,
-            //         Err(e) => TaskResult::Failed(e),
-            //     };
-            //     task_results.push(result);
-            // });
+            let task_results = self.task_results.clone();
+            app.io_threads().spawn(move || {
+                let result = match UserConfig::store_from_file(path) {
+                    Ok(_) => TaskResult::Success,
+                    Err(e) => TaskResult::Failed(e),
+                };
+                task_results.push(result);
+            });
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_LOADING)
+                .expect("UI_Loading sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
 
             self.num_remaining_tasks += 1;
         } else if response.is_pointer_button_down_on() {
@@ -449,11 +553,31 @@ impl LobbySoundOptionModalLayer {
                 // 게임 장면에서 빠져나옵니다.
                 AppEvent::AddGameSceneFlow(flow)
             } else {
-                let scene =
-                    LobbyOptionSaveGuardLayer::new(self.locale, ChangeOption::Control {}, flow);
+                let scene = LobbyOptionSaveGuardLayer::new(
+                    self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
+                    ChangeOption::Control {},
+                    flow,
+                    self.sound_data_pool.clone(),
+                );
                 let flow = GameSceneFlow::Push(Box::new(scene));
                 AppEvent::AddGameSceneFlow(flow)
             };
+
+            // 효과음을 재생합니다.
+            let decoded = self
+                .sound_data_pool
+                .get(UI_TURN_DOWN)
+                .expect("UI_Turn_Down sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+
             event_loop_proxy.send_event(event).unwrap();
         } else if response.is_pointer_button_down_on() {
             self.exit_btn_state = ButtonState::Pressed;
@@ -470,7 +594,48 @@ impl GameScene for LobbySoundOptionModalLayer {
         true
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, _app: &dyn AppHandle) -> Option<RawPacket> {
+    fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
+        let i = self.locale as usize;
+        let title = ERR_NETWORK_TITLE_TEXTS[i];
+        let message = match error {
+            NetworkError::ClosedSocket(_) => ERR_CLOSED_MSG_TEXTS[i],
+            NetworkError::IO(_) => ERR_IO_MSG_TEXTS[i],
+        };
+
+        // 다음 게임 장면으로 전환합니다.
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
+        let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
+        let event = AppEvent::AddGameSceneFlow(scene_flow);
+        let event_loop_proxy = app.event_loop_proxy();
+        event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
+    }
+
+    fn on_received_packet(
+        &mut self,
+        _: Instant,
+        packet: RawPacket,
+        _app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::LobbyDataUpdate => Some(packet),
@@ -499,13 +664,29 @@ impl GameScene for LobbySoundOptionModalLayer {
                     } else {
                         let scene = LobbyOptionSaveGuardLayer::new(
                             self.locale,
+                            self.background_volume,
+                            self.effect_volume,
+                            self.voice_volume,
                             ChangeOption::Sound {},
                             flow,
+                            self.sound_data_pool.clone(),
                         );
                         let flow = GameSceneFlow::Push(Box::new(scene));
                         AppEvent::AddGameSceneFlow(flow)
                     };
                     event_loop_proxy.send_event(event).unwrap();
+
+                    // 효과음을 재생합니다.
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_TURN_DOWN)
+                        .expect("UI_Turn_Down sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(app.audio_mixer());
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
                 }
                 _ => {}
             }
@@ -524,11 +705,32 @@ impl GameScene for LobbySoundOptionModalLayer {
                 let i = self.locale as usize;
                 let title = ERR_TITLE_TEXTS[i];
                 let message = e.to_string();
-                let scene = MessageSceneLayer::new(self.locale, title, message, None);
+                let scene = MessageSceneLayer::new(
+                    self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
+                    title,
+                    message,
+                    None,
+                    self.sound_data_pool.clone(),
+                );
                 let flow = GameSceneFlow::Change(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_NOTICE)
+                    .expect("UI_Notice sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             };
         }
     }

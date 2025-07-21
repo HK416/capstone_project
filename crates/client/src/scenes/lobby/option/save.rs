@@ -7,6 +7,7 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_parallelism::collections::Queue;
+use rodio::Sink;
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -14,7 +15,10 @@ use winit::{
 };
 
 use crate::{
-    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR, USER_CONFIG},
+    asset::{
+        SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK, UI_LOADING, UI_NOTICE,
+        USER_CONFIG,
+    },
     component::ButtonState,
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{
@@ -40,6 +44,12 @@ const NO_TEXTS: [&'static str; NUM_LOCALE] = ["아니오"];
 pub struct LobbyOptionSaveGuardLayer {
     /// 애플리케이션 표시 언어
     locale: Locale,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 변경된 설정 내용이 담긴 사용자 구성 데이터
     option: ChangeOption,
     /// 다음 게임 장면 흐름
@@ -59,13 +69,27 @@ pub struct LobbyOptionSaveGuardLayer {
     num_remaining_tasks: usize,
     /// 작업 결과 목록
     task_results: Arc<Queue<TaskResult>>,
+
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl LobbyOptionSaveGuardLayer {
     /// 새로운 `LobbyOptionSaveGuardLayer`를 생성합니다.
-    pub fn new(locale: Locale, option: ChangeOption, flow: GameSceneFlow) -> Self {
+    pub fn new(
+        locale: Locale,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        option: ChangeOption,
+        flow: GameSceneFlow,
+        sound_data_pool: SoundDataPool,
+    ) -> Self {
         Self {
             locale,
+            background_volume,
+            effect_volume,
+            voice_volume,
             option,
             flow: Some(flow),
             finished: false,
@@ -74,6 +98,7 @@ impl LobbyOptionSaveGuardLayer {
             delay_time_sec: 0.3,
             num_remaining_tasks: 0,
             task_results: Arc::new(Queue::new()),
+            sound_data_pool,
         }
     }
 }
@@ -92,11 +117,31 @@ impl GameScene for LobbyOptionSaveGuardLayer {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_keyboard_released(
@@ -131,11 +176,31 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                         let i = self.locale as usize;
                         let title = ERR_TITLE_TEXTS[i];
                         let message = e.to_string();
-                        let scene =
-                            MessageSceneLayer::new(self.locale, title, message, Some(next_flow));
+                        let scene = MessageSceneLayer::new(
+                            self.locale,
+                            self.background_volume,
+                            self.effect_volume,
+                            self.voice_volume,
+                            title,
+                            message,
+                            Some(next_flow),
+                            self.sound_data_pool.clone(),
+                        );
                         let flow = GameSceneFlow::Change(Box::new(scene));
                         let event = AppEvent::AddGameSceneFlow(flow);
                         event_loop_proxy.send_event(event).unwrap();
+
+                        // 효과음을 재생합니다.
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_NOTICE)
+                            .expect("UI_Notice sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(app.audio_mixer());
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
                     }
                 };
             }
@@ -280,6 +345,18 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                                             task_results.push(result);
                                         });
                                         self.num_remaining_tasks += 1;
+
+                                        // 효과음을 재생합니다.
+                                        let decoded = self
+                                            .sound_data_pool
+                                            .get(UI_LOADING)
+                                            .expect("UI_Loading sound must be preloaded!");
+                                        let source = decoded.as_source();
+                                        let sink = Sink::connect_new(app.audio_mixer());
+                                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                                        sink.append(source);
+                                        sink.play();
+                                        sink.detach();
                                     } else if response.is_pointer_button_down_on() {
                                         self.yes_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {
@@ -301,6 +378,18 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                                         self.no_btn_state = ButtonState::Clicked;
                                         self.task_results.push(TaskResult::Success);
                                         self.num_remaining_tasks += 1;
+
+                                        // 효과음을 재생합니다.
+                                        let decoded = self
+                                            .sound_data_pool
+                                            .get(UI_BUTTON_BACK)
+                                            .expect("UI_Button_Back sound must be preloaded!");
+                                        let source = decoded.as_source();
+                                        let sink = Sink::connect_new(app.audio_mixer());
+                                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                                        sink.append(source);
+                                        sink.play();
+                                        sink.detach();
                                     } else if response.is_pointer_button_down_on() {
                                         self.no_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {

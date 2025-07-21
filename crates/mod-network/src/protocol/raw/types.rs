@@ -80,6 +80,18 @@ pub enum PacketType {
     InGameReadyNotify = 0x62,
     /// 서버에서 클라이언트로 보내는 각 플레이어의 준비 상태 패킷
     InGameReadyStatus = 0x63,
+    /// 서버에서 클라이언트로 보내는 인게임 진입 알림 패킷
+    InGameEnterNotify = 0x64,
+    /// 서버에서 클라이언트로 보내는 인게임 플레이어 갱신 패킷
+    InGamePull = 0x65,
+    /// 서버에서 클라이언트로 보내는 인게임 상태 갱신 패킷
+    InGameStatus = 0x66,
+    /// 클라이언트에서 서버로 보내는 입력 발생 이벤트 패킷
+    InGameInput = 0x67,
+    /// 클라이언트에서 서버로 보내는 입력 초기화 알림 패킷
+    InGameControlLose = 0x68,
+    /// 서버에서 클라이언트로 보내는 인게임 종료 패킷
+    InGameFinish = 0x79,
 }
 
 impl PacketType {
@@ -116,6 +128,12 @@ impl PacketType {
             0x61 => Some(PacketType::InGameDataInit),
             0x62 => Some(PacketType::InGameReadyNotify),
             0x63 => Some(PacketType::InGameReadyStatus),
+            0x64 => Some(PacketType::InGameEnterNotify),
+            0x65 => Some(PacketType::InGamePull),
+            0x66 => Some(PacketType::InGameStatus),
+            0x67 => Some(PacketType::InGameInput),
+            0x68 => Some(PacketType::InGameControlLose),
+            0x79 => Some(PacketType::InGameFinish),
             _ => None,
         }
     }
@@ -205,4 +223,16 @@ mod tests {
     test_packet_type!(test_packet_type_in_game_ready_notify, PacketType::InGameReadyNotify);
 
     test_packet_type!(test_packet_type_in_game_ready_status, PacketType::InGameReadyStatus);
+
+    test_packet_type!(test_packet_type_in_game_enter_notify, PacketType::InGameEnterNotify);
+
+    test_packet_type!(test_packet_type_in_game_pull, PacketType::InGamePull);
+
+    test_packet_type!(test_packet_type_in_game_status_event, PacketType::InGameStatus);
+
+    test_packet_type!(test_packet_type_in_game_input_event, PacketType::InGameInput);
+
+    test_packet_type!(test_packet_type_in_game_control_lose_notify, PacketType::InGameControlLose);
+
+    test_packet_type!(test_packet_type_in_game_finish, PacketType::InGameFinish);
 }

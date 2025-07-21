@@ -1,1 +1,6 @@
-{ "CharacterHalo": { "uri": "Midori_Original_Halo", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "emissive": { "x": 0.5411764706, "y": 0.9882352941, "z": 0.4549019608, "w": 1 }, "main_color": "Midori_Original_Halo" } }
+{
+    "CharacterHalo": {
+        "uri": "Midori_Original_Halo",
+        "main_color": "Midori_Original_Halo"
+    }
+}

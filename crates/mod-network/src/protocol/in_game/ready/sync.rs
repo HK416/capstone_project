@@ -176,7 +176,7 @@ impl BigEndian for PlayerReadyStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InGameReadyStatusPacket {
     /// 준비 완료 까지 남은 시간
-    pub remaining_time_sec: f32,
+    pub remaining_time_ms: u16,
     /// 플레이어 준비 상태 데이터
     pub players: Vec<PlayerReadyStatus>,
 }
@@ -187,11 +187,11 @@ impl InGameReadyStatusPacket {
     /// # Panics
     /// 주어진 `player`가 비어있거나 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub const fn new(remaining_time_sec: f32, players: Vec<PlayerReadyStatus>) -> Self {
+    pub const fn new(remaining_time_ms: u16, players: Vec<PlayerReadyStatus>) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
         assert!(players.len() <= MAX_IN_GAME_PLAYERS, "too many players!");
         Self {
-            remaining_time_sec,
+            remaining_time_ms,
             players,
         }
     }
@@ -201,12 +201,12 @@ impl InGameReadyStatusPacket {
     /// # Panics
     /// 주어진 `player`가 비어있거나 `MAX_IN_GAME_PLAYERS`보다 클 경우 [`panic!`]을 호출합니다.
     ///
-    pub fn from_iter<I>(remaining_time_sec: f32, iter: I) -> Self
+    pub fn from_iter<I>(remaining_time_ms: u16, iter: I) -> Self
     where
         I: IntoIterator<Item = PlayerReadyStatus>,
         I::IntoIter: ExactSizeIterator,
     {
-        Self::new(remaining_time_sec, iter.into_iter().collect())
+        Self::new(remaining_time_ms, iter.into_iter().collect())
     }
 }
 
@@ -219,9 +219,9 @@ impl Packet for InGameReadyStatusPacket {
         // 바이트 스트림을 생성합니다.
         let num_players = self.players.len();
         let data_size =
-            f32::byte_size() + u8::byte_size() + PlayerReadyStatus::byte_size() * num_players;
+            u16::byte_size() + u8::byte_size() + PlayerReadyStatus::byte_size() * num_players;
         let mut data = Vec::with_capacity(data_size);
-        data.extend_from_slice(&self.remaining_time_sec.to_big_endian_bytes());
+        data.extend_from_slice(&self.remaining_time_ms.to_big_endian_bytes());
         data.extend_from_slice(&(num_players as u8).to_big_endian_bytes());
         for player in self.players.iter() {
             data.extend_from_slice(&player.to_big_endian_bytes());
@@ -254,9 +254,9 @@ impl Packet for InGameReadyStatusPacket {
         // 남은 시간을 가져옵니다.
         let bytes = raw.data();
         let mut offset = 0;
-        let mut size = f32::byte_size();
+        let mut size = u16::byte_size();
         let mut data = &bytes[offset..offset + size];
-        let remaining_time_sec = f32::from_big_endian_bytes(data);
+        let remaining_time_ms = u16::from_big_endian_bytes(data);
 
         // 플레이어 수를 가져옵니다.
         offset = offset + size;
@@ -277,7 +277,7 @@ impl Packet for InGameReadyStatusPacket {
         }
 
         Some(Self {
-            remaining_time_sec,
+            remaining_time_ms,
             players,
         })
     }
@@ -404,7 +404,7 @@ mod tests {
             PlayerReadyStatus::new(UserId::new(9153141), false, NetworkState::Critical, true);
 
         let players = vec![player_0, player_1, player_2, player_3];
-        let origin = InGameReadyStatusPacket::new(43.013413, players);
+        let origin = InGameReadyStatusPacket::new(43013, players);
         let raw = origin.as_raw();
         let other = InGameReadyStatusPacket::from_raw(raw);
 

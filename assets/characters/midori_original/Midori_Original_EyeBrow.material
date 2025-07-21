@@ -1,1 +1,13 @@
-{ "Character": { "uri": "Midori_Original_EyeBrow", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "main_color": "Midori_Original_Face", "detail_mask": "Midori_Original_Face_Mask" } }
+{
+    "Character": {
+        "uri": "Midori_Original_EyeBrow",
+        "main_color": "Midori_Original_Face",
+        "detail_mask": "Midori_Original_Face_Mask",
+        "metallic": 0,
+        "roughness": 0.5527864,
+        "diffuse_steps": 4.2,
+        "specular_steps": 2.2,
+        "rim_strength": 0.8,
+        "rim_power": 4
+    }
+}

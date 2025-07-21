@@ -1,4 +1,5 @@
 mod locale;
+mod sound;
 mod window;
 
 use std::{
@@ -19,12 +20,12 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::{TexturePool, NOTOSANS_REGULAR, USER_CONFIG},
+    asset::{SoundDataPool, TexturePool, NOTOSANS_REGULAR, USER_CONFIG},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::GameIntroNotifyScene,
 };
 
-pub use self::{locale::*, window::*};
+pub use self::{locale::*, sound::*, window::*};
 
 /// 애플리케이션 표시 언어에 따른 로딩 텍스트입니다.
 const LOAD_TEXTS: [&'static str; NUM_LOCALE] = ["설정 저장 중..."];
@@ -34,21 +35,25 @@ const LOAD_TEXTS: [&'static str; NUM_LOCALE] = ["설정 저장 중..."];
 pub struct InitFinishScene {
     /// 애플리케이션 표시 언어
     locale: Locale,
+
     /// 저장의 완료 여부
     completed: Arc<AtomicBool>,
 
-    // 텍스처 풀 객체
+    /// 텍스처 풀 객체
     texture_pool: TexturePool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InitFinishScene {
     /// 새로운 `InitFinishScene`을 생성합니다.
-    pub fn new(texture_pool: TexturePool) -> Self {
+    pub fn new(texture_pool: TexturePool, sound_data_pool: SoundDataPool) -> Self {
         let config = UserConfig::get();
         Self {
             locale: config.locale,
             completed: Arc::new(AtomicBool::new(false)),
             texture_pool,
+            sound_data_pool,
         }
     }
 
@@ -72,7 +77,15 @@ impl GameScene for InitFinishScene {
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         if self.completed.load(MemOrdering::Acquire) {
             // 다음 게임 장면으로 전환합니다.
-            let next_scene = GameIntroNotifyScene::new(self.locale, self.texture_pool.clone());
+            let config = UserConfig::get();
+            let next_scene = GameIntroNotifyScene::new(
+                self.locale,
+                config.background_volume,
+                config.effect_volume,
+                config.voice_volume,
+                self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
+            );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);
             let event_loop_proxy = app.event_loop_proxy();
@@ -96,6 +109,7 @@ impl GameScene for InitFinishScene {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],

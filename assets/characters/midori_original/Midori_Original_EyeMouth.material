@@ -1,1 +1,14 @@
-{ "CharacterEyeMouth": { "uri": "Midori_Original_EyeMouth", "glossiness": 0.4472136, "smoothness": 0, "metallic": 0, "index": 25, "main_color": "Midori_Original_EyeMouth", "eye_mouth": "Character_Mouth" } }
+{
+    "CharacterEyeMouth": {
+        "uri": "Midori_Original_EyeMouth",
+        "main_color": "Midori_Original_EyeMouth",
+        "eye_mouth": "Character_Mouth",
+        "metallic": 0,
+        "roughness": 0.5527864,
+        "diffuse_steps": 4.2,
+        "specular_steps": 2.2,
+        "rim_strength": 0.8,
+        "rim_power": 4,
+        "sprite_index": 25
+    }
+}

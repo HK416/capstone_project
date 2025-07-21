@@ -155,10 +155,13 @@ static_assertions::const_assert_eq!(
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct GlobalLightDataLayout {
-    pub static_proj_view: [f32; 16],
-    pub proj_view: [f32; 16],
+    pub static_light_proj_view: [f32; 16],
+
+    pub light_proj_view: [f32; 16],
+
     pub direction_w: [f32; 3],
-    pub _padding0: [u8; 4],
+    pub intensity: f32,
+
     pub color: [f32; 3],
     pub _padding1: [u8; 4],
 }
@@ -166,10 +169,10 @@ pub struct GlobalLightDataLayout {
 impl Default for GlobalLightDataLayout {
     fn default() -> Self {
         Self {
-            static_proj_view: [0.0; 16],
-            proj_view: [0.0; 16],
+            static_light_proj_view: [0.0; 16],
+            light_proj_view: [0.0; 16],
             direction_w: [0.0; 3],
-            _padding0: [0; 4],
+            intensity: 1.0,
             color: [0.0; 3],
             _padding1: [0; 4],
         }
@@ -299,10 +302,13 @@ static_assertions::const_assert_eq!(
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct LocalLightDataLayout {
     pub proj_view: [f32; 16],
+
     pub position_w: [f32; 3],
     pub constant: f32,
+
     pub color: [f32; 3],
     pub linear: f32,
+
     pub quadratic: f32,
     pub _padding0: [u8; 12],
 }

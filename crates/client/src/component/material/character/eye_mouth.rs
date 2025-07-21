@@ -18,31 +18,57 @@ use crate::component::{MaterialKind, MaterialResource};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EyeMouthMaterialData {
     pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub index: u32,
     pub main_color: String,
     pub eye_mouth: String,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+    pub rim_strength: f32,
+    pub rim_power: f32,
+    pub sprite_index: u32,
+}
+
+impl EyeMouthMaterialData {
+    pub fn as_layout(&self) -> EyeMouthMaterialDataLayout {
+        EyeMouthMaterialDataLayout {
+            metallic: self.metallic,
+            roughness: self.roughness,
+            diffuse_steps: self.diffuse_steps,
+            specular_steps: self.specular_steps,
+            rim_strength: self.rim_strength,
+            rim_power: self.rim_power,
+            sprite_index: self.sprite_index,
+            ..Default::default()
+        }
+    }
 }
 
 /// 캐릭터 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct EyeMouthMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
     pub metallic: f32,
-    pub index: u32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+    pub rim_strength: f32,
+    pub rim_power: f32,
+    pub sprite_index: u32,
+    pub _padding0: [u8; 4],
 }
 
 impl Default for EyeMouthMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
             metallic: 0.0,
-            index: 0,
+            roughness: 0.5527864,
+            diffuse_steps: 4.2,
+            specular_steps: 2.2,
+            rim_strength: 0.8,
+            rim_power: 4.0,
+            sprite_index: 25,
+            _padding0: [0; 4],
         }
     }
 }
@@ -230,7 +256,7 @@ impl EyeMouthMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        character_uniform: &EyeMouthMaterialUniform,
+        material_uniform: &EyeMouthMaterialUniform,
         main_color_view: &wgpu::TextureView,
         main_color_sampler: &wgpu::Sampler,
         eye_mouth_view: &wgpu::TextureView,
@@ -244,7 +270,7 @@ impl EyeMouthMaterialResource {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: character_uniform.as_entire_binding(),
+                        resource: material_uniform.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,

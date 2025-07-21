@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 
 use mod_network::protocol::RawPacket;
 use mod_render::UiRenderer;
@@ -175,7 +175,12 @@ pub trait GameScene: Debug + Send {
     ///
     /// 현재 게임 장면이 패킷 처리를 완료한 경우 `None`를 반환해야합니다.
     ///
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        time_stamp: Instant,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         Some(packet)
     }
 

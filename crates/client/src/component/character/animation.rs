@@ -1,45 +1,50 @@
-//
-// # 애니메이션 테이블
-// 애니메이션은 `ActionState`와 `MovementState`로 결정된다.
-//
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// |                      | MovementState::Idle   | MovementState::Moving   | MovementState::MoveToEnd |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::Idle    | Idle                  | Moving                  | MoveToEnd                |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::Aiming  | Aim                   | Aim_Move                | Aim                      |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::AimAt   | Idle_To_Aim           | Move_To_Aim_Move        | Idle_To_Aim              |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::AimOff  | Aim_To_Idle           | Aim_Move_To_Move        | Aim_To_Idle              |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-// | ActionState::Attack  | Attack_Ing            | Attack_Move             | Attack_Ing               |
-// +----------------------+-----------------------+-------------------------+--------------------------+
-//
-// # 애니메이션 목록
-// - Idle
-// - Moving
-// - MoveToEnd
-// - Aim
-// - AimMove
-// - IdleToAim
-// - MoveToAimMove
-// - AimToIdle
-// - AimMoveToMove
-// - Attacking
-// - AttackMove
-//
 use ahash::{HashMap, HashSet};
-use hecs::Entity;
+use hecs::{Entity, ViewBorrow, World};
+use mod_network::components::{
+    ActionState, ActionStateTimer, CharacterKind, LatLon, MovementState, MovementStateTimer,
+};
+
+use crate::{
+    asset::{MotionPool, CHARACTER_URIS},
+    component::{
+        Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
+        PlayerArchetype, ToParentTrans,
+    },
+};
+
+use super::*;
 
 /// 모든 캐릭터 모델의 최상위 뼈 노드 이름입니다.
 pub const MODEL_BONE_ROOT: &'static str = "Bip001";
 /// 모든 캐릭터 모델의 머리 뼈 노드 이름입니다.
 pub const MODEL_BONE_HEAD: &'static str = "Bip001_Head";
+/// 모든 캐릭터 모델의 골반 뼈 노드 이름입니다.
+pub const MODEL_BONE_PELVIS: &'static str = "Bip001_Pelvis";
 /// 모든 캐릭터 모델의 아래 척추 뼈 노드 이름입니다.
 pub const MODEL_BONE_SPINE: &'static str = "Bip001_Spine";
 /// 모든 캐릭터 모델의 윗 척추 뼈 노드 이름입니다.
 pub const MODEL_BONE_SPINE_1: &'static str = "Bip001_Spine1";
+
+// /// 모든 캐릭터 모델의 왼쪽 쇄골 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_CLAVICLE: &'static str = "Bip001_L_Clavicle";
+// /// 모든 캐릭터 모델의 왼쪽 윗팔 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_UPPERARM: &'static str = "Bip001_L_UpperArm";
+// /// 모든 캐릭터 모델의 왼쪽 아래팔 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_FOREARM: &'static str = "Bip001_L_Forearm";
+// /// 모든 캐릭터 모델의 왼쪽 손 뼈 노드 이름입니다.
+// pub const MODEL_BONE_L_HAND: &'static str = "Bip001_L_Hand";
+
+/// 모든 캐릭터 모델의 오른쪽 쇄골 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_CLAVICLE: &'static str = "Bip001_R_Clavicle";
+/// 모든 캐릭터 모델의 오른쪽 윗팔 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_UPPERARM: &'static str = "Bip001_R_UpperArm";
+/// 모든 캐릭터 모델의 오른쪽 아래팔 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_FOREARM: &'static str = "Bip001_R_Forearm";
+/// 모든 캐릭터 모델의 오른쪽 손 뼈 노드 이름입니다.
+pub const MODEL_BONE_R_HAND: &'static str = "Bip001_R_Hand";
+/// 모든 캐릭터 모델의 무기 뼈 노드 이름입니다.
+pub const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon";
+
 /// 모든 캐릭터 모델의 왼쪽 허벅지 안쪽 뼈 노드 이름입니다.
 pub const MODEL_BONE_L_THIGH: &'static str = "Bip001_L_Thigh";
 /// 모든 캐릭터 모델의 오른쪽 허벅지 안쪽 뼈 노드 이름입니다.
@@ -52,10 +57,6 @@ pub const MODEL_BONE_R_CALF: &'static str = "Bip001_R_Calf";
 pub const MODEL_BONE_L_FOOT: &'static str = "Bip001_L_Foot";
 /// 모든 캐릭터 모델의 오른쪽 발 뼈 노드 이름입니다.
 pub const MODEL_BONE_R_FOOT: &'static str = "Bip001_R_Foot";
-/// 모든 캐릭터의 오른쪽 손 뼈 노드 이름입니다.
-pub const MODEL_BONE_R_HAND: &'static str = "Bip001_R_Hand";
-/// 모든 캐릭터 모델의 무기 뼈 노드 이름입니다.
-pub const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon";
 
 /// 모든 캐릭터 모델의 Idle 애니메이션 접미사입니다.
 pub const IDLE_ANIMATION_SUFFIX: &'static str = "_Normal_Idle";
@@ -96,40 +97,56 @@ pub const FORMATION_PICKUP: &'static str = "_Formation_Pickup";
 pub struct SkinningAnimation {
     /// NOTE: `BoneCollection`의 `root`와 다름!
     pub root: Entity,
-    pub head: Entity,
-    pub muzzle: Entity,
-    pub weapon: Entity,
-    pub lower_spine: Entity,
-    pub uppper_spine: Entity,
-    pub right_hand: Entity,
+    pub bip001_head: Entity,
+    pub bip001_pelvis: Entity,
+    pub bip001_spine: Entity,
+    pub bip001_spine1: Entity,
+    pub bip001_l_clavicle: Entity,
+    pub bip001_l_upperarm: Entity,
+    pub bip001_l_forearm: Entity,
+    pub bip001_l_hand: Entity,
+    pub bip001_l_weapon: Entity,
+    pub bip001_r_clavicle: Entity,
+    pub bip001_r_upperarm: Entity,
+    pub bip001_r_forearm: Entity,
+    pub bip001_r_hand: Entity,
+    pub bip001_r_weapon: Entity,
     pub left_thigh: Entity,
     pub right_thigh: Entity,
     pub left_calf: Entity,
     pub right_calf: Entity,
     pub left_foot: Entity,
     pub right_foot: Entity,
-    pub meshes: HashMap<String, Entity>,
-    pub animation_mixing_bones: HashSet<Entity>,
+    pub mesh_entity_list: HashMap<String, Entity>,
+    pub mixing_bone_list: HashSet<Entity>,
 }
 
 impl Default for SkinningAnimation {
     fn default() -> Self {
         Self {
             root: Entity::DANGLING,
-            head: Entity::DANGLING,
-            muzzle: Entity::DANGLING,
-            weapon: Entity::DANGLING,
-            lower_spine: Entity::DANGLING,
-            uppper_spine: Entity::DANGLING,
-            right_hand: Entity::DANGLING,
+            bip001_pelvis: Entity::DANGLING,
+            bip001_head: Entity::DANGLING,
+            bip001_spine: Entity::DANGLING,
+            bip001_spine1: Entity::DANGLING,
+            bip001_l_clavicle: Entity::DANGLING,
+            bip001_l_upperarm: Entity::DANGLING,
+            bip001_l_forearm: Entity::DANGLING,
+            bip001_l_hand: Entity::DANGLING,
+            bip001_l_weapon: Entity::DANGLING,
+            bip001_r_clavicle: Entity::DANGLING,
+            bip001_r_upperarm: Entity::DANGLING,
+            bip001_r_forearm: Entity::DANGLING,
+            bip001_r_hand: Entity::DANGLING,
+            bip001_r_weapon: Entity::DANGLING,
             left_thigh: Entity::DANGLING,
             right_thigh: Entity::DANGLING,
             left_foot: Entity::DANGLING,
             right_foot: Entity::DANGLING,
             left_calf: Entity::DANGLING,
             right_calf: Entity::DANGLING,
-            meshes: HashMap::default(),
-            animation_mixing_bones: HashSet::default(),
+            mesh_entity_list: HashMap::default(),
+            mixing_bone_list: HashSet::default(),
         }
     }
 }
@@ -141,4 +158,248 @@ pub struct BoneCollection {
     /// NOTE: 스키닝된 메쉬의 최상위 뼈를 나타냅니다.
     pub root: Entity,
     pub bones: Vec<Entity>,
+}
+
+/// 캐릭터 애니메이션을 재생합니다.
+pub fn animate_character(
+    world: &World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    motion_pool: &MotionPool,
+    action_state: ActionState,
+    movement_state: MovementState,
+    action_state_timer: ActionStateTimer,
+    movement_state_timer: MovementStateTimer,
+    latlon: LatLon,
+    character_view: &ViewBorrow<&CharacterKind>,
+    skinning_view: &ViewBorrow<&SkinningAnimation>,
+    collection_view: &ViewBorrow<&BoneCollection>,
+) {
+    // 캐릭터 종류를 가져옵니다.
+    let &character_kind = character_view
+        .get(entity)
+        .expect("invalid entity or invalid entity component!");
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = skinning_view
+        .get(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    // 캐릭터 애니메이션 데이터를 가져옵니다.
+    let i = character_kind as usize;
+    let motions = motion_pool
+        .get(CHARACTER_URIS[i])
+        .expect("no such animation data!");
+
+    match archetype {
+        PlayerArchetype::Player0 => {
+            type Tag = Player0;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player1 => {
+            type Tag = Player1;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player2 => {
+            type Tag = Player2;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player3 => {
+            type Tag = Player3;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player4 => {
+            type Tag = Player4;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player5 => {
+            type Tag = Player5;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player6 => {
+            type Tag = Player6;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player7 => {
+            type Tag = Player7;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player8 => {
+            type Tag = Player8;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+        PlayerArchetype::Player9 => {
+            type Tag = Player9;
+            let mut transform_view = world.view::<&mut (Tag, ToParentTrans)>();
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::animate_character::<Tag>,
+                CharacterKind::MomoiOriginal => momoi_original::animate_character::<Tag>,
+                CharacterKind::MidoriOriginal => midori_original::animate_character::<Tag>,
+                CharacterKind::YuukaOriginal => yuuka_original::animate_character::<Tag>,
+            };
+            func(
+                &motions,
+                skinning_animation,
+                action_state,
+                movement_state,
+                action_state_timer,
+                movement_state_timer,
+                latlon,
+                collection_view,
+                &mut transform_view,
+            );
+        }
+    }
 }

@@ -1,16 +1,9 @@
-use mod_network::components::{BulletKind, InGameBulletPullData, ObjectId, Team, UserId};
+use mod_network::components::{BulletKind, Team, UserId};
 
 /// 서버에서 관리하는 총알 데이터
+#[repr(C, align(16))]
 #[derive(Debug, Clone)]
-pub struct BulletObject {
-    /// 총알의 오브젝트 식별자
-    pub object_id: ObjectId,
-    /// 총알을 발사한 사용자 식별자
-    pub shooter_id: UserId,
-    /// 총알을 발사한 사용자의 팀
-    pub shooter_team: Team,
-    /// 총알의 종류
-    pub bullet_kind: BulletKind,
+pub struct Bullet {
     /// 총알의 월드 공간 위치
     pub translation: glam::Vec3A,
     /// 총알의 월드 공간 방향
@@ -21,25 +14,35 @@ pub struct BulletObject {
     pub remaining_distance: f32,
     /// 총알의 반지름
     pub radius: f32,
+    /// 총알을 발사한 사용자 식별자
+    pub shooter_id: UserId,
+    /// 총알을 발사한 사용자의 팀
+    pub shooter_team: Team,
+    /// 총알의 종류
+    pub kind: BulletKind,
 }
 
-impl BulletObject {
-    pub fn as_bullet(&self) -> InGameBulletPullData {
-        InGameBulletPullData {
-            object_id: self.object_id,
-            shooter_id: self.shooter_id,
-            bullet_kind: self.bullet_kind,
-            translation: self.translation.into(),
-            rotation: self.rotation.into(),
-            velocity: self.velocity.into(),
-            remaining_distance: self.remaining_distance,
+impl Bullet {
+    /// 새로운 총알 데이터를 생성합니다.
+    pub const fn new(
+        shooter_id: UserId,
+        shooter_team: Team,
+        bullet_kind: BulletKind,
+        translation: glam::Vec3A,
+        rotation: glam::Quat,
+        velocity: glam::Vec3A,
+        remaining_distance: f32,
+        radius: f32,
+    ) -> Self {
+        Self {
+            translation,
+            rotation,
+            velocity,
+            remaining_distance,
+            radius,
+            shooter_id,
+            shooter_team,
+            kind: bullet_kind,
         }
-    }
-
-    pub fn move_velocity(&mut self, velocity: glam::Vec3A) {
-        // 총알 위치 이동
-        self.translation += velocity;
-        // 누적 이동거리 증가
-        self.remaining_distance -= velocity.length();
     }
 }

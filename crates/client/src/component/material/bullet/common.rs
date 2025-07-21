@@ -15,25 +15,71 @@ use wgpu::util::DeviceExt;
 
 use crate::component::{MaterialKind, MaterialResource};
 
+/// 총알 재질 데이터입니다.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BulletMaterialData {
+    /// 재질의 Uri
+    pub uri: String,
+    /// 물체의 기본 색상
+    pub main_color: Float3,
+    /// 금속성 (0 ~ 1)
+    pub metallic: f32,
+    /// 거칠기 (0 ~ 1)
+    pub roughness: f32,
+    /// 디퓨즈 밝기 밴딩 단계 수
+    pub diffuse_steps: f32,
+    /// 스펙큘러 밴딩 단계 수
+    pub specular_steps: f32,
+    /// 림 라이트 강도
+    pub rim_strength: f32,
+    /// 림 라이트 퍼짐 정도
+    pub rim_power: f32,
+}
+
+impl BulletMaterialData {
+    pub fn as_layout(&self) -> BulletMaterialDataLayout {
+        BulletMaterialDataLayout {
+            main_color: self.main_color.into(),
+            metallic: self.metallic,
+            roughness: self.roughness,
+            diffuse_steps: self.diffuse_steps,
+            specular_steps: self.specular_steps,
+            rim_strength: self.rim_strength,
+            rim_power: self.rim_power,
+            ..Default::default()
+        }
+    }
+}
+
 /// 총알 재질 데이터 유니폼 버퍼의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct BulletMaterialDataLayout {
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
+    pub main_color: [f32; 3],
     pub _padding0: [u8; 4],
-    pub main_color: [f32; 4],
+
+    pub metallic: f32,
+    pub roughness: f32,
+    pub diffuse_steps: f32,
+    pub specular_steps: f32,
+
+    pub rim_strength: f32,
+    pub rim_power: f32,
+    pub _padding1: [u8; 8],
 }
 
 impl Default for BulletMaterialDataLayout {
     fn default() -> Self {
         Self {
-            glossiness: 0.0,
-            smoothness: 0.0,
-            metallic: 0.0,
+            main_color: [0.0, 0.0, 0.0],
             _padding0: [0; 4],
-            main_color: [0.0; 4],
+            metallic: 1.0,
+            roughness: 0.25,
+            diffuse_steps: 4.2,
+            specular_steps: 2.2,
+            rim_strength: 0.8,
+            rim_power: 4.0,
+            _padding1: [0; 8],
         }
     }
 }
@@ -165,16 +211,6 @@ static_assertions::const_assert_eq!(
     core::mem::size_of::<BulletMaterialDataLayout>()
 );
 
-/// 총알 재질 데이터입니다.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct BulletMaterialData {
-    pub uri: String,
-    pub glossiness: f32,
-    pub smoothness: f32,
-    pub metallic: f32,
-    pub main_color: Float3,
-}
-
 /// 총알 재질 쉐이더 리소스입니다.
 pub struct BulletMaterialResource;
 
@@ -197,7 +233,7 @@ impl BulletMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        bullet_uniform: &BulletMaterialUniform,
+        material_uniform: &BulletMaterialUniform,
     ) -> MaterialResource {
         MaterialResource {
             kind: MaterialKind::Bullet,
@@ -206,7 +242,7 @@ impl BulletMaterialResource {
                 layout: Self::bind_group_layout(device),
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: bullet_uniform.as_entire_binding(),
+                    resource: material_uniform.as_entire_binding(),
                 }],
             })),
         }

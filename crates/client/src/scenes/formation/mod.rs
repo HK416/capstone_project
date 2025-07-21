@@ -1,6 +1,6 @@
 mod player;
 
-use std::cmp;
+use std::{cmp, time::Instant};
 
 use ahash::{HashMap, HashSet, RandomState};
 use mod_app::{
@@ -21,12 +21,14 @@ use mod_network::{
     },
 };
 use mod_render::UiRenderer;
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        TexturePool, TextureViewPool, BG_FORMATION_URI, CHARACTER_IMG_URI, EMBLEM_BG_URI,
-        HUD_LAYOUT_URI_02, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        SoundDataPool, TexturePool, TextureViewPool, BG_FORMATION_URI, CHARACTER_IMG_URI,
+        EMBLEM_BG_URI, HUD_LAYOUT_URI_02, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
@@ -67,9 +69,15 @@ pub struct CharacterFormationScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 캐릭터 편성까지 남은 시간
-    remaining_time_sec: f32,
+    remaining_time_ms: u16,
 
     /// 플레이어 집합
     players: HashMap<UserId, FormationPlayerData>,
@@ -120,6 +128,8 @@ pub struct CharacterFormationScene {
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
     texture_view_pool: TextureViewPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl CharacterFormationScene {
@@ -128,16 +138,23 @@ impl CharacterFormationScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
-        remaining_time_sec: f32,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        remaining_time_ms: u16,
         players: HashMap<UserId, FormationPlayerData>,
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
-            remaining_time_sec,
+            background_volume,
+            effect_volume,
+            voice_volume,
+            remaining_time_ms,
             players,
             ui_scale: 1.0,
             clip_rect: egui::Rect::ZERO,
@@ -171,6 +188,7 @@ impl CharacterFormationScene {
             delay_time_sec: 0.0,
             texture_pool,
             texture_view_pool,
+            sound_data_pool,
         }
     }
 
@@ -550,6 +568,18 @@ impl CharacterFormationScene {
                             let socket = net.get(&SERVER_TCP_ADDR).unwrap();
                             socket.push_packet(packet.as_raw());
                         }
+
+                        // 효과음을 재생합니다.
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_TOUCH)
+                            .expect("UI_Button_Touch sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(app.audio_mixer());
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
 
                         self.select_btn_state = ButtonState::Clicked;
                     } else if response.is_pointer_button_down_on() {
@@ -1020,10 +1050,7 @@ impl CharacterFormationScene {
     /// 타이머 텍스트를 그립니다.
     fn draw_timer_label(&self, ui: &mut egui::Ui) {
         let text = match self.locale {
-            Locale::KOR => format!(
-                "남은 편성 시간: {}초",
-                self.remaining_time_sec.round() as u32
-            ),
+            Locale::KOR => format!("남은 편성 시간: {}초", self.remaining_time_ms / 1_000),
         };
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
         let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
@@ -1092,23 +1119,50 @@ impl GameScene for CharacterFormationScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
-    fn on_received_packet(&mut self, packet: RawPacket, app: &dyn AppHandle) -> Option<RawPacket> {
+    fn on_received_packet(
+        &mut self,
+        _: Instant,
+        packet: RawPacket,
+        app: &dyn AppHandle,
+    ) -> Option<RawPacket> {
         let packet_type = packet.packet_type();
         match packet_type {
             PacketType::FormationDataUpdate => {
                 let packet = FormationDataUpdatePacket::from_raw(packet);
 
                 // 남은 시간을 갱신합니다.
-                const TIME_EPSILON: f32 = 0.5;
-                if (self.remaining_time_sec - packet.remaining_time_sec).abs() > TIME_EPSILON {
-                    self.remaining_time_sec = packet.remaining_time_sec;
+                const TIME_EPSILON: f32 = 500.0;
+                if (self.remaining_time_ms as f32 - packet.remaining_time_ms as f32).abs()
+                    > TIME_EPSILON
+                {
+                    self.remaining_time_ms = packet.remaining_time_ms;
                 }
 
                 // 플레이어 데이터를 갱신합니다.
@@ -1133,11 +1187,32 @@ impl GameScene for CharacterFormationScene {
                     EnterGameFailedResson::BlueTeamEmpty => EMPTY_BLUE_TEAM_ERR_TEXTS[i],
                     EnterGameFailedResson::RedTeamEmpty => EMPTY_RED_TEAM_ERR_TEXTS[i],
                 };
-                let scene = MessageSceneLayer::new(self.locale, title, message, None);
+                let scene = MessageSceneLayer::new(
+                    self.locale,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
+                    title,
+                    message,
+                    None,
+                    self.sound_data_pool.clone(),
+                );
                 let flow = GameSceneFlow::Change(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_NOTICE)
+                    .expect("UI_Notice sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             }
             PacketType::InGameDataInit => {
                 let packet = InGameDataInitPacket::from_raw(packet);
@@ -1147,13 +1222,34 @@ impl GameScene for CharacterFormationScene {
                     self.locale,
                     self.uid,
                     self.token,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     packet,
                     &self.texture_pool,
+                    &self.sound_data_pool,
                 );
                 let flow = GameSceneFlow::Change(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 현재 재생 중인 배경 음악을 중지합니다.
+                while let Some(sink) = app.sink_list().pop() {
+                    sink.stop();
+                }
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_LOADING)
+                    .expect("UI_Loading sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
             }
             _ => {
                 log::warn!(
@@ -1168,6 +1264,9 @@ impl GameScene for CharacterFormationScene {
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
         self.delay_time_sec = (self.delay_time_sec - elapsed_time_sec).max(0.0);
+
+        let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u16;
+        self.remaining_time_ms = self.remaining_time_ms.saturating_sub(elapsed_time_ms);
     }
 
     fn on_draw(
@@ -1189,6 +1288,7 @@ impl GameScene for CharacterFormationScene {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                     view: render_target_view,
                     resolve_target: None,
                 })],
