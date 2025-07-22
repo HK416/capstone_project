@@ -38,7 +38,7 @@ use crate::{
         UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_SOUND_WORKSPACE, UI_START,
         UI_TURN_DOWN, UI_TURN_UP, UI_VICTORY_ST_01, WEAPON_ICON_URI,
     },
-    component::MaterialDataPool,
+    component::{Attributes, MaterialDataPool, Mesh, Vertices},
     config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{
         FatalErrorSceneLayer, InGameBuildScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
@@ -822,6 +822,53 @@ impl InGameLoadScene {
         });
         self.num_remaining_tasks += 1;
     }
+
+    fn create_particle_mesh(&mut self, thread_pool: &ThreadPool, device: Arc<wgpu::Device>) {
+        let mesh_pool = self.mesh_pool.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            // 데미지 파티클 메쉬를 생성합니다.
+            let positions = Vertices(vec![
+                [-0.025, -0.05, 0.0],
+                [-0.025, 0.05, 0.0],
+                [0.025, -0.05, 0.0],
+                [0.025, 0.05, 0.0],
+                [0.025, -0.05, 0.0],
+                [-0.025, 0.05, 0.0],
+            ]);
+            let texcoords = Attributes::Texcoord0(vec![
+                [0.0, 1.0],
+                [0.0, 0.0],
+                [1.0, 1.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+                [0.0, 0.0],
+            ]);
+
+            let mut mesh = Mesh::new(
+                IMG_FONT_NUMBER_URI,
+                &device,
+                &mut encoder,
+                &mut staging_buffers,
+                positions,
+            );
+            mesh.with_attribute(&device, &mut encoder, &mut staging_buffers, texcoords);
+
+            // 풀 객체에 메쉬를 등록합니다.
+            mesh_pool.insert(IMG_FONT_NUMBER_URI, Arc::new(mesh), None);
+
+            // 결과를 전송합니다.
+            task_results.push(TaskResult::Model {
+                staging_buffers,
+                command: encoder.finish(),
+            });
+        });
+        self.num_remaining_tasks += 1;
+    }
 }
 
 impl GameScene for InGameLoadScene {
@@ -859,6 +906,7 @@ impl GameScene for InGameLoadScene {
         let device = app.render_device();
         let io_thread_pool = app.io_threads();
         self.create_textures(&root_dir, io_thread_pool, device.clone());
+        self.create_particle_mesh(io_thread_pool, device.clone());
         self.load_effect_sounds(&root_dir, io_thread_pool);
         self.load_voice_sounds(&root_dir, io_thread_pool, character_kinds.clone());
         self.load_character_motions(&root_dir, io_thread_pool, character_kinds.clone());

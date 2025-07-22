@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     f32::consts::{PI, TAU},
     num::NonZeroU32,
     ptr::NonNull,
@@ -18,10 +18,11 @@ use mod_app::{
 use mod_network::{
     components::{
         ActionNotify, ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags,
-        CharacterKind, HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken,
-        MovementState, MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData,
-        StageAttributes, Team, UserId, UserName, ViewState, ViewStateTimer, MAX_INPUT_EVENTS,
-        MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+        CharacterKind, Damage, DamageLogData, HealthData, HeldInput, InputEvent, InputSnapshot,
+        LatLon, LoginToken, MovementState, MovementStateTimer, NetworkState, ObjectId, Permission,
+        SkillCostData, StageAttributes, Team, UserId, UserName, ViewState, ViewStateTimer,
+        MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE,
+        RESPAWN_DELAY,
     },
     protocol::{
         InGameControlLosePacket, InGameFinishPacket, InGameInputPacket, InGamePullPacket,
@@ -30,7 +31,7 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
-use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use rodio::{mixer::Mixer, Sink};
 use winit::{
     event::{Modifiers, MouseButton},
@@ -43,8 +44,9 @@ use crate::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         CHARACTER_IMG_SMALL_URI, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL,
-        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON,
-        SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START, WEAPON_ICON_URI,
+        HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START,
+        WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -55,12 +57,14 @@ use crate::{
         update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
         update_character_hierarchy, update_character_resource, update_stage_hierarchy,
         update_stage_resource, update_view_state, update_view_state_timer, AccumRenderTarget,
-        AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Bullet,
-        Camera, CameraResource, CameraUniform, Child, DirectionLight, GaussianBlurPipeline,
-        GlobalLightDataLayout, LightSetResource, LightTransformDataLayout, MaterialKind,
-        MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
-        ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans,
-        TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, Bullet, Camera, CameraResource, CameraUniform, Child,
+        DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
+        DamageParticle, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
+        LightSetResource, LightTransformDataLayout, MaterialKind, Mesh, MeshRenderer, OpaqueMap,
+        Parent, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
+        WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
@@ -153,6 +157,8 @@ pub struct InGameRunScene {
     bullets: HashMap<ObjectId, Entity>,
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
+    /// 데미지 파티클 목록입니다.
+    damage_particles: VecDeque<Entity>,
     /// 스테이지 엔터티
     stage: Option<StageBoundingVolumnHierarchy>,
 
@@ -318,6 +324,7 @@ impl InGameRunScene {
             ),
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             players,
+            damage_particles: VecDeque::with_capacity(64),
             stage: Some(stage),
             frame_staging_buffers: Vec::with_capacity(128),
             accum_render_target: Some(accum_render_target),
@@ -549,6 +556,342 @@ impl InGameRunScene {
         self.bright_render_target = Some(bright_render_target);
         self.gaussian_blur_pipeline = Some(gaussian_blur_pipeline);
         self.bloom_pipeline = Some(bloom_pipeline);
+    }
+
+    /// 데미지 파티클을 생성합니다.
+    fn create_damage_particles(&mut self, device: &wgpu::Device, logs: Vec<DamageLogData>) {
+        // 게임 월드를 가져옵니다.
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        for log in logs {
+            // 플레이어 엔터티를 가져옵니다.
+            let uid = log.target_id;
+            let (entity, archetype) = match self.players.get(&uid).cloned() {
+                Some(pair) => pair,
+                None => continue,
+            };
+
+            // 플레이어 엔터티의 머리 노드 엔터티를 가져옵니다.
+            let head = world
+                .query_one_mut::<&SkinningAnimation>(entity)
+                .expect("invalid entity or invalid entity component")
+                .bip001_head;
+
+            match log.as_damage() {
+                Damage::Common(damage) => {
+                    // 데미지 파티클 메쉬를 가져옵니다.
+                    let (mesh, _) = self
+                        .mesh_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number particle mesh must exist!");
+
+                    // 데미지 폰트 텍스처를 가져옵니다.
+                    let texture = self
+                        .texture_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number texture must exist!");
+                    let view = self
+                        .texture_view_pool
+                        .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                    let sampler = self
+                        .sampler_pool
+                        .get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+                    let str = damage.to_string();
+                    let len = str.trim().len() as f32;
+                    for (i, ch) in str.trim().chars().enumerate() {
+                        let number = ch.to_digit(10).expect("invalid data");
+
+                        // 파티클 위치를 계산합니다.
+                        const ORIGIN: f32 = -0.1;
+                        const WIDTH: f32 = 0.05;
+                        const HALF_WIDTH: f32 = WIDTH * 0.5;
+                        let x = ORIGIN - HALF_WIDTH * len + WIDTH * i as f32 + HALF_WIDTH;
+
+                        // 엔터티 요소를 생성합니다.
+                        let parent = Parent(head);
+                        let particle = DamageParticle {
+                            elapsed_time_sec: 0.0,
+                            duration_sec: 2.0,
+                            begin_offset: glam::vec3a(x, 0.0, -0.6),
+                            end_offset: glam::vec3a(x, 0.5, -0.4),
+                            number,
+                        };
+                        let label = format!("DamageLog({})", uid);
+                        let damage_uniform = DamageFontUniform::uninit(Some(&label), device);
+                        let damage_resource = DamageFontResource::new(
+                            Some(&label),
+                            device,
+                            &view,
+                            &sampler,
+                            &damage_uniform,
+                        );
+
+                        // 새로운 엔터티를 생성합니다.
+                        let entity = world.spawn((
+                            mesh.clone(),
+                            (parent, archetype),
+                            particle,
+                            damage_uniform,
+                            damage_resource,
+                        ));
+                        self.damage_particles.push_back(entity);
+                    }
+                }
+                Damage::Critial(damage) => {
+                    // 데미지 파티클 메쉬를 가져옵니다.
+                    let (mesh, _) = self
+                        .mesh_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the damage particle mesh must exist!");
+
+                    // 데미지 폰트 텍스처를 가져옵니다.
+                    let texture = self
+                        .texture_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the damage font texture must exist!");
+                    let view = self
+                        .texture_view_pool
+                        .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                    let sampler = self
+                        .sampler_pool
+                        .get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+                    let str = damage.to_string();
+                    let len = str.trim().len() as f32;
+                    for (i, ch) in str.trim().chars().enumerate() {
+                        let number = ch.to_digit(10).expect("invalid data");
+
+                        // 파티클 위치를 계산합니다.
+                        const ORIGIN: f32 = -0.1;
+                        const WIDTH: f32 = 0.05;
+                        const HALF_WIDTH: f32 = WIDTH * 0.5;
+                        let x = ORIGIN - HALF_WIDTH * len + WIDTH * i as f32 + HALF_WIDTH;
+
+                        // 엔터티 요소를 생성합니다.
+                        let parent = Parent(head);
+                        let particle = DamageParticle {
+                            elapsed_time_sec: 0.0,
+                            duration_sec: 2.0,
+                            begin_offset: glam::vec3a(x, 0.0, -0.6),
+                            end_offset: glam::vec3a(x, 0.5, -0.4),
+                            number,
+                        };
+                        let label = format!("DamageLog({})", uid);
+                        let damage_uniform = DamageFontUniform::uninit(Some(&label), device);
+                        let damage_resource = DamageFontResource::new(
+                            Some(&label),
+                            device,
+                            &view,
+                            &sampler,
+                            &damage_uniform,
+                        );
+
+                        // 새로운 엔터티를 생성합니다.
+                        let entity = world.spawn((
+                            mesh.clone(),
+                            (parent, archetype),
+                            particle,
+                            damage_uniform,
+                            damage_resource,
+                        ));
+                        self.damage_particles.push_back(entity);
+                    }
+                }
+                Damage::Miss => {
+                    // 데미지 파티클 메쉬를 가져옵니다.
+                    let (mesh, _) = self
+                        .mesh_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number particle mesh must exist!");
+
+                    // 데미지 폰트 텍스처를 가져옵니다.
+                    let texture = self
+                        .texture_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number texture must exist!");
+                    let view = self
+                        .texture_view_pool
+                        .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                    let sampler = self
+                        .sampler_pool
+                        .get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+                    let str = 0.to_string();
+                    let len = str.trim().len() as f32;
+                    for (i, ch) in str.trim().chars().enumerate() {
+                        let number = ch.to_digit(10).expect("invalid data");
+
+                        // 파티클 위치를 계산합니다.
+                        const ORIGIN: f32 = -0.1;
+                        const WIDTH: f32 = 0.05;
+                        const HALF_WIDTH: f32 = WIDTH * 0.5;
+                        let x = ORIGIN - HALF_WIDTH * len + WIDTH * i as f32 + HALF_WIDTH;
+
+                        // 엔터티 요소를 생성합니다.
+                        let parent = Parent(head);
+                        let particle = DamageParticle {
+                            elapsed_time_sec: 0.0,
+                            duration_sec: 2.0,
+                            begin_offset: glam::vec3a(x, 0.0, -0.6),
+                            end_offset: glam::vec3a(x, 0.5, -0.4),
+                            number,
+                        };
+                        let label = format!("DamageLog({})", uid);
+                        let damage_uniform = DamageFontUniform::uninit(Some(&label), device);
+                        let damage_resource = DamageFontResource::new(
+                            Some(&label),
+                            device,
+                            &view,
+                            &sampler,
+                            &damage_uniform,
+                        );
+
+                        // 새로운 엔터티를 생성합니다.
+                        let entity = world.spawn((
+                            mesh.clone(),
+                            (parent, archetype),
+                            particle,
+                            damage_uniform,
+                            damage_resource,
+                        ));
+                        self.damage_particles.push_back(entity);
+                    }
+                }
+            }
+        }
+    }
+
+    /// 데미지 파티클을 갱신합니다.
+    fn update_damage_particles(&mut self, elapsed_time_sec: f32) {
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 데미지 파티클을 갱신합니다.
+        let mut damage_particles = VecDeque::with_capacity(self.damage_particles.len());
+        while let Some(entity) = self.damage_particles.pop_front() {
+            // 파티클의 요소를 가져옵니다.
+            let particle = world
+                .query_one_mut::<&mut DamageParticle>(entity)
+                .expect("invalid entity or invalid entity component");
+
+            // 파티클의 경과 시간을 갱신합니다.
+            particle.elapsed_time_sec += elapsed_time_sec;
+
+            // 파티클의 지속시간을 초과할 경우 엔터티를 제거합니다.
+            if particle.elapsed_time_sec >= particle.duration_sec {
+                let _ = world.despawn(entity);
+                continue;
+            }
+
+            damage_particles.push_back(entity);
+        }
+
+        self.damage_particles = damage_particles;
+    }
+
+    /// 데미지 파티클 쉐이더 리소스를 갱신합니다.
+    fn update_damage_particle_resources(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+    ) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 카메라의 위치를 가져옵니다.
+        let mut query = world
+            .query_one::<&(Camera, WorldTransform)>(self.camera)
+            .expect("invalid entity");
+        let (_tag, transform) = query.get().expect("invalid entity component");
+        let camera_position = transform.get_translation();
+
+        type Query<'a> = (
+            &'a (Parent, PlayerArchetype),
+            &'a DamageParticle,
+            &'a DamageFontUniform,
+        );
+        let view = world.view::<Query>();
+        for entity in self.damage_particles.iter().cloned() {
+            // 파티클 요소를 가져옵니다.
+            let (&(parent, archetype), particle, uniform) = view
+                .get(entity)
+                .expect("invalid entity or invalid entity component!");
+
+            // 부모의 위치를 가져옵니다.
+            let entity = *parent;
+            player_execute!(archetype, world, entity, &WorldTransform, |transform| {
+                let head_position = transform.get_translation();
+
+                // 현재 파티클의 월드 변환 행렬을 계산합니다.
+                let t = (particle.elapsed_time_sec / particle.duration_sec).min(1.0);
+                let offset = particle.begin_offset * (1.0 - t) + particle.end_offset * t;
+                let look = (head_position - camera_position).normalize_or(glam::Vec3A::Z);
+                let right = glam::Vec3A::Y.cross(look);
+                let up = look.cross(right);
+                let position = offset.x * right + offset.y * up + offset.z * look + head_position;
+
+                // 유니폼 버퍼를 갱신합니다.
+                uniform.update(
+                    device,
+                    encoder,
+                    staging_buffers,
+                    DamageFontDataLayout {
+                        trans: glam::mat4(
+                            glam::vec4(right.x, right.y, right.z, 0.0),
+                            glam::vec4(up.x, up.y, up.z, 0.0),
+                            glam::vec4(look.x, look.y, look.z, 0.0),
+                            glam::vec4(position.x, position.y, position.z, 1.0),
+                        )
+                        .to_cols_array(),
+                        number: particle.number,
+                        ..Default::default()
+                    },
+                );
+            });
+        }
+    }
+
+    /// 데미지 파티클을 그립니다.
+    fn draw_damage_particle<'a>(
+        &'a self,
+        device: &wgpu::Device,
+        render_target_format: wgpu::TextureFormat,
+        depth_stencil_format: wgpu::TextureFormat,
+        camera_resource: &'a CameraResource,
+        rpass: &mut wgpu::RenderPass<'a>,
+    ) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        rpass.set_pipeline(DamageFontRenderPipeline::get_or_init(
+            device,
+            render_target_format,
+            depth_stencil_format,
+        ));
+        rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+
+        type Query<'a> = (&'a Arc<Mesh>, &'a DamageFontResource);
+        let view = world.view::<Query>();
+        for entity in self.damage_particles.iter().cloned() {
+            let (mesh, resource) = view
+                .get(entity)
+                .expect("invalid entity or invalid entity component!");
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.set_vertex_buffer(0, mesh.vertex(..));
+            rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+            rpass.draw(0..mesh.num_vertices(), 0..1);
+        }
     }
 
     /// 서버로부터 전달받은 데이터로 플레이어를 갱신합니다.
@@ -786,7 +1129,7 @@ impl InGameRunScene {
     }
 
     /// 서버로부터 전달받은 데이터로 플레이어 상태를 갱신합니다.
-    fn pull_server_status(&mut self, packet: InGameStatusPacket) {
+    fn pull_server_status(&mut self, device: &wgpu::Device, packet: InGameStatusPacket) {
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
@@ -847,6 +1190,8 @@ impl InGameRunScene {
                 }
             }
         }
+
+        self.create_damage_particles(device, packet.damage_logs);
     }
 
     /// 인터페이스 배경 레이아웃 텍스처를 Ui 렌더러에 등록합니다.
@@ -2865,7 +3210,9 @@ impl GameScene for InGameRunScene {
             }
             PacketType::InGameStatus => {
                 let packet = InGameStatusPacket::from_raw(packet);
-                self.pull_server_status(packet);
+
+                let device = app.render_device();
+                self.pull_server_status(&device, packet);
             }
             PacketType::InGameFinish => {
                 let packet = InGameFinishPacket::from_raw(packet);
@@ -3028,6 +3375,8 @@ impl GameScene for InGameRunScene {
                 self.held_input,
             );
         });
+
+        self.update_damage_particles(elapsed_time_sec);
     }
 
     fn on_post_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
@@ -3159,6 +3508,19 @@ impl GameScene for InGameRunScene {
         let draw_tasks: &Arc<Queue<_>> = &Arc::new(Queue::new());
         let bake_tasks: &Arc<Queue<_>> = &Arc::new(Queue::new());
         let draw_call: &Arc<Queue<_>> = &Arc::new(Queue::new());
+
+        // 데미지 파티클을 갱신합니다.
+        {
+            let device = app.render_device();
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            self.update_damage_particle_resources(device, &mut encoder, &mut staging_buffers);
+
+            draw_call.push((encoder.finish(), staging_buffers));
+        }
+
         {
             let device = app.render_device();
             let world = self.world.as_ref().expect("the world must be exists!");
@@ -3671,6 +4033,14 @@ impl GameScene for InGameRunScene {
                     _ => {}
                 }
             }
+
+            self.draw_damage_particle(
+                device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                camera_resource,
+                &mut rpass,
+            );
 
             clear_render_target_with_skybox(&skybox, device, &mut rpass);
         }
