@@ -12,7 +12,7 @@ use mod_network::{
 use crate::{
     account::Account,
     matching::MatchMaker,
-    session::Session,
+    session::{Session, SessionQueuedState, SessionStateFlow},
     token::UserTokenMap,
     world::{GameWorldEvent, GameWorldPool, GameWorldSystemEvent},
 };
@@ -182,6 +182,10 @@ impl SessionLobbyState {
         }
 
         MatchMaker::add_to_queue(self.account/*Copy*/, session.clone());
+        // 다음 세션 상태로 전환합니다.
+        let state = SessionQueuedState::new(self.account.uid);
+        session.add_flow(SessionStateFlow::Push(Box::new(state)));
+
         if let Some(accounts) = MatchMaker::pop_matched_accounts() {
             // 랜덤매칭 게임을 가져옵니다.
             let result = GameWorldPool::create_normal(accounts);

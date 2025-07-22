@@ -81,83 +81,6 @@ impl GameWorldQueuedState {
         data.set_network_state(state);
     }
 
-    /// 다음 게임 월드 상태로 전환을 시도합니다.
-    pub fn enter_next_state(&mut self, world: &mut GameWorld) {
-        // 스테이지 속성 정보를 가져옵니다.
-        let attribute = get_stage_attributes(self.stage_kind);
-
-        let mut num_blue = 0;
-        let mut num_red = 0;
-        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        for (&uid, data) in world.players.iter_mut() {
-            // 플레이어 데이터를 설정합니다.
-            let (index, translation, roataion, lon) = match data.team() {
-                Team::Blue => {
-                    let index = num_blue;
-                    num_blue += 1;
-
-                    let translation = attribute.blue_team_positions[index];
-                    let rotation = attribute.blue_team_rotation;
-                    let lon = rotation.angle_between(glam::Quat::IDENTITY);
-
-                    (index, translation, rotation, lon)
-                }
-                Team::Red => {
-                    let index = num_red;
-                    num_red += 1;
-
-                    let translation = attribute.red_team_positions[index];
-                    let rotation = attribute.red_team_rotation;
-                    let lon = rotation.angle_between(glam::Quat::IDENTITY);
-
-                    (index, translation, rotation, lon)
-                }
-            };
-            data.set_team_index(index);
-            data.translation = translation;
-            data.rotation = roataion;
-            data.latlon = LatLon::new(10f32.to_radians(), lon);
-
-            // 플레이어 초기화 데이터를 생성합니다.
-            players.push(FormationPlayerInitData::new(
-                uid,
-                data.name,
-                data.profile_icon,
-                data.tier(),
-                data.team(),
-                data.team_index(),
-            ));
-        }
-
-        // 패킷을 생성합니다.
-        let packet = FormationDataInitPacket::new(
-            MAX_FORMATION_TIME,
-            self.stage_kind,
-            ALLOW_DUPLICATES,
-            players,
-        );
-
-        // 게임 월드에 참가한 세션에 패킷을 전송하고, 세션의 상태를 변경합니다.
-        for (session, &uid) in world.sessions.iter() {
-            session.tcp_write(packet.as_raw());
-
-            // 다음 세션 상태로 전환합니다.
-            let state = SessionFormationState::new(uid, world.events.clone());
-            session.add_flow(SessionStateFlow::Push(Box::new(state)));
-        }
-
-        // 게임 월드 상태를 변경합니다.
-        let state = GameWorldFormationState::new(
-            ALLOW_DUPLICATES,
-            self.stage_kind,
-            false,
-            self.blue_players.len(),
-            self.red_players.len(),
-        );
-        let flow = GameWorldStateFlow::Push(Box::new(state));
-        world.flows.push(flow);
-    }
-
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         // 플레이어 데이터를 수집합니다.
@@ -208,6 +131,82 @@ impl GameWorldQueuedState {
 }
 
 impl GameWorldState for GameWorldQueuedState {
+    fn on_enter(&mut self, world: &mut GameWorld) {
+        // 스테이지 속성 정보를 가져옵니다.
+        let attribute = get_stage_attributes(self.stage_kind);
+
+        let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        for (&uid, data) in world.players.iter_mut() {
+            // 플레이어 데이터를 설정합니다.
+            let (index, translation, rotation, lon) = match data.team() {
+                Team::Blue => {
+                    let index = self.cnt_blue_players;
+                    self.cnt_blue_players += 1;
+                    self.blue_players.insert(uid, index);
+
+                    let translation = attribute.blue_team_positions[index as usize];
+                    let rotation = attribute.blue_team_rotation;
+                    let lon = rotation.angle_between(glam::Quat::IDENTITY);
+
+                    (index, translation, rotation, lon)
+                }
+                Team::Red => {
+                    let index = self.cnt_red_players;
+                    self.cnt_red_players += 1;
+                    self.red_players.insert(uid, index);
+
+                    let translation = attribute.red_team_positions[index as usize];
+                    let rotation = attribute.red_team_rotation;
+                    let lon = rotation.angle_between(glam::Quat::IDENTITY);
+
+                    (index, translation, rotation, lon)
+                }
+            };
+            data.set_team_index(index as usize);
+            data.translation = translation;
+            data.rotation = rotation;
+            data.latlon = LatLon::new(10f32.to_radians(), lon);
+
+            // 플레이어 초기화 데이터를 생성합니다.
+            players.push(FormationPlayerInitData::new(
+                uid,
+                data.name,
+                data.profile_icon,
+                data.tier(),
+                data.team(),
+                data.team_index(),
+            ));
+        }
+
+        // 패킷을 생성합니다.
+        let packet = FormationDataInitPacket::new(
+            MAX_FORMATION_TIME,
+            self.stage_kind,
+            ALLOW_DUPLICATES,
+            players,
+        );
+
+        // 게임 월드에 참가한 세션에 패킷을 전송하고, 세션의 상태를 변경합니다.
+        for (session, &uid) in world.sessions.iter() {
+            session.tcp_write(packet.as_raw());
+
+            // 다음 세션 상태로 전환합니다.
+            let state = SessionFormationState::new(uid, world.events.clone());
+            session.add_flow(SessionStateFlow::Push(Box::new(state)));
+        }
+
+        // 게임 월드 상태를 변경합니다.
+        let state = GameWorldFormationState::new(
+            ALLOW_DUPLICATES,
+            self.stage_kind,
+            false,
+            self.blue_players.len(),
+            self.red_players.len(),
+        );
+        let flow = GameWorldStateFlow::Push(Box::new(state));
+        world.flows.push(flow);
+    }
+
     fn on_resume(&mut self, world: &mut GameWorld) {
         let mut blue_players =
             HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new());

@@ -60,9 +60,7 @@ pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
     let state: Box<dyn GameWorldState> = if is_custom {
         Box::new(GameWorldRoomState::new())
     } else {
-        let mut w = GameWorldQueuedState::new();
-        w.enter_next_state(&mut world);
-        Box::new(w)
+        Box::new(GameWorldQueuedState::new())
     };
     let flow = GameWorldStateFlow::Reset(state);
     world.flows.push(flow);
