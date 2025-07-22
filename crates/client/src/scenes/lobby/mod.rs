@@ -33,7 +33,7 @@ use crate::{
         UI_NOTICE, UI_TURN_UP,
     },
     component::ButtonState,
-    config::{Locale, NUM_LOCALE},
+    config::{Locale, UserConfig, NUM_LOCALE},
     scenes::{
         lobby::option::LobbyCommonOptionModalLayer, FatalErrorSceneLayer, MessageSceneLayer,
         ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
@@ -1096,7 +1096,13 @@ impl GameScene for MainLobbyScene {
     }
 
     fn on_resume(&mut self, _window: &Window, _app: &dyn AppHandle) {
-        self.delay_time_sec = 0.0
+        self.delay_time_sec = 0.0;
+
+        let config = UserConfig::get();
+        self.locale = config.locale;
+        self.background_volume = config.background_volume;
+        self.effect_volume = config.effect_volume;
+        self.voice_volume = config.voice_volume;
     }
 
     fn on_window_resized(&mut self, window: &Window, app: &dyn AppHandle) {

@@ -328,7 +328,15 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                                                     config.is_fullscreen = is_fullscreen;
                                                 }
                                                 ChangeOption::Control {} => todo!(),
-                                                ChangeOption::Sound {} => todo!(),
+                                                ChangeOption::Sound {
+                                                    background_volume,
+                                                    effect_volume,
+                                                    voice_volume,
+                                                } => {
+                                                    config.background_volume = background_volume;
+                                                    config.effect_volume = effect_volume;
+                                                    config.voice_volume = voice_volume;
+                                                }
                                             }
                                         }
 

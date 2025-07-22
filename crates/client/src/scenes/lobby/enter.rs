@@ -6,7 +6,7 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{GameTier, LoginToken, ProfileIcon, UserId, UserName};
+use mod_network::components::{CharacterKind, GameTier, LoginToken, ProfileIcon, UserId, UserName};
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
@@ -17,12 +17,12 @@ use crate::{
     asset::{
         SamplerPool, SoundDataPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI,
         BG_DECO_URI, BG_FORMATION_URI, BG_MAIN_LOBBY_URI, BG_SOUND_THEME_03, BG_SOUND_THEME_14,
-        BG_SOUND_WORKSPACE, CHARACTER_IMG_URI, CV_YUUKA_OPTION, EMBLEM_BG_URI, GAME_LOGO_URI,
-        HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI,
-        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03,
-        HUD_OPTION_ICON_URI, ICON_WORKSPACE, IMG_FONT_HOST_URI, IMG_FONT_READY_URI,
-        IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI, UI_BUTTON_BACK,
-        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
+        BG_SOUND_WORKSPACE, CHARACTER_IMG_URI, CV_SOUND_TITLE, CV_YUUKA_OPTION, EMBLEM_BG_URI,
+        GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI,
+        HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
+        HUD_LAYOUT_URI_03, HUD_OPTION_ICON_URI, ICON_WORKSPACE, IMG_FONT_HOST_URI,
+        IMG_FONT_READY_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
+        UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -122,8 +122,9 @@ impl MainLobbyEnterScene {
 
         // 새로운 사운드 데이터 풀을 생성하고 이전 사운드 풀에서 필요한 데이터를 취합니다.
         let sound_data_pool = SoundDataPool::new();
-        const SOUND_URIS: [&'static str; 8] = [
+        const SOUND_URIS: [&'static str; 9] = [
             CV_YUUKA_OPTION,
+            CV_SOUND_TITLE[CharacterKind::YuukaOriginal as usize],
             UI_BUTTON_BACK,
             UI_BUTTON_TOUCH,
             UI_LOADING,
