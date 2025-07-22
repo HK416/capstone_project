@@ -42,8 +42,6 @@ pub const MODEL_BONE_R_UPPERARM: &'static str = "Bip001_R_UpperArm";
 pub const MODEL_BONE_R_FOREARM: &'static str = "Bip001_R_Forearm";
 /// 모든 캐릭터 모델의 오른쪽 손 뼈 노드 이름입니다.
 pub const MODEL_BONE_R_HAND: &'static str = "Bip001_R_Hand";
-/// 모든 캐릭터 모델의 무기 뼈 노드 이름입니다.
-pub const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon";
 
 /// 모든 캐릭터 모델의 왼쪽 허벅지 안쪽 뼈 노드 이름입니다.
 pub const MODEL_BONE_L_THIGH: &'static str = "Bip001_L_Thigh";
@@ -96,27 +94,7 @@ pub const FORMATION_PICKUP: &'static str = "_Formation_Pickup";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkinningAnimation {
     /// NOTE: `BoneCollection`의 `root`와 다름!
-    pub root: Entity,
-    pub bip001_head: Entity,
-    pub bip001_pelvis: Entity,
-    pub bip001_spine: Entity,
-    pub bip001_spine1: Entity,
-    pub bip001_l_clavicle: Entity,
-    pub bip001_l_upperarm: Entity,
-    pub bip001_l_forearm: Entity,
-    pub bip001_l_hand: Entity,
-    pub bip001_l_weapon: Entity,
-    pub bip001_r_clavicle: Entity,
-    pub bip001_r_upperarm: Entity,
-    pub bip001_r_forearm: Entity,
-    pub bip001_r_hand: Entity,
-    pub bip001_r_weapon: Entity,
-    pub left_thigh: Entity,
-    pub right_thigh: Entity,
-    pub left_calf: Entity,
-    pub right_calf: Entity,
-    pub left_foot: Entity,
-    pub right_foot: Entity,
+    pub entity_list: HashMap<String, Entity>,
     pub mesh_entity_list: HashMap<String, Entity>,
     pub mixing_bone_list: HashSet<Entity>,
 }
@@ -124,27 +102,7 @@ pub struct SkinningAnimation {
 impl Default for SkinningAnimation {
     fn default() -> Self {
         Self {
-            root: Entity::DANGLING,
-            bip001_pelvis: Entity::DANGLING,
-            bip001_head: Entity::DANGLING,
-            bip001_spine: Entity::DANGLING,
-            bip001_spine1: Entity::DANGLING,
-            bip001_l_clavicle: Entity::DANGLING,
-            bip001_l_upperarm: Entity::DANGLING,
-            bip001_l_forearm: Entity::DANGLING,
-            bip001_l_hand: Entity::DANGLING,
-            bip001_l_weapon: Entity::DANGLING,
-            bip001_r_clavicle: Entity::DANGLING,
-            bip001_r_upperarm: Entity::DANGLING,
-            bip001_r_forearm: Entity::DANGLING,
-            bip001_r_hand: Entity::DANGLING,
-            bip001_r_weapon: Entity::DANGLING,
-            left_thigh: Entity::DANGLING,
-            right_thigh: Entity::DANGLING,
-            left_foot: Entity::DANGLING,
-            right_foot: Entity::DANGLING,
-            left_calf: Entity::DANGLING,
-            right_calf: Entity::DANGLING,
+            entity_list: HashMap::default(),
             mesh_entity_list: HashMap::default(),
             mixing_bone_list: HashSet::default(),
         }

@@ -30,13 +30,14 @@ use crate::{
         CHARACTER_IMG_SMALL_URI, CHARACTER_IMG_URI, CHARACTER_URIS, CHARACTER_WORKSPACES,
         CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_MOVE, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT,
         CV_COMMONSKILL, CV_EXSKILL_LEVEL, CV_SOUND_WORKSPACES, CV_TACTIC_IN, EMBLEM_BG_URI,
-        HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, ICON_WORKSPACE, IMG_FONT_DRAW,
-        IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI,
-        IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI,
-        IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON,
-        SFX_COMMON_RELOAD, SFX_SKILL, SFX_WORKSPACE, STAGE_URI, STAGE_WORKSPACES, UI_BUTTON_BACK,
-        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_SOUND_WORKSPACE, UI_START,
-        UI_TURN_DOWN, UI_TURN_UP, UI_VICTORY_ST_01, WEAPON_ICON_URI,
+        FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, FX_WORKSPACE, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03,
+        ICON_WORKSPACE, IMG_FONT_DRAW, IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI,
+        IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI,
+        IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD,
+        PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON, SFX_COMMON_RELOAD, SFX_SKILL, SFX_WORKSPACE,
+        STAGE_URI, STAGE_WORKSPACES, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
+        UI_PAUSE, UI_SOUND_WORKSPACE, UI_START, UI_TURN_DOWN, UI_TURN_UP, UI_VICTORY_ST_01,
+        WEAPON_ICON_URI,
     },
     component::{Attributes, MaterialDataPool, Mesh, Vertices},
     config::{Locale, UserConfig, NUM_LOCALE},
@@ -236,6 +237,8 @@ impl InGameLoadScene {
             (IMG_FONT_WORKSPACE, IMG_FONT_START_URI),
             (IMG_FONT_WORKSPACE, IMG_FONT_WIN_SMALL_URI),
             (IMG_FONT_WORKSPACE, IMG_FONT_WIN_URI),
+            (FX_WORKSPACE, FX_TEX_MUZZLE_00),
+            (FX_WORKSPACE, FX_TEX_MUZZLE_01),
         ];
 
         let root_dir = root_dir.to_path_buf();
@@ -823,43 +826,75 @@ impl InGameLoadScene {
         self.num_remaining_tasks += 1;
     }
 
-    fn create_particle_mesh(&mut self, thread_pool: &ThreadPool, device: Arc<wgpu::Device>) {
+    fn create_particle_meshes(&mut self, thread_pool: &ThreadPool, device: Arc<wgpu::Device>) {
         let mesh_pool = self.mesh_pool.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             let mut staging_buffers = Vec::new();
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            {
+                // 데미지 파티클 메쉬를 생성합니다.
+                let positions = Vertices(vec![
+                    [-0.025, -0.05, 0.0],
+                    [-0.025, 0.05, 0.0],
+                    [0.025, -0.05, 0.0],
+                    [0.025, 0.05, 0.0],
+                    [0.025, -0.05, 0.0],
+                    [-0.025, 0.05, 0.0],
+                ]);
+                let texcoords = Attributes::Texcoord0(vec![
+                    [0.0, 1.0],
+                    [0.0, 0.0],
+                    [1.0, 1.0],
+                    [1.0, 0.0],
+                    [1.0, 1.0],
+                    [0.0, 0.0],
+                ]);
 
-            // 데미지 파티클 메쉬를 생성합니다.
-            let positions = Vertices(vec![
-                [-0.025, -0.05, 0.0],
-                [-0.025, 0.05, 0.0],
-                [0.025, -0.05, 0.0],
-                [0.025, 0.05, 0.0],
-                [0.025, -0.05, 0.0],
-                [-0.025, 0.05, 0.0],
-            ]);
-            let texcoords = Attributes::Texcoord0(vec![
-                [0.0, 1.0],
-                [0.0, 0.0],
-                [1.0, 1.0],
-                [1.0, 0.0],
-                [1.0, 1.0],
-                [0.0, 0.0],
-            ]);
+                let mut mesh = Mesh::new(
+                    IMG_FONT_NUMBER_URI,
+                    &device,
+                    &mut encoder,
+                    &mut staging_buffers,
+                    positions,
+                );
+                mesh.with_attribute(&device, &mut encoder, &mut staging_buffers, texcoords);
 
-            let mut mesh = Mesh::new(
-                IMG_FONT_NUMBER_URI,
-                &device,
-                &mut encoder,
-                &mut staging_buffers,
-                positions,
-            );
-            mesh.with_attribute(&device, &mut encoder, &mut staging_buffers, texcoords);
+                // 풀 객체에 메쉬를 등록합니다.
+                mesh_pool.insert(IMG_FONT_NUMBER_URI, Arc::new(mesh), None);
+            }
+            {
+                // 버스트 이펙트 파티클 메쉬를 생성합니다.
+                let positions = Vertices(vec![
+                    [-0.5, -0.5, 0.0],
+                    [-0.5, 0.5, 0.0],
+                    [0.5, -0.5, 0.0],
+                    [0.5, 0.5, 0.0],
+                    [0.5, -0.5, 0.0],
+                    [-0.5, 0.5, 0.0],
+                ]);
+                let texcoords = Attributes::Texcoord0(vec![
+                    [0.0, 1.0],
+                    [0.0, 0.0],
+                    [1.0, 1.0],
+                    [1.0, 0.0],
+                    [1.0, 1.0],
+                    [0.0, 0.0],
+                ]);
 
-            // 풀 객체에 메쉬를 등록합니다.
-            mesh_pool.insert(IMG_FONT_NUMBER_URI, Arc::new(mesh), None);
+                let mut mesh = Mesh::new(
+                    FX_TEX_MUZZLE_00,
+                    &device,
+                    &mut encoder,
+                    &mut staging_buffers,
+                    positions,
+                );
+                mesh.with_attribute(&device, &mut encoder, &mut staging_buffers, texcoords);
+
+                // 풀 객체에 메쉬를 등록합니다.
+                mesh_pool.insert(FX_TEX_MUZZLE_00, Arc::new(mesh), None);
+            }
 
             // 결과를 전송합니다.
             task_results.push(TaskResult::Model {
@@ -906,7 +941,7 @@ impl GameScene for InGameLoadScene {
         let device = app.render_device();
         let io_thread_pool = app.io_threads();
         self.create_textures(&root_dir, io_thread_pool, device.clone());
-        self.create_particle_mesh(io_thread_pool, device.clone());
+        self.create_particle_meshes(io_thread_pool, device.clone());
         self.load_effect_sounds(&root_dir, io_thread_pool);
         self.load_voice_sounds(&root_dir, io_thread_pool, character_kinds.clone());
         self.load_character_motions(&root_dir, io_thread_pool, character_kinds.clone());

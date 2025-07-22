@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ahash::HashMap;
 use hecs::{Component, Entity, ViewBorrow, World};
 use mod_network::components::{ActionState, CharacterKind};
@@ -58,6 +56,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -82,6 +81,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -106,6 +106,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -130,6 +131,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -154,6 +156,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -178,6 +181,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -202,6 +206,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -226,6 +231,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -250,6 +256,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,
@@ -274,6 +281,7 @@ pub fn update_character_hierarchy(
             );
             set_weapon_position(
                 action_state,
+                character_kind,
                 character_attributes,
                 skinning_animation,
                 child_view,

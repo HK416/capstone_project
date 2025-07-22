@@ -44,27 +44,29 @@ use crate::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         CHARACTER_IMG_SMALL_URI, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL,
-        HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, NOTOSANS_BOLD,
-        NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START,
-        WEAPON_ICON_URI,
+        FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI,
+        IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD,
+        UI_NOTICE, UI_PAUSE, UI_START, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
         draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_stage, draw_tree, spawn_bullet, update_bullet_hierarchy, update_bullet_resource,
-        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
-        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
-        update_stage_resource, update_view_state, update_view_state_timer, AccumRenderTarget,
-        AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline, BoneCollection,
-        BrightRenderTarget, Bullet, Camera, CameraResource, CameraUniform, Child,
+        draw_fx_muzzle_effect, draw_stage, draw_tree, spawn_bullet, spawn_fx_muzzle_effect,
+        update_bullet_hierarchy, update_bullet_resource, update_camera_and_skybox_resource,
+        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
+        update_character_resource, update_fx_muzzle_particles, update_fx_particle_lifetime,
+        update_stage_hierarchy, update_stage_resource, update_view_state, update_view_state_timer,
+        AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Bullet, Camera, CameraResource, CameraUniform, Child,
         DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
-        DamageParticle, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
-        LightSetResource, LightTransformDataLayout, MaterialKind, Mesh, MeshRenderer, OpaqueMap,
-        Parent, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
-        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
-        WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        DamageParticle, DirectionLight, FxMuzzle00, FxMuzzle01, FxMuzzleInstance, FxMuzzleResource,
+        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
+        MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype,
+        Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer,
+        SkinningAnimation, Skybox, ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y,
+        CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES, MODEL_BONE_HEAD,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
@@ -177,6 +179,11 @@ pub struct InGameRunScene {
     gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
+
+    /// 총구 화염 이펙트 인스턴스 버퍼입니다.
+    muzzle_instances: HashMap<String, FxMuzzleInstance>,
+    /// 파티클 쉐이더 리소스입니다.
+    particle_resources: HashMap<String, ParticleResource>,
 
     /// 스테이지 스카이박스
     skybox: Option<Skybox>,
@@ -333,6 +340,8 @@ impl InGameRunScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            muzzle_instances: HashMap::default(),
+            particle_resources: HashMap::default(),
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
@@ -558,6 +567,41 @@ impl InGameRunScene {
         self.bloom_pipeline = Some(bloom_pipeline);
     }
 
+    /// 총구 화염 이펙트 쉐이더 리소스를 생성합니다.
+    fn create_fx_muzzle_resource(&mut self, device: &wgpu::Device) {
+        let capacity = unsafe { NonZeroU32::new_unchecked(32 as u32) };
+        self.muzzle_instances.insert(
+            FX_TEX_MUZZLE_00.to_string(),
+            FxMuzzleInstance::new(device, capacity),
+        );
+
+        let capacity = unsafe { NonZeroU32::new_unchecked(32 as u32) };
+        self.muzzle_instances.insert(
+            FX_TEX_MUZZLE_01.to_string(),
+            FxMuzzleInstance::new(device, capacity),
+        );
+
+        // 총구 화염 이펙트 텍스처 뷰와 텍스처 샘플러를 가져옵니다.
+        let (texture_view, sampler) = self
+            .texture_data_pool
+            .get(FX_TEX_MUZZLE_00)
+            .expect("FX_TEX_Muzzle_00 texture must be preloaded!");
+        self.particle_resources.insert(
+            FX_TEX_MUZZLE_00.to_string(),
+            FxMuzzleResource::new(device, &texture_view, &sampler),
+        );
+
+        // 총구 화염 이펙트 텍스처 뷰와 텍스처 샘플러를 가져옵니다.
+        let (texture_view, sampler) = self
+            .texture_data_pool
+            .get(FX_TEX_MUZZLE_01)
+            .expect("FX_TEX_Muzzle_01 texture must be preloaded!");
+        self.particle_resources.insert(
+            FX_TEX_MUZZLE_01.to_string(),
+            FxMuzzleResource::new(device, &texture_view, &sampler),
+        );
+    }
+
     /// 데미지 파티클을 생성합니다.
     fn create_damage_particles(&mut self, device: &wgpu::Device, logs: Vec<DamageLogData>) {
         // 게임 월드를 가져옵니다.
@@ -575,10 +619,14 @@ impl InGameRunScene {
             };
 
             // 플레이어 엔터티의 머리 노드 엔터티를 가져옵니다.
-            let head = world
+            let skinning_animation = world
                 .query_one_mut::<&SkinningAnimation>(entity)
-                .expect("invalid entity or invalid entity component")
-                .bip001_head;
+                .expect("invalid entity or invalid entity component!");
+            let head = skinning_animation
+                .entity_list
+                .get(MODEL_BONE_HEAD)
+                .cloned()
+                .expect("the bone entity must be exists!");
 
             match log.as_damage() {
                 Damage::Common(damage) => {
@@ -952,10 +1000,10 @@ impl InGameRunScene {
             }
 
             // 행동 상태 알림을 처리합니다.
-            if data.uid == self.uid {
-                match data.action_notify() {
-                    ActionNotify::None => {}
-                    ActionNotify::EnterAttack => {
+            match data.action_notify() {
+                ActionNotify::None => {}
+                ActionNotify::EnterAttack => {
+                    if data.uid == self.uid {
                         let val: f32 = rand::random();
                         if val < 0.1 {
                             let i = character_kind as usize;
@@ -975,7 +1023,9 @@ impl InGameRunScene {
                             sink.detach();
                         }
                     }
-                    ActionNotify::Retreat => {
+                }
+                ActionNotify::Retreat => {
+                    if data.uid == self.uid {
                         let i = character_kind as usize;
                         let decoded = self
                             .sound_data_pool
@@ -991,7 +1041,9 @@ impl InGameRunScene {
                         sink.play();
                         sink.detach();
                     }
-                    ActionNotify::Reload => {
+                }
+                ActionNotify::Reload => {
+                    if data.uid == self.uid {
                         let i = character_kind as usize;
                         let decoded = self
                             .sound_data_pool
@@ -1007,7 +1059,9 @@ impl InGameRunScene {
                         sink.play();
                         sink.detach();
                     }
-                    ActionNotify::EnterSkill => {
+                }
+                ActionNotify::EnterSkill => {
+                    if data.uid == self.uid {
                         let i = character_kind as usize;
                         let j = rand::random_range(0..3);
                         let decoded = self
@@ -1024,7 +1078,9 @@ impl InGameRunScene {
                         sink.play();
                         sink.detach();
                     }
-                    ActionNotify::FirstAttack => {
+                }
+                ActionNotify::FirstAttack => {
+                    if data.uid == self.uid {
                         let i = character_kind as usize;
                         let decoded = self
                             .sound_data_pool
@@ -1040,8 +1096,11 @@ impl InGameRunScene {
                         sink.play();
                         sink.detach();
                     }
-                    ActionNotify::FirstSkill => {}
+
+                    // 총구 화염 파티클을 생성합니다.
+                    spawn_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
                 }
+                ActionNotify::FirstSkill => {}
             }
 
             type Query<'a> = (
@@ -2778,6 +2837,7 @@ impl GameScene for InGameRunScene {
         let (width, height): (f32, f32) = size.size().into();
         self.camera_aspect_ratio = width / height;
         self.create_camera(device);
+        self.create_fx_muzzle_resource(device);
 
         self.regist_layout_texture(device, ui_renderer);
         self.regist_weapon_icon_texture(device, ui_renderer);
@@ -3356,6 +3416,9 @@ impl GameScene for InGameRunScene {
             None => return,
         };
 
+        // 파티클을 갱신합니다.
+        update_fx_particle_lifetime(world, elapsed_time_ms);
+
         let i = self.player_character as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         player_execute!(archetype, world, entity, &ActionState, |action_state| {
@@ -3509,6 +3572,13 @@ impl GameScene for InGameRunScene {
         let bake_tasks: &Arc<Queue<_>> = &Arc::new(Queue::new());
         let draw_call: &Arc<Queue<_>> = &Arc::new(Queue::new());
 
+        // 총구 화염 파티클 인스턴스 버퍼의 소유권을 가져옵니다.
+        let mut muzzle_instances = HashMap::default();
+        for (uri, mut instances) in self.muzzle_instances.drain() {
+            instances = instances.fast_clear();
+            muzzle_instances.insert(uri, instances);
+        }
+
         // 데미지 파티클을 갱신합니다.
         {
             let device = app.render_device();
@@ -3653,7 +3723,41 @@ impl GameScene for InGameRunScene {
                         draw_call.push((encoder.finish(), staging_buffers));
                     });
                 }
+
+                let muzzle_instances = &muzzle_instances;
+                scope.spawn(move |_| {
+                    let mut staging_buffers = Vec::default();
+                    let mut encoder =
+                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+                    let instances = muzzle_instances
+                        .get(FX_TEX_MUZZLE_00)
+                        .expect("the instance buffer must be exists!");
+                    update_fx_muzzle_particles::<FxMuzzle00>(
+                        world,
+                        device,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        instances,
+                    );
+
+                    let instances = muzzle_instances
+                        .get(FX_TEX_MUZZLE_01)
+                        .expect("the instance buffer must be exists!");
+                    update_fx_muzzle_particles::<FxMuzzle01>(
+                        world,
+                        device,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        instances,
+                    );
+
+                    draw_call.push((encoder.finish(), staging_buffers));
+                });
             });
+
+            // 총구 화염 파티클의 소유권을 돌려놓습니다.
+            self.muzzle_instances = muzzle_instances;
 
             let light_resources = self
                 .light_resource
@@ -3879,6 +3983,10 @@ impl GameScene for InGameRunScene {
             .bloom_pipeline
             .as_ref()
             .expect("the bloom render pipeline must be exists!");
+        let (particle_mesh, _) = self
+            .mesh_pool
+            .get(FX_TEX_MUZZLE_00)
+            .expect("the particle mesh must be exists!");
 
         encoder.push_debug_group("shadow pass");
         for (shadow_resource, shadow_map) in self.bake_list.iter() {
@@ -4123,6 +4231,40 @@ impl GameScene for InGameRunScene {
                     _ => {}
                 }
             }
+
+            let instance_buffer = self
+                .muzzle_instances
+                .get(FX_TEX_MUZZLE_00)
+                .expect("the instance buffer must be exists!");
+            let particle_resource = self
+                .particle_resources
+                .get(FX_TEX_MUZZLE_00)
+                .expect("the particle shader resource must be exists!");
+            draw_fx_muzzle_effect(
+                &particle_mesh,
+                device,
+                camera_resource,
+                particle_resource,
+                instance_buffer,
+                &mut rpass,
+            );
+
+            let instance_buffer = self
+                .muzzle_instances
+                .get(FX_TEX_MUZZLE_01)
+                .expect("the instance buffer must be exists!");
+            let particle_resource = self
+                .particle_resources
+                .get(FX_TEX_MUZZLE_01)
+                .expect("the particle shader resource must be exists!");
+            draw_fx_muzzle_effect(
+                &particle_mesh,
+                device,
+                camera_resource,
+                particle_resource,
+                instance_buffer,
+                &mut rpass,
+            );
         }
         encoder.pop_debug_group();
 

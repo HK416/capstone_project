@@ -18,15 +18,9 @@ use crate::{
         Child, EyeMouthMaterialResource, EyeMouthMaterialUniform, HaloMaterialResource,
         MaterialData, MaterialResource, MaterialUniform, MeshResource, Parent, Sibling,
         SkinnedMeshResource, SkinningAnimation, ToParentTrans, TransformUniform, WorldTransform,
-        MAX_BONES, MODEL_BONE_HEAD, MODEL_BONE_L_CALF, MODEL_BONE_L_FOOT, MODEL_BONE_L_THIGH,
-        MODEL_BONE_PELVIS, MODEL_BONE_ROOT, MODEL_BONE_R_CALF, MODEL_BONE_R_CLAVICLE,
-        MODEL_BONE_R_FOOT, MODEL_BONE_R_FOREARM, MODEL_BONE_R_HAND, MODEL_BONE_R_THIGH,
-        MODEL_BONE_R_UPPERARM, MODEL_BONE_SPINE, MODEL_BONE_SPINE_1,
+        MAX_BONES, MODEL_BONE_L_THIGH, MODEL_BONE_R_THIGH,
     },
 };
-
-/// `Yuuka_Original` 캐릭터 모델의 무기 뼈 노드 이름입니다.
-const MODEL_BONE_WEAPON: &'static str = "Bip001_Weapon_R";
 
 /// 플레이어 엔터티를 생성합니다.
 pub fn spawn_player<Tag: Copy + Component>(
@@ -157,73 +151,9 @@ fn spawn_character_model<Tag: Copy + Component>(
 
     // 스키닝 애니메이션 컴포넌트를 생성합니다.
     let skinning_animation = SkinningAnimation {
-        root: entity_list
-            .get(MODEL_BONE_ROOT)
-            .cloned()
-            .expect("no such entity"),
-        bip001_pelvis: entity_list
-            .get(MODEL_BONE_PELVIS)
-            .cloned()
-            .expect("no such entity"),
-        bip001_spine: entity_list
-            .get(MODEL_BONE_SPINE)
-            .cloned()
-            .expect("no such entity"),
-        bip001_spine1: entity_list
-            .get(MODEL_BONE_SPINE_1)
-            .cloned()
-            .expect("no such entity"),
-        bip001_r_clavicle: entity_list
-            .get(MODEL_BONE_R_CLAVICLE)
-            .cloned()
-            .expect("no such entity"),
-        bip001_r_upperarm: entity_list
-            .get(MODEL_BONE_R_UPPERARM)
-            .cloned()
-            .expect("no such entity"),
-        bip001_r_forearm: entity_list
-            .get(MODEL_BONE_R_FOREARM)
-            .cloned()
-            .expect("no such entity"),
-        bip001_r_hand: entity_list
-            .get(MODEL_BONE_R_HAND)
-            .cloned()
-            .expect("no such entity"),
-        bip001_head: entity_list
-            .get(MODEL_BONE_HEAD)
-            .cloned()
-            .expect("no such entity"),
-        bip001_r_weapon: entity_list
-            .get(MODEL_BONE_WEAPON)
-            .cloned()
-            .expect("no such entity"),
-        left_thigh: entity_list
-            .get(MODEL_BONE_L_THIGH)
-            .cloned()
-            .expect("no such entity"),
-        right_thigh: entity_list
-            .get(MODEL_BONE_R_THIGH)
-            .cloned()
-            .expect("no such entity"),
-        left_calf: entity_list
-            .get(MODEL_BONE_L_CALF)
-            .cloned()
-            .expect("no such entity"),
-        right_calf: entity_list
-            .get(MODEL_BONE_R_CALF)
-            .cloned()
-            .expect("no such entity"),
-        left_foot: entity_list
-            .get(MODEL_BONE_L_FOOT)
-            .cloned()
-            .expect("no such entity"),
-        right_foot: entity_list
-            .get(MODEL_BONE_R_FOOT)
-            .cloned()
-            .expect("no such entity"),
+        entity_list,
         mesh_entity_list,
         mixing_bone_list,
-        ..Default::default()
     };
 
     (skinning_animation, entity, batch_commands)

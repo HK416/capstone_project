@@ -217,6 +217,13 @@ pub const STAGE_WORKSPACES: [&'static str; NUM_STAGES] = ["stage/city"];
 /// 지형 데이터의 `Uri`입니다.
 pub const STAGE_URI: &'static str = "map";
 
+/// 파티클 이펙트의 작업공간입니다.
+pub const FX_WORKSPACE: &'static str = "fx";
+/// 총구 화염 파티클 이펙트 텍스처의 `Uri`입니다.
+pub const FX_TEX_MUZZLE_00: &'static str = "FX_TEX_Muzzle_00";
+/// 총구 화염 파티클 이펙트 텍스처의 `Uri`입니다.
+pub const FX_TEX_MUZZLE_01: &'static str = "FX_TEX_Muzzle_01";
+
 /// 점령 지역의 `Uri`입니다.
 pub const CAPTURE_ZONE_URI: &'static str = "Capture_Zone";
 

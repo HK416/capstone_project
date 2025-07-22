@@ -212,6 +212,15 @@
             ],
             "directories": {}
         },
+        "fx": {
+            "files": [
+                "FX_TEX_Muzzle_00.dds",
+                "FX_TEX_Muzzle_00.texD",
+                "FX_TEX_Muzzle_01.dds",
+                "FX_TEX_Muzzle_01.texD"
+            ],
+            "directories": {}
+        },
         "sound": {
             "files": [],
             "directories": {
