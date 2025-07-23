@@ -4,12 +4,13 @@
 mod action_state;
 mod movement_state;
 mod player_state;
+mod view_state;
 
 use std::cmp;
 
 use crate::components::UserId;
 
-pub use self::{action_state::*, movement_state::*, player_state::*};
+pub use self::{action_state::*, movement_state::*, player_state::*, view_state::*};
 
 #[repr(u8)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

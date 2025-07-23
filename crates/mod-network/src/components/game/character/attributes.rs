@@ -5,7 +5,7 @@ use ahash::{HashMap, RandomState};
 use mod_physics::object3d::Capsule;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Float3, Float4x4};
+use crate::components::{Float3, Float4x4, LatLon, ViewState, ViewStateTimer};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WeaponAttributes {
@@ -34,11 +34,64 @@ impl WeaponAttributes {
     /// 총구의 위치와 총알 발사 방향을 반환합니다.
     pub fn get_position_and_direction(
         &self,
+        view_state: ViewState,
+        view_state_timer: ViewStateTimer,
         character_attributes: &CharacterAttributes,
         translation: glam::Vec3A,
         rotation: glam::Quat,
-        latitude: f32,
-    ) -> (glam::Vec3A, glam::Quat) {
+        latlon: LatLon,
+    ) -> (glam::Vec3A, glam::Quat, glam::Quat) {
+        // 카메라가 바라보는 방향을 계산합니다.
+        let camera_default_pos: glam::Vec3A = character_attributes.camera_def_rel_pos.into();
+        let camera_zoom_pos: glam::Vec3A = character_attributes.camera_zoom_rel_pos.into();
+        let camera_rel_pos = match view_state {
+            ViewState::Idle => {
+                camera_default_pos
+            },
+            ViewState::ZoomIn => {
+                let duration = character_attributes.normal_attack_start_duration;
+                let s = view_state_timer.0 as f32 / duration as f32;
+                camera_default_pos.lerp(camera_zoom_pos, s)
+            },
+            ViewState::ZoomOut => {
+                let duration = character_attributes.normal_attack_end_duration;
+                let s = view_state_timer.0 as f32 / duration as f32;
+                camera_zoom_pos.lerp(camera_default_pos, s)
+            },
+            ViewState::Aiming => {
+                camera_zoom_pos
+            },
+        };
+
+        let distance = camera_rel_pos * glam::Vec3A::NEG_Z;
+        let mut transform = glam::Mat4::from_translation(distance.into());
+        let rotate = glam::Mat4::from_rotation_y(latlon.lon);
+        transform = rotate * transform;
+
+        let forward = glam::Vec3A::from_vec4(transform.z_axis);
+        let forward = forward.normalize_or(glam::Vec3A::Z);
+        let axis = glam::Vec3A::Y.cross(forward);
+        let rotate = glam::Mat4::from_axis_angle(axis.into(), latlon.lat);
+        transform = rotate * transform;
+
+        let offset = camera_rel_pos.with_z(0.0);
+        let offset = glam::Mat4::from_translation(offset.into());
+        transform = transform * offset;
+
+        let parent = glam::Mat4::from_translation(translation.into());
+        transform = parent * transform;
+
+        // 총알의 끝 지점을 계산합니다.
+        let base = glam::Vec3A::from_vec4(transform.w_axis);
+        let direction = glam::Vec3A::from_vec4(transform.z_axis);
+        let distination = base + direction * character_attributes.attack_range as f32;
+
+        // 캐릭터의 회전 방향을 보정합니다.
+        let z = (distination - translation).normalize_or(glam::Vec3A::Z);
+        let x = glam::Vec3A::Y.cross(z);
+        let y = z.cross(x);
+        let new_rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
+
         // 노드 계층 구조를 생성합니다.
         let hierarchy = HashMap::from_iter([
             (Self::BIP001, None),
@@ -57,7 +110,7 @@ impl WeaponAttributes {
         let mut bip001: glam::Mat4 = self.bip001.into();
         bip001 = parent * root_bone * bip001;
 
-        let angle = 3.0 * latitude / 7.0;
+        let angle = 3.0 * latlon.lat / 7.0;
         let axis: glam::Vec3 = character_attributes.attack_spine_axis.into();
         let mut spine: glam::Mat4 = self.bip001_spine.into();
         spine *= glam::Mat4::from_axis_angle(axis, angle);
@@ -93,9 +146,14 @@ impl WeaponAttributes {
         let weapon_trans = hand_world_transform * hand_to_weapon_trans * bip001_fire;
 
         let translation = glam::Vec3A::from_vec4(weapon_trans.w_axis);
-        let rotation = glam::Quat::from_mat4(&weapon_trans).normalize();
+        // let mut rotation = glam::Quat::from_mat4(&weapon_trans).normalize();
+        let z = (distination - translation).normalize_or(glam::Vec3A::Z);
+        // let z = rotation.mul_vec3a(glam::Vec3A::Z);
+        let x = glam::Vec3A::Y.cross(z);
+        let y = z.cross(x);
+        let rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
 
-        (translation, rotation)
+        (translation, rotation, new_rotation)
     }
 
     /// 월드 변환 행렬을 계산합니다.
@@ -161,6 +219,15 @@ pub struct CharacterAttributes {
     pub skill_spine_axis: Float3,
     /// 스킬 시전 상태 일 때 `Spine1` 뼈 노드의 축
     pub skill_spine1_axis: Float3,
+
+    /// 기본 카메라 상대 위치
+    pub camera_def_rel_pos: Float3,
+    /// 기본 카메라 Fov-y
+    pub camera_def_fov_y: f32,
+    /// 줌인 상태 카메라 상대 위치
+    pub camera_zoom_rel_pos: Float3,
+    /// 줌인 상태 카메라 Fov-y
+    pub camera_zoom_fov_y: f32,
 
     /// `ActionState::Idle` 애니메이션 시간 (단위: ms)
     pub normal_idle_duration: u16,

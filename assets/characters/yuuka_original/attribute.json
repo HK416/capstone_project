@@ -213,6 +213,18 @@
         "y": 0.9154828,
         "z": -0.3662935
     },
+    "camera_def_rel_pos": {
+        "x": 0.25,
+        "y": 0.85,
+        "z": 2
+    },
+    "camera_def_fov_y": 0.7853982,
+    "camera_zoom_rel_pos": {
+        "x": 0.25,
+        "y": 0.7,
+        "z": 0.15
+    },
+    "camera_zoom_fov_y": 0.61086524,
     "normal_idle_duration": 2000,
     "cafe_walk_duration": 1267,
     "move_ing_duration": 600,

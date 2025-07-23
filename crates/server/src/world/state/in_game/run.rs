@@ -15,6 +15,7 @@ use mod_network::{
         NetworkState, ObjectId, Permission, StageAttributes, StageKind, Team, UserId,
         update_action_state, update_action_state_timer, update_movement_state,
         update_movement_state_timer, update_player_rotation, update_player_translation,
+        update_view_state, update_view_state_timer,
     },
     protocol::{
         InGamePullPacket, InGameStatusPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -238,7 +239,7 @@ impl GameWorldInGameRunState {
         session: Arc<Session>,
         uid: UserId,
         client_play_elapsed_time: u32,
-        mut snapshots: Vec<InputSnapshot>,
+        snapshots: Vec<InputSnapshot>,
     ) {
         // 플레이어 데이터를 가져옵니다.
         let data = match world.players.get_mut(&uid) {
@@ -257,55 +258,64 @@ impl GameWorldInGameRunState {
             return;
         }
 
-        // 입력을 시간순으로 정렬합니다.
-        snapshots.sort_by_key(|s| s.play_elapsed_time_ms());
-
         // 입력을 처리합니다.
         let character_attributes = data.character_attributes();
-        let mut action_events = Vec::with_capacity(snapshots.len());
+        let mut latest_input_time = 0;
         for snapshot in snapshots {
-            match snapshot {
-                // 카메라 이동 입력을 처리합니다.
-                InputSnapshot::CameraOrientation {
-                    delta_lat,
-                    delta_lon,
-                    ..
-                } => {
-                    data.latlon.lat =
-                        (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
-                    data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
-                }
-                // 키 입력을 처리합니다.
-                InputSnapshot::KeyEvent { events, .. } => {
-                    for event in events {
-                        match event {
-                            InputEvent::KeyPress(input_kind) => {
-                                data.held_input |= input_kind.into_bits();
-                            }
-                            InputEvent::KeyRelease(input_kind) => {
-                                data.held_input &= !input_kind.into_bits();
+            if latest_input_time <= snapshot.play_elapsed_time_ms() {
+                latest_input_time = snapshot.play_elapsed_time_ms();
+                match snapshot {
+                    // 카메라 이동 입력을 처리합니다.
+                    InputSnapshot::CameraOrientation {
+                        delta_lat,
+                        delta_lon,
+                        ..
+                    } => {
+                        data.latlon.lat =
+                            (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
+                        data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
+                    }
+                    // 키 입력을 처리합니다.
+                    InputSnapshot::KeyEvent { events, .. } => {
+                        for event in events {
+                            match event {
+                                InputEvent::KeyPress(input_kind) => {
+                                    data.held_input |= input_kind.into_bits();
+                                }
+                                InputEvent::KeyRelease(input_kind) => {
+                                    data.held_input &= !input_kind.into_bits();
+                                }
                             }
                         }
-
-                        update_action_state(
-                            data.held_input,
-                            &mut data.action_state,
-                            &mut data.action_state_timer,
-                            character_attributes,
-                            &mut data.bullet_data,
-                            &mut data.skill_cost_data,
-                            &mut action_events,
-                        );
-                        update_movement_state(
-                            data.held_input,
-                            data.action_state,
-                            &mut data.movement_state,
-                            &mut data.movement_state_timer,
-                        );
                     }
                 }
             }
         }
+
+        // 행동 상태와 움직임 상태를 처리합니다.
+        let mut action_events = Vec::default();
+        update_action_state(
+            data.held_input,
+            &mut data.action_state,
+            &mut data.action_state_timer,
+            character_attributes,
+            &mut data.bullet_data,
+            &mut data.skill_cost_data,
+            &mut action_events,
+        );
+        update_movement_state(
+            data.held_input,
+            data.action_state,
+            &mut data.movement_state,
+            &mut data.movement_state_timer,
+        );
+        update_view_state(
+            data.action_state,
+            &mut data.view_state,
+            &mut data.view_state_timer,
+            character_attributes,
+            data.held_input,
+        );
 
         // 행동 이벤트를 처리합니다.
         for event in action_events {
@@ -320,6 +330,10 @@ impl GameWorldInGameRunState {
                     }
                     ActionState::Skill => {
                         data.action_notify = ActionNotify::EnterSkill;
+                        data.skill_cost_data.remaining = data
+                            .skill_cost_data
+                            .remaining
+                            .saturating_sub(character_attributes.skill_cost);
                     }
                     _ => {}
                 },
@@ -557,26 +571,26 @@ impl GameWorldInGameRunState {
                     };
 
                     // 총알을 발사한 시점의 총알의 위치와 방향을 계산합니다.
-                    let (translation, mut rotation) = weapon_attributes.get_position_and_direction(
-                        character_attributes,
-                        shooter.translation,
-                        shooter.rotation,
-                        shooter.latlon.lat,
-                    );
+                    let (translation, rotation, new_rotation) = weapon_attributes
+                        .get_position_and_direction(
+                            shooter.view_state,
+                            shooter.view_state_timer,
+                            character_attributes,
+                            shooter.translation,
+                            shooter.rotation,
+                            shooter.latlon,
+                        );
 
-                    // 총알의 방향을 재계산합니다.
-                    let z = shooter.rotation.mul_vec3a(glam::Vec3A::Z);
-                    let y = rotation.mul_vec3a(glam::Vec3A::Y);
-                    let x = y.cross(z);
-                    let z = x.cross(y);
-                    rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
+                    // 캐릭터의 회전 방향을 보정합니다.
+                    shooter.rotation = new_rotation;
 
                     // 총알을 생성후 추가합니다.
                     let id = self.generate_object_id();
                     let shooter_id = uid;
                     let shooter_team = shooter.team();
                     let bullet_kind: BulletKind = character_kind.into();
-                    let velocity = z * bullet_kind.speed();
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
                     let remaining_distance = character_attributes.attack_range as f32;
                     let radius = character_attributes.bullet_radius;
                     self.bullets.insert(
@@ -648,6 +662,7 @@ impl GameWorldInGameRunState {
                         };
 
                         let character_attributes = data.character_attributes();
+                        data.action_notify = ActionNotify::EnterSkill;
                         data.skill_cost_data.remaining = data
                             .skill_cost_data
                             .remaining
@@ -783,6 +798,14 @@ impl GameWorldInGameRunState {
                 character_attributes,
                 elapsed_time_ms,
             );
+            // 시야 상태 타이머를 갱신합니다.
+            update_view_state_timer(
+                player.action_state,
+                &mut player.view_state,
+                &mut player.view_state_timer,
+                character_attributes,
+                elapsed_time_ms,
+            );
 
             // 플레이어 캐릭터 방향을 갱신합니다.
             let mut look = player.rotation.mul_vec3a(glam::Vec3A::Z);
@@ -824,7 +847,7 @@ impl GameWorldInGameRunState {
 
             // 자신 팀의 진영인 경우 체력을 회복시킵니다.
             if stage_attributes.is_safe_area(team, player.translation.x, player.translation.z) {
-                let healing = 10 * elapsed_time_ms;
+                let healing = 2 * elapsed_time_ms;
                 player.health_data.remaining = (player.health_data.remaining + healing)
                     .min(player.health_data.num_maximum_health());
             }

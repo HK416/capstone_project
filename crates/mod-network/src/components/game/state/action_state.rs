@@ -360,15 +360,15 @@ fn update_timer_when_aiming(
 
 /// [`ActionState::AimAt`]일 떄 플레이어의 [`ActionState`]와 [`ActionStateTimer`]를 변경합니다.
 fn update_timer_when_aim_at(
-    _uid: UserId,
-    _held_input: HeldInput,
-    _bullet_data: &mut BulletData,
-    _skill_cost_data: &mut SkillCostData,
+    uid: UserId,
+    held_input: HeldInput,
+    bullet_data: &mut BulletData,
+    skill_cost_data: &mut SkillCostData,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    _events: &mut Vec<ActionEventDetail>,
+    events: &mut Vec<ActionEventDetail>,
 ) {
     // 행동 상태 타이머를 갱신합니다.
     let duration = character_attributes.normal_attack_start_duration;
@@ -377,23 +377,64 @@ fn update_timer_when_aim_at(
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
         // 행동 상태를 변경합니다.
-        *action_state = ActionState::Aiming;
-        let duration = character_attributes.normal_idle_duration;
-        action_state_timer.0 = diff_t as u16 % duration;
+        if held_input.contains(HeldInput::Skill)
+            && skill_cost_data.remaining >= character_attributes.skill_cost
+        {
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Skill;
+            let duration = character_attributes.skill_duration;
+            action_state_timer.0 = (diff_t as u16).min(duration);
+
+            let timing = elapsed_time_ms - diff_t as u16;
+            events.push(ActionEventDetail {
+                uid,
+                timing,
+                event: ActionEvent::Changed(ActionState::Skill),
+            });
+        } else if held_input.contains(HeldInput::Attack) && bullet_data.remaining > 0 {
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Attack;
+            let duration = character_attributes.normal_attack_ing_duration;
+            action_state_timer.0 = (diff_t as u16).min(duration);
+
+            let timing = elapsed_time_ms - diff_t as u16;
+            events.push(ActionEventDetail {
+                uid,
+                timing,
+                event: ActionEvent::Changed(ActionState::Attack),
+            });
+        } else if held_input.contains(HeldInput::Reload) {
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Reload;
+            let duration = character_attributes.normal_reload_duration;
+            action_state_timer.0 = (diff_t as u16).min(duration);
+
+            let timing = elapsed_time_ms - diff_t as u16;
+            events.push(ActionEventDetail {
+                uid,
+                timing,
+                event: ActionEvent::Changed(ActionState::Reload),
+            });
+        } else {
+            // 행동 상태를 변경합니다.
+            *action_state = ActionState::Aiming;
+            let duration = character_attributes.normal_idle_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+        }
     }
 }
 
 /// [`ActionState::AimOff`]일 떄 플레이어의 [`ActionState`]와 [`ActionStateTimer`]를 변경합니다.
 fn update_timer_when_aim_off(
-    _uid: UserId,
-    _held_input: HeldInput,
-    _bullet_data: &mut BulletData,
-    _skill_cost_data: &mut SkillCostData,
+    uid: UserId,
+    held_input: HeldInput,
+    bullet_data: &mut BulletData,
+    skill_cost_data: &mut SkillCostData,
     action_state: &mut ActionState,
     action_state_timer: &mut ActionStateTimer,
     character_attributes: &CharacterAttributes,
     elapsed_time_ms: u16,
-    _events: &mut Vec<ActionEventDetail>,
+    events: &mut Vec<ActionEventDetail>,
 ) {
     // 행동 상태 타이머를 갱신합니다.
     let duration = character_attributes.normal_attack_end_duration;
@@ -402,9 +443,50 @@ fn update_timer_when_aim_off(
     let diff_t = action_state_timer.0 as i32 - duration as i32;
     if diff_t >= 0 {
         // 행동 상태를 변경합니다.
-        *action_state = ActionState::Idle;
-        let duration = character_attributes.normal_idle_duration;
-        action_state_timer.0 = diff_t as u16 % duration;
+        if held_input.contains(HeldInput::Skill)
+            && skill_cost_data.remaining >= character_attributes.skill_cost
+        {
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Skill;
+            let duration = character_attributes.skill_duration;
+            action_state_timer.0 = (diff_t as u16).min(duration);
+
+            let timing = elapsed_time_ms - diff_t as u16;
+            events.push(ActionEventDetail {
+                uid,
+                timing,
+                event: ActionEvent::Changed(ActionState::Skill),
+            });
+        } else if held_input.contains(HeldInput::Attack) && bullet_data.remaining > 0 {
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Attack;
+            let duration = character_attributes.normal_attack_ing_duration;
+            action_state_timer.0 = (diff_t as u16).min(duration);
+
+            let timing = elapsed_time_ms - diff_t as u16;
+            events.push(ActionEventDetail {
+                uid,
+                timing,
+                event: ActionEvent::Changed(ActionState::Attack),
+            });
+        } else if held_input.contains(HeldInput::Reload) {
+            bullet_data.fires_per_attack = 0;
+            *action_state = ActionState::Reload;
+            let duration = character_attributes.normal_reload_duration;
+            action_state_timer.0 = (diff_t as u16).min(duration);
+
+            let timing = elapsed_time_ms - diff_t as u16;
+            events.push(ActionEventDetail {
+                uid,
+                timing,
+                event: ActionEvent::Changed(ActionState::Reload),
+            });
+        } else {
+            // 행동 상태를 변경합니다.
+            *action_state = ActionState::Idle;
+            let duration = character_attributes.normal_idle_duration;
+            action_state_timer.0 = diff_t as u16 % duration;
+        }
     }
 }
 

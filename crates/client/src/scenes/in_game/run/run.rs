@@ -17,12 +17,12 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionNotify, ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags,
-        CharacterKind, Damage, DamageLogData, HealthData, HeldInput, InputEvent, InputSnapshot,
-        LatLon, LoginToken, MovementState, MovementStateTimer, NetworkState, ObjectId, Permission,
-        SkillCostData, StageAttributes, Team, UserId, UserName, ViewState, ViewStateTimer,
-        MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE,
-        RESPAWN_DELAY,
+        update_view_state, update_view_state_timer, ActionNotify, ActionState, ActionStateTimer,
+        BulletData, CapturePoint, CharacterFlags, CharacterKind, Damage, DamageLogData, HealthData,
+        HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
+        MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
+        Team, UserId, UserName, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS,
+        MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
         InGameControlLosePacket, InGameFinishPacket, InGameInputPacket, InGamePullPacket,
@@ -57,16 +57,16 @@ use crate::{
         update_bullet_hierarchy, update_bullet_resource, update_camera_and_skybox_resource,
         update_camera_hierarchy, update_camera_param, update_character_hierarchy,
         update_character_resource, update_fx_muzzle_particles, update_fx_particle_lifetime,
-        update_stage_hierarchy, update_stage_resource, update_view_state, update_view_state_timer,
-        AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline,
-        BoneCollection, BrightRenderTarget, Bullet, Camera, CameraResource, CameraUniform, Child,
-        DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
-        DamageParticle, DirectionLight, FxMuzzle00, FxMuzzle01, FxMuzzleInstance, FxMuzzleResource,
-        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
-        MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype,
-        Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y,
-        CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES, MODEL_BONE_HEAD,
+        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
+        AttributeKind, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Bullet, Camera,
+        CameraResource, CameraUniform, Child, DamageFontDataLayout, DamageFontRenderPipeline,
+        DamageFontResource, DamageFontUniform, DamageParticle, DirectionLight, FxMuzzle00,
+        FxMuzzle01, FxMuzzleInstance, FxMuzzleResource, GaussianBlurPipeline,
+        GlobalLightDataLayout, LightSetResource, LightTransformDataLayout, MaterialKind, Mesh,
+        MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype, Projection, RenderTask,
+        RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox,
+        ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
+        CHARACTER_ATTRIBUTES, MODEL_BONE_HEAD,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
@@ -1124,14 +1124,28 @@ impl InGameRunScene {
                 *movement_state = data.movement_state();
                 *movement_state_timer = data.movement_state_timer(attribute);
 
+                // 최단 거리 보간
                 let new_latlon = data.latlon();
-                let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
-                let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
-                latlon.lat = latlon.lat.clamp(min, max);
+                let mut delta = new_latlon.lon - latlon.lon;
+                let t = delta.abs() / 2.0 * TAU;
+                if delta > PI {
+                    delta -= TAU;
+                } else if delta < -PI {
+                    delta += TAU;
+                }
+                latlon.lon = (latlon.lon + delta * t) % TAU;
 
-                let min = new_latlon.lon - 5f32.to_radians();
-                let max = new_latlon.lon + 5f32.to_radians();
-                latlon.lon = latlon.lon.clamp(min, max) % TAU;
+                let diff = new_latlon.lat - new_latlon.lon;
+                let t = (diff.abs() / MAX_LATITUDE).min(1.0);
+                latlon.lat = latlon.lat * (1.0 - t) + new_latlon.lat * t;
+
+                // let min = (new_latlon.lat - 1f32.to_radians()).max(MIN_LATITUDE);
+                // let max = (new_latlon.lat + 1f32.to_radians()).min(MAX_LATITUDE);
+                // latlon.lat = latlon.lat.clamp(min, max);
+
+                // let min = new_latlon.lon - 1f32.to_radians();
+                // let max = new_latlon.lon + 1f32.to_radians();
+                // latlon.lon = latlon.lon.clamp(min, max) % TAU;
 
                 let rotation = data.rotation();
                 let translation =
