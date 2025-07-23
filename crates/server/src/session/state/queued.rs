@@ -72,6 +72,9 @@ impl SessionState for SessionQueuedState {
 
                 self.handle_match_cancel_packet(session, packet);
             }
+            PacketType::MatchRequest => {
+                // ...
+            }
             _ => {
                 log::warn!(
                     "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
