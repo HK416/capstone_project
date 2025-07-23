@@ -143,7 +143,7 @@ impl FxMuzzleRenderPipeline {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     depth_compare: wgpu::CompareFunction::Less,
-                    depth_write_enabled: true,
+                    depth_write_enabled: false,
                     format: depth_stencil_format,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),

@@ -222,7 +222,7 @@
     "normal_attack_ing_duration": 2667,
     "vital_death_duration": 1800,
     "normal_reload_duration": 2000,
-    "skill_duration": 0,
+    "skill_duration": 4000,
     "normal_callsign_duration": 1500,
     "victory_start_duration": 3000,
     "victory_end_duration": 3200,
