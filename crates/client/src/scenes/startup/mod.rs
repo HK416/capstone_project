@@ -45,8 +45,9 @@ use crate::{
     component::{
         BulletRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
         DamageFontRenderPipeline, EnergyBulletRenderPipeline, EyeMouthBakePipeline,
-        EyeMouthRenderPipeline, FxMuzzleRenderPipeline, HaloRenderPipeline, SkyboxRenderPipeline,
-        StageBakePipeline, StageRenderPipeline, TreeRenderPipeline, SHADOW_FORMAT,
+        EyeMouthRenderPipeline, FxMuzzleRenderPipeline, FxShieldRenderPipeline, HaloRenderPipeline,
+        SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline, TreeRenderPipeline,
+        SHADOW_FORMAT,
     },
     config::UserConfig,
 };
@@ -221,6 +222,15 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             FxMuzzleRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
+            task_results.push(TaskResult::Pipeline);
+        });
+        self.num_remaining_tasks += 1;
+
+        // 방어막 파티클 이펙트를 그리는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            FxShieldRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
             task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;

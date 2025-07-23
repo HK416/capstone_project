@@ -6,6 +6,8 @@ use crate::components::{BigEndian, TryFromBigEndian};
 /// 스킬 코스트 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SkillCostData {
+    /// 스킬당 시전 횟수
+    pub count: u16,
     /// 남은 스킬 코스트입니다.
     pub remaining: u16,
     /// 최대 스킬 코스트입니다. 최대 스킬 코스트가 0인 경우 무한대를 의미합니다.
@@ -20,12 +22,17 @@ impl SkillCostData {
     ///
     pub const fn new(remaining: u16, maximum: u16) -> Self {
         assert!(remaining <= maximum, "invalid data!");
-        Self { remaining, maximum }
+        Self {
+            count: 0,
+            remaining,
+            maximum,
+        }
     }
 
     /// 새로운 스킬 코스트 데이터를 생성합니다.
     pub const fn splat(maximum: u16) -> Self {
         Self {
+            count: 0,
             remaining: maximum,
             maximum,
         }
@@ -47,7 +54,7 @@ impl SkillCostData {
 
 impl BigEndian for SkillCostData {
     fn byte_size() -> usize {
-        u16::byte_size() + u16::byte_size()
+        u16::byte_size() + u16::byte_size() + u16::byte_size()
     }
 
     fn from_big_endian_bytes(bytes: &[u8]) -> Self {
@@ -57,6 +64,7 @@ impl BigEndian for SkillCostData {
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         // 바이트 스트림을 생성합니다.
         let mut bytes = Vec::with_capacity(Self::byte_size());
+        bytes.extend_from_slice(&self.count.to_big_endian_bytes());
         bytes.extend_from_slice(&self.remaining.to_big_endian_bytes());
         bytes.extend_from_slice(&self.maximum.to_big_endian_bytes());
 
@@ -77,6 +85,7 @@ impl BigEndian for SkillCostData {
 impl Default for SkillCostData {
     fn default() -> Self {
         Self {
+            count: 0,
             remaining: 0,
             maximum: 0,
         }
@@ -99,6 +108,11 @@ impl TryFromBigEndian for SkillCostData {
         let mut offset = 0;
         let mut size = u16::byte_size();
         let mut data = &bytes[offset..offset + size];
+        let count = u16::from_big_endian_bytes(data);
+
+        offset = offset + size;
+        size = u16::byte_size();
+        data = &bytes[offset..offset + size];
         let remaining = u16::from_big_endian_bytes(data);
 
         // 최대 스킬 코스트를 가져옵니다.
@@ -107,7 +121,11 @@ impl TryFromBigEndian for SkillCostData {
         data = &bytes[offset..offset + size];
         let maximum = u16::from_big_endian_bytes(data);
 
-        (remaining <= maximum).then(|| Self { remaining, maximum })
+        (remaining <= maximum).then(|| Self {
+            count,
+            remaining,
+            maximum,
+        })
     }
 }
 

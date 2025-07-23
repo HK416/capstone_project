@@ -30,14 +30,14 @@ use crate::{
         CHARACTER_IMG_SMALL_URI, CHARACTER_IMG_URI, CHARACTER_URIS, CHARACTER_WORKSPACES,
         CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_MOVE, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT,
         CV_COMMONSKILL, CV_EXSKILL_LEVEL, CV_SOUND_WORKSPACES, CV_TACTIC_IN, EMBLEM_BG_URI,
-        FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, FX_WORKSPACE, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03,
-        ICON_WORKSPACE, IMG_FONT_DRAW, IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI,
-        IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI,
-        IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD,
-        PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON, SFX_COMMON_RELOAD, SFX_SKILL, SFX_WORKSPACE,
-        STAGE_URI, STAGE_WORKSPACES, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
-        UI_PAUSE, UI_SOUND_WORKSPACE, UI_START, UI_TURN_DOWN, UI_TURN_UP, UI_VICTORY_ST_01,
-        WEAPON_ICON_URI,
+        FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, FX_WORKSPACE, HUD_LAYOUT_URI_02,
+        HUD_LAYOUT_URI_03, ICON_WORKSPACE, IMG_FONT_DRAW, IMG_FONT_LOSE_SMALL_URI,
+        IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI, IMG_FONT_NUMBER_URI,
+        IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE,
+        NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON, SFX_COMMON_RELOAD, SFX_SKILL,
+        SFX_WORKSPACE, STAGE_URI, STAGE_WORKSPACES, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING,
+        UI_NOTICE, UI_PAUSE, UI_SOUND_WORKSPACE, UI_START, UI_TURN_DOWN, UI_TURN_UP,
+        UI_VICTORY_ST_01, WEAPON_ICON_URI,
     },
     component::{Attributes, MaterialDataPool, Mesh, Vertices},
     config::{Locale, UserConfig, NUM_LOCALE},
@@ -58,7 +58,7 @@ const ERR_MSG_TEXTS: [&'static str; NUM_LOCALE] = ["게임 리소스를 로드�
 #[derive(Debug)]
 enum TaskResult {
     /// 텍스처
-    Textures {
+    Graphics {
         staging_buffers: Vec<wgpu::Buffer>,
         command: wgpu::CommandBuffer,
     },
@@ -223,7 +223,7 @@ impl InGameLoadScene {
         thread_pool: &ThreadPool,
         device: Arc<wgpu::Device>,
     ) {
-        let textures = vec![
+        const TEXTURES: [(&'static str, &'static str); 15] = [
             ("ui", CHARACTER_IMG_SMALL_URI),
             (BG_SKY_WORKSPACE, BG_SKY_URI),
             (ICON_WORKSPACE, WEAPON_ICON_URI),
@@ -252,7 +252,7 @@ impl InGameLoadScene {
             let mut encoder =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-            for (path, uri) in textures {
+            for (path, uri) in TEXTURES {
                 let mut workspace = root_dir.clone();
                 workspace.push(format!("{}", path));
 
@@ -276,7 +276,7 @@ impl InGameLoadScene {
             }
 
             // 결과를 전송합니다.
-            task_results.push(TaskResult::Textures {
+            task_results.push(TaskResult::Graphics {
                 staging_buffers,
                 command: encoder.finish(),
             });
@@ -826,6 +826,50 @@ impl InGameLoadScene {
         self.num_remaining_tasks += 1;
     }
 
+    fn create_meshes(
+        &mut self,
+        root_dir: &Path,
+        thread_pool: &ThreadPool,
+        device: Arc<wgpu::Device>,
+    ) {
+        const MESHES: [(&'static str, &'static str); 1] = [(FX_WORKSPACE, FX_MESH_SHIELD_00)];
+
+        let root_dir = root_dir.to_path_buf();
+        let task_results = self.task_results.clone();
+        let mesh_pool = self.mesh_pool.clone();
+        thread_pool.spawn(move || {
+            let mut staging_buffers = Vec::default();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            for (path, uri) in MESHES {
+                let mut workspace = root_dir.clone();
+                workspace.push(path);
+
+                let result = mesh_pool.get_or_init(
+                    workspace,
+                    uri,
+                    &device,
+                    &mut encoder,
+                    &mut staging_buffers,
+                );
+
+                // 오류를 전송합니다.
+                if let Err(e) = result {
+                    task_results.push(TaskResult::Failed(e));
+                    return;
+                }
+            }
+
+            // 결과를 전송합니다.
+            task_results.push(TaskResult::Graphics {
+                staging_buffers,
+                command: encoder.finish(),
+            });
+        });
+        self.num_remaining_tasks += 1;
+    }
+
     fn create_particle_meshes(&mut self, thread_pool: &ThreadPool, device: Arc<wgpu::Device>) {
         let mesh_pool = self.mesh_pool.clone();
         let task_results = self.task_results.clone();
@@ -941,6 +985,7 @@ impl GameScene for InGameLoadScene {
         let device = app.render_device();
         let io_thread_pool = app.io_threads();
         self.create_textures(&root_dir, io_thread_pool, device.clone());
+        self.create_meshes(&root_dir, io_thread_pool, device.clone());
         self.create_particle_meshes(io_thread_pool, device.clone());
         self.load_effect_sounds(&root_dir, io_thread_pool);
         self.load_voice_sounds(&root_dir, io_thread_pool, character_kinds.clone());
@@ -1038,7 +1083,7 @@ impl GameScene for InGameLoadScene {
                     self.staging_buffers.append(&mut staging_buffers);
                     queue.submit(Some(command));
                 }
-                TaskResult::Textures {
+                TaskResult::Graphics {
                     mut staging_buffers,
                     command,
                 } => {

@@ -45,22 +45,18 @@ impl WeaponAttributes {
         let camera_default_pos: glam::Vec3A = character_attributes.camera_def_rel_pos.into();
         let camera_zoom_pos: glam::Vec3A = character_attributes.camera_zoom_rel_pos.into();
         let camera_rel_pos = match view_state {
-            ViewState::Idle => {
-                camera_default_pos
-            },
+            ViewState::Idle => camera_default_pos,
             ViewState::ZoomIn => {
                 let duration = character_attributes.normal_attack_start_duration;
                 let s = view_state_timer.0 as f32 / duration as f32;
                 camera_default_pos.lerp(camera_zoom_pos, s)
-            },
+            }
             ViewState::ZoomOut => {
                 let duration = character_attributes.normal_attack_end_duration;
                 let s = view_state_timer.0 as f32 / duration as f32;
                 camera_zoom_pos.lerp(camera_default_pos, s)
-            },
-            ViewState::Aiming => {
-                camera_zoom_pos
-            },
+            }
+            ViewState::Aiming => camera_zoom_pos,
         };
 
         let distance = camera_rel_pos * glam::Vec3A::NEG_Z;
@@ -249,6 +245,8 @@ pub struct CharacterAttributes {
     pub normal_reload_duration: u16,
     /// `ActionState::Skill` 애니메이션 시간 (단위: ms)
     pub skill_duration: u16,
+    /// 스킬 시전 타이밍
+    pub skill_timing: Vec<u16>,
     /// `AcstionState::Callsign` 애니메이션 시간 (단위: ms)
     pub normal_callsign_duration: u16,
     /// `ActionState::VictoryStart` 애니메이션 시간 (단위: ms)

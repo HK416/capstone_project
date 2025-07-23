@@ -713,12 +713,31 @@ fn update_timer_when_skill(
     elapsed_time_ms: u16,
     events: &mut Vec<ActionEventDetail>,
 ) {
-    // 행동 상태 타이머를 갱신합니다.
+    // 다음 행동 상태 타이머를 갱신합니다.
     let duration = character_attributes.skill_duration;
     action_state_timer.0 = action_state_timer.0.saturating_add(elapsed_time_ms);
-
     let diff_t = action_state_timer.0 as i32 - duration as i32;
+
+    let timings = &character_attributes.skill_timing;
+    let mut index = skill_cost_data.count as usize;
+    while let Some(timing) = timings.get(index).cloned()
+        && timing <= action_state_timer.0
+    {
+        // 스킬 사용 이벤트를 생성합니다.
+        let timing = elapsed_time_ms - (action_state_timer.0 - timing);
+        events.push(ActionEventDetail {
+            uid,
+            timing,
+            event: ActionEvent::Skill,
+        });
+
+        skill_cost_data.count += 1;
+        index = skill_cost_data.count as usize;
+    }
+
     if diff_t >= 0 {
+        skill_cost_data.count = 0;
+
         // 행동 상태를 변경합니다.
         if held_input.contains(HeldInput::Skill)
             && skill_cost_data.remaining >= character_attributes.skill_cost

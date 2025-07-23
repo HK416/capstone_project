@@ -235,6 +235,7 @@
     "vital_death_duration": 2000,
     "normal_reload_duration": 1933,
     "skill_duration": 2333,
+    "skill_timing": [1516],
     "normal_callsign_duration": 1500,
     "victory_start_duration": 3000,
     "victory_end_duration": 3200,

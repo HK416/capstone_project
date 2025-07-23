@@ -205,7 +205,7 @@ pub fn update_player_translation(
 
     // 플레이어가 안전 구역 안에 있는 경우
     let in_safe_area = stage_attributes.is_safe_area(team, new_p.x, new_p.z);
-    *is_invincible = in_safe_area;
+    *is_invincible = in_safe_area || action_state == ActionState::Skill;
     if let Some(health_data) = health_data
         && in_safe_area
     {

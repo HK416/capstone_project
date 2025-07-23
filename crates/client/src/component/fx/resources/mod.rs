@@ -2,10 +2,11 @@
 //!
 
 mod muzzle;
+mod shield;
 
 use std::sync::Arc;
 
-pub use self::muzzle::*;
+pub use self::{muzzle::*, shield::*};
 
 /// 파티클 쉐이더 리소스입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]

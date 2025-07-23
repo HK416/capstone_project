@@ -3,10 +3,11 @@
 
 mod muzzle;
 mod resources;
+mod shield;
 
 use hecs::World;
 
-pub use self::{muzzle::*, resources::*};
+pub use self::{muzzle::*, resources::*, shield::*};
 
 /// 파티클의 남은 시간입니다.
 #[repr(transparent)]

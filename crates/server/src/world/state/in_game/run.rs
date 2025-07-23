@@ -8,8 +8,8 @@ use std::{
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, Damage,
-        DamageLogData, HeldInput, InGameBulletPullData, InGamePlayerPullData,
+        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, CharacterKind,
+        Damage, DamageLogData, HeldInput, InGameBulletPullData, InGamePlayerPullData,
         InGamePlayerStatusPullData, InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS,
         MAX_IN_GAME_LOGS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, MovementState,
         NetworkState, ObjectId, Permission, StageAttributes, StageKind, Team, UserId,
@@ -726,17 +726,7 @@ impl GameWorldInGameRunState {
                     data.latlon = LatLon::new(10f32.to_radians(), longitude);
                 }
                 ActionEvent::Skill => {
-                    // 플레이어 데이터를 가져옵니다.
-                    let data = match world.players.get_mut(&uid) {
-                        Some(data) => data,
-                        None => {
-                            log::error!("Player({}) not found in {}!", &uid, &world);
-                            eprintln!("Player({}) not found in {}!", &uid, &world);
-                            continue;
-                        }
-                    };
-
-                    data.action_notify = ActionNotify::FirstSkill;
+                    self.use_player_skill(uid, world);
                 }
             }
         }
@@ -928,6 +918,48 @@ impl GameWorldInGameRunState {
             self.bullets.remove(&id);
             self.removed_bullets.insert(id);
         }
+    }
+
+    /// 플레이어 스킬을 사용합니다.
+    fn use_player_skill(&mut self, uid: UserId, world: &mut GameWorld) {
+        // 플레이어 데이터의 소유권을 가져옵니다.
+        let mut data = match world.players.remove(&uid) {
+            Some(data) => data,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                return;
+            }
+        };
+
+        if data.skill_cost_data.count <= 1 {
+            data.action_notify = ActionNotify::FirstSkill;
+        }
+
+        match data.character_kind() {
+            CharacterKind::ArisOriginal => {}
+            CharacterKind::MomoiOriginal => {}
+            CharacterKind::MidoriOriginal => {}
+            CharacterKind::YuukaOriginal => {
+                // 자신 체력의 30% 방어막을 팀원 전체에 부여합니다.
+                // 이미 방어막이 존재하는 플레이어는 더 높은 방어막으로 적용됩니다. (더해지지 않음)
+                let shield = data.health_data.num_maximum_health() as f32 * 0.3;
+                let shield = shield.round() as u16;
+
+                // 자신의 체력에 적용합니다.
+                data.health_data.shield = data.health_data.shield.max(shield);
+
+                // 팀원의 체력에 적용합니다.
+                for other in world.players.values_mut() {
+                    if other.team() == data.team() {
+                        other.health_data.shield = other.health_data.shield.max(shield);
+                    }
+                }
+            }
+        }
+
+        // 플레이어 데이터의 소유권을 돌려놓습니다.
+        world.players.insert(uid, data);
     }
 
     /// 총알과 충돌하는 플레이어를 확인합니다.  

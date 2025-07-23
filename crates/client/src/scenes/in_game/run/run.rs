@@ -44,29 +44,31 @@ use crate::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         CHARACTER_IMG_SMALL_URI, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL,
-        FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI,
-        IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD,
-        UI_NOTICE, UI_PAUSE, UI_START, WEAPON_ICON_URI,
+        FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, HUD_LAYOUT_URI_02,
+        IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON,
+        SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
         draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_fx_muzzle_effect, draw_stage, draw_tree, spawn_bullet, spawn_fx_muzzle_effect,
-        update_bullet_hierarchy, update_bullet_resource, update_camera_and_skybox_resource,
-        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
-        update_character_resource, update_fx_muzzle_particles, update_fx_particle_lifetime,
-        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
-        AttributeKind, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Bullet, Camera,
-        CameraResource, CameraUniform, Child, DamageFontDataLayout, DamageFontRenderPipeline,
-        DamageFontResource, DamageFontUniform, DamageParticle, DirectionLight, FxMuzzle00,
-        FxMuzzle01, FxMuzzleInstance, FxMuzzleResource, GaussianBlurPipeline,
-        GlobalLightDataLayout, LightSetResource, LightTransformDataLayout, MaterialKind, Mesh,
-        MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype, Projection, RenderTask,
-        RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox,
-        ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
-        CHARACTER_ATTRIBUTES, MODEL_BONE_HEAD,
+        draw_fx_muzzle_effect, draw_fx_shield_effect, draw_stage, draw_tree, spawn_bullet,
+        spawn_fx_muzzle_effect, update_bullet_hierarchy, update_bullet_resource,
+        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
+        update_character_hierarchy, update_character_resource, update_fx_muzzle_particles,
+        update_fx_particle_lifetime, update_fx_shield_particle, update_stage_hierarchy,
+        update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList,
+        BloomPipeline, BoneCollection, BrightRenderTarget, Bullet, Camera, CameraResource,
+        CameraUniform, Child, DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource,
+        DamageFontUniform, DamageParticle, DirectionLight, FxMuzzle00, FxMuzzle01,
+        FxMuzzleInstance, FxMuzzleResource, FxShieldDataLayout, FxShieldInstance, FxShieldResource,
+        FxShieldUniform, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
+        LightTransformDataLayout, MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent,
+        ParticleResource, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap,
+        Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
+        WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        MODEL_BONE_HEAD,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
@@ -179,6 +181,11 @@ pub struct InGameRunScene {
     gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
+
+    /// 방어막 이펙트 인스턴스 버퍼입니다.
+    shield_instance: Option<FxShieldInstance>,
+    /// 방어막 이펙트 유니폼 버퍼입니다.
+    shield_uniform: Option<FxShieldUniform>,
 
     /// 총구 화염 이펙트 인스턴스 버퍼입니다.
     muzzle_instances: HashMap<String, FxMuzzleInstance>,
@@ -340,6 +347,8 @@ impl InGameRunScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            shield_instance: None,
+            shield_uniform: None,
             muzzle_instances: HashMap::default(),
             particle_resources: HashMap::default(),
             skybox: Some(skybox),
@@ -565,6 +574,20 @@ impl InGameRunScene {
         self.bright_render_target = Some(bright_render_target);
         self.gaussian_blur_pipeline = Some(gaussian_blur_pipeline);
         self.bloom_pipeline = Some(bloom_pipeline);
+    }
+
+    /// 방어막 이펙트 쉐이더 리소스를 생성합니다.
+    fn create_fx_shield_resource(&mut self, device: &wgpu::Device) {
+        let capacity = unsafe { NonZeroU32::new_unchecked(16 as u32) };
+        self.shield_instance = Some(FxShieldInstance::new(device, capacity));
+
+        let uniform_buffer = FxShieldUniform::new(device);
+        self.shield_uniform = Some(uniform_buffer.clone());
+
+        self.particle_resources.insert(
+            FX_MESH_SHIELD_00.into(),
+            FxShieldResource::new(device, &uniform_buffer),
+        );
     }
 
     /// 총구 화염 이펙트 쉐이더 리소스를 생성합니다.
@@ -2851,6 +2874,7 @@ impl GameScene for InGameRunScene {
         let (width, height): (f32, f32) = size.size().into();
         self.camera_aspect_ratio = width / height;
         self.create_camera(device);
+        self.create_fx_shield_resource(device);
         self.create_fx_muzzle_resource(device);
 
         self.regist_layout_texture(device, ui_renderer);
@@ -3593,6 +3617,18 @@ impl GameScene for InGameRunScene {
             muzzle_instances.insert(uri, instances);
         }
 
+        // 방어막 파티클 인스턴스 버퍼의 소유권을 가져옵니다.
+        let shield_instance = self
+            .shield_instance
+            .take()
+            .expect("the instance buffer must be exists!")
+            .fast_clear();
+        // 방어막 파티클 이펙트의 유니폼 버퍼를 가져옵니다.
+        let shield_uniform = self
+            .shield_uniform
+            .as_ref()
+            .expect("the uniform buffer must be exists!");
+
         // 데미지 파티클을 갱신합니다.
         {
             let device = app.render_device();
@@ -3738,7 +3774,10 @@ impl GameScene for InGameRunScene {
                     });
                 }
 
+                let time = (self.play_elapsed_time_ms % 5000) as f32 / 1000.0;
+                let players = self.players.values().cloned();
                 let muzzle_instances = &muzzle_instances;
+                let shield_instances = &shield_instance;
                 scope.spawn(move |_| {
                     let mut staging_buffers = Vec::default();
                     let mut encoder =
@@ -3766,12 +3805,31 @@ impl GameScene for InGameRunScene {
                         instances,
                     );
 
+                    let data = FxShieldDataLayout {
+                        time,
+                        ..Default::default()
+                    };
+                    shield_uniform.update(device, &mut encoder, &mut staging_buffers, &data);
+                    for (entity, archetype) in players {
+                        update_fx_shield_particle(
+                            world,
+                            entity,
+                            archetype,
+                            device,
+                            &mut encoder,
+                            &mut staging_buffers,
+                            shield_instances,
+                        );
+                    }
+
                     draw_call.push((encoder.finish(), staging_buffers));
                 });
             });
 
-            // 총구 화염 파티클의 소유권을 돌려놓습니다.
+            // 총구 화염 파티클 이펙트 인스턴스의 소유권을 돌려놓습니다.
             self.muzzle_instances = muzzle_instances;
+            // 방어막 파티클 이펙트 인스턴스의 소유권을 돌려놓습니다.
+            self.shield_instance = Some(shield_instance);
 
             let light_resources = self
                 .light_resource
@@ -4273,6 +4331,27 @@ impl GameScene for InGameRunScene {
                 .expect("the particle shader resource must be exists!");
             draw_fx_muzzle_effect(
                 &particle_mesh,
+                device,
+                camera_resource,
+                particle_resource,
+                instance_buffer,
+                &mut rpass,
+            );
+
+            let (mesh, _) = self
+                .mesh_pool
+                .get(FX_MESH_SHIELD_00)
+                .expect("the mesh data must be exists!");
+            let instance_buffer = self
+                .shield_instance
+                .as_ref()
+                .expect("the instance buffer must be exists!");
+            let particle_resource = self
+                .particle_resources
+                .get(FX_MESH_SHIELD_00)
+                .expect("the particle shader resource must be exists!");
+            draw_fx_shield_effect(
+                &mesh,
                 device,
                 camera_resource,
                 particle_resource,

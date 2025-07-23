@@ -214,6 +214,7 @@
         },
         "fx": {
             "files": [
+                "FX_MESH_Shield_00.mesh",
                 "FX_TEX_Muzzle_00.dds",
                 "FX_TEX_Muzzle_00.texD",
                 "FX_TEX_Muzzle_01.dds",
