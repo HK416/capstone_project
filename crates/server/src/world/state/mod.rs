@@ -108,6 +108,9 @@ pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
         }
     }
 
+    if !is_custom {
+        world.disabled();
+    }
     log::info!("{} disabled.", &world);
     println!("{} disabled.", &world);
 

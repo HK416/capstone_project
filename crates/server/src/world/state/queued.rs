@@ -192,7 +192,7 @@ impl GameWorldState for GameWorldQueuedState {
 
             // 다음 세션 상태로 전환합니다.
             let state = SessionFormationState::new(uid, world.events.clone());
-            session.add_flow(SessionStateFlow::Push(Box::new(state)));
+            session.add_flow(SessionStateFlow::Change(Box::new(state)));
         }
 
         // 게임 월드 상태를 변경합니다.
@@ -203,7 +203,7 @@ impl GameWorldState for GameWorldQueuedState {
             self.blue_players.len(),
             self.red_players.len(),
         );
-        let flow = GameWorldStateFlow::Push(Box::new(state));
+        let flow = GameWorldStateFlow::Change(Box::new(state));
         world.flows.push(flow);
     }
 

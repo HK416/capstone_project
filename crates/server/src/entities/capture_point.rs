@@ -45,13 +45,13 @@ impl CapturePointObject {
         if num_red_players > 0 && num_blue_players == 0 {
             let offset = num_red_players as u16;
             self.capture_point.set_capture_team(Some(Team::Red));
-            self.capture_point.update(elapsed_time_ms, offset);
+            self.capture_point.update(elapsed_time_ms * 50, offset);
         }
         // 블루 팀만 점령지 안에 존재하는 경우
         else if num_blue_players > 0 && num_red_players == 0 {
             let offset = num_blue_players as u16;
             self.capture_point.set_capture_team(Some(Team::Blue));
-            self.capture_point.update(elapsed_time_ms, offset);
+            self.capture_point.update(elapsed_time_ms * 50, offset);
         }
         // 점령지 안에 두 팀 모두 존재하거나, 또는 아무도 존재하지 않은 경우
         else {
