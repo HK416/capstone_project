@@ -15,7 +15,7 @@ use tokio::time::Duration;
 
 use crate::{
     data::get_stage_attributes, 
-    session::{Session, SessionFormationState, SessionStateFlow}, 
+    session::{Session, SessionFormationState, SessionMultiplayState, SessionStateFlow}, 
     world::{
         state::ALLOW_DUPLICATES, GameWorld, GameWorldEvent, GameWorldFormationState, GameWorldStateFlow, GameWorldSystemEvent, MAX_FORMATION_TIME
     }
@@ -191,8 +191,10 @@ impl GameWorldState for GameWorldQueuedState {
             session.tcp_write(packet.as_raw());
 
             // 다음 세션 상태로 전환합니다.
-            let state = SessionFormationState::new(uid, world.events.clone());
+            let state = SessionMultiplayState::new(uid, world.events.clone());
             session.add_flow(SessionStateFlow::Change(Box::new(state)));
+            let state = SessionFormationState::new(uid, world.events.clone());
+            session.add_flow(SessionStateFlow::Push(Box::new(state)));
         }
 
         // 게임 월드 상태를 변경합니다.

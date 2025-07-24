@@ -5,6 +5,8 @@
 //! - Verify: 클라이언트가 서버에 연결된 직후의 데이터 무결성을 검사하는 상태입니다.
 //! - Login: 클라이언트가 게임 서버에 로그인을 시도하는 상태입니다.
 //! - Lobby: 클라이언트가 게임 로비 장면에 있는 상태입니다.
+//! - Multiplay: 클라이언트의 멀티플레이를 위한 상태입니다.
+//! - Queued: 클라이언트가 일반 게임 대기열에 있는 상태입니다.
 //! - Room: 클라이언트가 커스텀 게임 대기실 장면에 있는 상태입니다.
 //! - Formation: 클라이언트가 각 팀의 캐릭터를 편성하는 장면에 있는 상태입니다.
 //! - InGameEnter: 클라이언트가 인게임 장면에 진입하고 있는 상태입니다.
@@ -16,6 +18,7 @@ mod in_game_ready;
 mod in_game_run;
 mod lobby;
 mod login;
+mod multiplay;
 mod queued;
 mod room;
 mod verify;
@@ -30,7 +33,7 @@ use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
 use tokio::time::{Duration, Instant};
 
 pub use self::{
-    formation::*, in_game_ready::*, in_game_run::*, lobby::*, login::*, queued::*, room::*, verify::*,
+    formation::*, in_game_ready::*, in_game_run::*, lobby::*, login::*, multiplay::*, queued::*, room::*, verify::*,
 };
 
 use super::Session;
@@ -320,6 +323,12 @@ impl fmt::Debug for SessionLoginState {
 impl fmt::Debug for SessionLobbyState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(SessionLobbyState))
+    }
+}
+
+impl fmt::Debug for SessionMultiplayState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(SessionMultiplayState))
     }
 }
 

@@ -150,6 +150,8 @@ impl GameWorldPool {
         world.running = true;
         world.closed = false;
 
+        // 이벤트 큐를 초기화합니다.
+        while let Some(_) = world.events.pop() { }
         // 게임 월드 이벤트를 추가합니다.
         let queue = world.events.clone();
         let event = GameWorldSystemEvent::PlayerJoin {
@@ -219,6 +221,8 @@ impl GameWorldPool {
             world.players.insert(account.uid, player);
         }
 
+        // 이벤트 큐를 초기화합니다.
+        while let Some(_) = world.events.pop() { }
         // 게임 월드 이벤트 송신기를 가져옵니다.
         let queue = world.events.clone();
 
