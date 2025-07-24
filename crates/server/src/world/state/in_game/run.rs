@@ -13,9 +13,9 @@ use mod_network::{
         InGamePlayerStatusPullData, InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS,
         MAX_IN_GAME_LOGS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, MovementState,
         NetworkState, ObjectId, Permission, StageAttributes, StageKind, Team, UserId,
-        update_action_state, update_action_state_timer, update_movement_state,
-        update_movement_state_timer, update_player_rotation, update_player_translation,
-        update_view_state, update_view_state_timer,
+        get_camera_transform, update_action_state, update_action_state_timer,
+        update_movement_state, update_movement_state_timer, update_player_rotation,
+        update_player_translation, update_view_state, update_view_state_timer,
     },
     protocol::{
         InGamePullPacket, InGameStatusPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -938,7 +938,159 @@ impl GameWorldInGameRunState {
 
         match data.character_kind() {
             CharacterKind::ArisOriginal => {}
-            CharacterKind::MomoiOriginal => {}
+            CharacterKind::MomoiOriginal => {
+                let character_attributes = data.character_attributes();
+                // 카메라가 변환 행렬을 가져옵니다.
+                let transform = get_camera_transform(
+                    data.view_state,
+                    data.view_state_timer,
+                    character_attributes,
+                    data.latlon,
+                );
+                let base_rotation = glam::Quat::from_mat4(&transform);
+                let translation = data.translation + glam::vec3a(0.0, 0.5, 0.0);
+
+                if data.skill_cost_data.count % 2 == 0 {
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(-15f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(-3f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(9f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+                } else {
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation =
+                        base_rotation * glam::Quat::from_rotation_y(-9.5f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(3f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(15f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+                }
+            }
             CharacterKind::MidoriOriginal => {}
             CharacterKind::YuukaOriginal => {
                 // 자신 체력의 30% 방어막을 팀원 전체에 부여합니다.

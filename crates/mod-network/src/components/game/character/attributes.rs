@@ -5,7 +5,9 @@ use ahash::{HashMap, RandomState};
 use mod_physics::object3d::Capsule;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Float3, Float4x4, LatLon, ViewState, ViewStateTimer};
+use crate::components::{
+    get_camera_transform, Float3, Float4x4, LatLon, ViewState, ViewStateTimer,
+};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WeaponAttributes {
@@ -41,41 +43,9 @@ impl WeaponAttributes {
         rotation: glam::Quat,
         latlon: LatLon,
     ) -> (glam::Vec3A, glam::Quat, glam::Quat) {
-        // 카메라가 바라보는 방향을 계산합니다.
-        let camera_default_pos: glam::Vec3A = character_attributes.camera_def_rel_pos.into();
-        let camera_zoom_pos: glam::Vec3A = character_attributes.camera_zoom_rel_pos.into();
-        let camera_rel_pos = match view_state {
-            ViewState::Idle => camera_default_pos,
-            ViewState::ZoomIn => {
-                let duration = character_attributes.normal_attack_start_duration;
-                let s = view_state_timer.0 as f32 / duration as f32;
-                camera_default_pos.lerp(camera_zoom_pos, s)
-            }
-            ViewState::ZoomOut => {
-                let duration = character_attributes.normal_attack_end_duration;
-                let s = view_state_timer.0 as f32 / duration as f32;
-                camera_zoom_pos.lerp(camera_default_pos, s)
-            }
-            ViewState::Aiming => camera_zoom_pos,
-        };
-
-        let distance = camera_rel_pos * glam::Vec3A::NEG_Z;
-        let mut transform = glam::Mat4::from_translation(distance.into());
-        let rotate = glam::Mat4::from_rotation_y(latlon.lon);
-        transform = rotate * transform;
-
-        let forward = glam::Vec3A::from_vec4(transform.z_axis);
-        let forward = forward.normalize_or(glam::Vec3A::Z);
-        let axis = glam::Vec3A::Y.cross(forward);
-        let rotate = glam::Mat4::from_axis_angle(axis.into(), latlon.lat);
-        transform = rotate * transform;
-
-        let offset = camera_rel_pos.with_z(0.0);
-        let offset = glam::Mat4::from_translation(offset.into());
-        transform = transform * offset;
-
-        let parent = glam::Mat4::from_translation(translation.into());
-        transform = parent * transform;
+        // 카메라가 변환 행렬을 가져옵니다.
+        let transform =
+            get_camera_transform(view_state, view_state_timer, character_attributes, latlon);
 
         // 총알의 끝 지점을 계산합니다.
         let base = glam::Vec3A::from_vec4(transform.w_axis);
