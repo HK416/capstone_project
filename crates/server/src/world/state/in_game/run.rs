@@ -1,6 +1,7 @@
 use std::{
     f32::{EPSILON, consts::TAU},
     num::NonZeroU32,
+    panic::set_hook,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -23,7 +24,7 @@ use mod_network::{
 };
 use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
-    object3d::{BoundingBox, Sphere},
+    object3d::{BoundingBox, Frustum, Sphere},
 };
 use rand::{
     distr::{Distribution, Uniform},
@@ -880,8 +881,60 @@ impl GameWorldInGameRunState {
                     };
 
                     // 데미지 처리 및 로그를 추가합니다.
-                    let damage = Self::bullet_hit_player(bullet, &mut shooter, hitted);
-                    self.damage_logs.push(DamageLogData::new(target_id, damage));
+                    match bullet.kind {
+                        BulletKind::MomoiOriginalSkill => {
+                            let skill_multi = 0.78;
+                            let s = &mut shooter;
+                            let s_character_attributes = s.character_attributes();
+                            let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                            let s_attack_pow = s_character_attributes.attack_power as f32;
+                            let s_crit_rate = s_character_attributes.critical_rate as f32;
+                            let s_crit_multi =
+                                s_character_attributes.critical_damage as f32 / 100.0;
+                            let h = hitted;
+                            let h_character_attributes = h.character_attributes();
+                            let h_evasion = h_character_attributes.evasion_stat as f32;
+                            let h_defense_pow = h_character_attributes.defense_power as f32;
+                            let damage = Self::hit_player(
+                                s,
+                                s_accuracy,
+                                s_attack_pow * skill_multi,
+                                s_crit_rate,
+                                s_crit_multi,
+                                h,
+                                h_evasion,
+                                h_defense_pow,
+                            );
+                            self.damage_logs.push(DamageLogData::new(target_id, damage));
+                        }
+                        _ => {
+                            let s = &mut shooter;
+                            let s_character_attributes = s.character_attributes();
+                            let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                            let s_attack_pow = s_character_attributes.attack_power as f32;
+                            let s_crit_rate = s_character_attributes.critical_rate as f32;
+                            let s_crit_multi =
+                                s_character_attributes.critical_damage as f32 / 100.0;
+                            let h = hitted;
+                            let h_character_attributes = h.character_attributes();
+                            let h_evasion = h_character_attributes.evasion_stat as f32;
+                            let h_defense_pow = h_character_attributes.defense_power as f32;
+                            let damage = Self::hit_player(
+                                s,
+                                s_accuracy,
+                                s_attack_pow,
+                                s_crit_rate,
+                                s_crit_multi,
+                                h,
+                                h_evasion,
+                                h_defense_pow,
+                            );
+
+                            s.skill_cost_data.remaining = (s.skill_cost_data.remaining + 10)
+                                .min(s.skill_cost_data.num_maximum_cost());
+                            self.damage_logs.push(DamageLogData::new(target_id, damage));
+                        }
+                    }
 
                     // 발사자의 소유권을 돌려놓습니다.
                     world.players.insert(bullet.shooter_id, shooter);
@@ -1091,7 +1144,73 @@ impl GameWorldInGameRunState {
                     );
                 }
             }
-            CharacterKind::MidoriOriginal => {}
+            CharacterKind::MidoriOriginal => {
+                let character_attributes = data.character_attributes();
+                let transform = get_camera_transform(
+                    data.view_state,
+                    data.view_state_timer,
+                    character_attributes,
+                    data.latlon,
+                );
+                let transform = glam::Mat4::from_translation(data.translation.into()) * transform;
+                let proj = glam::Mat4::perspective_lh(
+                    character_attributes.camera_def_fov_y,
+                    1.0,
+                    0.1,
+                    35.0,
+                );
+                let view = glam::Mat4::look_to_lh(
+                    transform.w_axis.truncate(),
+                    transform.z_axis.truncate(),
+                    glam::Vec3::Y,
+                );
+                let frustum = Frustum::from_mat4(proj * view);
+
+                // 뷰 프러스텀이 충돌하는 다른 플레이어 중 가장 가까운 플레이어를 선정합니다.
+                let find = world
+                    .players
+                    .iter_mut()
+                    .filter(|(_, target)| {
+                        !target.is_invincible() && target.action_state != ActionState::Retreat
+                    })
+                    .filter(|(_, target)| {
+                        let target_attributes = target.character_attributes();
+                        let mut capsule = target_attributes.collider.clone();
+                        capsule.center = target.translation.into();
+                        frustum.capsule_test(&capsule)
+                    })
+                    .min_by(|(_, lhs), (_, rhs)| {
+                        let lhs_dist = data.translation.distance_squared(lhs.translation);
+                        let rhs_dist = data.translation.distance_squared(rhs.translation);
+                        lhs_dist.total_cmp(&rhs_dist)
+                    });
+
+                // 대상이 존재하는 경우 데미지를 즉시 적용합니다.
+                if let Some((&target_id, target)) = find {
+                    let skill_multi = 1.19;
+                    let s = &mut data;
+                    let s_character_attributes = s.character_attributes();
+                    let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                    let s_attack_pow = s_character_attributes.attack_power as f32;
+                    let s_crit_rate = s_character_attributes.critical_rate as f32;
+                    let s_crit_multi = s_character_attributes.critical_damage as f32 / 100.0;
+                    let h = target;
+                    let h_character_attributes = h.character_attributes();
+                    let h_evasion = h_character_attributes.evasion_stat as f32;
+                    let h_defense_pow = h_character_attributes.defense_power as f32;
+                    let damage = Self::hit_player(
+                        s,
+                        s_accuracy,
+                        s_attack_pow,
+                        s_crit_rate,
+                        s_crit_multi,
+                        h,
+                        h_evasion,
+                        h_defense_pow,
+                    );
+                    self.damage_logs.push(DamageLogData::new(target_id, damage));
+                }
+            }
             CharacterKind::YuukaOriginal => {
                 // 자신 체력의 30% 방어막을 팀원 전체에 부여합니다.
                 // 이미 방어막이 존재하는 플레이어는 더 높은 방어막으로 적용됩니다. (더해지지 않음)
@@ -1290,6 +1409,69 @@ impl GameWorldInGameRunState {
         }
 
         distance
+    }
+
+    /// 플레이어 데미지 처리를 수행합니다.
+    fn hit_player(
+        s: &mut Player,
+        s_accuracy: f32,
+        s_attack_pow: f32,
+        s_crit_rate: f32,
+        s_crit_multi: f32,
+        h: &mut Player,
+        h_evasion: f32,
+        h_defense_pow: f32,
+    ) -> Damage {
+        let uniform_dstrib = Uniform::new(0.0, 1.0).unwrap();
+
+        // 1. 회피률 계산
+        let hit_chance = s_accuracy / (s_accuracy + h_evasion);
+        let rand_val = uniform_dstrib.sample(&mut rand::rng());
+        if rand_val > hit_chance {
+            return Damage::Miss;
+        }
+
+        // 2. 치명타 판정
+        let crit_chance = s_crit_rate / (s_crit_rate + h_evasion * 1.5);
+        let rand_val = uniform_dstrib.sample(&mut rand::rng());
+        let is_critical = rand_val <= crit_chance;
+
+        // 3. 피해량 계산
+        let mut damage = (s_attack_pow - h_defense_pow) * rand::random_range(0.9..=1.1);
+        let mut result = Damage::Common(damage.clamp(1.0, 9999.0) as u16);
+        if is_critical {
+            damage = (damage * s_crit_multi).round();
+            result = Damage::Critial(damage as u16);
+        };
+        let mut final_damage = damage.clamp(1.0, 9999.0) as u16;
+
+        // 데이터 갱신
+        s.damage_dealt = s.damage_dealt.saturating_add(final_damage as u32);
+        h.damage_taken = h.damage_taken.saturating_add(final_damage as u32);
+        if h.health_data.shield < final_damage {
+            final_damage -= h.health_data.shield;
+            h.health_data.shield = 0;
+            if h.health_data.remaining <= final_damage {
+                // 플레이어 행동 불능 처리
+                h.health_data.remaining = 0;
+                h.action_state = ActionState::Retreat;
+                h.action_state_timer.0 = 0;
+                h.movement_state = MovementState::Idle;
+                h.movement_state_timer.0 = 0;
+                h.action_notify = ActionNotify::Retreat;
+
+                // 플레이 데이터 갱신
+                h.retreat_count += 1;
+                s.kill_count += 1;
+            } else {
+                h.health_data.remaining -= final_damage;
+            }
+        } else {
+            h.health_data.shield -= final_damage;
+        };
+
+        // 결과 반환
+        result
     }
 
     /// 총알과 플레이어의 충돌 후처리를 수행합니다.
