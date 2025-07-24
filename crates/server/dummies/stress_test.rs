@@ -17,14 +17,14 @@ use tokio::{
 use mod_network::{
     addr::Addr,
     components::{
-        InputEvent, InputKind, InputSnapshot, LoginToken, Permission, SelectResult, UserId, WorldId,
+        InputEvent, InputKind, InputSnapshot, LoginToken, SelectResult, UserId,
     },
     protocol::{
-        CharacterSelectRequestPacket, CharacterSelectResponsePacket, InGameInputPacket,
-        InGamePullPacket, InGameReadyNotifyPacket, JoinRoomFailedPacket, JoinRoomRequestPacket,
-        LoginRequestPacket, LoginSuccessPacket, Packet, PacketParser, PacketType, 
-        QueryWorldListPacket, RawPacket, RoomDataUpdatePacket, RoomReadyRequestPacket,
-        WorldListPacket,
+        CharacterSelectRequestPacket, CharacterSelectResponsePacket, 
+        InGameInputPacket, InGamePullPacket, InGameReadyNotifyPacket, 
+        LoginRequestPacket, LoginSuccessPacket, 
+        MatchRequestPacket, MatchRequestRejectedPacket, 
+        Packet, PacketParser, PacketType, RawPacket
     },
 };
 
@@ -66,20 +66,8 @@ impl ReadyClient {
 
         // 방 접속 시도
         loop {
-            // 접속 가능한 월드 목록 불러오기
-            let available = self.request_available_worlds().await?;
-
-            let world_id = if available.is_empty() {
-                // 방 생성
-                WorldId::NULL
-            } else {
-                // 랜덤으로 방 선택
-                // *available.choose(&mut rand::rng()).unwrap()
-                available[0] // 접속가능한 첫번째 방으로 접속
-            };
-
             // 방 접속
-            match self.join(world_id).await {
+            match self.queue().await {
                 Ok(_) => break,
                 Err(ref e) if e.kind() == ErrorKind::NotConnected => {
                     continue;
@@ -90,9 +78,6 @@ impl ReadyClient {
 
         // 게임 시작 준비
         loop {
-            // 준비 신호 전송
-            self.ready().await?;
-
             // 캐릭터 선택
             match self.select_character().await {
                 Ok(_) => break,
@@ -164,39 +149,8 @@ impl ReadyClient {
         Ok(())
     }
 
-    async fn request_available_worlds(&mut self) -> Result<Vec<WorldId>, std::io::Error> {
-        let packet = QueryWorldListPacket::new(self.uid, self.token).as_raw();
-        self.writer.write_all(&packet.as_bytes()).await?;
-
-        loop {
-            self.read().await?;
-
-            while let Some(packet) = self.packet_parser.pop() {
-                match packet.packet_type() {
-                    PacketType::WorldListResponse => {
-                        let p = WorldListPacket::from_raw(packet);
-                        return Ok(p.worlds);
-                    }
-                    PacketType::Ping => {
-                        self.writer.write_all(&packet.as_bytes()).await?;
-                    }
-                    PacketType::LobbyDataUpdate => { }
-                    _ => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!(
-                                "RequestAvailableWorlds failed - Invalid packet received: {:?}",
-                                packet.packet_type()
-                            ),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    async fn join(&mut self, id: WorldId) -> Result<(), std::io::Error> {
-        let packet = JoinRoomRequestPacket::new(id, self.uid, self.token).as_raw();
+    async fn queue(&mut self) -> Result<(), std::io::Error> {
+        let packet = MatchRequestPacket::new(self.uid, self.token).as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
@@ -204,14 +158,14 @@ impl ReadyClient {
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
-                    PacketType::JoinRoomFailed => {
-                        let p = JoinRoomFailedPacket::from_raw(packet);
+                    PacketType::MatchRequestRejected => {
+                        let p = MatchRequestRejectedPacket::from_raw(packet);
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::NotConnected,
-                            format!("Join failed: {:?}", p.reason),
+                            format!("Match request rejected: {:?}", p.reason),
                         ));
                     }
-                    PacketType::RoomDataUpdate => {
+                    PacketType::FormationDataInit => {
                         break 'readloop;
                     }
                     PacketType::Ping => {
@@ -222,76 +176,10 @@ impl ReadyClient {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
                             format!(
-                                "Join failed - Invalid packet received: {:?}",
+                                "Match request failed - Invalid packet received: {:?}",
                                 packet.packet_type()
                             ),
                         ));
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn ready(&mut self) -> Result<(), std::io::Error> {
-        let ready_packet = RoomReadyRequestPacket::new(self.uid, self.token).as_raw();
-
-        'writeloop: loop {
-            self.writer.write_all(&ready_packet.as_bytes()).await?;
-
-            'readloop: loop {
-                self.read().await?;
-
-                while let Some(packet) = self.packet_parser.pop() {
-                    match packet.packet_type() {
-                        // 플레이어들의 상태에 업데이트가 있다면
-                        PacketType::RoomDataUpdate => {
-                            let p = RoomDataUpdatePacket::from_raw(packet);
-
-                            if p.players
-                                .iter()
-                                .find(|p| p.uid == self.uid)
-                                .filter(|p| p.permission() == Permission::Admin)
-                                .is_some()
-                            {
-                                if p.players
-                                    .iter()
-                                    .filter(|p| p.uid != self.uid)
-                                    .all(|p| p.is_ready_to_play())
-                                {
-                                    // 방장이면 게임 시작 신호(ready packet) 재전송
-                                    continue 'writeloop;
-                                }
-                            } else {
-                                // 방장이 아니면 게임 시작 신호 대기
-                                continue 'readloop;
-                            }
-                        }
-                        // 이 메세지를 받는다면 방장임
-                        PacketType::StartGameFailed => {
-                            // let p = CustomGameStartFailedPacket::from_raw(packet);
-                            // println!("Game start failed: {:?}", p.reason);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                            continue 'writeloop;
-                        }
-                        // 이 메세지를 받는다면 게임이 시작된것임
-                        PacketType::FormationDataInit => {
-                            // let _p = FormationPullPacket::from_raw(packet);
-                            break 'writeloop;
-                        }
-                        PacketType::Ping => {
-                            self.writer.write_all(&packet.as_bytes()).await?;
-                        }
-                        _ => {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!(
-                                    "Ready failed - Invalid packet received: {:?}",
-                                    packet.packet_type()
-                                ),
-                            ));
-                        }
                     }
                 }
             }
