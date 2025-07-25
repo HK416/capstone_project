@@ -6,9 +6,9 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::protocol::{
+use mod_network::{components::UserId, protocol::{
     LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket,
-};
+}};
 use winit::{
     event::Modifiers,
     keyboard::{KeyCode, KeyLocation},
@@ -256,7 +256,7 @@ impl GameScene for GameLoginModalScene {
                             self.requested = true;
 
                             // 로그인 요청 패킷을 생성합니다.
-                            let packet = LoginRequestPacket::new();
+                            let packet = LoginRequestPacket::new(UserId::NULL);
 
                             // 패킷을 게임 서버에 전송합니다.
                             let net_manager = app.net_manager();
