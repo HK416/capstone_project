@@ -1,0 +1,21 @@
+{
+    "EnergyBullet": {
+        "uri": "Bullet_Energy_Momoi",
+        "main_color": {
+            "x": 0.298039,
+            "y": 0.121568,
+            "z": 0.294117,
+            "w": 0.7
+        },
+        "emissive_color": {
+            "x": 2.98039,
+            "y": 1.21568,
+            "z": 2.94117
+        },
+        "metallic": 0,
+        "roughness": 0.2,
+        "specular_steps": 2.2,
+        "rim_strength": 0.8,
+        "rim_power": 4
+    }
+}

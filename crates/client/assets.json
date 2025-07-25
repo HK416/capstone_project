@@ -178,8 +178,11 @@
                 "Bullet_01_Warhead.mesh",
                 "Bullet_02_EnergyBoll.hierarchy",
                 "Bullet_02_EnergyBoll.mesh",
+                "Bullet_03_Sphere.hierarchy",
+                "Bullet_03_Sphere.mesh",
                 "Bullet_Common.material",
-                "Bullet_Energy.material"
+                "Bullet_Energy_Aris.material",
+                "Bullet_Energy_Momoi.material"
             ],
             "directories": {}
         },

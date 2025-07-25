@@ -1,7 +1,7 @@
 //! 총알 종류와 관련된 코드를 관리합니다.
 //!
 
-use crate::components::{BigEndian, CharacterKind, TryFromBigEndian};
+use crate::components::{BigEndian, TryFromBigEndian};
 
 /// 총알 모델의 개수입니다.
 pub const NUM_BULLETS: usize = 3;
@@ -50,17 +50,6 @@ impl BigEndian for BulletKind {
     fn to_big_endian_bytes(&self) -> Vec<u8> {
         let index = *self as u8;
         index.to_big_endian_bytes()
-    }
-}
-
-impl From<CharacterKind> for BulletKind {
-    fn from(value: CharacterKind) -> Self {
-        match value {
-            CharacterKind::ArisOriginal => BulletKind::EnergyBoll,
-            CharacterKind::MomoiOriginal => BulletKind::Common,
-            CharacterKind::MidoriOriginal => BulletKind::Common,
-            CharacterKind::YuukaOriginal => BulletKind::Common,
-        }
     }
 }
 

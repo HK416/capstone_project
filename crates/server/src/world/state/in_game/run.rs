@@ -591,7 +591,10 @@ impl GameWorldInGameRunState {
                     let id = self.generate_object_id();
                     let shooter_id = uid;
                     let shooter_team = shooter.team();
-                    let bullet_kind: BulletKind = character_kind.into();
+                    let bullet_kind: BulletKind = match character_kind {
+                        CharacterKind::ArisOriginal => BulletKind::EnergyBoll,
+                        _ => BulletKind::Common,
+                    };
                     let direction = rotation.mul_vec3a(glam::Vec3A::Z);
                     let velocity = direction * bullet_kind.speed();
                     let remaining_distance = character_attributes.attack_range as f32;

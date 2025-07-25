@@ -970,11 +970,24 @@ impl GameScene for InGameLoadScene {
             .collect();
 
         // 인게임에서 사용되는 총알을 수집합니다.
-        let bullet_kinds: HashSet<BulletKind> = packet
-            .players
-            .iter()
-            .map(|data| data.character_kind.into())
-            .collect();
+        let mut bullet_kinds: HashSet<BulletKind> = HashSet::default();
+        for data in packet.players.iter() {
+            match data.character_kind {
+                CharacterKind::ArisOriginal => {
+                    bullet_kinds.insert(BulletKind::EnergyBoll);
+                }
+                CharacterKind::MomoiOriginal => {
+                    bullet_kinds.insert(BulletKind::Common);
+                    bullet_kinds.insert(BulletKind::MomoiOriginalSkill);
+                }
+                CharacterKind::MidoriOriginal => {
+                    bullet_kinds.insert(BulletKind::Common);
+                }
+                CharacterKind::YuukaOriginal => {
+                    bullet_kinds.insert(BulletKind::Common);
+                }
+            }
+        }
 
         // 지형 종류를 가져옵니다.
         let stage_kind = packet.stage_kind;
