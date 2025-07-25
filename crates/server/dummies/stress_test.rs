@@ -406,7 +406,7 @@ impl Client {
             if !connected.load(Ordering::Relaxed) {
                 return Ok(());
             }
-
+            
             if let Some(packet) = packet_sender.pop() {
                 match writer.write_all(&packet.as_bytes()).await {
                     Ok(()) => {}
@@ -415,10 +415,9 @@ impl Client {
                         return Err(e);
                     }
                 }
+            } else {
+                tokio::task::yield_now().await;
             }
-
-            // 1초마다 패킷 전송
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
     }
 
@@ -517,7 +516,7 @@ impl AcceptState {
     }
 }
 
-const MAX_CLIENTS: usize = 80;
+const MAX_CLIENTS: usize = 1000;
 const IDLE_DELAY: u32 = 10; // ms
 const STABLE_DELAY: u32 = 50; // ms
 const DELAY_LIMIT1: u32 = 100; // ms
