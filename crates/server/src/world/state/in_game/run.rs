@@ -322,7 +322,7 @@ impl GameWorldInGameRunState {
         for event in action_events {
             match event {
                 ActionEvent::Changed(action_state) => match action_state {
-                    ActionState::Attack => data.action_notify = ActionNotify::EnterAttack,
+                    ActionState::Attack => data.action_notify = ActionNotify::StartAttack,
                     ActionState::Retreat => {
                         data.action_notify = ActionNotify::Retreat;
                     }
@@ -330,7 +330,7 @@ impl GameWorldInGameRunState {
                         data.action_notify = ActionNotify::Reload;
                     }
                     ActionState::Skill => {
-                        data.action_notify = ActionNotify::EnterSkill;
+                        data.action_notify = ActionNotify::StartSkill;
                         data.skill_cost_data.remaining = data
                             .skill_cost_data
                             .remaining
@@ -554,6 +554,8 @@ impl GameWorldInGameRunState {
                     };
                     if shooter.bullet_data.fires_per_attack <= 1 {
                         shooter.action_notify = ActionNotify::FirstAttack;
+                    } else {
+                        shooter.action_notify = ActionNotify::Attack;
                     }
 
                     // 발사한 플레이어의 무기 데이터를 가져옵니다.
@@ -623,7 +625,7 @@ impl GameWorldInGameRunState {
                             }
                         };
 
-                        data.action_notify = ActionNotify::EnterAttack
+                        data.action_notify = ActionNotify::StartAttack
                     }
                     ActionState::Retreat => {
                         // 플레이어 데이터를 가져옵니다.
@@ -663,7 +665,7 @@ impl GameWorldInGameRunState {
                         };
 
                         let character_attributes = data.character_attributes();
-                        data.action_notify = ActionNotify::EnterSkill;
+                        data.action_notify = ActionNotify::StartSkill;
                         data.skill_cost_data.remaining = data
                             .skill_cost_data
                             .remaining
@@ -987,6 +989,8 @@ impl GameWorldInGameRunState {
 
         if data.skill_cost_data.count <= 1 {
             data.action_notify = ActionNotify::FirstSkill;
+        } else {
+            data.action_notify = ActionNotify::Skill;
         }
 
         match data.character_kind() {
@@ -1769,7 +1773,7 @@ impl GameWorldState for GameWorldInGameRunState {
         self.update(world, elapsed);
 
         // 일정 시각마다 패킷을 전송합니다.
-        const PULL_TICK: u32 = 5;
+        const PULL_TICK: u32 = 6;
         if self.pull_send_elapsed_time_ms >= PULL_TICK {
             self.pull_send_elapsed_time_ms = 0;
             self.broadcast_pull_packet(world);

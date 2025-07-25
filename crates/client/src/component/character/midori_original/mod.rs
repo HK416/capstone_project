@@ -111,7 +111,7 @@ pub fn spawn_fx_muzzle_effect(
         .expect("the muzzle entity must be exists!");
 
     let parent = Parent(muzzle);
-    let life_time = LifeTime(70);
+    let life_time = LifeTime::new(72);
     let tint_color = FxMuzzleTintColor([220.0 / 255.0, 36.0 / 255.0, 0.0 / 255.0]);
     let transform = ToParentTrans(glam::Mat4::from_scale(glam::vec3(0.2, 0.2, 0.2)));
     let mut builder_0 = EntityBuilder::new();
@@ -122,7 +122,7 @@ pub fn spawn_fx_muzzle_effect(
         transform,
         tint_color,
         life_time,
-        FxMuzzle00,
+        FxMuzzle00(rand::random_range(0..4)),
     ));
 
     let transform = ToParentTrans(glam::Mat4::from_scale_rotation_translation(
@@ -138,7 +138,59 @@ pub fn spawn_fx_muzzle_effect(
         transform,
         tint_color,
         life_time,
-        FxMuzzle01,
+        FxMuzzle01(rand::random_range(0..4)),
+    ));
+
+    vec![builder_0, builder_1]
+}
+
+/// 스킬의 총구 화염 이팩트 파티클을 생성합니다.
+pub fn spawn_skill_fx_muzzle_effect(
+    archetype: PlayerArchetype,
+    skinning_animation: &SkinningAnimation,
+    mesh_pool: &MeshPool,
+) -> Vec<EntityBuilder> {
+    // 사각형 메쉬를 가져옵니다.
+    let (mesh, _) = mesh_pool
+        .get(FX_TEX_MUZZLE_00)
+        .expect("the mesh must be preloaded!");
+
+    // 총구 엔터티를 가져옵니다.
+    let muzzle = skinning_animation
+        .entity_list
+        .get("fire_01")
+        .cloned()
+        .expect("the muzzle entity must be exists!");
+
+    let parent = Parent(muzzle);
+    let life_time = LifeTime::new(72);
+    let tint_color = FxMuzzleTintColor([150.0 / 255.0, 225.0 / 255.0, 90.0 / 255.0]);
+    let transform = ToParentTrans(glam::Mat4::from_scale(glam::vec3(0.25, 0.25, 0.25)));
+    let mut builder_0 = EntityBuilder::new();
+    builder_0.add_bundle((
+        mesh.clone(),
+        parent,
+        archetype,
+        transform,
+        tint_color,
+        life_time,
+        FxMuzzle00(rand::random_range(0..4)),
+    ));
+
+    let transform = ToParentTrans(glam::Mat4::from_scale_rotation_translation(
+        glam::Vec3::splat(0.25),
+        glam::Quat::from_rotation_y(-90f32.to_radians()),
+        glam::vec3(0.0, 0.0, 0.1),
+    ));
+    let mut builder_1 = EntityBuilder::new();
+    builder_1.add_bundle((
+        mesh.clone(),
+        parent,
+        archetype,
+        transform,
+        tint_color,
+        life_time,
+        FxMuzzle01(rand::random_range(0..4)),
     ));
 
     vec![builder_0, builder_1]

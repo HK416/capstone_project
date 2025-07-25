@@ -9,7 +9,7 @@ struct InputAttributes {
     @location(3) trans_row_1: vec4<f32>,
     @location(4) trans_row_2: vec4<f32>,
     @location(5) trans_row_3: vec4<f32>,
-    @location(6) tint: vec3<f32>,
+    @location(6) tint: vec4<f32>,
     @location(7) index: u32,
 };
 
@@ -18,7 +18,7 @@ struct InputAttributes {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
-    @location(1) tint: vec3<f32>,
+    @location(1) tint: vec4<f32>,
     @location(2) index: u32,
 };
 
@@ -49,11 +49,9 @@ var t_gray_scale: texture_2d_array<f32>;
 @group(1) @binding(1)
 var s_gray_scale: sampler;
 
-/// 버스트 파티클을 그리는 버텍스 쉐이더입니다.
+/// 고정된 총구 화염 이펙트 파티클을 그리는 버텍스 쉐이더입니다.
 @vertex 
 fn vs_main(input: InputAttributes) -> VertexOutput {
-    var out: VertexOutput;
-
     let trans = mat4x4<f32>(
         input.trans_row_0, 
         input.trans_row_1, 
@@ -62,6 +60,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
     );
     let position_w = (trans * vec4<f32>(input.position, 1.0)).xyz;
 
+    var out: VertexOutput;
     out.clip_position = u_camera.proj_view * vec4<f32>(position_w, 1.0);
     out.uv = input.uv;
     out.tint = input.tint;
@@ -76,14 +75,15 @@ fn get_transparency_weight(z: f32, a: f32) -> f32 {
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
     let gray_scale = textureSample(t_gray_scale, s_gray_scale, input.uv, input.index).r;
-    let final_color = input.tint * vec3<f32>(gray_scale);
+    let final_color = input.tint.xyz * vec3<f32>(gray_scale);
+    let alpha = input.tint.w * gray_scale;
 
     let depth = input.clip_position.z;
-    let weight = get_transparency_weight(depth, gray_scale);
+    let weight = get_transparency_weight(depth, alpha);
 
     var out: RenderTarget;
-    out.accum = vec4<f32>(final_color * gray_scale, gray_scale) * weight;
-    out.reveal = gray_scale;
+    out.accum = vec4<f32>(final_color * alpha, alpha) * weight;
+    out.reveal = alpha;
     out.emissive = vec4<f32>(0.0);
     return out;
 }

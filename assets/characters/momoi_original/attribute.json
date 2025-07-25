@@ -269,14 +269,14 @@
     "max_skill_cost": 700,
     "skill_cost": 10,
     "attack_range": 650,
-    "bullet_radius": 0.02,
+    "bullet_radius": 0.01,
     "collider": {
         "center": {
             "x": 0,
             "y": 0,
             "z": 0
         },
-        "height": 1.0,
-        "radius": 0.25
+        "height": 0.9,
+        "radius": 0.2
     }
 }

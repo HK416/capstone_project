@@ -12,17 +12,17 @@ use crate::component::{
 };
 
 /// 총구 화염 파티클을 그리는 렌더링 파이프라인입니다.
-pub struct FxMuzzleRenderPipeline;
+pub struct FxMuzzleFlareRenderPipeline;
 
 static PIPELINE: OnceLock<wgpu::RenderPipeline> = OnceLock::new();
 
-impl FxMuzzleRenderPipeline {
+impl FxMuzzleFlareRenderPipeline {
     /// [wgpu::ShaderModule]을 반환합니다.
     fn create_shader_module(device: &wgpu::Device) -> wgpu::ShaderModule {
         unsafe {
             let desc = wgpu::include_wgsl!(concat!(
                 env!("CARGO_WORKSPACE_DIR"),
-                "/assets/shaders/fx_muzzle.wgsl",
+                "/assets/shaders/fx_muzzle_flare.wgsl",
             ));
 
             if cfg!(feature = "enable-shader-validation") {
@@ -36,7 +36,7 @@ impl FxMuzzleRenderPipeline {
     /// [wgpu::PipelineLayout]을 반환합니다.
     fn get_pipeline_layout(device: &wgpu::Device) -> wgpu::PipelineLayout {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("PipelineLayout(Fx(Muzzle))"),
+            label: Some("PipelineLayout(Fx(MuzzleFlare))"),
             bind_group_layouts: &[
                 CameraResource::bind_group_layout(device),
                 FxMuzzleResource::bind_group_layout(device),
@@ -60,7 +60,7 @@ impl FxMuzzleRenderPipeline {
             let module = Self::create_shader_module(device);
             let layout = Self::get_pipeline_layout(device);
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("RenderPipeline(Fx(Muzzle))"),
+                label: Some("RenderPipeline(Fx(MuzzleFlare))"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &module,
@@ -120,7 +120,7 @@ impl FxMuzzleRenderPipeline {
                                     offset: offset_of!(FxMuzzleInstanceDataLayout, tint)
                                         as wgpu::BufferAddress,
                                     shader_location: 6,
-                                    format: wgpu::VertexFormat::Float32x3,
+                                    format: wgpu::VertexFormat::Float32x4,
                                 },
                                 wgpu::VertexAttribute {
                                     offset: offset_of!(FxMuzzleInstanceDataLayout, index)
@@ -142,7 +142,7 @@ impl FxMuzzleRenderPipeline {
                     ..Default::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
                     depth_write_enabled: false,
                     format: depth_stencil_format,
                     stencil: wgpu::StencilState::default(),
@@ -216,7 +216,10 @@ pub fn draw_fx_muzzle_effect<'a>(
         return;
     }
 
-    rpass.set_pipeline(FxMuzzleRenderPipeline::get_or_init(device, DEPTH_FORMAT));
+    rpass.set_pipeline(FxMuzzleFlareRenderPipeline::get_or_init(
+        device,
+        DEPTH_FORMAT,
+    ));
 
     rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
     rpass.set_bind_group(1, particle_resource.bind_group(), &[]);

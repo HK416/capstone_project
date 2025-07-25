@@ -111,7 +111,7 @@ pub fn spawn_fx_muzzle_effect(
         .expect("the muzzle entity must be exists!");
 
     let parent = Parent(muzzle);
-    let life_time = LifeTime(70);
+    let life_time = LifeTime::new(32);
     let tint_color = FxMuzzleTintColor([220.0 / 255.0, 36.0 / 255.0, 0.0 / 255.0]);
     let transform = ToParentTrans(glam::Mat4::from_scale(glam::vec3(0.2, 0.2, 0.2)));
     let mut builder_0 = EntityBuilder::new();
@@ -122,7 +122,7 @@ pub fn spawn_fx_muzzle_effect(
         transform,
         tint_color,
         life_time,
-        FxMuzzle00,
+        FxMuzzle00(rand::random_range(0..4)),
     ));
 
     let transform = ToParentTrans(glam::Mat4::from_scale_rotation_translation(
@@ -138,7 +138,7 @@ pub fn spawn_fx_muzzle_effect(
         transform,
         tint_color,
         life_time,
-        FxMuzzle01,
+        FxMuzzle01(rand::random_range(0..4)),
     ));
 
     vec![builder_0, builder_1]

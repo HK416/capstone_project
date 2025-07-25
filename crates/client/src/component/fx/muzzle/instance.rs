@@ -21,7 +21,7 @@ pub struct FxMuzzleInstanceDataLayout {
     pub y_axis: [f32; 4],
     pub z_axis: [f32; 4],
     pub w_axis: [f32; 4],
-    pub tint: [f32; 3],
+    pub tint: [f32; 4],
     pub index: u32,
 }
 
@@ -32,7 +32,7 @@ impl Default for FxMuzzleInstanceDataLayout {
             y_axis: [0.0, 1.0, 0.0, 0.0],
             z_axis: [0.0, 0.0, 1.0, 0.0],
             w_axis: [0.0, 0.0, 0.0, 1.0],
-            tint: [0.0, 0.0, 0.0],
+            tint: [0.0, 0.0, 0.0, 0.0],
             index: 0,
         }
     }
@@ -61,7 +61,7 @@ impl FxMuzzleInstance {
         let capacity = capacity.get();
         Self {
             buffer: Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Instance(Fx(Muzzle))"),
+                label: Some("Instance(Fx(MuzzleFlare))"),
                 mapped_at_creation: false,
                 size: Self::ELEMENT_SIZE * capacity as u64,
                 usage: Self::USAGES,
@@ -134,7 +134,7 @@ impl FxMuzzleInstanceView {
         let contents = bytemuck::bytes_of(data);
         let copy_size = contents.len() as wgpu::BufferAddress;
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Staging(Fx(Muzzle({})))", self.offset)),
+            label: Some(&format!("Staging(Fx(MuzzleFlare({})))", self.offset)),
             contents,
             usage: wgpu::BufferUsages::COPY_SRC,
         });

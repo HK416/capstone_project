@@ -3,7 +3,6 @@ mod camera;
 mod pipeline;
 mod render;
 mod spawn;
-mod view_state;
 
 mod aris_original;
 mod midori_original;
@@ -21,7 +20,7 @@ use crate::{
     component::{Child, PlayerArchetype, Sibling, ToParentTrans, WorldTransform},
 };
 
-pub use self::{animation::*, camera::*, pipeline::*, render::*, spawn::*, view_state::*};
+pub use self::{animation::*, camera::*, pipeline::*, render::*, spawn::*};
 
 lazy_static! {
     pub static ref CHARACTER_ATTRIBUTES: [&'static CharacterAttributes; NUM_CHARACTERS] = [
@@ -151,6 +150,48 @@ pub fn spawn_fx_muzzle_effect(
             yuuka_original::spawn_fx_muzzle_effect(archetype, skinning_animation, mesh_pool)
         }
     };
+
+    // 엔터티를 생성합니다.
+    for mut builder in builders {
+        world.spawn(builder.build());
+    }
+}
+
+/// Midori_Original의 총구 화염 이펙트 엔터티를 생성합니다.
+pub fn spawn_midori_fx_muzzle_effect(
+    world: &mut World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    mesh_pool: &MeshPool,
+) {
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = world
+        .query_one_mut::<&SkinningAnimation>(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    let builders =
+        midori_original::spawn_skill_fx_muzzle_effect(archetype, skinning_animation, mesh_pool);
+
+    // 엔터티를 생성합니다.
+    for mut builder in builders {
+        world.spawn(builder.build());
+    }
+}
+
+/// Momoi_Original의 총구 화염 이펙트 엔터티를 생성합니다.
+pub fn spawn_momoi_fx_muzzle_effect(
+    world: &mut World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    mesh_pool: &MeshPool,
+) {
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = world
+        .query_one_mut::<&SkinningAnimation>(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    let builders =
+        momoi_original::spawn_skill_fx_muzzle_effect(archetype, skinning_animation, mesh_pool);
 
     // 엔터티를 생성합니다.
     for mut builder in builders {

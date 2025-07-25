@@ -54,9 +54,10 @@ use crate::{
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
         draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
         draw_fx_muzzle_effect, draw_fx_shield_effect, draw_stage, draw_tree, spawn_bullet,
-        spawn_fx_muzzle_effect, update_bullet_hierarchy, update_bullet_resource,
-        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
-        update_character_hierarchy, update_character_resource, update_fx_muzzle_particles,
+        spawn_fx_muzzle_effect, spawn_midori_fx_muzzle_effect, spawn_momoi_fx_muzzle_effect,
+        update_bullet_hierarchy, update_bullet_resource, update_camera_and_skybox_resource,
+        update_camera_hierarchy, update_camera_param, update_character_hierarchy,
+        update_character_resource, update_fx_muzzle_00_particles, update_fx_muzzle_01_particles,
         update_fx_particle_lifetime, update_fx_shield_particle, update_stage_hierarchy,
         update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList,
         BloomPipeline, BoneCollection, BrightRenderTarget, Bullet, Camera, CameraResource,
@@ -1023,30 +1024,8 @@ impl InGameRunScene {
             }
 
             // 행동 상태 알림을 처리합니다.
-            match data.action_notify() {
+            match data.action_notify {
                 ActionNotify::None => {}
-                ActionNotify::EnterAttack => {
-                    if data.uid == self.uid {
-                        let val: f32 = rand::random();
-                        if val < 0.1 {
-                            let i = character_kind as usize;
-                            let j = rand::random_range(0..3);
-                            let decoded = self
-                                .sound_data_pool
-                                .get(CV_BATTLE_SHOUT[i][j])
-                                .expect("CV_Battle_Shout sound must be preloaded!");
-                            let time_t = data.action_state_timer(attribute).0;
-                            let duration = Duration::from_millis(time_t as u64);
-                            let source = decoded.as_source();
-                            let sink = Sink::connect_new(mixer);
-                            sink.set_volume(self.voice_volume as f32 / 255.0);
-                            sink.append(source);
-                            let _ = sink.try_seek(duration);
-                            sink.play();
-                            sink.detach();
-                        }
-                    }
-                }
                 ActionNotify::Retreat => {
                     if data.uid == self.uid {
                         let i = character_kind as usize;
@@ -1083,23 +1062,26 @@ impl InGameRunScene {
                         sink.detach();
                     }
                 }
-                ActionNotify::EnterSkill => {
+                ActionNotify::StartAttack => {
                     if data.uid == self.uid {
-                        let i = character_kind as usize;
-                        let j = rand::random_range(0..3);
-                        let decoded = self
-                            .sound_data_pool
-                            .get(CV_EXSKILL_LEVEL[i][j])
-                            .expect("CV_ExSkill_Level sound must be preloaded!");
-                        let time_t = data.action_state_timer(attribute).0;
-                        let duration = Duration::from_millis(time_t as u64);
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(mixer);
-                        sink.set_volume(self.voice_volume as f32 / 255.0);
-                        sink.append(source);
-                        let _ = sink.try_seek(duration);
-                        sink.play();
-                        sink.detach();
+                        let val: f32 = rand::random();
+                        if val < 0.1 {
+                            let i = character_kind as usize;
+                            let j = rand::random_range(0..3);
+                            let decoded = self
+                                .sound_data_pool
+                                .get(CV_BATTLE_SHOUT[i][j])
+                                .expect("CV_Battle_Shout sound must be preloaded!");
+                            let time_t = data.action_state_timer(attribute).0;
+                            let duration = Duration::from_millis(time_t as u64);
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.voice_volume as f32 / 255.0);
+                            sink.append(source);
+                            let _ = sink.try_seek(duration);
+                            sink.play();
+                            sink.detach();
+                        }
                     }
                 }
                 ActionNotify::FirstAttack => {
@@ -1123,7 +1105,47 @@ impl InGameRunScene {
                     // 총구 화염 파티클을 생성합니다.
                     spawn_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
                 }
-                ActionNotify::FirstSkill => {}
+                ActionNotify::Attack => {
+                    // 총구 화염 파티클을 생성합니다.
+                    spawn_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                }
+                ActionNotify::StartSkill => {
+                    if data.uid == self.uid {
+                        let i = character_kind as usize;
+                        let j = rand::random_range(0..3);
+                        let decoded = self
+                            .sound_data_pool
+                            .get(CV_EXSKILL_LEVEL[i][j])
+                            .expect("CV_ExSkill_Level sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.voice_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+                }
+                ActionNotify::FirstSkill => match character_kind {
+                    CharacterKind::MidoriOriginal => {
+                        spawn_midori_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    CharacterKind::MomoiOriginal => {
+                        spawn_momoi_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    _ => {}
+                },
+                ActionNotify::Skill => match character_kind {
+                    CharacterKind::MidoriOriginal => {
+                        spawn_midori_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    CharacterKind::MomoiOriginal => {
+                        spawn_momoi_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    _ => {}
+                },
             }
 
             type Query<'a> = (
@@ -3786,7 +3808,7 @@ impl GameScene for InGameRunScene {
                     let instances = muzzle_instances
                         .get(FX_TEX_MUZZLE_00)
                         .expect("the instance buffer must be exists!");
-                    update_fx_muzzle_particles::<FxMuzzle00>(
+                    update_fx_muzzle_00_particles(
                         world,
                         device,
                         &mut encoder,
@@ -3797,7 +3819,7 @@ impl GameScene for InGameRunScene {
                     let instances = muzzle_instances
                         .get(FX_TEX_MUZZLE_01)
                         .expect("the instance buffer must be exists!");
-                    update_fx_muzzle_particles::<FxMuzzle01>(
+                    update_fx_muzzle_01_particles(
                         world,
                         device,
                         &mut encoder,

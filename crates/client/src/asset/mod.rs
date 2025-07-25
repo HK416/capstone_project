@@ -212,9 +212,9 @@ pub const SCHALE_ICON_URI: &'static str = "Schale_Icon";
 pub const BULLET_WORKSPACE: &'static str = "common";
 /// 총알 모델의 `Uri`입니다.
 pub const BULLET_URIS: [&'static str; NUM_BULLETS] = [
-    "Bullet_01_Warhead", 
-    "Bullet_02_EnergyBoll", 
-    "Bullet_01_Warhead"
+    "Bullet_01_Warhead",
+    "Bullet_02_EnergyBoll",
+    "Bullet_01_Warhead",
 ];
 
 pub const STAGE_WORKSPACES: [&'static str; NUM_STAGES] = ["stage/city"];

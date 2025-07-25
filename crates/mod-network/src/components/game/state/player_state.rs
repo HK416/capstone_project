@@ -220,21 +220,18 @@ impl ViewState {
 /// 플레이어 행동 상태 데이터입니다.
 ///
 /// 아래와 같은 데이터가 포함되어있습니다.
-/// - action_state   | 3bit | 행동 상태
-/// - movement_state | 2bit | 움직임 상태
-/// - action_notify  | 3bit | 행동 알림
+/// - action_state   | 4bit | 행동 상태
+/// - movement_state | 4bit | 움직임 상태
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PlayerStateData(u8);
 
 impl PlayerStateData {
-    const ACTION_BIT_MASK: u8 = 0x7;
+    const ACTION_BIT_MASK: u8 = 0xF;
     const ACTION_SHIFT: usize = 0;
-    const MOVEMENT_BIT_MASK: u8 = 0x3;
-    const MOVEMENT_SHIFT: usize = 3;
-    const NOTIFY_BIT_MASK: u8 = 0x7;
-    const NOTIFY_SHIFT: usize = 5;
+    const MOVEMENT_BIT_MASK: u8 = 0xF;
+    const MOVEMENT_SHIFT: usize = 4;
 
     /// 새로운 플레이어 행동 상태 데이터를 생성합니다.
     pub const fn new() -> Self {
@@ -276,24 +273,6 @@ impl PlayerStateData {
     /// 움직임 상태를 설정합니다.
     pub const fn with_movement_state(mut self, state: MovementState) -> Self {
         self.set_movement_state(state);
-        self
-    }
-
-    /// 행동 상태 알림을 반환합니다.
-    pub fn action_notify(&self) -> ActionNotify {
-        let val = (self.0 >> Self::NOTIFY_SHIFT) & Self::NOTIFY_BIT_MASK;
-        ActionNotify::new(val)
-    }
-
-    /// 행동 상태 알림을 설정합니다.
-    pub const fn set_action_notify(&mut self, action_notify: ActionNotify) {
-        self.0 &= !(Self::NOTIFY_BIT_MASK << Self::NOTIFY_SHIFT);
-        self.0 |= ((action_notify as u8) & Self::NOTIFY_BIT_MASK) << Self::NOTIFY_SHIFT;
-    }
-
-    /// 행동 상태 알림을 설정합니다.
-    pub const fn with_action_notify(mut self, action_notify: ActionNotify) -> Self {
-        self.set_action_notify(action_notify);
         self
     }
 }

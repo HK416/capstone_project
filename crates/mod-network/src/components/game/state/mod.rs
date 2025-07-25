@@ -8,7 +8,7 @@ mod view_state;
 
 use std::cmp;
 
-use crate::components::UserId;
+use crate::components::{BigEndian, UserId};
 
 pub use self::{action_state::*, movement_state::*, player_state::*, view_state::*};
 
@@ -17,12 +17,14 @@ pub use self::{action_state::*, movement_state::*, player_state::*, view_state::
 pub enum ActionNotify {
     #[default]
     None = 0,
-    EnterAttack = 1,
-    Retreat = 2,
-    Reload = 3,
-    EnterSkill = 4,
-    FirstAttack = 5,
-    FirstSkill = 6,
+    Retreat = 1,
+    Reload = 2,
+    StartAttack = 3,
+    FirstAttack = 4,
+    Attack = 5,
+    StartSkill = 6,
+    FirstSkill = 7,
+    Skill = 8,
 }
 
 impl ActionNotify {
@@ -32,12 +34,14 @@ impl ActionNotify {
     ///
     pub const fn new(val: u8) -> ActionNotify {
         match val {
-            1 => Self::EnterAttack,
-            2 => Self::Retreat,
-            3 => Self::Reload,
-            4 => Self::EnterSkill,
-            5 => Self::FirstAttack,
-            6 => Self::FirstSkill,
+            1 => Self::Retreat,
+            2 => Self::Reload,
+            3 => Self::StartAttack,
+            4 => Self::FirstAttack,
+            5 => Self::Attack,
+            6 => Self::StartSkill,
+            7 => Self::FirstSkill,
+            8 => Self::Skill,
             _ => Self::None,
         }
     }
@@ -47,6 +51,16 @@ impl ActionNotify {
         let temp = *self;
         *self = ActionNotify::None;
         temp
+    }
+}
+
+impl BigEndian for ActionNotify {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Self {
+        Self::new(u8::from_big_endian_bytes(bytes))
+    }
+
+    fn to_big_endian_bytes(&self) -> Vec<u8> {
+        (*self as u8).to_big_endian_bytes()
     }
 }
 

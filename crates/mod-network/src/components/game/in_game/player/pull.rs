@@ -20,6 +20,8 @@ pub struct InGamePlayerPullData {
     rotation: [i16; 4],
     /// 플레이어 상태 데이터
     player_state: PlayerStateData,
+    /// 행동 상태 알림
+    pub action_notify: ActionNotify,
     /// 행동 상태 타이머
     action_state_timer: u8,
     /// 움직임 상태 타이머
@@ -100,8 +102,8 @@ impl InGamePlayerPullData {
             rotation,
             player_state: PlayerStateData::new()
                 .with_action_state(action_state)
-                .with_movement_state(movement_state)
-                .with_action_notify(action_notify),
+                .with_movement_state(movement_state),
+            action_notify,
             action_state_timer,
             movement_state_timer,
             latitude,
@@ -146,11 +148,6 @@ impl InGamePlayerPullData {
     /// 플레이어의 움직임 상태를 반환합니다.
     pub fn movement_state(&self) -> MovementState {
         self.player_state.movement_state()
-    }
-
-    /// 행동 상태 알림을 반환합니다.
-    pub fn action_notify(&self) -> ActionNotify {
-        self.player_state.action_notify()
     }
 
     /// 플레이어의 행동 상태 타이머를 반환합니다.
@@ -203,6 +200,7 @@ impl BigEndian for InGamePlayerPullData {
             + <[i16; 3]>::byte_size()
             + <[i16; 4]>::byte_size()
             + PlayerStateData::byte_size()
+            + ActionNotify::byte_size()
             + u8::byte_size()
             + u8::byte_size()
             + i16::byte_size()
@@ -241,6 +239,11 @@ impl BigEndian for InGamePlayerPullData {
         let player_state = PlayerStateData::from_big_endian_bytes(data);
 
         offset = offset + size;
+        size = ActionNotify::byte_size();
+        data = &bytes[offset..offset + size];
+        let action_notify = ActionNotify::from_big_endian_bytes(data);
+
+        offset = offset + size;
         size = u8::byte_size();
         data = &bytes[offset..offset + size];
         let action_state_timer = u8::from_big_endian_bytes(data);
@@ -265,6 +268,7 @@ impl BigEndian for InGamePlayerPullData {
             translation,
             rotation,
             player_state,
+            action_notify,
             action_state_timer,
             movement_state_timer,
             latitude,
@@ -279,6 +283,7 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.player_state.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.action_notify.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.latitude.to_big_endian_bytes());
@@ -667,7 +672,7 @@ mod tests {
             glam::vec3a(-1.4123, 1.3422, 20.411),
             glam::quat(0.0, 0.7071068, 0.0, 0.7071068),
             ActionState::Idle,
-            ActionNotify::EnterAttack,
+            ActionNotify::StartAttack,
             ActionStateTimer::new(132),
             MovementState::Idle,
             MovementStateTimer(132),

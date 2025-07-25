@@ -45,9 +45,9 @@ use crate::{
     component::{
         BulletRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
         DamageFontRenderPipeline, EnergyBulletRenderPipeline, EyeMouthBakePipeline,
-        EyeMouthRenderPipeline, FxMuzzleRenderPipeline, FxShieldRenderPipeline, HaloRenderPipeline,
-        SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline, TreeRenderPipeline,
-        SHADOW_FORMAT,
+        EyeMouthRenderPipeline, FxMuzzleFlareRenderPipeline, FxShieldRenderPipeline,
+        HaloRenderPipeline, SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline,
+        TreeRenderPipeline, SHADOW_FORMAT,
     },
     config::UserConfig,
 };
@@ -221,7 +221,7 @@ impl GameStartupScene {
         let device_cloned = device.clone();
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
-            FxMuzzleRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
+            FxMuzzleFlareRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
             task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;

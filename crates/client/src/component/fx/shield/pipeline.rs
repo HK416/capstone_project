@@ -59,7 +59,7 @@ impl FxShieldRenderPipeline {
             let module = Self::create_shader_module(device);
             let layout = Self::get_pipeline_layout(device);
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("RenderPipeline(Fx(Muzzle))"),
+                label: Some("RenderPipeline(Fx(MuzzleFlare))"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &module,

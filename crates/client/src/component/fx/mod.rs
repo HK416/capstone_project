@@ -10,9 +10,20 @@ use hecs::World;
 pub use self::{muzzle::*, resources::*, shield::*};
 
 /// 파티클의 남은 시간입니다.
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LifeTime(pub u32);
+pub struct LifeTime {
+    pub maximum: u32,
+    pub remaining: u32,
+}
+
+impl LifeTime {
+    pub const fn new(maximum: u32) -> Self {
+        Self {
+            maximum,
+            remaining: maximum,
+        }
+    }
+}
 
 /// 파티클 생명 주기를 갱신합니다.
 pub fn update_fx_particle_lifetime(world: &mut World, elapsed_time_ms: u32) {
@@ -21,10 +32,10 @@ pub fn update_fx_particle_lifetime(world: &mut World, elapsed_time_ms: u32) {
         let mut query = world.query::<&mut LifeTime>();
         for (entity, life_time) in query.iter() {
             // 파티클의 생명 주기를 갱신합니다.
-            life_time.0 = life_time.0.saturating_sub(elapsed_time_ms);
+            life_time.remaining = life_time.remaining.saturating_sub(elapsed_time_ms);
 
             // 생명 주기가 0인 파티클을 수집합니다.
-            if life_time.0 <= 0 {
+            if life_time.remaining <= 0 {
                 removed.push(entity);
             }
         }

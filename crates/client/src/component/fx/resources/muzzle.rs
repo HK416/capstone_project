@@ -15,7 +15,7 @@ impl FxMuzzleResource {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("BindGroupLayout(Fx(Muzzle))"),
+                label: Some("BindGroupLayout(Fx(MuzzleFlare))"),
                 entries: &[
                     // 0번 바인딩: 그레이 스케일 텍스처
                     wgpu::BindGroupLayoutEntry {
@@ -48,7 +48,7 @@ impl FxMuzzleResource {
     ) -> ParticleResource {
         ParticleResource::new(Arc::new(device.create_bind_group(
             &wgpu::BindGroupDescriptor {
-                label: Some("BindGroup(Fx(Muzzle))"),
+                label: Some("BindGroup(Fx(MuzzleFlare))"),
                 layout: Self::bind_group_layout(device),
                 entries: &[
                     wgpu::BindGroupEntry {
