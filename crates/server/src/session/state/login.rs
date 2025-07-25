@@ -51,7 +51,6 @@ impl SessionLoginState {
             }
         };
         
-
         // 다음 세션 상태로 전환합니다.
         let next_state = Box::new(SessionLobbyState::new(account));
         let flow = SessionStateFlow::Change(next_state);
