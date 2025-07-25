@@ -227,6 +227,8 @@ pub const FX_WORKSPACE: &'static str = "fx";
 pub const FX_TEX_MUZZLE_00: &'static str = "FX_TEX_Muzzle_00";
 /// 총구 화염 파티클 이펙트 텍스처의 `Uri`입니다.
 pub const FX_TEX_MUZZLE_01: &'static str = "FX_TEX_Muzzle_01";
+/// 피격 파티클 이펙트 텍스처의 `Uri`입니다.
+pub const FX_TEX_HIT_00: &'static str = "FX_TEX_Hit_00";
 /// 방어막 파티클 이펙트의 `Uri`입니다.
 pub const FX_MESH_SHIELD_00: &'static str = "FX_MESH_Shield_00";
 

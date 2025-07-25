@@ -4,7 +4,7 @@
 mod instance;
 mod pipeline;
 
-use hecs::{Component, With, World};
+use hecs::World;
 
 use crate::{
     component::{LifeTime, Parent, PlayerArchetype, ToParentTrans, WorldTransform},

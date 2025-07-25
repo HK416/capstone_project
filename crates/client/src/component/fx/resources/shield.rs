@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+//! 방어막 파티클 이펙트 쉐이더 리소스와 관련된 코드를 관리합니다.
+//!
+
 use std::{
     num::NonZeroU64,
     ops::RangeBounds,

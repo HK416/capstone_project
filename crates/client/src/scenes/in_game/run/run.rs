@@ -43,10 +43,11 @@ use crate::{
     asset::{
         cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        CHARACTER_IMG_SMALL_URI, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL,
-        FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, HUD_LAYOUT_URI_02,
-        IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON,
-        SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START, WEAPON_ICON_URI,
+        CHARACTER_IMG_SMALL_URI, CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_RETIRE,
+        CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL, FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01,
+        HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START,
+        WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
@@ -62,14 +63,13 @@ use crate::{
         update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList,
         BloomPipeline, BoneCollection, BrightRenderTarget, Bullet, Camera, CameraResource,
         CameraUniform, Child, DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource,
-        DamageFontUniform, DamageParticle, DirectionLight, FxMuzzle00, FxMuzzle01,
-        FxMuzzleInstance, FxMuzzleResource, FxShieldDataLayout, FxShieldInstance, FxShieldResource,
-        FxShieldUniform, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
-        LightTransformDataLayout, MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent,
-        ParticleResource, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap,
-        Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
-        WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
-        MODEL_BONE_HEAD,
+        DamageFontUniform, DamageParticle, DirectionLight, FxMuzzleInstance, FxMuzzleResource,
+        FxShieldDataLayout, FxShieldInstance, FxShieldResource, FxShieldUniform,
+        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
+        MaterialKind, Mesh, MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype,
+        Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer,
+        SkinningAnimation, Skybox, ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y,
+        CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES, MODEL_BONE_HEAD,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
@@ -627,7 +627,12 @@ impl InGameRunScene {
     }
 
     /// 데미지 파티클을 생성합니다.
-    fn create_damage_particles(&mut self, device: &wgpu::Device, logs: Vec<DamageLogData>) {
+    fn create_damage_particles(
+        &mut self,
+        device: &wgpu::Device,
+        logs: Vec<DamageLogData>,
+        app: &dyn AppHandle,
+    ) {
         // 게임 월드를 가져옵니다.
         let world = match self.world.as_mut() {
             Some(world) => world,
@@ -772,6 +777,28 @@ impl InGameRunScene {
                         ));
                         self.damage_particles.push_back(entity);
                     }
+
+                    // 캐릭터 보이스를 재생합니다.
+                    if uid == self.uid {
+                        let val: f32 = rand::random();
+                        if val > 0.9 {
+                            let i = self.player_character as usize;
+                            let j = rand::random_range(0..3);
+                            let decoded =
+                                self.sound_data_pool
+                                    .get(CV_BATTLE_DAMAGE[i][j])
+                                    .expect(&format!(
+                                        "the {} sound must be preloaded!",
+                                        CV_BATTLE_DAMAGE[i][j]
+                                    ));
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(app.audio_mixer());
+                            sink.set_volume(self.voice_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
+                    }
                 }
                 Damage::Miss => {
                     // 데미지 파티클 메쉬를 가져옵니다.
@@ -831,6 +858,27 @@ impl InGameRunScene {
                             damage_resource,
                         ));
                         self.damage_particles.push_back(entity);
+                    }
+
+                    // 캐릭터 보이스를 재생합니다.
+                    if uid == self.uid {
+                        let val: f32 = rand::random();
+                        if val > 0.9 {
+                            let i = self.player_character as usize;
+                            let decoded =
+                                self.sound_data_pool
+                                    .get(CV_BATTLE_DEFENSE[i])
+                                    .expect(&format!(
+                                        "the {} sound must be preloaded!",
+                                        CV_BATTLE_DEFENSE[i]
+                                    ));
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(app.audio_mixer());
+                            sink.set_volume(self.voice_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
                     }
                 }
             }
@@ -1110,23 +1158,21 @@ impl InGameRunScene {
                     spawn_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
                 }
                 ActionNotify::StartSkill => {
-                    if data.uid == self.uid {
-                        let i = character_kind as usize;
-                        let j = rand::random_range(0..3);
-                        let decoded = self
-                            .sound_data_pool
-                            .get(CV_EXSKILL_LEVEL[i][j])
-                            .expect("CV_ExSkill_Level sound must be preloaded!");
-                        let time_t = data.action_state_timer(attribute).0;
-                        let duration = Duration::from_millis(time_t as u64);
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(mixer);
-                        sink.set_volume(self.voice_volume as f32 / 255.0);
-                        sink.append(source);
-                        let _ = sink.try_seek(duration);
-                        sink.play();
-                        sink.detach();
-                    }
+                    let i = character_kind as usize;
+                    let j = rand::random_range(0..3);
+                    let decoded = self
+                        .sound_data_pool
+                        .get(CV_EXSKILL_LEVEL[i][j])
+                        .expect("CV_ExSkill_Level sound must be preloaded!");
+                    let time_t = data.action_state_timer(attribute).0;
+                    let duration = Duration::from_millis(time_t as u64);
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.voice_volume as f32 / 255.0);
+                    sink.append(source);
+                    let _ = sink.try_seek(duration);
+                    sink.play();
+                    sink.detach();
                 }
                 ActionNotify::FirstSkill => match character_kind {
                     CharacterKind::MidoriOriginal => {
@@ -1247,7 +1293,12 @@ impl InGameRunScene {
     }
 
     /// 서버로부터 전달받은 데이터로 플레이어 상태를 갱신합니다.
-    fn pull_server_status(&mut self, device: &wgpu::Device, packet: InGameStatusPacket) {
+    fn pull_server_status(
+        &mut self,
+        device: &wgpu::Device,
+        packet: InGameStatusPacket,
+        app: &dyn AppHandle,
+    ) {
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
@@ -1309,7 +1360,7 @@ impl InGameRunScene {
             }
         }
 
-        self.create_damage_particles(device, packet.damage_logs);
+        self.create_damage_particles(device, packet.damage_logs, app);
     }
 
     /// 인터페이스 배경 레이아웃 텍스처를 Ui 렌더러에 등록합니다.
@@ -3332,7 +3383,7 @@ impl GameScene for InGameRunScene {
                 let packet = InGameStatusPacket::from_raw(packet);
 
                 let device = app.render_device();
-                self.pull_server_status(&device, packet);
+                self.pull_server_status(&device, packet, app);
             }
             PacketType::InGameFinish => {
                 let packet = InGameFinishPacket::from_raw(packet);
