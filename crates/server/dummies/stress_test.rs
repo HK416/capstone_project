@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     env,
     io::{ErrorKind, Write},
+    process::exit,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering}, Arc
@@ -22,7 +23,7 @@ use mod_network::{
     protocol::{
         CharacterSelectRequestPacket, CharacterSelectResponsePacket, 
         InGameInputPacket, InGamePullPacket, InGameReadyNotifyPacket, 
-        LoginRequestPacket, LoginSuccessPacket, 
+        LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, 
         MatchRequestPacket, MatchRequestRejectedPacket, 
         Packet, PacketParser, PacketType, RawPacket
     },
@@ -47,11 +48,11 @@ struct ReadyClient {
 }
 
 impl ReadyClient {
-    fn new(stream: tokio::net::TcpStream) -> Self {
+    fn new(uid: UserId, stream: tokio::net::TcpStream) -> Self {
         let (reader, writer) = stream.into_split();
 
         Self {
-            uid: UserId::default(),
+            uid,
             token: LoginToken::default(),
 
             reader,
@@ -116,7 +117,7 @@ impl ReadyClient {
     }
 
     async fn login(&mut self) -> Result<(), std::io::Error> {
-        let packet = LoginRequestPacket::new().as_raw();
+        let packet = LoginRequestPacket::new(self.uid).as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
@@ -126,9 +127,17 @@ impl ReadyClient {
                 match packet.packet_type() {
                     PacketType::LoginSuccess => {
                         let p = LoginSuccessPacket::from_raw(packet);
-                        self.uid = p.uid;
+                        // self.uid = p.uid;
                         self.token = p.token;
                         break 'readloop;
+                    }
+                    PacketType::LoginFailed => {
+                        eprintln!("\n\nLogin failed: {:?}", LoginFailedPacket::from_raw(packet));
+                        exit(1);
+                        // return Err(std::io::Error::new(
+                        //     std::io::ErrorKind::NotFound,
+                        //     format!("Login failed - {:?} not found", self.uid),
+                        // ));
                     }
                     PacketType::Ping => {
                         self.writer.write_all(&packet.as_bytes()).await?;
@@ -299,11 +308,11 @@ impl Client {
         })
     }
 
-    async fn run(&self, addr: &str) {
+    async fn run(&self, uid: UserId, addr: &str) {
         let stream = TcpStream::connect(addr).await.unwrap();
         NUM_CLIENTS.fetch_add(1, Ordering::Relaxed);
 
-        let ready_client = ReadyClient::new(stream);
+        let ready_client = ReadyClient::new(uid, stream);
         let ready_client = match ready_client.run().await {
             Ok(client) => client,
             Err(e) => {
@@ -508,11 +517,16 @@ impl AcceptState {
     }
 }
 
-const MAX_CLIENTS: usize = 10000;
+const MAX_CLIENTS: usize = 80;
 const IDLE_DELAY: u32 = 10; // ms
 const STABLE_DELAY: u32 = 50; // ms
 const DELAY_LIMIT1: u32 = 100; // ms
 const DELAY_LIMIT2: u32 = 150; // ms
+
+fn get_next_uid() -> UserId {
+    static NEXT_UID: AtomicU32 = AtomicU32::new(1);
+    UserId::new(NEXT_UID.fetch_add(1, Ordering::Relaxed))
+}
 
 async fn stress_test(addr: Addr) {
     let accept_state = Arc::new(AtomicU32::new(AcceptState::Accept as u32));
@@ -550,7 +564,7 @@ async fn stress_test(addr: Addr) {
                         clients.insert(client_id, Arc::clone(&client));
                         client_id += 1;
                         let a = addr.to_string();
-                        tokio::spawn(async move { client.run(&a).await });
+                        tokio::spawn(async move { client.run(get_next_uid(), &a).await });
                     }
 
                     tokio::time::sleep(tokio::time::Duration::from_millis(accept_delay)).await;
@@ -602,13 +616,97 @@ async fn stress_test(addr: Addr) {
     // Ok(())
 }
 
+/// 서버에 새로운 계정들을 생성합니다.
+#[allow(dead_code)]
+#[tokio::main]
+async fn create_dummy_accounts(num: usize, addr: &str) {
+    println!("Creating {} dummy accounts...", num);
+    
+    static SUCCESS: AtomicU32 = AtomicU32::new(0);
+    static FAILURE: AtomicU32 = AtomicU32::new(0);
+
+    let mut readers = Vec::with_capacity(num);
+    let mut writers = Vec::with_capacity(num);
+    for _ in 0..num {
+        let stream = TcpStream::connect(addr).await
+            .expect("Failed to connect to server");
+        let (reader, writer) = stream.into_split();
+        readers.push(reader);
+        writers.push(writer);
+    }
+    
+    let packet = LoginRequestPacket::new(UserId::NULL).as_raw();
+    let mut write_handles = Vec::with_capacity(num);
+    
+    // 모든 write 작업을 먼저 시작
+    for mut writer in writers.into_iter() {
+        let p = packet.clone();
+        let handle = tokio::spawn(async move {
+            writer.write_all(&p.as_bytes()).await.unwrap();
+            writer // writer를 반환하여 연결 유지
+        });
+        write_handles.push(handle);
+    }
+
+    let mut read_handles = Vec::with_capacity(num);
+    readers.into_iter().for_each(|mut reader| {
+        let handle = tokio::spawn(async move {
+            let mut parser = PacketParser::new();
+            
+            let mut buf = [0; 1024];
+
+            'readloop: loop {
+                match reader.read(&mut buf).await {
+                    Ok(0) => {
+                        eprintln!("Connection closed by server");
+                        FAILURE.fetch_add(1, Ordering::Relaxed);
+                        break 'readloop;
+                    }
+                    Ok(n) => {
+                        parser.push(&buf[..n]);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to read from stream: {}", e);
+                        FAILURE.fetch_add(1, Ordering::Relaxed);
+                        break 'readloop;
+                    }
+                }
+
+                while let Some(packet) = parser.pop() {
+                    match packet.packet_type() {
+                        PacketType::LoginSuccess => {
+                            SUCCESS.fetch_add(1, Ordering::Relaxed);
+                            break 'readloop;
+                        }
+                        PacketType::Ping => {
+                            // Ping 패킷은 무시하고 계속 읽기
+                            continue;
+                        }
+                        _ => {
+                            eprintln!("Unexpected packet type: {:?}", packet.packet_type());
+                            FAILURE.fetch_add(1, Ordering::Relaxed);
+                            break 'readloop;
+                        }
+                    }
+                }
+            }
+        });
+        read_handles.push(handle);
+    });
+
+    let _write_completion = futures::future::join_all(write_handles).await;
+    let _read_completion = futures::future::join_all(read_handles).await;
+
+    assert_eq!(
+        SUCCESS.load(Ordering::Relaxed) + FAILURE.load(Ordering::Relaxed),
+        num as u32,
+        "Some accounts were not processed correctly"
+    );
+
+    println!("created {} dummy accounts", SUCCESS.load(Ordering::Relaxed));
+}
+
 fn main() {
-    println!("Stress test started");
-
-    let num_core = num_cpus::get();
-    let num_threads = num_core / 4;
-    println!("Using {} threads", num_threads);
-
     let mut args = env::args();
     args.next();
     let mut addr = Addr::default();
@@ -635,6 +733,17 @@ fn main() {
             }
         }
     }
+
+    // {
+    //     create_dummy_accounts(1000, addr.to_string().as_str());
+    //     return;
+    // }
+
+    println!("Stress test started");
+
+    let num_core = num_cpus::get();
+    let num_threads = num_core / 4;
+    println!("Using {} threads", num_threads);
 
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_threads)
