@@ -1,6 +1,8 @@
 //! 캐릭터 속성과 관련된 코드를 관리합니다.
 //!
 
+use std::os::unix::raw::off_t;
+
 use ahash::{HashMap, RandomState};
 use mod_physics::object3d::Capsule;
 use serde::{Deserialize, Serialize};
@@ -44,8 +46,10 @@ impl WeaponAttributes {
         latlon: LatLon,
     ) -> (glam::Vec3A, glam::Quat, glam::Quat) {
         // 카메라가 변환 행렬을 가져옵니다.
-        let transform =
+        let mut transform =
             get_camera_transform(view_state, view_state_timer, character_attributes, latlon);
+        let parent = glam::Mat4::from_translation(translation.into());
+        transform = parent * transform;
 
         // 총알의 끝 지점을 계산합니다.
         let base = glam::Vec3A::from_vec4(transform.w_axis);
