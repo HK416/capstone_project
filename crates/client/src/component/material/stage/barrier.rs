@@ -16,7 +16,7 @@ use crate::component::{MaterialKind, MaterialResource};
 pub struct StageBarrierMaterialData {
     pub uri: String,
     pub tint: Float4,
-    pub texture: String,
+    pub pattern: String,
 }
 
 impl StageBarrierMaterialData {
@@ -170,24 +170,24 @@ impl StageBarrierMaterialResource {
                         wgpu::ShaderStages::FRAGMENT,
                         0,
                     ),
-                    // // 1번 바인딩: 메인 텍스처
-                    // wgpu::BindGroupLayoutEntry {
-                    //     binding: 1,
-                    //     visibility: wgpu::ShaderStages::FRAGMENT,
-                    //     ty: wgpu::BindingType::Texture {
-                    //         sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    //         view_dimension: wgpu::TextureViewDimension::D2,
-                    //         multisampled: false,
-                    //     },
-                    //     count: None,
-                    // },
-                    // // 2번 바인딩: 메인 텍스처 샘플러
-                    // wgpu::BindGroupLayoutEntry {
-                    //     binding: 2,
-                    //     visibility: wgpu::ShaderStages::FRAGMENT,
-                    //     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    //     count: None,
-                    // },
+                    // 1번 바인딩: 메인 텍스처
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    // 2번 바인딩: 메인 텍스처 샘플러
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             })
         })
@@ -198,8 +198,8 @@ impl StageBarrierMaterialResource {
         label: Option<&str>,
         device: &wgpu::Device,
         material_uniform: &StageBarrierMaterialUniform,
-        // main_color_view: &wgpu::TextureView,
-        // main_color_sampler: &wgpu::Sampler,
+        main_color_view: &wgpu::TextureView,
+        main_color_sampler: &wgpu::Sampler,
     ) -> MaterialResource {
         MaterialResource {
             kind: MaterialKind::StageBarrier,
@@ -211,14 +211,14 @@ impl StageBarrierMaterialResource {
                         binding: 0,
                         resource: material_uniform.as_entire_binding(),
                     },
-                    // wgpu::BindGroupEntry {
-                    //     binding: 1,
-                    //     resource: wgpu::BindingResource::TextureView(main_color_view),
-                    // },
-                    // wgpu::BindGroupEntry {
-                    //     binding: 2,
-                    //     resource: wgpu::BindingResource::Sampler(main_color_sampler),
-                    // },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(main_color_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(main_color_sampler),
+                    },
                 ],
             })),
         }

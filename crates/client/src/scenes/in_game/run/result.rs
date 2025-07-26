@@ -1313,7 +1313,7 @@ impl GameScene for InGameResultScene {
                 .as_ref()
                 .expect("the light shader resource must be exists!");
             let direction_light = self.direction_light.as_ref();
-            let player_entities: Vec<_> = self.players.values().cloned().collect();
+            let player_entities: Vec<_> = self.winner.values().cloned().collect();
             let (screen_width, screen_height): (f32, f32) = app.window_size().size().into();
             let aspect_ratio = screen_width / screen_height;
             let fov_y = self.camera_fov_y;

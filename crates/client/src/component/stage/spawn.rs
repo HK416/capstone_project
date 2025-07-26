@@ -490,18 +490,18 @@ fn create_material_resources(
                     data,
                 );
 
-                // // 캐릭터 메인 컬러 텍스처를 가져옵니다.
-                // let (main_color_view, main_color_sampler) = texture_data_pool
-                //     .get(&stage_material_data.main_color)
-                //     .expect("the texture data must be preloaded!");
+                // 패턴 텍스처를 가져옵니다.
+                let (main_color_view, main_color_sampler) = texture_data_pool
+                    .get(&stage_material_data.pattern)
+                    .expect("the texture data must be preloaded!");
 
                 // 재질 쉐이더 리소스를 생성합니다.
                 let resource = StageBarrierMaterialResource::new(
                     label,
                     device,
                     &material_uniform,
-                    // &main_color_view,
-                    // &main_color_sampler,
+                    &main_color_view,
+                    &main_color_sampler,
                 );
 
                 material_uniforms.push(MaterialUniform::StageBarrier {

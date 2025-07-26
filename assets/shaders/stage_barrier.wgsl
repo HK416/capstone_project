@@ -11,6 +11,7 @@ struct InputAttributes {
 // 프래그먼트 쉐이더 입력 데이터로 사용됩니다.
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
 }
 
 // 프래그먼트 쉐이더 출력 데이터입니다.
@@ -33,8 +34,7 @@ struct CameraDataLayout {
 
 // 방어막 재질 데이터 유니폼 버퍼
 struct StageBarrierMaterialDataLayout {
-    tint: vec3<f32>,
-    time: f32,
+    tint: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -46,6 +46,12 @@ var<uniform> u_trans: mat4x4<f32>;
 @group(2) @binding(0)
 var<uniform> u_material: StageBarrierMaterialDataLayout;
 
+@group(2) @binding(1)
+var t_pattern: texture_2d<f32>;
+
+@group(2) @binding(2)
+var s_pattern: sampler;
+
 // 방머막을 그리는 버텍스 쉐이더입니다.
 @vertex
 fn vs_main(input: InputAttributes) -> VertexOutput {
@@ -53,6 +59,7 @@ fn vs_main(input: InputAttributes) -> VertexOutput {
 
     var out: VertexOutput;
     out.clip_position = u_camera.proj_view * vec4<f32>(position_w, 1.0);
+    out.uv = input.uv;
 
     return out;
 }
@@ -65,8 +72,9 @@ fn get_transparency_weight(z: f32, a: f32) -> f32 {
 @fragment
 fn fs_main(input: VertexOutput) -> RenderTarget {
     // 최종 색상
-    let color = u_material.tint;
-    let alpha = 0.5;
+    let gray_scale = textureSample(t_pattern, s_pattern, input.uv).r;
+    let color = u_material.tint.xyz * gray_scale;
+    let alpha = u_material.tint.a * gray_scale;
 
     let depth = input.clip_position.z;
     let weight = get_transparency_weight(depth, alpha);
