@@ -4,7 +4,7 @@
 use crate::components::{BigEndian, TryFromBigEndian};
 
 /// 총알 모델의 개수입니다.
-pub const NUM_BULLETS: usize = 3;
+pub const NUM_BULLETS: usize = 4;
 
 /// 총알 모델 종류 목록입니다.
 #[repr(u8)]
@@ -15,8 +15,10 @@ pub enum BulletKind {
     Common = 0,
     /// 에너지 볼 형태의 총알 모델
     EnergyBoll = 1,
+    /// Aris Original Skill 총알 모델
+    ArisOriginalSkill = 2,
     /// Momoi Original Skill 총알 모델
-    MomoiOriginalSkill = 2,
+    MomoiOriginalSkill = 3,
 }
 
 impl BulletKind {
@@ -28,7 +30,8 @@ impl BulletKind {
         match val {
             0 => Some(Self::Common),
             1 => Some(Self::EnergyBoll),
-            2 => Some(Self::MomoiOriginalSkill),
+            2 => Some(Self::ArisOriginalSkill),
+            3 => Some(Self::MomoiOriginalSkill),
             _ => None,
         }
     }
@@ -36,7 +39,8 @@ impl BulletKind {
     pub fn speed(self) -> f32 {
         match self {
             BulletKind::Common => 200.0,
-            BulletKind::EnergyBoll => 100.0,
+            BulletKind::EnergyBoll => 150.0,
+            BulletKind::ArisOriginalSkill => 150.0,
             BulletKind::MomoiOriginalSkill => 200.0,
         }
     }

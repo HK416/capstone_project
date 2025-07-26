@@ -53,7 +53,7 @@ impl DynamicCollision<Capsule> for Sphere {
     }
 
     fn check_dynamic_collision_details(&self, velocity: &glam::Vec3A, capsule: &Capsule) -> Option<DynamicCollisionDetails> {
-        let target = capsule.inflated(capsule.radius);
+        let target = capsule.inflated(self.radius + capsule.radius);
         let ray = Ray::build(self.center.into(), *velocity).unwrap();
         let info = ray.intersect(&target)?;
 

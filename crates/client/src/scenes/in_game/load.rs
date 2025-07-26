@@ -975,6 +975,7 @@ impl GameScene for InGameLoadScene {
             match data.character_kind {
                 CharacterKind::ArisOriginal => {
                     bullet_kinds.insert(BulletKind::EnergyBoll);
+                    bullet_kinds.insert(BulletKind::ArisOriginalSkill);
                 }
                 CharacterKind::MomoiOriginal => {
                     bullet_kinds.insert(BulletKind::Common);

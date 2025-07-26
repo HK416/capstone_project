@@ -214,6 +214,7 @@ pub const BULLET_WORKSPACE: &'static str = "common";
 pub const BULLET_URIS: [&'static str; NUM_BULLETS] = [
     "Bullet_01_Warhead",
     "Bullet_02_EnergyBoll",
+    "Bullet_02_EnergyBoll_Big",
     "Bullet_03_Sphere",
 ];
 

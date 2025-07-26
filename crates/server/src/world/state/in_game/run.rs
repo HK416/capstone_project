@@ -1,7 +1,6 @@
 use std::{
     f32::{EPSILON, consts::TAU},
     num::NonZeroU32,
-    panic::set_hook,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -887,6 +886,32 @@ impl GameWorldInGameRunState {
 
                     // 데미지 처리 및 로그를 추가합니다.
                     match bullet.kind {
+                        BulletKind::ArisOriginalSkill => {
+                            let skill_multi = 2.5;
+                            let accuracy_multi = 2.0;
+                            let s = &mut shooter;
+                            let s_character_attributes = s.character_attributes();
+                            let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                            let s_attack_pow = s_character_attributes.attack_power as f32;
+                            let s_crit_rate = s_character_attributes.critical_rate as f32;
+                            let s_crit_multi =
+                                s_character_attributes.critical_damage as f32 / 100.0;
+                            let h = hitted;
+                            let h_character_attributes = h.character_attributes();
+                            let h_evasion = h_character_attributes.evasion_stat as f32;
+                            let h_defense_pow = h_character_attributes.defense_power as f32;
+                            let damage = Self::hit_player(
+                                s,
+                                s_accuracy * accuracy_multi,
+                                s_attack_pow * skill_multi,
+                                s_crit_rate,
+                                s_crit_multi,
+                                h,
+                                h_evasion,
+                                h_defense_pow,
+                            );
+                            self.damage_logs.push(DamageLogData::new(target_id, damage));
+                        }
                         BulletKind::MomoiOriginalSkill => {
                             let skill_multi = 0.78;
                             let s = &mut shooter;
@@ -997,7 +1022,40 @@ impl GameWorldInGameRunState {
         }
 
         match data.character_kind() {
-            CharacterKind::ArisOriginal => {}
+            CharacterKind::ArisOriginal => {
+                let character_attributes = data.character_attributes();
+                // 카메라가 변환 행렬을 가져옵니다.
+                let transform = get_camera_transform(
+                    data.view_state,
+                    data.view_state_timer,
+                    character_attributes,
+                    data.latlon,
+                );
+                let rotation = glam::Quat::from_mat4(&transform);
+                let translation = data.translation + glam::vec3a(0.0, 0.4, 0.0);
+
+                let id = self.generate_object_id();
+                let shooter_id = uid;
+                let shooter_team = data.team();
+                let bullet_kind = BulletKind::ArisOriginalSkill;
+                let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                let velocity = direction * bullet_kind.speed();
+                let remaining_distance = character_attributes.attack_range as f32;
+                let radius = 1.0;
+                self.bullets.insert(
+                    id,
+                    Bullet::new(
+                        shooter_id,
+                        shooter_team,
+                        bullet_kind,
+                        translation,
+                        rotation,
+                        velocity,
+                        remaining_distance,
+                        radius,
+                    ),
+                );
+            }
             CharacterKind::MomoiOriginal => {
                 let character_attributes = data.character_attributes();
                 // 카메라가 변환 행렬을 가져옵니다.
@@ -1008,7 +1066,7 @@ impl GameWorldInGameRunState {
                     data.latlon,
                 );
                 let base_rotation = glam::Quat::from_mat4(&transform);
-                let translation = data.translation + glam::vec3a(0.0, 0.5, 0.0);
+                let translation = data.translation + glam::vec3a(0.0, 0.4, 0.0);
 
                 if data.skill_cost_data.count % 2 == 0 {
                     let id = self.generate_object_id();
@@ -1194,7 +1252,7 @@ impl GameWorldInGameRunState {
 
                 // 대상이 존재하는 경우 데미지를 즉시 적용합니다.
                 if let Some((&target_id, target)) = find {
-                    let skill_multi = 1.19;
+                    let skill_multi = 0.78;
                     let s = &mut data;
                     let s_character_attributes = s.character_attributes();
                     let s_accuracy = s_character_attributes.accuracy_stat as f32;
@@ -1208,7 +1266,7 @@ impl GameWorldInGameRunState {
                     let damage = Self::hit_player(
                         s,
                         s_accuracy,
-                        s_attack_pow,
+                        s_attack_pow * skill_multi,
                         s_crit_rate,
                         s_crit_multi,
                         h,
@@ -1256,13 +1314,8 @@ impl GameWorldInGameRunState {
         let mut nearest_distance = None;
 
         // 1. 지형과 충돌 검사
-        let dist = Self::check_bullet_ground_collision(
-            stage_attributes,
-            translation,
-            direction,
-            length,
-            radius,
-        );
+        let dist =
+            Self::check_bullet_ground_collision(stage_attributes, translation, direction, length);
         if let Some(dist) = dist {
             nearest_distance = Some(dist);
             velocity = direction * dist;
@@ -1345,14 +1398,13 @@ impl GameWorldInGameRunState {
         mut translation: glam::Vec3A,
         direction: glam::Vec3A,
         length: f32,
-        radius: f32,
     ) -> Option<f32> {
         let mut distance = None;
         let mut current = 0.0;
         while current < length {
             let height = stage_attributes.get_area_height(translation.x, translation.z);
             if let Some(height) = height {
-                if translation.y <= height + radius {
+                if translation.y <= height {
                     distance = Some(current);
                     break;
                 }
@@ -1479,74 +1531,6 @@ impl GameWorldInGameRunState {
 
         // 결과 반환
         result
-    }
-
-    /// 총알과 플레이어의 충돌 후처리를 수행합니다.
-    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, hitted: &mut Player) -> Damage {
-        let uniform_distribution = Uniform::new(0.0, 1.0).unwrap();
-        let shooter_attributes = shooter.character_attributes();
-        let hitted_attributes = hitted.character_attributes();
-        bullet.remaining_distance = 0.0;
-
-        // 1. 회피 계산
-        let shooter_accuracy = shooter_attributes.accuracy_stat as f32;
-        let hitted_evasion = hitted_attributes.evasion_stat as f32;
-        let hit_chance = shooter_accuracy / (shooter_accuracy + hitted_evasion);
-        let val = uniform_distribution.sample(&mut rand::rng());
-        if val >= hit_chance {
-            // Miss 처리
-            return Damage::Miss;
-        }
-
-        // 2. 치명타 판정
-        let shooter_crit = shooter_attributes.critical_rate as f32;
-        let crit_change = shooter_crit / (shooter_crit + hitted_evasion * 1.5);
-        let val = uniform_distribution.sample(&mut rand::rng());
-        let ciritical = val < crit_change;
-
-        // 3. 기본 피해량 계산
-        let shooter_attack = shooter_attributes.attack_power as f32;
-        let hitted_defense = hitted_attributes.defense_power as f32;
-        let base_damage = (shooter_attack - hitted_defense) * rand::random_range(0.9..=1.1);
-        let (damage, mut final_damage) = if ciritical {
-            let shooter_crit_multi = shooter_attributes.critical_damage as f32 / 100.0;
-            let final_damage = ((base_damage * shooter_crit_multi).round() as u16).clamp(1, 9999);
-            (Damage::Critial(final_damage), final_damage)
-        } else {
-            let final_damage = (base_damage.round() as u16).clamp(1, 9999);
-            (Damage::Common(final_damage), final_damage)
-        };
-
-        // Shooter의 데이터 갱신
-        shooter.damage_dealt = shooter.damage_dealt.saturating_add(final_damage as u32);
-        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
-            .min(shooter.skill_cost_data.num_maximum_cost());
-
-        // 4. 데미지 적용
-        hitted.damage_taken = hitted.damage_taken.saturating_add(final_damage as u32);
-        if hitted.health_data.shield < final_damage {
-            final_damage -= hitted.health_data.shield;
-            hitted.health_data.shield = 0;
-            if hitted.health_data.remaining <= final_damage {
-                // 플레이어 행동 불능 처리
-                hitted.health_data.remaining = 0;
-                hitted.action_state = ActionState::Retreat;
-                hitted.action_state_timer.0 = 0;
-                hitted.movement_state = MovementState::Idle;
-                hitted.movement_state_timer.0 = 0;
-                hitted.action_notify = ActionNotify::Retreat;
-
-                // 플레이 데이터 갱신
-                hitted.retreat_count += 1;
-                shooter.kill_count += 1;
-            } else {
-                hitted.health_data.remaining -= final_damage;
-            }
-        } else {
-            hitted.health_data.shield -= final_damage;
-        }
-
-        return damage;
     }
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
