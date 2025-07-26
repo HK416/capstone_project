@@ -21,8 +21,8 @@ pub enum ActionState {
     AimOff = 3,
     /// 공격 동작 상태
     Attack = 4,
-    /// 사망 상태
-    Death = 5,
+    /// 행동 불능 상태
+    Retreat = 5,
     /// 재장전 상태
     Reload = 6,
     /// 일반 스킬을 사용하는 상태
@@ -47,7 +47,7 @@ impl ActionState {
             2 => Some(ActionState::AimAt),
             3 => Some(ActionState::AimOff),
             4 => Some(ActionState::Attack),
-            5 => Some(ActionState::Death),
+            5 => Some(ActionState::Retreat),
             6 => Some(ActionState::Reload),
             7 => Some(ActionState::Skill),
             8 => Some(ActionState::Callsign),
@@ -63,46 +63,46 @@ impl ActionState {
             | (ActionState::Idle, ActionState::AimAt)
             | (ActionState::Idle, ActionState::AimOff)
             | (ActionState::Idle, ActionState::Attack)
-            | (ActionState::Idle, ActionState::Death)
+            | (ActionState::Idle, ActionState::Retreat)
             | (ActionState::Idle, ActionState::Reload)
             | (ActionState::Idle, ActionState::Skill)
             | (ActionState::Aiming, ActionState::Aiming)
             | (ActionState::Aiming, ActionState::AimAt)
             | (ActionState::Aiming, ActionState::AimOff)
             | (ActionState::Aiming, ActionState::Attack)
-            | (ActionState::Aiming, ActionState::Death)
+            | (ActionState::Aiming, ActionState::Retreat)
             | (ActionState::Aiming, ActionState::Skill)
             | (ActionState::AimAt, ActionState::Idle)
             | (ActionState::AimAt, ActionState::Aiming)
             | (ActionState::AimAt, ActionState::AimAt)
             | (ActionState::AimAt, ActionState::AimOff)
-            | (ActionState::AimAt, ActionState::Death)
+            | (ActionState::AimAt, ActionState::Retreat)
             | (ActionState::AimOff, ActionState::Idle)
             | (ActionState::AimOff, ActionState::Aiming)
             | (ActionState::AimOff, ActionState::AimAt)
             | (ActionState::AimOff, ActionState::AimOff)
-            | (ActionState::AimOff, ActionState::Death)
+            | (ActionState::AimOff, ActionState::Retreat)
             | (ActionState::Attack, ActionState::Idle)
             | (ActionState::Attack, ActionState::Aiming)
             | (ActionState::Attack, ActionState::AimAt)
             | (ActionState::Attack, ActionState::AimOff)
             | (ActionState::Attack, ActionState::Attack)
-            | (ActionState::Attack, ActionState::Death)
+            | (ActionState::Attack, ActionState::Retreat)
             | (ActionState::Attack, ActionState::Reload)
             | (ActionState::Attack, ActionState::Skill)
-            | (ActionState::Death, ActionState::Idle)
-            | (ActionState::Death, ActionState::Aiming)
-            | (ActionState::Death, ActionState::AimAt)
-            | (ActionState::Death, ActionState::AimOff)
-            | (ActionState::Death, ActionState::Attack)
-            | (ActionState::Death, ActionState::Death)
-            | (ActionState::Death, ActionState::Reload)
+            | (ActionState::Retreat, ActionState::Idle)
+            | (ActionState::Retreat, ActionState::Aiming)
+            | (ActionState::Retreat, ActionState::AimAt)
+            | (ActionState::Retreat, ActionState::AimOff)
+            | (ActionState::Retreat, ActionState::Attack)
+            | (ActionState::Retreat, ActionState::Retreat)
+            | (ActionState::Retreat, ActionState::Reload)
             | (ActionState::Reload, ActionState::Idle)
             | (ActionState::Reload, ActionState::Aiming)
             | (ActionState::Reload, ActionState::AimAt)
             | (ActionState::Reload, ActionState::AimOff)
             | (ActionState::Reload, ActionState::Attack)
-            | (ActionState::Reload, ActionState::Death)
+            | (ActionState::Reload, ActionState::Retreat)
             | (ActionState::Reload, ActionState::Reload)
             | (ActionState::Reload, ActionState::Skill)
             | (ActionState::Skill, ActionState::Idle)
@@ -110,7 +110,7 @@ impl ActionState {
             | (ActionState::Skill, ActionState::AimAt)
             | (ActionState::Skill, ActionState::AimOff)
             | (ActionState::Skill, ActionState::Attack)
-            | (ActionState::Skill, ActionState::Death)
+            | (ActionState::Skill, ActionState::Retreat)
             | (ActionState::Skill, ActionState::Reload)
             | (ActionState::Skill, ActionState::Skill) => true,
             _ => false,
@@ -247,7 +247,8 @@ impl PlayerStateData {
     /// 행동 상태를 설정합니다.
     pub const fn set_action_state(&mut self, state: ActionState) {
         self.0 &= !(Self::ACTION_BIT_MASK << Self::ACTION_SHIFT); // 기존 값 지우기
-        self.0 |= (state as u8) << Self::ACTION_SHIFT; // 값 덮어쓰기
+        self.0 |= ((state as u8) & Self::ACTION_BIT_MASK) << Self::ACTION_SHIFT;
+        // 값 덮어쓰기
     }
 
     /// 행동 상태를 설정합니다.
@@ -265,7 +266,8 @@ impl PlayerStateData {
     /// 움직임 상태를 설정합니다.
     pub const fn set_movement_state(&mut self, state: MovementState) {
         self.0 &= !(Self::MOVEMENT_BIT_MASK << Self::MOVEMENT_SHIFT); // 기존 값 지우기
-        self.0 |= (state as u8) << Self::MOVEMENT_SHIFT; // 값 덮어쓰기
+        self.0 |= ((state as u8) & Self::MOVEMENT_BIT_MASK) << Self::MOVEMENT_SHIFT;
+        // 값 덮어쓰기
     }
 
     /// 움직임 상태를 설정합니다.
@@ -338,9 +340,9 @@ mod tests {
 
     #[test]
     fn test_creation_action_state_dead() {
-        let val = ActionState::Death as u8;
+        let val = ActionState::Retreat as u8;
         let state = ActionState::new(val).unwrap();
-        assert_eq!(ActionState::Death, state);
+        assert_eq!(ActionState::Retreat, state);
     }
 
     #[test]
@@ -449,7 +451,7 @@ mod tests {
     #[test]
     fn test_player_state_data() {
         let origin = PlayerStateData::new()
-            .with_action_state(ActionState::Death)
+            .with_action_state(ActionState::Retreat)
             .with_movement_state(MovementState::Jumping);
         let bytes = origin.to_big_endian_bytes();
         let other = PlayerStateData::from_big_endian_bytes(&bytes);

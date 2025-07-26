@@ -2,10 +2,10 @@
 //!
 
 use mod_network::components::{
-    ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind, GameTier,
-    HealthData, HeldInput, InputStateTimer, LatLon, MovementState, MovementStateTimer,
+    ActionNotify, ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind,
+    GameTier, HealthData, HeldInput, InputStateTimer, LatLon, MovementState, MovementStateTimer,
     MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData, Team, UserName,
-    Velocity,
+    Velocity, ViewState, ViewStateTimer,
 };
 
 use crate::data::get_character_attributes;
@@ -241,12 +241,15 @@ pub struct Player {
     pub bullet_data: BulletData, // 6B
 
     // 2B padding 삽입 필요 (health + bullet = 12B → 다음은 16B 정렬 맞춰야 함)
-    pub name: UserName,            // 34B
-    pub profile_icon: ProfileIcon, // 1B
-    character_kind: CharacterKind, // 1B
-    pub action_state: ActionState, // 1B
+    pub name: UserName,                // 34B
+    pub profile_icon: ProfileIcon,     // 1B
+    character_kind: CharacterKind,     // 1B
+    pub action_state: ActionState,     // 1B
+    pub action_notify: ActionNotify,   // 1B
     pub movement_state: MovementState, // 1B
-                                   // 총 38B → 패딩 6B 추가해서 44B → 다음 16B align 맞춤
+    pub view_state: ViewState,         // 1B
+    pub view_state_timer: ViewStateTimer, // 2B
+                                       // 총 42B → 패딩 2B 추가해서 44B → 다음 16B align 맞춤
 }
 
 #[allow(dead_code)]
@@ -288,7 +291,10 @@ impl Player {
             profile_icon,
             character_kind: CharacterKind::ArisOriginal,
             action_state: ActionState::Idle,
+            action_notify: ActionNotify::None,
             movement_state: MovementState::Idle,
+            view_state: ViewState::Idle,
+            view_state_timer: ViewStateTimer::new(0),
         }
     }
 

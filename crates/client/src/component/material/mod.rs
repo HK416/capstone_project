@@ -24,8 +24,9 @@ pub enum MaterialKind {
     EnergyBullet,
     Character,
     CharacterEyeMouth,
+    CharacterHaloOutline,
     CharacterHalo,
-    CaptureZone,
+    StageBarrier,
     Stage,
     Tree,
 }
@@ -38,8 +39,9 @@ impl MaterialKind {
             MaterialKind::EnergyBullet => false,
             MaterialKind::Character => true,
             MaterialKind::CharacterEyeMouth => true,
+            MaterialKind::CharacterHaloOutline => true,
             MaterialKind::CharacterHalo => true,
-            MaterialKind::CaptureZone => false,
+            MaterialKind::StageBarrier => false,
             MaterialKind::Stage => true,
             MaterialKind::Tree => true,
         }
@@ -52,8 +54,9 @@ impl MaterialKind {
             MaterialKind::EnergyBullet => false,
             MaterialKind::Character => true,
             MaterialKind::CharacterEyeMouth => true,
+            MaterialKind::CharacterHaloOutline => false,
             MaterialKind::CharacterHalo => false,
-            MaterialKind::CaptureZone => false,
+            MaterialKind::StageBarrier => false,
             MaterialKind::Stage => true,
             MaterialKind::Tree => true,
         }
@@ -68,7 +71,7 @@ pub enum MaterialData {
     Character(CharacterMaterialData),
     CharacterEyeMouth(EyeMouthMaterialData),
     CharacterHalo(HaloMaterialData),
-    CaptureZone(CaptureZoneMaterialData),
+    StageBarrier(StageBarrierMaterialData),
     Stage(StageMaterialData),
     Tree(TreeMaterialData),
 }
@@ -219,9 +222,9 @@ pub enum MaterialUniform {
         material_uniform: EyeMouthMaterialUniform,
     },
     CharacterHalo,
-    CaptureZone {
-        data: Mutex<CaptureZoneMaterialDataLayout>,
-        material_uniform: CaptureZoneMaterialUniform,
+    StageBarrier {
+        data: Mutex<StageBarrierMaterialDataLayout>,
+        material_uniform: StageBarrierMaterialUniform,
     },
     Stage {
         data: Mutex<StageMaterialDataLayout>,

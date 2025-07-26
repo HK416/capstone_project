@@ -88,6 +88,10 @@ rayon = "1.10"
 # License: 
 redis = { version = "0.32", features = ["tokio-comp", "connection-manager"] }
 
+# Audio playback library
+# License: MIT OR Apache-2.0
+rodio = { version = "0.21", default-features = false, features = ["vorbis", "playback"] }
+
 # Application-level tracing for Rust.
 # License: MIT
 tracing = "0.1"

@@ -5,10 +5,12 @@ use std::{
     sync::Arc,
 };
 
+use mod_parallelism::collections::Queue;
 use mod_render::{
     config_swapchain, init_wgpu, ScreenDescriptor, UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT,
 };
 use rayon::{ThreadPool, ThreadPoolBuilder};
+use rodio::{mixer::Mixer, OutputStream, OutputStreamBuilder, Sink};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalPosition,
@@ -85,6 +87,12 @@ pub struct Application {
     /// 업데이트 경과 시간을 측정하는 타이머입니다.
     timer: GameTimer,
 
+    /// 소리 출력 디바이스의 핸들입니다.
+    stream_handle: OutputStream,
+
+    /// 재생 중인 [`Sink`]를 저장합니다.
+    sink_list: Queue<Sink>,
+
     /// `egui`의 컨텍스트입니다.
     egui_ctx: egui::Context,
 
@@ -142,7 +150,11 @@ impl Application {
         // 네트워크 매니저를 생성합니다.
         let network = NetManager::new(event_loop_proxy.clone());
 
-        // 에셋 관리자를 생성합니다.
+        // 오디오 장치를 생성합니다.
+        let stream_handle = OutputStreamBuilder::open_default_stream()
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+
+        // 최상위 에셋 디렉토리를 가져옵니다.
         let mut root_dir = unsafe { builder.current_dir.clone().unwrap_unchecked() }; // Safe: 빌더를 생성할 때 존재 유무를 확인함.
         root_dir.push("assets");
 
@@ -163,6 +175,8 @@ impl Application {
             scene_flow: VecDeque::from_iter([GameSceneFlow::Reset(builder.start_scene)]),
             scene_stack: Some(VecDeque::with_capacity(8)),
             timer: GameTimer::start(),
+            stream_handle,
+            sink_list: Queue::new(),
             egui_ctx: egui::Context::default(),
             egui_renderer: Some(UiRenderer::new(&device, SWAPCHAIN_FORMAT, None, 1, false)),
             instance,
@@ -303,27 +317,15 @@ impl Application {
         self.queue.submit(commands);
 
         // 이전 렌더링 작업이 끝날때 까지 대기합니다.
-        loop {
-            std::hint::spin_loop();
-            let result = self.device.poll(wgpu::PollType::Poll);
-            match result {
-                Ok(status) => {
-                    if status.is_queue_empty() {
-                        break;
-                    } else {
-                        continue;
-                    }
-                }
-                Err(e) => match e {
-                    wgpu::PollError::Timeout => {
-                        log::error!("{e}");
-                        let title = "Processing Timeout".into();
-                        let message = "Graphics processing timeout exceeded!".into();
-                        let alert = Alert { title, message };
-                        show_error_msg(alert, Some(window));
-                        return (app_window, scene_stack, egui_renderer, false);
-                    }
-                },
+        match self.device.poll(wgpu::PollType::Wait) {
+            Ok(_) => {} // 완료됨
+            Err(wgpu::PollError::Timeout) => {
+                log::error!("Graphics processing timeout exceeded!");
+                let title = "Processing Timeout".into();
+                let message = "Graphics processing timeout exceeded!".into();
+                let alert = Alert { title, message };
+                show_error_msg(alert, Some(window));
+                return (app_window, scene_stack, egui_renderer, false);
             }
         }
 
@@ -1142,6 +1144,14 @@ impl AppHandle for Application {
 
     fn timer(&self) -> &GameTimer {
         &self.timer
+    }
+
+    fn audio_mixer(&self) -> &Mixer {
+        self.stream_handle.mixer()
+    }
+
+    fn sink_list(&self) -> &Queue<Sink> {
+        &self.sink_list
     }
 
     fn render_instance(&self) -> &Arc<wgpu::Instance> {

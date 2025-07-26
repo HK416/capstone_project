@@ -91,6 +91,8 @@ pub struct UserConfig {
     pub flip_horizontal: bool,
     /// 상하 움직임 반전 여부입니다.
     pub flip_vertical: bool,
+    /// 마우스 움직임 정도
+    pub control_sensitivity: u8,
 
     /// 게임 입력과 키보드 매핑 정보를 저장합니다.
     input_keyboard_map: HashMap<InputKind, (KeyCode, KeyLocation)>,
@@ -102,6 +104,13 @@ pub struct UserConfig {
     /// 마우스와 게임 입력 매핑 정보를 저장합니다.
     #[serde(skip)]
     mouse_input_map: HashMap<MouseButton, InputKind>,
+
+    /// 배경음 음량
+    pub background_volume: u8,
+    /// 이펙트 음량
+    pub effect_volume: u8,
+    /// 목소리 음량
+    pub voice_volume: u8,
 }
 
 impl UserConfig {
@@ -160,10 +169,16 @@ impl UserConfig {
         global.locale = config.locale;
         global.window_size = config.window_size;
         global.is_fullscreen = config.is_fullscreen;
+        global.control_sensitivity = config.control_sensitivity;
+        global.flip_horizontal = config.flip_horizontal;
+        global.flip_vertical = config.flip_vertical;
         global.input_keyboard_map = config.input_keyboard_map;
         global.input_mouse_map = config.input_mouse_map;
         global.keyboard_input_map = config.keyboard_input_map;
         global.mouse_input_map = config.mouse_input_map;
+        global.background_volume = config.background_volume;
+        global.effect_volume = config.effect_volume;
+        global.voice_volume = config.voice_volume;
 
         Ok(global)
     }
@@ -265,6 +280,7 @@ impl Default for UserConfig {
             is_fullscreen: true,
             flip_horizontal: false,
             flip_vertical: false,
+            control_sensitivity: 128,
             input_keyboard_map: HashMap::from_iter([
                 (InputKind::Left, (KeyCode::KeyA, KeyLocation::Standard)),
                 (InputKind::Right, (KeyCode::KeyD, KeyLocation::Standard)),
@@ -295,6 +311,9 @@ impl Default for UserConfig {
                 (MouseButton::Right, InputKind::Aiming),
                 (MouseButton::Left, InputKind::Attack),
             ]),
+            background_volume: 102,
+            effect_volume: 255,
+            voice_volume: 204,
         }
     }
 }

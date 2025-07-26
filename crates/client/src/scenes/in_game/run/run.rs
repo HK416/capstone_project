@@ -1,9 +1,10 @@
 use std::{
+    collections::{BTreeMap, VecDeque},
     f32::consts::{PI, TAU},
     num::NonZeroU32,
     ptr::NonNull,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use ahash::{HashMap, HashSet, RandomState};
@@ -16,11 +17,12 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags, CharacterKind,
-        HealthData, HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
+        update_view_state, update_view_state_timer, ActionNotify, ActionState, ActionStateTimer,
+        BulletData, CapturePoint, CharacterFlags, CharacterKind, Damage, DamageLogData, HealthData,
+        HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
         MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
-        Team, UserId, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS,
-        MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+        Team, UserId, UserName, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS,
+        MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
     },
     protocol::{
         InGameControlLosePacket, InGameFinishPacket, InGameInputPacket, InGamePullPacket,
@@ -29,7 +31,8 @@ use mod_network::{
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
-use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
+use rodio::{mixer::Mixer, Sink};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -38,25 +41,36 @@ use winit::{
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
+        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, IMG_FONT_START_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, WEAPON_ICON_URI,
+        CHARACTER_IMG_SMALL_URI, CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_RETIRE,
+        CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL, FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01,
+        HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START,
+        WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
-        draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_stage, draw_tree, spawn_bullet, update_bullet_hierarchy, update_bullet_resource,
-        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
-        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
-        update_stage_resource, update_view_state, update_view_state_timer, AccumRenderTarget,
-        AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Bullet,
-        Camera, CameraResource, CameraUniform, Child, DirectionLight, GaussianBlurPipeline,
+        draw_character, draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline,
+        draw_energy_bullet, draw_fx_muzzle_effect, draw_fx_shield_effect, draw_stage,
+        draw_stage_barrier, draw_tree, spawn_bullet, spawn_fx_muzzle_effect,
+        spawn_midori_fx_muzzle_effect, spawn_momoi_fx_muzzle_effect, update_bullet_hierarchy,
+        update_bullet_resource, update_camera_and_skybox_resource, update_camera_hierarchy,
+        update_camera_param, update_character_hierarchy, update_character_resource,
+        update_fx_muzzle_00_particles, update_fx_muzzle_01_particles, update_fx_particle_lifetime,
+        update_fx_shield_particle, update_stage_hierarchy, update_stage_resource,
+        AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Bullet, Camera, CameraResource, CameraUniform, Child,
+        DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
+        DamageParticle, DirectionLight, FxMuzzleInstance, FxMuzzleResource, FxShieldDataLayout,
+        FxShieldInstance, FxShieldResource, FxShieldUniform, GaussianBlurPipeline,
         GlobalLightDataLayout, LightSetResource, LightTransformDataLayout, MaterialKind,
-        MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask, RevealRenderTarget,
-        ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans,
-        TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES,
+        MaterialResource, Mesh, MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype,
+        Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer,
+        SkinningAnimation, Skybox, ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y,
+        CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES, MODEL_BONE_HEAD,
     },
     config::{Locale, UserConfig, NUM_LOCALE},
     player_execute,
@@ -78,6 +92,12 @@ pub struct InGameRunScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 시야 조작 민감도입니다.
     control_sensitivity: f32,
     /// 시야 조작의 상하 반전 여부입니다.
@@ -120,6 +140,11 @@ pub struct InGameRunScene {
     /// 플레이어 시야 상태 타이머입니다.
     view_state_timer: ViewStateTimer,
 
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
+
     /// 게임 월드
     world: Option<World>,
 
@@ -138,6 +163,8 @@ pub struct InGameRunScene {
     bullets: HashMap<ObjectId, Entity>,
     /// 플레이어 엔터티
     players: HashMap<UserId, (Entity, PlayerArchetype)>,
+    /// 데미지 파티클 목록입니다.
+    damage_particles: VecDeque<Entity>,
     /// 스테이지 엔터티
     stage: Option<StageBoundingVolumnHierarchy>,
 
@@ -156,6 +183,19 @@ pub struct InGameRunScene {
     gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
+
+    /// 헤일로 외곽선 재질 쉐이더 리소스
+    outlines: HashMap<Team, MaterialResource>,
+
+    /// 방어막 이펙트 인스턴스 버퍼입니다.
+    shield_instance: Option<FxShieldInstance>,
+    /// 방어막 이펙트 유니폼 버퍼입니다.
+    shield_uniform: Option<FxShieldUniform>,
+
+    /// 총구 화염 이펙트 인스턴스 버퍼입니다.
+    muzzle_instances: HashMap<String, FxMuzzleInstance>,
+    /// 파티클 쉐이더 리소스입니다.
+    particle_resources: HashMap<String, ParticleResource>,
 
     /// 스테이지 스카이박스
     skybox: Option<Skybox>,
@@ -200,6 +240,11 @@ pub struct InGameRunScene {
     /// 레드 팀 점수 사각형 영역입니다.
     red_score_rect: egui::Rect,
 
+    /// 캐릭터 아이콘 텍스터입니다.
+    character_icon_textures: HashMap<CharacterKind, egui::load::SizedTexture>,
+    /// 팀 상황 사각형 영역입니다.
+    team_status_rect: egui::Rect,
+
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
     /// 모델 풀 객체입니다.
@@ -214,6 +259,8 @@ pub struct InGameRunScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameRunScene {
@@ -222,12 +269,20 @@ impl InGameRunScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         first_mouse_pressed: bool,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
+        player_character: CharacterKind,
+        player_team: Team,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -237,6 +292,7 @@ impl InGameRunScene {
         alpha_blend_pipeline: AlphaBlendPipeline,
         gaussian_blur_pipeline: GaussianBlurPipeline,
         bloom_pipeline: BloomPipeline,
+        outlines: HashMap<Team, MaterialResource>,
         skybox: Skybox,
         direction_light: DirectionLight,
         light_resource: LightSetResource,
@@ -247,14 +303,18 @@ impl InGameRunScene {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
-            control_sensitivity: 0.5,
-            flip_horizontal: false,
-            flip_vertical: false,
+            background_volume,
+            effect_volume,
+            voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             max_game_play_time_ms,
             play_elapsed_time_ms: 0,
             snapshot_elapsed_time_ms: 0,
@@ -271,6 +331,8 @@ impl InGameRunScene {
             held_input: HeldInput::new(),
             view_state: ViewState::Idle,
             view_state_timer: ViewStateTimer(0),
+            player_character,
+            player_team,
             world: Some(world),
             camera: Entity::DANGLING,
             camera_fov_y: 45f32.to_radians(),
@@ -282,6 +344,7 @@ impl InGameRunScene {
             ),
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             players,
+            damage_particles: VecDeque::with_capacity(64),
             stage: Some(stage),
             frame_staging_buffers: Vec::with_capacity(128),
             accum_render_target: Some(accum_render_target),
@@ -290,6 +353,11 @@ impl InGameRunScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            outlines,
+            shield_instance: None,
+            shield_uniform: None,
+            muzzle_instances: HashMap::default(),
+            particle_resources: HashMap::default(),
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
@@ -316,6 +384,11 @@ impl InGameRunScene {
             timer_rect: egui::Rect::ZERO,
             blue_score_rect: egui::Rect::ZERO,
             red_score_rect: egui::Rect::ZERO,
+            character_icon_textures: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
+            team_status_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -323,6 +396,7 @@ impl InGameRunScene {
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         }
     }
 
@@ -337,14 +411,7 @@ impl InGameRunScene {
     /// 카메라 엔터티를 생성합니다.
     fn create_camera(&mut self, device: &wgpu::Device) {
         // 플레이어 캐릭터의 종류를 가져옵니다.
-        let (entity, _archetype) = self.player_entity();
-        let world = self.world.as_mut().expect("the world must be exists!");
-        let character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .cloned()
-            .expect("invalid entity or invalid entity component!");
-
-        let i = character_kind as usize;
+        let i = self.player_character as usize;
         self.camera_fov_y = CAMERA_DEF_FOV_Y[i];
         self.camera_rel_position = CAMERA_DEF_REL_POS[i];
 
@@ -362,6 +429,7 @@ impl InGameRunScene {
         let camera_resource = CameraResource::new(Some(&label), device, &camera_uniform);
 
         // 엔터티를 생성합니다.
+        let world = self.world.as_mut().expect("the world must be exists!");
         self.camera = world.spawn((
             (Camera, local_transform),
             (Camera, world_transform),
@@ -380,11 +448,6 @@ impl InGameRunScene {
             None => return,
         };
 
-        // 플레이어 엔터티의 캐릭터 종류를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         let mut latitude = 0.0;
         let mut longitude = 0.0;
         type Query<'a> = (&'a ActionState, &'a ActionStateTimer, &'a LatLon);
@@ -400,7 +463,7 @@ impl InGameRunScene {
             update_camera_param(
                 &mut self.camera_rel_position,
                 &mut self.camera_fov_y,
-                character_kind,
+                self.player_character,
                 action_state,
                 self.view_state,
                 action_state_timer,
@@ -520,9 +583,447 @@ impl InGameRunScene {
         self.bloom_pipeline = Some(bloom_pipeline);
     }
 
+    /// 방어막 이펙트 쉐이더 리소스를 생성합니다.
+    fn create_fx_shield_resource(&mut self, device: &wgpu::Device) {
+        let capacity = unsafe { NonZeroU32::new_unchecked(16 as u32) };
+        self.shield_instance = Some(FxShieldInstance::new(device, capacity));
+
+        let uniform_buffer = FxShieldUniform::new(device);
+        self.shield_uniform = Some(uniform_buffer.clone());
+
+        self.particle_resources.insert(
+            FX_MESH_SHIELD_00.into(),
+            FxShieldResource::new(device, &uniform_buffer),
+        );
+    }
+
+    /// 총구 화염 이펙트 쉐이더 리소스를 생성합니다.
+    fn create_fx_muzzle_resource(&mut self, device: &wgpu::Device) {
+        let capacity = unsafe { NonZeroU32::new_unchecked(32 as u32) };
+        self.muzzle_instances.insert(
+            FX_TEX_MUZZLE_00.to_string(),
+            FxMuzzleInstance::new(device, capacity),
+        );
+
+        let capacity = unsafe { NonZeroU32::new_unchecked(32 as u32) };
+        self.muzzle_instances.insert(
+            FX_TEX_MUZZLE_01.to_string(),
+            FxMuzzleInstance::new(device, capacity),
+        );
+
+        // 총구 화염 이펙트 텍스처 뷰와 텍스처 샘플러를 가져옵니다.
+        let (texture_view, sampler) = self
+            .texture_data_pool
+            .get(FX_TEX_MUZZLE_00)
+            .expect("FX_TEX_Muzzle_00 texture must be preloaded!");
+        self.particle_resources.insert(
+            FX_TEX_MUZZLE_00.to_string(),
+            FxMuzzleResource::new(device, &texture_view, &sampler),
+        );
+
+        // 총구 화염 이펙트 텍스처 뷰와 텍스처 샘플러를 가져옵니다.
+        let (texture_view, sampler) = self
+            .texture_data_pool
+            .get(FX_TEX_MUZZLE_01)
+            .expect("FX_TEX_Muzzle_01 texture must be preloaded!");
+        self.particle_resources.insert(
+            FX_TEX_MUZZLE_01.to_string(),
+            FxMuzzleResource::new(device, &texture_view, &sampler),
+        );
+    }
+
+    /// 데미지 파티클을 생성합니다.
+    fn create_damage_particles(
+        &mut self,
+        device: &wgpu::Device,
+        logs: Vec<DamageLogData>,
+        app: &dyn AppHandle,
+    ) {
+        // 게임 월드를 가져옵니다.
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        for log in logs {
+            // 플레이어 엔터티를 가져옵니다.
+            let uid = log.target_id;
+            let (entity, archetype) = match self.players.get(&uid).cloned() {
+                Some(pair) => pair,
+                None => continue,
+            };
+
+            // 플레이어 엔터티의 머리 노드 엔터티를 가져옵니다.
+            let skinning_animation = world
+                .query_one_mut::<&SkinningAnimation>(entity)
+                .expect("invalid entity or invalid entity component!");
+            let head = skinning_animation
+                .entity_list
+                .get(MODEL_BONE_HEAD)
+                .cloned()
+                .expect("the bone entity must be exists!");
+
+            match log.as_damage() {
+                Damage::Common(damage) => {
+                    // 데미지 파티클 메쉬를 가져옵니다.
+                    let (mesh, _) = self
+                        .mesh_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number particle mesh must exist!");
+
+                    // 데미지 폰트 텍스처를 가져옵니다.
+                    let texture = self
+                        .texture_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number texture must exist!");
+                    let view = self
+                        .texture_view_pool
+                        .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                    let sampler = self
+                        .sampler_pool
+                        .get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+                    let str = damage.to_string();
+                    let len = str.trim().len() as f32;
+                    for (i, ch) in str.trim().chars().enumerate() {
+                        let number = ch.to_digit(10).expect("invalid data");
+
+                        // 파티클 위치를 계산합니다.
+                        const ORIGIN: f32 = -0.1;
+                        const WIDTH: f32 = 0.05;
+                        const HALF_WIDTH: f32 = WIDTH * 0.5;
+                        let x = ORIGIN - HALF_WIDTH * len + WIDTH * i as f32 + HALF_WIDTH;
+
+                        // 엔터티 요소를 생성합니다.
+                        let parent = Parent(head);
+                        let particle = DamageParticle {
+                            elapsed_time_sec: 0.0,
+                            duration_sec: 2.0,
+                            begin_offset: glam::vec3a(x, 0.0, -0.6),
+                            end_offset: glam::vec3a(x, 0.5, -0.4),
+                            number,
+                        };
+                        let label = format!("DamageLog({})", uid);
+                        let damage_uniform = DamageFontUniform::uninit(Some(&label), device);
+                        let damage_resource = DamageFontResource::new(
+                            Some(&label),
+                            device,
+                            &view,
+                            &sampler,
+                            &damage_uniform,
+                        );
+
+                        // 새로운 엔터티를 생성합니다.
+                        let entity = world.spawn((
+                            mesh.clone(),
+                            (parent, archetype),
+                            particle,
+                            damage_uniform,
+                            damage_resource,
+                        ));
+                        self.damage_particles.push_back(entity);
+                    }
+                }
+                Damage::Critial(damage) => {
+                    // 데미지 파티클 메쉬를 가져옵니다.
+                    let (mesh, _) = self
+                        .mesh_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the damage particle mesh must exist!");
+
+                    // 데미지 폰트 텍스처를 가져옵니다.
+                    let texture = self
+                        .texture_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the damage font texture must exist!");
+                    let view = self
+                        .texture_view_pool
+                        .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                    let sampler = self
+                        .sampler_pool
+                        .get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+                    let str = damage.to_string();
+                    let len = str.trim().len() as f32;
+                    for (i, ch) in str.trim().chars().enumerate() {
+                        let number = ch.to_digit(10).expect("invalid data");
+
+                        // 파티클 위치를 계산합니다.
+                        const ORIGIN: f32 = -0.1;
+                        const WIDTH: f32 = 0.05;
+                        const HALF_WIDTH: f32 = WIDTH * 0.5;
+                        let x = ORIGIN - HALF_WIDTH * len + WIDTH * i as f32 + HALF_WIDTH;
+
+                        // 엔터티 요소를 생성합니다.
+                        let parent = Parent(head);
+                        let particle = DamageParticle {
+                            elapsed_time_sec: 0.0,
+                            duration_sec: 2.0,
+                            begin_offset: glam::vec3a(x, 0.0, -0.6),
+                            end_offset: glam::vec3a(x, 0.5, -0.4),
+                            number,
+                        };
+                        let label = format!("DamageLog({})", uid);
+                        let damage_uniform = DamageFontUniform::uninit(Some(&label), device);
+                        let damage_resource = DamageFontResource::new(
+                            Some(&label),
+                            device,
+                            &view,
+                            &sampler,
+                            &damage_uniform,
+                        );
+
+                        // 새로운 엔터티를 생성합니다.
+                        let entity = world.spawn((
+                            mesh.clone(),
+                            (parent, archetype),
+                            particle,
+                            damage_uniform,
+                            damage_resource,
+                        ));
+                        self.damage_particles.push_back(entity);
+                    }
+
+                    // 캐릭터 보이스를 재생합니다.
+                    if uid == self.uid {
+                        let val: f32 = rand::random();
+                        if val > 0.9 {
+                            let i = self.player_character as usize;
+                            let j = rand::random_range(0..3);
+                            let decoded =
+                                self.sound_data_pool
+                                    .get(CV_BATTLE_DAMAGE[i][j])
+                                    .expect(&format!(
+                                        "the {} sound must be preloaded!",
+                                        CV_BATTLE_DAMAGE[i][j]
+                                    ));
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(app.audio_mixer());
+                            sink.set_volume(self.voice_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
+                    }
+                }
+                Damage::Miss => {
+                    // 데미지 파티클 메쉬를 가져옵니다.
+                    let (mesh, _) = self
+                        .mesh_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number particle mesh must exist!");
+
+                    // 데미지 폰트 텍스처를 가져옵니다.
+                    let texture = self
+                        .texture_pool
+                        .get(IMG_FONT_NUMBER_URI)
+                        .expect("the ImgFont_Number texture must exist!");
+                    let view = self
+                        .texture_view_pool
+                        .get_or_init(&texture, &wgpu::TextureViewDescriptor::default());
+                    let sampler = self
+                        .sampler_pool
+                        .get_or_init(device, &wgpu::SamplerDescriptor::default());
+
+                    let str = 0.to_string();
+                    let len = str.trim().len() as f32;
+                    for (i, ch) in str.trim().chars().enumerate() {
+                        let number = ch.to_digit(10).expect("invalid data");
+
+                        // 파티클 위치를 계산합니다.
+                        const ORIGIN: f32 = -0.1;
+                        const WIDTH: f32 = 0.05;
+                        const HALF_WIDTH: f32 = WIDTH * 0.5;
+                        let x = ORIGIN - HALF_WIDTH * len + WIDTH * i as f32 + HALF_WIDTH;
+
+                        // 엔터티 요소를 생성합니다.
+                        let parent = Parent(head);
+                        let particle = DamageParticle {
+                            elapsed_time_sec: 0.0,
+                            duration_sec: 2.0,
+                            begin_offset: glam::vec3a(x, 0.0, -0.6),
+                            end_offset: glam::vec3a(x, 0.5, -0.4),
+                            number,
+                        };
+                        let label = format!("DamageLog({})", uid);
+                        let damage_uniform = DamageFontUniform::uninit(Some(&label), device);
+                        let damage_resource = DamageFontResource::new(
+                            Some(&label),
+                            device,
+                            &view,
+                            &sampler,
+                            &damage_uniform,
+                        );
+
+                        // 새로운 엔터티를 생성합니다.
+                        let entity = world.spawn((
+                            mesh.clone(),
+                            (parent, archetype),
+                            particle,
+                            damage_uniform,
+                            damage_resource,
+                        ));
+                        self.damage_particles.push_back(entity);
+                    }
+
+                    // 캐릭터 보이스를 재생합니다.
+                    if uid == self.uid {
+                        let val: f32 = rand::random();
+                        if val > 0.9 {
+                            let i = self.player_character as usize;
+                            let decoded =
+                                self.sound_data_pool
+                                    .get(CV_BATTLE_DEFENSE[i])
+                                    .expect(&format!(
+                                        "the {} sound must be preloaded!",
+                                        CV_BATTLE_DEFENSE[i]
+                                    ));
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(app.audio_mixer());
+                            sink.set_volume(self.voice_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 데미지 파티클을 갱신합니다.
+    fn update_damage_particles(&mut self, elapsed_time_sec: f32) {
+        let world = match self.world.as_mut() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 데미지 파티클을 갱신합니다.
+        let mut damage_particles = VecDeque::with_capacity(self.damage_particles.len());
+        while let Some(entity) = self.damage_particles.pop_front() {
+            // 파티클의 요소를 가져옵니다.
+            let particle = world
+                .query_one_mut::<&mut DamageParticle>(entity)
+                .expect("invalid entity or invalid entity component");
+
+            // 파티클의 경과 시간을 갱신합니다.
+            particle.elapsed_time_sec += elapsed_time_sec;
+
+            // 파티클의 지속시간을 초과할 경우 엔터티를 제거합니다.
+            if particle.elapsed_time_sec >= particle.duration_sec {
+                let _ = world.despawn(entity);
+                continue;
+            }
+
+            damage_particles.push_back(entity);
+        }
+
+        self.damage_particles = damage_particles;
+    }
+
+    /// 데미지 파티클 쉐이더 리소스를 갱신합니다.
+    fn update_damage_particle_resources(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        staging_buffers: &mut Vec<wgpu::Buffer>,
+    ) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 카메라의 위치를 가져옵니다.
+        let mut query = world
+            .query_one::<&(Camera, WorldTransform)>(self.camera)
+            .expect("invalid entity");
+        let (_tag, transform) = query.get().expect("invalid entity component");
+        let camera_position = transform.get_translation();
+
+        type Query<'a> = (
+            &'a (Parent, PlayerArchetype),
+            &'a DamageParticle,
+            &'a DamageFontUniform,
+        );
+        let view = world.view::<Query>();
+        for entity in self.damage_particles.iter().cloned() {
+            // 파티클 요소를 가져옵니다.
+            let (&(parent, archetype), particle, uniform) = view
+                .get(entity)
+                .expect("invalid entity or invalid entity component!");
+
+            // 부모의 위치를 가져옵니다.
+            let entity = *parent;
+            player_execute!(archetype, world, entity, &WorldTransform, |transform| {
+                let head_position = transform.get_translation();
+
+                // 현재 파티클의 월드 변환 행렬을 계산합니다.
+                let t = (particle.elapsed_time_sec / particle.duration_sec).min(1.0);
+                let offset = particle.begin_offset * (1.0 - t) + particle.end_offset * t;
+                let look = (head_position - camera_position).normalize_or(glam::Vec3A::Z);
+                let right = glam::Vec3A::Y.cross(look);
+                let up = look.cross(right);
+                let position = offset.x * right + offset.y * up + offset.z * look + head_position;
+
+                // 유니폼 버퍼를 갱신합니다.
+                uniform.update(
+                    device,
+                    encoder,
+                    staging_buffers,
+                    DamageFontDataLayout {
+                        trans: glam::mat4(
+                            glam::vec4(right.x, right.y, right.z, 0.0),
+                            glam::vec4(up.x, up.y, up.z, 0.0),
+                            glam::vec4(look.x, look.y, look.z, 0.0),
+                            glam::vec4(position.x, position.y, position.z, 1.0),
+                        )
+                        .to_cols_array(),
+                        number: particle.number,
+                        ..Default::default()
+                    },
+                );
+            });
+        }
+    }
+
+    /// 데미지 파티클을 그립니다.
+    fn draw_damage_particle<'a>(
+        &'a self,
+        device: &wgpu::Device,
+        render_target_format: wgpu::TextureFormat,
+        depth_stencil_format: wgpu::TextureFormat,
+        camera_resource: &'a CameraResource,
+        rpass: &mut wgpu::RenderPass<'a>,
+    ) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        rpass.set_pipeline(DamageFontRenderPipeline::get_or_init(
+            device,
+            render_target_format,
+            depth_stencil_format,
+        ));
+        rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+
+        type Query<'a> = (&'a Arc<Mesh>, &'a DamageFontResource);
+        let view = world.view::<Query>();
+        for entity in self.damage_particles.iter().cloned() {
+            let (mesh, resource) = view
+                .get(entity)
+                .expect("invalid entity or invalid entity component!");
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.set_vertex_buffer(0, mesh.vertex(..));
+            rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+            rpass.draw(0..mesh.num_vertices(), 0..1);
+        }
+    }
+
     /// 서버로부터 전달받은 데이터로 플레이어를 갱신합니다.
     fn pull_server_data(
         &mut self,
+        mixer: &Mixer,
         time_stamp: Instant,
         packet: InGamePullPacket,
         device: &wgpu::Device,
@@ -568,14 +1069,136 @@ impl InGameRunScene {
             let (&character_kind, character_flags) = world
                 .query_one_mut::<(&CharacterKind, &CharacterFlags)>(entity)
                 .expect("invalid entity or invalid entity component!");
+            let i = character_kind as usize;
+            let attribute = CHARACTER_ATTRIBUTES[i];
 
             // 서버와 접속 중이지 않은 경우 건너뜁니다.
             if !character_flags.is_connected() {
                 continue;
             }
 
-            let i = character_kind as usize;
-            let attribute = CHARACTER_ATTRIBUTES[i];
+            // 행동 상태 알림을 처리합니다.
+            match data.action_notify {
+                ActionNotify::None => {}
+                ActionNotify::Retreat => {
+                    if data.uid == self.uid {
+                        let i = character_kind as usize;
+                        let decoded = self
+                            .sound_data_pool
+                            .get(CV_BATTLE_RETIRE[i])
+                            .expect("CV_Battle_Retire sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.voice_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+                }
+                ActionNotify::Reload => {
+                    if data.uid == self.uid {
+                        let i = character_kind as usize;
+                        let decoded = self
+                            .sound_data_pool
+                            .get(SFX_COMMON_RELOAD[i])
+                            .expect("SFX_Common_Reload sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+                }
+                ActionNotify::StartAttack => {
+                    if data.uid == self.uid {
+                        let val: f32 = rand::random();
+                        if val < 0.1 {
+                            let i = character_kind as usize;
+                            let j = rand::random_range(0..3);
+                            let decoded = self
+                                .sound_data_pool
+                                .get(CV_BATTLE_SHOUT[i][j])
+                                .expect("CV_Battle_Shout sound must be preloaded!");
+                            let time_t = data.action_state_timer(attribute).0;
+                            let duration = Duration::from_millis(time_t as u64);
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.voice_volume as f32 / 255.0);
+                            sink.append(source);
+                            let _ = sink.try_seek(duration);
+                            sink.play();
+                            sink.detach();
+                        }
+                    }
+                }
+                ActionNotify::FirstAttack => {
+                    if data.uid == self.uid {
+                        let i = character_kind as usize;
+                        let decoded = self
+                            .sound_data_pool
+                            .get(SFX_COMMON[i])
+                            .expect("SFX_Common sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
+
+                    // 총구 화염 파티클을 생성합니다.
+                    spawn_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                }
+                ActionNotify::Attack => {
+                    // 총구 화염 파티클을 생성합니다.
+                    spawn_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                }
+                ActionNotify::StartSkill => {
+                    let i = character_kind as usize;
+                    let j = rand::random_range(0..3);
+                    let decoded = self
+                        .sound_data_pool
+                        .get(CV_EXSKILL_LEVEL[i][j])
+                        .expect("CV_ExSkill_Level sound must be preloaded!");
+                    let time_t = data.action_state_timer(attribute).0;
+                    let duration = Duration::from_millis(time_t as u64);
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.voice_volume as f32 / 255.0);
+                    sink.append(source);
+                    let _ = sink.try_seek(duration);
+                    sink.play();
+                    sink.detach();
+                }
+                ActionNotify::FirstSkill => match character_kind {
+                    CharacterKind::MidoriOriginal => {
+                        spawn_midori_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    CharacterKind::MomoiOriginal => {
+                        spawn_momoi_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    _ => {}
+                },
+                ActionNotify::Skill => match character_kind {
+                    CharacterKind::MidoriOriginal => {
+                        spawn_midori_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    CharacterKind::MomoiOriginal => {
+                        spawn_momoi_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
+                    }
+                    _ => {}
+                },
+            }
 
             type Query<'a> = (
                 &'a mut ActionState,
@@ -598,14 +1221,28 @@ impl InGameRunScene {
                 *movement_state = data.movement_state();
                 *movement_state_timer = data.movement_state_timer(attribute);
 
+                // 최단 거리 보간
                 let new_latlon = data.latlon();
-                let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
-                let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
-                latlon.lat = latlon.lat.clamp(min, max);
+                let mut delta = new_latlon.lon - latlon.lon;
+                let t = delta.abs() / 2.0 * TAU;
+                if delta > PI {
+                    delta -= TAU;
+                } else if delta < -PI {
+                    delta += TAU;
+                }
+                latlon.lon = (latlon.lon + delta * t) % TAU;
 
-                let min = new_latlon.lon - 5f32.to_radians();
-                let max = new_latlon.lon + 5f32.to_radians();
-                latlon.lon = latlon.lon.clamp(min, max) % TAU;
+                let diff = new_latlon.lat - new_latlon.lon;
+                let t = (diff.abs() / MAX_LATITUDE).min(1.0);
+                latlon.lat = latlon.lat * (1.0 - t) + new_latlon.lat * t;
+
+                // let min = (new_latlon.lat - 1f32.to_radians()).max(MIN_LATITUDE);
+                // let max = (new_latlon.lat + 1f32.to_radians()).min(MAX_LATITUDE);
+                // latlon.lat = latlon.lat.clamp(min, max);
+
+                // let min = new_latlon.lon - 1f32.to_radians();
+                // let max = new_latlon.lon + 1f32.to_radians();
+                // latlon.lon = latlon.lon.clamp(min, max) % TAU;
 
                 let rotation = data.rotation();
                 let translation =
@@ -662,7 +1299,12 @@ impl InGameRunScene {
     }
 
     /// 서버로부터 전달받은 데이터로 플레이어 상태를 갱신합니다.
-    fn pull_server_status(&mut self, packet: InGameStatusPacket) {
+    fn pull_server_status(
+        &mut self,
+        device: &wgpu::Device,
+        packet: InGameStatusPacket,
+        app: &dyn AppHandle,
+    ) {
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
@@ -723,6 +1365,8 @@ impl InGameRunScene {
                 }
             }
         }
+
+        self.create_damage_particles(device, packet.damage_logs, app);
     }
 
     /// 인터페이스 배경 레이아웃 텍스처를 Ui 렌더러에 등록합니다.
@@ -752,16 +1396,7 @@ impl InGameRunScene {
 
     /// 무기 아이콘 텍스처를 Ui 렌더러에 등록합니다.
     fn regist_weapon_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
-        let (entity, _archetype) = self.player_entity();
-        let world = match self.world.as_mut() {
-            Some(world) => world,
-            None => return,
-        };
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
-        let texture = self
+        let texture: Arc<wgpu::Texture> = self
             .texture_pool
             .get(WEAPON_ICON_URI)
             .expect("Weapon_Icon texture must be preloaded");
@@ -772,7 +1407,7 @@ impl InGameRunScene {
             &texture,
             &wgpu::TextureViewDescriptor {
                 dimension: Some(wgpu::TextureViewDimension::D2),
-                base_array_layer: character_kind as u32,
+                base_array_layer: self.player_character as u32,
                 array_layer_count: Some(1),
                 ..Default::default()
             },
@@ -817,6 +1452,59 @@ impl InGameRunScene {
         };
     }
 
+    /// 캐릭터 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_character_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        let texture = self
+            .texture_pool
+            .get(CHARACTER_IMG_SMALL_URI)
+            .expect("Weapon_Icon texture must be preloaded");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        let character_kinds: HashSet<_> = {
+            let world = self.world.as_mut().expect("the world must be exists!");
+            let character_view = world.view_mut::<&CharacterKind>();
+            self.players
+                .values()
+                .map(|&(entity, _archetype)| {
+                    character_view
+                        .get(entity)
+                        .cloned()
+                        .expect("invalid entity or invalid entity component!")
+                })
+                .collect()
+        };
+
+        for kind in character_kinds {
+            // 텍스처의 텍스처 뷰를 생성합니다.
+            let texture = self.texture_view_pool.get_or_init(
+                &texture,
+                &wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: kind as u32,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                },
+            );
+
+            // egui 렌더러에 텍스처를 등록합니다.
+            let texture_id =
+                ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+            // 등록된 텍스처 정보를 저장합니다.
+            self.character_icon_textures.insert(
+                kind,
+                egui::load::SizedTexture {
+                    id: texture_id,
+                    size: texture_size,
+                },
+            );
+        }
+    }
+
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
         // 클립 사각형 영역의 크기를 재조정합니다.
         let viewport = app.viewport();
@@ -837,6 +1525,8 @@ impl InGameRunScene {
         self.blue_score_rect = Self::resize_blue_score_rect(&self.clip_rect);
         // 레드 팀 스코어 영역의 크기를 재조정합니다.
         self.red_score_rect = Self::resize_red_score_rect(&self.clip_rect);
+        // 팀 상태 영역의 크기를 재조정합니다.
+        self.team_status_rect = Self::resize_team_status_rect(&self.clip_rect);
     }
 
     /// 애니메이션 값을 가져옵니다.
@@ -965,6 +1655,16 @@ impl InGameRunScene {
             .union(self.timer_rect)
     }
 
+    /// 팀 상태를 표시하는 영역을 반환합니다.
+    fn resize_team_status_rect(clip_rect: &egui::Rect) -> egui::Rect {
+        let margin = clip_rect.size().min_elem() * 0.05;
+        let height = clip_rect.height() * 0.3;
+        let width = clip_rect.width() * 0.16;
+        let size = egui::vec2(width, height);
+        let min = clip_rect.left_center() + egui::vec2(margin, -0.75 * height);
+        egui::Rect::from_min_size(min, size)
+    }
+
     /// 스킬 아이콘 영역을 반환합니다.
     fn skill_icon_rect(&self) -> egui::Rect {
         let height = self.skill_cost_rect.height();
@@ -996,7 +1696,7 @@ impl InGameRunScene {
         });
 
         // 현재 플레이어가 행동 불능 상태인 경우 생략합니다.
-        if curr_action_state == ActionState::Death {
+        if curr_action_state == ActionState::Retreat {
             return;
         }
 
@@ -1043,8 +1743,7 @@ impl InGameRunScene {
         const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
 
         let uv = egui::Rect::from_min_max(
@@ -1200,8 +1899,7 @@ impl InGameRunScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
 
         const NUM_GAUGE: usize = 8;
@@ -1293,8 +1991,7 @@ impl InGameRunScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
         let total_health = (shield + health).min(9999);
 
@@ -1359,8 +2056,7 @@ impl InGameRunScene {
         const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.weapon_info_content_rect();
 
         let uv = egui::Rect::from_min_max(
@@ -1509,8 +2205,7 @@ impl InGameRunScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let mut rect = self.weapon_icon_content_rect();
         rect.min.x += base_x;
         rect.max.x += base_x;
@@ -1553,8 +2248,7 @@ impl InGameRunScene {
             0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let outer_rect = self.skill_icon_rect();
         let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
         inner_rect.max.x -= offset_x;
@@ -1577,8 +2271,7 @@ impl InGameRunScene {
             0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let outer_rect = self.skill_gauge_rect();
         let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
         inner_rect.max.x -= offset;
@@ -2052,7 +2745,7 @@ impl InGameRunScene {
         });
 
         // 현재 플레이어가 행동 불능 상태가 아닌 경우 생략합니다.
-        if curr_action_state != ActionState::Death {
+        if curr_action_state != ActionState::Retreat {
             return;
         }
 
@@ -2117,6 +2810,139 @@ impl InGameRunScene {
                 );
             });
     }
+
+    /// 팀 상태 인터페이스를 그립니다.
+    fn draw_team_status(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Team_Status"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_player_status(ui);
+            });
+    }
+
+    /// 플레이어 상태 인터페이스를 그립니다.
+    fn draw_player_status(&self, ui: &mut egui::Ui) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 데이터를 수집합니다.
+        type Query<'a> = (&'a CharacterKind, &'a UserName, &'a (Team, usize));
+        let view = world.view::<Query>();
+        let mut map = BTreeMap::new();
+        for (&uid, &(entity, archetype)) in self.players.iter() {
+            if uid == self.uid {
+                continue;
+            }
+
+            let (&kind, &name, &(team, team_index)) = view
+                .get(entity)
+                .expect("invalid entity or invalid entity component");
+            if team == self.player_team {
+                player_execute!(
+                    archetype,
+                    world,
+                    entity,
+                    (&HealthData, &SkillCostData),
+                    |(health_data, skill_cost_data)| {
+                        map.insert(
+                            team_index,
+                            (kind, name, health_data.percent(), skill_cost_data.percent()),
+                        );
+                    }
+                );
+            }
+        }
+
+        let t = self.ui_animation_factor();
+        let interval = self.clip_rect.height() * 0.01;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
+        let status_width = self.team_status_rect.width();
+        let status_height = (self.team_status_rect.height() - interval * 3.0) / 4.0;
+
+        let mut pos = self.team_status_rect.min + egui::vec2(base_x, 0.0);
+        for (kind, name, health, skill_cost) in map.values() {
+            // 캐릭터 아이콘
+            let texture = self
+                .character_icon_textures
+                .get(kind)
+                .cloned()
+                .expect("character icon texture must be preloaded!");
+            let ratio = texture.size.x / texture.size.y;
+            let icon_height = status_height * 0.7;
+            let icon_width = status_height * ratio;
+            let size = egui::vec2(icon_width, icon_height);
+            let rect = egui::Rect::from_min_size(pos, size);
+            egui::Image::new(texture)
+                .sense(egui::Sense::empty())
+                .paint_at(ui, rect);
+
+            // 닉네임
+            let p0 = pos + egui::vec2(icon_width, 0.0);
+            let name_width = (status_width - icon_width).max(0.0);
+            let name_height = icon_height;
+            let center = p0 + egui::vec2(name_width, name_height) * 0.5;
+            let text = name.to_string();
+            let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+            let font_id = egui::FontId::new(14.0 * self.ui_scale, family);
+            const OFFSET: [egui::Vec2; 4] = [
+                egui::vec2(-1.0, 0.0),
+                egui::vec2(1.0, 0.0),
+                egui::vec2(0.0, -1.0),
+                egui::vec2(0.0, 1.0),
+            ];
+            for offset in OFFSET {
+                ui.painter().text(
+                    center + offset * self.ui_scale,
+                    egui::Align2::CENTER_CENTER,
+                    &text,
+                    font_id.clone(),
+                    FONT_COLOR,
+                );
+            }
+            ui.painter().text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font_id,
+                egui::Color32::WHITE,
+            );
+
+            // 체력
+            let (health_p, shield_p) = health.unwrap_or((1.0, 0.0));
+            let p1 = pos + egui::vec2(0.0, icon_height);
+            let height = status_height * 0.15;
+            let size = egui::vec2(status_width, height);
+            let rect = egui::Rect::from_min_size(p1, size);
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
+            let content_rect = rect.scale_from_center(0.95);
+            let size = content_rect.size() * egui::vec2(health_p + shield_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::from_rgb(255, 192, 0));
+            let size = content_rect.size() * egui::vec2(health_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::LIGHT_GREEN);
+
+            // 스킬 게이지
+            let skill_p = skill_cost.unwrap_or(1.0);
+            let p2 = p1 + egui::vec2(0.0, height);
+            let size = egui::vec2(status_width, height);
+            let rect = egui::Rect::from_min_size(p2, size);
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
+            let content_rect = rect.scale_from_center(0.95);
+            let size = content_rect.size() * egui::vec2(skill_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::from_rgb(255, 192, 0));
+
+            pos = pos + egui::vec2(0.0, status_height + interval);
+        }
+    }
 }
 
 impl GameScene for InGameRunScene {
@@ -2127,11 +2953,26 @@ impl GameScene for InGameRunScene {
         let (width, height): (f32, f32) = size.size().into();
         self.camera_aspect_ratio = width / height;
         self.create_camera(device);
+        self.create_fx_shield_resource(device);
+        self.create_fx_muzzle_resource(device);
 
         self.regist_layout_texture(device, ui_renderer);
         self.regist_weapon_icon_texture(device, ui_renderer);
         self.regist_start_img_font_texture(device, ui_renderer);
+        self.regist_character_icon_texture(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_START)
+            .expect("UI_START sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_exit(
@@ -2143,6 +2984,9 @@ impl GameScene for InGameRunScene {
         ui_renderer.free_texture(&self.layout_texture.id);
         ui_renderer.free_texture(&self.weapon_icon_texture.id);
         ui_renderer.free_texture(&self.start_img_font_texture.id);
+        for texture in self.character_icon_textures.values() {
+            ui_renderer.free_texture(&texture.id);
+        }
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -2152,11 +2996,7 @@ impl GameScene for InGameRunScene {
             None => return,
         };
 
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-        let i = character_kind as usize;
+        let i = self.player_character as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
 
         // 입력을 초기화합니다.
@@ -2223,10 +3063,7 @@ impl GameScene for InGameRunScene {
                 Some(world) => world,
                 None => return true,
             };
-            let &character_kind = world
-                .query_one_mut::<&CharacterKind>(entity)
-                .expect("invalid entity or invalid entity component!");
-            let i = character_kind as usize;
+            let i = self.player_character as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
             player_execute!(archetype, world, entity, &ActionState, |action_state| {
                 update_view_state(
@@ -2273,10 +3110,7 @@ impl GameScene for InGameRunScene {
                 Some(world) => world,
                 None => return true,
             };
-            let &character_kind = world
-                .query_one_mut::<&CharacterKind>(entity)
-                .expect("invalid entity or invalid entity component!");
-            let i = character_kind as usize;
+            let i = self.player_character as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
             player_execute!(archetype, world, entity, &ActionState, |action_state| {
                 update_view_state(
@@ -2370,10 +3204,7 @@ impl GameScene for InGameRunScene {
                     Some(world) => world,
                     None => return true,
                 };
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
+                let i = self.player_character as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
                 player_execute!(archetype, world, entity, &ActionState, |action_state| {
                     update_view_state(
@@ -2407,11 +3238,7 @@ impl GameScene for InGameRunScene {
                     None => return true,
                 };
 
-                // 캐릭터 속성 데이터를 가져옵니다.
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
+                let i = self.player_character as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
 
                 // 입력을 초기화합니다.
@@ -2434,11 +3261,25 @@ impl GameScene for InGameRunScene {
 
                 // 일시정지 게임 장면 레이어를 추가합니다.
                 let in_game_scene = unsafe { NonNull::new_unchecked(self as *mut Self) };
-                let scene = InGamePauseLayer::new(self.locale, in_game_scene);
+                let scene =
+                    InGamePauseLayer::new(self.locale, in_game_scene, self.sound_data_pool.clone());
                 let flow = GameSceneFlow::Push(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
                 let event_loop_proxy = app.event_loop_proxy();
                 event_loop_proxy.send_event(event).unwrap();
+
+                // 효과음을 재생합니다.
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_PAUSE)
+                    .expect("UI_Pause sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(app.audio_mixer());
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+
                 return true;
             }
 
@@ -2461,10 +3302,7 @@ impl GameScene for InGameRunScene {
                     Some(world) => world,
                     None => return true,
                 };
-                let &character_kind = world
-                    .query_one_mut::<&CharacterKind>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                let i = character_kind as usize;
+                let i = self.player_character as usize;
                 let character_attributes = CHARACTER_ATTRIBUTES[i];
                 player_execute!(archetype, world, entity, &ActionState, |action_state| {
                     update_view_state(
@@ -2490,11 +3328,31 @@ impl GameScene for InGameRunScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -2516,6 +3374,7 @@ impl GameScene for InGameRunScene {
                 let mut staging_buffers = Vec::default();
 
                 self.pull_server_data(
+                    app.audio_mixer(),
                     time_stamp,
                     packet,
                     &device,
@@ -2528,23 +3387,19 @@ impl GameScene for InGameRunScene {
             }
             PacketType::InGameStatus => {
                 let packet = InGameStatusPacket::from_raw(packet);
-                self.pull_server_status(packet);
+
+                let device = app.render_device();
+                self.pull_server_status(&device, packet, app);
             }
             PacketType::InGameFinish => {
                 let packet = InGameFinishPacket::from_raw(packet);
-                let (entity, _archetype) = self.player_entity();
-                let mut world = match self.world.take() {
+                let world = match self.world.take() {
                     Some(world) => world,
                     None => return None,
                 };
 
-                // 플레이어가 속한 팀을 가져옵니다.
-                let &(team, _team_index) = world
-                    .query_one_mut::<&(Team, usize)>(entity)
-                    .expect("invalid entity or invalid entity component!");
-
                 // 플레이어 승리 여부를 판단합니다.
-                let is_player_win = packet.winner.map(|winner| winner == team);
+                let is_player_win = packet.winner.map(|winner| winner == self.player_team);
 
                 let stage = self.stage.take().expect("the stage must be exists!");
                 let accum_render_target = self
@@ -2571,6 +3426,7 @@ impl GameScene for InGameRunScene {
                     .bloom_pipeline
                     .take()
                     .expect("the bloom render pipeline must be exists!");
+                let outlines = self.outlines.drain().collect();
                 let skybox = self.skybox.take().expect("the skybox must be exists!");
                 let direction_light = self
                     .direction_light
@@ -2584,6 +3440,9 @@ impl GameScene for InGameRunScene {
                     self.locale,
                     self.uid,
                     self.token,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
                     self.control_sensitivity,
                     self.flip_horizontal,
                     self.flip_vertical,
@@ -2598,6 +3457,8 @@ impl GameScene for InGameRunScene {
                     self.half_size_z,
                     self.view_state,
                     self.view_state_timer,
+                    self.player_character,
+                    self.player_team,
                     world,
                     self.camera,
                     self.camera_fov_y,
@@ -2612,6 +3473,7 @@ impl GameScene for InGameRunScene {
                     alpha_blend_pipeline,
                     gaussian_blur_pipeline,
                     bloom_pipeline,
+                    outlines,
                     skybox,
                     direction_light,
                     light_resource,
@@ -2622,6 +3484,7 @@ impl GameScene for InGameRunScene {
                     self.texture_data_pool.clone(),
                     self.texture_view_pool.clone(),
                     self.sampler_pool.clone(),
+                    self.sound_data_pool.clone(),
                 );
                 let flow = GameSceneFlow::Change(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
@@ -2672,11 +3535,10 @@ impl GameScene for InGameRunScene {
             None => return,
         };
 
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-        let i = character_kind as usize;
+        // 파티클을 갱신합니다.
+        update_fx_particle_lifetime(world, elapsed_time_ms);
+
+        let i = self.player_character as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         player_execute!(archetype, world, entity, &ActionState, |action_state| {
             // 시야 상태 타이머를 갱신합니다.
@@ -2695,6 +3557,8 @@ impl GameScene for InGameRunScene {
                 self.held_input,
             );
         });
+
+        self.update_damage_particles(elapsed_time_sec);
     }
 
     fn on_post_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
@@ -2826,15 +3690,49 @@ impl GameScene for InGameRunScene {
         let draw_tasks: &Arc<Queue<_>> = &Arc::new(Queue::new());
         let bake_tasks: &Arc<Queue<_>> = &Arc::new(Queue::new());
         let draw_call: &Arc<Queue<_>> = &Arc::new(Queue::new());
+
+        // 총구 화염 파티클 인스턴스 버퍼의 소유권을 가져옵니다.
+        let mut muzzle_instances = HashMap::default();
+        for (uri, mut instances) in self.muzzle_instances.drain() {
+            instances = instances.fast_clear();
+            muzzle_instances.insert(uri, instances);
+        }
+
+        // 방어막 파티클 인스턴스 버퍼의 소유권을 가져옵니다.
+        let shield_instance = self
+            .shield_instance
+            .take()
+            .expect("the instance buffer must be exists!")
+            .fast_clear();
+        // 방어막 파티클 이펙트의 유니폼 버퍼를 가져옵니다.
+        let shield_uniform = self
+            .shield_uniform
+            .as_ref()
+            .expect("the uniform buffer must be exists!");
+
+        // 데미지 파티클을 갱신합니다.
+        {
+            let device = app.render_device();
+            let mut staging_buffers = Vec::new();
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+            self.update_damage_particle_resources(device, &mut encoder, &mut staging_buffers);
+
+            draw_call.push((encoder.finish(), staging_buffers));
+        }
+
         {
             let device = app.render_device();
             let world = self.world.as_ref().expect("the world must be exists!");
             let skybox = self.skybox.as_ref().expect("the skybox must be exists!");
             let hierarchy = self.stage.as_ref();
             let camera_entity = self.camera;
+            let outline_resources = &self.outlines;
 
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
+            let character_team_view = &world.view::<&(Team, usize)>();
             let character_flag_view = &world.view::<&CharacterFlags>();
             let mesh_filter_view = &world.view::<MeshRenderer>();
             let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
@@ -2902,6 +3800,12 @@ impl GameScene for InGameRunScene {
                         let mut encoder = device
                             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+                        let (team, _team_index) = character_team_view
+                            .get(entity)
+                            .expect("invalid entity or invalid entity component!");
+                        let outline_resource = outline_resources
+                            .get(team)
+                            .expect("the outline material shader resource must be exists!");
                         update_character_resource(
                             world,
                             entity,
@@ -2909,6 +3813,7 @@ impl GameScene for InGameRunScene {
                             &device,
                             &mut encoder,
                             &mut staging_buffers,
+                            outline_resource,
                             child_view,
                             sibling_view,
                             mesh_filter_view,
@@ -2958,7 +3863,63 @@ impl GameScene for InGameRunScene {
                         draw_call.push((encoder.finish(), staging_buffers));
                     });
                 }
+
+                let time = (self.play_elapsed_time_ms % 5000) as f32 / 1000.0;
+                let players = self.players.values().cloned();
+                let muzzle_instances = &muzzle_instances;
+                let shield_instances = &shield_instance;
+                scope.spawn(move |_| {
+                    let mut staging_buffers = Vec::default();
+                    let mut encoder =
+                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
+                    let instances = muzzle_instances
+                        .get(FX_TEX_MUZZLE_00)
+                        .expect("the instance buffer must be exists!");
+                    update_fx_muzzle_00_particles(
+                        world,
+                        device,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        instances,
+                    );
+
+                    let instances = muzzle_instances
+                        .get(FX_TEX_MUZZLE_01)
+                        .expect("the instance buffer must be exists!");
+                    update_fx_muzzle_01_particles(
+                        world,
+                        device,
+                        &mut encoder,
+                        &mut staging_buffers,
+                        instances,
+                    );
+
+                    let data = FxShieldDataLayout {
+                        time,
+                        ..Default::default()
+                    };
+                    shield_uniform.update(device, &mut encoder, &mut staging_buffers, &data);
+                    for (entity, archetype) in players {
+                        update_fx_shield_particle(
+                            world,
+                            entity,
+                            archetype,
+                            device,
+                            &mut encoder,
+                            &mut staging_buffers,
+                            shield_instances,
+                        );
+                    }
+
+                    draw_call.push((encoder.finish(), staging_buffers));
+                });
             });
+
+            // 총구 화염 파티클 이펙트 인스턴스의 소유권을 돌려놓습니다.
+            self.muzzle_instances = muzzle_instances;
+            // 방어막 파티클 이펙트 인스턴스의 소유권을 돌려놓습니다.
+            self.shield_instance = Some(shield_instance);
 
             let light_resources = self
                 .light_resource
@@ -3184,6 +4145,10 @@ impl GameScene for InGameRunScene {
             .bloom_pipeline
             .as_ref()
             .expect("the bloom render pipeline must be exists!");
+        let (particle_mesh, _) = self
+            .mesh_pool
+            .get(FX_TEX_MUZZLE_00)
+            .expect("the particle mesh must be exists!");
 
         encoder.push_debug_group("shadow pass");
         for (shadow_resource, shadow_map) in self.bake_list.iter() {
@@ -3306,6 +4271,15 @@ impl GameScene for InGameRunScene {
                             &mut rpass,
                         );
                     }
+                    MaterialKind::CharacterHaloOutline => {
+                        draw_character_halo_outline(
+                            mesh,
+                            device,
+                            camera_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
                     MaterialKind::CharacterHalo => {
                         draw_character_halo(
                             mesh,
@@ -3338,6 +4312,14 @@ impl GameScene for InGameRunScene {
                     _ => {}
                 }
             }
+
+            self.draw_damage_particle(
+                device,
+                SWAPCHAIN_FORMAT,
+                DEPTH_FORMAT,
+                camera_resource,
+                &mut rpass,
+            );
 
             clear_render_target_with_skybox(&skybox, device, &mut rpass);
         }
@@ -3417,9 +4399,73 @@ impl GameScene for InGameRunScene {
                             &mut rpass,
                         );
                     }
+                    MaterialKind::StageBarrier => {
+                        draw_stage_barrier(
+                            mesh,
+                            device,
+                            camera_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
                     _ => {}
                 }
             }
+
+            let instance_buffer = self
+                .muzzle_instances
+                .get(FX_TEX_MUZZLE_00)
+                .expect("the instance buffer must be exists!");
+            let particle_resource = self
+                .particle_resources
+                .get(FX_TEX_MUZZLE_00)
+                .expect("the particle shader resource must be exists!");
+            draw_fx_muzzle_effect(
+                &particle_mesh,
+                device,
+                camera_resource,
+                particle_resource,
+                instance_buffer,
+                &mut rpass,
+            );
+
+            let instance_buffer = self
+                .muzzle_instances
+                .get(FX_TEX_MUZZLE_01)
+                .expect("the instance buffer must be exists!");
+            let particle_resource = self
+                .particle_resources
+                .get(FX_TEX_MUZZLE_01)
+                .expect("the particle shader resource must be exists!");
+            draw_fx_muzzle_effect(
+                &particle_mesh,
+                device,
+                camera_resource,
+                particle_resource,
+                instance_buffer,
+                &mut rpass,
+            );
+
+            let (mesh, _) = self
+                .mesh_pool
+                .get(FX_MESH_SHIELD_00)
+                .expect("the mesh data must be exists!");
+            let instance_buffer = self
+                .shield_instance
+                .as_ref()
+                .expect("the instance buffer must be exists!");
+            let particle_resource = self
+                .particle_resources
+                .get(FX_MESH_SHIELD_00)
+                .expect("the particle shader resource must be exists!");
+            draw_fx_shield_effect(
+                &mesh,
+                device,
+                camera_resource,
+                particle_resource,
+                instance_buffer,
+                &mut rpass,
+            );
         }
         encoder.pop_debug_group();
 
@@ -3474,6 +4520,7 @@ impl GameScene for InGameRunScene {
         self.draw_weapon_info(ctx);
         self.draw_skill_cost_info(ctx);
         self.draw_score(ctx);
+        self.draw_team_status(ctx);
         self.draw_start_font(ctx);
         self.draw_respawn_timer(ctx);
     }
@@ -3488,5 +4535,20 @@ impl InGameRunScene {
     /// 인터페이스 스케일 값을 반환합니다.
     pub(super) fn get_ui_scale(&self) -> f32 {
         self.ui_scale
+    }
+
+    /// 현재 배경음 음량을 반환합니다.
+    pub(super) fn get_background_volume(&self) -> u8 {
+        self.background_volume
+    }
+
+    /// 현재 효과음 음량을 반환합니다.
+    pub(super) fn get_effect_volume(&self) -> u8 {
+        self.effect_volume
+    }
+
+    /// 현재 보이스 음량을 반환합니다.
+    pub(super) fn get_voice_volume(&self) -> u8 {
+        self.voice_volume
     }
 }

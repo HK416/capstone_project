@@ -1,6 +1,6 @@
-use std::{f32::consts::TAU, num::NonZeroU32, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, f32::consts::TAU, num::NonZeroU32, sync::Arc, time::Instant};
 
-use ahash::HashMap;
+use ahash::{HashMap, HashSet, RandomState};
 use hecs::{Entity, World};
 use mod_app::{
     app::AppHandle,
@@ -10,37 +10,39 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags, CharacterKind,
-        HealthData, HeldInput, LatLon, LoginToken, MovementState, MovementStateTimer, ObjectId,
-        SkillCostData, StageAttributes, Team, UserId, ViewState, ViewStateTimer, MAX_LATITUDE,
-        MIN_LATITUDE,
+        update_view_state, update_view_state_timer, ActionState, ActionStateTimer, BulletData,
+        CapturePoint, CharacterFlags, CharacterKind, HealthData, HeldInput, LatLon, LoginToken,
+        MovementState, MovementStateTimer, ObjectId, SkillCostData, StageAttributes, Team, UserId,
+        UserName, ViewState, ViewStateTimer, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE,
     },
     protocol::{InGameFinishPacket, InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use rodio::{Sink, Source};
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
+        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_02, IMG_FONT_DRAW, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD,
-        WEAPON_ICON_URI,
+        BG_SOUND_THEME_23, CHARACTER_IMG_SMALL_URI, HUD_LAYOUT_URI_02, IMG_FONT_DRAW,
+        IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_NOTICE,
+        UI_VICTORY_ST_01, WEAPON_ICON_URI,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
-        draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_stage, draw_tree, update_bullet_hierarchy, update_bullet_resource,
-        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
-        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
-        update_stage_resource, update_view_state, update_view_state_timer, AccumRenderTarget,
-        AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera,
-        CameraResource, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
-        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
+        draw_character, draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline,
+        draw_energy_bullet, draw_stage, draw_stage_barrier, draw_tree, update_bullet_hierarchy,
+        update_bullet_resource, update_camera_and_skybox_resource, update_camera_hierarchy,
+        update_camera_param, update_character_hierarchy, update_character_resource,
+        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
+        BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera, CameraResource, Child,
+        DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
+        LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer, OpaqueMap,
         PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
         SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
         WorldTransform, CHARACTER_ATTRIBUTES,
@@ -64,6 +66,12 @@ pub struct InGameExitScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
     /// 시야 조작 민감도입니다.
     control_sensitivity: f32,
     /// 시야 조작의 상하 반전 여부입니다.
@@ -98,6 +106,11 @@ pub struct InGameExitScene {
     /// 플레이어 시야 상태 타이머입니다.
     view_state_timer: ViewStateTimer,
 
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
+
     /// 게임 월드
     world: Option<World>,
 
@@ -117,6 +130,11 @@ pub struct InGameExitScene {
     /// 스테이지 엔터티
     stage: Option<StageBoundingVolumnHierarchy>,
 
+    /// 재생 중인 배경음 목록
+    background_sounds: Vec<Sink>,
+    /// 이펙트 사운드 재생 여부
+    play_effect_sound: bool,
+
     /// 이번 프레임에 사용된 모든 Staging Buffer를 담음
     frame_staging_buffers: Vec<wgpu::Buffer>,
     /// 누적 값 렌더 타겟
@@ -132,6 +150,9 @@ pub struct InGameExitScene {
     gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
+
+    /// 헤일로 외곽선 재질 쉐이더 리소스
+    outlines: HashMap<Team, MaterialResource>,
 
     /// 스테이지 스카이박스
     skybox: Option<Skybox>,
@@ -175,6 +196,11 @@ pub struct InGameExitScene {
     /// 레드 팀 점수 사각형 영역입니다.
     red_score_rect: egui::Rect,
 
+    /// 캐릭터 아이콘 텍스터입니다.
+    character_icon_textures: HashMap<CharacterKind, egui::load::SizedTexture>,
+    /// 팀 상황 사각형 영역입니다.
+    team_status_rect: egui::Rect,
+
     /// 메쉬 풀 객체입니다.
     mesh_pool: MeshPool,
     /// 모델 풀 객체입니다.
@@ -189,6 +215,8 @@ pub struct InGameExitScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameExitScene {
@@ -197,6 +225,9 @@ impl InGameExitScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         control_sensitivity: f32,
         flip_horizontal: bool,
         flip_vertical: bool,
@@ -211,6 +242,8 @@ impl InGameExitScene {
         half_size_z: NonZeroU32,
         view_state: ViewState,
         view_state_timer: ViewStateTimer,
+        player_character: CharacterKind,
+        player_team: Team,
         world: World,
         camera: Entity,
         camera_fov_y: f32,
@@ -225,6 +258,7 @@ impl InGameExitScene {
         alpha_blend_pipeline: AlphaBlendPipeline,
         gaussian_blur_pipeline: GaussianBlurPipeline,
         bloom_pipeline: BloomPipeline,
+        outlines: HashMap<Team, MaterialResource>,
         skybox: Skybox,
         direction_light: DirectionLight,
         light_resource: LightSetResource,
@@ -235,11 +269,15 @@ impl InGameExitScene {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             control_sensitivity,
             flip_horizontal,
             flip_vertical,
@@ -255,6 +293,8 @@ impl InGameExitScene {
             half_size_z,
             view_state,
             view_state_timer,
+            player_character,
+            player_team,
             world: Some(world),
             camera,
             camera_fov_y,
@@ -263,6 +303,8 @@ impl InGameExitScene {
             bullets,
             players,
             stage: Some(stage),
+            background_sounds: Vec::with_capacity(1),
+            play_effect_sound: false,
             frame_staging_buffers: Vec::default(),
             accum_render_target: Some(accum_render_target),
             reveal_render_target: Some(reveal_render_target),
@@ -270,6 +312,7 @@ impl InGameExitScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            outlines,
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
@@ -296,6 +339,11 @@ impl InGameExitScene {
             timer_rect: egui::Rect::ZERO,
             blue_score_rect: egui::Rect::ZERO,
             red_score_rect: egui::Rect::ZERO,
+            character_icon_textures: HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                RandomState::new(),
+            ),
+            team_status_rect: egui::Rect::ZERO,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -303,6 +351,7 @@ impl InGameExitScene {
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         }
     }
 
@@ -322,11 +371,6 @@ impl InGameExitScene {
             None => return,
         };
 
-        // 플레이어 엔터티의 캐릭터 종류를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         let mut latitude = 0.0;
         let mut longitude = 0.0;
         type Query<'a> = (&'a ActionState, &'a ActionStateTimer, &'a LatLon);
@@ -342,7 +386,7 @@ impl InGameExitScene {
             update_camera_param(
                 &mut self.camera_rel_position,
                 &mut self.camera_fov_y,
-                character_kind,
+                self.player_character,
                 action_state,
                 self.view_state,
                 action_state_timer,
@@ -601,15 +645,6 @@ impl InGameExitScene {
 
     /// 무기 아이콘 텍스처를 Ui 렌더러에 등록합니다.
     fn regist_weapon_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
-        let (entity, _archetype) = self.player_entity();
-        let world = match self.world.as_mut() {
-            Some(world) => world,
-            None => return,
-        };
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         let texture = self
             .texture_pool
             .get(WEAPON_ICON_URI)
@@ -621,7 +656,7 @@ impl InGameExitScene {
             &texture,
             &wgpu::TextureViewDescriptor {
                 dimension: Some(wgpu::TextureViewDimension::D2),
-                base_array_layer: character_kind as u32,
+                base_array_layer: self.player_character as u32,
                 array_layer_count: Some(1),
                 ..Default::default()
             },
@@ -636,6 +671,59 @@ impl InGameExitScene {
             id: texture_id,
             size: texture_size,
         };
+    }
+
+    /// 캐릭터 아이콘 텍스처를 Ui 렌더러에 등록합니다.
+    fn regist_character_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+    ) {
+        let texture = self
+            .texture_pool
+            .get(CHARACTER_IMG_SMALL_URI)
+            .expect("Weapon_Icon texture must be preloaded");
+        let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
+
+        let character_kinds: HashSet<_> = {
+            let world = self.world.as_mut().expect("the world must be exists!");
+            let character_view = world.view_mut::<&CharacterKind>();
+            self.players
+                .values()
+                .map(|&(entity, _archetype)| {
+                    character_view
+                        .get(entity)
+                        .cloned()
+                        .expect("invalid entity or invalid entity component!")
+                })
+                .collect()
+        };
+
+        for kind in character_kinds {
+            // 텍스처의 텍스처 뷰를 생성합니다.
+            let texture = self.texture_view_pool.get_or_init(
+                &texture,
+                &wgpu::TextureViewDescriptor {
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: kind as u32,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                },
+            );
+
+            // egui 렌더러에 텍스처를 등록합니다.
+            let texture_id =
+                ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
+
+            // 등록된 텍스처 정보를 저장합니다.
+            self.character_icon_textures.insert(
+                kind,
+                egui::load::SizedTexture {
+                    id: texture_id,
+                    size: texture_size,
+                },
+            );
+        }
     }
 
     fn resize_ui(&mut self, window: &Window, app: &dyn AppHandle) {
@@ -658,6 +746,8 @@ impl InGameExitScene {
         self.blue_score_rect = Self::resize_blue_score_rect(&self.clip_rect);
         // 레드 팀 스코어 영역의 크기를 재조정합니다.
         self.red_score_rect = Self::resize_red_score_rect(&self.clip_rect);
+        // 팀 상태 영역의 크기를 재조정합니다.
+        self.team_status_rect = Self::resize_team_status_rect(&self.clip_rect);
     }
 
     /// 애니메이션 값을 가져옵니다.
@@ -786,6 +876,16 @@ impl InGameExitScene {
             .union(self.timer_rect)
     }
 
+    /// 팀 상태를 표시하는 영역을 반환합니다.
+    fn resize_team_status_rect(clip_rect: &egui::Rect) -> egui::Rect {
+        let margin = clip_rect.size().min_elem() * 0.05;
+        let height = clip_rect.height() * 0.3;
+        let width = clip_rect.width() * 0.16;
+        let size = egui::vec2(width, height);
+        let min = clip_rect.left_center() + egui::vec2(margin, -0.75 * height);
+        egui::Rect::from_min_size(min, size)
+    }
+
     /// 스킬 아이콘 영역을 반환합니다.
     fn skill_icon_rect(&self) -> egui::Rect {
         let height = self.skill_cost_rect.height();
@@ -830,8 +930,7 @@ impl InGameExitScene {
         const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
 
         let uv = egui::Rect::from_min_max(
@@ -987,8 +1086,7 @@ impl InGameExitScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
 
         const NUM_GAUGE: usize = 8;
@@ -1080,8 +1178,7 @@ impl InGameExitScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() - self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.health_point_content_rect();
         let total_health = (shield + health).min(9999);
 
@@ -1146,8 +1243,7 @@ impl InGameExitScene {
         const INNER_RIGHT_BOTTOM: egui::Pos2 = egui::pos2(182.0, 228.0);
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let content_rect = self.weapon_info_content_rect();
 
         let uv = egui::Rect::from_min_max(
@@ -1296,8 +1392,7 @@ impl InGameExitScene {
         });
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let mut rect = self.weapon_icon_content_rect();
         rect.min.x += base_x;
         rect.max.x += base_x;
@@ -1340,8 +1435,7 @@ impl InGameExitScene {
             0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let outer_rect = self.skill_icon_rect();
         let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
         inner_rect.max.x -= offset_x;
@@ -1364,8 +1458,7 @@ impl InGameExitScene {
             0.5 * (self.weapon_info_rect.width() - self.weapon_info_content_rect().width());
 
         let t = self.ui_animation_factor();
-        let hide_x = self.clip_rect.left() + self.clip_rect.width() * 0.5;
-        let base_x = hide_x * (1.0 - t) + self.clip_rect.left() * t;
+        let base_x = self.clip_rect.width() * 0.5 * (1.0 - t);
         let outer_rect = self.skill_gauge_rect();
         let mut inner_rect = outer_rect.scale_from_center2(egui::vec2(1.0, 0.9));
         inner_rect.max.x -= offset;
@@ -1594,8 +1687,7 @@ impl InGameExitScene {
 
         let union_rect = self.score_union_rect();
         let t = self.ui_animation_factor();
-        let hide_y = self.clip_rect.top() - union_rect.bottom();
-        let base_y = hide_y * (1.0 - t) + self.clip_rect.top() * t;
+        let base_y = -union_rect.height() * (1.0 - t);
 
         let outer_rect = self.timer_rect;
         let size = egui::Vec2::splat(outer_rect.size().min_elem() * 0.05);
@@ -1643,8 +1735,7 @@ impl InGameExitScene {
     fn draw_blue_team_gauge(&self, ui: &mut egui::Ui) {
         let union_rect = self.score_union_rect();
         let t = self.ui_animation_factor();
-        let hide_y = self.clip_rect.top() - union_rect.bottom();
-        let base_y = hide_y * (1.0 - t) + self.clip_rect.top() * t;
+        let base_y = -union_rect.height() * (1.0 - t);
 
         let mut outer_rect = self.blue_score_rect;
         let font_center = (self.clip_rect.top() + outer_rect.top()) * 0.5;
@@ -1718,8 +1809,7 @@ impl InGameExitScene {
     fn draw_red_team_gauge(&self, ui: &mut egui::Ui) {
         let union_rect = self.score_union_rect();
         let t = self.ui_animation_factor();
-        let hide_y = self.clip_rect.top() - union_rect.bottom();
-        let base_y = hide_y * (1.0 - t) + self.clip_rect.top() * t;
+        let base_y = -union_rect.height() * (1.0 - t);
 
         let mut outer_rect = self.red_score_rect;
         let font_center = (self.clip_rect.top() + outer_rect.top()) * 0.5;
@@ -1817,6 +1907,139 @@ impl InGameExitScene {
                     .paint_at(ui, rect);
             });
     }
+
+    /// 팀 상태 인터페이스를 그립니다.
+    fn draw_team_status(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Team_Status"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                self.draw_player_status(ui);
+            });
+    }
+
+    /// 플레이어 상태 인터페이스를 그립니다.
+    fn draw_player_status(&self, ui: &mut egui::Ui) {
+        let world = match self.world.as_ref() {
+            Some(world) => world,
+            None => return,
+        };
+
+        // 데이터를 수집합니다.
+        type Query<'a> = (&'a CharacterKind, &'a UserName, &'a (Team, usize));
+        let view = world.view::<Query>();
+        let mut map = BTreeMap::new();
+        for (&uid, &(entity, archetype)) in self.players.iter() {
+            if uid == self.uid {
+                continue;
+            }
+
+            let (&kind, &name, &(team, team_index)) = view
+                .get(entity)
+                .expect("invalid entity or invalid entity component");
+            if team == self.player_team {
+                player_execute!(
+                    archetype,
+                    world,
+                    entity,
+                    (&HealthData, &SkillCostData),
+                    |(health_data, skill_cost_data)| {
+                        map.insert(
+                            team_index,
+                            (kind, name, health_data.percent(), skill_cost_data.percent()),
+                        );
+                    }
+                );
+            }
+        }
+
+        let t = self.ui_animation_factor();
+        let interval = self.clip_rect.height() * 0.01;
+        let base_x = -self.clip_rect.width() * 0.5 * (1.0 - t);
+        let status_width = self.team_status_rect.width();
+        let status_height = (self.team_status_rect.height() - interval * 3.0) / 4.0;
+
+        let mut pos = self.team_status_rect.min + egui::vec2(base_x, 0.0);
+        for (kind, name, health, skill_cost) in map.values() {
+            // 캐릭터 아이콘
+            let texture = self
+                .character_icon_textures
+                .get(kind)
+                .cloned()
+                .expect("character icon texture must be preloaded!");
+            let ratio = texture.size.x / texture.size.y;
+            let icon_height = status_height * 0.7;
+            let icon_width = status_height * ratio;
+            let size = egui::vec2(icon_width, icon_height);
+            let rect = egui::Rect::from_min_size(pos, size);
+            egui::Image::new(texture)
+                .sense(egui::Sense::empty())
+                .paint_at(ui, rect);
+
+            // 닉네임
+            let p0 = pos + egui::vec2(icon_width, 0.0);
+            let name_width = (status_width - icon_width).max(0.0);
+            let name_height = icon_height;
+            let center = p0 + egui::vec2(name_width, name_height) * 0.5;
+            let text = name.to_string();
+            let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+            let font_id = egui::FontId::new(14.0 * self.ui_scale, family);
+            const OFFSET: [egui::Vec2; 4] = [
+                egui::vec2(-1.0, 0.0),
+                egui::vec2(1.0, 0.0),
+                egui::vec2(0.0, -1.0),
+                egui::vec2(0.0, 1.0),
+            ];
+            for offset in OFFSET {
+                ui.painter().text(
+                    center + offset * self.ui_scale,
+                    egui::Align2::CENTER_CENTER,
+                    &text,
+                    font_id.clone(),
+                    FONT_COLOR,
+                );
+            }
+            ui.painter().text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                &text,
+                font_id,
+                egui::Color32::WHITE,
+            );
+
+            // 체력
+            let (health_p, shield_p) = health.unwrap_or((1.0, 0.0));
+            let p1 = pos + egui::vec2(0.0, icon_height);
+            let height = status_height * 0.15;
+            let size = egui::vec2(status_width, height);
+            let rect = egui::Rect::from_min_size(p1, size);
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
+            let content_rect = rect.scale_from_center(0.95);
+            let size = content_rect.size() * egui::vec2(health_p + shield_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::from_rgb(255, 192, 0));
+            let size = content_rect.size() * egui::vec2(health_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::LIGHT_GREEN);
+
+            // 스킬 게이지
+            let skill_p = skill_cost.unwrap_or(1.0);
+            let p2 = p1 + egui::vec2(0.0, height);
+            let size = egui::vec2(status_width, height);
+            let rect = egui::Rect::from_min_size(p2, size);
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
+            let content_rect = rect.scale_from_center(0.95);
+            let size = content_rect.size() * egui::vec2(skill_p, 1.0);
+            let rect = egui::Rect::from_min_size(content_rect.min, size);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::from_rgb(255, 192, 0));
+
+            pos = pos + egui::vec2(0.0, status_height + interval);
+        }
+    }
 }
 
 impl GameScene for InGameExitScene {
@@ -1825,18 +2048,39 @@ impl GameScene for InGameExitScene {
         self.regist_layout_texture(device, ui_renderer);
         self.regist_img_font_texture(device, ui_renderer);
         self.regist_weapon_icon_texture(device, ui_renderer);
+        self.regist_character_icon_texture(device, ui_renderer);
         self.resize_ui(window, app);
+
+        // 배경음을 추가합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(BG_SOUND_THEME_23)
+            .expect("Theme_23 sound must be preloaded!");
+        let source = decoded.as_source().repeat_infinite();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.background_volume as f32 / 255.0);
+        sink.append(source);
+        sink.pause();
+        self.background_sounds.push(sink);
     }
 
     fn on_exit(
         &mut self,
         _window: Option<&Window>,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
         ui_renderer: &mut UiRenderer,
     ) {
+        let sink_list = app.sink_list();
+        for sink in self.background_sounds.drain(..) {
+            sink_list.push(sink);
+        }
+
         ui_renderer.free_texture(&self.layout_texture.id);
         ui_renderer.free_texture(&self.img_font_texture.id);
         ui_renderer.free_texture(&self.weapon_icon_texture.id);
+        for texture in self.character_icon_textures.values() {
+            ui_renderer.free_texture(&texture.id);
+        }
     }
 
     fn on_enter_background(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1868,11 +2112,31 @@ impl GameScene for InGameExitScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -1959,21 +2223,59 @@ impl GameScene for InGameExitScene {
         true
     }
 
-    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
+    fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
         let elapsed_time_ms = (elapsed_time_sec * 1000.0) as u32;
         self.elapsed_time_ms = self.elapsed_time_ms.saturating_add(elapsed_time_ms);
 
+        // 배경 음악을 줄입니다.
+        let sink_list = app.sink_list();
+        if !sink_list.is_empty() {
+            let i = self.ui_animation_factor();
+            let mut temp = Vec::with_capacity(sink_list.len());
+            while let Some(sink) = sink_list.pop() {
+                let value = self.background_volume as f32 / 255.0 * i;
+                sink.set_volume(value);
+                temp.push(sink);
+            }
+
+            if self.elapsed_time_ms > 1000 {
+                for sink in temp {
+                    sink.stop();
+                }
+
+                for sink in self.background_sounds.iter() {
+                    sink.play();
+                }
+            } else {
+                for sink in temp {
+                    sink_list.push(sink);
+                }
+            }
+        }
+
+        if self.elapsed_time_ms > 2000 && !self.play_effect_sound {
+            // 효과음을 재생합니다.
+            self.play_effect_sound = true;
+            let decoded = self
+                .sound_data_pool
+                .get(UI_VICTORY_ST_01)
+                .expect("UI_Victory_ST_01 sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(app.audio_mixer());
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
+
+        // 플레이어를 갱신합니다.
         let (entity, archetype) = self.player_entity();
         let world = match self.world.as_mut() {
             Some(world) => world,
             None => return,
         };
 
-        // 캐릭터 속성 데이터를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-        let i = character_kind as usize;
+        let i = self.player_character as usize;
         let character_attributes = CHARACTER_ATTRIBUTES[i];
         player_execute!(archetype, world, entity, &ActionState, |action_state| {
             // 시야 상태 타이머를 갱신합니다.
@@ -2043,6 +2345,7 @@ impl GameScene for InGameExitScene {
             .bloom_pipeline
             .take()
             .expect("the bloom render pipeline must be exists!");
+        let outlines = self.outlines.drain().collect();
         let skybox = self.skybox.take().expect("the skybox must be exists!");
         let direction_light = self
             .direction_light
@@ -2057,9 +2360,14 @@ impl GameScene for InGameExitScene {
             self.locale,
             self.uid,
             self.token,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
             packet,
             self.is_player_win,
             self.stage_attributes.clone(),
+            self.player_character,
+            self.player_team,
             world,
             self.players.clone(),
             stage,
@@ -2069,6 +2377,7 @@ impl GameScene for InGameExitScene {
             alpha_blend_pipeline,
             gaussian_blur_pipeline,
             bloom_pipeline,
+            outlines,
             skybox,
             direction_light,
             light_resource,
@@ -2079,6 +2388,7 @@ impl GameScene for InGameExitScene {
             self.texture_data_pool.clone(),
             self.texture_view_pool.clone(),
             self.sampler_pool.clone(),
+            self.sound_data_pool.clone(),
         );
         let flow = GameSceneFlow::Change(Box::new(scene));
         let event = AppEvent::AddGameSceneFlow(flow);
@@ -2184,8 +2494,10 @@ impl GameScene for InGameExitScene {
             let hierarchy = self.stage.as_ref();
             let camera_entity = self.camera;
 
+            let outline_resources = &self.outlines;
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
+            let character_team_view = &world.view::<&(Team, usize)>();
             let character_flag_view = &world.view::<&CharacterFlags>();
             let mesh_filter_view = &world.view::<MeshRenderer>();
             let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
@@ -2253,6 +2565,12 @@ impl GameScene for InGameExitScene {
                         let mut encoder = device
                             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+                        let (team, _team_index) = character_team_view
+                            .get(entity)
+                            .expect("invalid entity or invalid entity component!");
+                        let outline_resource = outline_resources
+                            .get(team)
+                            .expect("the outline material shader resource must be exists!");
                         update_character_resource(
                             world,
                             entity,
@@ -2260,6 +2578,7 @@ impl GameScene for InGameExitScene {
                             &device,
                             &mut encoder,
                             &mut staging_buffers,
+                            outline_resource,
                             child_view,
                             sibling_view,
                             mesh_filter_view,
@@ -2657,6 +2976,15 @@ impl GameScene for InGameExitScene {
                             &mut rpass,
                         );
                     }
+                    MaterialKind::CharacterHaloOutline => {
+                        draw_character_halo_outline(
+                            mesh,
+                            device,
+                            camera_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
                     MaterialKind::CharacterHalo => {
                         draw_character_halo(
                             mesh,
@@ -2768,6 +3096,15 @@ impl GameScene for InGameExitScene {
                             &mut rpass,
                         );
                     }
+                    MaterialKind::StageBarrier => {
+                        draw_stage_barrier(
+                            mesh,
+                            device,
+                            camera_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
                     _ => {}
                 }
             }
@@ -2824,6 +3161,7 @@ impl GameScene for InGameExitScene {
         self.draw_weapon_info(ctx);
         self.draw_skill_cost_info(ctx);
         self.draw_score(ctx);
+        self.draw_team_status(ctx);
         self.draw_img_font(ctx);
     }
 }

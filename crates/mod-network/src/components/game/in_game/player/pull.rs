@@ -4,9 +4,9 @@
 use std::{f32::consts::TAU, i16, num::NonZeroU32};
 
 use crate::components::{
-    ActionState, ActionStateTimer, BigEndian, CharacterAttributes, LatLon, MovementState,
-    MovementStateTimer, NetworkState, Permission, PlayerStateData, UserId, MAX_JUMP_DURATION,
-    MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+    ActionNotify, ActionState, ActionStateTimer, BigEndian, CharacterAttributes, LatLon,
+    MovementState, MovementStateTimer, NetworkState, Permission, PlayerStateData, UserId,
+    MAX_JUMP_DURATION, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
 };
 
 /// 서버에서 클라이언트로 전달되는 플레이어 갱신 데이터입니다.
@@ -20,6 +20,8 @@ pub struct InGamePlayerPullData {
     rotation: [i16; 4],
     /// 플레이어 상태 데이터
     player_state: PlayerStateData,
+    /// 행동 상태 알림
+    pub action_notify: ActionNotify,
     /// 행동 상태 타이머
     action_state_timer: u8,
     /// 움직임 상태 타이머
@@ -40,6 +42,7 @@ impl InGamePlayerPullData {
         translation: glam::Vec3A,
         rotation: glam::Quat,
         action_state: ActionState,
+        action_notify: ActionNotify,
         action_state_timer: ActionStateTimer,
         movement_state: MovementState,
         movement_state_timer: MovementStateTimer,
@@ -67,7 +70,7 @@ impl InGamePlayerPullData {
             ActionState::AimAt => attributes.normal_attack_start_duration,
             ActionState::AimOff => attributes.normal_attack_end_duration,
             ActionState::Attack => attributes.normal_attack_ing_duration,
-            ActionState::Death => RESPAWN_DELAY,
+            ActionState::Retreat => RESPAWN_DELAY,
             ActionState::Reload => attributes.normal_reload_duration,
             ActionState::Skill => attributes.skill_duration,
             ActionState::Callsign => attributes.normal_callsign_duration,
@@ -100,6 +103,7 @@ impl InGamePlayerPullData {
             player_state: PlayerStateData::new()
                 .with_action_state(action_state)
                 .with_movement_state(movement_state),
+            action_notify,
             action_state_timer,
             movement_state_timer,
             latitude,
@@ -154,7 +158,7 @@ impl InGamePlayerPullData {
             ActionState::AimAt => attribute.normal_attack_start_duration,
             ActionState::AimOff => attribute.normal_attack_end_duration,
             ActionState::Attack => attribute.normal_attack_ing_duration,
-            ActionState::Death => RESPAWN_DELAY,
+            ActionState::Retreat => RESPAWN_DELAY,
             ActionState::Reload => attribute.normal_reload_duration,
             ActionState::Skill => attribute.skill_duration,
             ActionState::Callsign => attribute.normal_callsign_duration,
@@ -196,6 +200,7 @@ impl BigEndian for InGamePlayerPullData {
             + <[i16; 3]>::byte_size()
             + <[i16; 4]>::byte_size()
             + PlayerStateData::byte_size()
+            + ActionNotify::byte_size()
             + u8::byte_size()
             + u8::byte_size()
             + i16::byte_size()
@@ -234,6 +239,11 @@ impl BigEndian for InGamePlayerPullData {
         let player_state = PlayerStateData::from_big_endian_bytes(data);
 
         offset = offset + size;
+        size = ActionNotify::byte_size();
+        data = &bytes[offset..offset + size];
+        let action_notify = ActionNotify::from_big_endian_bytes(data);
+
+        offset = offset + size;
         size = u8::byte_size();
         data = &bytes[offset..offset + size];
         let action_state_timer = u8::from_big_endian_bytes(data);
@@ -258,6 +268,7 @@ impl BigEndian for InGamePlayerPullData {
             translation,
             rotation,
             player_state,
+            action_notify,
             action_state_timer,
             movement_state_timer,
             latitude,
@@ -272,6 +283,7 @@ impl BigEndian for InGamePlayerPullData {
         bytes.extend_from_slice(&self.translation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.rotation.to_big_endian_bytes());
         bytes.extend_from_slice(&self.player_state.to_big_endian_bytes());
+        bytes.extend_from_slice(&self.action_notify.to_big_endian_bytes());
         bytes.extend_from_slice(&self.action_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.movement_state_timer.to_big_endian_bytes());
         bytes.extend_from_slice(&self.latitude.to_big_endian_bytes());
@@ -606,6 +618,18 @@ mod tests {
                 y: 0.0,
                 z: 0.0,
             },
+            camera_def_fov_y: 0.0,
+            camera_def_rel_pos: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            camera_zoom_fov_y: 0.0,
+            camera_zoom_rel_pos: Float3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
             normal_idle_duration: 1200,
             cafe_walk_duration: 0,
             move_ing_duration: 0,
@@ -616,6 +640,7 @@ mod tests {
             vital_death_duration: 0,
             normal_reload_duration: 0,
             skill_duration: 0,
+            skill_timing: vec![],
             normal_callsign_duration: 0,
             victory_start_duration: 0,
             victory_end_duration: 0,
@@ -647,6 +672,7 @@ mod tests {
             glam::vec3a(-1.4123, 1.3422, 20.411),
             glam::quat(0.0, 0.7071068, 0.0, 0.7071068),
             ActionState::Idle,
+            ActionNotify::StartAttack,
             ActionStateTimer::new(132),
             MovementState::Idle,
             MovementStateTimer(132),

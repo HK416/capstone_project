@@ -1,4 +1,4 @@
-use mod_physics::{collision::Collider, object3d::Sphere};
+use mod_physics::collision::Collider;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{Float3, Float4, Float4x4};
@@ -21,6 +21,8 @@ pub struct StageAttributesData {
 
     /// 게임 월드 스테이지에서 사용되는 모델의 목록
     pub model_list: Vec<String>,
+    /// 게임 월드 스테이지에서 사용되는 배경음 목록
+    pub sound_list: Vec<String>,
 
     /// 전역 조명 데이터입니다.
     pub global_light: Option<GlobalLightData>,
@@ -117,8 +119,10 @@ pub struct PropAttributeData {
     pub rotation: Float4,
     /// 월드 공간 위치
     pub translation: Float3,
-    /// 충돌 구체입니다.
-    pub collider: Sphere,
+    /// 충돌 구체의 중심 점
+    pub center: Float3,
+    /// 충돌 구체의 반경
+    pub radius: f32,
     /// 자식 노드
     pub left: Option<Box<PropAttributeData>>,
     /// 자식 노드

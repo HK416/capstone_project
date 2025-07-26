@@ -20,28 +20,30 @@ use mod_network::{
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
+        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
         StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         CHARACTER_IMG_URI, EMBLEM_BG_URI, IMG_FONT_DRAW, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI, UI_NOTICE,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
-        draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_stage, draw_tree, update_camera_and_skybox_resource, update_character_hierarchy,
-        update_character_resource, update_stage_hierarchy, update_stage_resource,
-        AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection,
-        BrightRenderTarget, Camera, CameraResource, CameraUniform, Child, DirectionLight,
-        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
-        MaterialKind, MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask,
-        RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox,
-        ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        draw_character, draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline,
+        draw_energy_bullet, draw_stage, draw_tree, update_camera_and_skybox_resource,
+        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
+        update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform, Child,
+        DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
+        LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer, OpaqueMap,
+        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
+        WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
     player_execute,
@@ -71,6 +73,12 @@ pub struct InGameResultScene {
     uid: UserId,
     /// 로그인 토큰
     _token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 게임 장면 경과 시간
     elapsed_time_ms: u16,
@@ -82,6 +90,11 @@ pub struct InGameResultScene {
 
     /// 지형 속성 데이터입니다.
     stage_attributes: Arc<StageAttributes>,
+
+    /// 플레이어 캐릭터 종류
+    _player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 게임 월드
     world: World,
@@ -118,6 +131,9 @@ pub struct InGameResultScene {
     gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
+
+    /// 헤일로 외곽선 재질 쉐이더 리소스
+    outlines: HashMap<Team, MaterialResource>,
 
     /// 스테이지 스카이박스
     skybox: Option<Skybox>,
@@ -164,6 +180,8 @@ pub struct InGameResultScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     _sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameResultScene {
@@ -172,9 +190,14 @@ impl InGameResultScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
         packet: InGameFinishPacket,
         is_player_win: Option<bool>,
         stage_attributes: Arc<StageAttributes>,
+        player_character: CharacterKind,
+        player_team: Team,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -184,6 +207,7 @@ impl InGameResultScene {
         alpha_blend_pipeline: AlphaBlendPipeline,
         gaussian_blur_pipeline: GaussianBlurPipeline,
         bloom_pipeline: BloomPipeline,
+        outlines: HashMap<Team, MaterialResource>,
         skybox: Skybox,
         direction_light: DirectionLight,
         light_resource: LightSetResource,
@@ -194,15 +218,21 @@ impl InGameResultScene {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             _token: token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             elapsed_time_ms: 0,
             packet,
             is_player_win,
             stage_attributes,
+            _player_character: player_character,
+            player_team,
             world,
             camera: Entity::DANGLING,
             camera_fov_y: 1.0,
@@ -218,6 +248,7 @@ impl InGameResultScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            outlines,
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
@@ -241,15 +272,8 @@ impl InGameResultScene {
             _texture_data_pool: texture_data_pool,
             texture_view_pool,
             _sampler_pool: sampler_pool,
+            sound_data_pool,
         }
-    }
-
-    /// 플레이어 엔터티를 반환합니다.
-    fn player_entity(&self) -> (Entity, PlayerArchetype) {
-        self.players
-            .get(&self.uid)
-            .cloned()
-            .expect("no such entity!")
     }
 
     // 플레이어를 초기화합니다.
@@ -257,14 +281,7 @@ impl InGameResultScene {
         // 우승 팀을 판단합니다.
         let winner_team = match self.packet.winner {
             Some(team) => team,
-            None => {
-                let (entity, _archetype) = self.player_entity();
-                let &(team, _team_index) = self
-                    .world
-                    .query_one_mut::<&(Team, usize)>(entity)
-                    .expect("invalid entity or invalid entity component!");
-                team
-            }
+            None => self.player_team,
         };
 
         // 우승팀 플레이어 캐릭터의 위치와 상태를 초기화합니다.
@@ -969,19 +986,12 @@ impl GameScene for InGameResultScene {
             self.regist_character_img_texture(device, ui_renderer, kind);
         }
 
-        // 플레이어가 속한 팀을 가져옵니다.
-        let (entity, _archetype) = self.player_entity();
-        let &(team, _team_index) = self
-            .world
-            .query_one_mut::<&(Team, usize)>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         // 팀 데이터를 가져옵니다.
         (self.my_team, self.other_team) = self
             .packet
             .players
             .drain(..)
-            .partition(|data| data.team() == team);
+            .partition(|data| data.team() == self.player_team);
 
         self.my_team.sort_by_key(|data| data.team_index());
         self.other_team.sort_by_key(|data| data.team_index());
@@ -992,9 +1002,15 @@ impl GameScene for InGameResultScene {
     fn on_exit(
         &mut self,
         _window: Option<&Window>,
-        _app: &dyn AppHandle,
+        app: &dyn AppHandle,
         ui_renderer: &mut UiRenderer,
     ) {
+        // 현재 재생 중인 배경 음을 중지합니다.
+        let sink_list = app.sink_list();
+        while let Some(sink) = sink_list.pop() {
+            sink.stop();
+        }
+
         let iterator = self
             .profile_bg_textures
             .values()
@@ -1037,11 +1053,31 @@ impl GameScene for InGameResultScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {
@@ -1058,7 +1094,7 @@ impl GameScene for InGameResultScene {
         let world = &self.world;
         let character_view = &world.view::<&CharacterKind>();
         rayon::in_place_scope(|scope| {
-            for (entity, archetype) in self.winner.values().cloned() {
+            for (&uid, &(entity, archetype)) in self.winner.iter() {
                 scope.spawn(move |_| {
                     // 캐릭터 속성 데이터를 가져옵니다.
                     let &character_kind = character_view
@@ -1074,6 +1110,7 @@ impl GameScene for InGameResultScene {
                         movement_state_timer,
                     )| {
                         update_action_state_timer(
+                            uid,
                             HeldInput::empty(),
                             &mut BulletData::default(),
                             &mut SkillCostData::default(),
@@ -1186,9 +1223,11 @@ impl GameScene for InGameResultScene {
             let hierarchy = &self.stage;
             let skybox = self.skybox.as_ref().expect("the skybox must be exists!");
             let camera_entity = self.camera;
+            let outline_resources = &self.outlines;
 
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
+            let character_team_view = &world.view::<&(Team, usize)>();
             let character_flag_view = &world.view::<&CharacterFlags>();
             let mesh_filter_view = &world.view::<MeshRenderer>();
             let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
@@ -1219,6 +1258,12 @@ impl GameScene for InGameResultScene {
                         let mut encoder = device
                             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+                        let (team, _team_index) = character_team_view
+                            .get(entity)
+                            .expect("invalid entity or invalid entity component!");
+                        let outline_resource = outline_resources
+                            .get(team)
+                            .expect("the outline material shader resource must be exists!");
                         update_character_resource(
                             world,
                             entity,
@@ -1226,6 +1271,7 @@ impl GameScene for InGameResultScene {
                             &device,
                             &mut encoder,
                             &mut staging_buffers,
+                            outline_resource,
                             child_view,
                             sibling_view,
                             mesh_filter_view,
@@ -1282,7 +1328,7 @@ impl GameScene for InGameResultScene {
                 .as_ref()
                 .expect("the light shader resource must be exists!");
             let direction_light = self.direction_light.as_ref();
-            let player_entities: Vec<_> = self.players.values().cloned().collect();
+            let player_entities: Vec<_> = self.winner.values().cloned().collect();
             let (screen_width, screen_height): (f32, f32) = app.window_size().size().into();
             let aspect_ratio = screen_width / screen_height;
             let fov_y = self.camera_fov_y;
@@ -1616,6 +1662,15 @@ impl GameScene for InGameResultScene {
                             device,
                             camera_resource,
                             light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterHaloOutline => {
+                        draw_character_halo_outline(
+                            mesh,
+                            device,
+                            camera_resource,
                             material_resources,
                             &mut rpass,
                         );

@@ -15,7 +15,7 @@ pub struct HaloMaterialData {
     pub main_color: String,
 }
 
-/// 캐릭터 몸체 재질을 쉐이더 리소스입니다.
+/// 캐릭터 헤일로 재질의 쉐이더 리소스입니다.
 pub struct HaloMaterialResource;
 
 impl HaloMaterialResource {

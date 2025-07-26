@@ -1,0 +1,1 @@
+{ "uri": "Common_Prop_Barrier", "width":128, "height": 128, "depth_or_array_layers": 1, "mip_level_count": 8, "sample_count": 1, "format": "Bc4RUnorm", "dimension": "D2", "address_u": "Repeat", "address_v": "Repeat", "address_w": "Repeat", "filter_mode": "Linear" }

@@ -42,7 +42,6 @@ static_assertions::const_assert!(MODAL_WIDTH <= BASE_WIDTH);
 const MODAL_HEIGHT: f32 = 540.0;
 static_assertions::const_assert!(0.0 <= MODAL_HEIGHT);
 static_assertions::const_assert!(MODAL_HEIGHT <= BASE_WIDTH);
-const MODAL_SIZE: egui::Vec2 = egui::vec2(MODAL_WIDTH, MODAL_HEIGHT);
 
 /// 메뉴의 가로 길이입니다.
 const MENU_WIDTH: f32 = MODAL_WIDTH * 0.3;
@@ -101,7 +100,11 @@ pub enum ChangeOption {
         is_fullscreen: bool,
     },
     Control {},
-    Sound {},
+    Sound {
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+    },
 }
 
 impl fmt::Debug for LobbyCommonOptionModalLayer {

@@ -40,15 +40,13 @@ use mod_network::components::{
 use crate::{
     asset::Motion,
     component::{
-        character::yuuka_original::animation::{
-            reload_jumping::animate_character_when_reload_jumping,
-            reload_landing::animate_character_when_reload_landing,
-        },
         BoneCollection, SkinningAnimation, ToParentTrans, ATTACK_END_ANIMATION_SUFFIX,
         ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
-        EXS_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MOVE_TO_END_ANIMATION_SUFFIX,
-        MOVING_ANIMATION_SUFFIX, NORMAL_CALLSIGN_SUFFIX, RELOAD_ANIMATION_SUFFIX,
-        VICTORY_END_SUFFIX, VICTORY_START_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
+        EXS_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_CALF, MODEL_BONE_L_FOOT,
+        MODEL_BONE_L_THIGH, MODEL_BONE_R_CALF, MODEL_BONE_R_FOOT, MODEL_BONE_R_THIGH,
+        MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX, NORMAL_CALLSIGN_SUFFIX,
+        RELOAD_ANIMATION_SUFFIX, VICTORY_END_SUFFIX, VICTORY_START_SUFFIX,
+        VITAL_DEATH_ANIMATION_SUFFIX,
     },
 };
 
@@ -56,8 +54,8 @@ use self::{
     aim::*, aim_jumping::*, aim_landing::*, aim_move::*, aim_move_to_move::*, aim_to_idle::*,
     attack_jumping::*, attack_landing::*, attack_move::*, attacking::*, callsign::*, death::*,
     idle::*, idle_to_aim::*, jumping::*, landing::*, move_to_aim_move::*, move_to_end::*,
-    moving::*, reload::*, reload_move::*, skill::*, skill_jumping::*, skill_landing::*,
-    skill_move::*, victory_end::*, victory_start::*,
+    moving::*, reload::*, reload_jumping::*, reload_landing::*, reload_move::*, skill::*,
+    skill_jumping::*, skill_landing::*, skill_move::*, victory_end::*, victory_start::*,
 };
 
 use super::*;
@@ -98,50 +96,50 @@ const VICTORY_END_ANIMATION: &'static str = constcat::concat!(MODEL_NAME, VICTOR
 
 /// `Bip001_L_Thigh`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
 const L_THIGH_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(-0.9263942, -0.08319063, -0.3672509, 0.0),
-    glam::vec4(-0.1037003, 0.9939411, 0.03643499, 0.0),
-    glam::vec4(0.3619947, 0.0718372, -0.9294082, 0.0),
-    glam::vec4(0.00000009536743, 0.0000001239777, 0.0768828, 1.0),
+    glam::vec4(-0.9689184, -0.1076179, -0.2227459, 0.0),
+    glam::vec4(0.008400703, 0.8855835, -0.4644049, 0.0),
+    glam::vec4(0.2472383, -0.4518415, -0.8571539, 0.0),
+    glam::vec4(0.00000009536743, 0.00000009536743, 0.07303865, 1.0),
 );
 
 /// `Bip001_R_Thigh`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
 const R_THIGH_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(-0.9286584, -0.07803348, 0.3626359, 0.0),
-    glam::vec4(0.02989662, 0.9586961, 0.2828571, 0.0),
-    glam::vec4(-0.3697299, 0.2735192, -0.8879682, 0.0),
-    glam::vec4(-0.00000009536743, -0.00000009536743, -0.07688278, 1.0),
+    glam::vec4(-0.8693725, -0.1518831, 0.4702372, 0.0),
+    glam::vec4(-0.009138854, 0.9563732, 0.2920055, 0.0),
+    glam::vec4(-0.4940729, 0.2495641, -0.8328325, 0.0),
+    glam::vec4(-0.0000001144409, -0.0000001049042, -0.07303862, 1.0),
 );
 
 /// `Bip001_L_Calf`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
 const L_CALF_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.9296805, 0.368367, 0.00000005960465, 0.0),
-    glam::vec4(-0.368367, 0.9296805, -0.00000005960469, 0.0),
-    glam::vec4(-0.00000007736968, 0.00000003345693, 1.0, 0.0),
-    glam::vec4(-0.1674679, 0.0, 0.0, 1.0),
+    glam::vec4(0.8196427, 0.5728754, 0.00000005419786, 0.0),
+    glam::vec4(-0.5728753, 0.8196425, 0.000000001892902, 0.0),
+    glam::vec4(-0.00000004333847, -0.00000003260012, 1.0, 0.0),
+    glam::vec4(-0.1590945, -0.000000007152557, 0.0, 1.0),
 );
 
 /// `Bip001_R_Calf`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
 const R_CALF_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.8413359, 0.5405127, 0.0000000298023, 0.0),
-    glam::vec4(-0.5405126, 0.8413358, 0.00000001490114, 0.0),
-    glam::vec4(-0.00000001701949, -0.00000002864539, 1.0, 0.0),
-    glam::vec4(-0.1674679, 0.0, 0.0, 1.0),
+    glam::vec4(0.5968635, 0.8023427, -0.0000001490116, 0.0),
+    glam::vec4(-0.8023427, 0.5968635, 0.00000002980232, 0.0),
+    glam::vec4(0.0000001128513, 0.0000001017705, 1.0, 0.0),
+    glam::vec4(-0.1590945, 0.0, 0.00000001907349, 1.0),
 );
 
 /// `Bip001_L_Foot`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
 const L_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.9237275, -0.06798658, -0.3769691, 0.0),
-    glam::vec4(0.04067343, 0.9959681, -0.07995695, 0.0),
-    glam::vec4(0.3808852, 0.0585258, 0.9227682, 0.0),
-    glam::vec4(-0.1537036, 0.000000009536743, 0.00000001907349, 1.0),
+    glam::vec4(0.8093521, -0.4241125, -0.4062982, 0.0),
+    glam::vec4(0.4180262, 0.9019042, -0.1087341, 0.0),
+    glam::vec4(0.4125574, -0.08183914, 0.9072479, 0.0),
+    glam::vec4(-0.1460184, 0.000000004768371, 0.00000003814697, 1.0),
 );
 
 /// `Bip001_R_Foot`의 `*_Normal_Attack_Ing` 애니메이션 첫 번째 키 프레임 변환 행렬입니다.
 const R_FOOT_NORMAL_ATTACKING_IDENTITY: glam::Mat4 = glam::mat4(
-    glam::vec4(0.8483989, -0.3687848, 0.3797592, 0.0),
-    glam::vec4(0.3878545, 0.9212896, 0.02818173, 0.0),
-    glam::vec4(-0.3602612, 0.123382, 0.9246559, 0.0),
-    glam::vec4(-0.1537036, -0.00000001549721, -0.00000001907349, 1.0),
+    glam::vec4(0.6853706, -0.5776544, 0.4433765, 0.0),
+    glam::vec4(0.616642, 0.7842523, 0.06856146, 0.0),
+    glam::vec4(-0.3873239, 0.2264145, 0.8937094, 0.0),
+    glam::vec4(-0.1460184, 0.00000001192093, -0.00000001907349, 1.0),
 );
 
 /// 점프 애니메이션을 적용합니다.
@@ -154,7 +152,11 @@ fn jump_animation<Tag: Copy + Component>(
 
     let angle = -25f32.to_radians() * t;
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.left_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -162,13 +164,21 @@ fn jump_animation<Tag: Copy + Component>(
 
     let angle = 10f32.to_radians() * t;
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -176,19 +186,31 @@ fn jump_animation<Tag: Copy + Component>(
 
     let angle = 60f32.to_radians() * t;
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_CALF_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = L_FOOT_NORMAL_ATTACKING_IDENTITY;
 
-    let entity = skinning_animation.right_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -202,7 +224,11 @@ fn landing_animation<Tag: Copy + Component>(
 ) {
     let angle = -25f32.to_radians();
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.left_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -210,13 +236,21 @@ fn landing_animation<Tag: Copy + Component>(
 
     let angle = 10f32.to_radians();
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -224,19 +258,31 @@ fn landing_animation<Tag: Copy + Component>(
 
     let angle = 60f32.to_radians();
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_CALF_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = L_FOOT_NORMAL_ATTACKING_IDENTITY;
 
-    let entity = skinning_animation.right_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -519,7 +565,7 @@ pub fn animate_character<Tag: Copy + Component>(
                 );
             }
         },
-        ActionState::Death => {
+        ActionState::Retreat => {
             animate_character_when_death(
                 motions,
                 skinning_animation,

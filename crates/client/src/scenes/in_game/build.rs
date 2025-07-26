@@ -11,18 +11,21 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{InGamePlayerInitData, LoginToken, StageAttributes, StageKind, UserId},
+    components::{
+        CharacterKind, InGamePlayerInitData, LoginToken, StageAttributes, StageKind, Team, UserId,
+    },
     protocol::{InGameDataInitPacket, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::Scope;
+use rodio::Sink;
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     asset::{
-        MeshPool, ModelPool, MotionPool, SamplerPool, StageBoundingVolumnHierarchy,
-        TextureDataPool, TexturePool, TextureViewPool, BG_SKY_URI, NOTOSANS_BOLD,
+        MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool, StageBoundingVolumnHierarchy,
+        TextureDataPool, TexturePool, TextureViewPool, BG_SKY_URI, NOTOSANS_BOLD, UI_NOTICE,
     },
     component::{
         build_stage, spawn_player, DirectionLight, Player0, Player1, Player2, Player3, Player4,
@@ -66,6 +69,23 @@ pub struct InGameBuildScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
+    /// 시야 조작 민감도입니다.
+    control_sensitivity: f32,
+    /// 시야 조작의 상하 반전 여부입니다.
+    flip_horizontal: bool,
+    /// 시야 조작의 좌우 반전 여부입니다.
+    flip_vertical: bool,
+
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 초기화 패킷
     packet: Option<InGameDataInitPacket>,
@@ -86,6 +106,8 @@ pub struct InGameBuildScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameBuildScene {
@@ -94,6 +116,14 @@ impl InGameBuildScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
+        player_character: CharacterKind,
+        player_team: Team,
         packet: InGameDataInitPacket,
         stage_layout_data: Arc<OnceLock<Arc<StageAttributes>>>,
         mesh_pool: MeshPool,
@@ -103,11 +133,20 @@ impl InGameBuildScene {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
+            player_character,
+            player_team,
             packet: Some(packet),
             stage_layout_data,
             mesh_pool,
@@ -117,6 +156,7 @@ impl InGameBuildScene {
             texture_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         }
     }
 }
@@ -133,6 +173,7 @@ impl GameScene for InGameBuildScene {
         let texture_data_pool = self.texture_data_pool.clone();
         let texture_view_pool = self.texture_view_pool.clone();
         let sampler_pool = self.sampler_pool.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
         let stage_attributes = self.stage_layout_data.clone();
         let event_loop_proxy = app.event_loop_proxy().clone();
 
@@ -140,6 +181,14 @@ impl GameScene for InGameBuildScene {
             self.locale,
             self.uid,
             self.token,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            self.control_sensitivity,
+            self.flip_horizontal,
+            self.flip_vertical,
+            self.player_character,
+            self.player_team,
             packet,
             device,
             queue,
@@ -150,6 +199,7 @@ impl GameScene for InGameBuildScene {
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
             stage_attributes,
             event_loop_proxy,
         );
@@ -164,11 +214,31 @@ impl GameScene for InGameBuildScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -260,6 +330,14 @@ fn build_next_scene(
     locale: Locale,
     uid: UserId,
     token: LoginToken,
+    background_volume: u8,
+    effect_volume: u8,
+    voice_volume: u8,
+    control_sensitivity: f32,
+    flip_horizontal: bool,
+    flip_vertical: bool,
+    player_character: CharacterKind,
+    player_team: Team,
     packet: InGameDataInitPacket,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
@@ -270,6 +348,7 @@ fn build_next_scene(
     texture_data_pool: TextureDataPool,
     texture_view_pool: TextureViewPool,
     sampler_pool: SamplerPool,
+    sound_data_pool: SoundDataPool,
     stage_attributes: Arc<OnceLock<Arc<StageAttributes>>>,
     event_loop_proxy: Arc<EventLoopProxy<AppEvent>>,
 ) {
@@ -343,11 +422,19 @@ fn build_next_scene(
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             stage_attributes.clone(),
             packet.max_game_play_time_ms,
             packet.half_size_x,
             packet.half_size_y,
             packet.half_size_z,
+            player_character,
+            player_team,
             mesh_pool,
             model_pool,
             motion_pool,
@@ -355,6 +442,7 @@ fn build_next_scene(
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         );
 
         // 결과를 확인합니다.

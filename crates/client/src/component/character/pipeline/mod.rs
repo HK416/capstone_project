@@ -4,5 +4,6 @@
 mod common;
 mod eye_mouth;
 mod halo;
+mod outline;
 
-pub use self::{common::*, eye_mouth::*, halo::*};
+pub use self::{common::*, eye_mouth::*, halo::*, outline::*};

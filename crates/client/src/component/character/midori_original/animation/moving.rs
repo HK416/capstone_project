@@ -7,7 +7,7 @@ use mod_network::components::{ActionStateTimer, CharacterAttributes, LatLon, Mov
 
 use crate::{
     asset::Motion,
-    component::{BoneCollection, SkinningAnimation, ToParentTrans},
+    component::{BoneCollection, SkinningAnimation, ToParentTrans, MODEL_BONE_ROOT},
 };
 
 use super::*;
@@ -41,8 +41,13 @@ pub fn animate_character_when_moving<Tag: Copy + Component>(
     let keyframe = motion.linear_sampling(time_point_0);
 
     // 최상위 엔터티의 로컬 변환 행렬을 갱신합니다.
+    let root_entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_ROOT)
+        .cloned()
+        .expect("the bone entity must exists!");
     let (_, local_transform) = transform_view
-        .get_mut(skinning_animation.root)
+        .get_mut(root_entity)
         .expect("invalid entity or invalid entity component!");
     local_transform.0 = keyframe.root_matrix;
 

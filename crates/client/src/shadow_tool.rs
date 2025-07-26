@@ -6,7 +6,7 @@ use std::{
     io::{BufWriter, Read},
     path::{Path, PathBuf},
     process::exit,
-    sync::mpsc,
+    sync::{mpsc, Arc},
 };
 
 use ahash::HashMap;
@@ -21,8 +21,14 @@ use component::{
 };
 use hecs::{Entity, World};
 use image::{GrayImage, Luma};
-use mod_network::components::{StageKind, StageLayoutAttributes};
+use mod_network::components::{StageAttributes, StageAttributesData, StageKind};
+use mod_parallelism::collections::Queue;
 use mod_render::init_wgpu;
+
+use crate::component::{
+    update_stage_hierarchy, BakeList, OpaqueMap, RenderTask, ShadowMap, TransformMap,
+    TransparentMap,
+};
 
 mod asset;
 mod component;
@@ -80,10 +86,19 @@ fn main() {
     let depth_target_view = depth_target.create_view(&wgpu::TextureViewDescriptor::default());
 
     println!("지형 데이터를 불러옵니다...");
-    let i = config.kind as usize;
-    let mut workspace = config.current_dir.clone();
-    workspace.push(&format!("assets/{}", STAGE_WORKSPACES[i]));
-    let layout = load_stage_layout_from_file(&workspace, STAGE_URI);
+    let attributes = {
+        let i = config.kind as usize;
+        let mut path = config.current_dir.clone();
+        path.push(&format!("assets/{}", STAGE_WORKSPACES[i]));
+        path.push(format!("{}.json", STAGE_URI));
+        match StageAttributes::load_from_file(path) {
+            Ok(attributes) => attributes,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(-1);
+            }
+        }
+    };
 
     println!("지형을 구성하는 모델 데이터를 불러옵니다...");
     let mesh_pool = MeshPool::new();
@@ -95,10 +110,14 @@ fn main() {
     let sampler_pool = SamplerPool::new();
 
     {
+        let i = config.kind as usize;
+        let mut workspace = config.current_dir.clone();
+        workspace.push(&format!("assets/{}", STAGE_WORKSPACES[i]));
+
         let mut staging_buffers = Vec::new();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        for uri in layout.models.iter() {
+        for uri in attributes.model_list.iter() {
             let result = model_pool.get_or_init(
                 &mesh_pool,
                 &material_data_pool,
@@ -134,13 +153,14 @@ fn main() {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         let (bvh, batch_commands) = build_stage(
+            Some(&attributes.name),
             &world,
-            &model_pool,
-            &texture_data_pool,
-            &layout,
             &device,
             &mut encoder,
             &mut staging_buffers,
+            &model_pool,
+            &texture_data_pool,
+            &attributes,
         );
 
         // 게임 월드에 엔터티를 생성합니다.
@@ -161,50 +181,113 @@ fn main() {
 
     // 지형의 변환 행렬을 갱신합니다.
     println!("지형을 배치합니다...");
-    let mut shadow_map = HashMap::default();
-    let mut opaque_map = HashMap::default();
-    let mut transparent_map = HashMap::default();
+    let draw_tasks: Arc<Queue<_>> = Arc::new(Queue::new());
 
     let entities = collect_stage_entity(&bvh);
-    for entity in entities.iter().cloned() {
-        update_entity_hierarchy(&mut world, entity, glam::Mat4::IDENTITY);
-    }
-
     {
         let mut staging_buffers = Vec::new();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         let child_view = &world.view::<&Child>();
         let sibling_view = &world.view::<&Sibling>();
-        let transform_view = &world.view::<&WorldTransform>();
         let mesh_filter_view = &mut world.view::<MeshRenderer>();
         let skinned_mesh_filter_view = &mut world.view::<SkinnedMeshRenderer>();
 
-        for entity in entities {
-            update_stage_resource(
-                entity,
-                &device,
-                &mut encoder,
-                &mut staging_buffers,
-                &mut shadow_map,
-                &mut opaque_map,
-                &mut transparent_map,
-                child_view,
-                sibling_view,
-                transform_view,
-                mesh_filter_view,
-                skinned_mesh_filter_view,
-            );
-        }
+        update_stage_hierarchy(&world, &entities, child_view, sibling_view);
+        update_stage_resource(
+            &world,
+            &entities,
+            &device,
+            &mut encoder,
+            &mut staging_buffers,
+            child_view,
+            sibling_view,
+            mesh_filter_view,
+            skinned_mesh_filter_view,
+            &draw_tasks,
+        );
 
         // 렌더링 작업을 제출합니다.
         queue.submit(Some(encoder.finish()));
         let _ = device.poll(wgpu::PollType::Wait);
     }
 
+    let mut shadow_map = ShadowMap::default();
+    let mut opaque_map = OpaqueMap::default();
+    let mut transparent_map = TransparentMap::default();
+    while let Some(task) = draw_tasks.pop() {
+        let RenderTask {
+            mesh,
+            mesh_resource,
+            material_index,
+            material_resource,
+        } = task;
+
+        let material_kind = material_resource.kind();
+        if material_kind.is_opaque() {
+            // 불투명 작업 집합에 추가합니다.
+            let key = (mesh.clone(), material_kind);
+            let sub_key = (material_index, material_resource.clone());
+            match opaque_map.get_mut(&key) {
+                Some(resource_map) => match resource_map.get_mut(&sub_key) {
+                    Some(list) => {
+                        list.push(mesh_resource.clone());
+                    }
+                    None => {
+                        resource_map.insert(sub_key, vec![mesh_resource.clone()]);
+                    }
+                },
+                None => {
+                    opaque_map.insert(
+                        key,
+                        HashMap::from_iter([(sub_key, vec![mesh_resource.clone()])]),
+                    );
+                }
+            }
+
+            // 그림자 작업 집합에 추가합니다.
+            let key = (mesh.clone(), material_kind);
+            let sub_key = material_index;
+            match shadow_map.get_mut(&key) {
+                Some(resource_map) => match resource_map.get_mut(&sub_key) {
+                    Some(list) => {
+                        list.push(mesh_resource.clone());
+                    }
+                    None => {
+                        resource_map.insert(sub_key, vec![mesh_resource.clone()]);
+                    }
+                },
+                None => {
+                    shadow_map.insert(
+                        key,
+                        HashMap::from_iter([(sub_key, vec![mesh_resource.clone()])]),
+                    );
+                }
+            }
+        } else {
+            // 투명 작업 집합에 추가합니다.
+            let key = (mesh.clone(), material_kind);
+            let sub_key = (material_index, material_resource.clone());
+            match transparent_map.get_mut(&key) {
+                Some(resource_map) => match resource_map.get_mut(&sub_key) {
+                    Some(list) => {
+                        list.push(mesh_resource);
+                    }
+                    None => {
+                        resource_map.insert(sub_key, vec![mesh_resource]);
+                    }
+                },
+                None => {
+                    transparent_map
+                        .insert(key, HashMap::from_iter([(sub_key, vec![mesh_resource])]));
+                }
+            }
+        }
+    }
+
     println!("조명을 준비합니다...");
     // 가장 맨 처음 Directional Light를 찾습니다.
-    let light_dir: glam::Vec3A = match layout.global_light {
+    let light_dir: glam::Vec3A = match attributes.global_light {
         Some(light) => light.direction_w.into(),
         None => {
             eprintln!("전역 조명이 게임 월드에 존재하지 않습니다!\n프로그램을 종료합니다.");
@@ -261,9 +344,9 @@ fn main() {
                 occlusion_query_set: None,
             });
 
-            for ((mesh, kind), resource) in shadow_map.iter() {
+            for ((mesh, kind), resources) in shadow_map.iter() {
                 if *kind == MaterialKind::Stage {
-                    bake_stage(mesh, pipeline, &light_resource, resource, &mut rpass);
+                    bake_stage(mesh, &device, &light_resource, resources, &mut rpass);
                 }
             }
         }
@@ -366,56 +449,6 @@ fn main() {
         .expect("이미지 저장 실패");
 
     println!("완료!");
-}
-
-fn load_stage_layout_from_file<Dir, Uri>(workspace: Dir, uri: Uri) -> StageLayoutAttributes
-where
-    Dir: AsRef<Path>,
-    Uri: AsRef<str>,
-{
-    let mut path = workspace.as_ref().to_path_buf();
-    path.push(format!("{}.json", uri.as_ref()));
-
-    // 파일을 읽습니다.
-    let result = OpenOptions::new().read(true).write(false).open(&path);
-    let mut file = match result {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!(
-                "파일 열기에 실패했습니다. (파일:{}, 사유:{})",
-                path.display(),
-                &e
-            );
-            exit(-1);
-        }
-    };
-
-    // 파일 데이터를 버퍼에 저장합니다.
-    let mut buf = Vec::new();
-    let result = file.read_to_end(&mut buf);
-    if let Err(e) = result {
-        eprintln!(
-            "파일 읽기에 실패했습니다. (파일:{}, 사유:{})",
-            path.display(),
-            &e
-        );
-        exit(-1);
-    };
-    drop(file);
-
-    // 파일 데이터를 구문 분석합니다.
-    let result = serde_json::from_slice(&buf);
-    match result {
-        Ok(layout) => layout,
-        Err(e) => {
-            eprintln!(
-                "파일 구문 분석에 실패했습니다. (파일:{}, 사유:{})",
-                path.display(),
-                &e
-            );
-            exit(-1);
-        }
-    }
 }
 
 /// 스테이지를 구성하는 엔터티를 수집합니다.

@@ -1,6 +1,6 @@
 use std::{num::NonZeroU32, sync::Arc, time::Instant};
 
-use ahash::HashMap;
+use ahash::{HashMap, RandomState};
 use hecs::{Entity, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -12,40 +12,43 @@ use mod_network::{
     components::{
         update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
         HeldInput, LatLon, LoginToken, MovementState, MovementStateTimer, SkillCostData,
-        StageAttributes, UserId,
+        StageAttributes, Team, UserId,
     },
     protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
 use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use rand::seq::SliceRandom;
+use rodio::Sink;
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool,
-        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
-        HUD_LAYOUT_URI_03, IMG_FONT_MISSION_URI, NOTOSANS_BOLD,
+        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
+        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool, CV_TACTIC_IN,
+        HUD_LAYOUT_URI_03, IMG_FONT_MISSION_URI, NOTOSANS_BOLD, UI_NOTICE,
     },
     component::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
-        draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree,
-        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
+        draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline, draw_stage,
+        draw_tree, update_character_hierarchy, update_character_resource, update_stage_hierarchy,
         update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
         BoneCollection, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
         CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
-        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
-        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, ShadowResource,
-        Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, ToParentTrans,
-        TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        HaloOutlineMaterialDataLayout, HaloOutlineMaterialResource, HaloOutlineUniform,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer,
+        OpaqueMap, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap,
+        ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
+        ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
     player_execute,
     scenes::{
         FatalErrorSceneLayer, InGameRunScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
     },
 };
 
@@ -65,6 +68,18 @@ pub struct InGameEnterScene {
     uid: UserId,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
+    /// 시야 조작 민감도입니다.
+    control_sensitivity: f32,
+    /// 시야 조작의 상하 반전 여부입니다.
+    flip_horizontal: bool,
+    /// 시야 조작의 좌우 반전 여부입니다.
+    flip_vertical: bool,
 
     /// 스테이지 속성 데이터
     stage_attributes: Arc<StageAttributes>,
@@ -83,6 +98,11 @@ pub struct InGameEnterScene {
     half_size_y: NonZeroU32,
     /// 게임 월드 z축 전체 절반 크기
     half_size_z: NonZeroU32,
+
+    /// 플레이어 캐릭터 종류
+    player_character: CharacterKind,
+    /// 플레이어가 속한 팀
+    player_team: Team,
 
     /// 게임 월드
     world: Option<World>,
@@ -106,6 +126,9 @@ pub struct InGameEnterScene {
     gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
+
+    /// 헤일로 외곽선 재질 쉐이더 리소스
+    outlines: HashMap<Team, MaterialResource>,
 
     /// 스테이지 스카이박스
     skybox: Option<Skybox>,
@@ -148,6 +171,8 @@ pub struct InGameEnterScene {
     texture_view_pool: TextureViewPool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl InGameEnterScene {
@@ -156,12 +181,20 @@ impl InGameEnterScene {
         locale: Locale,
         uid: UserId,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        control_sensitivity: f32,
+        flip_horizontal: bool,
+        flip_vertical: bool,
         stage_attributes: Arc<StageAttributes>,
         max_game_play_time_ms: u32,
         remaining_time_ms: u16,
         half_size_x: NonZeroU32,
         half_size_y: NonZeroU32,
         half_size_z: NonZeroU32,
+        player_character: CharacterKind,
+        player_team: Team,
         world: World,
         players: HashMap<UserId, (Entity, PlayerArchetype)>,
         stage: StageBoundingVolumnHierarchy,
@@ -181,11 +214,18 @@ impl InGameEnterScene {
         texture_data_pool: TextureDataPool,
         texture_view_pool: TextureViewPool,
         sampler_pool: SamplerPool,
+        sound_data_pool: SoundDataPool,
     ) -> Self {
         Self {
             locale,
             uid,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
+            control_sensitivity,
+            flip_horizontal,
+            flip_vertical,
             stage_attributes,
             max_game_play_time_ms,
             remaining_time_ms,
@@ -194,6 +234,8 @@ impl InGameEnterScene {
             half_size_x,
             half_size_y,
             half_size_z,
+            player_character,
+            player_team,
             world: Some(world),
             camera: Entity::DANGLING,
             players,
@@ -204,6 +246,7 @@ impl InGameEnterScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            outlines: HashMap::with_capacity_and_hasher(2, RandomState::new()),
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
@@ -229,6 +272,7 @@ impl InGameEnterScene {
             texture_data_pool,
             texture_view_pool,
             sampler_pool,
+            sound_data_pool,
         }
     }
 
@@ -248,6 +292,51 @@ impl InGameEnterScene {
         player_execute!(archetype, world, entity, &mut ActionState, |action_state| {
             *action_state = ActionState::Callsign;
         });
+    }
+
+    /// 헤일로 외곽선 재질 쉐이더 리소스를 생성합니다.
+    fn create_outline_material_resources(&mut self, device: &wgpu::Device) {
+        let color = TEAM_COLOR[Team::Blue as usize];
+        let material_uniform = HaloOutlineUniform::new(
+            Some("HaloOutline(Blue)"),
+            device,
+            HaloOutlineMaterialDataLayout {
+                color: [
+                    color.r() as f32 / 255.0,
+                    color.g() as f32 / 255.0,
+                    color.b() as f32 / 255.0,
+                ],
+                scale: [1.05, 1.05, 1.05],
+                ..Default::default()
+            },
+        );
+        let resource = HaloOutlineMaterialResource::new(
+            Some("Material(HaloOutline(Blue))"),
+            device,
+            &material_uniform,
+        );
+        self.outlines.insert(Team::Blue, resource);
+
+        let color = TEAM_COLOR[Team::Red as usize];
+        let material_uniform = HaloOutlineUniform::new(
+            Some("HaloOutline(Red)"),
+            device,
+            HaloOutlineMaterialDataLayout {
+                color: [
+                    color.r() as f32 / 255.0,
+                    color.g() as f32 / 255.0,
+                    color.b() as f32 / 255.0,
+                ],
+                scale: [1.1; 3],
+                ..Default::default()
+            },
+        );
+        let resource = HaloOutlineMaterialResource::new(
+            Some("Material(HaloOutline(Red))"),
+            device,
+            &material_uniform,
+        );
+        self.outlines.insert(Team::Red, resource);
     }
 
     /// 카메라 엔터티를 생성합니다.
@@ -480,11 +569,6 @@ impl InGameEnterScene {
             None => return,
         };
 
-        // 캐릭터 종류를 가져옵니다.
-        let &character_kind = world
-            .query_one_mut::<&CharacterKind>(entity)
-            .expect("invalid entity or invalid entity component!");
-
         type Q<'a> = (
             &'a mut BulletData,
             &'a mut SkillCostData,
@@ -498,9 +582,10 @@ impl InGameEnterScene {
             action_state_timer,
         )| {
             // 플레이어 엔터티의 행동 상태를 갱신합니다.
-            let i = character_kind as usize;
+            let i = self.player_character as usize;
             let character_attributes = CHARACTER_ATTRIBUTES[i];
             update_action_state_timer(
+                self.uid,
                 HeldInput::empty(),
                 bullet_data,
                 skill_cost_data,
@@ -508,7 +593,7 @@ impl InGameEnterScene {
                 action_state_timer,
                 character_attributes,
                 elapsed_time_ms,
-                &mut Vec::new(),
+                &mut vec![],
             );
         });
     }
@@ -802,8 +887,8 @@ impl GameScene for InGameEnterScene {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         self.setup_player();
-
         self.create_camera(size, device);
+        self.create_outline_material_resources(&device);
         self.update_camera_and_skybox(device, &mut encoder, &mut staging_buffers);
 
         self.cull_stage_entities();
@@ -826,6 +911,38 @@ impl GameScene for InGameEnterScene {
         let queue = app.render_queue();
         queue.submit(Some(encoder.finish()));
         drop(staging_buffers);
+
+        // 배경 음악을 재생합니다.
+        let sink_list = app.sink_list();
+        let mut temp = Vec::with_capacity(sink_list.len());
+        while let Some(sink) = sink_list.pop() {
+            sink.play();
+            temp.push(sink);
+        }
+
+        for sink in temp {
+            sink_list.push(sink);
+        }
+
+        // 캐릭터 목소리를 재생합니다.
+        let i = self.player_character as usize;
+        let mut decodeds = Vec::with_capacity(CV_TACTIC_IN[i].len());
+        for j in 0..CV_TACTIC_IN[i].len() {
+            let decoded = self
+                .sound_data_pool
+                .remove(CV_TACTIC_IN[i][j])
+                .expect(&format!("{} voice must be preloaded!", CV_TACTIC_IN[i][j]));
+            decodeds.push(decoded);
+        }
+        decodeds.shuffle(&mut rand::rng());
+
+        let decoded = decodeds.pop().unwrap();
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.voice_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_exit(
@@ -881,11 +998,31 @@ impl GameScene for InGameEnterScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_received_packet(
@@ -979,6 +1116,7 @@ impl GameScene for InGameEnterScene {
                     .bloom_pipeline
                     .take()
                     .expect("the bloom render pipeline must be exists!");
+                let outlines = self.outlines.drain().collect();
                 let skybox = self.skybox.take().expect("the skybox must be exists!");
                 let direction_light = self
                     .direction_light
@@ -992,12 +1130,20 @@ impl GameScene for InGameEnterScene {
                     self.locale,
                     self.uid,
                     self.token,
+                    self.background_volume,
+                    self.effect_volume,
+                    self.voice_volume,
+                    self.control_sensitivity,
+                    self.flip_horizontal,
+                    self.flip_vertical,
                     self.stage_attributes.clone(),
                     self.max_game_play_time_ms,
                     self.first_mouse_pressed,
                     self.half_size_x,
                     self.half_size_y,
                     self.half_size_z,
+                    self.player_character,
+                    self.player_team,
                     world,
                     players,
                     stage,
@@ -1007,6 +1153,7 @@ impl GameScene for InGameEnterScene {
                     alpha_blend_pipeline,
                     gaussian_blur_pipeline,
                     bloom_pipeline,
+                    outlines,
                     skybox,
                     direction_light,
                     light_resource,
@@ -1017,6 +1164,7 @@ impl GameScene for InGameEnterScene {
                     self.texture_data_pool.clone(),
                     self.texture_view_pool.clone(),
                     self.sampler_pool.clone(),
+                    self.sound_data_pool.clone(),
                 );
                 let flow = GameSceneFlow::Change(Box::new(scene));
                 let event = AppEvent::AddGameSceneFlow(flow);
@@ -1105,8 +1253,12 @@ impl GameScene for InGameEnterScene {
         });
 
         let draw_tasks = &Arc::new(Queue::new());
-        rayon::in_place_scope(move |scope| {
+        rayon::in_place_scope(|scope| {
             // 캐릭터 쉐이더 리소스를 갱신합니다.
+            let outline_resource = self
+                .outlines
+                .get(&self.player_team)
+                .expect("the outline material shader resource must be exists!");
             scope.spawn(move |_| {
                 let mut staging_buffers = Vec::default();
                 let mut encoder =
@@ -1119,6 +1271,7 @@ impl GameScene for InGameEnterScene {
                     &device,
                     &mut encoder,
                     &mut staging_buffers,
+                    outline_resource,
                     child_view,
                     sibling_view,
                     mesh_filter_view,
@@ -1380,6 +1533,15 @@ impl GameScene for InGameEnterScene {
                             device,
                             camera_resource,
                             light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterHaloOutline => {
+                        draw_character_halo_outline(
+                            mesh,
+                            device,
+                            camera_resource,
                             material_resources,
                             &mut rpass,
                         );

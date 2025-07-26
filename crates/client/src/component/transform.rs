@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// ## To Parent Transform Matrix
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq)]

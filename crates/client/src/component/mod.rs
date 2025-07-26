@@ -3,6 +3,7 @@ mod camera;
 mod character;
 mod damage_font;
 mod deferred;
+mod fx;
 mod hierarchy;
 mod light;
 mod material;
@@ -18,7 +19,7 @@ use std::sync::Arc;
 use ahash::HashMap;
 
 pub use self::{
-    bullet::*, camera::*, character::*, damage_font::*, deferred::*, hierarchy::*, light::*,
+    bullet::*, camera::*, character::*, damage_font::*, deferred::*, fx::*, hierarchy::*, light::*,
     material::*, mesh::*, query::*, skybox::*, stage::*, transform::*, ui::*,
 };
 

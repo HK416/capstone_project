@@ -1,26 +1,26 @@
 mod animation;
 mod camera;
 mod pipeline;
-mod pull;
 mod render;
 mod spawn;
-mod transform;
-mod view_state;
 
 mod aris_original;
 mod midori_original;
 mod momoi_original;
 mod yuuka_original;
 
-use hecs::{Component, ViewBorrow};
+use hecs::{Component, Entity, ViewBorrow, World};
 use lazy_static::lazy_static;
-use mod_network::components::{ActionState, CharacterAttributes, LatLon, NUM_CHARACTERS};
-
-use crate::component::{Child, Sibling, ToParentTrans, WorldTransform};
-
-pub use self::{
-    animation::*, camera::*, pipeline::*, pull::*, render::*, spawn::*, transform::*, view_state::*,
+use mod_network::components::{
+    ActionState, CharacterAttributes, CharacterKind, LatLon, NUM_CHARACTERS,
 };
+
+use crate::{
+    asset::MeshPool,
+    component::{Child, PlayerArchetype, Sibling, ToParentTrans, WorldTransform},
+};
+
+pub use self::{animation::*, camera::*, pipeline::*, render::*, spawn::*};
 
 lazy_static! {
     pub static ref CHARACTER_ATTRIBUTES: [&'static CharacterAttributes; NUM_CHARACTERS] = [
@@ -43,7 +43,11 @@ fn look_to_camera_direction<Tag: Copy + Component>(
 
     // Head
     let angle = latitude / 7.0 * offset;
-    let bone_entity = skinning_animation.bip001_head;
+    let bone_entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_HEAD)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
@@ -52,7 +56,11 @@ fn look_to_camera_direction<Tag: Copy + Component>(
 
     // Spine1
     let angle = 3.0 * latitude / 7.0 * offset;
-    let bone_entity = skinning_animation.bip001_spine1;
+    let bone_entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_SPINE_1)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
@@ -62,7 +70,11 @@ fn look_to_camera_direction<Tag: Copy + Component>(
     // Spine
     // 카메라가 바라보는 방향을 캐릭터가 바라보도록 합니다.
     let angle = 3.0 * latitude / 7.0 * offset;
-    let bone_entity = skinning_animation.bip001_spine;
+    let bone_entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_SPINE)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(bone_entity)
         .expect("invalid entity or invalid entity component");
@@ -73,6 +85,7 @@ fn look_to_camera_direction<Tag: Copy + Component>(
 /// 캐릭터 무기의 위치를 설정합니다.
 pub fn set_weapon_position<Tag: Copy + Component>(
     action_state: ActionState,
+    character_kind: CharacterKind,
     character_attributes: &CharacterAttributes,
     skinning_animation: &SkinningAnimation,
     child_view: &ViewBorrow<'_, &Child>,
@@ -86,60 +99,102 @@ pub fn set_weapon_position<Tag: Copy + Component>(
         | ActionState::AimOff
         | ActionState::Attack
         | ActionState::Skill => {
-            if let Some(attributes) = &character_attributes.right_weapon {
-                let bone_entity = skinning_animation.bip001_r_hand;
-                let (_, world_transform) = world_transform_view
-                    .get_mut(bone_entity)
-                    .expect("invalid entity or invalid entity component!");
-                let w_hand = world_transform.0;
-
-                let bone_entity = skinning_animation.bip001_r_weapon;
-                let (_, world_transform) = world_transform_view
-                    .get_mut(bone_entity)
-                    .expect("invalid entity or invalid entity component!");
-                let offset: glam::Mat4 = attributes.hand_to_weapon_offset.into();
-                let parent = w_hand * offset;
-                world_transform.0 = parent;
-
-                if let Some(&child) = child_view.get(bone_entity) {
-                    update_entity_hierarchy_with_archetype(
-                        *child,
-                        parent,
-                        child_view,
-                        sibling_view,
-                        local_transform_view,
-                        world_transform_view,
-                    );
-                }
-            }
-
-            if let Some(attributes) = &character_attributes.left_weapon {
-                let bone_entity = skinning_animation.bip001_l_hand;
-                let (_, world_transform) = world_transform_view
-                    .get_mut(bone_entity)
-                    .expect("invalid entity or invalid entity component!");
-                let transform = world_transform.0;
-
-                let bone_entity = skinning_animation.bip001_l_weapon;
-                let (_, world_transform) = world_transform_view
-                    .get_mut(bone_entity)
-                    .expect("invalid entity or invalid entity component!");
-                let offset: glam::Mat4 = attributes.hand_to_weapon_offset.into();
-                let parent = transform * offset;
-                world_transform.0 = parent;
-
-                if let Some(&child) = child_view.get(bone_entity) {
-                    update_entity_hierarchy_with_archetype(
-                        *child,
-                        parent,
-                        child_view,
-                        sibling_view,
-                        local_transform_view,
-                        world_transform_view,
-                    );
-                }
-            }
+            let func = match character_kind {
+                CharacterKind::ArisOriginal => aris_original::set_weapon_position,
+                CharacterKind::MomoiOriginal => momoi_original::set_weapon_position,
+                CharacterKind::MidoriOriginal => midori_original::set_weapon_position,
+                CharacterKind::YuukaOriginal => yuuka_original::set_weapon_position,
+            };
+            func(
+                action_state,
+                character_attributes,
+                skinning_animation,
+                child_view,
+                sibling_view,
+                local_transform_view,
+                world_transform_view,
+            );
         }
         _ => {}
+    }
+}
+
+/// 총구 화염 이펙트 엔터티를 생성합니다.
+pub fn spawn_fx_muzzle_effect(
+    world: &mut World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    mesh_pool: &MeshPool,
+) {
+    // 캐릭터 종류를 가져옵니다.
+    let &kind = world
+        .query_one_mut::<&CharacterKind>(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = world
+        .query_one_mut::<&SkinningAnimation>(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    let builders = match kind {
+        CharacterKind::ArisOriginal => {
+            vec![]
+        }
+        CharacterKind::MomoiOriginal => {
+            momoi_original::spawn_fx_muzzle_effect(archetype, skinning_animation, mesh_pool)
+        }
+        CharacterKind::MidoriOriginal => {
+            midori_original::spawn_fx_muzzle_effect(archetype, skinning_animation, mesh_pool)
+        }
+        CharacterKind::YuukaOriginal => {
+            yuuka_original::spawn_fx_muzzle_effect(archetype, skinning_animation, mesh_pool)
+        }
+    };
+
+    // 엔터티를 생성합니다.
+    for mut builder in builders {
+        world.spawn(builder.build());
+    }
+}
+
+/// Midori_Original의 총구 화염 이펙트 엔터티를 생성합니다.
+pub fn spawn_midori_fx_muzzle_effect(
+    world: &mut World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    mesh_pool: &MeshPool,
+) {
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = world
+        .query_one_mut::<&SkinningAnimation>(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    let builders =
+        midori_original::spawn_skill_fx_muzzle_effect(archetype, skinning_animation, mesh_pool);
+
+    // 엔터티를 생성합니다.
+    for mut builder in builders {
+        world.spawn(builder.build());
+    }
+}
+
+/// Momoi_Original의 총구 화염 이펙트 엔터티를 생성합니다.
+pub fn spawn_momoi_fx_muzzle_effect(
+    world: &mut World,
+    entity: Entity,
+    archetype: PlayerArchetype,
+    mesh_pool: &MeshPool,
+) {
+    // 스키닝 애니메이션 데이터를 가져옵니다.
+    let skinning_animation = world
+        .query_one_mut::<&SkinningAnimation>(entity)
+        .expect("invalid entity or invalid entity component!");
+
+    let builders =
+        momoi_original::spawn_skill_fx_muzzle_effect(archetype, skinning_animation, mesh_pool);
+
+    // 엔터티를 생성합니다.
+    for mut builder in builders {
+        world.spawn(builder.build());
     }
 }

@@ -2,7 +2,7 @@
 //! 지형 재질 쉐이더 리소스와 관련된 코드를 관리합니다.
 //!
 
-mod capture_zone;
+mod barrier;
 mod tree;
 
 use std::{
@@ -15,7 +15,7 @@ use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-pub use self::{capture_zone::*, tree::*};
+pub use self::{barrier::*, tree::*};
 
 use super::{MaterialKind, MaterialResource};
 
@@ -72,8 +72,9 @@ impl StageMaterialUniform {
         core::mem::size_of::<StageMaterialDataLayout>() as wgpu::BufferAddress;
 
     /// 유니폼 버퍼의 [`wgpu::BufferUsages`]입니다.
-    pub const USAGES: wgpu::BufferUsages =
-        wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST);
+    pub const USAGES: wgpu::BufferUsages = wgpu::BufferUsages::UNIFORM
+        .union(wgpu::BufferUsages::COPY_DST)
+        .union(wgpu::BufferUsages::MAP_WRITE);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
     pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {

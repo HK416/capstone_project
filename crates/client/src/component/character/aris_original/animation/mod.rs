@@ -40,15 +40,13 @@ use mod_network::components::{
 use crate::{
     asset::Motion,
     component::{
-        character::aris_original::animation::{
-            reload_jumping::animate_character_when_reload_jumping,
-            reload_landing::animate_character_when_reload_landing,
-        },
         BoneCollection, SkinningAnimation, ToParentTrans, ATTACK_END_ANIMATION_SUFFIX,
         ATTACK_ING_ANIMATION_SUFFIX, ATTACK_START_ANIMATION_SUFFIX, CAFE_WALK_ANIMATION_SUFFIX,
-        EXS_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MOVE_TO_END_ANIMATION_SUFFIX,
-        MOVING_ANIMATION_SUFFIX, NORMAL_CALLSIGN_SUFFIX, RELOAD_ANIMATION_SUFFIX,
-        VICTORY_END_SUFFIX, VICTORY_START_SUFFIX, VITAL_DEATH_ANIMATION_SUFFIX,
+        EXS_ANIMATION_SUFFIX, IDLE_ANIMATION_SUFFIX, MODEL_BONE_L_CALF, MODEL_BONE_L_FOOT,
+        MODEL_BONE_L_THIGH, MODEL_BONE_R_CALF, MODEL_BONE_R_FOOT, MODEL_BONE_R_THIGH,
+        MOVE_TO_END_ANIMATION_SUFFIX, MOVING_ANIMATION_SUFFIX, NORMAL_CALLSIGN_SUFFIX,
+        RELOAD_ANIMATION_SUFFIX, VICTORY_END_SUFFIX, VICTORY_START_SUFFIX,
+        VITAL_DEATH_ANIMATION_SUFFIX,
     },
 };
 
@@ -56,8 +54,8 @@ use self::{
     aim::*, aim_jumping::*, aim_landing::*, aim_move::*, aim_move_to_move::*, aim_to_idle::*,
     attack_jumping::*, attack_landing::*, attack_move::*, attacking::*, callsign::*, death::*,
     idle::*, idle_to_aim::*, jumping::*, landing::*, move_to_aim_move::*, move_to_end::*,
-    moving::*, reload::*, reload_move::*, skill::*, skill_jumping::*, skill_landing::*,
-    skill_move::*, victory_end::*, victory_start::*,
+    moving::*, reload::*, reload_jumping::*, reload_landing::*, reload_move::*, skill::*,
+    skill_jumping::*, skill_landing::*, skill_move::*, victory_end::*, victory_start::*,
 };
 
 use super::*;
@@ -154,7 +152,11 @@ fn jump_animation<Tag: Copy + Component>(
 
     let angle = -25f32.to_radians() * t;
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.left_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -162,13 +164,21 @@ fn jump_animation<Tag: Copy + Component>(
 
     let angle = 10f32.to_radians() * t;
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -176,19 +186,31 @@ fn jump_animation<Tag: Copy + Component>(
 
     let angle = 60f32.to_radians() * t;
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_CALF_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = L_FOOT_NORMAL_ATTACKING_IDENTITY;
 
-    let entity = skinning_animation.right_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -202,7 +224,11 @@ fn landing_animation<Tag: Copy + Component>(
 ) {
     let angle = -25f32.to_radians();
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.left_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -210,13 +236,21 @@ fn landing_animation<Tag: Copy + Component>(
 
     let angle = 10f32.to_radians();
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_thigh;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_THIGH)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_THIGH_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -224,19 +258,31 @@ fn landing_animation<Tag: Copy + Component>(
 
     let angle = 60f32.to_radians();
     let rotate = glam::Mat4::from_rotation_z(angle);
-    let entity = skinning_animation.right_calf;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_CALF)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = R_CALF_NORMAL_ATTACKING_IDENTITY * rotate;
 
-    let entity = skinning_animation.left_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_L_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
     local_transform.0 = L_FOOT_NORMAL_ATTACKING_IDENTITY;
 
-    let entity = skinning_animation.right_foot;
+    let entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_R_FOOT)
+        .cloned()
+        .expect("the bone entity must be exists!");
     let (_, local_transform) = transform_view
         .get_mut(entity)
         .expect("invalid entity or invalid entity component");
@@ -519,7 +565,7 @@ pub fn animate_character<Tag: Copy + Component>(
                 );
             }
         },
-        ActionState::Death => {
+        ActionState::Retreat => {
             animate_character_when_death(
                 motions,
                 skinning_animation,

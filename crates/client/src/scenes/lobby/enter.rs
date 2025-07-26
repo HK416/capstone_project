@@ -6,20 +6,23 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::components::{GameTier, LoginToken, ProfileIcon, UserId, UserName};
+use mod_network::components::{CharacterKind, GameTier, LoginToken, ProfileIcon, UserId, UserName};
 use mod_parallelism::collections::Queue;
 use mod_render::UiRenderer;
 use rayon::ThreadPool;
+use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        SamplerPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI, BG_DECO_URI,
-        BG_FORMATION_URI, BG_MAIN_LOBBY_URI, CHARACTER_IMG_URI, EMBLEM_BG_URI, GAME_LOGO_URI,
-        HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI,
-        HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03,
-        HUD_OPTION_ICON_URI, ICON_WORKSPACE, IMG_FONT_HOST_URI, IMG_FONT_READY_URI,
-        IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
+        SamplerPool, SoundDataPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI,
+        BG_DECO_URI, BG_FORMATION_URI, BG_MAIN_LOBBY_URI, BG_SOUND_THEME_03, BG_SOUND_THEME_14,
+        BG_SOUND_WORKSPACE, CHARACTER_IMG_URI, CV_SOUND_TITLE, CV_YUUKA_OPTION, EMBLEM_BG_URI,
+        GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI,
+        HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
+        HUD_LAYOUT_URI_03, HUD_OPTION_ICON_URI, ICON_WORKSPACE, IMG_FONT_HOST_URI,
+        IMG_FONT_READY_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
+        UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
@@ -42,6 +45,7 @@ enum TaskResult {
         command: wgpu::CommandBuffer,
         staging_buffers: Vec<wgpu::Buffer>,
     },
+    Sound,
     Err(Box<dyn Error>),
 }
 
@@ -58,6 +62,12 @@ pub struct MainLobbyEnterScene {
     profile_icon: ProfileIcon,
     /// 로그인 토큰
     token: LoginToken,
+    /// 배경음 음량
+    background_volume: u8,
+    /// 이펙트 음량
+    effect_volume: u8,
+    /// 목소리 음량
+    voice_volume: u8,
 
     /// 스테이징(업로드) 버퍼 집합
     staging_buffers: Vec<wgpu::Buffer>,
@@ -74,6 +84,8 @@ pub struct MainLobbyEnterScene {
     texture_pool: TexturePool,
     /// 텍스처 샘플러 풀 객체입니다.
     sampler_pool: SamplerPool,
+    /// 사운드 데이터 풀 객체
+    sound_data_pool: SoundDataPool,
 }
 
 impl MainLobbyEnterScene {
@@ -84,47 +96,49 @@ impl MainLobbyEnterScene {
         name: UserName,
         tier: GameTier,
         profile_icon: ProfileIcon,
-        previous_texture_pool: &TexturePool,
         token: LoginToken,
+        background_volume: u8,
+        effect_volume: u8,
+        voice_volume: u8,
+        previous_texture_pool: &TexturePool,
+        previous_sound_data_pool: &SoundDataPool,
     ) -> Self {
         // 새로운 텍스처 풀을 생성하고 이전 텍스처 풀에서 필요한 데이터를 취합니다.
         let texture_pool = TexturePool::new();
+        const TEXTURE_URIS: [&'static str; 6] = [
+            GAME_LOGO_URI,
+            HUD_EXIT_ICON_URI,
+            HUD_DETAIL_ICON_URI,
+            HUD_OPTION_ICON_URI,
+            HUD_CHANGE_ICON_URI,
+            HUD_CANCEL_ICON_URI,
+        ];
+        for uri in TEXTURE_URIS {
+            let texture = previous_texture_pool
+                .remove(uri)
+                .expect(&format!("{} texture must be preloaded!", uri));
+            texture_pool.insert(uri, texture);
+        }
 
-        // Game_Logo
-        let texture = previous_texture_pool
-            .remove(GAME_LOGO_URI)
-            .expect("Game_Logo texture must be preloaded!");
-        texture_pool.insert(GAME_LOGO_URI, texture);
-
-        // HUD_Exit_Icon
-        let texture = previous_texture_pool
-            .remove(HUD_EXIT_ICON_URI)
-            .expect("HUD_Exit_Icon texture must be preloaded!");
-        texture_pool.insert(HUD_EXIT_ICON_URI, texture);
-
-        // HUD_Detail_Icon
-        let texture = previous_texture_pool
-            .remove(HUD_DETAIL_ICON_URI)
-            .expect("HUD_Detail_Icon texture must be preloaded!");
-        texture_pool.insert(HUD_DETAIL_ICON_URI, texture);
-
-        // HUD_Option_Icon
-        let texture = previous_texture_pool
-            .remove(HUD_OPTION_ICON_URI)
-            .expect("HUD_Option_Icon texture must be preloaded!");
-        texture_pool.insert(HUD_OPTION_ICON_URI, texture);
-
-        // HUD_Change_Icon
-        let texture = previous_texture_pool
-            .remove(HUD_CHANGE_ICON_URI)
-            .expect("HUD_Change_Icon texture must be preloaded!");
-        texture_pool.insert(HUD_CHANGE_ICON_URI, texture);
-
-        // HUD_Cancel_Icon
-        let texture = previous_texture_pool
-            .remove(HUD_CANCEL_ICON_URI)
-            .expect("HUD_Cancel_Icon texture must be preloaded!");
-        texture_pool.insert(HUD_CANCEL_ICON_URI, texture);
+        // 새로운 사운드 데이터 풀을 생성하고 이전 사운드 풀에서 필요한 데이터를 취합니다.
+        let sound_data_pool = SoundDataPool::new();
+        const SOUND_URIS: [&'static str; 9] = [
+            CV_YUUKA_OPTION,
+            CV_SOUND_TITLE[CharacterKind::YuukaOriginal as usize],
+            UI_BUTTON_BACK,
+            UI_BUTTON_TOUCH,
+            UI_LOADING,
+            UI_NOTICE,
+            UI_PAUSE,
+            UI_TURN_DOWN,
+            UI_TURN_UP,
+        ];
+        for uri in SOUND_URIS {
+            let decoded = previous_sound_data_pool
+                .remove(uri)
+                .expect(&format!("{} sound must be preloaded!", uri));
+            sound_data_pool.insert(uri, decoded);
+        }
 
         Self {
             locale,
@@ -133,6 +147,9 @@ impl MainLobbyEnterScene {
             tier,
             profile_icon,
             token,
+            background_volume,
+            effect_volume,
+            voice_volume,
             staging_buffers: Vec::default(),
             task_results: Arc::new(Queue::new()),
             num_remaining_tasks: 0,
@@ -140,6 +157,7 @@ impl MainLobbyEnterScene {
             texture_view_pool: TextureViewPool::new(),
             texture_pool,
             sampler_pool: SamplerPool::new(),
+            sound_data_pool,
         }
     }
 
@@ -666,6 +684,52 @@ impl MainLobbyEnterScene {
 
         self.num_remaining_tasks += 1;
     }
+
+    fn create_theme_03_sound<Dir>(&mut self, root_dir: Dir, thread_pool: &ThreadPool)
+    where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push(BG_SOUND_WORKSPACE);
+
+        let task_results = self.task_results.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
+        thread_pool.spawn(move || {
+            let result = sound_data_pool.get_or_init(workspace, BG_SOUND_THEME_03);
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
+
+            task_results.push(TaskResult::Sound);
+        });
+
+        self.num_remaining_tasks += 1;
+    }
+
+    fn create_theme_14_sound<Dir>(&mut self, root_dir: Dir, thread_pool: &ThreadPool)
+    where
+        Dir: AsRef<Path>,
+    {
+        let mut workspace = root_dir.as_ref().to_path_buf();
+        workspace.push(BG_SOUND_WORKSPACE);
+
+        let task_results = self.task_results.clone();
+        let sound_data_pool = self.sound_data_pool.clone();
+        thread_pool.spawn(move || {
+            let result = sound_data_pool.get_or_init(workspace, BG_SOUND_THEME_14);
+
+            if let Err(e) = result {
+                task_results.push(TaskResult::Err(Box::new(e)));
+                return;
+            }
+
+            task_results.push(TaskResult::Sound);
+        });
+
+        self.num_remaining_tasks += 1;
+    }
 }
 
 impl GameScene for MainLobbyEnterScene {
@@ -686,6 +750,20 @@ impl GameScene for MainLobbyEnterScene {
         self.create_img_font_ready_textures(&root_dir, io_thread_pool, device.clone());
         self.create_img_font_host_textures(&root_dir, io_thread_pool, device.clone());
         self.create_arona_sad_texture(&root_dir, io_thread_pool, device.clone());
+        self.create_theme_03_sound(&root_dir, io_thread_pool);
+        self.create_theme_14_sound(&root_dir, io_thread_pool);
+
+        // 효과음을 출력합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_LOADING)
+            .expect("UI_Loading sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.voice_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -697,11 +775,31 @@ impl GameScene for MainLobbyEnterScene {
         };
 
         // 다음 게임 장면으로 전환합니다.
-        let next_scene = FatalErrorSceneLayer::new(self.locale, title, message);
+        let next_scene = FatalErrorSceneLayer::new(
+            self.locale,
+            self.background_volume,
+            self.effect_volume,
+            self.voice_volume,
+            title,
+            message,
+            self.sound_data_pool.clone(),
+        );
         let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
         let event = AppEvent::AddGameSceneFlow(scene_flow);
         let event_loop_proxy = app.event_loop_proxy();
         event_loop_proxy.send_event(event).unwrap();
+
+        // 효과음을 재생합니다.
+        let decoded = self
+            .sound_data_pool
+            .get(UI_NOTICE)
+            .expect("UI_Notice sound must be preloaded!");
+        let source = decoded.as_source();
+        let sink = Sink::connect_new(app.audio_mixer());
+        sink.set_volume(self.effect_volume as f32 / 255.0);
+        sink.append(source);
+        sink.play();
+        sink.detach();
     }
 
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {
@@ -718,13 +816,18 @@ impl GameScene for MainLobbyEnterScene {
                     app.render_queue().submit(Some(command));
                     self.staging_buffers.append(&mut staging_buffers);
                 }
+                TaskResult::Sound => {}
                 TaskResult::Err(_e) => {
                     // 다음 게임 장면으로 전환합니다.
                     let i = self.locale as usize;
                     let next_scene = FatalErrorSceneLayer::new(
                         self.locale,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
                         ERR_TITLE_TEXTS[i],
                         ERR_MSG_TEXTS[i],
+                        self.sound_data_pool.clone(),
                     );
                     let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
                     let event = AppEvent::AddGameSceneFlow(scene_flow);
@@ -744,7 +847,11 @@ impl GameScene for MainLobbyEnterScene {
                 self.tier,
                 self.profile_icon,
                 self.token,
+                self.background_volume,
+                self.effect_volume,
+                self.voice_volume,
                 self.texture_pool.clone(),
+                self.sound_data_pool.clone(),
             );
             let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
             let event = AppEvent::AddGameSceneFlow(scene_flow);

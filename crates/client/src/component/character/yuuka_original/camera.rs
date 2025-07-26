@@ -91,7 +91,7 @@ fn update_camera_when_zoom_in(
             rel_pos,
             fov_y,
         ),
-        ActionState::Death
+        ActionState::Retreat
         | ActionState::Callsign
         | ActionState::VictoryEnd
         | ActionState::VictoryStart => none_camera_effect(
@@ -132,7 +132,7 @@ fn update_camera_when_zoom_out(
             rel_pos,
             fov_y,
         ),
-        ActionState::Death
+        ActionState::Retreat
         | ActionState::Callsign
         | ActionState::VictoryEnd
         | ActionState::VictoryStart => none_camera_effect(
@@ -168,7 +168,7 @@ fn update_camera_when_aiming(
             CAMERA_ZOOM_REL_POS,
             CAMERA_ZOOM_FOV_Y,
         ),
-        ActionState::Death
+        ActionState::Retreat
         | ActionState::Callsign
         | ActionState::VictoryEnd
         | ActionState::VictoryStart => none_camera_effect(

@@ -66,6 +66,12 @@ impl fmt::Debug for InitWindowScene {
     }
 }
 
+impl fmt::Debug for InitSoundScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(InitSoundScene))
+    }
+}
+
 impl fmt::Debug for InitFinishScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(InitFinishScene))
