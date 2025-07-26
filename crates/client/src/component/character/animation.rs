@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use ahash::{HashMap, HashSet};
 use hecs::{Entity, ViewBorrow, World};
 use mod_network::components::{

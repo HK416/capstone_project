@@ -1,4 +1,4 @@
-use mod_physics::{collision::Collider, object3d::Sphere};
+use mod_physics::collision::Collider;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{Float3, Float4, Float4x4};

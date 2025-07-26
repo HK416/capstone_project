@@ -1,7 +1,7 @@
 //! 플레이어 상태와 관련된 코드를 관리합니다.
 //!
 
-use crate::components::{ActionNotify, BigEndian};
+use crate::components::BigEndian;
 
 /// 행동 상태의 개수입니다.
 pub const NUM_ACTION_STATES: usize = 8;

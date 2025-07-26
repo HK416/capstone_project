@@ -4,11 +4,11 @@
 use mod_network::components::{
     ActionNotify, ActionState, ActionStateTimer, BulletData, CharacterAttributes, CharacterKind,
     GameTier, HealthData, HeldInput, InputStateTimer, LatLon, MovementState, MovementStateTimer,
-    MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData, Team, UserId, UserName,
+    MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData, Team, UserName,
     Velocity, ViewState, ViewStateTimer,
 };
 
-use crate::{data::get_character_attributes, world::GameWorld};
+use crate::data::get_character_attributes;
 
 /// 비트 필드 데이터입니다.
 ///

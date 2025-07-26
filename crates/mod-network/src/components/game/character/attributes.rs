@@ -1,8 +1,6 @@
 //! 캐릭터 속성과 관련된 코드를 관리합니다.
 //!
 
-use std::os::unix::raw::off_t;
-
 use ahash::{HashMap, RandomState};
 use mod_physics::object3d::Capsule;
 use serde::{Deserialize, Serialize};

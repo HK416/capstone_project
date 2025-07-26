@@ -1236,7 +1236,9 @@ impl GameWorldInGameRunState {
                     .players
                     .iter_mut()
                     .filter(|(_, target)| {
-                        !target.is_invincible() && target.action_state != ActionState::Retreat
+                        !target.is_invincible() 
+                            && target.action_state != ActionState::Retreat
+                            && target.team() != data.team()
                     })
                     .filter(|(_, target)| {
                         let target_attributes = target.character_attributes();
@@ -1485,7 +1487,7 @@ impl GameWorldInGameRunState {
 
         // 1. 회피률 계산
         let hit_chance = s_accuracy / (s_accuracy + h_evasion);
-        let rand_val = uniform_dstrib.sample(&mut rand::rng());
+        let rand_val = uniform_dstrib.sample(&mut rand::rng()) * 0.5;
         if rand_val > hit_chance {
             return Damage::Miss;
         }
