@@ -55,5 +55,5 @@ version = "0.4"
 optional = true
 
 [features]
-defualt = []
+default = []
 console = ["console-subscriber"]

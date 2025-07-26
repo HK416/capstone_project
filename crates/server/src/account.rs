@@ -1,6 +1,5 @@
 use mod_network::components::{GameTier, ProfileIcon, UserId, UserName};
 use crate::data::{DbConnection, UserInfo};
-use futures::executor::block_on;
 
 /// 사용자 계정 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,10 +26,12 @@ impl AccountManager {
         // DB 연결을 가져옵니다.
         let conn = DbConnection::get_connection();
         
-        // DB에서 다음 uid를 가져옵니다.
-        let uid = block_on(async {
-            conn.get_next_uid().await
-                .expect("Failed to get next uid")
+        // spawn_blocking을 사용해서 blocking 작업을 별도 스레드에서 실행
+        let uid = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                conn.get_next_uid().await
+                    .expect("Failed to get next uid")
+            })
         });
 
         let name = UserName::from_str(&format!("플레이어_{}", uid));
@@ -63,17 +64,20 @@ impl AccountManager {
         // DB에서 사용자 정보를 가져옵니다.
         let conn = DbConnection::get_connection();
         
-        block_on(async {
-            match conn.get_user_info(&uid).await {
-                Ok(Some(user_info)) => Some(Account {
-                    uid,
-                    name: UserName::from_str(&user_info.name),
-                    tier: GameTier::new(user_info.tier)?,
-                    profile_icon: ProfileIcon::new(user_info.profile_icon)?,
-                }),
-                Ok(None) => None,
-                Err(_) => panic!("Failed to load user info from database"),
-            }
+        // block_in_place를 사용해서 현재 스레드에서 blocking 허용
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                match conn.get_user_info(&uid).await {
+                    Ok(Some(user_info)) => Some(Account {
+                        uid,
+                        name: UserName::from_str(&user_info.name),
+                        tier: GameTier::new(user_info.tier)?,
+                        profile_icon: ProfileIcon::new(user_info.profile_icon)?,
+                    }),
+                    Ok(None) => None,
+                    Err(_) => panic!("Failed to load user info from database"),
+                }
+            })
         })
     }
 }

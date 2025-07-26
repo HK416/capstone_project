@@ -516,7 +516,7 @@ impl AcceptState {
     }
 }
 
-const MAX_CLIENTS: usize = 1000;
+const MAX_CLIENTS: usize = 200;
 const IDLE_DELAY: u32 = 10; // ms
 const STABLE_DELAY: u32 = 50; // ms
 const DELAY_LIMIT1: u32 = 100; // ms

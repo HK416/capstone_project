@@ -77,7 +77,7 @@ pub enum SessionStateFlow {
 }
 
 /// 세션 상태를 실행하는 루프 함수입니다.
-pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
+pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
     // tick 초기화
     const TICK: Duration = Duration::from_millis(1);
     let mut interval = tokio::time::interval(TICK);
@@ -130,79 +130,72 @@ pub async fn session_state_loop(mut session: Arc<Session>) -> Arc<Session> {
 
         // 현재 세션 상태에 대한 소유권을 가져옵니다.
         if let Some(mut state) = states.pop_back() {
-            (state, session, samples, num_samples, recent) =
-                tokio::task::spawn_blocking(move || {
-                    // 현재 세션 상태에서 패킷을 처리합니다.
-                    while let Some(packet) = session.received_packets.pop() {
-                        // 세션이 종료된 경우 반복문을 탈출합니다.
-                        if !session.is_running() {
-                            return (state, session, samples, num_samples, recent);
-                        }
+            // 현재 세션 상태에서 패킷을 처리합니다.
+            while let Some(packet) = session.received_packets.pop() {
+                // 세션이 종료된 경우 반복문을 탈출합니다.
+                if !session.is_running() {
+                    break;
+                }
 
-                        // 핑 측정 패킷을 처리합니다.
-                        if packet.packet_type() == PacketType::Ping {
-                            if let Some((epoch, time_pt)) = recent.take() {
-                                let packet = match PingTestPacket::try_from_raw(packet) {
-                                    Some(packet) => packet,
-                                    None => {
-                                        session.close();
-                                        return (state, session, samples, num_samples, recent);
-                                    }
-                                };
-
-                                if packet.value == epoch {
-                                    // 경과 시간을 측정합니다.
-                                    let elapsed_time_ms = current_time_pt
-                                        .saturating_duration_since(time_pt)
-                                        .as_millis()
-                                        .min(MAX_PING_TIME as u128)
-                                        as u32;
-
-                                    // 핑 측정 샘플에 추가합니다.
-                                    samples.copy_within(0..MAX_SAMPLES - 1, 1);
-                                    samples[0] = elapsed_time_ms;
-                                    num_samples = (num_samples + 1).min(MAX_SAMPLES);
-
-                                    // 평균 핑을 계산합니다.
-                                    let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
-                                    let ping = (total as f32 / num_samples as f32).round() as u16;
-                                    session.ping.store(ping, MemOrdering::Release);
-
-                                    log::debug!(
-                                        "{} ping:{}ms (num samples:{})",
-                                        &session,
-                                        &ping,
-                                        &num_samples
-                                    );
-                                } else {
-                                    log::debug!("{} invalid epoch!", &session);
-                                    recent = Some((epoch, time_pt));
-                                }
+                // 핑 측정 패킷을 처리합니다.
+                if packet.packet_type() == PacketType::Ping {
+                    if let Some((epoch, time_pt)) = recent.take() {
+                        let packet = match PingTestPacket::try_from_raw(packet) {
+                            Some(packet) => packet,
+                            None => {
+                                session.close();
+                                break;
                             }
+                        };
 
-                            continue;
+                        if packet.value == epoch {
+                            // 경과 시간을 측정합니다.
+                            let elapsed_time_ms = current_time_pt
+                                .saturating_duration_since(time_pt)
+                                .as_millis()
+                                .min(MAX_PING_TIME as u128)
+                                as u32;
+
+                            // 핑 측정 샘플에 추가합니다.
+                            samples.copy_within(0..MAX_SAMPLES - 1, 1);
+                            samples[0] = elapsed_time_ms;
+                            num_samples = (num_samples + 1).min(MAX_SAMPLES);
+
+                            // 평균 핑을 계산합니다.
+                            let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
+                            let ping = (total as f32 / num_samples as f32).round() as u16;
+                            session.ping.store(ping, MemOrdering::Release);
+
+                            log::debug!(
+                                "{} ping:{}ms (num samples:{})",
+                                &session,
+                                &ping,
+                                &num_samples
+                            );
+                        } else {
+                            log::debug!("{} invalid epoch!", &session);
+                            recent = Some((epoch, time_pt));
                         }
-
-                        // 세션 상태가 변경된 경우 패킷 처리를 생략합니다.
-                        if !session.flows.is_empty() {
-                            return (state, session, samples, num_samples, recent);
-                        }
-
-                        // 패킷이 취소된 경우 처리를 생략합니다.
-                        if session.packet_canceled() {
-                            continue;
-                        }
-
-                        state.handle_packets(&session, packet);
                     }
 
-                    // 현재 상태를 갱신합니다.
-                    state.on_advanced(&session, elapsed.as_secs_f32());
+                    continue;
+                }
 
-                    (state, session, samples, num_samples, recent)
-                })
-                .await
-                .unwrap();
+                // 세션 상태가 변경된 경우 패킷 처리를 생략합니다.
+                if !session.flows.is_empty() {
+                    break;
+                }
+
+                // 패킷이 취소된 경우 처리를 생략합니다.
+                if session.packet_canceled() {
+                    continue;
+                }
+
+                state.handle_packets(&session, packet);
+            }
+
+            // 현재 상태를 갱신합니다.
+            state.on_advanced(&session, elapsed.as_secs_f32());
 
             // 가져온 세션 상태에 대한 소유권을 돌려줍니다.
             states.push_back(state);
