@@ -36,7 +36,7 @@ use crate::{
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
         draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_stage, draw_tree, update_bullet_hierarchy, update_bullet_resource,
+        draw_stage, draw_stage_barrier, draw_tree, update_bullet_hierarchy, update_bullet_resource,
         update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
         update_character_hierarchy, update_character_resource, update_stage_hierarchy,
         update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
@@ -3066,6 +3066,15 @@ impl GameScene for InGameExitScene {
                             device,
                             camera_resource,
                             light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::StageBarrier => {
+                        draw_stage_barrier(
+                            mesh,
+                            device,
+                            camera_resource,
                             material_resources,
                             &mut rpass,
                         );

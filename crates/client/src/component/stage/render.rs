@@ -8,8 +8,9 @@ use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use crate::component::{
     AttributeKind, CameraResource, Child, LightSetResource, MaterialMap, Mesh, MeshFilter,
     MeshRenderer, RenderTask, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer, Stage,
-    StageBakePipeline, StageRenderPipeline, ToParentTrans, TransformDataLayout, TransformMap,
-    TreeRenderPipeline, WorldTransform, MAX_BONES, SHADOW_FORMAT,
+    StageBakePipeline, StageBarrierRenderPipeline, StageRenderPipeline, ToParentTrans,
+    TransformDataLayout, TransformMap, TreeRenderPipeline, WorldTransform, MAX_BONES,
+    SHADOW_FORMAT,
 };
 
 /// 지형 엔터티의 계층 구조를 갱신합니다.
@@ -417,6 +418,36 @@ pub fn draw_tree<'a>(
     rpass.set_vertex_buffer(0, mesh.vertex(..));
     rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Normal, ..).unwrap());
     rpass.set_vertex_buffer(2, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
+
+    for ((index, material), filters) in material_resources {
+        let index_buffer = mesh.submeshes().get(*index).unwrap();
+        rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+        rpass.set_bind_group(2, material.bind_group(), &[]);
+
+        for resource in filters {
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+}
+
+/// 지형 방어막을 그립니다.
+pub fn draw_stage_barrier<'a>(
+    mesh: &'a Mesh,
+    device: &wgpu::Device,
+    camera_resource: &'a CameraResource,
+    material_resources: &'a MaterialMap,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(StageBarrierRenderPipeline::get_or_init(
+        device,
+        DEPTH_FORMAT,
+    ));
+
+    rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+
+    rpass.set_vertex_buffer(0, mesh.vertex(..));
+    rpass.set_vertex_buffer(1, mesh.attribute(&AttributeKind::Texcoord0, ..).unwrap());
 
     for ((index, material), filters) in material_resources {
         let index_buffer = mesh.submeshes().get(*index).unwrap();

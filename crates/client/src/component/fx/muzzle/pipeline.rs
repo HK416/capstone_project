@@ -142,7 +142,7 @@ impl FxMuzzleFlareRenderPipeline {
                     ..Default::default()
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    depth_compare: wgpu::CompareFunction::Less,
                     depth_write_enabled: false,
                     format: depth_stencil_format,
                     stencil: wgpu::StencilState::default(),

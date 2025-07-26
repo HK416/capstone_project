@@ -46,8 +46,8 @@ use crate::{
         BulletRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
         DamageFontRenderPipeline, EnergyBulletRenderPipeline, EyeMouthBakePipeline,
         EyeMouthRenderPipeline, FxMuzzleFlareRenderPipeline, FxShieldRenderPipeline,
-        HaloRenderPipeline, SkyboxRenderPipeline, StageBakePipeline, StageRenderPipeline,
-        TreeRenderPipeline, SHADOW_FORMAT,
+        HaloRenderPipeline, SkyboxRenderPipeline, StageBakePipeline, StageBarrierRenderPipeline,
+        StageRenderPipeline, TreeRenderPipeline, SHADOW_FORMAT,
     },
     config::UserConfig,
 };
@@ -231,6 +231,15 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             FxShieldRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
+            task_results.push(TaskResult::Pipeline);
+        });
+        self.num_remaining_tasks += 1;
+
+        // 지형 방어막을 그리는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            StageBarrierRenderPipeline::get_or_init(&device_cloned, DEPTH_FORMAT);
             task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;

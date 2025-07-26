@@ -1,0 +1,12 @@
+{
+    "StageBarrier": {
+        "uri": "Common_Prop_Barrier_Blue",
+        "tint": {
+            "x": 0,
+            "y": 0.5882352941,
+            "z": 1,
+            "w": 1
+        },
+        "texture": ""
+    }
+}
