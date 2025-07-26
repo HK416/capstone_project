@@ -34,15 +34,16 @@ use crate::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
-        draw_character, draw_character_eye_mouth, draw_character_halo, draw_energy_bullet,
-        draw_stage, draw_tree, update_camera_and_skybox_resource, update_character_hierarchy,
-        update_character_resource, update_stage_hierarchy, update_stage_resource,
-        AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection,
-        BrightRenderTarget, Camera, CameraResource, CameraUniform, Child, DirectionLight,
-        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
-        MaterialKind, MeshRenderer, OpaqueMap, PlayerArchetype, Projection, RenderTask,
-        RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox,
-        ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        draw_character, draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline,
+        draw_energy_bullet, draw_stage, draw_tree, update_camera_and_skybox_resource,
+        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
+        update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform, Child,
+        DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
+        LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer, OpaqueMap,
+        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
+        WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
     player_execute,
@@ -131,6 +132,9 @@ pub struct InGameResultScene {
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
 
+    /// 헤일로 외곽선 재질 쉐이더 리소스
+    outlines: HashMap<Team, MaterialResource>,
+
     /// 스테이지 스카이박스
     skybox: Option<Skybox>,
     /// 스테이지 방향 조명
@@ -203,6 +207,7 @@ impl InGameResultScene {
         alpha_blend_pipeline: AlphaBlendPipeline,
         gaussian_blur_pipeline: GaussianBlurPipeline,
         bloom_pipeline: BloomPipeline,
+        outlines: HashMap<Team, MaterialResource>,
         skybox: Skybox,
         direction_light: DirectionLight,
         light_resource: LightSetResource,
@@ -243,6 +248,7 @@ impl InGameResultScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            outlines,
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
@@ -1217,9 +1223,11 @@ impl GameScene for InGameResultScene {
             let hierarchy = &self.stage;
             let skybox = self.skybox.as_ref().expect("the skybox must be exists!");
             let camera_entity = self.camera;
+            let outline_resources = &self.outlines;
 
             let child_view = &world.view::<&Child>();
             let sibling_view = &world.view::<&Sibling>();
+            let character_team_view = &world.view::<&(Team, usize)>();
             let character_flag_view = &world.view::<&CharacterFlags>();
             let mesh_filter_view = &world.view::<MeshRenderer>();
             let skinned_mesh_filter_view = &world.view::<SkinnedMeshRenderer>();
@@ -1250,6 +1258,12 @@ impl GameScene for InGameResultScene {
                         let mut encoder = device
                             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
+                        let (team, _team_index) = character_team_view
+                            .get(entity)
+                            .expect("invalid entity or invalid entity component!");
+                        let outline_resource = outline_resources
+                            .get(team)
+                            .expect("the outline material shader resource must be exists!");
                         update_character_resource(
                             world,
                             entity,
@@ -1257,6 +1271,7 @@ impl GameScene for InGameResultScene {
                             &device,
                             &mut encoder,
                             &mut staging_buffers,
+                            outline_resource,
                             child_view,
                             sibling_view,
                             mesh_filter_view,
@@ -1647,6 +1662,15 @@ impl GameScene for InGameResultScene {
                             device,
                             camera_resource,
                             light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterHaloOutline => {
+                        draw_character_halo_outline(
+                            mesh,
+                            device,
+                            camera_resource,
                             material_resources,
                             &mut rpass,
                         );

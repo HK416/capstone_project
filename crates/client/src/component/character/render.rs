@@ -7,11 +7,12 @@ use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 use crate::component::{
     set_weapon_position, AttributeKind, CameraResource, CharacterBakePipeline,
     CharacterRenderPipeline, Child, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-    HaloRenderPipeline, LightSetResource, MaterialMap, Mesh, MeshFilter, MeshRenderer, Player0,
-    Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
-    PlayerArchetype, RenderTask, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer,
-    SkinningAnimation, ToParentTrans, TransformDataLayout, TransformMap, WorldTransform,
-    CHARACTER_ATTRIBUTES, MAX_BONES, SHADOW_FORMAT,
+    HaloOutlineRenderPipeline, HaloRenderPipeline, LightSetResource, MaterialKind, MaterialMap,
+    MaterialResource, Mesh, MeshFilter, MeshRenderer, Player0, Player1, Player2, Player3, Player4,
+    Player5, Player6, Player7, Player8, Player9, PlayerArchetype, RenderTask, ShadowMap,
+    ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation, ToParentTrans,
+    TransformDataLayout, TransformMap, WorldTransform, CHARACTER_ATTRIBUTES, MAX_BONES,
+    SHADOW_FORMAT,
 };
 
 /// 캐릭터 엔터티의 계층 구조를 갱신합니다.
@@ -352,6 +353,7 @@ pub fn update_character_resource(
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
+    outline_resource: &MaterialResource,
     child_view: &ViewBorrow<'_, &Child>,
     sibling_view: &ViewBorrow<'_, &Sibling>,
     mesh_filter_view: &ViewBorrow<'_, MeshRenderer>,
@@ -366,6 +368,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -381,6 +384,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -396,6 +400,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -411,6 +416,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -426,6 +432,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -441,6 +448,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -456,6 +464,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -471,6 +480,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -486,6 +496,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -501,6 +512,7 @@ pub fn update_character_resource(
                 device,
                 encoder,
                 staging_buffers,
+                outline_resource,
                 child_view,
                 sibling_view,
                 &transform_view,
@@ -518,6 +530,7 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
     device: &wgpu::Device,
     encoder: &mut wgpu::CommandEncoder,
     staging_buffers: &mut Vec<wgpu::Buffer>,
+    outline_resource: &MaterialResource,
     child_view: &ViewBorrow<'_, &Child>,
     sibling_view: &ViewBorrow<'_, &Sibling>,
     transform_view: &ViewBorrow<'_, &(Tag, WorldTransform)>,
@@ -533,6 +546,7 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             device,
             encoder,
             staging_buffers,
+            outline_resource,
             child_view,
             sibling_view,
             transform_view,
@@ -550,6 +564,7 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
             device,
             encoder,
             staging_buffers,
+            outline_resource,
             child_view,
             sibling_view,
             transform_view,
@@ -579,6 +594,15 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
                     material_index: index,
                     material_resource: material_resource.clone(),
                 });
+
+                if material_resource.kind() == MaterialKind::CharacterHalo {
+                    draw_tasks.push(RenderTask {
+                        mesh: mesh.clone(),
+                        mesh_resource: MeshFilter::Mesh(mesh_resource.clone()),
+                        material_index: index,
+                        material_resource: outline_resource.clone(),
+                    });
+                }
             }
 
             return;
@@ -613,6 +637,15 @@ fn update_character_resource_recursive<Tag: Copy + Component>(
                     material_index: index,
                     material_resource: material_resource.clone(),
                 });
+
+                if material_resource.kind() == MaterialKind::CharacterHalo {
+                    draw_tasks.push(RenderTask {
+                        mesh: mesh.clone(),
+                        mesh_resource: MeshFilter::SkinnedMesh(mesh_resource.clone()),
+                        material_index: index,
+                        material_resource: outline_resource.clone(),
+                    });
+                }
             }
 
             return;
@@ -989,7 +1022,37 @@ pub fn draw_character_eye_mouth<'a>(
     }
 }
 
-/// 캐릭터를 그립니다.
+/// 캐릭터 헤일로 외곽선을 그립니다.
+pub fn draw_character_halo_outline<'a>(
+    mesh: &'a Mesh,
+    device: &wgpu::Device,
+    camera_resource: &'a CameraResource,
+    material_resources: &'a MaterialMap,
+    rpass: &mut wgpu::RenderPass<'a>,
+) {
+    rpass.set_pipeline(HaloOutlineRenderPipeline::get_or_init(
+        device,
+        SWAPCHAIN_FORMAT,
+        DEPTH_FORMAT,
+    ));
+
+    rpass.set_bind_group(0, camera_resource.bind_group(), &[]);
+
+    rpass.set_vertex_buffer(0, mesh.vertex(..));
+
+    for ((index, material), filters) in material_resources {
+        let index_buffer = mesh.submeshes().get(*index).unwrap();
+        rpass.set_index_buffer(index_buffer.slice(..), index_buffer.format());
+        rpass.set_bind_group(2, material.bind_group(), &[]);
+
+        for resource in filters {
+            rpass.set_bind_group(1, resource.bind_group(), &[]);
+            rpass.draw_indexed(0..index_buffer.count(), 0, 0..1);
+        }
+    }
+}
+
+/// 캐릭터 헤일로를 그립니다.
 pub fn draw_character_halo<'a>(
     mesh: &'a Mesh,
     device: &wgpu::Device,

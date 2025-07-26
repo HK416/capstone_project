@@ -46,8 +46,8 @@ use crate::{
         BulletRenderPipeline, CharacterBakePipeline, CharacterRenderPipeline,
         DamageFontRenderPipeline, EnergyBulletRenderPipeline, EyeMouthBakePipeline,
         EyeMouthRenderPipeline, FxMuzzleFlareRenderPipeline, FxShieldRenderPipeline,
-        HaloRenderPipeline, SkyboxRenderPipeline, StageBakePipeline, StageBarrierRenderPipeline,
-        StageRenderPipeline, TreeRenderPipeline, SHADOW_FORMAT,
+        HaloOutlineRenderPipeline, HaloRenderPipeline, SkyboxRenderPipeline, StageBakePipeline,
+        StageBarrierRenderPipeline, StageRenderPipeline, TreeRenderPipeline, SHADOW_FORMAT,
     },
     config::UserConfig,
 };
@@ -168,6 +168,15 @@ impl GameStartupScene {
         let task_results = self.task_results.clone();
         thread_pool.spawn(move || {
             HaloRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
+            task_results.push(TaskResult::Pipeline);
+        });
+        self.num_remaining_tasks += 1;
+
+        // 캐릭터 헤일로 외곽선을 그리는 렌더링 파이프라인을 생성합니다.
+        let device_cloned = device.clone();
+        let task_results = self.task_results.clone();
+        thread_pool.spawn(move || {
+            HaloOutlineRenderPipeline::get_or_init(&device_cloned, SWAPCHAIN_FORMAT, DEPTH_FORMAT);
             task_results.push(TaskResult::Pipeline);
         });
         self.num_remaining_tasks += 1;

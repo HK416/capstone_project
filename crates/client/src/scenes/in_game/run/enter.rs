@@ -1,6 +1,6 @@
 use std::{num::NonZeroU32, sync::Arc, time::Instant};
 
-use ahash::HashMap;
+use ahash::{HashMap, RandomState};
 use hecs::{Entity, ViewBorrow, World};
 use mod_app::{
     app::AppHandle,
@@ -33,21 +33,22 @@ use crate::{
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
-        draw_character_eye_mouth, draw_character_halo, draw_stage, draw_tree,
-        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
+        draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline, draw_stage,
+        draw_tree, update_character_hierarchy, update_character_resource, update_stage_hierarchy,
         update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
         BoneCollection, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
         CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
-        LightSetResource, LightTransformDataLayout, MaterialKind, MeshRenderer, OpaqueMap,
-        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, ShadowResource,
-        Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout, ToParentTrans,
-        TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        HaloOutlineMaterialDataLayout, HaloOutlineMaterialResource, HaloOutlineUniform,
+        LightSetResource, LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer,
+        OpaqueMap, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap,
+        ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
+        ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
     },
     config::{Locale, NUM_LOCALE},
     player_execute,
     scenes::{
         FatalErrorSceneLayer, InGameRunScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
     },
 };
 
@@ -125,6 +126,9 @@ pub struct InGameEnterScene {
     gaussian_blur_pipeline: Option<GaussianBlurPipeline>,
     /// Bloom 효과를 구현하는 파이프라인
     bloom_pipeline: Option<BloomPipeline>,
+
+    /// 헤일로 외곽선 재질 쉐이더 리소스
+    outlines: HashMap<Team, MaterialResource>,
 
     /// 스테이지 스카이박스
     skybox: Option<Skybox>,
@@ -242,6 +246,7 @@ impl InGameEnterScene {
             alpha_blend_pipeline: Some(alpha_blend_pipeline),
             gaussian_blur_pipeline: Some(gaussian_blur_pipeline),
             bloom_pipeline: Some(bloom_pipeline),
+            outlines: HashMap::with_capacity_and_hasher(2, RandomState::new()),
             skybox: Some(skybox),
             direction_light: Some(direction_light),
             light_resource: Some(light_resource),
@@ -287,6 +292,51 @@ impl InGameEnterScene {
         player_execute!(archetype, world, entity, &mut ActionState, |action_state| {
             *action_state = ActionState::Callsign;
         });
+    }
+
+    /// 헤일로 외곽선 재질 쉐이더 리소스를 생성합니다.
+    fn create_outline_material_resources(&mut self, device: &wgpu::Device) {
+        let color = TEAM_COLOR[Team::Blue as usize];
+        let material_uniform = HaloOutlineUniform::new(
+            Some("HaloOutline(Blue)"),
+            device,
+            HaloOutlineMaterialDataLayout {
+                color: [
+                    color.r() as f32 / 255.0,
+                    color.g() as f32 / 255.0,
+                    color.b() as f32 / 255.0,
+                ],
+                scale: [1.05, 1.05, 1.05],
+                ..Default::default()
+            },
+        );
+        let resource = HaloOutlineMaterialResource::new(
+            Some("Material(HaloOutline(Blue))"),
+            device,
+            &material_uniform,
+        );
+        self.outlines.insert(Team::Blue, resource);
+
+        let color = TEAM_COLOR[Team::Red as usize];
+        let material_uniform = HaloOutlineUniform::new(
+            Some("HaloOutline(Red)"),
+            device,
+            HaloOutlineMaterialDataLayout {
+                color: [
+                    color.r() as f32 / 255.0,
+                    color.g() as f32 / 255.0,
+                    color.b() as f32 / 255.0,
+                ],
+                scale: [1.1; 3],
+                ..Default::default()
+            },
+        );
+        let resource = HaloOutlineMaterialResource::new(
+            Some("Material(HaloOutline(Red))"),
+            device,
+            &material_uniform,
+        );
+        self.outlines.insert(Team::Red, resource);
     }
 
     /// 카메라 엔터티를 생성합니다.
@@ -837,8 +887,8 @@ impl GameScene for InGameEnterScene {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
         self.setup_player();
-
         self.create_camera(size, device);
+        self.create_outline_material_resources(&device);
         self.update_camera_and_skybox(device, &mut encoder, &mut staging_buffers);
 
         self.cull_stage_entities();
@@ -1066,6 +1116,7 @@ impl GameScene for InGameEnterScene {
                     .bloom_pipeline
                     .take()
                     .expect("the bloom render pipeline must be exists!");
+                let outlines = self.outlines.drain().collect();
                 let skybox = self.skybox.take().expect("the skybox must be exists!");
                 let direction_light = self
                     .direction_light
@@ -1102,6 +1153,7 @@ impl GameScene for InGameEnterScene {
                     alpha_blend_pipeline,
                     gaussian_blur_pipeline,
                     bloom_pipeline,
+                    outlines,
                     skybox,
                     direction_light,
                     light_resource,
@@ -1201,8 +1253,12 @@ impl GameScene for InGameEnterScene {
         });
 
         let draw_tasks = &Arc::new(Queue::new());
-        rayon::in_place_scope(move |scope| {
+        rayon::in_place_scope(|scope| {
             // 캐릭터 쉐이더 리소스를 갱신합니다.
+            let outline_resource = self
+                .outlines
+                .get(&self.player_team)
+                .expect("the outline material shader resource must be exists!");
             scope.spawn(move |_| {
                 let mut staging_buffers = Vec::default();
                 let mut encoder =
@@ -1215,6 +1271,7 @@ impl GameScene for InGameEnterScene {
                     &device,
                     &mut encoder,
                     &mut staging_buffers,
+                    outline_resource,
                     child_view,
                     sibling_view,
                     mesh_filter_view,
@@ -1476,6 +1533,15 @@ impl GameScene for InGameEnterScene {
                             device,
                             camera_resource,
                             light_resource,
+                            material_resources,
+                            &mut rpass,
+                        );
+                    }
+                    MaterialKind::CharacterHaloOutline => {
+                        draw_character_halo_outline(
+                            mesh,
+                            device,
+                            camera_resource,
                             material_resources,
                             &mut rpass,
                         );

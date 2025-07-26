@@ -1236,7 +1236,7 @@ impl GameWorldInGameRunState {
                     .players
                     .iter_mut()
                     .filter(|(_, target)| {
-                        !target.is_invincible() 
+                        !target.is_invincible()
                             && target.action_state != ActionState::Retreat
                             && target.team() != data.team()
                     })
