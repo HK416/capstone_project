@@ -168,7 +168,6 @@ impl GameWorldFormationState {
         if permission == Permission::Admin {
             let mut remainings: Vec<_> = world.sessions.values().cloned().collect();
             remainings.shuffle(&mut rand::rng());
-
             if let Some(uid) = remainings.pop() {
                 match world.players.get_mut(&uid) {
                     Some(data) => {
@@ -266,6 +265,22 @@ impl GameWorldFormationState {
         // 패킷을 전송합니다.
         let packet = CharacterSelectResponsePacket::new(result);
         session.tcp_write(packet.as_raw());
+        
+        // 모든 AI 플레이어의 캐릭터 선택과 ready 상태를 동기화
+        for (&ai_uid, ai_player) in world.players.iter_mut() {
+            if ai_uid.into_inner() >= 10000 {
+                // 4가지 캐릭터 중 랜덤으로 선택
+                let random_character = match rand::random::<u8>() % 4 {
+                    0 => CharacterKind::ArisOriginal,
+                    1 => CharacterKind::MidoriOriginal,
+                    2 => CharacterKind::MomoiOriginal,
+                    3 => CharacterKind::YuukaOriginal,
+                    _ => CharacterKind::ArisOriginal, // fallback
+                };
+                ai_player.set_character_kind(random_character);
+                ai_player.set_ready_to_play(true);
+            }
+        }
     }
 
     /// [`GameWorldFormationStateEvent::CharacterRelease`] 이벤트를 처리합니다.
@@ -312,13 +327,12 @@ impl GameWorldFormationState {
             // 패킷을 생성 후 모든 세션에 전송합니다.
             let reason = EnterGameFailedResson::BlueTeamEmpty;
             let packet = EnterGameFailedPacket::new(reason);
-            for session in world.sessions.keys() {
-                session.tcp_write(packet.as_raw());
-
-                // 이전 세션 상태로 전환합니다.
-                session.add_flow(SessionStateFlow::Pop);
+            for uid in world.players.keys() {
+                if let Some(session) = world.get_session_by_userid(uid) {
+                    session.tcp_write(packet.as_raw());
+                    session.add_flow(SessionStateFlow::Pop);
+                }
             }
-
             // 이전 월드 상태로 돌아갑니다.
             world.flows.push(super::GameWorldStateFlow::Pop);
             return;
@@ -326,13 +340,12 @@ impl GameWorldFormationState {
             // 패킷을 생성 후 모든 세션에 전송합니다.
             let reason = EnterGameFailedResson::RedTeamEmpty;
             let packet = EnterGameFailedPacket::new(reason);
-            for session in world.sessions.keys() {
-                session.tcp_write(packet.as_raw());
-
-                // 이전 세션 상태로 전환합니다.
-                session.add_flow(SessionStateFlow::Pop);
+            for uid in world.players.keys() {
+                if let Some(session) = world.get_session_by_userid(uid) {
+                    session.tcp_write(packet.as_raw());
+                    session.add_flow(SessionStateFlow::Pop);
+                }
             }
-
             // 이전 월드 상태로 돌아갑니다.
             world.flows.push(super::GameWorldStateFlow::Pop);
             return;
@@ -425,13 +438,13 @@ impl GameWorldFormationState {
                 MAX_GAME_TIME,
                 players,
             );
-            for (session, &uid) in world.sessions.iter() {
-                session.tcp_write(packet.as_raw());
-
-                // 다음 세션 상태로 전환합니다.
-                let state = SessionInGameReadyState::new(uid, world.events.clone());
-                let flow = SessionStateFlow::Change(Box::new(state));
-                session.add_flow(flow);
+            for uid in world.players.keys() {
+                if let Some(session) = world.get_session_by_userid(uid) {
+                    session.tcp_write(packet.as_raw());
+                    let state = SessionInGameReadyState::new(*uid, world.events.clone());
+                    let flow = SessionStateFlow::Change(Box::new(state));
+                    session.add_flow(flow);
+                }
             }
 
             // 다음 게임 월드 상태로 전환합니다.
@@ -451,7 +464,6 @@ impl GameWorldFormationState {
             world.flows.push(flow);
         }
     }
-
     /// 모든 세션에 패킷 데이터를 전송합니다.
     fn broadcast(&self, world: &GameWorld) {
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
@@ -473,14 +485,24 @@ impl GameWorldFormationState {
         }
 
         let packet = FormationDataUpdatePacket::new(self.remaining_time_ms, players);
-        for session in world.sessions.keys() {
-            session.tcp_write(packet.as_raw());
+        for uid in world.players.keys() {
+            if let Some(session) = world.get_session_by_userid(uid) {
+                session.tcp_write(packet.as_raw());
+            }
         }
     }
 }
 
 impl GameWorldState for GameWorldFormationState {
     fn on_enter(&mut self, world: &mut GameWorld) {
+        // Add AI players before character selection
+        if self.custom_game {
+            crate::ai::ai_player::insert_ai_players(
+                world,
+                self.num_blue_players,
+                self.num_red_players,
+            );
+        }
         // 모든 플레이어의 준비 상태를 `false`로 설정합니다.
         for data in world.players.values_mut() {
             data.set_ready_to_play(false);

@@ -1,4 +1,5 @@
 mod account;
+mod ai; // AI 모듈 추가
 mod data;
 mod entities;
 mod formula;
@@ -18,6 +19,9 @@ use tracing::level_filters::LevelFilter;
 use tracing_appender::{non_blocking::WorkerGuard, rolling};
 use tracing_subscriber::EnvFilter;
 use world::GameWorldPool;
+
+// AI 그리드 맵 사전 로딩 함수 가져오기
+use ai::ai_player::preload_all_grid_maps;
 
 /// 메인 쓰레드에서 월드 업데이트, 새로운 쓰레드를 생성해서 연결 관리
 pub async fn run_server(addr: &str) {
@@ -150,8 +154,14 @@ fn main() {
     // 서버를 실행하기 전에 필요한 모든 데이터를 여기서 초기화합니다.
     //
     let _guard = init_log_system();
+
     init_character_attributes();
     init_stage_attributes();
+
+    // **AI 그리드 맵 사전 로딩**: 서버 시작 시 모든 스테이지의 그리드 맵을 미리 생성
+    log::info!("[SERVER INIT] Starting AI grid map preloading...");
+    preload_all_grid_maps();
+    log::info!("[SERVER INIT] AI grid map preloading completed!");
 
     // 게임 월드 풀 객체를 초기화합니다.
     GameWorldPool::init();
@@ -235,6 +245,7 @@ fn init_log_system() -> Option<WorkerGuard> {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::DEBUG.into())
         .from_env_lossy();
+
 
     // 로그 시스템을 초기화합니다.
     tracing_subscriber::fmt()

@@ -3,11 +3,11 @@ use std::sync::Arc;
 use ahash::{HashMap, RandomState};
 use mod_network::{
     components::{
-        ActionNotify, ActionState, ActionStateTimer, BulletData, CharacterKind,
-        CustomRoomPlayerData, FormationPlayerInitData, GameTier, HealthData, HeldInput,
-        InputStateTimer, LatLon, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, MovementState,
-        MovementStateTimer, MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData,
-        StageKind, Team, UserId, UserName, Velocity,
+        ActionState, ActionStateTimer, BulletData, CharacterKind, CustomRoomPlayerData,
+        FormationPlayerInitData, GameTier, HealthData, HeldInput, InputStateTimer, LatLon,
+        MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, MovementState, MovementStateTimer,
+        MovingDirection, NetworkState, Permission, ProfileIcon, SkillCostData, StageKind, Team,
+        UserId, UserName, Velocity,
     },
     protocol::{
         FormationDataInitPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -33,6 +33,8 @@ use super::GameWorldState;
 pub struct GameWorldRoomState {
     /// 팀 밸런스 옵션
     allow_unbalanced: bool,
+    /// 빈 자리 AI 채우기 옵션
+    fill_empty_slots: bool,
     /// 게임 캐릭터 중복 옵션
     allow_duplicates: bool,
     /// 게임 스테이지 종류
@@ -58,6 +60,7 @@ impl GameWorldRoomState {
     pub fn new() -> Self {
         Self {
             allow_unbalanced: false,
+            fill_empty_slots: true,
             allow_duplicates: true,
             stage_kind: StageKind::default(),
             cnt_blue_players: 0,
@@ -178,13 +181,11 @@ impl GameWorldRoomState {
         if data.permission() == Permission::Admin {
             let mut remainings: Vec<_> = world.sessions.values().cloned().collect();
             remainings.shuffle(&mut rand::rng());
-
             if let Some(uid) = remainings.pop() {
                 match world.players.get_mut(&uid) {
                     Some(data) => {
                         world.admin = uid;
                         data.set_permission(Permission::Admin);
-                        data.set_ready_to_play(false);
                     }
                     None => {
                         log::error!("Player({}) not found in {}!", &uid, &world);
@@ -329,6 +330,23 @@ impl GameWorldRoomState {
         }
     }
 
+    /// [`GameWorldRoomStateEvent::ChangeFillEmptySlotsOption`] 이벤트를 처리합니다.
+    fn handle_change_fill_empty_slots_option_event(
+        &mut self,
+        world: &GameWorld,
+        session: Arc<Session>,
+        uid: UserId,
+    ) {
+        // 게임 월드 관리자인지 확인합니다.
+        if world.admin == uid {
+            self.fill_empty_slots = !self.fill_empty_slots;
+        } else {
+            log::error!("{} lacks permission in the {}!", &session, &world);
+            eprintln!("{} lacks permission in the {}!", &session, &world);
+            session.close();
+        }
+    }
+
     /// [`GameWorldRoomStateEvent::PlayerBan`] 이벤트를 처리합니다.
     fn handle_player_ban_event(
         &mut self,
@@ -343,21 +361,16 @@ impl GameWorldRoomState {
                 log::warn!("ignored >> invalid data received!");
                 return;
             };
-
             // 식별자에 해당하는 세션을 찾습니다.
-            for (session, &uid) in world.sessions.iter() {
-                if uid == target {
-                    // 패킷을 전송합니다.
-                    let reason = JoinFailedReason::Banned;
-                    let packet = JoinRoomFailedPacket::new(reason);
-                    session.tcp_write(packet.as_raw());
-
-                    // 세션 상태를 변경합니다.
-                    session.add_flow(SessionStateFlow::Pop);
-                    return;
-                }
+            if let Some(target_session) = world.get_session_by_userid(&target) {
+                // 패킷을 전송합니다.
+                let reason = JoinFailedReason::Banned;
+                let packet = JoinRoomFailedPacket::new(reason);
+                target_session.tcp_write(packet.as_raw());
+                // 세션 상태를 변경합니다.
+                target_session.add_flow(SessionStateFlow::Pop);
+                return;
             }
-
             log::info!("Player({}) not found in {}", &target, &world);
             println!("Player({}) not found in {}", &target, &world);
         } else {
@@ -421,6 +434,37 @@ impl GameWorldRoomState {
             .filter(|(uid, _data)| **uid != world.admin)
             .all(|(_uid, data)| data.is_ready_to_play());
         if all_player_readys {
+            // 빈 자리 AI 채우기 옵션이 활성화된 경우, AI 플레이어를 추가합니다.
+            if self.fill_empty_slots {
+                let current_count = world.players.len();
+                // AI UserId: 10000부터 시작, 중복 방지
+                let mut next_userid = UserId::new(10000);
+                for _ in current_count..MAX_IN_GAME_PLAYERS {
+                    // AI 플레이어 생성
+                    let ai_name = UserName::from_str(format!("AI_{}", next_userid.into_inner()));
+                    let ai_profile_icon = ProfileIcon::default();
+                    let ai_tier = GameTier::default();
+                    let ai_permission = Permission::User;
+                    let mut ai_player = Player::new(ai_name, ai_profile_icon, ai_permission, ai_tier);
+                    // AI FSM 연동: 별도 관리 구조에서 할당 예정 (Player에는 직접 할당하지 않음)
+                    // 팀 배정: 블루가 적으면 블루, 아니면 레드
+                    if self.red_players.len() < self.blue_players.len() {
+                        let index = self.cnt_red_players;
+                        self.red_players.insert(next_userid, index);
+                        self.cnt_red_players += 1;
+                        ai_player.set_team(Team::Red);
+                    } else {
+                        let index = self.cnt_blue_players;
+                        self.blue_players.insert(next_userid, index);
+                        self.cnt_blue_players += 1;
+                        ai_player.set_team(Team::Blue);
+                    }
+                    world.players.insert(next_userid, ai_player);
+                    next_userid = UserId::new(next_userid.into_inner() + 1);
+                }
+
+            }
+        
             // 게임 월드를 닫습니다.
             world.closed = true;
 
@@ -547,8 +591,10 @@ impl GameWorldRoomState {
         );
 
         // 패킷을 각 세션에 전송합니다.
-        for session in world.sessions.keys() {
-            session.tcp_write(packet.as_raw());
+        for uid in world.players.keys() {
+            if let Some(session) = world.get_session_by_userid(uid) {
+                session.tcp_write(packet.as_raw());
+            }
         }
     }
 }
@@ -582,11 +628,12 @@ impl GameWorldState for GameWorldRoomState {
             data.health_data = HealthData::splat(0);
             data.bullet_data = BulletData::splat(0);
             data.action_state = ActionState::Idle;
-            data.action_notify = ActionNotify::None;
             data.movement_state = MovementState::Idle;
             data.set_character_kind(CharacterKind::default());
             data.set_team_index(0);
-            data.set_ready_to_play(false);
+            // AI 플레이어는 자동으로 준비 상태가 되고, 실제 플레이어는 준비 해제 상태가 됨
+            let is_ai = world.ai_players.values().any(|ai| ai.user_id == uid);
+            data.set_ready_to_play(is_ai);
             data.set_invincible(true);
             data.set_grounded(true);
 
@@ -659,6 +706,9 @@ impl GameWorldState for GameWorldRoomState {
                 }
                 GameWorldRoomStateEvent::ChangeUnbalanceOption => {
                     self.handle_change_balance_option_event(world, session, uid);
+                }
+                GameWorldRoomStateEvent::ChangeFillEmptySlotsOption => {
+                    self.handle_change_fill_empty_slots_option_event(world, session, uid);
                 }
                 GameWorldRoomStateEvent::PlayerBan(target) => {
                     self.handle_player_ban_event(world, session, uid, target);

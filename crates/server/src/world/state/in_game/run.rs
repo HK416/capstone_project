@@ -40,6 +40,7 @@ use crate::{
         GameWorldState, GameWorldStateFlow, GameWorldSystemEvent,
     },
 };
+use crate::ai::ai_player::update_ai_players;
 
 /// 최대 게임 진행 시간 (단위: ms)
 pub const MAX_GAME_TIME: u32 = 1_000 * 60 * 5;
@@ -73,7 +74,6 @@ pub struct GameWorldInGameRunState {
     num_red_players: usize,
     /// 떠난 플레이어 식별자입니다.
     leaved_players: HashSet<UserId>,
-
     /// 제거된 총알 오브젝트 목록
     removed_bullets: HashSet<ObjectId>,
     /// 데미지 로그 데이터 목록
@@ -83,6 +83,9 @@ pub struct GameWorldInGameRunState {
     counter: u32,
     /// 총알 오브젝트
     bullets: HashMap<ObjectId, Bullet>,
+
+    /// 누적 시간
+    timer: u16,
 
     /// 점령지 관리 오브젝트
     capture_point: CapturePointObject,
@@ -119,8 +122,9 @@ impl GameWorldInGameRunState {
                 MAX_IN_GAME_BULLETS,
                 RandomState::new(),
             ),
-            damage_logs: Vec::with_capacity(MAX_IN_GAME_LOGS),
+            damage_logs: Vec::with_capacity(128),
             counter: 0,
+            timer: 0,
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             capture_point,
         }
@@ -368,6 +372,7 @@ impl GameWorldInGameRunState {
     fn broadcast_pull_packet(&mut self, world: &mut GameWorld) {
         // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        println!("{:?}", world.players.keys());
         for (&uid, data) in world.players.iter_mut() {
             players.push(InGamePlayerPullData::new(
                 uid,
@@ -447,12 +452,8 @@ impl GameWorldInGameRunState {
             InGameStatusPacket::new(self.capture_point.as_ref().clone(), players, vec![], vec![]);
 
         // 패킷을 전송합니다.
-        let mut damage_logs: Vec<_> = self.damage_logs.drain(..).collect();
         let mut removed_bullets: Vec<_> = self.removed_bullets.drain().collect();
         loop {
-            let count = damage_logs.len().min(MAX_IN_GAME_LOGS);
-            packet.damage_logs = damage_logs.drain(..count).collect();
-
             let count = removed_bullets.len().min(MAX_IN_GAME_BULLETS);
             packet.removed_bullets = removed_bullets.drain(..count).collect();
 
@@ -460,7 +461,7 @@ impl GameWorldInGameRunState {
                 session.tcp_write(packet.as_raw());
             }
 
-            if damage_logs.is_empty() && removed_bullets.is_empty() {
+            if removed_bullets.is_empty() {
                 break;
             }
         }
@@ -482,14 +483,24 @@ impl GameWorldInGameRunState {
 
     /// 게임 월드를 갱신합니다.
     fn update(&mut self, world: &mut GameWorld, elapsed: Duration) {
+
         let stage_attributes = get_stage_attributes(self.stage_kind);
         let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
         let mut events = Vec::with_capacity(64);
+        let keys: HashSet<_> = world.ai_sessions.keys().cloned().collect();
 
+        self.timer += elapsed_time_ms;
+        if self.timer > 500 {
+            self.timer = 0;
+            // AI FSM 업데이트: 플레이어 이동 해금과 동시에 AI도 이동
+            update_ai_players(world);
+        }
+        
         // 1. 플레이어 행동 이벤트를 수집합니다.
         for (&uid, player) in world.players.iter_mut() {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
-            if self.leaved_players.contains(&uid) {
+            if self.leaved_players.contains(&uid) 
+            || keys.contains(&uid) {
                 continue;
             }
 
@@ -524,7 +535,8 @@ impl GameWorldInGameRunState {
         let mut curr_elapsed_time_ms = 0;
         for ActionEventDetail { uid, timing, event } in events {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
-            if self.leaved_players.contains(&uid) {
+            if self.leaved_players.contains(&uid) 
+            || keys.contains(&uid) {
                 continue;
             }
 
@@ -849,7 +861,6 @@ impl GameWorldInGameRunState {
         }
     }
 
-    /// 총알 오브젝트를 갱신합니다.
     fn update_bullet(&mut self, world: &mut GameWorld, elapsed_time_ms: u16) {
         let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
         let stage_attributes = get_stage_attributes(self.stage_kind);
@@ -1686,6 +1697,39 @@ impl GameWorldInGameRunState {
 
 impl GameWorldState for GameWorldInGameRunState {
     fn on_enter(&mut self, world: &mut GameWorld) {
+        if world.ai_players.is_empty() {
+            let mut restored = 0;
+            for (uid, player) in world.players.iter() {
+                let name_str = player.name.to_string();
+                if name_str.contains("AI") && player.permission() == Permission::User {
+                    let ai_id = uuid::Uuid::new_v4();
+                    let ai_player = crate::ai::ai_player::AiPlayer {
+                        user_id: *uid,
+                        fsm: crate::ai::ai_fsm::AIPlayerFSM::new( player.translation, player.translation),
+                        move_counter: 0,
+                        current_target: glam::Vec3A::ZERO,
+                        visited_grids: std::collections::VecDeque::new(),
+                        last_position: player.translation,
+                        stuck_counter: 0,
+                        direction_history: std::collections::VecDeque::with_capacity(16),
+                        circle_penalty: 0.0,
+                        last_direction: None,
+                        behavior_state: crate::ai::ai_player::AIBehaviorState::MovingToCapture,
+                    };
+                    world.ai_players.insert(ai_id, ai_player);
+                    restored += 1;
+                }
+            }
+            log::info!("[AI CONTINUITY PATCH] Reconstructed and inserted {} AI players from world.players", restored);
+            
+            // AI 플레이어가 복원된 경우에만 그리드 맵을 확인하고 필요시 로드
+            // (일반적으로는 enter 상태에서 이미 로드됨)
+            if restored > 0 {
+                // 간단한 AI 시스템에서는 그리드 맵을 사전 로딩하지 않음
+                log::info!("[AI CONTINUITY] Restored {} AI players (using runtime grid generation)", restored);
+                crate::ai::ai_player::load_grid_map_for_stage(world, self.stage_kind);
+            }
+        }
         self.broadcast_pull_packet(world);
     }
 
