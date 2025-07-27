@@ -72,6 +72,10 @@ log = "0.4"
 # License: MIT OR Apache-2.0
 num_cpus = "1.16"
 
+# Pathfinding algorithms (A*, Dijkstra, etc.) for Rust
+# License: Apache-2.0
+pathfinding = "4.11"
+
 # More compact and efficient implementations of the standard synchronization primitives.
 # License: MIT OR Apache-2.0
 parking_lot = { version = "0.12", features = ["hardware-lock-elision"] }

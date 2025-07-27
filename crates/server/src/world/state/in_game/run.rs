@@ -8,13 +8,13 @@ use std::{
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, Damage,
-        DamageLogData, HeldInput, InGameBulletPullData, InGamePlayerPullData,
-        InGamePlayerStatusPullData, InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS,
-        MAX_IN_GAME_LOGS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, MovementState,
-        NetworkState, ObjectId, Permission, StageAttributes, StageKind, Team, UserId,
-        update_action_state, update_action_state_timer, update_movement_state,
-        update_movement_state_timer, update_player_rotation, update_player_translation,
+        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, DamageLogData,
+        HeldInput, InGameBulletPullData, InGamePlayerPullData, InGamePlayerStatusPullData,
+        InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE,
+        MIN_LATITUDE, MovementState, NetworkState, ObjectId, Permission, StageAttributes,
+        StageKind, Team, UserId, update_action_state, update_action_state_timer,
+        update_movement_state, update_movement_state_timer, update_player_rotation,
+        update_player_translation,
     },
     protocol::{
         InGamePullPacket, InGameStatusPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -73,7 +73,6 @@ pub struct GameWorldInGameRunState {
     num_red_players: usize,
     /// 떠난 플레이어 식별자입니다.
     leaved_players: HashSet<UserId>,
-
     /// 제거된 총알 오브젝트 목록
     removed_bullets: HashSet<ObjectId>,
     /// 데미지 로그 데이터 목록
@@ -83,6 +82,9 @@ pub struct GameWorldInGameRunState {
     counter: u32,
     /// 총알 오브젝트
     bullets: HashMap<ObjectId, Bullet>,
+
+    /// 누적 시간
+    timer: u16,
 
     /// 점령지 관리 오브젝트
     capture_point: CapturePointObject,
@@ -119,8 +121,9 @@ impl GameWorldInGameRunState {
                 MAX_IN_GAME_BULLETS,
                 RandomState::new(),
             ),
-            damage_logs: Vec::with_capacity(MAX_IN_GAME_LOGS),
+            damage_logs: Vec::with_capacity(128),
             counter: 0,
+            timer: 0,
             bullets: HashMap::with_capacity_and_hasher(MAX_IN_GAME_BULLETS, RandomState::new()),
             capture_point,
         }
@@ -355,6 +358,7 @@ impl GameWorldInGameRunState {
     fn broadcast_pull_packet(&mut self, world: &mut GameWorld) {
         // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
+        println!("{:?}", world.players.keys());
         for (&uid, data) in world.players.iter_mut() {
             players.push(InGamePlayerPullData::new(
                 uid,
@@ -434,12 +438,8 @@ impl GameWorldInGameRunState {
             InGameStatusPacket::new(self.capture_point.as_ref().clone(), players, vec![], vec![]);
 
         // 패킷을 전송합니다.
-        let mut damage_logs: Vec<_> = self.damage_logs.drain(..).collect();
         let mut removed_bullets: Vec<_> = self.removed_bullets.drain().collect();
         loop {
-            let count = damage_logs.len().min(MAX_IN_GAME_LOGS);
-            packet.damage_logs = damage_logs.drain(..count).collect();
-
             let count = removed_bullets.len().min(MAX_IN_GAME_BULLETS);
             packet.removed_bullets = removed_bullets.drain(..count).collect();
 
@@ -447,7 +447,7 @@ impl GameWorldInGameRunState {
                 session.tcp_write(packet.as_raw());
             }
 
-            if damage_logs.is_empty() && removed_bullets.is_empty() {
+            if removed_bullets.is_empty() {
                 break;
             }
         }
@@ -473,11 +473,20 @@ impl GameWorldInGameRunState {
         let stage_attributes = get_stage_attributes(self.stage_kind);
         let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
         let mut events = Vec::with_capacity(64);
+        let keys: HashSet<_> = world.ai_sessions.keys().cloned().collect();
 
+        self.timer += elapsed_time_ms;
+        if self.timer > 500 {
+            self.timer = 0;
+            // AI FSM 업데이트: 플레이어 이동 해금과 동시에 AI도 이동
+            update_ai_players(world);
+        }
+        
         // 1. 플레이어 행동 이벤트를 수집합니다.
         for (&uid, player) in world.players.iter_mut() {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
-            if self.leaved_players.contains(&uid) {
+            if self.leaved_players.contains(&uid) 
+            || keys.contains(&uid) {
                 continue;
             }
 
@@ -505,9 +514,6 @@ impl GameWorldInGameRunState {
             );
         }
 
-        // AI FSM 업데이트: 플레이어 이동 해금과 동시에 AI도 이동
-        update_ai_players(world);
-
         // 2. 행동 이벤트를 시간 순으로 정렬합니다.
         events.sort();
 
@@ -515,7 +521,8 @@ impl GameWorldInGameRunState {
         let mut curr_elapsed_time_ms = 0;
         for ActionEventDetail { uid, timing, event } in events {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
-            if self.leaved_players.contains(&uid) {
+            if self.leaved_players.contains(&uid) 
+            || keys.contains(&uid) {
                 continue;
             }
 
@@ -828,15 +835,14 @@ impl GameWorldInGameRunState {
             player.set_invincible(is_invincible);
 
             // 자신 팀의 진영인 경우 체력을 회복시킵니다.
-            if stage_attributes.is_safe_area(team, player.translation.x, player.translation.z) {
-                let healing = 10 * elapsed_time_ms;
-                player.health_data.remaining = (player.health_data.remaining + healing)
-                    .min(player.health_data.num_maximum_health());
-            }
+            // if stage_attributes.is_safe_area(team, player.translation.x, player.translation.z) {
+            //     let healing = 10 * elapsed_time_ms;
+            //     player.health_data.remaining = (player.health_data.remaining + healing)
+            //         .min(player.health_data.num_maximum_health());
+            // }
         }
     }
 
-    /// 총알 오브젝트를 갱신합니다.
     fn update_bullet(&mut self, world: &mut GameWorld, elapsed_time_ms: u16) {
         let elapsed_time_sec = elapsed_time_ms as f32 / 1000.0;
         let stage_attributes = get_stage_attributes(self.stage_kind);
@@ -845,10 +851,10 @@ impl GameWorldInGameRunState {
         let mut removed = HashSet::default();
         for (&id, bullet) in self.bullets.iter_mut() {
             let velocity = bullet.velocity * elapsed_time_sec;
-            let target_id =
+            let player_uid =
                 Self::check_bullet_collision(stage_attributes, &world.players, bullet, velocity);
-            match target_id {
-                Some(target_id) => {
+            match player_uid {
+                Some(player_uid) => {
                     // 발사자의 소유권을 가져옵니다.
                     let mut shooter = match world.players.remove(&bullet.shooter_id) {
                         Some(data) => data,
@@ -859,21 +865,19 @@ impl GameWorldInGameRunState {
                         }
                     };
                     // 피격자를 가져옵니다.
-                    let hitted = match world.players.get_mut(&target_id) {
+                    let hitted = match world.players.get_mut(&player_uid) {
                         Some(data) => data,
                         None => {
                             // 발사자의 소유권을 돌려놓습니다.
                             world.players.insert(bullet.shooter_id, shooter);
 
-                            log::error!("Player({}) not found in {}!", &target_id, &world,);
-                            eprintln!("Player({}) not found in {}!", &target_id, &world,);
+                            log::error!("Player({}) not found in {}!", &player_uid, &world,);
+                            eprintln!("Player({}) not found in {}!", &player_uid, &world,);
                             continue;
                         }
                     };
 
-                    // 데미지 처리 및 로그를 추가합니다.
-                    let damage = Self::bullet_hit_player(bullet, &mut shooter, hitted);
-                    self.damage_logs.push(DamageLogData::new(target_id, damage));
+                    Self::bullet_hit_player(bullet, &mut shooter, hitted);
 
                     // 발사자의 소유권을 돌려놓습니다.
                     world.players.insert(bullet.shooter_id, shooter);
@@ -1091,7 +1095,7 @@ impl GameWorldInGameRunState {
     }
 
     /// 총알과 플레이어의 충돌 후처리를 수행합니다.
-    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, hitted: &mut Player) -> Damage {
+    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, hitted: &mut Player) {
         let uniform_distribution = Uniform::new(0.0, 1.0).unwrap();
         let shooter_attributes = shooter.character_attributes();
         let hitted_attributes = hitted.character_attributes();
@@ -1104,7 +1108,7 @@ impl GameWorldInGameRunState {
         let val = uniform_distribution.sample(&mut rand::rng());
         if val >= hit_chance {
             // Miss 처리
-            return Damage::Miss;
+            return;
         }
 
         // 2. 치명타 판정
@@ -1117,22 +1121,15 @@ impl GameWorldInGameRunState {
         let shooter_attack = shooter_attributes.attack_power as f32;
         let hitted_defense = hitted_attributes.defense_power as f32;
         let base_damage = (shooter_attack - hitted_defense) * rand::random_range(0.9..=1.1);
-        let (damage, mut final_damage) = if ciritical {
+        let mut final_damage = if ciritical {
             let shooter_crit_multi = shooter_attributes.critical_damage as f32 / 100.0;
-            let final_damage = ((base_damage * shooter_crit_multi).round() as u16).clamp(1, 9999);
-            (Damage::Critial(final_damage), final_damage)
+            (base_damage * shooter_crit_multi).round() as u16
         } else {
-            let final_damage = (base_damage.round() as u16).clamp(1, 9999);
-            (Damage::Common(final_damage), final_damage)
-        };
-
-        // Shooter의 데이터 갱신
-        shooter.damage_dealt = shooter.damage_dealt.saturating_add(final_damage as u32);
-        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
-            .min(shooter.skill_cost_data.num_maximum_cost());
+            base_damage.round() as u16
+        }
+        .clamp(1, 9999);
 
         // 4. 데미지 적용
-        hitted.damage_taken = hitted.damage_taken.saturating_add(final_damage as u32);
         if hitted.health_data.shield < final_damage {
             final_damage -= hitted.health_data.shield;
             hitted.health_data.shield = 0;
@@ -1155,7 +1152,8 @@ impl GameWorldInGameRunState {
             hitted.health_data.shield -= final_damage;
         }
 
-        return damage;
+        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
+            .min(shooter.skill_cost_data.num_maximum_cost());
     }
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
@@ -1316,15 +1314,30 @@ impl GameWorldState for GameWorldInGameRunState {
                 if name_str.contains("AI") && player.permission() == Permission::User {
                     let ai_id = uuid::Uuid::new_v4();
                     let ai_player = crate::ai::ai_player::AiPlayer {
-                        ai_id,
                         user_id: *uid,
-                        fsm: crate::ai::ai_fsm::AIPlayerFSM::new(ai_id, player.translation, player.translation),
+                        fsm: crate::ai::ai_fsm::AIPlayerFSM::new( player.translation, player.translation),
+                        move_counter: 0,
+                        current_target: glam::Vec3A::ZERO,
+                        visited_grids: std::collections::VecDeque::new(),
+                        last_position: player.translation,
+                        stuck_counter: 0,
+                        direction_history: std::collections::VecDeque::with_capacity(16),
+                        circle_penalty: 0.0,
+                        last_direction: None,
                     };
                     world.ai_players.insert(ai_id, ai_player);
                     restored += 1;
                 }
             }
             log::info!("[AI CONTINUITY PATCH] Reconstructed and inserted {} AI players from world.players", restored);
+            
+            // AI 플레이어가 복원된 경우에만 그리드 맵을 확인하고 필요시 로드
+            // (일반적으로는 enter 상태에서 이미 로드됨)
+            if restored > 0 {
+                // 간단한 AI 시스템에서는 그리드 맵을 사전 로딩하지 않음
+                log::info!("[AI CONTINUITY] Restored {} AI players (using runtime grid generation)", restored);
+                crate::ai::ai_player::load_grid_map_for_stage(world, self.stage_kind);
+            }
         }
         self.broadcast_pull_packet(world);
     }

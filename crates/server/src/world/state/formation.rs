@@ -268,8 +268,21 @@ impl GameWorldFormationState {
         
         // 모든 AI 플레이어의 캐릭터 선택과 ready 상태를 동기화
         for (&ai_uid, ai_player) in world.players.iter_mut() {
+
+             // AI 플레이어가 4개 캐릭터 중 랜덤 선택하도록 수정
+            let available_characters = [
+                CharacterKind::ArisOriginal,
+                CharacterKind::MomoiOriginal,
+                CharacterKind::MidoriOriginal,
+                CharacterKind::YuukaOriginal,
+            ];
+            
+            use rand::Rng;
+            let mut rng = rand::rng();
+            let random_character = available_characters[rng.random_range(0..available_characters.len())];
+
             if ai_uid.into_inner() >= 10000 {
-                ai_player.set_character_kind(CharacterKind::ArisOriginal);
+                ai_player.set_character_kind(random_character);
                 ai_player.set_ready_to_play(true);
             }
         }
