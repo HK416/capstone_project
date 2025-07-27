@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
 use mod_network::{
-    components::UserId, 
-    protocol::{MatchCancelPacket, Packet, PacketType, RawPacket}
+    components::UserId,
+    protocol::{
+        MatchCancelPacket, MatchRequestRejectedPacket, MatchRequestRejectedReason, Packet,
+        PacketType, RawPacket,
+    },
 };
 
 use crate::{matching::MatchMaker, session::Session, token::UserTokenMap};
@@ -51,6 +54,11 @@ impl SessionQueuedState {
         }
 
         MatchMaker::remove_from_queue(self.uid);
+
+        // 패킷을 전송합니다.
+        let reason = MatchRequestRejectedReason::Canceled;
+        let packet = MatchRequestRejectedPacket::new(reason);
+        session.tcp_write(packet.as_raw());
 
         // 이전 세션 상태로 돌아갑니다.
         session.flows.push(SessionStateFlow::Pop);

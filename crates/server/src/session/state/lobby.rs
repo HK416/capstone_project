@@ -4,8 +4,9 @@ use mod_network::{
     components::WorldId,
     protocol::{
         JoinFailedReason, JoinRoomFailedPacket, JoinRoomRequestPacket, LobbyDataUpdatePacket,
-        LoginSuccessPacket, MatchRequestPacket, MatchRequestRejectedPacket, MatchRequestRejectedReason, 
-        Packet, PacketType, QueryWorldListPacket, RawPacket, WorldListPacket
+        LoginSuccessPacket, MatchRequestPacket, MatchRequestRejectedPacket,
+        MatchRequestRejectedReason, Packet, PacketType, QueryWorldListPacket, RawPacket,
+        WorldListPacket,
     },
 };
 
@@ -146,11 +147,7 @@ impl SessionLobbyState {
     }
 
     /// 랜덤매치 요청 패킷을 처리합니다.
-    fn handle_match_request_packet(
-        &mut self,
-        session: &Arc<Session>,
-        packet: MatchRequestPacket,
-    ) {
+    fn handle_match_request_packet(&mut self, session: &Arc<Session>, packet: MatchRequestPacket) {
         // 수신한 패킷이 올바른지 검사합니다.
         if self.account.uid != packet.uid {
             log::error!(
@@ -181,7 +178,7 @@ impl SessionLobbyState {
             return;
         }
 
-        MatchMaker::add_to_queue(self.account/*Copy*/, session.clone());
+        MatchMaker::add_to_queue(self.account /*Copy*/, session.clone());
         // 다음 세션 상태로 전환합니다.
         let state = SessionQueuedState::new(self.account.uid);
         session.add_flow(SessionStateFlow::Push(Box::new(state)));

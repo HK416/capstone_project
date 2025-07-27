@@ -1,17 +1,11 @@
+use super::UserInfo;
 use futures::executor::block_on;
 use mod_network::components::{InGamePlayerResultData, Team, UserId};
-use redis::{
-    aio::ConnectionManager,
-    AsyncCommands,
-    RedisResult,
-};
-use super::UserInfo;
-
+use redis::{AsyncCommands, RedisResult, aio::ConnectionManager};
 
 lazy_static::lazy_static!(
     static ref DB_CONNECTION: DbConnection = DbConnection::new();
 );
-
 
 #[derive(Clone)]
 pub struct DbConnection {
@@ -21,9 +15,9 @@ pub struct DbConnection {
 impl DbConnection {
     fn new() -> Self {
         log::info!("Database connection initialized.");
-        
-        let mut client = redis::Client::open("redis://127.0.0.1/")
-            .expect("Failed to create Redis client");
+
+        let mut client =
+            redis::Client::open("redis://127.0.0.1/").expect("Failed to create Redis client");
 
         // redis appendonly 설정
         let _: () = redis::cmd("CONFIG")
@@ -59,7 +53,7 @@ impl DbConnection {
         let mut conn = self.manager.clone();
 
         redis::cmd("BGSAVE").query_async::<()>(&mut conn).await?;
-        
+
         Ok(())
     }
 
@@ -81,7 +75,9 @@ impl DbConnection {
 
         let _: () = conn.hset(&key, "name", &user_info.name.to_string()).await?;
         let _: () = conn.hset(&key, "tier", user_info.tier as u8).await?;
-        let _: () = conn.hset(&key, "profile_icon", user_info.profile_icon as u8).await?;
+        let _: () = conn
+            .hset(&key, "profile_icon", user_info.profile_icon as u8)
+            .await?;
 
         Ok(())
     }
@@ -90,7 +86,7 @@ impl DbConnection {
         let mut conn = self.manager.clone();
 
         let key = format!("user_info:{}", uid);
-        
+
         let user_info: UserInfo = conn.hgetall(&key).await?;
         if user_info.name.is_empty() {
             Ok(None)
@@ -100,10 +96,10 @@ impl DbConnection {
     }
 
     pub async fn save_game_result(
-        &self, 
+        &self,
         play_time_ms: u32,
         winner: Option<Team>,
-        result_data: &Vec<InGamePlayerResultData>
+        result_data: &Vec<InGamePlayerResultData>,
     ) -> RedisResult<()> {
         let mut conn = self.manager.clone();
 
@@ -111,12 +107,16 @@ impl DbConnection {
         let key = format!("match:{}", next_match_id);
 
         let _: () = conn.hset(&key, "play_time_s", play_time_ms / 1000).await?;
-        let _: () = conn.hset(&key, "winner", winner.map_or(2, |w| w as u8)).await?;
+        let _: () = conn
+            .hset(&key, "winner", winner.map_or(2, |w| w as u8))
+            .await?;
 
         for data in result_data {
             let key = format!("{}:user_info:{}", key, data.uid);
-            
-            let _: () = conn.hset(&key, "character", data.character_kind as u8).await?;
+
+            let _: () = conn
+                .hset(&key, "character", data.character_kind as u8)
+                .await?;
             let _: () = conn.hset(&key, "kills", data.kill_count).await?;
             let _: () = conn.hset(&key, "deaths", data.retreat_count).await?;
             let _: () = conn.hset(&key, "damage_done", data.damage_dealt).await?;

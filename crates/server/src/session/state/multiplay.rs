@@ -5,7 +5,10 @@ use std::sync::Arc;
 use mod_network::components::UserId;
 use mod_parallelism::collections::Queue;
 
-use crate::{session::{Session, SessionState, SessionStateFlow}, world::{GameWorldEvent, GameWorldSystemEvent}};
+use crate::{
+    session::{Session, SessionState, SessionStateFlow},
+    world::{GameWorldEvent, GameWorldSystemEvent},
+};
 
 pub struct SessionMultiplayState {
     uid: UserId,
@@ -15,10 +18,7 @@ pub struct SessionMultiplayState {
 impl SessionMultiplayState {
     /// 새로운 세션 상태를 생성합니다.
     pub fn new(uid: UserId, sender: Arc<Queue<GameWorldEvent>>) -> Self {
-        Self {
-            uid,
-            sender,
-        }
+        Self { uid, sender }
     }
 }
 

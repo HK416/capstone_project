@@ -33,7 +33,8 @@ use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
 use tokio::time::{Duration, Instant};
 
 pub use self::{
-    formation::*, in_game_ready::*, in_game_run::*, lobby::*, login::*, multiplay::*, queued::*, room::*, verify::*,
+    formation::*, in_game_ready::*, in_game_run::*, lobby::*, login::*, multiplay::*, queued::*,
+    room::*, verify::*,
 };
 
 use super::Session;

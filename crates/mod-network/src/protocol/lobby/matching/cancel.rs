@@ -2,7 +2,7 @@
 //!
 
 use crate::{
-    components::{BigEndian, LoginToken, UserId}, 
+    components::{BigEndian, LoginToken, UserId},
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -81,10 +81,7 @@ mod tests {
 
     #[test]
     fn test_match_cancel_packet() {
-        let origin = MatchCancelPacket::new(
-            UserId::new(131543561),
-            LoginToken::new(25161643514),
-        );
+        let origin = MatchCancelPacket::new(UserId::new(131543561), LoginToken::new(25161643514));
         let raw = origin.as_raw();
         let other = MatchCancelPacket::from_raw(raw);
 

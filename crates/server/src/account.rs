@@ -1,5 +1,5 @@
-use mod_network::components::{GameTier, ProfileIcon, UserId, UserName};
 use crate::data::{DbConnection, UserInfo};
+use mod_network::components::{GameTier, ProfileIcon, UserId, UserName};
 
 /// 사용자 계정 데이터입니다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,13 +25,11 @@ impl AccountManager {
     pub fn alloc() -> Account {
         // DB 연결을 가져옵니다.
         let conn = DbConnection::get_connection();
-        
+
         // spawn_blocking을 사용해서 blocking 작업을 별도 스레드에서 실행
         let uid = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                conn.get_next_uid().await
-                    .expect("Failed to get next uid")
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { conn.get_next_uid().await.expect("Failed to get next uid") })
         });
 
         let name = UserName::from_str(&format!("플레이어_{}", uid));
@@ -53,7 +51,8 @@ impl AccountManager {
 
         // 비동기로 실행시키고 account 리턴(저장 완료를 기다리지 않음)
         tokio::spawn(async move {
-            conn.set_user_info(&uid, &user_info).await
+            conn.set_user_info(&uid, &user_info)
+                .await
                 .expect("Failed to set user info in database");
         });
 
@@ -63,7 +62,7 @@ impl AccountManager {
     pub fn load(uid: UserId) -> Option<Account> {
         // DB에서 사용자 정보를 가져옵니다.
         let conn = DbConnection::get_connection();
-        
+
         // block_in_place를 사용해서 현재 스레드에서 blocking 허용
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {

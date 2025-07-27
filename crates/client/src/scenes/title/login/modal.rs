@@ -6,9 +6,12 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::{components::UserId, protocol::{
-    LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket,
-}};
+use mod_network::{
+    components::UserId,
+    protocol::{
+        LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, Packet, PacketType, RawPacket,
+    },
+};
 use rodio::Sink;
 use winit::{
     event::Modifiers,

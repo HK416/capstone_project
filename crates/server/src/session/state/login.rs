@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
 use mod_network::{
-    components::UserId, 
+    components::UserId,
     protocol::{
-        LoginFailedPacket, LoginFailedReason, LoginRequestPacket, 
-        Packet, PacketType, RawPacket
-    }
+        LoginFailedPacket, LoginFailedReason, LoginRequestPacket, Packet, PacketType, RawPacket,
+    },
 };
 
 use crate::{account::AccountManager, session::Session};
@@ -50,7 +49,7 @@ impl SessionLoginState {
                 return;
             }
         };
-        
+
         // 다음 세션 상태로 전환합니다.
         let next_state = Box::new(SessionLobbyState::new(account));
         let flow = SessionStateFlow::Change(next_state);

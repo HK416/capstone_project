@@ -22,7 +22,7 @@ use rand::seq::SliceRandom;
 use tokio::time::Duration;
 
 use crate::{
-    data::{get_stage_attributes, DbConnection},
+    data::{DbConnection, get_stage_attributes},
     entities::{Bullet, Player},
     session::{Session, SessionStateFlow},
     world::{GameWorld, GameWorldEvent, GameWorldState, GameWorldStateFlow, GameWorldSystemEvent},
@@ -614,7 +614,8 @@ impl GameWorldState for GameWorldInGameFinishState {
         let winner = self.winner;
         tokio::spawn(async move {
             let conn = DbConnection::get_connection();
-            conn.save_game_result(pt, winner, &ps).await
+            conn.save_game_result(pt, winner, &ps)
+                .await
                 .expect("Failed to save game result");
         });
 

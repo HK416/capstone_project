@@ -9,9 +9,8 @@ use mod_app::{
 use mod_network::{
     components::{LoginToken, UserId, WorldId},
     protocol::{
-        FormationDataInitPacket, JoinFailedReason, JoinRoomFailedPacket, JoinRoomRequestPacket, 
-        MatchRequestPacket, MatchRequestRejectedPacket, 
-        Packet, PacketType, RawPacket, RoomDataUpdatePacket
+        JoinFailedReason, JoinRoomFailedPacket, JoinRoomRequestPacket, Packet, PacketType,
+        RawPacket, RoomDataUpdatePacket,
     },
 };
 use mod_render::UiRenderer;
@@ -25,7 +24,9 @@ use crate::{
         lobby::{
             ERR_BANNED_TEXTS, ERR_FULL_CAPACITY_TEXTS, ERR_IN_PROGRASS_TEXTS, ERR_LIMITS_TEXTS,
             ERR_NOT_FOUND_TEXTS, MSG_MODAL_TEXTS,
-        }, CharacterFormationScene, CustomGameRoomScene, FatalErrorSceneLayer, FormationPlayerData, MessageSceneLayer, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS
+        },
+        CustomGameRoomScene, FatalErrorSceneLayer, MessageSceneLayer, ERR_CLOSED_MSG_TEXTS,
+        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
     },
     SERVER_TCP_ADDR,
 };
@@ -52,9 +53,6 @@ pub struct MainLobbyWaitLayer {
 
     /// 사운드 데이터 풀 객체
     sound_data_pool: SoundDataPool,
-
-    /// 커스텀 게임 생성 여부
-    is_custom: bool,
 }
 
 impl MainLobbyWaitLayer {
@@ -69,7 +67,6 @@ impl MainLobbyWaitLayer {
         texture_pool: TexturePool,
         texture_view_pool: TextureViewPool,
         sound_data_pool: SoundDataPool,
-        is_custom: bool,
     ) -> Self {
         Self {
             locale,
@@ -81,7 +78,6 @@ impl MainLobbyWaitLayer {
             texture_pool,
             texture_view_pool,
             sound_data_pool,
-            is_custom,
         }
     }
 }
@@ -92,18 +88,13 @@ impl GameScene for MainLobbyWaitLayer {
     }
 
     fn on_enter(&mut self, _window: &Window, app: &dyn AppHandle, _ui_renderer: &mut UiRenderer) {
-        let packet = if self.is_custom {
-            // 커스텀 게임 생성 패킷을 생성합니다.
-            JoinRoomRequestPacket::new(WorldId::NULL, self.uid, self.token).as_raw()
-        } else {
-            // 랜덤매치 참가 요청 패킷을 생성합니다.
-            MatchRequestPacket::new(self.uid, self.token).as_raw()
-        };
+        // 커스텀 게임 생성 패킷을 생성합니다.
+        let packet = JoinRoomRequestPacket::new(WorldId::NULL, self.uid, self.token);
 
         // 패킷을 전송합니다.
         let net_manager = app.net_manager();
         let socket = net_manager.get(&SERVER_TCP_ADDR).unwrap();
-        socket.push_packet(packet);
+        socket.push_packet(packet.as_raw());
         return;
     }
 
@@ -221,53 +212,6 @@ impl GameScene for MainLobbyWaitLayer {
                 sink.detach();
             }
             PacketType::LobbyDataUpdate => return Some(packet),
-            PacketType::MatchRequestRejected => {
-                // 패킷을 생성합니다
-                let _packet = MatchRequestRejectedPacket::from_raw(packet);
-                
-                // ...
-            }
-            PacketType::FormationDataInit => {
-                // FormationDataInitPacket을 처리합니다.
-                let packet = FormationDataInitPacket::from_raw(packet);
-
-                let players = packet
-                    .players
-                    .iter()
-                    .map(|data| {
-                        (
-                            data.uid,
-                            FormationPlayerData::new(
-                                data.uid,
-                                data.name,
-                                data.profile_icon,
-                                data.tier(),
-                                data.team(),
-                                data.team_index(),
-                            ),
-                        )
-                    })
-                    .collect();
-
-                // 게임 장면을 변경합니다.
-                let next_scene = CharacterFormationScene::new(
-                    self.locale,
-                    self.uid,
-                    self.token,
-                    self.background_volume,
-                    self.effect_volume,
-                    self.voice_volume,
-                    packet.remaining_time_ms,
-                    players,
-                    self.texture_pool.clone(),
-                    self.texture_view_pool.clone(),
-                    self.sound_data_pool.clone(),
-                );
-                let scene_flow = GameSceneFlow::Change(Box::new(next_scene));
-                let event: AppEvent = AppEvent::AddGameSceneFlow(scene_flow);
-                let event_loop_proxy = app.event_loop_proxy();
-                event_loop_proxy.send_event(event).unwrap();
-            }
             _ => {
                 log::warn!(
                     "packet ignored: invalid packet received! (TYPE:{:?})",

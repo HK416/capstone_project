@@ -6,9 +6,6 @@ use crate::{
     protocol::{Packet, PacketType, RawPacket},
 };
 
-/// 랜덤매치 참여 거부 사유 목록의 개수입니다.
-pub const NUM_MATCH_REQUEST_REJECTED_REASONS: usize = 5;
-
 /// 랜덤매치 참여 거부 사유 목록입니다.
 #[repr(u8)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -20,6 +17,8 @@ pub enum MatchRequestRejectedReason {
     Banned = 1,
     /// 게임 생성이 제한됐습니다.
     CreationLimited = 2,
+    /// 사용자에 의해 취소되었습니다.
+    Canceled = 3,
 }
 
 impl MatchRequestRejectedReason {
@@ -29,9 +28,10 @@ impl MatchRequestRejectedReason {
     ///
     pub fn new(val: u8) -> Option<Self> {
         match val {
-            2 => Some(Self::AlreadyInQueue),
-            3 => Some(Self::Banned),
-            4 => Some(Self::CreationLimited),
+            0 => Some(Self::AlreadyInQueue),
+            1 => Some(Self::Banned),
+            2 => Some(Self::CreationLimited),
+            3 => Some(Self::Canceled),
             _ => None,
         }
     }
@@ -143,6 +143,13 @@ mod tests {
         let val = MatchRequestRejectedReason::CreationLimited as u8;
         let reason = MatchRequestRejectedReason::new(val).unwrap();
         assert_eq!(MatchRequestRejectedReason::CreationLimited, reason);
+    }
+
+    #[test]
+    fn test_match_request_rejected_reason_creation_canceled() {
+        let val = MatchRequestRejectedReason::Canceled as u8;
+        let reason = MatchRequestRejectedReason::new(val).unwrap();
+        assert_eq!(MatchRequestRejectedReason::Canceled, reason);
     }
 
     #[test]

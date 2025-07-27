@@ -10,7 +10,10 @@ use mod_network::components::{GameTier, Permission, ProfileIcon, Team, UserId, U
 use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::{
-    account::Account, entities::Player, session::Session, world::{world_state_loop, GameWorldEvent, GameWorldSystemEvent}
+    account::Account,
+    entities::Player,
+    session::Session,
+    world::{GameWorldEvent, GameWorldSystemEvent, world_state_loop},
 };
 
 use super::GameWorld;
@@ -151,7 +154,7 @@ impl GameWorldPool {
         world.closed = false;
 
         // 이벤트 큐를 초기화합니다.
-        while let Some(_) = world.events.pop() { }
+        while let Some(_) = world.events.pop() {}
         // 게임 월드 이벤트를 추가합니다.
         let queue = world.events.clone();
         let event = GameWorldSystemEvent::PlayerJoin {
@@ -200,15 +203,15 @@ impl GameWorldPool {
         assert!(world.players.is_empty());
         for (i, (account, session)) in players.into_iter().enumerate() {
             assert_ne!(account.uid, UserId::NULL, "the given uid cannot be null!");
-            
+
             world.sessions.insert(session, account.uid);
 
             // 플레이어 데이터를 생성합니다.
             let mut player = Player::new(
-                account.name, 
-                account.profile_icon, 
-                Permission::User, 
-                account.tier
+                account.name,
+                account.profile_icon,
+                Permission::User,
+                account.tier,
             );
 
             // 플레이어의 팀을 설정합니다.
@@ -222,7 +225,7 @@ impl GameWorldPool {
         }
 
         // 이벤트 큐를 초기화합니다.
-        while let Some(_) = world.events.pop() { }
+        while let Some(_) = world.events.pop() {}
         // 게임 월드 이벤트 송신기를 가져옵니다.
         let queue = world.events.clone();
 

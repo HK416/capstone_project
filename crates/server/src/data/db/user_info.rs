@@ -1,6 +1,5 @@
 use redis::{FromRedisValue, RedisError, RedisResult};
 
-
 #[derive(Debug)]
 pub struct UserInfo {
     pub name: String,
@@ -27,21 +26,19 @@ impl FromRedisValue for UserInfo {
                         "prifile_icon" => user_info.profile_icon = redis::from_redis_value(val)?,
                         _ => {}
                     }
-                }
-                else {
+                } else {
                     return Err(RedisError::from((
-                        redis::ErrorKind::TypeError, 
-                        "Expected key-value pairs in array"
+                        redis::ErrorKind::TypeError,
+                        "Expected key-value pairs in array",
                     )));
                 }
             }
 
             Ok(user_info)
-        }
-        else {
+        } else {
             Err(RedisError::from((
-                redis::ErrorKind::TypeError, 
-                "Cannot convert to UserInfo"
+                redis::ErrorKind::TypeError,
+                "Cannot convert to UserInfo",
             )))
         }
     }
