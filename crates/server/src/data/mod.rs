@@ -1,4 +1,5 @@
 mod attribute;
+mod db;
 mod stage;
 
 use std::{
@@ -7,7 +8,7 @@ use std::{
     sync::OnceLock,
 };
 
-pub use self::{attribute::*, stage::*};
+pub use self::{attribute::*, db::*, stage::*};
 
 /// 프로그램의 디렉토리 경로를 가져옵니다.  
 /// 이 함수는 명령줄 인수를 통해 프로그램의 현재 경로를 가져옵니다.

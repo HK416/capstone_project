@@ -84,6 +84,10 @@ rand = "0.9"
 # License: MIT OR Apache-2.0
 rayon = "1.10"
 
+# Redis client for Rust.
+# License: 
+redis = { version = "0.32", features = ["tokio-comp", "connection-manager"] }
+
 # Audio playback library
 # License: MIT OR Apache-2.0
 rodio = { version = "0.21", default-features = false, features = ["vorbis", "playback"] }

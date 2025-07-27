@@ -50,6 +50,7 @@ pub struct MainLobbyWaitLayer {
     texture_pool: TexturePool,
     /// 텍스처 뷰 풀 객체
     texture_view_pool: TextureViewPool,
+
     /// 사운드 데이터 풀 객체
     sound_data_pool: SoundDataPool,
 }

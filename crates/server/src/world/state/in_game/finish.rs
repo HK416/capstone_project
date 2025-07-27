@@ -1,6 +1,7 @@
 use std::{f32::EPSILON, num::NonZeroU32, sync::Arc};
 
 use ahash::{HashMap, HashSet};
+use futures::executor::block_on;
 use mod_network::{
     components::{
         HeldInput, InGameBulletPullData, InGamePlayerPullData, InGamePlayerResultData,
@@ -21,7 +22,7 @@ use rand::seq::SliceRandom;
 use tokio::time::Duration;
 
 use crate::{
-    data::get_stage_attributes,
+    data::{DbConnection, get_stage_attributes},
     entities::{Bullet, Player},
     session::{Session, SessionStateFlow},
     world::{GameWorld, GameWorldEvent, GameWorldState, GameWorldStateFlow, GameWorldSystemEvent},
@@ -606,6 +607,17 @@ impl GameWorldState for GameWorldInGameFinishState {
                 player.tier(),
             ));
         }
+
+        // 게임 결과를 DB에 저장합니다.
+        let ps = players.clone();
+        let pt = self.play_time_ms;
+        let winner = self.winner;
+        tokio::spawn(async move {
+            let conn = DbConnection::get_connection();
+            conn.save_game_result(pt, winner, &ps)
+                .await
+                .expect("Failed to save game result");
+        });
 
         // 게임 종료 패킷을 전송합니다.
         let packet = InGameFinishPacket::new(self.play_time_ms, self.winner, players);

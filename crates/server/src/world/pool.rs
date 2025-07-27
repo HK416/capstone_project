@@ -6,10 +6,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use mod_network::components::{GameTier, ProfileIcon, UserId, UserName, WorldId};
+use mod_network::components::{GameTier, Permission, ProfileIcon, Team, UserId, UserName, WorldId};
 use mod_parallelism::collections::{Queue, SkipMap};
 
 use crate::{
+    account::Account,
+    entities::Player,
     session::Session,
     world::{GameWorldEvent, GameWorldSystemEvent, world_state_loop},
 };
@@ -151,6 +153,8 @@ impl GameWorldPool {
         world.running = true;
         world.closed = false;
 
+        // 이벤트 큐를 초기화합니다.
+        while let Some(_) = world.events.pop() {}
         // 게임 월드 이벤트를 추가합니다.
         let queue = world.events.clone();
         let event = GameWorldSystemEvent::PlayerJoin {
@@ -169,7 +173,67 @@ impl GameWorldPool {
         let id = world.id;
         log::info!("{} enabled.", &world);
         println!("{} enabled.", &world);
-        tokio::spawn(world_state_loop(world));
+        tokio::spawn(world_state_loop(world, true));
+
+        // 게임 월드 이벤트 송신기를 등록합니다.
+        get_pool().insert(id, queue);
+
+        Some(())
+    }
+
+    pub fn create_normal(players: Vec<(Account, Arc<Session>)>) -> Option<()> {
+        // 게임 월드를 할당받습니다.
+        let mut world = match get_retires().pop() {
+            Some(world) => world,
+            None => {
+                // 게임 월드 식별자를 할당 받습니다.
+                let world_id = generate_id()?;
+                // 게임 월드를 생성합니다.
+                let world = GameWorld::new(world_id);
+
+                log::info!("{} is allocated.", &world);
+                println!("{} is allocated.", &world);
+                world
+            }
+        };
+
+        // 게임 월드를 초기화합니다.
+        world.running = true;
+        world.closed = true;
+        assert!(world.players.is_empty());
+        for (i, (account, session)) in players.into_iter().enumerate() {
+            assert_ne!(account.uid, UserId::NULL, "the given uid cannot be null!");
+
+            world.sessions.insert(session, account.uid);
+
+            // 플레이어 데이터를 생성합니다.
+            let mut player = Player::new(
+                account.name,
+                account.profile_icon,
+                Permission::User,
+                account.tier,
+            );
+
+            // 플레이어의 팀을 설정합니다.
+            if i % 2 == 0 {
+                player.set_team(Team::Blue);
+            } else {
+                player.set_team(Team::Red);
+            }
+
+            world.players.insert(account.uid, player);
+        }
+
+        // 이벤트 큐를 초기화합니다.
+        while let Some(_) = world.events.pop() {}
+        // 게임 월드 이벤트 송신기를 가져옵니다.
+        let queue = world.events.clone();
+
+        // 게임 월드를 실행합니다.
+        let id = world.id;
+        log::info!("{} enabled.", &world);
+        println!("{} enabled.", &world);
+        tokio::spawn(world_state_loop(world, false));
 
         // 게임 월드 이벤트 송신기를 등록합니다.
         get_pool().insert(id, queue);

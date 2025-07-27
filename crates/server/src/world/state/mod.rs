@@ -1,5 +1,6 @@
 mod formation;
 mod in_game;
+mod queued;
 mod room;
 
 use std::{collections::VecDeque, fmt};
@@ -8,9 +9,11 @@ use tokio::time::{Duration, Instant};
 
 use crate::world::{get_pool, get_retires};
 
-pub use self::{formation::*, in_game::*, room::*};
+pub use self::{formation::*, in_game::*, queued::*, room::*};
 
 use super::{GameWorld, GameWorldEvent};
+
+const ALLOW_DUPLICATES: bool = true;
 
 /// 게임 월드 상태가 구현해야 하는 `trait`입니다.
 #[allow(unused_variables)]
@@ -46,7 +49,7 @@ pub enum GameWorldStateFlow {
 }
 
 /// 게임 월드 상태를 실행하는 루프 함수입니다.
-pub async fn world_state_loop(mut world: GameWorld) {
+pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
     // tick 초기화
     const TICK: Duration = Duration::from_millis(1);
     let mut interval = tokio::time::interval(TICK);
@@ -54,7 +57,11 @@ pub async fn world_state_loop(mut world: GameWorld) {
 
     // 상태 스텍 초기화
     let mut states: VecDeque<Box<dyn GameWorldState>> = VecDeque::with_capacity(8);
-    let state = Box::new(GameWorldRoomState::new());
+    let state: Box<dyn GameWorldState> = if is_custom {
+        Box::new(GameWorldRoomState::new())
+    } else {
+        Box::new(GameWorldQueuedState::new())
+    };
     let flow = GameWorldStateFlow::Reset(state);
     world.flows.push(flow);
 
@@ -101,6 +108,9 @@ pub async fn world_state_loop(mut world: GameWorld) {
         }
     }
 
+    if !is_custom {
+        world.disabled();
+    }
     log::info!("{} disabled.", &world);
     println!("{} disabled.", &world);
 
@@ -202,6 +212,12 @@ fn handle_reset_session_state_flow(
 impl fmt::Debug for GameWorldRoomState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(GameWorldRoomState))
+    }
+}
+
+impl fmt::Debug for GameWorldQueuedState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameWorldQueuedState))
     }
 }
 

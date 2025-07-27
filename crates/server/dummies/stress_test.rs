@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     env,
     io::{ErrorKind, Write},
+    process::exit,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering}, Arc
@@ -17,14 +18,14 @@ use tokio::{
 use mod_network::{
     addr::Addr,
     components::{
-        InputEvent, InputKind, InputSnapshot, LoginToken, Permission, SelectResult, UserId, WorldId,
+        InputEvent, InputKind, InputSnapshot, LoginToken, SelectResult, UserId,
     },
     protocol::{
-        CharacterSelectRequestPacket, CharacterSelectResponsePacket, InGameInputPacket,
-        InGamePullPacket, InGameReadyNotifyPacket, JoinRoomFailedPacket, JoinRoomRequestPacket,
-        LoginRequestPacket, LoginSuccessPacket, Packet, PacketParser, PacketType, 
-        QueryWorldListPacket, RawPacket, RoomDataUpdatePacket, RoomReadyRequestPacket,
-        WorldListPacket,
+        CharacterSelectRequestPacket, CharacterSelectResponsePacket, 
+        InGameInputPacket, InGamePullPacket, InGameReadyNotifyPacket, 
+        LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, 
+        MatchRequestPacket, MatchRequestRejectedPacket, 
+        Packet, PacketParser, PacketType, RawPacket
     },
 };
 
@@ -47,11 +48,11 @@ struct ReadyClient {
 }
 
 impl ReadyClient {
-    fn new(stream: tokio::net::TcpStream) -> Self {
+    fn new(uid: UserId, stream: tokio::net::TcpStream) -> Self {
         let (reader, writer) = stream.into_split();
 
         Self {
-            uid: UserId::default(),
+            uid,
             token: LoginToken::default(),
 
             reader,
@@ -66,20 +67,8 @@ impl ReadyClient {
 
         // 방 접속 시도
         loop {
-            // 접속 가능한 월드 목록 불러오기
-            let available = self.request_available_worlds().await?;
-
-            let world_id = if available.is_empty() {
-                // 방 생성
-                WorldId::NULL
-            } else {
-                // 랜덤으로 방 선택
-                // *available.choose(&mut rand::rng()).unwrap()
-                available[0] // 접속가능한 첫번째 방으로 접속
-            };
-
             // 방 접속
-            match self.join(world_id).await {
+            match self.queue().await {
                 Ok(_) => break,
                 Err(ref e) if e.kind() == ErrorKind::NotConnected => {
                     continue;
@@ -90,9 +79,6 @@ impl ReadyClient {
 
         // 게임 시작 준비
         loop {
-            // 준비 신호 전송
-            self.ready().await?;
-
             // 캐릭터 선택
             match self.select_character().await {
                 Ok(_) => break,
@@ -131,7 +117,7 @@ impl ReadyClient {
     }
 
     async fn login(&mut self) -> Result<(), std::io::Error> {
-        let packet = LoginRequestPacket::new().as_raw();
+        let packet = LoginRequestPacket::new(self.uid).as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
@@ -141,9 +127,17 @@ impl ReadyClient {
                 match packet.packet_type() {
                     PacketType::LoginSuccess => {
                         let p = LoginSuccessPacket::from_raw(packet);
-                        self.uid = p.uid;
+                        // self.uid = p.uid;
                         self.token = p.token;
                         break 'readloop;
+                    }
+                    PacketType::LoginFailed => {
+                        eprintln!("\n\nLogin failed: {:?}", LoginFailedPacket::from_raw(packet));
+                        exit(1);
+                        // return Err(std::io::Error::new(
+                        //     std::io::ErrorKind::NotFound,
+                        //     format!("Login failed - {:?} not found", self.uid),
+                        // ));
                     }
                     PacketType::Ping => {
                         self.writer.write_all(&packet.as_bytes()).await?;
@@ -164,39 +158,8 @@ impl ReadyClient {
         Ok(())
     }
 
-    async fn request_available_worlds(&mut self) -> Result<Vec<WorldId>, std::io::Error> {
-        let packet = QueryWorldListPacket::new(self.uid, self.token).as_raw();
-        self.writer.write_all(&packet.as_bytes()).await?;
-
-        loop {
-            self.read().await?;
-
-            while let Some(packet) = self.packet_parser.pop() {
-                match packet.packet_type() {
-                    PacketType::WorldListResponse => {
-                        let p = WorldListPacket::from_raw(packet);
-                        return Ok(p.worlds);
-                    }
-                    PacketType::Ping => {
-                        self.writer.write_all(&packet.as_bytes()).await?;
-                    }
-                    PacketType::LobbyDataUpdate => { }
-                    _ => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!(
-                                "RequestAvailableWorlds failed - Invalid packet received: {:?}",
-                                packet.packet_type()
-                            ),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    async fn join(&mut self, id: WorldId) -> Result<(), std::io::Error> {
-        let packet = JoinRoomRequestPacket::new(id, self.uid, self.token).as_raw();
+    async fn queue(&mut self) -> Result<(), std::io::Error> {
+        let packet = MatchRequestPacket::new(self.uid, self.token).as_raw();
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
@@ -204,14 +167,14 @@ impl ReadyClient {
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
-                    PacketType::JoinRoomFailed => {
-                        let p = JoinRoomFailedPacket::from_raw(packet);
+                    PacketType::MatchRequestRejected => {
+                        let p = MatchRequestRejectedPacket::from_raw(packet);
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::NotConnected,
-                            format!("Join failed: {:?}", p.reason),
+                            format!("Match request rejected: {:?}", p.reason),
                         ));
                     }
-                    PacketType::RoomDataUpdate => {
+                    PacketType::FormationDataInit => {
                         break 'readloop;
                     }
                     PacketType::Ping => {
@@ -222,76 +185,10 @@ impl ReadyClient {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
                             format!(
-                                "Join failed - Invalid packet received: {:?}",
+                                "Match request failed - Invalid packet received: {:?}",
                                 packet.packet_type()
                             ),
                         ));
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn ready(&mut self) -> Result<(), std::io::Error> {
-        let ready_packet = RoomReadyRequestPacket::new(self.uid, self.token).as_raw();
-
-        'writeloop: loop {
-            self.writer.write_all(&ready_packet.as_bytes()).await?;
-
-            'readloop: loop {
-                self.read().await?;
-
-                while let Some(packet) = self.packet_parser.pop() {
-                    match packet.packet_type() {
-                        // 플레이어들의 상태에 업데이트가 있다면
-                        PacketType::RoomDataUpdate => {
-                            let p = RoomDataUpdatePacket::from_raw(packet);
-
-                            if p.players
-                                .iter()
-                                .find(|p| p.uid == self.uid)
-                                .filter(|p| p.permission() == Permission::Admin)
-                                .is_some()
-                            {
-                                if p.players
-                                    .iter()
-                                    .filter(|p| p.uid != self.uid)
-                                    .all(|p| p.is_ready_to_play())
-                                {
-                                    // 방장이면 게임 시작 신호(ready packet) 재전송
-                                    continue 'writeloop;
-                                }
-                            } else {
-                                // 방장이 아니면 게임 시작 신호 대기
-                                continue 'readloop;
-                            }
-                        }
-                        // 이 메세지를 받는다면 방장임
-                        PacketType::StartGameFailed => {
-                            // let p = CustomGameStartFailedPacket::from_raw(packet);
-                            // println!("Game start failed: {:?}", p.reason);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                            continue 'writeloop;
-                        }
-                        // 이 메세지를 받는다면 게임이 시작된것임
-                        PacketType::FormationDataInit => {
-                            // let _p = FormationPullPacket::from_raw(packet);
-                            break 'writeloop;
-                        }
-                        PacketType::Ping => {
-                            self.writer.write_all(&packet.as_bytes()).await?;
-                        }
-                        _ => {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!(
-                                    "Ready failed - Invalid packet received: {:?}",
-                                    packet.packet_type()
-                                ),
-                            ));
-                        }
                     }
                 }
             }
@@ -411,11 +308,11 @@ impl Client {
         })
     }
 
-    async fn run(&self, addr: &str) {
+    async fn run(&self, uid: UserId, addr: &str) {
         let stream = TcpStream::connect(addr).await.unwrap();
         NUM_CLIENTS.fetch_add(1, Ordering::Relaxed);
 
-        let ready_client = ReadyClient::new(stream);
+        let ready_client = ReadyClient::new(uid, stream);
         let ready_client = match ready_client.run().await {
             Ok(client) => client,
             Err(e) => {
@@ -509,7 +406,7 @@ impl Client {
             if !connected.load(Ordering::Relaxed) {
                 return Ok(());
             }
-
+            
             if let Some(packet) = packet_sender.pop() {
                 match writer.write_all(&packet.as_bytes()).await {
                     Ok(()) => {}
@@ -518,10 +415,9 @@ impl Client {
                         return Err(e);
                     }
                 }
+            } else {
+                tokio::task::yield_now().await;
             }
-
-            // 1초마다 패킷 전송
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
     }
 
@@ -620,11 +516,16 @@ impl AcceptState {
     }
 }
 
-const MAX_CLIENTS: usize = 10000;
+const MAX_CLIENTS: usize = 200;
 const IDLE_DELAY: u32 = 10; // ms
 const STABLE_DELAY: u32 = 50; // ms
 const DELAY_LIMIT1: u32 = 100; // ms
 const DELAY_LIMIT2: u32 = 150; // ms
+
+fn get_next_uid() -> UserId {
+    static NEXT_UID: AtomicU32 = AtomicU32::new(1);
+    UserId::new(NEXT_UID.fetch_add(1, Ordering::Relaxed))
+}
 
 async fn stress_test(addr: Addr) {
     let accept_state = Arc::new(AtomicU32::new(AcceptState::Accept as u32));
@@ -662,7 +563,7 @@ async fn stress_test(addr: Addr) {
                         clients.insert(client_id, Arc::clone(&client));
                         client_id += 1;
                         let a = addr.to_string();
-                        tokio::spawn(async move { client.run(&a).await });
+                        tokio::spawn(async move { client.run(get_next_uid(), &a).await });
                     }
 
                     tokio::time::sleep(tokio::time::Duration::from_millis(accept_delay)).await;
@@ -714,13 +615,97 @@ async fn stress_test(addr: Addr) {
     // Ok(())
 }
 
+/// 서버에 새로운 계정들을 생성합니다.
+#[allow(dead_code)]
+#[tokio::main]
+async fn create_dummy_accounts(num: usize, addr: &str) {
+    println!("Creating {} dummy accounts...", num);
+    
+    static SUCCESS: AtomicU32 = AtomicU32::new(0);
+    static FAILURE: AtomicU32 = AtomicU32::new(0);
+
+    let mut readers = Vec::with_capacity(num);
+    let mut writers = Vec::with_capacity(num);
+    for _ in 0..num {
+        let stream = TcpStream::connect(addr).await
+            .expect("Failed to connect to server");
+        let (reader, writer) = stream.into_split();
+        readers.push(reader);
+        writers.push(writer);
+    }
+    
+    let packet = LoginRequestPacket::new(UserId::NULL).as_raw();
+    let mut write_handles = Vec::with_capacity(num);
+    
+    // 모든 write 작업을 먼저 시작
+    for mut writer in writers.into_iter() {
+        let p = packet.clone();
+        let handle = tokio::spawn(async move {
+            writer.write_all(&p.as_bytes()).await.unwrap();
+            writer // writer를 반환하여 연결 유지
+        });
+        write_handles.push(handle);
+    }
+
+    let mut read_handles = Vec::with_capacity(num);
+    readers.into_iter().for_each(|mut reader| {
+        let handle = tokio::spawn(async move {
+            let mut parser = PacketParser::new();
+            
+            let mut buf = [0; 1024];
+
+            'readloop: loop {
+                match reader.read(&mut buf).await {
+                    Ok(0) => {
+                        eprintln!("Connection closed by server");
+                        FAILURE.fetch_add(1, Ordering::Relaxed);
+                        break 'readloop;
+                    }
+                    Ok(n) => {
+                        parser.push(&buf[..n]);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to read from stream: {}", e);
+                        FAILURE.fetch_add(1, Ordering::Relaxed);
+                        break 'readloop;
+                    }
+                }
+
+                while let Some(packet) = parser.pop() {
+                    match packet.packet_type() {
+                        PacketType::LoginSuccess => {
+                            SUCCESS.fetch_add(1, Ordering::Relaxed);
+                            break 'readloop;
+                        }
+                        PacketType::Ping => {
+                            // Ping 패킷은 무시하고 계속 읽기
+                            continue;
+                        }
+                        _ => {
+                            eprintln!("Unexpected packet type: {:?}", packet.packet_type());
+                            FAILURE.fetch_add(1, Ordering::Relaxed);
+                            break 'readloop;
+                        }
+                    }
+                }
+            }
+        });
+        read_handles.push(handle);
+    });
+
+    let _write_completion = futures::future::join_all(write_handles).await;
+    let _read_completion = futures::future::join_all(read_handles).await;
+
+    assert_eq!(
+        SUCCESS.load(Ordering::Relaxed) + FAILURE.load(Ordering::Relaxed),
+        num as u32,
+        "Some accounts were not processed correctly"
+    );
+
+    println!("created {} dummy accounts", SUCCESS.load(Ordering::Relaxed));
+}
+
 fn main() {
-    println!("Stress test started");
-
-    let num_core = num_cpus::get();
-    let num_threads = num_core / 4;
-    println!("Using {} threads", num_threads);
-
     let mut args = env::args();
     args.next();
     let mut addr = Addr::default();
@@ -747,6 +732,17 @@ fn main() {
             }
         }
     }
+
+    // {
+    //     create_dummy_accounts(1000, addr.to_string().as_str());
+    //     return;
+    // }
+
+    println!("Stress test started");
+
+    let num_core = num_cpus::get();
+    let num_threads = num_core / 4;
+    println!("Using {} threads", num_threads);
 
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(num_threads)

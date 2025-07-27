@@ -108,6 +108,12 @@ impl fmt::Debug for GameLoginTitleScene {
     }
 }
 
+impl fmt::Debug for GameAccountModalScene {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(GameAccountModalScene))
+    }
+}
+
 impl fmt::Debug for GameLoginModalScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(GameLoginModalScene))
@@ -153,6 +159,12 @@ impl fmt::Debug for MainLobbyWaitLayer {
 impl fmt::Debug for MainLobbyExitModalScene {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", stringify!(MainLobbyExitModalScene))
+    }
+}
+
+impl fmt::Debug for MainLobbyWaitForMatching {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", stringify!(MainLobbyWaitForMatching))
     }
 }
 

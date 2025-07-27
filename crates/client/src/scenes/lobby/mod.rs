@@ -2,6 +2,7 @@ mod enter;
 mod exit;
 mod join;
 mod layer;
+mod matching;
 mod option;
 
 use std::{num::NonZeroU32, sync::Arc, time::Instant};
@@ -40,7 +41,7 @@ use crate::{
     },
 };
 
-pub use self::{enter::*, exit::*, join::*, layer::*};
+pub use self::{enter::*, exit::*, join::*, layer::*, matching::*};
 
 use super::BASE_WIDTH;
 
@@ -48,6 +49,8 @@ use super::BASE_WIDTH;
 const CREATE_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["게임 생성"];
 /// 애플리케이션 표시 언어에 따른 `커스텀 게임 참가` 버튼 텍스트입니다.
 const JOIN_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["게임 참가"];
+/// 애플리케이션 표시 언어에 따른 `랜덤 매칭` 버튼 텍스트입니다.
+const MATCHING_GAME_BTN_TEXTS: [&'static str; NUM_LOCALE] = ["랜덤 매칭"];
 
 /// 애플리케이션 표시 언어에 따른 `모달 대화상자` 타이틀 텍스트입니다.
 const MSG_MODAL_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
@@ -796,6 +799,7 @@ impl MainLobbyScene {
                 let response = ui.allocate_rect(self.option_btn_rect, egui::Sense::all());
                 self.option_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
                     // 게임 장면을 전환합니다.
+                    self.delay_time_sec = 0.3;
                     let scene = LobbyCommonOptionModalLayer::new(
                         self.locale,
                         self.background_volume,
@@ -835,6 +839,7 @@ impl MainLobbyScene {
                 let response = ui.allocate_rect(self.exit_btn_rect, egui::Sense::all());
                 self.exit_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
                     // 게임 장면을 전환합니다.
+                    self.delay_time_sec = 0.3;
                     let next_scene = Box::new(MainLobbyExitModalScene::new(
                         self.locale,
                         self.background_volume,
@@ -874,6 +879,7 @@ impl MainLobbyScene {
                 let response = ui.allocate_rect(self.create_btn_rect, egui::Sense::all());
                 self.create_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
                     // 다음 게임 장면으로 전환합니다.
+                    self.delay_time_sec = 0.3;
                     let next_scene = MainLobbyWaitLayer::new(
                         self.locale,
                         self.uid,
@@ -915,6 +921,7 @@ impl MainLobbyScene {
                 let response = ui.allocate_rect(self.join_btn_rect, egui::Sense::all());
                 self.join_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
                     // 다음 게임 장면으로 전환합니다.
+                    self.delay_time_sec = 0.3;
                     let next_scene = MainLobbyJoinModalScene::new(
                         self.locale,
                         self.uid,
@@ -955,7 +962,23 @@ impl MainLobbyScene {
                 // 게임 매칭 버튼의 이벤트를 처리합니다.
                 let response = ui.allocate_rect(self.matching_btn_rect, egui::Sense::all());
                 self.matching_btn_state = if response.clicked() && self.delay_time_sec <= 0.0 {
-                    // TODO
+                    // 다음 게임 장면으로 전환합니다.
+                    self.delay_time_sec = 0.3;
+                    let next_scene = MainLobbyWaitForMatching::new(
+                        self.locale,
+                        self.uid,
+                        self.token,
+                        self.background_volume,
+                        self.effect_volume,
+                        self.voice_volume,
+                        self.texture_pool.clone(),
+                        self.texture_view_pool.clone(),
+                        self.sound_data_pool.clone(),
+                    );
+                    let scene_flow = GameSceneFlow::Push(Box::new(next_scene));
+                    let event = AppEvent::AddGameSceneFlow(scene_flow);
+                    let event_loop_proxy = app.event_loop_proxy();
+                    event_loop_proxy.send_event(event).unwrap();
 
                     // 효과음을 재생합니다.
                     let decoded = self
@@ -982,14 +1005,16 @@ impl MainLobbyScene {
 
     /// 매칭을 시작하는 버튼을 그립니다.
     fn draw_matching_button(&mut self, ctx: &egui::Context, _app: &dyn AppHandle) {
-        // let locale = self.locale as usize;
-        // let text = CREATE_GAME_BTN_TEXTS[locale];
-        // let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
-        // let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
-        // let text = egui::RichText::new(text)
-        //     .font(font_id)
-        //     .color(egui::Color32::BLACK);
-        // let label = egui::Label::new(text).sense(egui::Sense::empty()).selectable(false);
+        let locale = self.locale as usize;
+        let text = MATCHING_GAME_BTN_TEXTS[locale];
+        let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+        let font_id = egui::FontId::new(32.0 * self.ui_scale, family);
+        let text = egui::RichText::new(text)
+            .font(font_id)
+            .color(egui::Color32::BLACK);
+        let label = egui::Label::new(text)
+            .sense(egui::Sense::empty())
+            .selectable(false);
         let tint = match self.matching_btn_state {
             ButtonState::Pressed | ButtonState::Clicked => egui::Color32::from_gray(212),
             ButtonState::Hovered => egui::Color32::from_gray(232),
@@ -1003,7 +1028,7 @@ impl MainLobbyScene {
                     .sense(egui::Sense::empty())
                     .tint(tint)
                     .paint_at(ui, self.matching_btn_rect);
-                // ui.put(self.matching_btn_rect, label);
+                ui.put(self.matching_btn_rect, label);
             });
     }
 

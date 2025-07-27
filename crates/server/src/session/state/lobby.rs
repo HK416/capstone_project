@@ -4,13 +4,16 @@ use mod_network::{
     components::WorldId,
     protocol::{
         JoinFailedReason, JoinRoomFailedPacket, JoinRoomRequestPacket, LobbyDataUpdatePacket,
-        LoginSuccessPacket, Packet, PacketType, QueryWorldListPacket, RawPacket, WorldListPacket,
+        LoginSuccessPacket, MatchRequestPacket, MatchRequestRejectedPacket,
+        MatchRequestRejectedReason, Packet, PacketType, QueryWorldListPacket, RawPacket,
+        WorldListPacket,
     },
 };
 
 use crate::{
     account::Account,
-    session::Session,
+    matching::MatchMaker,
+    session::{Session, SessionQueuedState, SessionStateFlow},
     token::UserTokenMap,
     world::{GameWorldEvent, GameWorldPool, GameWorldSystemEvent},
 };
@@ -142,6 +145,56 @@ impl SessionLobbyState {
             sender.push(event);
         }
     }
+
+    /// 랜덤매치 요청 패킷을 처리합니다.
+    fn handle_match_request_packet(&mut self, session: &Arc<Session>, packet: MatchRequestPacket) {
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.account.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::MatchRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 사용자의 로그인 토큰을 검증합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token! (PACKET:{:?})",
+                &session,
+                &PacketType::MatchRequest
+            );
+            session.close();
+            return;
+        }
+
+        if MatchMaker::is_in_queue(packet.uid) {
+            // 이미 대기열에 등록되어 있다면
+            let reason = MatchRequestRejectedReason::AlreadyInQueue;
+            let packet = MatchRequestRejectedPacket::new(reason);
+            session.tcp_write(packet.as_raw());
+            return;
+        }
+
+        MatchMaker::add_to_queue(self.account /*Copy*/, session.clone());
+        // 다음 세션 상태로 전환합니다.
+        let state = SessionQueuedState::new(self.account.uid);
+        session.add_flow(SessionStateFlow::Push(Box::new(state)));
+
+        if let Some(accounts) = MatchMaker::pop_matched_accounts() {
+            // 랜덤매칭 게임을 가져옵니다.
+            let result = GameWorldPool::create_normal(accounts);
+            if result.is_none() {
+                // 패킷을 생성하고 전송합니다.
+                let reason = MatchRequestRejectedReason::CreationLimited;
+                let packet = MatchRequestRejectedPacket::new(reason);
+                session.tcp_write(packet.as_raw());
+                return;
+            }
+        }
+    }
 }
 
 impl SessionState for SessionLobbyState {
@@ -194,6 +247,17 @@ impl SessionState for SessionLobbyState {
                 };
 
                 self.handle_join_request_packet(session, packet);
+            }
+            PacketType::MatchRequest => {
+                let packet = match MatchRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_match_request_packet(session, packet);
             }
             PacketType::RoomLeaveNotify
             | PacketType::RoomReadyRequest

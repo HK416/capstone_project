@@ -37,6 +37,12 @@ pub enum PacketType {
     JoinRoomRequest = 0x32,
     /// 서버에서 클라이언트로 보내는 커스텀 게임 참가 실패 응답 패킷
     JoinRoomFailed = 0x33,
+    /// 클라이언트에서 서버로 보내는 랜덤매치 참가 요청 패킷
+    MatchRequest = 0x34,
+    /// 서버에서 클라이언트로 보내는 랜덤매치 참가 거부 응답 패킷
+    MatchRequestRejected = 0x35,
+    /// 클라이언트에서 서버로 보내는 랜덤매치 참가 취소 요청 패킷
+    MatchCancel = 0x36,
 
     /// 커스텀 게임에서 사용되는 패킷 유형
     RoomGroup = 0x40,
@@ -111,6 +117,9 @@ impl PacketType {
             0x31 => Some(PacketType::LobbyDataUpdate),
             0x32 => Some(PacketType::JoinRoomRequest),
             0x33 => Some(PacketType::JoinRoomFailed),
+            0x34 => Some(PacketType::MatchRequest),
+            0x35 => Some(PacketType::MatchRequestRejected),
+            0x36 => Some(PacketType::MatchCancel),
             0x41 => Some(PacketType::RoomDataUpdate),
             0x42 => Some(PacketType::RoomLeaveNotify),
             0x43 => Some(PacketType::RoomReadyRequest),
@@ -191,6 +200,12 @@ mod tests {
     test_packet_type!(test_packet_type_join_room_request, PacketType::JoinRoomRequest);
 
     test_packet_type!(test_packet_type_join_room_failed, PacketType::JoinRoomFailed);
+
+    test_packet_type!(test_packet_type_match_request, PacketType::MatchRequest);
+
+    test_packet_type!(test_packet_type_match_request_rejected, PacketType::MatchRequestRejected);
+
+    test_packet_type!(test_packet_type_match_cancel, PacketType::MatchCancel);
 
     test_packet_type!(test_packet_type_room_data_update, PacketType::RoomDataUpdate);
 

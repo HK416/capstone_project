@@ -2,6 +2,7 @@
 //!
 
 mod join;
+mod matching;
 mod pull;
 
-pub use self::{join::*, pull::*};
+pub use self::{join::*, matching::*, pull::*};

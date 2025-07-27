@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
-use mod_network::protocol::{LoginRequestPacket, Packet, PacketType, RawPacket};
+use mod_network::{
+    components::UserId,
+    protocol::{
+        LoginFailedPacket, LoginFailedReason, LoginRequestPacket, Packet, PacketType, RawPacket,
+    },
+};
 
 use crate::{account::AccountManager, session::Session};
 
@@ -29,9 +34,21 @@ impl SessionLoginState {
     /// 현재는 로그인 데이터베이스가 없습니다.
     /// 로그인 요청 순서대로 사용자 계정을 할당 후 로그인 토큰을 발행합니다.
     ///
-    fn handle_login_request_packet(&mut self, session: &Arc<Session>, _packet: LoginRequestPacket) {
-        // 사용자 계정을 할당합니다.
-        let account = AccountManager::alloc();
+    fn handle_login_request_packet(&mut self, session: &Arc<Session>, packet: LoginRequestPacket) {
+        let account = if packet.uid == UserId::NULL {
+            // 사용자 계정을 할당합니다.
+            AccountManager::alloc()
+        } else {
+            // 사용자 계정을 로드합니다.
+            if let Some(account) = AccountManager::load(packet.uid) {
+                account
+            } else {
+                // 사용자 계정이 존재하지 않는 경우 로그인 실패 패킷을 전송합니다.
+                let packet = LoginFailedPacket::new(LoginFailedReason::Invalid);
+                session.tcp_write(packet.as_raw());
+                return;
+            }
+        };
 
         // 다음 세션 상태로 전환합니다.
         let next_state = Box::new(SessionLobbyState::new(account));

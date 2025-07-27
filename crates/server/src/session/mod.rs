@@ -185,14 +185,9 @@ pub async fn handle_connection(stream: TcpStream, mut session: Arc<Session>) {
 
 /// TCP 소켓의 데이터를 읽는 루프 함수입니다.
 async fn tcp_read_loop(mut tcp_reader: OwnedReadHalf, session: Arc<Session>) {
-    const TICK: Duration = Duration::from_millis(1);
-    let mut interval = tokio::time::interval(TICK);
-
     let mut buf = vec![0; 10240]; // 10KB
     let mut packet_parser = PacketParser::new();
     'tcp: while session.is_running() {
-        interval.tick().await;
-
         // 버퍼 초기화
         buf.fill(0);
 
