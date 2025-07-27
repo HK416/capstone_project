@@ -113,7 +113,7 @@ pub fn spawn_fx_muzzle_effect(
     let parent = Parent(muzzle);
     let life_time = LifeTime::new(32);
     let tint_color = FxMuzzleTintColor([220.0 / 255.0, 36.0 / 255.0, 0.0 / 255.0]);
-    let transform = ToParentTrans(glam::Mat4::from_scale(glam::vec3(0.2, 0.2, 0.2)));
+    let transform = ToParentTrans(glam::Mat4::from_scale(glam::vec3(0.35, 0.35, 0.35)));
     let mut builder_0 = EntityBuilder::new();
     builder_0.add_bundle((
         mesh.clone(),
@@ -126,9 +126,9 @@ pub fn spawn_fx_muzzle_effect(
     ));
 
     let transform = ToParentTrans(glam::Mat4::from_scale_rotation_translation(
-        glam::Vec3::splat(0.2),
+        glam::Vec3::splat(0.35),
         glam::Quat::from_rotation_y(-90f32.to_radians()),
-        glam::vec3(0.0, 0.0, 0.1),
+        glam::vec3(0.0, 0.0, 0.22),
     ));
     let mut builder_1 = EntityBuilder::new();
     builder_1.add_bundle((
