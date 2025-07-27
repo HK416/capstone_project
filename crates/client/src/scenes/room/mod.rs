@@ -19,10 +19,10 @@ use mod_network::{
         NUM_TIER,
     },
     protocol::{
-        FormationDataInitPacket, Packet, PacketType, RawPacket, RoomDataUpdatePacket,
-        RoomDuplicateOptChangeRequestPacket, RoomLeaveNotifyPacket, RoomReadyRequestPacket,
-        RoomTeamChangeRequestPacket, RoomUnbalancedOptChangeRequestPacket, StartFailedReason,
-        StartGameFailedPacket,
+        FillEmptySlotOptChangeRequestPacket, FormationDataInitPacket, Packet, PacketType,
+        RawPacket, RoomDataUpdatePacket, RoomDuplicateOptChangeRequestPacket,
+        RoomLeaveNotifyPacket, RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
+        RoomUnbalancedOptChangeRequestPacket, StartFailedReason, StartGameFailedPacket,
     },
 };
 use mod_render::UiRenderer;
@@ -79,6 +79,8 @@ const LIMIT_RED_ERR_TEXTS: [&'static str; NUM_LOCALE] = ["레드 팀 인원이 �
 const DUPLICATE_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["캐릭터 중복 허용"];
 /// 애플리케이션 표시 언어에 따른 옵션 텍스트
 const UNBALANCE_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["팀 불균형 허용"];
+/// 애플리케이션 표시 언어에 따른 옵션 텍스트
+const USING_AI_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["AI 채우기 허용"];
 
 /// 준비 전환 대기 시간
 const DELAY_TIME: f32 = 0.5;
@@ -117,6 +119,12 @@ pub struct CustomGameRoomScene {
     unbalance_switch_time: f32,
     /// 팀 밸런스 불균형 허용 여부 영역
     unbalance_rect: egui::Rect,
+    /// AI 채우기 허용 여부
+    allow_using_ai: bool,
+    /// AI 채우기 허용 여부 변환 시간
+    using_ai_switch_time: f32,
+    /// AI 채우기 허용 여부 영역
+    using_ai_rect: egui::Rect,
     /// 현재 커스텀 게임에 참가한 플레이어 목록입니다.
     players: Vec<CustomRoomPlayerData>,
 
@@ -210,6 +218,7 @@ impl CustomGameRoomScene {
         stage_kind: StageKind,
         allow_duplicates: bool,
         allow_unbalanced: bool,
+        allow_using_ai: bool,
         mut players: Vec<CustomRoomPlayerData>,
     ) -> Self {
         assert_ne!(uid, UserId::NULL, "invalid user identifier");
@@ -235,6 +244,9 @@ impl CustomGameRoomScene {
             allow_unbalanced,
             unbalance_switch_time: if allow_unbalanced { SWITCH_TIME } else { 0.0 },
             unbalance_rect: egui::Rect::ZERO,
+            allow_using_ai,
+            using_ai_switch_time: if allow_using_ai { SWITCH_TIME } else { 0.0 },
+            using_ai_rect: egui::Rect::ZERO,
             ui_scale: 1.0,
             clip_rect: egui::Rect::ZERO,
             bg_rect: egui::Rect::ZERO,
@@ -633,6 +645,9 @@ impl CustomGameRoomScene {
 
         // 팀 불균형 여부 허용 영역을 재조정합니다.
         self.unbalance_rect = Self::resize_unbalance_rect(&self.clip_rect, self.ui_scale);
+
+        // AI 사용 여부 허용 영역을 재조정합니다.
+        self.using_ai_rect = Self::resize_using_ai_rect(&self.clip_rect, self.ui_scale);
     }
 
     /// 클립 사각형 영역의 크기를 재조정합니다.
@@ -830,6 +845,19 @@ impl CustomGameRoomScene {
         egui::Rect::from_two_pos(left_bottom, right_top)
     }
 
+    /// AI 사용 허용 여부 영역의 크기를 재조정합니다.
+    fn resize_using_ai_rect(clip_rect: &egui::Rect, scale: f32) -> egui::Rect {
+        let width = 320.0 * scale;
+        let height = 40.0 * scale;
+        let size = egui::vec2(width, height);
+
+        let margin = egui::vec2(-10.0, -78.0) * scale;
+        let right_bottom = clip_rect.right_bottom() + margin;
+        let left_top = right_bottom - size;
+
+        egui::Rect::from_two_pos(right_bottom, left_top)
+    }
+
     /// Ui 입력을 처리합니다.
     fn handle_ui_input(
         &mut self,
@@ -1015,6 +1043,39 @@ impl CustomGameRoomScene {
                             // 패킷을 전송합니다.
                             let packet =
                                 RoomUnbalancedOptChangeRequestPacket::new(self.uid, self.token);
+                            let net = app.net_manager();
+                            let socket = net.get(&SERVER_TCP_ADDR).unwrap();
+                            socket.push_packet(packet.as_raw());
+
+                            // 효과음을 재생합니다.
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_BUTTON_TOUCH)
+                                .expect("UI_Button_Touch sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(app.audio_mixer());
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
+                    }
+                }
+
+                // AI 사용 허용 옵션 입력을 처리합니다.
+                if permission == Permission::Admin {
+                    let min =
+                        self.using_ai_rect.min + self.using_ai_rect.size() * egui::vec2(0.75, 0.0);
+                    let size = self.using_ai_rect.size() * egui::vec2(0.25, 1.0);
+                    let rect = egui::Rect::from_min_size(min, size);
+                    let response = ui.allocate_rect(rect, egui::Sense::all());
+                    if response.clicked() {
+                        if self.delay_time_sec <= 0.0 {
+                            self.delay_time_sec = DELAY_TIME;
+
+                            // 패킷을 전송합니다.
+                            let packet =
+                                FillEmptySlotOptChangeRequestPacket::new(self.uid, self.token);
                             let net = app.net_manager();
                             let socket = net.get(&SERVER_TCP_ADDR).unwrap();
                             socket.push_packet(packet.as_raw());
@@ -1476,7 +1537,7 @@ impl CustomGameRoomScene {
 
     /// 팀 불균형 옵션을 그립니다.
     fn draw_unbalance_option(&mut self, ctx: &egui::Context) {
-        egui::Area::new(egui::Id::new("Allow_Unbalanced_Label"))
+        egui::Area::new(egui::Id::new("Allow_Unbalance_Label"))
             .order(egui::Order::Background)
             .sense(egui::Sense::empty())
             .fixed_pos(self.unbalance_rect.min)
@@ -1510,6 +1571,61 @@ impl CustomGameRoomScene {
                 let height = self.unbalance_rect.height();
                 let rect = egui::Rect::from_two_pos(min, self.unbalance_rect.max);
                 let delta = self.unbalance_switch_time / SWITCH_TIME;
+                let color = egui::Color32::GRAY
+                    * egui::Color32::from_gray(((1.0 - delta) * 255.0) as u8)
+                    + egui::Color32::LIGHT_GREEN * egui::Color32::from_gray((delta * 255.0) as u8);
+                ui.painter().rect_filled(rect, height * 0.5, color);
+
+                // 토글 버튼
+                let radius = rect.height() * 0.4;
+                let beg = rect.left_center() + egui::vec2(rect.height() * 0.5, 0.0);
+                let end = rect.right_center() - egui::vec2(rect.height() * 0.5, 0.0);
+                let center = beg.to_vec2() * (1.0 - delta) + end.to_vec2() * delta;
+                ui.painter().circle(
+                    center.to_pos2(),
+                    radius,
+                    egui::Color32::WHITE,
+                    egui::Stroke::new(1.0 * self.ui_scale, egui::Color32::BLACK),
+                );
+            });
+    }
+
+    /// AI 허용 옵션을 그립니다.
+    fn draw_using_ai_option(&mut self, ctx: &egui::Context) {
+        egui::Area::new(egui::Id::new("Allow_Using_AI_Label"))
+            .order(egui::Order::Background)
+            .sense(egui::Sense::empty())
+            .fixed_pos(self.using_ai_rect.min)
+            .default_size(self.using_ai_rect.size() * egui::vec2(0.75, 1.0))
+            .show(ctx, |ui| {
+                ui.shrink_clip_rect(self.clip_rect);
+                ui.set_min_size(self.using_ai_rect.size() * egui::vec2(0.75, 1.0));
+                ui.set_max_size(self.using_ai_rect.size() * egui::vec2(0.75, 1.0));
+
+                // 라벨 출력
+                let i = self.locale as usize;
+                let text = USING_AI_OPT_TEXTS[i];
+                let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
+                let font_id = egui::FontId::new(22.0 * self.ui_scale, family);
+                let text = egui::RichText::new(text)
+                    .font(font_id)
+                    .color(egui::Color32::WHITE);
+                let label = egui::Label::new(text)
+                    .sense(egui::Sense::empty())
+                    .selectable(false);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.set_min_size(self.using_ai_rect.size() * egui::vec2(0.75, 1.0));
+                    ui.set_max_size(self.using_ai_rect.size() * egui::vec2(0.75, 1.0));
+                    ui.add_space(12.0 * self.ui_scale);
+                    ui.add(label);
+                });
+
+                // 토글 버튼 배경
+                let min =
+                    self.using_ai_rect.min + self.using_ai_rect.size() * egui::vec2(0.75, 0.0);
+                let height = self.using_ai_rect.height();
+                let rect = egui::Rect::from_two_pos(min, self.using_ai_rect.max);
+                let delta = self.using_ai_switch_time / SWITCH_TIME;
                 let color = egui::Color32::GRAY
                     * egui::Color32::from_gray(((1.0 - delta) * 255.0) as u8)
                     + egui::Color32::LIGHT_GREEN * egui::Color32::from_gray((delta * 255.0) as u8);
@@ -1691,6 +1807,7 @@ impl GameScene for CustomGameRoomScene {
                 self.stage_kind = packet.stage_kind();
                 self.allow_duplicates = packet.allow_duplicates();
                 self.allow_unbalanced = packet.allow_unbalanced();
+                self.allow_using_ai = packet.allow_using_ai();
                 self.players = packet.players;
                 self.players.sort_by_key(|data| data.uid);
             }
@@ -1798,6 +1915,11 @@ impl GameScene for CustomGameRoomScene {
         } else {
             (self.unbalance_switch_time - elapsed_time_sec).max(0.0)
         };
+        self.using_ai_switch_time = if self.allow_using_ai {
+            (self.using_ai_switch_time + elapsed_time_sec).min(SWITCH_TIME)
+        } else {
+            (self.using_ai_switch_time - elapsed_time_sec).max(0.0)
+        };
     }
 
     fn ui_callback(&mut self, _window: &Window, app: &dyn AppHandle) {
@@ -1819,6 +1941,7 @@ impl GameScene for CustomGameRoomScene {
         self.draw_team_change_button(ctx, ready_to_play, team);
         self.draw_duplicate_option(ctx);
         self.draw_unbalance_option(ctx);
+        self.draw_using_ai_option(ctx);
         self.draw_background(ctx);
     }
 }

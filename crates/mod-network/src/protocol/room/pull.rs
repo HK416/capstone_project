@@ -11,6 +11,7 @@ use crate::{
 /// - stage_king       | 4bit | 스테이지 종류
 /// - allow_duplicates | 1bit | 캐릭터 중복 허용 여부
 /// - unbalanced       | 1bit | 팀 균형 여부
+/// - fill_empty_slot  | 1bit | AI 플레이어 사용 여부
 ///
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -23,6 +24,8 @@ impl Bitfield {
     const DUPLICATE_SHIFT: usize = 4;
     const UNBALANCE_BIT_MASK: u8 = 0x01;
     const UNBALANCE_SHIFT: usize = 5;
+    const FILL_BIT_MASK: u8 = 0x01;
+    const FILL_SHIFT: usize = 6;
 
     /// 새로운 비트 필드 데이터를 생성합니다.
     pub const fn new() -> Self {
@@ -65,6 +68,18 @@ impl Bitfield {
         self.0 |= ((unbalanced as u8) & Self::UNBALANCE_BIT_MASK) << Self::UNBALANCE_SHIFT;
         self
     }
+
+    /// AI 플레이어로 채울 것인지 여부를 반환합니다.
+    pub fn fill_empty_slot(&self) -> bool {
+        (self.0 >> Self::FILL_SHIFT) & Self::FILL_BIT_MASK == Self::FILL_BIT_MASK
+    }
+
+    /// AI 플레이어로 채울 것인지 여부를 설정합니다.
+    pub const fn with_fill_empty_slot(mut self, fill: bool) -> Self {
+        self.0 &= !(Self::FILL_BIT_MASK << Self::FILL_SHIFT);
+        self.0 |= ((fill as u8) & Self::FILL_BIT_MASK) << Self::FILL_SHIFT;
+        self
+    }
 }
 
 impl Default for Bitfield {
@@ -105,6 +120,7 @@ impl RoomDataUpdatePacket {
         stage_kind: StageKind,
         duplicates: bool,
         unbalanced: bool,
+        fill_ai: bool,
         players: Vec<CustomRoomPlayerData>,
     ) -> Self {
         assert!(!players.is_empty(), "the given data is empty!");
@@ -116,7 +132,8 @@ impl RoomDataUpdatePacket {
             bitfield: Bitfield::new()
                 .with_stage_kind(stage_kind)
                 .with_allow_duplicates(duplicates)
-                .with_allow_unbalanced(unbalanced),
+                .with_allow_unbalanced(unbalanced)
+                .with_fill_empty_slot(fill_ai),
         }
     }
 
@@ -130,6 +147,7 @@ impl RoomDataUpdatePacket {
         stage_kind: StageKind,
         duplicates: bool,
         unbalanced: bool,
+        fill_ai: bool,
         iter: I,
     ) -> Self
     where
@@ -141,6 +159,7 @@ impl RoomDataUpdatePacket {
             stage_kind,
             duplicates,
             unbalanced,
+            fill_ai,
             iter.into_iter().collect(),
         )
     }
@@ -153,6 +172,11 @@ impl RoomDataUpdatePacket {
     /// 팀 불균형 허용 여부를 반환합니다.
     pub fn allow_unbalanced(&self) -> bool {
         self.bitfield.allow_unbalanced()
+    }
+
+    /// AI 허용 여부를 반환합니다.
+    pub fn allow_using_ai(&self) -> bool {
+        self.bitfield.fill_empty_slot()
     }
 
     /// 스테이지 종류를 반환합니다.
@@ -302,6 +326,7 @@ mod tests {
             StageKind::City,
             true,
             false,
+            true,
             players,
         );
         let raw = origin.as_raw();

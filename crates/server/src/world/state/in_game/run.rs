@@ -31,6 +31,7 @@ use rand::{
 };
 use tokio::time::Duration;
 
+use crate::ai::ai_player::update_ai_players;
 use crate::{
     data::get_stage_attributes,
     entities::{Bullet, CapturePointObject, Player},
@@ -40,7 +41,6 @@ use crate::{
         GameWorldState, GameWorldStateFlow, GameWorldSystemEvent,
     },
 };
-use crate::ai::ai_player::update_ai_players;
 
 /// 최대 게임 진행 시간 (단위: ms)
 pub const MAX_GAME_TIME: u32 = 1_000 * 60 * 5;
@@ -483,7 +483,6 @@ impl GameWorldInGameRunState {
 
     /// 게임 월드를 갱신합니다.
     fn update(&mut self, world: &mut GameWorld, elapsed: Duration) {
-
         let stage_attributes = get_stage_attributes(self.stage_kind);
         let elapsed_time_ms = elapsed.as_millis().min(u16::MAX as u128) as u16;
         let mut events = Vec::with_capacity(64);
@@ -495,12 +494,11 @@ impl GameWorldInGameRunState {
             // AI FSM 업데이트: 플레이어 이동 해금과 동시에 AI도 이동
             update_ai_players(world);
         }
-        
+
         // 1. 플레이어 행동 이벤트를 수집합니다.
         for (&uid, player) in world.players.iter_mut() {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
-            if self.leaved_players.contains(&uid) 
-            || keys.contains(&uid) {
+            if self.leaved_players.contains(&uid) || keys.contains(&uid) {
                 continue;
             }
 
@@ -535,8 +533,7 @@ impl GameWorldInGameRunState {
         let mut curr_elapsed_time_ms = 0;
         for ActionEventDetail { uid, timing, event } in events {
             // 서버와 연결이 끊어진 경우 건너뜁니다.
-            if self.leaved_players.contains(&uid) 
-            || keys.contains(&uid) {
+            if self.leaved_players.contains(&uid) || keys.contains(&uid) {
                 continue;
             }
 
@@ -1705,7 +1702,10 @@ impl GameWorldState for GameWorldInGameRunState {
                     let ai_id = uuid::Uuid::new_v4();
                     let ai_player = crate::ai::ai_player::AiPlayer {
                         user_id: *uid,
-                        fsm: crate::ai::ai_fsm::AIPlayerFSM::new( player.translation, player.translation),
+                        fsm: crate::ai::ai_fsm::AIPlayerFSM::new(
+                            player.translation,
+                            player.translation,
+                        ),
                         move_counter: 0,
                         current_target: glam::Vec3A::ZERO,
                         visited_grids: std::collections::VecDeque::new(),
@@ -1720,13 +1720,19 @@ impl GameWorldState for GameWorldInGameRunState {
                     restored += 1;
                 }
             }
-            log::info!("[AI CONTINUITY PATCH] Reconstructed and inserted {} AI players from world.players", restored);
-            
+            log::info!(
+                "[AI CONTINUITY PATCH] Reconstructed and inserted {} AI players from world.players",
+                restored
+            );
+
             // AI 플레이어가 복원된 경우에만 그리드 맵을 확인하고 필요시 로드
             // (일반적으로는 enter 상태에서 이미 로드됨)
             if restored > 0 {
                 // 간단한 AI 시스템에서는 그리드 맵을 사전 로딩하지 않음
-                log::info!("[AI CONTINUITY] Restored {} AI players (using runtime grid generation)", restored);
+                log::info!(
+                    "[AI CONTINUITY] Restored {} AI players (using runtime grid generation)",
+                    restored
+                );
                 crate::ai::ai_player::load_grid_map_for_stage(world, self.stage_kind);
             }
         }

@@ -3,9 +3,9 @@ use std::sync::Arc;
 use mod_network::{
     components::UserId,
     protocol::{
-        Packet, PacketType, RawPacket, RoomDuplicateOptChangeRequestPacket, RoomLeaveNotifyPacket,
-        RoomPlayerBanRequestPacket, RoomReadyRequestPacket, RoomTeamChangeRequestPacket,
-        RoomUnbalancedOptChangeRequestPacket,
+        FillEmptySlotOptChangeRequestPacket, Packet, PacketType, RawPacket,
+        RoomDuplicateOptChangeRequestPacket, RoomLeaveNotifyPacket, RoomPlayerBanRequestPacket,
+        RoomReadyRequestPacket, RoomTeamChangeRequestPacket, RoomUnbalancedOptChangeRequestPacket,
     },
 };
 use mod_parallelism::collections::Queue;
@@ -298,6 +298,50 @@ impl SessionRoomState {
         self.sender.push(event);
         self.request_delay_time = DELAY_TIME;
     }
+
+    /// [`FillEmptySlotOptChangeRequestPacket`]을 처리합니다.
+    fn handle_fill_slot_opt_change_request_packet(
+        &mut self,
+        session: &Arc<Session>,
+        packet: FillEmptySlotOptChangeRequestPacket,
+    ) {
+        // 지연 시간이 남은 경우 해당 패킷을 무시합니다.
+        if self.request_delay_time > 0.0 {
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if self.uid != packet.uid {
+            log::error!(
+                "{} invalid identifier (PACKET:{:?})",
+                &session,
+                &PacketType::UnBalanceOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 수신한 패킷이 올바른지 검사합니다.
+        if !UserTokenMap::is_valid(&(packet.uid, session.addr), packet.token) {
+            log::error!(
+                "{} invalid token (PACKET:{:?})",
+                &session,
+                &PacketType::UnBalanceOptChangeRequest
+            );
+            session.close();
+            return;
+        }
+
+        // 팀 불균형 허용 변경 요청을 보냅니다.
+        let event = GameWorldRoomStateEvent::ChangeFillEmptySlotsOption;
+        let event = GameWorldEvent::RoomState {
+            session: session.clone(),
+            uid: packet.uid,
+            event,
+        };
+        self.sender.push(event);
+        self.request_delay_time = DELAY_TIME;
+    }
 }
 
 impl SessionState for SessionRoomState {
@@ -374,6 +418,17 @@ impl SessionState for SessionRoomState {
                 };
 
                 self.handle_room_unbalanced_opt_change_request_packet(session, packet);
+            }
+            PacketType::FillEmptySlotOptChangeRequest => {
+                let packet = match FillEmptySlotOptChangeRequestPacket::try_from_raw(packet) {
+                    Some(packet) => packet,
+                    None => {
+                        session.close();
+                        return;
+                    }
+                };
+
+                self.handle_fill_slot_opt_change_request_packet(session, packet);
             }
             PacketType::RoomPlayerBanRequest => {
                 let packet = match RoomPlayerBanRequestPacket::try_from_raw(packet) {

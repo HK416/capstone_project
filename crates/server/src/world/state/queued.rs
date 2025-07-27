@@ -200,6 +200,7 @@ impl GameWorldState for GameWorldQueuedState {
         // 게임 월드 상태를 변경합니다.
         let state = GameWorldFormationState::new(
             ALLOW_DUPLICATES,
+            false,
             self.stage_kind,
             false,
             self.blue_players.len(),

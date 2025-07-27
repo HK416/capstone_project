@@ -3,7 +3,6 @@ mod in_game;
 mod queued;
 mod room;
 
-
 use std::{collections::VecDeque, fmt};
 
 use tokio::time::{Duration, Instant};

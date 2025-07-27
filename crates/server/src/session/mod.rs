@@ -91,7 +91,7 @@ impl Session {
 
     /// Creates a session for AI players
     pub fn ai(uid: mod_network::components::UserId) -> Self {
-        use std::net::{SocketAddr, IpAddr, Ipv4Addr};
+        use std::net::{IpAddr, Ipv4Addr, SocketAddr};
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0); // Reserved address for dummy
         let udp_sender = Arc::new(mod_parallelism::collections::Queue::new());
         Self {

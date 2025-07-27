@@ -160,6 +160,7 @@ impl GameScene for MainLobbyWaitLayer {
                     packet.stage_kind(),
                     packet.allow_duplicates(),
                     packet.allow_unbalanced(),
+                    packet.allow_using_ai(),
                     packet.players,
                 );
                 let scene_flow = GameSceneFlow::Change(Box::new(next_scene));

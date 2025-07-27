@@ -35,6 +35,8 @@ pub struct GameWorldFormationState {
     remaining_time_ms: u16,
     /// 게임 캐릭터 중복 옵션
     allow_duplicates: bool,
+    /// AI 플레이어로 채우는 여부
+    fill_empty_slot: bool,
     /// 게임 스테이지 종류
     stage_kind: StageKind,
     /// 커스텀 게임 여부
@@ -61,6 +63,7 @@ impl GameWorldFormationState {
     /// 새로운 게임 월드 상태를 생성합니다.
     pub fn new(
         allow_duplicates: bool,
+        fill_empty_slot: bool,
         stage_kind: StageKind,
         custom_game: bool,
         num_blue_players: usize,
@@ -69,6 +72,7 @@ impl GameWorldFormationState {
         Self {
             remaining_time_ms: MAX_FORMATION_TIME,
             allow_duplicates,
+            fill_empty_slot,
             stage_kind,
             custom_game,
             elapsed_time_sec: 0.0,
@@ -265,7 +269,7 @@ impl GameWorldFormationState {
         // 패킷을 전송합니다.
         let packet = CharacterSelectResponsePacket::new(result);
         session.tcp_write(packet.as_raw());
-        
+
         // 모든 AI 플레이어의 캐릭터 선택과 ready 상태를 동기화
         for (&ai_uid, ai_player) in world.players.iter_mut() {
             if ai_uid.into_inner() >= 10000 {
@@ -496,7 +500,7 @@ impl GameWorldFormationState {
 impl GameWorldState for GameWorldFormationState {
     fn on_enter(&mut self, world: &mut GameWorld) {
         // Add AI players before character selection
-        if self.custom_game {
+        if self.custom_game && self.fill_empty_slot {
             crate::ai::ai_player::insert_ai_players(
                 world,
                 self.num_blue_players,

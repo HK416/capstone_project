@@ -60,7 +60,7 @@ impl GameWorldRoomState {
     pub fn new() -> Self {
         Self {
             allow_unbalanced: false,
-            fill_empty_slots: true,
+            fill_empty_slots: false,
             allow_duplicates: true,
             stage_kind: StageKind::default(),
             cnt_blue_players: 0,
@@ -445,7 +445,8 @@ impl GameWorldRoomState {
                     let ai_profile_icon = ProfileIcon::default();
                     let ai_tier = GameTier::default();
                     let ai_permission = Permission::User;
-                    let mut ai_player = Player::new(ai_name, ai_profile_icon, ai_permission, ai_tier);
+                    let mut ai_player =
+                        Player::new(ai_name, ai_profile_icon, ai_permission, ai_tier);
                     // AI FSM 연동: 별도 관리 구조에서 할당 예정 (Player에는 직접 할당하지 않음)
                     // 팀 배정: 블루가 적으면 블루, 아니면 레드
                     if self.red_players.len() < self.blue_players.len() {
@@ -462,9 +463,8 @@ impl GameWorldRoomState {
                     world.players.insert(next_userid, ai_player);
                     next_userid = UserId::new(next_userid.into_inner() + 1);
                 }
-
             }
-        
+
             // 게임 월드를 닫습니다.
             world.closed = true;
 
@@ -534,6 +534,7 @@ impl GameWorldRoomState {
             // 게임 월드 상태를 변경합니다.
             let state = GameWorldFormationState::new(
                 self.allow_duplicates,
+                self.fill_empty_slots,
                 self.stage_kind,
                 true,
                 self.blue_players.len(),
@@ -587,6 +588,7 @@ impl GameWorldRoomState {
             self.stage_kind,
             self.allow_duplicates,
             self.allow_unbalanced,
+            self.fill_empty_slots,
             players,
         );
 

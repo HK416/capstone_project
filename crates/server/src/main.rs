@@ -246,7 +246,6 @@ fn init_log_system() -> Option<WorkerGuard> {
         .with_default_directive(LevelFilter::DEBUG.into())
         .from_env_lossy();
 
-
     // 로그 시스템을 초기화합니다.
     tracing_subscriber::fmt()
         .with_env_filter(filter)

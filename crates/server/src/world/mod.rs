@@ -1,14 +1,17 @@
 use std::net::SocketAddr;
 impl GameWorld {
     pub fn get_session_by_userid(&self, uid: &UserId) -> Option<Arc<Session>> {
-        if let Some(session) = self.sessions.iter().find_map(|(session, user)| if user == uid { Some(session.clone()) } else { None }) {
+        if let Some(session) = self.sessions.iter().find_map(|(session, user)| {
+            if user == uid {
+                Some(session.clone())
+            } else {
+                None
+            }
+        }) {
             return Some(session);
         }
         self.ai_sessions.get(uid).cloned()
     }
-
-
-
 }
 mod event;
 mod pool;
@@ -46,14 +49,23 @@ pub struct GameWorld {
 
     events: Arc<Queue<GameWorldEvent>>,
     /// AI 플레이어 오브젝트 집합입니다.
-    pub ai_players: std::collections::HashMap<uuid::Uuid, crate::ai::ai_player::AiPlayer, std::hash::RandomState>,
+    pub ai_players: std::collections::HashMap<
+        uuid::Uuid,
+        crate::ai::ai_player::AiPlayer,
+        std::hash::RandomState,
+    >,
     /// 게임 월드 상태 흐름 대기열입니다.
     flows: Queue<GameWorldStateFlow>,
 }
 
 impl GameWorld {
     /// AI 플레이어와 세션을 추가합니다.
-    pub fn add_ai_player(&mut self, uid: UserId, player: crate::entities::player::Player, session: Arc<crate::session::Session>) {
+    pub fn add_ai_player(
+        &mut self,
+        uid: UserId,
+        player: crate::entities::player::Player,
+        session: Arc<crate::session::Session>,
+    ) {
         self.players.insert(uid, player);
         self.ai_sessions.insert(uid, session.clone());
     }
@@ -67,7 +79,10 @@ impl GameWorld {
             sessions: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             ai_sessions: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, RandomState::new()),
             players: HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS * 2, RandomState::new()),
-            ai_players: std::collections::HashMap::with_capacity_and_hasher(MAX_IN_GAME_PLAYERS, std::hash::RandomState::new()),
+            ai_players: std::collections::HashMap::with_capacity_and_hasher(
+                MAX_IN_GAME_PLAYERS,
+                std::hash::RandomState::new(),
+            ),
             events: Arc::new(Queue::new()),
             flows: Queue::new(),
         }
@@ -89,4 +104,3 @@ impl fmt::Display for GameWorld {
         write!(f, "GameWorld({})", self.id)
     }
 }
-

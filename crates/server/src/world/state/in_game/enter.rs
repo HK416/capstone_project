@@ -180,9 +180,12 @@ impl GameWorldInGameEnterState {
         // 남은 시간이 없는 경우
         if self.remaining_time_ms <= 0 {
             // 게임 시작 전 그리드 맵 미리 로드 (성능 최적화)
-            log::info!("[GAME TRANSITION] Pre-loading grid map for stage: {:?}", self.stage_kind);
+            log::info!(
+                "[GAME TRANSITION] Pre-loading grid map for stage: {:?}",
+                self.stage_kind
+            );
             crate::ai::ai_player::load_grid_map_for_stage(world, self.stage_kind);
-            
+
             // 다음 게임 상태로 전환합니다.
             let leaved_players = self.leaved_players.clone();
             self.leaved_players.clear();
