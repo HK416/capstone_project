@@ -317,27 +317,15 @@ impl Application {
         self.queue.submit(commands);
 
         // 이전 렌더링 작업이 끝날때 까지 대기합니다.
-        loop {
-            std::hint::spin_loop();
-            let result = self.device.poll(wgpu::PollType::Poll);
-            match result {
-                Ok(status) => {
-                    if status.is_queue_empty() {
-                        break;
-                    } else {
-                        continue;
-                    }
-                }
-                Err(e) => match e {
-                    wgpu::PollError::Timeout => {
-                        log::error!("{e}");
-                        let title = "Processing Timeout".into();
-                        let message = "Graphics processing timeout exceeded!".into();
-                        let alert = Alert { title, message };
-                        show_error_msg(alert, Some(window));
-                        return (app_window, scene_stack, egui_renderer, false);
-                    }
-                },
+        match self.device.poll(wgpu::PollType::Wait) {
+            Ok(_) => {} // 완료됨
+            Err(wgpu::PollError::Timeout) => {
+                log::error!("Graphics processing timeout exceeded!");
+                let title = "Processing Timeout".into();
+                let message = "Graphics processing timeout exceeded!".into();
+                let alert = Alert { title, message };
+                show_error_msg(alert, Some(window));
+                return (app_window, scene_stack, egui_renderer, false);
             }
         }
 

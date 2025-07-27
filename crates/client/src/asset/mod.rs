@@ -211,11 +211,27 @@ pub const SCHALE_ICON_URI: &'static str = "Schale_Icon";
 /// 총알 모델의 작업 공간입니다.
 pub const BULLET_WORKSPACE: &'static str = "common";
 /// 총알 모델의 `Uri`입니다.
-pub const BULLET_URIS: [&'static str; NUM_BULLETS] = ["Bullet_01_Warhead", "Bullet_02_EnergyBoll"];
+pub const BULLET_URIS: [&'static str; NUM_BULLETS] = [
+    "Bullet_01_Warhead",
+    "Bullet_02_EnergyBoll",
+    "Bullet_02_EnergyBoll_Big",
+    "Bullet_03_Sphere",
+];
 
 pub const STAGE_WORKSPACES: [&'static str; NUM_STAGES] = ["stage/city"];
 /// 지형 데이터의 `Uri`입니다.
 pub const STAGE_URI: &'static str = "map";
+
+/// 파티클 이펙트의 작업공간입니다.
+pub const FX_WORKSPACE: &'static str = "fx";
+/// 총구 화염 파티클 이펙트 텍스처의 `Uri`입니다.
+pub const FX_TEX_MUZZLE_00: &'static str = "FX_TEX_Muzzle_00";
+/// 총구 화염 파티클 이펙트 텍스처의 `Uri`입니다.
+pub const FX_TEX_MUZZLE_01: &'static str = "FX_TEX_Muzzle_01";
+/// 피격 파티클 이펙트 텍스처의 `Uri`입니다.
+pub const FX_TEX_HIT_00: &'static str = "FX_TEX_Hit_00";
+/// 방어막 파티클 이펙트의 `Uri`입니다.
+pub const FX_MESH_SHIELD_00: &'static str = "FX_MESH_Shield_00";
 
 /// 점령 지역의 `Uri`입니다.
 pub const CAPTURE_ZONE_URI: &'static str = "Capture_Zone";

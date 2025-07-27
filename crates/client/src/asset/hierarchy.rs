@@ -266,6 +266,19 @@ impl ModelPool {
                         sampler_pool,
                     )?;
                 }
+                MaterialData::StageBarrier(data) => {
+                    // 패턴 텍스처를 로드합니다.
+                    texture_data_pool.get_or_init(
+                        workspace.as_ref(),
+                        &data.pattern,
+                        device,
+                        encoder,
+                        staging_buffers,
+                        texture_pool,
+                        texture_view_pool,
+                        sampler_pool,
+                    )?;
+                }
                 MaterialData::Stage(data) => {
                     // 메인 컬러 텍스처를 로드합니다.
                     texture_data_pool.get_or_init(

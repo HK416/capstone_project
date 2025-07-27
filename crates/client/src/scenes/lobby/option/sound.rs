@@ -6,7 +6,10 @@ use mod_app::{
     net::NetworkError,
     scene::{GameScene, GameSceneFlow},
 };
-use mod_network::protocol::{PacketType, RawPacket};
+use mod_network::{
+    components::CharacterKind,
+    protocol::{PacketType, RawPacket},
+};
 use mod_parallelism::collections::Queue;
 use rodio::Sink;
 use winit::{
@@ -17,8 +20,8 @@ use winit::{
 
 use crate::{
     asset::{
-        SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
-        UI_TURN_DOWN, USER_CONFIG,
+        SoundDataPool, CV_SOUND_TITLE, CV_YUUKA_OPTION, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_TURN_DOWN, USER_CONFIG,
     },
     component::ButtonState,
     config::{Locale, UserConfig},
@@ -40,17 +43,24 @@ const VOICE_VOLUME_OPT_TEXTS: [&'static str; NUM_LOCALE] = ["보이스"];
 
 /// 일반 설정 모달 레이어
 pub struct LobbySoundOptionModalLayer {
-    /// 현재 애플리케이션 언어
+    /// 애플리케이션 표시 언어
     locale: Locale,
+    /// 이전 배경음 음량
+    prev_background_volume: u8,
+    /// 이전 효과음 음량
+    prev_effect_volume: u8,
+    /// 이전 보이스 음량
+    prev_voice_volume: u8,
     /// 배경음 음량
     background_volume: u8,
-    /// 이펙트 음량
+    /// 효과음 음량
     effect_volume: u8,
-    /// 목소리 음량
+    /// 보이스 음량
     voice_volume: u8,
 
     /// 지연 시간
     delay_time_sec: f32,
+    count: usize,
 
     /// 나가기 버튼 상태
     exit_btn_state: ButtonState,
@@ -79,10 +89,14 @@ impl LobbySoundOptionModalLayer {
     ) -> Self {
         Self {
             locale,
+            prev_background_volume: background_volume,
+            prev_effect_volume: effect_volume,
+            prev_voice_volume: voice_volume,
             background_volume,
             effect_volume,
             voice_volume,
             delay_time_sec: 0.3,
+            count: 0,
             exit_btn_state: ButtonState::Idle,
             save_btn_state: ButtonState::Idle,
             num_remaining_tasks,
@@ -137,7 +151,11 @@ impl LobbySoundOptionModalLayer {
                     self.background_volume,
                     self.effect_volume,
                     self.voice_volume,
-                    ChangeOption::Sound {},
+                    ChangeOption::Sound {
+                        background_volume: self.background_volume,
+                        effect_volume: self.effect_volume,
+                        voice_volume: self.voice_volume,
+                    },
                     flow,
                     self.sound_data_pool.clone(),
                 );
@@ -212,7 +230,11 @@ impl LobbySoundOptionModalLayer {
                     self.background_volume,
                     self.effect_volume,
                     self.voice_volume,
-                    ChangeOption::Sound {},
+                    ChangeOption::Sound {
+                        background_volume: self.background_volume,
+                        effect_volume: self.effect_volume,
+                        voice_volume: self.voice_volume,
+                    },
                     flow,
                     self.sound_data_pool.clone(),
                 );
@@ -287,7 +309,11 @@ impl LobbySoundOptionModalLayer {
                     self.background_volume,
                     self.effect_volume,
                     self.voice_volume,
-                    ChangeOption::Sound {},
+                    ChangeOption::Sound {
+                        background_volume: self.background_volume,
+                        effect_volume: self.effect_volume,
+                        voice_volume: self.voice_volume,
+                    },
                     flow,
                     self.sound_data_pool.clone(),
                 );
@@ -389,10 +415,73 @@ impl LobbySoundOptionModalLayer {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
             ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
             ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
-            ui.set_min_width(SUB_HEIGHT * scale);
-            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.set_min_height(SUB_HEIGHT * scale);
+            ui.set_max_height(SUB_HEIGHT * scale);
             ui.add(background_volume_label);
         });
+
+        self.draw_background_volume_slider(ui, scale, app);
+    }
+
+    /// 배경음 볼륨 조절 슬라이더를 그립니다.
+    fn draw_background_volume_slider(
+        &mut self,
+        ui: &mut egui::Ui,
+        scale: f32,
+        app: &dyn AppHandle,
+    ) {
+        let ctx = ui.ctx();
+        let pos = ui.cursor().min;
+        let width = (ui.available_width() - 4.0 * scale).max(0.0);
+        let old_style = (*ctx.style()).clone();
+        let mut new_style = old_style.clone();
+        new_style.spacing.slider_width = width * 0.8;
+        new_style.spacing.slider_rail_height = SUB_HEIGHT * 0.3 * scale;
+        new_style.spacing.interact_size = egui::Vec2::splat(SUB_HEIGHT * 0.7 * scale);
+        new_style.visuals = egui::Visuals::light();
+        ctx.set_style(new_style);
+        egui::Area::new(egui::Id::new("Background_Volume_Opt"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+                    ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+                    ui.set_min_height(SUB_HEIGHT * scale);
+                    ui.set_max_height(SUB_HEIGHT * scale);
+
+                    // 볼륨 조절 슬라이더
+                    let slider =
+                        egui::Slider::new(&mut self.background_volume, 0..=255).show_value(false);
+                    let response = ui.add(slider);
+                    if response.changed() {
+                        // 현재 재생 중인 배경음의 볼륨을 변경합니다.
+                        let sink_list = app.sink_list();
+                        let mut temp = Vec::with_capacity(sink_list.len());
+                        while let Some(sink) = sink_list.pop() {
+                            sink.set_volume(self.background_volume as f32 / 255.0);
+                            temp.push(sink);
+                        }
+
+                        for sink in temp {
+                            sink_list.push(sink);
+                        }
+                    }
+
+                    // 현재 볼륨량 라벨
+                    let volume = self.background_volume as f32 / 255.0 * 100.0;
+                    let text = format!("{}", volume.round() as u32);
+                    let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                    let font_id = egui::FontId::new(SUB_FONT_SIZE * scale, family);
+                    let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+                    let label = egui::Label::new(text)
+                        .sense(egui::Sense::empty())
+                        .wrap_mode(egui::TextWrapMode::Truncate)
+                        .selectable(false);
+                    ui.add(label);
+                });
+            });
+        ctx.set_style(old_style);
     }
 
     /// 이팩트 볼륨 설정 옵션을 그립니다.
@@ -414,10 +503,68 @@ impl LobbySoundOptionModalLayer {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::BOTTOM), |ui| {
             ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
             ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
-            ui.set_min_width(SUB_HEIGHT * scale);
-            ui.set_max_width(SUB_HEIGHT * scale);
+            ui.set_min_height(SUB_HEIGHT * scale);
+            ui.set_max_height(SUB_HEIGHT * scale);
             ui.add(effect_volume_label);
         });
+
+        self.draw_effect_volume_slider(ui, scale, app);
+    }
+
+    /// 효과음 볼륨 조절 슬라이더를 그립니다.
+    fn draw_effect_volume_slider(&mut self, ui: &mut egui::Ui, scale: f32, app: &dyn AppHandle) {
+        let ctx = ui.ctx();
+        let pos = ui.cursor().min;
+        let width = (ui.available_width() - 4.0 * scale).max(0.0);
+        let old_style = (*ctx.style()).clone();
+        let mut new_style = old_style.clone();
+        new_style.spacing.slider_width = width * 0.8;
+        new_style.spacing.slider_rail_height = SUB_HEIGHT * 0.3 * scale;
+        new_style.spacing.interact_size = egui::Vec2::splat(SUB_HEIGHT * 0.7 * scale);
+        new_style.visuals = egui::Visuals::light();
+        ctx.set_style(new_style);
+        egui::Area::new(egui::Id::new("Effect_Volume_Opt"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+                    ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+                    ui.set_min_height(SUB_HEIGHT * scale);
+                    ui.set_max_height(SUB_HEIGHT * scale);
+
+                    // 볼륨 조절 슬라이더
+                    let slider =
+                        egui::Slider::new(&mut self.effect_volume, 0..=255).show_value(false);
+                    let response = ui.add(slider);
+                    if response.drag_stopped() {
+                        // 효과음 볼륨을 재생합니다.
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_TOUCH)
+                            .expect("UI_Button_Touch sound must be exist!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(app.audio_mixer());
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
+
+                    // 현재 볼륨량 라벨
+                    let volume = self.effect_volume as f32 / 255.0 * 100.0;
+                    let text = format!("{}", volume.round() as u32);
+                    let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                    let font_id = egui::FontId::new(SUB_FONT_SIZE * scale, family);
+                    let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+                    let label = egui::Label::new(text)
+                        .sense(egui::Sense::empty())
+                        .wrap_mode(egui::TextWrapMode::Truncate)
+                        .selectable(false);
+                    ui.add(label);
+                });
+            });
+        ctx.set_style(old_style);
     }
 
     /// 목소리 볼륨 설정 옵션을 그립니다.
@@ -443,11 +590,78 @@ impl LobbySoundOptionModalLayer {
             ui.set_max_width(SUB_HEIGHT * scale);
             ui.add(voice_volume_label);
         });
+
+        self.draw_voice_volume_slider(ui, scale, app);
+    }
+
+    /// 보이스 볼륨 조절 슬라이더를 그립니다.
+    fn draw_voice_volume_slider(&mut self, ui: &mut egui::Ui, scale: f32, app: &dyn AppHandle) {
+        let ctx = ui.ctx();
+        let pos = ui.cursor().min;
+        let width = (ui.available_width() - 4.0 * scale).max(0.0);
+        let old_style = (*ctx.style()).clone();
+        let mut new_style = old_style.clone();
+        new_style.spacing.slider_width = width * 0.8;
+        new_style.spacing.slider_rail_height = SUB_HEIGHT * 0.3 * scale;
+        new_style.spacing.interact_size = egui::Vec2::splat(SUB_HEIGHT * 0.7 * scale);
+        new_style.visuals = egui::Visuals::light();
+        ctx.set_style(new_style);
+        egui::Area::new(egui::Id::new("Voice_Volume_Opt"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.set_min_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+                    ui.set_max_width((CONTENT_WIDTH * 0.5 - 4.0) * scale);
+                    ui.set_min_height(SUB_HEIGHT * scale);
+                    ui.set_max_height(SUB_HEIGHT * scale);
+
+                    // 볼륨 조절 슬라이더
+                    let slider =
+                        egui::Slider::new(&mut self.voice_volume, 0..=255).show_value(false);
+                    let response = ui.add(slider);
+                    if response.drag_stopped() {
+                        // 효과음 볼륨을 재생합니다.
+                        self.count = (self.count + 1) % 7;
+                        let uri = if self.count == 0 {
+                            CV_YUUKA_OPTION
+                        } else {
+                            CV_SOUND_TITLE[CharacterKind::YuukaOriginal as usize]
+                        };
+
+                        let decoded = self
+                            .sound_data_pool
+                            .get(uri)
+                            .expect("UI_Button_Touch sound must be exist!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(app.audio_mixer());
+                        sink.set_volume(self.voice_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
+
+                    // 현재 볼륨량 라벨
+                    let volume = self.voice_volume as f32 / 255.0 * 100.0;
+                    let text = format!("{}", volume.round() as u32);
+                    let family = egui::FontFamily::Name(NOTOSANS_REGULAR.into());
+                    let font_id = egui::FontId::new(SUB_FONT_SIZE * scale, family);
+                    let text = egui::RichText::new(text).font(font_id).color(FONT_COLOR);
+                    let label = egui::Label::new(text)
+                        .sense(egui::Sense::empty())
+                        .wrap_mode(egui::TextWrapMode::Truncate)
+                        .selectable(false);
+                    ui.add(label);
+                });
+            });
+        ctx.set_style(old_style);
     }
 
     /// 설정의 변경 여부를 반환합니다.
     fn is_changed(&self) -> bool {
-        false
+        self.prev_background_volume != self.background_volume
+            || self.prev_effect_volume != self.effect_volume
+            || self.prev_voice_volume != self.voice_volume
     }
 
     /// 저장 버튼을 그립니다.
@@ -476,13 +690,18 @@ impl LobbySoundOptionModalLayer {
         let response = ui.add_enabled(enabled, save_button);
         if response.clicked() && self.delay_time_sec <= 0.0 {
             self.delay_time_sec = 0.3;
+            self.prev_background_volume = self.background_volume;
+            self.prev_effect_volume = self.prev_effect_volume;
+            self.prev_voice_volume = self.prev_voice_volume;
             self.save_btn_state = ButtonState::Clicked;
 
             // 사용자 구성 설정을 변경합니다.
-            // {
-            //     let mut config = UserConfig::get();
-            //     config.locale = self.locale;
-            // }
+            {
+                let mut config = UserConfig::get();
+                config.background_volume = self.background_volume;
+                config.effect_volume = self.effect_volume;
+                config.voice_volume = self.voice_volume;
+            }
 
             // 사용자 구성 설정을 저장합니다.
             let mut path = app.current_dir().to_path_buf();
@@ -558,7 +777,11 @@ impl LobbySoundOptionModalLayer {
                     self.background_volume,
                     self.effect_volume,
                     self.voice_volume,
-                    ChangeOption::Control {},
+                    ChangeOption::Sound {
+                        background_volume: self.background_volume,
+                        effect_volume: self.effect_volume,
+                        voice_volume: self.voice_volume,
+                    },
                     flow,
                     self.sound_data_pool.clone(),
                 );
@@ -667,7 +890,11 @@ impl GameScene for LobbySoundOptionModalLayer {
                             self.background_volume,
                             self.effect_volume,
                             self.voice_volume,
-                            ChangeOption::Sound {},
+                            ChangeOption::Sound {
+                                background_volume: self.background_volume,
+                                effect_volume: self.effect_volume,
+                                voice_volume: self.voice_volume,
+                            },
                             flow,
                             self.sound_data_pool.clone(),
                         );
@@ -852,3 +1079,5 @@ impl GameScene for LobbySoundOptionModalLayer {
         });
     }
 }
+
+unsafe impl Send for LobbySoundOptionModalLayer {}

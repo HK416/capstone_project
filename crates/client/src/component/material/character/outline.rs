@@ -5,60 +5,53 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use mod_network::components::Float4;
-use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
 use crate::component::{MaterialKind, MaterialResource};
 
-/// 점령 지역 재질 데이터입니다.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CaptureZoneMaterialData {
-    pub uri: String,
-    pub color0: Float4,
-    pub color1: Float4,
-}
-
-/// 점령 지역 재질 데이터 유니폼 버퍼 데이터 레이아웃입니다.
+/// 헤일로 외곽선 재질의 데이터 레이아웃입니다.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
-pub struct CaptureZoneMaterialDataLayout {
-    pub color0: [f32; 4],
-    pub color1: [f32; 4],
-    pub timer: f32,
-    pub _padding: [u8; 12],
+pub struct HaloOutlineMaterialDataLayout {
+    pub color: [f32; 3],
+    pub _padding0: [u8; 4],
+    pub scale: [f32; 3],
+    pub _padding1: [u8; 4],
 }
 
-impl Default for CaptureZoneMaterialDataLayout {
+impl Default for HaloOutlineMaterialDataLayout {
     fn default() -> Self {
         Self {
-            color0: [0.0; 4],
-            color1: [0.0; 4],
-            timer: 0.0,
-            _padding: [0; 12],
+            color: [0.0; 3],
+            _padding0: [0; 4],
+            scale: [1.0; 3],
+            _padding1: [0; 4],
         }
     }
 }
 
-/// 점령 지역 재질 데이터 유니폼 버퍼입니다.
+/// 헤일로 외곽선 유니폼 버퍼입니다.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CaptureZoneMaterialUniform(Arc<wgpu::Buffer>);
+pub struct HaloOutlineUniform(Arc<wgpu::Buffer>);
 
-impl CaptureZoneMaterialUniform {
+impl HaloOutlineUniform {
     /// 유니폼 버퍼의 크기입니다.
     pub const SIZE: wgpu::BufferAddress =
-        core::mem::size_of::<CaptureZoneMaterialDataLayout>() as wgpu::BufferAddress;
+        core::mem::size_of::<HaloOutlineMaterialDataLayout>() as wgpu::BufferAddress;
 
-    /// 유니폼 버퍼의 [`wgpu::BufferUsages`]입니다.
+    /// 유니폼 버퍼의 [wgpu::BufferUsages]입니다.
     pub const USAGES: wgpu::BufferUsages = wgpu::BufferUsages::UNIFORM
-        .union(wgpu::BufferUsages::MAP_WRITE)
-        .union(wgpu::BufferUsages::COPY_DST);
+        .union(wgpu::BufferUsages::COPY_DST)
+        .union(wgpu::BufferUsages::MAP_WRITE);
 
     /// [wgpu::BindGroupLayoutEntry]를 반환합니다.
-    pub fn bind_group_layout_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    pub fn bind_group_layout_entry(
+        visibility: wgpu::ShaderStages,
+        binding: u32,
+    ) -> wgpu::BindGroupLayoutEntry {
         wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility,
             ty: wgpu::BindingType::Buffer {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
@@ -72,9 +65,8 @@ impl CaptureZoneMaterialUniform {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        data: CaptureZoneMaterialDataLayout,
+        data: HaloOutlineMaterialDataLayout,
     ) -> Self {
-        // 유니폼 버퍼를 생성합니다.
         Self(Arc::new(device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("Uniform({})", label.unwrap_or("Unknown"))),
@@ -91,19 +83,16 @@ impl CaptureZoneMaterialUniform {
         _device: &wgpu::Device,
         _encoder: &mut wgpu::CommandEncoder,
         _staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: CaptureZoneMaterialDataLayout,
+        data: &HaloOutlineMaterialDataLayout,
     ) {
+        let contents = bytemuck::bytes_of(data).to_vec();
         let capturable = self.0.clone();
         self.0
             .slice(..)
             .map_async(wgpu::MapMode::Write, move |result| match result {
                 Ok(_) => {
-                    {
-                        let mut view = capturable.slice(..).get_mapped_range_mut();
-                        let layout: &mut CaptureZoneMaterialDataLayout =
-                            bytemuck::from_bytes_mut(&mut view);
-                        *layout = data;
-                    }
+                    let mut view = capturable.slice(..).get_mapped_range_mut();
+                    view.copy_from_slice(&contents);
                     capturable.unmap();
                 }
                 Err(e) => {
@@ -113,29 +102,25 @@ impl CaptureZoneMaterialUniform {
     }
 
     /// 유니폼 버퍼를 갱신합니다.
-    ///
-    /// # Panics
-    /// 주어진 `contents`가 유니폼 버퍼의 크기와 다른 경우 [`panic!`]을 호출합니다.
-    ///
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     pub fn update(
         &self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         staging_buffers: &mut Vec<wgpu::Buffer>,
-        data: CaptureZoneMaterialDataLayout,
+        data: &HaloOutlineMaterialDataLayout,
     ) {
         // 스테이징 버퍼를 생성합니다.
-        let contents = bytemuck::bytes_of(&data);
+        let contents = bytemuck::bytes_of(data);
         let copy_size = contents.len() as wgpu::BufferAddress;
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Staging(Uniform)"),
+            label: Some("Staging(Uniform(HaloOutline))"),
             contents,
             usage: wgpu::BufferUsages::COPY_SRC,
         });
 
         // 버퍼의 내용을 복사합니다.
-        encoder.copy_buffer_to_buffer(&self.0, 0, &buffer, 0, copy_size);
+        encoder.copy_buffer_to_buffer(&buffer, 0, &self.0, 0, copy_size);
         staging_buffers.push(buffer);
     }
 
@@ -153,25 +138,37 @@ impl CaptureZoneMaterialUniform {
     }
 }
 
-static_assertions::const_assert_ne!(CaptureZoneMaterialUniform::SIZE, 0);
+static_assertions::const_assert_eq!(align_of::<HaloOutlineMaterialDataLayout>(), 16);
+static_assertions::const_assert_ne!(HaloOutlineUniform::SIZE, 0);
 static_assertions::const_assert_eq!(
-    CaptureZoneMaterialUniform::SIZE as usize,
-    core::mem::size_of::<CaptureZoneMaterialDataLayout>()
+    HaloOutlineUniform::SIZE as usize,
+    core::mem::size_of::<HaloOutlineMaterialDataLayout>()
 );
 
-/// 점령 지역 재질 쉐이더 리소스입니다.
-pub struct CaptureZoneMaterialResource;
+///  캐릭터 헤일로 외곽 재질의 쉐이더 리소스입니다.
+pub struct HaloOutlineMaterialResource;
 
-impl CaptureZoneMaterialResource {
+impl HaloOutlineMaterialResource {
     /// [wgpu::BindGroupLayout]을 반환합니다.
     pub fn bind_group_layout(device: &wgpu::Device) -> &'static wgpu::BindGroupLayout {
         static LAYOUT: OnceLock<wgpu::BindGroupLayout> = OnceLock::new();
         LAYOUT.get_or_init(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("BindGroupLayout(CaptureZoneMaterialResource)"),
+                label: Some("BindGroupLayout(CharacterHaloOutlineMaterialResource)"),
                 entries: &[
-                    // 0번 바인딩: 점령 지역 재질 데이터 유니폼 버퍼
-                    CaptureZoneMaterialUniform::bind_group_layout_entry(0),
+                    // 0번 바인딩: 유니폼 버퍼
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: unsafe {
+                                Some(NonZeroU64::new_unchecked(HaloOutlineUniform::SIZE))
+                            },
+                        },
+                        count: None,
+                    },
                 ],
             })
         })
@@ -181,16 +178,16 @@ impl CaptureZoneMaterialResource {
     pub fn new(
         label: Option<&str>,
         device: &wgpu::Device,
-        capture_zone_uniform: &CaptureZoneMaterialUniform,
+        material_uniform: &HaloOutlineUniform,
     ) -> MaterialResource {
         MaterialResource {
-            kind: MaterialKind::CaptureZone,
+            kind: MaterialKind::CharacterHaloOutline,
             bind_group: Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(&format!("BindGroup({})", label.unwrap_or("Unknown"))),
                 layout: Self::bind_group_layout(device),
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: capture_zone_uniform.as_entire_binding(),
+                    resource: material_uniform.as_entire_binding(),
                 }],
             })),
         }

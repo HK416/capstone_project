@@ -77,13 +77,13 @@ impl EnergyBulletRenderPipeline {
                             }],
                             step_mode: wgpu::VertexStepMode::Vertex,
                         },
-                        // 1번 입력 속성: 텍스처 좌표
+                        // 1번 입력 속성: 노멀
                         wgpu::VertexBufferLayout {
-                            array_stride: core::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                            array_stride: core::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                             attributes: &[wgpu::VertexAttribute {
                                 offset: 0,
                                 shader_location: 1,
-                                format: wgpu::VertexFormat::Float32x2,
+                                format: wgpu::VertexFormat::Float32x3,
                             }],
                             step_mode: wgpu::VertexStepMode::Vertex,
                         },
@@ -99,7 +99,7 @@ impl EnergyBulletRenderPipeline {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     depth_compare: wgpu::CompareFunction::Less,
-                    depth_write_enabled: true,
+                    depth_write_enabled: false,
                     format: depth_stencil_format,
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),

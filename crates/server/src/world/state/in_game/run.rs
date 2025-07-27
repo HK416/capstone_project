@@ -8,13 +8,14 @@ use std::{
 use ahash::{HashMap, HashSet, RandomState};
 use mod_network::{
     components::{
-        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, Damage,
-        DamageLogData, HeldInput, InGameBulletPullData, InGamePlayerPullData,
+        ActionEvent, ActionEventDetail, ActionNotify, ActionState, BulletKind, CharacterKind,
+        Damage, DamageLogData, HeldInput, InGameBulletPullData, InGamePlayerPullData,
         InGamePlayerStatusPullData, InputEvent, InputSnapshot, LatLon, MAX_IN_GAME_BULLETS,
         MAX_IN_GAME_LOGS, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, MovementState,
         NetworkState, ObjectId, Permission, StageAttributes, StageKind, Team, UserId,
-        update_action_state, update_action_state_timer, update_movement_state,
-        update_movement_state_timer, update_player_rotation, update_player_translation,
+        get_camera_transform, update_action_state, update_action_state_timer,
+        update_movement_state, update_movement_state_timer, update_player_rotation,
+        update_player_translation, update_view_state, update_view_state_timer,
     },
     protocol::{
         InGamePullPacket, InGameStatusPacket, JoinFailedReason, JoinRoomFailedPacket, Packet,
@@ -22,7 +23,7 @@ use mod_network::{
 };
 use mod_physics::{
     collision::{Collider, ColliderTreeIterator, DynamicCollision},
-    object3d::{BoundingBox, Sphere},
+    object3d::{BoundingBox, Frustum, Sphere},
 };
 use rand::{
     distr::{Distribution, Uniform},
@@ -238,7 +239,7 @@ impl GameWorldInGameRunState {
         session: Arc<Session>,
         uid: UserId,
         client_play_elapsed_time: u32,
-        mut snapshots: Vec<InputSnapshot>,
+        snapshots: Vec<InputSnapshot>,
     ) {
         // 플레이어 데이터를 가져옵니다.
         let data = match world.players.get_mut(&uid) {
@@ -257,61 +258,70 @@ impl GameWorldInGameRunState {
             return;
         }
 
-        // 입력을 시간순으로 정렬합니다.
-        snapshots.sort_by_key(|s| s.play_elapsed_time_ms());
-
         // 입력을 처리합니다.
         let character_attributes = data.character_attributes();
-        let mut action_events = Vec::with_capacity(snapshots.len());
+        let mut latest_input_time = 0;
         for snapshot in snapshots {
-            match snapshot {
-                // 카메라 이동 입력을 처리합니다.
-                InputSnapshot::CameraOrientation {
-                    delta_lat,
-                    delta_lon,
-                    ..
-                } => {
-                    data.latlon.lat =
-                        (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
-                    data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
-                }
-                // 키 입력을 처리합니다.
-                InputSnapshot::KeyEvent { events, .. } => {
-                    for event in events {
-                        match event {
-                            InputEvent::KeyPress(input_kind) => {
-                                data.held_input |= input_kind.into_bits();
-                            }
-                            InputEvent::KeyRelease(input_kind) => {
-                                data.held_input &= !input_kind.into_bits();
+            if latest_input_time <= snapshot.play_elapsed_time_ms() {
+                latest_input_time = snapshot.play_elapsed_time_ms();
+                match snapshot {
+                    // 카메라 이동 입력을 처리합니다.
+                    InputSnapshot::CameraOrientation {
+                        delta_lat,
+                        delta_lon,
+                        ..
+                    } => {
+                        data.latlon.lat =
+                            (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
+                        data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
+                    }
+                    // 키 입력을 처리합니다.
+                    InputSnapshot::KeyEvent { events, .. } => {
+                        for event in events {
+                            match event {
+                                InputEvent::KeyPress(input_kind) => {
+                                    data.held_input |= input_kind.into_bits();
+                                }
+                                InputEvent::KeyRelease(input_kind) => {
+                                    data.held_input &= !input_kind.into_bits();
+                                }
                             }
                         }
-
-                        update_action_state(
-                            data.held_input,
-                            &mut data.action_state,
-                            &mut data.action_state_timer,
-                            character_attributes,
-                            &mut data.bullet_data,
-                            &mut data.skill_cost_data,
-                            &mut action_events,
-                        );
-                        update_movement_state(
-                            data.held_input,
-                            data.action_state,
-                            &mut data.movement_state,
-                            &mut data.movement_state_timer,
-                        );
                     }
                 }
             }
         }
 
+        // 행동 상태와 움직임 상태를 처리합니다.
+        let mut action_events = Vec::default();
+        update_action_state(
+            data.held_input,
+            &mut data.action_state,
+            &mut data.action_state_timer,
+            character_attributes,
+            &mut data.bullet_data,
+            &mut data.skill_cost_data,
+            &mut action_events,
+        );
+        update_movement_state(
+            data.held_input,
+            data.action_state,
+            &mut data.movement_state,
+            &mut data.movement_state_timer,
+        );
+        update_view_state(
+            data.action_state,
+            &mut data.view_state,
+            &mut data.view_state_timer,
+            character_attributes,
+            data.held_input,
+        );
+
         // 행동 이벤트를 처리합니다.
         for event in action_events {
             match event {
                 ActionEvent::Changed(action_state) => match action_state {
-                    ActionState::Attack => data.action_notify = ActionNotify::EnterAttack,
+                    ActionState::Attack => data.action_notify = ActionNotify::StartAttack,
                     ActionState::Retreat => {
                         data.action_notify = ActionNotify::Retreat;
                     }
@@ -319,7 +329,11 @@ impl GameWorldInGameRunState {
                         data.action_notify = ActionNotify::Reload;
                     }
                     ActionState::Skill => {
-                        data.action_notify = ActionNotify::EnterSkill;
+                        data.action_notify = ActionNotify::StartSkill;
+                        data.skill_cost_data.remaining = data
+                            .skill_cost_data
+                            .remaining
+                            .saturating_sub(character_attributes.skill_cost);
                     }
                     _ => {}
                 },
@@ -539,6 +553,8 @@ impl GameWorldInGameRunState {
                     };
                     if shooter.bullet_data.fires_per_attack <= 1 {
                         shooter.action_notify = ActionNotify::FirstAttack;
+                    } else {
+                        shooter.action_notify = ActionNotify::Attack;
                     }
 
                     // 발사한 플레이어의 무기 데이터를 가져옵니다.
@@ -557,26 +573,29 @@ impl GameWorldInGameRunState {
                     };
 
                     // 총알을 발사한 시점의 총알의 위치와 방향을 계산합니다.
-                    let (translation, mut rotation) = weapon_attributes.get_position_and_direction(
-                        character_attributes,
-                        shooter.translation,
-                        shooter.rotation,
-                        shooter.latlon.lat,
-                    );
+                    let (translation, rotation, new_rotation) = weapon_attributes
+                        .get_position_and_direction(
+                            shooter.view_state,
+                            shooter.view_state_timer,
+                            character_attributes,
+                            shooter.translation,
+                            shooter.rotation,
+                            shooter.latlon,
+                        );
 
-                    // 총알의 방향을 재계산합니다.
-                    let z = shooter.rotation.mul_vec3a(glam::Vec3A::Z);
-                    let y = rotation.mul_vec3a(glam::Vec3A::Y);
-                    let x = y.cross(z);
-                    let z = x.cross(y);
-                    rotation = glam::Quat::from_mat3a(&glam::mat3a(x, y, z));
+                    // 캐릭터의 회전 방향을 보정합니다.
+                    shooter.rotation = new_rotation;
 
                     // 총알을 생성후 추가합니다.
                     let id = self.generate_object_id();
                     let shooter_id = uid;
                     let shooter_team = shooter.team();
-                    let bullet_kind: BulletKind = character_kind.into();
-                    let velocity = z * bullet_kind.speed();
+                    let bullet_kind: BulletKind = match character_kind {
+                        CharacterKind::ArisOriginal => BulletKind::EnergyBoll,
+                        _ => BulletKind::Common,
+                    };
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
                     let remaining_distance = character_attributes.attack_range as f32;
                     let radius = character_attributes.bullet_radius;
                     self.bullets.insert(
@@ -608,7 +627,7 @@ impl GameWorldInGameRunState {
                             }
                         };
 
-                        data.action_notify = ActionNotify::EnterAttack
+                        data.action_notify = ActionNotify::StartAttack
                     }
                     ActionState::Retreat => {
                         // 플레이어 데이터를 가져옵니다.
@@ -648,6 +667,7 @@ impl GameWorldInGameRunState {
                         };
 
                         let character_attributes = data.character_attributes();
+                        data.action_notify = ActionNotify::StartSkill;
                         data.skill_cost_data.remaining = data
                             .skill_cost_data
                             .remaining
@@ -711,17 +731,7 @@ impl GameWorldInGameRunState {
                     data.latlon = LatLon::new(10f32.to_radians(), longitude);
                 }
                 ActionEvent::Skill => {
-                    // 플레이어 데이터를 가져옵니다.
-                    let data = match world.players.get_mut(&uid) {
-                        Some(data) => data,
-                        None => {
-                            log::error!("Player({}) not found in {}!", &uid, &world);
-                            eprintln!("Player({}) not found in {}!", &uid, &world);
-                            continue;
-                        }
-                    };
-
-                    data.action_notify = ActionNotify::FirstSkill;
+                    self.use_player_skill(uid, world);
                 }
             }
         }
@@ -783,6 +793,14 @@ impl GameWorldInGameRunState {
                 character_attributes,
                 elapsed_time_ms,
             );
+            // 시야 상태 타이머를 갱신합니다.
+            update_view_state_timer(
+                player.action_state,
+                &mut player.view_state,
+                &mut player.view_state_timer,
+                character_attributes,
+                elapsed_time_ms,
+            );
 
             // 플레이어 캐릭터 방향을 갱신합니다.
             let mut look = player.rotation.mul_vec3a(glam::Vec3A::Z);
@@ -824,7 +842,7 @@ impl GameWorldInGameRunState {
 
             // 자신 팀의 진영인 경우 체력을 회복시킵니다.
             if stage_attributes.is_safe_area(team, player.translation.x, player.translation.z) {
-                let healing = 10 * elapsed_time_ms;
+                let healing = 2 * elapsed_time_ms;
                 player.health_data.remaining = (player.health_data.remaining + healing)
                     .min(player.health_data.num_maximum_health());
             }
@@ -867,8 +885,86 @@ impl GameWorldInGameRunState {
                     };
 
                     // 데미지 처리 및 로그를 추가합니다.
-                    let damage = Self::bullet_hit_player(bullet, &mut shooter, hitted);
-                    self.damage_logs.push(DamageLogData::new(target_id, damage));
+                    match bullet.kind {
+                        BulletKind::ArisOriginalSkill => {
+                            let skill_multi = 2.5;
+                            let accuracy_multi = 2.0;
+                            let s = &mut shooter;
+                            let s_character_attributes = s.character_attributes();
+                            let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                            let s_attack_pow = s_character_attributes.attack_power as f32;
+                            let s_crit_rate = s_character_attributes.critical_rate as f32;
+                            let s_crit_multi =
+                                s_character_attributes.critical_damage as f32 / 100.0;
+                            let h = hitted;
+                            let h_character_attributes = h.character_attributes();
+                            let h_evasion = h_character_attributes.evasion_stat as f32;
+                            let h_defense_pow = h_character_attributes.defense_power as f32;
+                            let damage = Self::hit_player(
+                                s,
+                                s_accuracy * accuracy_multi,
+                                s_attack_pow * skill_multi,
+                                s_crit_rate,
+                                s_crit_multi,
+                                h,
+                                h_evasion,
+                                h_defense_pow,
+                            );
+                            self.damage_logs.push(DamageLogData::new(target_id, damage));
+                        }
+                        BulletKind::MomoiOriginalSkill => {
+                            let skill_multi = 0.78;
+                            let s = &mut shooter;
+                            let s_character_attributes = s.character_attributes();
+                            let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                            let s_attack_pow = s_character_attributes.attack_power as f32;
+                            let s_crit_rate = s_character_attributes.critical_rate as f32;
+                            let s_crit_multi =
+                                s_character_attributes.critical_damage as f32 / 100.0;
+                            let h = hitted;
+                            let h_character_attributes = h.character_attributes();
+                            let h_evasion = h_character_attributes.evasion_stat as f32;
+                            let h_defense_pow = h_character_attributes.defense_power as f32;
+                            let damage = Self::hit_player(
+                                s,
+                                s_accuracy,
+                                s_attack_pow * skill_multi,
+                                s_crit_rate,
+                                s_crit_multi,
+                                h,
+                                h_evasion,
+                                h_defense_pow,
+                            );
+                            self.damage_logs.push(DamageLogData::new(target_id, damage));
+                        }
+                        _ => {
+                            let s = &mut shooter;
+                            let s_character_attributes = s.character_attributes();
+                            let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                            let s_attack_pow = s_character_attributes.attack_power as f32;
+                            let s_crit_rate = s_character_attributes.critical_rate as f32;
+                            let s_crit_multi =
+                                s_character_attributes.critical_damage as f32 / 100.0;
+                            let h = hitted;
+                            let h_character_attributes = h.character_attributes();
+                            let h_evasion = h_character_attributes.evasion_stat as f32;
+                            let h_defense_pow = h_character_attributes.defense_power as f32;
+                            let damage = Self::hit_player(
+                                s,
+                                s_accuracy,
+                                s_attack_pow,
+                                s_crit_rate,
+                                s_crit_multi,
+                                h,
+                                h_evasion,
+                                h_defense_pow,
+                            );
+
+                            s.skill_cost_data.remaining = (s.skill_cost_data.remaining + 10)
+                                .min(s.skill_cost_data.num_maximum_cost());
+                            self.damage_logs.push(DamageLogData::new(target_id, damage));
+                        }
+                    }
 
                     // 발사자의 소유권을 돌려놓습니다.
                     world.players.insert(bullet.shooter_id, shooter);
@@ -907,6 +1003,303 @@ impl GameWorldInGameRunState {
         }
     }
 
+    /// 플레이어 스킬을 사용합니다.
+    fn use_player_skill(&mut self, uid: UserId, world: &mut GameWorld) {
+        // 플레이어 데이터의 소유권을 가져옵니다.
+        let mut data = match world.players.remove(&uid) {
+            Some(data) => data,
+            None => {
+                log::error!("Player({}) not found in {}!", &uid, &world);
+                eprintln!("Player({}) not found in {}!", &uid, &world);
+                return;
+            }
+        };
+
+        if data.skill_cost_data.count <= 1 {
+            data.action_notify = ActionNotify::FirstSkill;
+        } else {
+            data.action_notify = ActionNotify::Skill;
+        }
+
+        match data.character_kind() {
+            CharacterKind::ArisOriginal => {
+                let character_attributes = data.character_attributes();
+                // 카메라가 변환 행렬을 가져옵니다.
+                let transform = get_camera_transform(
+                    data.view_state,
+                    data.view_state_timer,
+                    character_attributes,
+                    data.latlon,
+                );
+                let rotation = glam::Quat::from_mat4(&transform);
+                let translation = data.translation + glam::vec3a(0.0, 0.4, 0.0);
+
+                let id = self.generate_object_id();
+                let shooter_id = uid;
+                let shooter_team = data.team();
+                let bullet_kind = BulletKind::ArisOriginalSkill;
+                let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                let velocity = direction * bullet_kind.speed();
+                let remaining_distance = character_attributes.attack_range as f32;
+                let radius = 1.0;
+                self.bullets.insert(
+                    id,
+                    Bullet::new(
+                        shooter_id,
+                        shooter_team,
+                        bullet_kind,
+                        translation,
+                        rotation,
+                        velocity,
+                        remaining_distance,
+                        radius,
+                    ),
+                );
+            }
+            CharacterKind::MomoiOriginal => {
+                let character_attributes = data.character_attributes();
+                // 카메라가 변환 행렬을 가져옵니다.
+                let transform = get_camera_transform(
+                    data.view_state,
+                    data.view_state_timer,
+                    character_attributes,
+                    data.latlon,
+                );
+                let base_rotation = glam::Quat::from_mat4(&transform);
+                let translation = data.translation + glam::vec3a(0.0, 0.4, 0.0);
+
+                if data.skill_cost_data.count % 2 == 0 {
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(-15f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(-3f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(9f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+                } else {
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation =
+                        base_rotation * glam::Quat::from_rotation_y(-9.5f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(3f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+
+                    let id = self.generate_object_id();
+                    let shooter_id = uid;
+                    let shooter_team = data.team();
+                    let bullet_kind = BulletKind::MomoiOriginalSkill;
+                    let rotation = base_rotation * glam::Quat::from_rotation_y(15f32.to_radians());
+                    let direction = rotation.mul_vec3a(glam::Vec3A::Z);
+                    let velocity = direction * bullet_kind.speed();
+                    let remaining_distance = character_attributes.attack_range as f32;
+                    let radius = character_attributes.bullet_radius;
+                    self.bullets.insert(
+                        id,
+                        Bullet::new(
+                            shooter_id,
+                            shooter_team,
+                            bullet_kind,
+                            translation,
+                            rotation,
+                            velocity,
+                            remaining_distance,
+                            radius,
+                        ),
+                    );
+                }
+            }
+            CharacterKind::MidoriOriginal => {
+                let character_attributes = data.character_attributes();
+                let transform = get_camera_transform(
+                    data.view_state,
+                    data.view_state_timer,
+                    character_attributes,
+                    data.latlon,
+                );
+                let transform = glam::Mat4::from_translation(data.translation.into()) * transform;
+                let proj = glam::Mat4::perspective_lh(
+                    character_attributes.camera_def_fov_y,
+                    1.0,
+                    0.1,
+                    35.0,
+                );
+                let view = glam::Mat4::look_to_lh(
+                    transform.w_axis.truncate(),
+                    transform.z_axis.truncate(),
+                    glam::Vec3::Y,
+                );
+                let frustum = Frustum::from_mat4(proj * view);
+
+                // 뷰 프러스텀이 충돌하는 다른 플레이어 중 가장 가까운 플레이어를 선정합니다.
+                let find = world
+                    .players
+                    .iter_mut()
+                    .filter(|(_, target)| {
+                        !target.is_invincible()
+                            && target.action_state != ActionState::Retreat
+                            && target.team() != data.team()
+                    })
+                    .filter(|(_, target)| {
+                        let target_attributes = target.character_attributes();
+                        let mut capsule = target_attributes.collider.clone();
+                        capsule.center = target.translation.into();
+                        frustum.capsule_test(&capsule)
+                    })
+                    .min_by(|(_, lhs), (_, rhs)| {
+                        let lhs_dist = data.translation.distance_squared(lhs.translation);
+                        let rhs_dist = data.translation.distance_squared(rhs.translation);
+                        lhs_dist.total_cmp(&rhs_dist)
+                    });
+
+                // 대상이 존재하는 경우 데미지를 즉시 적용합니다.
+                if let Some((&target_id, target)) = find {
+                    let skill_multi = 0.78;
+                    let s = &mut data;
+                    let s_character_attributes = s.character_attributes();
+                    let s_accuracy = s_character_attributes.accuracy_stat as f32;
+                    let s_attack_pow = s_character_attributes.attack_power as f32;
+                    let s_crit_rate = s_character_attributes.critical_rate as f32;
+                    let s_crit_multi = s_character_attributes.critical_damage as f32 / 100.0;
+                    let h = target;
+                    let h_character_attributes = h.character_attributes();
+                    let h_evasion = h_character_attributes.evasion_stat as f32;
+                    let h_defense_pow = h_character_attributes.defense_power as f32;
+                    let damage = Self::hit_player(
+                        s,
+                        s_accuracy,
+                        s_attack_pow * skill_multi,
+                        s_crit_rate,
+                        s_crit_multi,
+                        h,
+                        h_evasion,
+                        h_defense_pow,
+                    );
+                    self.damage_logs.push(DamageLogData::new(target_id, damage));
+                }
+            }
+            CharacterKind::YuukaOriginal => {
+                // 자신 체력의 30% 방어막을 팀원 전체에 부여합니다.
+                // 이미 방어막이 존재하는 플레이어는 더 높은 방어막으로 적용됩니다. (더해지지 않음)
+                let shield = data.health_data.num_maximum_health() as f32 * 0.3;
+                let shield = shield.round() as u16;
+
+                // 자신의 체력에 적용합니다.
+                data.health_data.shield = data.health_data.shield.max(shield);
+
+                // 팀원의 체력에 적용합니다.
+                for other in world.players.values_mut() {
+                    if other.team() == data.team() {
+                        other.health_data.shield = other.health_data.shield.max(shield);
+                    }
+                }
+            }
+        }
+
+        // 플레이어 데이터의 소유권을 돌려놓습니다.
+        world.players.insert(uid, data);
+    }
+
     /// 총알과 충돌하는 플레이어를 확인합니다.  
     /// 건물, 바닥 등과 충돌시에는 총알의 남은 거리를 0.0으로 설정하고 None을 리턴합니다.  
     /// 주어지는 속도는 0이 아니어야 합니다.  
@@ -923,13 +1316,8 @@ impl GameWorldInGameRunState {
         let mut nearest_distance = None;
 
         // 1. 지형과 충돌 검사
-        let dist = Self::check_bullet_ground_collision(
-            stage_attributes,
-            translation,
-            direction,
-            length,
-            radius,
-        );
+        let dist =
+            Self::check_bullet_ground_collision(stage_attributes, translation, direction, length);
         if let Some(dist) = dist {
             nearest_distance = Some(dist);
             velocity = direction * dist;
@@ -1012,14 +1400,13 @@ impl GameWorldInGameRunState {
         mut translation: glam::Vec3A,
         direction: glam::Vec3A,
         length: f32,
-        radius: f32,
     ) -> Option<f32> {
         let mut distance = None;
         let mut current = 0.0;
         while current < length {
             let height = stage_attributes.get_area_height(translation.x, translation.z);
             if let Some(height) = height {
-                if translation.y <= height + radius {
+                if translation.y <= height {
                     distance = Some(current);
                     break;
                 }
@@ -1085,72 +1472,67 @@ impl GameWorldInGameRunState {
         distance
     }
 
-    /// 총알과 플레이어의 충돌 후처리를 수행합니다.
-    fn bullet_hit_player(bullet: &mut Bullet, shooter: &mut Player, hitted: &mut Player) -> Damage {
-        let uniform_distribution = Uniform::new(0.0, 1.0).unwrap();
-        let shooter_attributes = shooter.character_attributes();
-        let hitted_attributes = hitted.character_attributes();
-        bullet.remaining_distance = 0.0;
+    /// 플레이어 데미지 처리를 수행합니다.
+    fn hit_player(
+        s: &mut Player,
+        s_accuracy: f32,
+        s_attack_pow: f32,
+        s_crit_rate: f32,
+        s_crit_multi: f32,
+        h: &mut Player,
+        h_evasion: f32,
+        h_defense_pow: f32,
+    ) -> Damage {
+        let uniform_dstrib = Uniform::new(0.0, 1.0).unwrap();
 
-        // 1. 회피 계산
-        let shooter_accuracy = shooter_attributes.accuracy_stat as f32;
-        let hitted_evasion = hitted_attributes.evasion_stat as f32;
-        let hit_chance = shooter_accuracy / (shooter_accuracy + hitted_evasion);
-        let val = uniform_distribution.sample(&mut rand::rng());
-        if val >= hit_chance {
-            // Miss 처리
+        // 1. 회피률 계산
+        let hit_chance = s_accuracy / (s_accuracy + h_evasion);
+        let rand_val = uniform_dstrib.sample(&mut rand::rng()) * 0.5;
+        if rand_val > hit_chance {
             return Damage::Miss;
         }
 
         // 2. 치명타 판정
-        let shooter_crit = shooter_attributes.critical_rate as f32;
-        let crit_change = shooter_crit / (shooter_crit + hitted_evasion * 1.5);
-        let val = uniform_distribution.sample(&mut rand::rng());
-        let ciritical = val < crit_change;
+        let crit_chance = s_crit_rate / (s_crit_rate + h_evasion * 1.5);
+        let rand_val = uniform_dstrib.sample(&mut rand::rng());
+        let is_critical = rand_val <= crit_chance;
 
-        // 3. 기본 피해량 계산
-        let shooter_attack = shooter_attributes.attack_power as f32;
-        let hitted_defense = hitted_attributes.defense_power as f32;
-        let base_damage = (shooter_attack - hitted_defense) * rand::random_range(0.9..=1.1);
-        let (damage, mut final_damage) = if ciritical {
-            let shooter_crit_multi = shooter_attributes.critical_damage as f32 / 100.0;
-            let final_damage = ((base_damage * shooter_crit_multi).round() as u16).clamp(1, 9999);
-            (Damage::Critial(final_damage), final_damage)
-        } else {
-            let final_damage = (base_damage.round() as u16).clamp(1, 9999);
-            (Damage::Common(final_damage), final_damage)
+        // 3. 피해량 계산
+        let mut damage = (s_attack_pow - h_defense_pow) * rand::random_range(0.9..=1.1);
+        let mut result = Damage::Common(damage.clamp(1.0, 9999.0) as u16);
+        if is_critical {
+            damage = (damage * s_crit_multi).round();
+            result = Damage::Critial(damage as u16);
         };
+        let mut final_damage = damage.clamp(1.0, 9999.0) as u16;
 
-        // Shooter의 데이터 갱신
-        shooter.damage_dealt = shooter.damage_dealt.saturating_add(final_damage as u32);
-        shooter.skill_cost_data.remaining = (shooter.skill_cost_data.remaining + 10)
-            .min(shooter.skill_cost_data.num_maximum_cost());
-
-        // 4. 데미지 적용
-        hitted.damage_taken = hitted.damage_taken.saturating_add(final_damage as u32);
-        if hitted.health_data.shield < final_damage {
-            final_damage -= hitted.health_data.shield;
-            hitted.health_data.shield = 0;
-            if hitted.health_data.remaining <= final_damage {
+        // 데이터 갱신
+        s.damage_dealt = s.damage_dealt.saturating_add(final_damage as u32);
+        h.damage_taken = h.damage_taken.saturating_add(final_damage as u32);
+        if h.health_data.shield < final_damage {
+            final_damage -= h.health_data.shield;
+            h.health_data.shield = 0;
+            if h.health_data.remaining <= final_damage {
                 // 플레이어 행동 불능 처리
-                hitted.health_data.remaining = 0;
-                hitted.action_state = ActionState::Retreat;
-                hitted.action_state_timer.0 = 0;
-                hitted.movement_state = MovementState::Idle;
-                hitted.movement_state_timer.0 = 0;
-                hitted.action_notify = ActionNotify::Retreat;
+                h.health_data.remaining = 0;
+                h.action_state = ActionState::Retreat;
+                h.action_state_timer.0 = 0;
+                h.movement_state = MovementState::Idle;
+                h.movement_state_timer.0 = 0;
+                h.action_notify = ActionNotify::Retreat;
 
                 // 플레이 데이터 갱신
-                hitted.retreat_count += 1;
-                shooter.kill_count += 1;
+                h.retreat_count += 1;
+                s.kill_count += 1;
             } else {
-                hitted.health_data.remaining -= final_damage;
+                h.health_data.remaining -= final_damage;
             }
         } else {
-            hitted.health_data.shield -= final_damage;
-        }
+            h.health_data.shield -= final_damage;
+        };
 
-        return damage;
+        // 결과 반환
+        result
     }
 
     /// 다음 게임 월드 상태로 전환을 시도합니다.
@@ -1380,7 +1762,7 @@ impl GameWorldState for GameWorldInGameRunState {
         self.update(world, elapsed);
 
         // 일정 시각마다 패킷을 전송합니다.
-        const PULL_TICK: u32 = 5;
+        const PULL_TICK: u32 = 6;
         if self.pull_send_elapsed_time_ms >= PULL_TICK {
             self.pull_send_elapsed_time_ms = 0;
             self.broadcast_pull_packet(world);

@@ -1,11 +1,11 @@
 {
     "EnergyBullet": {
-        "uri": "Bullet_Energy",
+        "uri": "Bullet_Energy_Aris",
         "main_color": {
             "x": 0.361635,
             "y": 0.8875314,
             "z": 1,
-            "w": 0.85
+            "w": 0.7
         },
         "emissive_color": {
             "x": 0.5330075,

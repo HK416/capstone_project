@@ -6,15 +6,9 @@ mod uniform;
 
 use std::sync::Arc;
 
-use ahash::HashMap;
-use hecs::{Entity, ViewBorrow};
-
 pub use self::{resource::*, uniform::*};
 
-use super::{
-    Child, MaterialKind, MeshFilter, MeshRenderer, ShadowMap, Sibling, SkinnedMeshRenderer,
-    WorldTransform,
-};
+use super::WorldTransform;
 
 /// 최대 조명의 개수입니다. (최대 로컬 조명의 수)
 pub const MAX_LIGHTS: usize = 8;
@@ -126,93 +120,3 @@ pub fn compute_light_view_proj_matrix(
 
     light_proj * light_view
 }
-
-// 주어진 엔터티로부터 그림자를 그리기 위해 사용되는 쉐이더 리소스를 수집합니다.
-// pub fn collect_bake_resources(
-//     entity: Entity,
-//     shadow_map: &mut ShadowMap,
-//     child_view: &ViewBorrow<'_, &Child>,
-//     sibling_view: &ViewBorrow<'_, &Sibling>,
-//     mesh_filter_view: &mut ViewBorrow<'_, MeshRenderer>,
-//     skinned_mesh_filter_view: &mut ViewBorrow<'_, SkinnedMeshRenderer>,
-// ) {
-//     // 자식 엔터티가 존재하는 경우 자식 엔터티를 탐색합니다.
-//     if let Some(child_entity) = child_view.get(entity).cloned() {
-//         collect_bake_resources(
-//             *child_entity,
-//             shadow_map,
-//             child_view,
-//             sibling_view,
-//             mesh_filter_view,
-//             skinned_mesh_filter_view,
-//         );
-//     }
-
-//     // 형제 엔터티가 존재하는 경우 형제 엔터티를 탐색합니다.
-//     if let Some(sibling_entity) = sibling_view.get(entity).cloned() {
-//         collect_bake_resources(
-//             *sibling_entity,
-//             shadow_map,
-//             child_view,
-//             sibling_view,
-//             mesh_filter_view,
-//             skinned_mesh_filter_view,
-//         );
-//     }
-
-//     // 그림자 집합에 추가합니다.
-//     let result = mesh_filter_view.get_mut(entity);
-//     if let Some((mesh, mesh_resource, _, _, materials)) = result {
-//         for (index, material) in materials.iter().enumerate() {
-//             let kind = material.kind();
-//             if kind == MaterialKind::Character
-//                 || kind == MaterialKind::CharacterEyeMouth
-//                 || kind == MaterialKind::Stage
-//             {
-//                 let key = (mesh.clone(), kind);
-//                 let val = MeshFilter::Mesh(mesh_resource.clone());
-//                 if let Some(res_map) = shadow_map.get_mut(&key) {
-//                     match res_map.get_mut(&index) {
-//                         Some(filters) => {
-//                             filters.push(val);
-//                         }
-//                         None => {
-//                             res_map.insert(index, vec![val]);
-//                         }
-//                     }
-//                 } else {
-//                     shadow_map.insert(key, HashMap::from_iter([(index, vec![val])]));
-//                 }
-//             }
-//         }
-
-//         return;
-//     }
-
-//     // 그림자 집합에 추가합니다.
-//     let result = skinned_mesh_filter_view.get_mut(entity);
-//     if let Some((mesh, mesh_resource, _, _, _, materials)) = result {
-//         for (index, material) in materials.iter().enumerate() {
-//             let kind = material.kind();
-//             if kind == MaterialKind::Character
-//                 || kind == MaterialKind::CharacterEyeMouth
-//                 || kind == MaterialKind::Stage
-//             {
-//                 let key = (mesh.clone(), kind);
-//                 let val = MeshFilter::SkinnedMesh(mesh_resource.clone());
-//                 if let Some(res_map) = shadow_map.get_mut(&key) {
-//                     match res_map.get_mut(&index) {
-//                         Some(filters) => {
-//                             filters.push(val);
-//                         }
-//                         None => {
-//                             res_map.insert(index, vec![val]);
-//                         }
-//                     }
-//                 } else {
-//                     shadow_map.insert(key, HashMap::from_iter([(index, vec![val])]));
-//                 }
-//             }
-//         }
-//     }
-// }

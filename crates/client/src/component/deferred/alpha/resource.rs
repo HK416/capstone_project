@@ -50,7 +50,7 @@ pub struct RevealRenderTarget(Arc<wgpu::TextureView>);
 
 impl RevealRenderTarget {
     /// 렌더 타겟 텍스처의 [wgpu::TextureFormat]입니다.
-    pub const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
+    pub const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 
     /// 렌더 타겟 텍스처의 [wgpu::TextureUsages]입니다.
     pub const USAGES: wgpu::TextureUsages =

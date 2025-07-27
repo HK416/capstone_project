@@ -5,6 +5,7 @@ use std::{ops::Deref, sync::Arc};
 use ahash::HashMap;
 use hecs::{Entity, EntityBuilder, World};
 use mod_network::components::{AreaAttributes, PropAttributeData, StageAttributes};
+use mod_physics::object3d::Sphere;
 use parking_lot::Mutex;
 
 use crate::{
@@ -15,62 +16,11 @@ use crate::{
     component::{
         BoneCollection, BoneTransformUniform, Child, MaterialData, MaterialResource,
         MaterialUniform, MeshResource, Parent, Sibling, SkinnedMeshResource, Stage,
-        StageMaterialResource, StageMaterialUniform, ToParentTrans, TransformUniform,
-        TreeMaterialResource, TreeMaterialUniform, WorldTransform, MAX_BONES,
+        StageBarrierMaterialResource, StageBarrierMaterialUniform, StageMaterialResource,
+        StageMaterialUniform, ToParentTrans, TransformUniform, TreeMaterialResource,
+        TreeMaterialUniform, WorldTransform, MAX_BONES,
     },
 };
-
-// /// 파일에서 스테이지 레이아웃 데이터를 로드합니다.
-// pub fn load_stage_layout_from_file<Dir, Uri>(
-//     workspace: Dir,
-//     uri: Uri,
-// ) -> Result<StageLayoutAttributes, AssetError>
-// where
-//     Dir: AsRef<Path>,
-//     Uri: AsRef<str>,
-// {
-//     let mut path = workspace.as_ref().to_path_buf();
-//     path.push(format!("{}.json", uri.as_ref()));
-
-//     // 파일을 읽습니다.
-//     log::debug!("open stage data asset (PATH:{})", path.display());
-//     let mut file = OpenOptions::new()
-//         .read(true)
-//         .write(false)
-//         .open(&path)
-//         .map_err(|e| {
-//             log::error!(
-//                 "failed to open stage data asset (PATH:{}, REASON:{})",
-//                 path.display(),
-//                 &e
-//             );
-//             AssetError::IOError(e)
-//         })?;
-
-//     log::debug!("read stage data asset (PATH:{})", path.display());
-//     let mut buf = Vec::new();
-//     file.read_to_end(&mut buf).map_err(|e| {
-//         log::error!(
-//             "failed to read stage data asset (PATH:{}, REASON:{})",
-//             path.display(),
-//             &e
-//         );
-//         AssetError::IOError(e)
-//     })?;
-
-//     log::debug!("close stage data asset (PATH:{})", path.display());
-//     drop(file);
-
-//     log::debug!("decode stage data asset (PATH:{})", path.display());
-//     serde_json::from_slice(&buf).map_err(|e| {
-//         log::error!(
-//             "failed to decode stage data asset (PATH:{}, REASON:{})",
-//             path.display(),
-//             &e
-//         );
-//         AssetError::ParsingFailed(e)
-//     })
-// }
 
 /// 스테이지를 구성하는 엔터티를 생성하고, Bounding Volumn Hierarchy를 반환합니다.
 pub fn build_stage(
@@ -174,7 +124,10 @@ fn build_stage_prop(
 
     Box::new(StageBoundingVolumn {
         entity,
-        sphere: prop_data.collider.clone(),
+        sphere: Sphere {
+            center: prop_data.center.into(),
+            radius: prop_data.radius,
+        },
         left: prop_data.left.as_ref().map(|prop_data| {
             build_stage_prop(
                 label,
@@ -525,6 +478,38 @@ fn create_material_resources(
     let mut material_resources = Vec::with_capacity(num_materials);
     for material in materials.iter() {
         match material.deref() {
+            MaterialData::StageBarrier(stage_material_data) => {
+                // 재질 유니폼 버퍼를 생성합니다.
+                let data = stage_material_data.as_layout();
+                let material_uniform = StageBarrierMaterialUniform::new(
+                    Some(&format!(
+                        "StageBarrierUniform({})",
+                        label.unwrap_or("unknown")
+                    )),
+                    device,
+                    data,
+                );
+
+                // 패턴 텍스처를 가져옵니다.
+                let (main_color_view, main_color_sampler) = texture_data_pool
+                    .get(&stage_material_data.pattern)
+                    .expect("the texture data must be preloaded!");
+
+                // 재질 쉐이더 리소스를 생성합니다.
+                let resource = StageBarrierMaterialResource::new(
+                    label,
+                    device,
+                    &material_uniform,
+                    &main_color_view,
+                    &main_color_sampler,
+                );
+
+                material_uniforms.push(MaterialUniform::StageBarrier {
+                    data: Mutex::new(data),
+                    material_uniform,
+                });
+                material_resources.push(resource);
+            }
             MaterialData::Stage(stage_material_data) => {
                 // 재질 유니폼 버퍼를 생성합니다.
                 let data = stage_material_data.as_layout();

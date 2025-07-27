@@ -213,6 +213,18 @@
         "y": 0.9977165,
         "z": 0.003365681
     },
+    "camera_def_rel_pos": {
+        "x": 0.25,
+        "y": 0.85,
+        "z": 2
+    },
+    "camera_def_fov_y": 0.7853982,
+    "camera_zoom_rel_pos": {
+        "x": 0.25,
+        "y": 0.7,
+        "z": 0.5
+    },
+    "camera_zoom_fov_y": 0.6981317,
     "normal_idle_duration": 2800,
     "cafe_walk_duration": 1267,
     "move_ing_duration": 667,
@@ -222,7 +234,8 @@
     "normal_attack_ing_duration": 2667,
     "vital_death_duration": 1800,
     "normal_reload_duration": 2000,
-    "skill_duration": 0,
+    "skill_duration": 4000,
+    "skill_timing": [2600],
     "normal_callsign_duration": 1500,
     "victory_start_duration": 3000,
     "victory_end_duration": 3200,
@@ -241,14 +254,14 @@
     "max_skill_cost": 800,
     "skill_cost": 800,
     "attack_range": 850,
-    "bullet_radius": 0.1,
+    "bullet_radius": 0.05,
     "collider": {
         "center": {
             "x": 0,
             "y": 0,
             "z": 0
         },
-        "height": 1.0,
-        "radius": 0.25
+        "height": 0.9,
+        "radius": 0.2
     }
 }

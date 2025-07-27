@@ -4,6 +4,7 @@
 
 mod eye_mouth;
 mod halo;
+mod outline;
 
 use std::{
     num::NonZeroU64,
@@ -15,7 +16,7 @@ use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 use wgpu::util::DeviceExt;
 
-pub use self::{eye_mouth::*, halo::*};
+pub use self::{eye_mouth::*, halo::*, outline::*};
 
 use super::{MaterialKind, MaterialResource};
 

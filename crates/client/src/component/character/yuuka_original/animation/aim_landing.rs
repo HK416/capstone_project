@@ -7,12 +7,12 @@ use mod_network::components::{ActionStateTimer, CharacterAttributes, LatLon, Mov
 
 use crate::{
     asset::Motion,
-    component::{BoneCollection, SkinningAnimation, ToParentTrans},
+    component::{BoneCollection, SkinningAnimation, ToParentTrans, MODEL_BONE_ROOT},
 };
 
 use super::*;
 
-/// 착지 애니메이션을 재생합니다.
+/// `*_Normal_Attack_Ing`와 착지 애니메이션을 재생합니다.
 ///
 /// # Note
 /// 이 함수를 호출하기 전에 애니메이션 타이머를 먼저 갱신해야합니다.
@@ -43,11 +43,15 @@ pub fn animate_character_when_aim_landing<Tag: Copy + Component>(
         .expect("keyframes must not be empty");
 
     // 최상위 엔터티의 로컬 변환 행렬을 갱신합니다.
+    let root_entity = skinning_animation
+        .entity_list
+        .get(MODEL_BONE_ROOT)
+        .cloned()
+        .expect("the bone entity must exists!");
     let (_, local_transform) = transform_view
-        .get_mut(skinning_animation.root)
+        .get_mut(root_entity)
         .expect("invalid entity or invalid entity component!");
     local_transform.0 = keyframe.root_matrix;
-
     // 키 프레임을 구성하는 스키닝된 메쉬를 구성하는 엔터티의 로컬 변환 행렬을 갱신합니다.
     for keyframe_mesh in keyframe.meshes.iter() {
         // 스키닝된 메쉬 엔터티를 가져옵니다.

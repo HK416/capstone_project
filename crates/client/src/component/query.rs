@@ -419,54 +419,6 @@ pub trait System {
     fn execute<'w, F>(&self, world: &'w World, entity: Entity, func: F)
     where
         F: for<'a> FnOnce(Self::QueryResult<'a>);
-
-    fn execute_mut<'w, F>(&self, world: &'w World, entity: Entity, func: &mut F)
-    where
-        F: for<'a> FnMut(Self::QueryResult<'a>) + 'static;
-}
-
-/// Object-Safety한 System trait 정의
-pub trait ObjectSafeSystem {
-    fn execute(&mut self, world: &World, entity: Entity);
-}
-
-/// Process와 클로저를 함께 묶는 래퍼 구조체
-pub struct SystemRunnable<Tag, Q, F>
-where
-    for<'a> Q: TaggedComponentQuery<Tag> + 'a,
-    for<'a> Q::QueryType<'a>: Query,
-    Tag: Component + 'static,
-    F: for<'a> FnMut(Q::Component<'a>) + 'static,
-{
-    process: Process<Tag, Q>,
-    func: F,
-}
-
-impl<Tag, Q, F> SystemRunnable<Tag, Q, F>
-where
-    for<'a> Q: TaggedComponentQuery<Tag> + 'a,
-    for<'a> Q::QueryType<'a>: Query,
-    Tag: Component + 'static,
-    F: for<'a> FnMut(Q::Component<'a>) + 'static,
-{
-    pub const fn new(func: F) -> Self {
-        Self {
-            process: Process::new(),
-            func,
-        }
-    }
-}
-
-impl<Tag, Q, F> ObjectSafeSystem for SystemRunnable<Tag, Q, F>
-where
-    for<'a> Q: TaggedComponentQuery<Tag> + 'a,
-    for<'a> Q::QueryType<'a>: Query,
-    Tag: Component + 'static,
-    F: for<'a> FnMut(Q::Component<'a>) + 'static,
-{
-    fn execute(&mut self, world: &World, entity: Entity) {
-        self.process.execute_mut(world, entity, &mut self.func)
-    }
 }
 
 // Process 시스템 구현
@@ -500,17 +452,6 @@ where
         let result = query.get().expect("invalid entity component!");
         func(Q::extract_component(result))
     }
-
-    fn execute_mut<'w, F>(&self, world: &'w World, entity: Entity, func: &mut F)
-    where
-        F: for<'a> FnMut(Self::QueryResult<'a>) + 'static,
-    {
-        let mut query = world
-            .query_one::<Q::QueryType<'w>>(entity)
-            .expect("invalid entity");
-        let result = query.get().expect("invalid entity component!");
-        func(Q::extract_component(result))
-    }
 }
 
 macro_rules! define_tags {
@@ -520,6 +461,7 @@ macro_rules! define_tags {
             pub struct $name;
 
             impl $name {
+                #![allow(dead_code)]
                 pub fn name() -> &'static str {
                     stringify!($name)
                 }

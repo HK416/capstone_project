@@ -1,6 +1,7 @@
-use mod_network::components::{
-    ActionState, CharacterAttributes, HeldInput, ViewState, ViewStateTimer,
-};
+//! 시야 상태와 관련된 코드를 관리합니다.
+//!
+
+use crate::components::{ActionState, CharacterAttributes, HeldInput, ViewState, ViewStateTimer};
 
 /// [`ViewState`]과 입력 상태에 따라 [`ViewState`]를 갱신합니다.
 pub fn update_view_state(

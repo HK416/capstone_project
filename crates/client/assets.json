@@ -177,9 +177,13 @@
                 "Bullet_01_Warhead.hierarchy",
                 "Bullet_01_Warhead.mesh",
                 "Bullet_02_EnergyBoll.hierarchy",
+                "Bullet_02_EnergyBoll_Big.hierarchy",
                 "Bullet_02_EnergyBoll.mesh",
+                "Bullet_03_Sphere.hierarchy",
+                "Bullet_03_Sphere.mesh",
                 "Bullet_Common.material",
-                "Bullet_Energy.material"
+                "Bullet_Energy_Aris.material",
+                "Bullet_Energy_Momoi.material"
             ],
             "directories": {}
         },
@@ -209,6 +213,16 @@
                 "ImgFont_Win.texD",
                 "NotoSans_Bold.ttf",
                 "NotoSans_Regular.ttf"
+            ],
+            "directories": {}
+        },
+        "fx": {
+            "files": [
+                "FX_MESH_Shield_00.mesh",
+                "FX_TEX_Muzzle_00.dds",
+                "FX_TEX_Muzzle_00.texD",
+                "FX_TEX_Muzzle_01.dds",
+                "FX_TEX_Muzzle_01.texD"
             ],
             "directories": {}
         },
@@ -484,6 +498,16 @@
                         "Common_Prop_Baricade_00.material",
                         "Common_Prop_Baricade_00.mesh",
                         "Common_Prop_Baricade_00.texD",
+                        "Common_Prop_Barrier_00.hierarchy",
+                        "Common_Prop_Barrier_00.mesh",
+                        "Common_Prop_Barrier_01.mesh",
+                        "Common_Prop_Barrier_Blue.hierarchy",
+                        "Common_Prop_Barrier_Blue.material",
+                        "Common_Prop_Barrier_Center.material",
+                        "Common_Prop_Barrier_Red.hierarchy",
+                        "Common_Prop_Barrier_Red.material",
+                        "Common_Prop_Barrier.dds",
+                        "Common_Prop_Barrier.texD",
                         "Common_Prop_Container_00.dds",
                         "Common_Prop_Container_00.hierarchy",
                         "Common_Prop_Container_00.material",

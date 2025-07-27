@@ -55,9 +55,6 @@ pub struct LobbyOptionSaveGuardLayer {
     /// 다음 게임 장면 흐름
     flow: Option<GameSceneFlow>,
 
-    /// 작업 완료 여부
-    finished: bool,
-
     /// 예 버튼 상태
     yes_btn_state: ButtonState,
     /// 아니오 버튼 상태
@@ -92,7 +89,6 @@ impl LobbyOptionSaveGuardLayer {
             voice_volume,
             option,
             flow: Some(flow),
-            finished: false,
             yes_btn_state: ButtonState::Idle,
             no_btn_state: ButtonState::Idle,
             delay_time_sec: 0.3,
@@ -328,7 +324,15 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                                                     config.is_fullscreen = is_fullscreen;
                                                 }
                                                 ChangeOption::Control {} => todo!(),
-                                                ChangeOption::Sound {} => todo!(),
+                                                ChangeOption::Sound {
+                                                    background_volume,
+                                                    effect_volume,
+                                                    voice_volume,
+                                                } => {
+                                                    config.background_volume = background_volume;
+                                                    config.effect_volume = effect_volume;
+                                                    config.voice_volume = voice_volume;
+                                                }
                                             }
                                         }
 
