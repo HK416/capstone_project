@@ -23,6 +23,11 @@ lazy_static! {
     static ref GLOBAL_GRID_MAP_CACHE: std::sync::Arc<Mutex<HashMap<StageKind, GridMap2D>>> = std::sync::Arc::new(Mutex::new(HashMap::default()));
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum AIBehaviorState {
+    MovingToCapture,  // 점령지역으로 이동 중
+    InCaptureZone,    // 점령지역 내에서 활동 중
+}
 
 #[derive(Debug, Clone)]
 pub struct AiPlayer {
@@ -36,6 +41,7 @@ pub struct AiPlayer {
     pub direction_history: std::collections::VecDeque<u8>, // 최근 사용한 방향 기록 (8방향: 0~7)
     pub circle_penalty: f32,   // 맴돌기 페널티 누적값
     pub last_direction: Option<u8>, // 마지막 이동 방향
+    pub behavior_state: AIBehaviorState, // AI 행동 상태
     // Player를 직접 소유하지 않음. user_id로 world.players의 Player를 참조
 }
 
@@ -84,6 +90,7 @@ pub fn insert_ai_players(world: &mut GameWorld, num_blue_players: usize, num_red
             direction_history: std::collections::VecDeque::with_capacity(16), // 최근 16번의 방향 기록
             circle_penalty: 0.0,
             last_direction: None,
+            behavior_state: AIBehaviorState::MovingToCapture, // 초기에는 점령지역으로 이동
         };
 
         let ai_session = Arc::new(Session::ai(ai_uid));
@@ -164,6 +171,7 @@ pub fn update_ai_players(world: &mut GameWorld) {
             ai_player.direction_history.clear();
             ai_player.circle_penalty = 0.0;
             ai_player.last_direction = None;
+            ai_player.behavior_state = AIBehaviorState::MovingToCapture; // 리스폰 시 다시 점령지역으로 이동
             println!("[AI] {} team AI#{} respawned at {:?} (all histories cleared)", team_name, index, respawn_pos);
             continue;
         }
@@ -230,36 +238,53 @@ pub fn update_ai_players(world: &mut GameWorld) {
             }
         }
         
-        // 현재 목표까지의 거리 계산 (AI마다 다른 도달 반경)
+        // 현재 목표까지의 거리 계산
         let dist_to_target = (current_pos - ai_player.current_target).length();
-        let personality_seed = (blue_idx + red_idx) as u32;
-        
-        // AI 성격에 따라 목표 도달 반경 조정 (2가지 성격으로 축소)
-        let target_radius = match personality_seed % 2 {
-            0 => 8.0,  // 넓은 반경 (더 자유로운 이동)
-            _ => 6.0,  // 중간 반경 (적당한 추격 거리)
-        };
         
         println!("[AI] {} team AI#{} - Pos: {:?}, Target: {:?}, Dist: {:.2}m, Move count: {}", 
             team_name, index, current_pos, ai_player.current_target, dist_to_target, ai_player.move_counter);
         
-        // 목표에 도달했거나 아직 목표가 설정되지 않은 경우 새 목표 설정
-        if dist_to_target <= target_radius || ai_player.current_target == Vec3A::ZERO {
+        // **목표: (0,0,0) 지점으로 이동 후 정지**
+        let target_point = Vec3A::ZERO; // (0,0,0) 고정 목표
+        let distance_to_target = (current_pos - target_point).length();
+        
+        // 목표 지점에 도착했는지 확인 (3m 이내면 도착으로 간주)
+        let has_reached_target = distance_to_target <= 3.0;
+        
+        if has_reached_target {
+            // 목표에 도착했으면 정지
+            ai_player.current_target = current_pos; // 현재 위치를 목표로 설정하여 정지
+            ai_player.behavior_state = AIBehaviorState::InCaptureZone;
+            println!("[AI TARGET] {} team AI#{} REACHED TARGET (0,0,0) - STOPPING (distance: {:.2}m)", 
+                team_name, index, distance_to_target);
+        } else {
+            // 아직 목표에 도달하지 못했으면 (0,0,0)으로 이동
+            ai_player.current_target = target_point;
+            ai_player.behavior_state = AIBehaviorState::MovingToCapture;
             ai_player.move_counter += 1;
             
-            // **다양한 행동 패턴**: AI마다 고유한 성격과 목표 생성
-            let personality_seed = (blue_idx + red_idx) as u32; // AI마다 고유 시드
-            ai_player.current_target = generate_diverse_target(StageKind::City, personality_seed, ai_player.move_counter, current_pos);
-            
-            println!("[AI] {} team AI#{} NEW DIVERSE TARGET: {:?} (move #{}, personality:{})", 
-                team_name, index, ai_player.current_target, ai_player.move_counter, personality_seed);
+            println!("[AI TARGET] {} team AI#{} MOVING TO TARGET (0,0,0) - distance: {:.2}m", 
+                team_name, index, distance_to_target);
             
             // 경로 초기화 - 새 목표 설정 시 기존 경로 무효화
             ai_player.fsm.ctx.path = None;
         }
         
-        // 현재 목표를 향해 이동 (방문 기록을 고려한 스마트 이동)
-        let mut move_input = calculate_smart_movement_advanced(current_pos, ai_player.current_target, stage, ai_player);
+        
+        // **기본 이동: 장애물 회피 + 카메라 기반 이동 (목표에 도달하지 않은 경우만)**
+        let mut move_input = if has_reached_target {
+            // 목표에 도달했으면 완전히 정지
+            mod_network::components::HeldInput::empty()
+        } else {
+            // 목표에 도달하지 않았으면 방문 기록을 고려한 스마트 이동 사용
+            calculate_smart_camera_movement_with_history(
+                current_pos, 
+                ai_player.current_target, 
+                &stage, 
+                &ai_player.visited_grids,
+                ai_player.stuck_counter
+            )
+        };
         
         // **적 감지 및 자동 발포 시스템**: 수집된 플레이어 정보 사용
         const DETECTION_RANGE: f32 = 30.0; // 30m 감지 범위
@@ -298,26 +323,10 @@ pub fn update_ai_players(world: &mut GameWorld) {
         // AI 입력을 실제 플레이어 입력으로 설정
         player.held_input = move_input;
         
-        // **방향전환 개선**: 목표 방향으로 플레이어 회전 설정
-        let target_direction = (ai_player.current_target - current_pos).normalize_or_zero();
-        if target_direction.length() > 0.1 {
-            // 목표 방향으로 회전 설정 (Y축 회전)
-            let target_rotation = glam::Quat::from_rotation_y(target_direction.z.atan2(target_direction.x));
-            player.rotation = target_rotation;
-            
-            // 방향 벡터도 업데이트
-            player.direction.0 = target_direction;
-        }
-        
-        // FSM 컨텍스트 업데이트
-        ai_player.fsm.ctx.target = ai_player.current_target;
-        
-        let movement_type = if ai_player.move_counter % 5 == 0 { "CENTRAL" } else { "RANDOM" };
-        println!("[AI] {} team AI#{} moving to {} target with grid-based pathfinding", 
-            team_name, index, movement_type);
-        
-        // 실제 플레이어와 동일한 게임 로직 처리
+        // **실제 플레이어와 동일한 회전 시스템 적용**
         let character_attributes = player.character_attributes();
+        
+        // Action State 업데이트 (회전 로직에 필요)
         mod_network::components::update_action_state(
             player.held_input,
             &mut player.action_state,
@@ -328,12 +337,93 @@ pub fn update_ai_players(world: &mut GameWorld) {
             &mut Vec::new(),
         );
         
+        // Movement State 업데이트 (회전 로직에 필요)
         mod_network::components::update_movement_state(
             player.held_input,
             player.action_state,
             &mut player.movement_state,
             &mut player.movement_state_timer,
         );
+        
+        // **LatLon을 이용한 점진적 카메라 방향 설정 (부드러운 회전)**
+        if !has_reached_target {
+            // 목표 방향을 카메라 방향으로 설정
+            let target_direction = (ai_player.current_target - current_pos).normalize_or_zero();
+            if target_direction.length() > 0.1 {
+                // 목표 방향을 각도로 변환
+                let target_angle = target_direction.z.atan2(target_direction.x);
+                let current_angle = player.latlon.lon;
+                
+                // 각도 차이 계산 (가장 짧은 회전 경로)
+                let mut angle_diff = target_angle - current_angle;
+                
+                // 각도를 -π ~ π 범위로 정규화
+                while angle_diff > std::f32::consts::PI {
+                    angle_diff -= 2.0 * std::f32::consts::PI;
+                }
+                while angle_diff < -std::f32::consts::PI {
+                    angle_diff += 2.0 * std::f32::consts::PI;
+                }
+                
+                // 점진적 회전 (부드러운 곡선 이동을 위해)
+                let max_rotation_speed = 0.15; // 라디안/프레임 (약 8.6도/프레임)
+                let rotation_step = if angle_diff.abs() > max_rotation_speed {
+                    max_rotation_speed * angle_diff.signum()
+                } else {
+                    angle_diff
+                };
+                
+                // 새로운 각도 적용
+                let new_angle = current_angle + rotation_step;
+                player.latlon.lon = new_angle;
+                
+                println!("[AI CAMERA] {} team AI#{} smooth rotation: current={:.1}° -> target={:.1}° -> new={:.1}° (step={:.1}°)", 
+                         team_name, index, 
+                         current_angle.to_degrees(), 
+                         target_angle.to_degrees(), 
+                         new_angle.to_degrees(),
+                         rotation_step.to_degrees());
+            }
+        } else {
+            // 목표에 도달했으면 카메라 방향도 고정
+            println!("[AI CAMERA] {} team AI#{} target reached - camera direction locked", 
+                     team_name, index);
+        }
+        
+        // **실제 플레이어와 100% 동일한 MovingDirection 업데이트 로직 적용**
+        player.direction.update(player.held_input, player.latlon);
+        
+        // **실제 플레이어와 100% 동일한 회전 로직 적용**: update_player_rotation 사용
+        let current_look = player.direction.0;
+        let action_state = player.action_state;
+        let movement_state = player.movement_state;
+        let latlon = player.latlon;
+        
+        // 실제 플레이어 회전 로직 호출 (MovingDirection은 이미 HeldInput으로부터 업데이트됨)
+        let new_look = mod_network::components::update_player_rotation(
+            current_look,
+            action_state,
+            movement_state,
+            player.direction,
+            latlon,
+        );
+        
+        // 회전 결과 적용
+        player.direction.0 = new_look;
+        
+        // 쿼터니언 회전도 업데이트 (렌더링용)
+        let target_rotation = glam::Quat::from_rotation_y(new_look.z.atan2(new_look.x));
+        player.rotation = target_rotation;
+        
+        println!("[AI ROTATION] {} team AI#{} rotation updated: look={:?}, quat={:?}", 
+                 team_name, index, new_look, target_rotation);
+        
+        // FSM 컨텍스트 업데이트
+        ai_player.fsm.ctx.target = ai_player.current_target;
+        
+        let movement_type = if ai_player.move_counter % 5 == 0 { "CENTRAL" } else { "RANDOM" };
+        println!("[AI] {} team AI#{} moving to {} target with grid-based pathfinding", 
+            team_name, index, movement_type);
 
         // 실제 이동 처리
         let mut is_grounded = player.is_grounded();
@@ -372,6 +462,615 @@ pub fn update_ai_players(world: &mut GameWorld) {
         player.set_grounded(is_grounded);
         player.set_invincible(is_invincible);
     }
+}
+
+/// 방문 기록을 고려한 스마트 카메라 이동 (같은 그리드 왕복 방지 강화)
+fn calculate_smart_camera_movement_with_history(
+    current_pos: Vec3A,
+    target_pos: Vec3A,
+    _stage: &mod_network::components::StageAttributes,
+    visited_grids: &std::collections::VecDeque<(i32, i32)>,
+    stuck_counter: u32,
+) -> mod_network::components::HeldInput {
+    let distance = (target_pos - current_pos).length();
+    
+    // 목표가 매우 가까우면 정지
+    if distance < 1.0 {
+        println!("[AI SMART HISTORY] Target very close ({:.2}m), stopping movement", distance);
+        return mod_network::components::HeldInput::empty();
+    }
+    
+    // 제자리에 너무 오래 있으면 강제 탈출
+    if stuck_counter > 15 { // 더 빠른 탈출 (0.25초)
+        println!("[AI SMART HISTORY] Stuck detected early! Forcing escape movement");
+        return force_escape_movement_advanced(current_pos, visited_grids);
+    }
+    
+    // 그리드 맵을 이용한 장애물 검사 및 방문 기록 고려
+    if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
+        if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
+            // 현재 위치가 안전한지 확인
+            if !grid_map.is_walkable(current_pos) {
+                println!("[AI SMART HISTORY] Current position unsafe, escaping");
+                return find_escape_movement(current_pos, grid_map);
+            }
+            
+            // 목표 방향 계산
+            let target_direction = (target_pos - current_pos).normalize_or_zero();
+            
+            // 직진 경로의 여러 지점을 확인 (더 세밀한 검사)
+            let check_distances = [2.0, 4.0, 6.0, 8.0]; // 2m, 4m, 6m, 8m 지점 확인
+            let mut obstacle_detected = false;
+            let mut visited_path_detected = false;
+            
+            for &check_dist in &check_distances {
+                let check_pos = current_pos + target_direction * check_dist;
+                
+                // 장애물 확인
+                if !grid_map.is_walkable(check_pos) {
+                    obstacle_detected = true;
+                    println!("[AI SMART HISTORY] Obstacle detected at {:.1}m ahead", check_dist);
+                    break;
+                }
+                
+                // 방문 기록 확인 (더 엄격하게)
+                if let Some((grid_x, grid_z)) = grid_map.world_to_grid(check_pos) {
+                    let check_grid = (grid_x as i32, grid_z as i32);
+                    
+                    // 최근 방문한 그리드인지 확인 (최근 12개까지 확인)
+                    if let Some(index) = visited_grids.iter().rposition(|&g| g == check_grid) {
+                        let recency = visited_grids.len() - index;
+                        if recency <= 12 { // 더 긴 기간 동안 방문 기록 고려
+                            visited_path_detected = true;
+                            println!("[AI SMART HISTORY] Recently visited grid detected at {:.1}m ahead (recency: {})", check_dist, recency);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // 장애물이나 방문한 경로가 감지되면 우회 경로 탐색
+            if obstacle_detected || visited_path_detected {
+                println!("[AI SMART HISTORY] Path blocked or recently visited, finding alternative route");
+                
+                // A* 경로탐색으로 우회 경로 찾기 (방문 기록 고려)
+                if let Some(path) = smart_astar_pathfind_with_penalty(current_pos, target_pos, grid_map, visited_grids) {
+                    if path.len() >= 2 {
+                        let next_waypoint = path[1];
+                        let waypoint_direction = (next_waypoint - current_pos).normalize_or_zero();
+                        
+                        println!("[AI SMART HISTORY] Using A* path with visit penalty - next waypoint: {:?}", next_waypoint);
+                        return calculate_camera_based_movement_with_direction(current_pos, next_waypoint, waypoint_direction);
+                    }
+                }
+                
+                // A* 실패 시 방문 기록을 고려한 장애물 회피
+                println!("[AI SMART HISTORY] A* failed, using advanced obstacle avoidance");
+                return calculate_obstacle_avoidance_with_history(current_pos, target_pos, grid_map, visited_grids);
+            }
+        }
+    }
+    
+    // 경로가 깨끗하면 기본 카메라 기반 이동
+    println!("[AI SMART HISTORY] Path clear, using basic camera movement");
+    calculate_camera_based_movement(current_pos, target_pos)
+}
+
+/// 방문 기록에 페널티를 적용한 A* 경로탐색
+fn smart_astar_pathfind_with_penalty(
+    start: Vec3A,
+    goal: Vec3A,
+    grid_map: &GridMap2D,
+    visited_grids: &std::collections::VecDeque<(i32, i32)>,
+) -> Option<Vec<Vec3A>> {
+    use crate::ai::ai_astar::{grid_based_astar_pathfind};
+    
+    // 먼저 기본 A* 시도
+    if let Some(path) = grid_based_astar_pathfind(start, goal, grid_map) {
+        // 경로가 최근 방문한 그리드를 통과하는지 확인
+        let mut visit_penalty = 0;
+        let mut problem_waypoints = Vec::new();
+        
+        for (i, waypoint) in path.iter().enumerate() {
+            if let Some((grid_x, grid_z)) = grid_map.world_to_grid(*waypoint) {
+                let grid_coord = (grid_x as i32, grid_z as i32);
+                
+                // 최근 방문한 그리드인지 확인
+                if let Some(index) = visited_grids.iter().rposition(|&g| g == grid_coord) {
+                    let recency = visited_grids.len() - index;
+                    if recency <= 15 { // 최근 15개 그리드에 대해 페널티
+                        let penalty = (16 - recency) * 3; // 더 높은 페널티
+                        visit_penalty += penalty;
+                        problem_waypoints.push((i, recency));
+                    }
+                }
+            }
+        }
+        
+        // 페널티가 너무 높으면 대안 경로 시도
+        if visit_penalty > 20 {
+            println!("[AI SMART HISTORY] Path has high visit penalty ({}), trying alternatives", visit_penalty);
+            println!("[AI SMART HISTORY] Problem waypoints: {:?}", problem_waypoints);
+            
+            // 목표를 여러 방향으로 오프셋해서 대안 경로 시도
+            let offset_goals = generate_advanced_offset_goals(goal, 3.0, 8); // 3m 오프셋, 8방향
+            
+            for (i, offset_goal) in offset_goals.iter().enumerate() {
+                if let Some(alt_path) = grid_based_astar_pathfind(start, *offset_goal, grid_map) {
+                    let mut alt_penalty = 0;
+                    
+                    for waypoint in &alt_path {
+                        if let Some((grid_x, grid_z)) = grid_map.world_to_grid(*waypoint) {
+                            let grid_coord = (grid_x as i32, grid_z as i32);
+                            if let Some(index) = visited_grids.iter().rposition(|&g| g == grid_coord) {
+                                let recency = visited_grids.len() - index;
+                                if recency <= 15 {
+                                    alt_penalty += (16 - recency) * 2;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if alt_penalty < visit_penalty {
+                        println!("[AI SMART HISTORY] Found better alternative path #{} (penalty: {} vs {})", i, alt_penalty, visit_penalty);
+                        return Some(alt_path);
+                    }
+                }
+            }
+        }
+        
+        Some(path)
+    } else {
+        None
+    }
+}
+
+/// 방문 기록을 고려한 고급 장애물 회피
+fn calculate_obstacle_avoidance_with_history(
+    current_pos: Vec3A,
+    target_pos: Vec3A,
+    grid_map: &GridMap2D,
+    visited_grids: &std::collections::VecDeque<(i32, i32)>,
+) -> mod_network::components::HeldInput {
+    println!("[AI AVOIDANCE HISTORY] Calculating advanced obstacle avoidance with visit history");
+    
+    let target_direction = (target_pos - current_pos).normalize_or_zero();
+    
+    // 더 많은 방향 옵션 확인 (16방향)
+    let directions = [
+        Vec3A::new(1.0, 0.0, 0.0),   // 동
+        Vec3A::new(-1.0, 0.0, 0.0),  // 서
+        Vec3A::new(0.0, 0.0, 1.0),   // 북
+        Vec3A::new(0.0, 0.0, -1.0),  // 남
+        Vec3A::new(1.0, 0.0, 1.0).normalize(),   // 북동
+        Vec3A::new(-1.0, 0.0, 1.0).normalize(),  // 북서
+        Vec3A::new(1.0, 0.0, -1.0).normalize(),  // 남동
+        Vec3A::new(-1.0, 0.0, -1.0).normalize(), // 남서
+        Vec3A::new(0.5, 0.0, 1.0).normalize(),   // 북북동
+        Vec3A::new(-0.5, 0.0, 1.0).normalize(),  // 북북서
+        Vec3A::new(0.5, 0.0, -1.0).normalize(),  // 남남동
+        Vec3A::new(-0.5, 0.0, -1.0).normalize(), // 남남서
+        Vec3A::new(1.0, 0.0, 0.5).normalize(),   // 동동북
+        Vec3A::new(-1.0, 0.0, 0.5).normalize(),  // 서서북
+        Vec3A::new(1.0, 0.0, -0.5).normalize(),  // 동동남
+        Vec3A::new(-1.0, 0.0, -0.5).normalize(), // 서서남
+    ];
+    
+    let check_distance = 6.0; // 6m 거리까지 확인
+    let mut best_direction = None;
+    let mut best_score = f32::MIN;
+    
+    for &direction in &directions {
+        let test_pos = current_pos + direction * check_distance;
+        
+        // 안전성 확인
+        if !grid_map.is_walkable(test_pos) {
+            continue; // 장애물이 있으면 제외
+        }
+        
+        // 방문 기록 페널티 계산
+        let mut visit_penalty = 0.0;
+        if let Some((grid_x, grid_z)) = grid_map.world_to_grid(test_pos) {
+            let test_grid = (grid_x as i32, grid_z as i32);
+            
+            if let Some(index) = visited_grids.iter().rposition(|&g| g == test_grid) {
+                let recency = visited_grids.len() - index;
+                if recency <= 10 {
+                    visit_penalty = (11 - recency) as f32 * 10.0; // 높은 페널티
+                }
+            }
+        }
+        
+        // 목표 방향과의 일치도 계산
+        let alignment = direction.dot(target_direction);
+        
+        // 최종 목표까지의 거리 (더 가까울수록 좋음)
+        let distance_to_goal = (target_pos - test_pos).length();
+        let distance_score = 1.0 / (1.0 + distance_to_goal * 0.1);
+        
+        // 최종 점수 계산 (높을수록 좋음)
+        let final_score = alignment * 100.0 + distance_score * 50.0 - visit_penalty;
+        
+        println!("[AI AVOIDANCE HISTORY] Direction {:?}: alignment={:.2}, distance_score={:.2}, visit_penalty={:.1}, final_score={:.1}", 
+                 direction, alignment, distance_score, visit_penalty, final_score);
+        
+        if final_score > best_score {
+            best_score = final_score;
+            best_direction = Some(direction);
+        }
+    }
+    
+    if let Some(chosen_direction) = best_direction {
+        println!("[AI AVOIDANCE HISTORY] Chose direction: {:?} (score: {:.1})", chosen_direction, best_score);
+        return generate_movement_input(chosen_direction);
+    }
+    
+    // 모든 방향이 막혀있으면 후진
+    println!("[AI AVOIDANCE HISTORY] All directions problematic, backing up");
+    mod_network::components::HeldInput::Backward
+}
+
+/// 고급 강제 탈출 이동 (방문 기록 고려)
+fn force_escape_movement_advanced(
+    current_pos: Vec3A,
+    visited_grids: &std::collections::VecDeque<(i32, i32)>,
+) -> mod_network::components::HeldInput {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    
+    println!("[AI ESCAPE ADVANCED] Forcing advanced escape movement with visit history");
+    
+    // 12방향으로 확장된 탈출 시도
+    let directions = [
+        Vec3A::new(1.0, 0.0, 0.0),   // 동
+        Vec3A::new(-1.0, 0.0, 0.0),  // 서
+        Vec3A::new(0.0, 0.0, 1.0),   // 북
+        Vec3A::new(0.0, 0.0, -1.0),  // 남
+        Vec3A::new(1.0, 0.0, 1.0).normalize(),   // 북동
+        Vec3A::new(-1.0, 0.0, 1.0).normalize(),  // 북서
+        Vec3A::new(1.0, 0.0, -1.0).normalize(),  // 남동
+        Vec3A::new(-1.0, 0.0, -1.0).normalize(), // 남서
+        Vec3A::new(0.3, 0.0, 1.0).normalize(),   // 북북동 (미세 조정)
+        Vec3A::new(-0.3, 0.0, 1.0).normalize(),  // 북북서 (미세 조정)
+        Vec3A::new(0.3, 0.0, -1.0).normalize(),  // 남남동 (미세 조정)
+        Vec3A::new(-0.3, 0.0, -1.0).normalize(), // 남남서 (미세 조정)
+    ];
+    
+    // 최근 방문하지 않은 방향들 찾기
+    let mut safe_directions = Vec::new();
+    
+    if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
+        if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
+            for &dir in &directions {
+                let test_pos = current_pos + dir * 4.0; // 4m 앞
+                
+                if grid_map.is_walkable(test_pos) && !is_recently_visited_strict(test_pos, grid_map, visited_grids) {
+                    safe_directions.push(dir);
+                }
+            }
+        }
+    }
+    
+    if !safe_directions.is_empty() {
+        let chosen_dir = safe_directions[rng.random_range(0..safe_directions.len())];
+        println!("[AI ESCAPE ADVANCED] Chose unvisited direction: {:?} (from {} options)", chosen_dir, safe_directions.len());
+        return generate_movement_input(chosen_dir);
+    }
+    
+    // 모든 방향이 최근 방문했다면 가장 오래된 방문 방향 선택
+    println!("[AI ESCAPE ADVANCED] All directions recently visited, choosing oldest");
+    let chosen_dir = directions[rng.random_range(0..directions.len())];
+    generate_movement_input(chosen_dir)
+}
+
+/// 더 엄격한 방문 기록 확인
+fn is_recently_visited_strict(
+    pos: Vec3A,
+    grid_map: &GridMap2D,
+    visited_grids: &std::collections::VecDeque<(i32, i32)>,
+) -> bool {
+    if let Some((grid_x, grid_z)) = grid_map.world_to_grid(pos) {
+        let grid_coord = (grid_x as i32, grid_z as i32);
+        
+        if let Some(index) = visited_grids.iter().rposition(|&g| g == grid_coord) {
+            let recency = visited_grids.len() - index;
+            return recency <= 15; // 최근 15개 그리드에 포함되면 최근 방문 (더 엄격)
+        }
+    }
+    false
+}
+
+/// 고급 오프셋 목표들 생성 (더 정밀한 방향)
+fn generate_advanced_offset_goals(goal: Vec3A, offset_distance: f32, num_directions: usize) -> Vec<Vec3A> {
+    let mut goals = Vec::new();
+    
+    for i in 0..num_directions {
+        let angle = (i as f32) * 2.0 * std::f32::consts::PI / (num_directions as f32);
+        let offset = Vec3A::new(
+            angle.cos() * offset_distance,
+            0.0,
+            angle.sin() * offset_distance,
+        );
+        goals.push(goal + offset);
+    }
+    
+    goals
+}
+
+/// 장애물 회피 + 카메라 기반 스마트 이동 (벽 앞 왕복운동 방지)
+fn calculate_smart_camera_movement(
+    current_pos: Vec3A,
+    target_pos: Vec3A,
+    stage: &mod_network::components::StageAttributes,
+) -> mod_network::components::HeldInput {
+    let distance = (target_pos - current_pos).length();
+    
+    // 목표가 매우 가까우면 정지
+    if distance < 1.0 {
+        println!("[AI SMART] Target very close ({:.2}m), stopping movement", distance);
+        return mod_network::components::HeldInput::empty();
+    }
+    
+    // 그리드 맵을 이용한 장애물 검사
+    if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
+        if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
+            // 현재 위치가 안전한지 확인
+            if !grid_map.is_walkable(current_pos) {
+                println!("[AI SMART] Current position unsafe, escaping");
+                return find_escape_movement(current_pos, grid_map);
+            }
+            
+            // 목표 방향으로 직진했을 때 장애물이 있는지 확인
+            let target_direction = (target_pos - current_pos).normalize_or_zero();
+            let check_distance = 5.0; // 5m 앞까지 확인
+            let check_pos = current_pos + target_direction * check_distance;
+            
+            // 직진 경로에 장애물이 있으면 우회 경로 탐색
+            if !grid_map.is_walkable(check_pos) || !grid_map.is_walkable(target_pos) {
+                println!("[AI SMART] Obstacle detected in direct path, using A* pathfinding");
+                
+                // A* 경로탐색으로 우회 경로 찾기
+                if let Some(path) = grid_based_astar_pathfind(current_pos, target_pos, grid_map) {
+                    if path.len() >= 2 {
+                        let next_waypoint = path[1];
+                        let waypoint_direction = (next_waypoint - current_pos).normalize_or_zero();
+                        
+                        // 웨이포인트 방향으로 카메라 기반 이동
+                        return calculate_camera_based_movement_with_direction(current_pos, next_waypoint, waypoint_direction);
+                    }
+                }
+                
+                // A* 실패 시 장애물 회피 이동
+                println!("[AI SMART] A* failed, using obstacle avoidance");
+                return calculate_obstacle_avoidance_movement(current_pos, target_pos, grid_map);
+            }
+        }
+    }
+    
+    // 장애물이 없으면 기본 카메라 기반 이동
+    calculate_camera_based_movement(current_pos, target_pos)
+}
+
+/// 방향 지정 카메라 기반 이동 (A* 웨이포인트용)
+fn calculate_camera_based_movement_with_direction(
+    current_pos: Vec3A,
+    target_pos: Vec3A,
+    direction: Vec3A,
+) -> mod_network::components::HeldInput {
+    let distance = (target_pos - current_pos).length();
+    
+    if distance < 1.0 {
+        return mod_network::components::HeldInput::empty();
+    }
+    
+    // 부드러운 곡선 이동을 위한 조합 입력 생성
+    let mut input = mod_network::components::HeldInput::empty();
+    
+    // 항상 전진하면서 좌우 조정으로 곡선 이동
+    input |= mod_network::components::HeldInput::Forward;
+    
+    // 방향에 따라 좌우 조정 (부드러운 커브)
+    let angle_threshold = 0.2; // 더 민감한 곡선 이동
+    
+    if direction.x > angle_threshold {
+        input |= mod_network::components::HeldInput::Right;
+        println!("[AI SMART] A* path curve RIGHT (distance: {:.2}m)", distance);
+    } else if direction.x < -angle_threshold {
+        input |= mod_network::components::HeldInput::Left;
+        println!("[AI SMART] A* path curve LEFT (distance: {:.2}m)", distance);
+    } else {
+        println!("[AI SMART] A* path straight FORWARD (distance: {:.2}m)", distance);
+    }
+    
+    // 후진이 필요한 경우
+    if direction.z < -0.3 {
+        input = mod_network::components::HeldInput::empty();
+        input |= mod_network::components::HeldInput::Backward;
+        
+        if direction.x > angle_threshold {
+            input |= mod_network::components::HeldInput::Left; // 후진 시 반전
+        } else if direction.x < -angle_threshold {
+            input |= mod_network::components::HeldInput::Right; // 후진 시 반전
+        }
+        
+        println!("[AI SMART] A* path backing up with curve (distance: {:.2}m)", distance);
+    }
+    
+    input
+}
+
+/// 장애물 회피 이동 (벽 앞 왕복운동 방지)
+fn calculate_obstacle_avoidance_movement(
+    current_pos: Vec3A,
+    target_pos: Vec3A,
+    grid_map: &GridMap2D,
+) -> mod_network::components::HeldInput {
+    println!("[AI AVOIDANCE] Calculating obstacle avoidance movement");
+    
+    let target_direction = (target_pos - current_pos).normalize_or_zero();
+    
+    // 목표 방향의 좌우 수직 방향 계산
+    let perpendicular_right = Vec3A::new(-target_direction.z, 0.0, target_direction.x);
+    let perpendicular_left = Vec3A::new(target_direction.z, 0.0, -target_direction.x);
+    
+    let check_distance = 8.0; // 8m 거리까지 확인
+    
+    // 오른쪽 우회 경로 확인
+    let right_pos = current_pos + perpendicular_right * check_distance;
+    let right_safe = grid_map.is_walkable(right_pos);
+    
+    // 왼쪽 우회 경로 확인
+    let left_pos = current_pos + perpendicular_left * check_distance;
+    let left_safe = grid_map.is_walkable(left_pos);
+    
+    let mut input = mod_network::components::HeldInput::empty();
+    
+    if right_safe && left_safe {
+        // 둘 다 안전하면 목표에 더 가까운 쪽 선택
+        let right_to_target = (target_pos - right_pos).length();
+        let left_to_target = (target_pos - left_pos).length();
+        
+        if right_to_target < left_to_target {
+            input |= mod_network::components::HeldInput::Right;
+            input |= mod_network::components::HeldInput::Forward;
+            println!("[AI AVOIDANCE] Both sides safe, choosing right (closer to target)");
+        } else {
+            input |= mod_network::components::HeldInput::Left;
+            input |= mod_network::components::HeldInput::Forward;
+            println!("[AI AVOIDANCE] Both sides safe, choosing left (closer to target)");
+        }
+    } else if right_safe {
+        input |= mod_network::components::HeldInput::Right;
+        input |= mod_network::components::HeldInput::Forward;
+        println!("[AI AVOIDANCE] Only right side safe, moving right");
+    } else if left_safe {
+        input |= mod_network::components::HeldInput::Left;
+        input |= mod_network::components::HeldInput::Forward;
+        println!("[AI AVOIDANCE] Only left side safe, moving left");
+    } else {
+        // 양쪽 모두 막혀있으면 후진
+        input |= mod_network::components::HeldInput::Backward;
+        println!("[AI AVOIDANCE] Both sides blocked, backing up");
+    }
+    
+    input
+}
+
+/// 카메라 방향 기반 부드러운 곡선 이동 (점진적 회전 + Forward/Left/Right 조합)
+fn calculate_camera_based_movement(
+    current_pos: Vec3A,
+    target_pos: Vec3A,
+) -> mod_network::components::HeldInput {
+    let distance = (target_pos - current_pos).length();
+    
+    // 목표가 매우 가까우면 정지
+    if distance < 1.0 {
+        println!("[AI CAMERA] Target very close ({:.2}m), stopping movement", distance);
+        return mod_network::components::HeldInput::empty();
+    }
+    
+    // 목표 방향 계산
+    let target_direction = (target_pos - current_pos).normalize_or_zero();
+    
+    // 현재 카메라 방향과 목표 방향 사이의 각도 차이 계산
+    let target_angle = target_direction.z.atan2(target_direction.x);
+    
+    // 부드러운 곡선 이동을 위한 조합 입력 생성
+    let mut input = mod_network::components::HeldInput::empty();
+    
+    // 항상 전진하면서 좌우 조정으로 곡선 이동
+    input |= mod_network::components::HeldInput::Forward;
+    
+    // 목표 방향에 따라 좌우 조정 (부드러운 커브)
+    let angle_threshold = 0.3; // 약 17도 - 부드러운 회전을 위한 임계값
+    
+    if target_direction.x > angle_threshold {
+        // 오른쪽으로 부드럽게 커브
+        input |= mod_network::components::HeldInput::Right;
+        println!("[AI CAMERA] Smooth curve RIGHT towards target (angle: {:.1}°)", target_angle.to_degrees());
+    } else if target_direction.x < -angle_threshold {
+        // 왼쪽으로 부드럽게 커브
+        input |= mod_network::components::HeldInput::Left;
+        println!("[AI CAMERA] Smooth curve LEFT towards target (angle: {:.1}°)", target_angle.to_degrees());
+    } else {
+        // 거의 직진
+        println!("[AI CAMERA] Moving straight FORWARD towards target (angle: {:.1}°)", target_angle.to_degrees());
+    }
+    
+    // 후진이 필요한 경우 (목표가 뒤쪽에 있을 때)
+    if target_direction.z < -0.5 {
+        // Forward 대신 Backward 사용
+        input = mod_network::components::HeldInput::empty();
+        input |= mod_network::components::HeldInput::Backward;
+        
+        // 후진 시에는 좌우 반전
+        if target_direction.x > angle_threshold {
+            input |= mod_network::components::HeldInput::Left; // 후진 시 반전
+        } else if target_direction.x < -angle_threshold {
+            input |= mod_network::components::HeldInput::Right; // 후진 시 반전
+        }
+        
+        println!("[AI CAMERA] Backing up with curve (target behind, angle: {:.1}°)", target_angle.to_degrees());
+    }
+    
+    println!("[AI CAMERA] Smooth movement input: {:?} (distance: {:.2}m)", input, distance);
+    
+    input
+}
+
+/// 집결 구역 도달을 위한 직선 이동 (랜덤 운동 없음)
+fn calculate_direct_movement_to_target(
+    current_pos: Vec3A,
+    target_pos: Vec3A,
+) -> mod_network::components::HeldInput {
+    let direction = target_pos - current_pos;
+    let distance = direction.length();
+    
+    // 목표가 매우 가까우면 정지 (랜덤 이동 대신)
+    if distance < 1.0 {
+        println!("[AI DIRECT] Target very close ({:.2}m), stopping movement", distance);
+        return mod_network::components::HeldInput::empty();
+    }
+    
+    let normalized = direction.normalize_or_zero();
+    let mut input = mod_network::components::HeldInput::empty();
+    
+    // 명확한 임계값으로 정확한 방향 설정
+    let threshold = 0.1;
+    
+    if normalized.x > threshold {
+        input |= mod_network::components::HeldInput::Right;
+    } else if normalized.x < -threshold {
+        input |= mod_network::components::HeldInput::Left;
+    }
+    
+    if normalized.z > threshold {
+        input |= mod_network::components::HeldInput::Forward;
+    } else if normalized.z < -threshold {
+        input |= mod_network::components::HeldInput::Backward;
+    }
+    
+    // 입력이 비어있으면 가장 큰 성분 방향으로 강제 이동
+    if input.is_empty() {
+        if normalized.x.abs() > normalized.z.abs() {
+            if normalized.x > 0.0 {
+                input |= mod_network::components::HeldInput::Right;
+            } else {
+                input |= mod_network::components::HeldInput::Left;
+            }
+        } else {
+            if normalized.z > 0.0 {
+                input |= mod_network::components::HeldInput::Forward;
+            } else {
+                input |= mod_network::components::HeldInput::Backward;
+            }
+        }
+    }
+    
+    println!("[AI DIRECT] Moving directly to target: direction={:?}, distance={:.2}m, input={:?}", 
+             normalized, distance, input);
+    
+    input
 }
 
 /// 방문 기록을 고려한 스마트 이동 (맴돌기 방지)
@@ -997,7 +1696,7 @@ fn preload_grid_map_for_stage_runtime(stage_kind: StageKind) {
                 grid_map_cache.insert(stage_kind, grid_map);
                 log::info!("[AI GRID PRELOAD] Grid map for stage {:?} successfully cached", stage_kind);
             } else {
-                log::error!("[AI GRID PRELOAD] Failed to lock global grid map cache mutex for stage {:?}", stage_kind);
+                log::error!("[AI GRID PRELOAD] Failed to lock global grid map cache mutex회저 for stage {:?}", stage_kind);
             }
         }
         Err(e) => {
@@ -1224,14 +1923,20 @@ fn detect_circling_pattern(direction_history: &std::collections::VecDeque<u8>) -
     circle_penalty
 }
 
-/// 고급 스마트 이동 (맴돌기 방지 + 8방향 골고른 사용)
+/// 고급 스마트 이동 (집결 구역 내에서만 맴돌기 방지 + 8방향 골고른 사용)
 fn calculate_smart_movement_advanced(
     current_pos: Vec3A,
     target_pos: Vec3A,
     _stage: &mod_network::components::StageAttributes,
     ai_player: &mut AiPlayer,
 ) -> mod_network::components::HeldInput {
-    println!("[AI ADVANCED] Starting advanced smart movement calculation");
+    println!("[AI ADVANCED] Starting advanced smart movement calculation (capture zone only)");
+    
+    // 집결 구역 내에서만 복잡한 로직 실행
+    if !is_in_capture_zone(current_pos) {
+        println!("[AI ADVANCED] Outside capture zone, using direct movement");
+        return calculate_direct_movement_to_target(current_pos, target_pos);
+    }
     
     // 1. 맴돌기 패턴 감지 및 페널티 계산
     let circle_penalty = detect_circling_pattern(&ai_player.direction_history);
@@ -1247,12 +1952,12 @@ fn calculate_smart_movement_advanced(
     println!("[AI ADVANCED] Direction usage: {:?}", direction_usage);
     println!("[AI ADVANCED] Least used directions: {:?}", least_used_directions);
     
-    // 3. 제자리에 너무 오래 있거나 큰 맴돌기 페널티가 있으면 강제 탈출
+    // 3. 제자리에 너무 오래 있거나 큰 맴돌기 페널티가 있으면 강제 탈출 (집결 구역 내에서만)
     if ai_player.stuck_counter > 20 || ai_player.circle_penalty > 100.0 {
         println!("[AI ADVANCED] EMERGENCY: Breaking out of stuck/circle pattern! stuck={}, penalty={:.1}", 
                  ai_player.stuck_counter, ai_player.circle_penalty);
         
-        return force_escape_movement_advanced(current_pos, ai_player);
+        return force_escape_movement_advanced(current_pos, &ai_player.visited_grids);
     }
     
     // 4. 목표 방향 계산
@@ -1424,76 +2129,6 @@ fn convert_direction_to_input(direction: Vec3A) -> mod_network::components::Held
     input
 }
 
-/// 고급 강제 탈출 이동 (8방향 균등 사용 + 맴돌기 패턴 회피)
-fn force_escape_movement_advanced(
-    current_pos: Vec3A,
-    ai_player: &mut AiPlayer,
-) -> mod_network::components::HeldInput {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    
-    println!("[AI ESCAPE ADVANCED] Forcing advanced escape movement");
-    
-    // 1. 8방향 사용 빈도 분석
-    let direction_usage = calculate_direction_usage(&ai_player.direction_history);
-    let least_used_directions = find_least_used_directions(&direction_usage);
-    
-    // 2. 가장 적게 사용된 방향들 중에서 선택
-    let escape_direction = if !least_used_directions.is_empty() {
-        least_used_directions[rng.random_range(0..least_used_directions.len())]
-    } else {
-        // 모든 방향이 비슷하게 사용되었으면 완전 랜덤
-        rng.random_range(0..8)
-    };
-    
-    // 3. 탈출 방향이 안전한지 확인 (그리드 맵 체크)
-    let escape_vector = index_to_direction(escape_direction);
-    let test_pos = current_pos + escape_vector * 5.0;
-    
-    if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
-        if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
-            if !grid_map.is_walkable(test_pos) {
-                // 해당 방향이 막혀있으면 다른 안전한 방향 찾기
-                for &alt_direction in &least_used_directions {
-                    let alt_vector = index_to_direction(alt_direction);
-                    let alt_test_pos = current_pos + alt_vector * 5.0;
-                    if grid_map.is_walkable(alt_test_pos) {
-                        let input = convert_direction_to_input(alt_vector);
-                        
-                        // 방향 기록 업데이트
-                        ai_player.direction_history.push_back(alt_direction);
-                        if ai_player.direction_history.len() > 16 {
-                            ai_player.direction_history.pop_front();
-                        }
-                        ai_player.last_direction = Some(alt_direction);
-                        ai_player.circle_penalty *= 0.5; // 탈출 시 페널티 감소
-                        
-                        println!("[AI ESCAPE ADVANCED] Using safe alternative direction: {}", alt_direction);
-                        return input;
-                    }
-                }
-            }
-        }
-    }
-    
-    // 4. 선택된 방향으로 이동
-    let input = convert_direction_to_input(escape_vector);
-    
-    // 5. 탈출 기록 업데이트
-    ai_player.direction_history.push_back(escape_direction);
-    if ai_player.direction_history.len() > 16 {
-        ai_player.direction_history.pop_front();
-    }
-    ai_player.last_direction = Some(escape_direction);
-    ai_player.circle_penalty *= 0.3; // 강제 탈출 시 페널티 대폭 감소
-    ai_player.stuck_counter = 0; // 제자리 카운터 리셋
-    
-    println!("[AI ESCAPE ADVANCED] Emergency escape in direction: {} (least used directions: {:?})", 
-             escape_direction, least_used_directions);
-    
-    input
-}
-
 /// 적 감지 및 자동 발포 시스템
 /// 상대 팀 플레이어를 감지하고 사정거리 내에 있으면 자동으로 발포
 fn detect_and_attack_enemy(
@@ -1625,4 +2260,40 @@ fn convert_direction_to_aim_input(direction: Vec3A) -> mod_network::components::
     }
     
     input
+}
+
+// 안전한 범위 내 랜덤 생성 함수
+fn safe_random_range(min: f32, max: f32) -> f32 {
+    if min >= max {
+        println!("[WARN] Invalid range: min={}, max={} - using min value", min, max);
+        return min;
+    }
+    rand::random_range(min..=max)
+}
+
+// 점령지역 내부에 있는지 확인
+fn is_in_capture_zone(position: Vec3A) -> bool {
+    let distance = (position - CAPTURE_ZONE_CENTER).length();
+    distance <= CAPTURE_ZONE_RADIUS
+}
+
+// 점령지역 내에서 랜덤 위치 생성 (중앙에서 너무 멀어지지 않도록)
+fn generate_random_position_in_capture_zone() -> Vec3A {
+    use rand::Rng;
+    let mut rng = rand::rng();
+    
+    // 중앙에서 적당한 거리 내에서만 이동 (반지름의 60% 이내)
+    let max_radius = CAPTURE_ZONE_RADIUS * 0.6;
+    let angle = rng.random_range(0.0..2.0 * std::f32::consts::PI);
+    let radius = rng.random_range(5.0..max_radius); // 최소 5m는 떨어져서 움직임
+    
+    let x = CAPTURE_ZONE_CENTER.x + radius * angle.cos();
+    let z = CAPTURE_ZONE_CENTER.z + radius * angle.sin();
+    
+    let target = Vec3A::new(x, CAPTURE_ZONE_CENTER.y, z);
+    
+    println!("[AI CAPTURE] Generated random position in capture zone: {:?} (radius: {:.1}m)", 
+             target, radius);
+    
+    target
 }

@@ -1324,6 +1324,7 @@ impl GameWorldState for GameWorldInGameRunState {
                         direction_history: std::collections::VecDeque::with_capacity(16),
                         circle_penalty: 0.0,
                         last_direction: None,
+                        behavior_state: crate::ai::ai_player::AIBehaviorState::MovingToCapture,
                     };
                     world.ai_players.insert(ai_id, ai_player);
                     restored += 1;
