@@ -5,7 +5,7 @@ mod ban;
 
 use std::{cmp, time::Instant};
 
-use ahash::{HashMap, HashSet, RandomState};
+use ahash::{HashMap, RandomState};
 use mod_app::{
     app::AppHandle,
     etc::{AppEvent, Viewport},
@@ -1535,17 +1535,18 @@ impl GameScene for CustomGameRoomScene {
         let device = app.render_device();
         self.regist_background_texture(device, ui_renderer);
         self.regist_background_deco_texture(device, ui_renderer);
-        let (tier_set, icon_set): (HashSet<_>, HashSet<_>) = self
-            .players
-            .iter()
-            .map(|data| (data.tier(), data.profile_icon))
-            .unzip();
-        for tier in tier_set {
+        let mut val = 0;
+        while let Some(tier) = GameTier::new(val) {
             self.regist_profile_bg_texture(device, ui_renderer, tier);
+            val += 1;
         }
-        for icon in icon_set {
+
+        let mut val = 0;
+        while let Some(icon) = ProfileIcon::new(val) {
             self.regist_profile_icon_texture(device, ui_renderer, icon);
+            val += 1;
         }
+
         self.regist_pannel_bg_texture(device, ui_renderer);
         self.regist_cancel_icon_texture(device, ui_renderer);
         self.regist_team_change_icon_texture(device, ui_renderer);

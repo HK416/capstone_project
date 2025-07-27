@@ -1067,22 +1067,21 @@ impl GameScene for CharacterFormationScene {
         let device = app.render_device();
         self.regist_background_texture(device, ui_renderer);
         self.regist_timer_background_texture(device, ui_renderer);
-        let (tier_set, icon_set): (HashSet<_>, HashSet<_>) = self
-            .players
-            .values()
-            .map(|data| (data.tier(), data.profile_icon))
-            .unzip();
         let mut val = 0;
         while let Some(character_kind) = CharacterKind::new(val) {
             let texture = self.regist_character_img_texture(device, ui_renderer, character_kind);
             self.character_textures.push(texture);
             val += 1;
         }
-        for tier in tier_set {
+        let mut val = 0;
+        while let Some(tier) = GameTier::new(val) {
             self.regist_profile_bg_texture(device, ui_renderer, tier);
+            val += 1;
         }
-        for icon in icon_set {
+        let mut val = 0;
+        while let Some(icon) = ProfileIcon::new(val) {
             self.regist_profile_icon_texture(device, ui_renderer, icon);
+            val += 1;
         }
         self.resize_ui(window, app);
     }

@@ -7,6 +7,7 @@ mod option;
 
 use std::{num::NonZeroU32, sync::Arc, time::Instant};
 
+use ahash::HashMap;
 use mod_app::{
     app::AppHandle,
     etc::{AppEvent, Viewport},
@@ -103,12 +104,12 @@ pub struct MainLobbyScene {
     bg_deco_rect: egui::Rect,
 
     /// 프로필 배경 텍스처
-    profile_bg_texture: egui::load::SizedTexture,
+    profile_bg_textures: HashMap<GameTier, egui::load::SizedTexture>,
     /// 프로필 정보 레이아웃 영역
     profile_bg_rect: egui::Rect,
 
     /// 프로필 아이콘 텍스처
-    profile_icon_texture: egui::load::SizedTexture,
+    profile_icon_textures: HashMap<ProfileIcon, egui::load::SizedTexture>,
     /// 프로필 아이콘 영역
     profile_icon_rect: egui::Rect,
     /// 플레이어 이름 텍스트
@@ -199,15 +200,9 @@ impl MainLobbyScene {
                 size: egui::Vec2::ZERO,
             },
             bg_deco_rect: egui::Rect::ZERO,
-            profile_bg_texture: egui::load::SizedTexture {
-                id: egui::TextureId::User(0),
-                size: egui::Vec2::ZERO,
-            },
+            profile_bg_textures: HashMap::default(),
             profile_bg_rect: egui::Rect::ZERO,
-            profile_icon_texture: egui::load::SizedTexture {
-                id: egui::TextureId::User(0),
-                size: egui::Vec2::ZERO,
-            },
+            profile_icon_textures: HashMap::default(),
             profile_icon_rect: egui::Rect::ZERO,
             player_name_text: egui::RichText::default(),
             pannel_bg_texture: egui::load::SizedTexture {
@@ -248,8 +243,16 @@ impl MainLobbyScene {
     fn regist_textures(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
         self.regist_background_texture(device, ui_renderer);
         self.regist_background_deco_texture(device, ui_renderer);
-        self.regist_profile_bg_texture(device, ui_renderer);
-        self.regist_profile_icon_texture(device, ui_renderer);
+        let mut val = 0;
+        while let Some(tier) = GameTier::new(val) {
+            self.regist_profile_bg_texture(device, ui_renderer, tier);
+            val += 1;
+        }
+        let mut val = 0;
+        while let Some(icon) = ProfileIcon::new(val) {
+            self.regist_profile_icon_texture(device, ui_renderer, icon);
+            val += 1;
+        }
         self.regist_pannel_bg_texture(device, ui_renderer);
         self.regist_exit_icon_texture(device, ui_renderer);
         self.regist_option_icon_texture(device, ui_renderer);
@@ -260,8 +263,12 @@ impl MainLobbyScene {
     fn unregist_textures(&mut self, ui_renderer: &mut UiRenderer) {
         ui_renderer.free_texture(&self.bg_texture.id);
         ui_renderer.free_texture(&self.bg_deco_texture.id);
-        ui_renderer.free_texture(&self.profile_bg_texture.id);
-        ui_renderer.free_texture(&self.profile_icon_texture.id);
+        for texture in self.profile_bg_textures.values() {
+            ui_renderer.free_texture(&texture.id);
+        }
+        for texture in self.profile_icon_textures.values() {
+            ui_renderer.free_texture(&texture.id);
+        }
         ui_renderer.free_texture(&self.pannel_bg_texture.id);
         ui_renderer.free_texture(&self.exit_icon_texture.id);
         ui_renderer.free_texture(&self.option_icon_texture.id);
@@ -323,7 +330,12 @@ impl MainLobbyScene {
     }
 
     /// 프로필 배경 텍스처를 Ui 렌더러에 등록합니다.
-    fn regist_profile_bg_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+    fn regist_profile_bg_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+        tier: GameTier,
+    ) {
         // 프로필 배경화면 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -347,14 +359,22 @@ impl MainLobbyScene {
             ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         // 등록된 텍스처 정보를 저장합니다.
-        self.profile_bg_texture = egui::load::SizedTexture {
-            id: texture_id,
-            size: texture_size,
-        };
+        self.profile_bg_textures.insert(
+            tier,
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
     }
 
     /// 프로필 아이콘 텍스처를 Ui 렌더러에 등록합니다.
-    fn regist_profile_icon_texture(&mut self, device: &wgpu::Device, ui_renderer: &mut UiRenderer) {
+    fn regist_profile_icon_texture(
+        &mut self,
+        device: &wgpu::Device,
+        ui_renderer: &mut UiRenderer,
+        icon: ProfileIcon,
+    ) {
         // 프로필 아이콘 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
@@ -378,10 +398,13 @@ impl MainLobbyScene {
             ui_renderer.register_native_texture(device, &texture, wgpu::FilterMode::Linear);
 
         // 등록된 텍스처 정보를 저장합니다.
-        self.profile_icon_texture = egui::load::SizedTexture {
-            id: texture_id,
-            size: texture_size,
-        };
+        self.profile_icon_textures.insert(
+            icon,
+            egui::load::SizedTexture {
+                id: texture_id,
+                size: texture_size,
+            },
+        );
     }
 
     /// 패널 배경 텍스처를 Ui 렌더러에 등록합니다.
@@ -605,13 +628,17 @@ impl MainLobbyScene {
             Self::resize_background_deco(texture_size, &self.clip_rect, self.ui_scale);
 
         // 프로필 배경 사각형 영역의 크기를 재조정합니다.
-        let texture_size = &self.profile_bg_texture.size;
+        let texture = self.profile_bg_textures.get(&self.tier).cloned().unwrap();
         self.profile_bg_rect =
-            Self::resize_profile_background(texture_size, &self.clip_rect, self.ui_scale);
+            Self::resize_profile_background(&texture.size, &self.clip_rect, self.ui_scale);
 
         // 프로필 아이콘 사각형 영역의 크기를 재조정합니다.
-        let texture_size = &self.profile_icon_texture.size;
-        self.profile_icon_rect = Self::resize_profile_icon(texture_size, &self.profile_bg_rect);
+        let texture = self
+            .profile_icon_textures
+            .get(&self.profile_icon)
+            .cloned()
+            .unwrap();
+        self.profile_icon_rect = Self::resize_profile_icon(&texture.size, &self.profile_bg_rect);
 
         // Ui 플레이어 이름 폰트 크기를 재조정합니다.
         let family = egui::FontFamily::Name(NOTOSANS_BOLD.into());
@@ -678,12 +705,18 @@ impl MainLobbyScene {
                 ui.shrink_clip_rect(self.clip_rect);
 
                 // 프로필 배경
-                egui::Image::new(self.profile_bg_texture)
+                let texture = self.profile_bg_textures.get(&self.tier).cloned().unwrap();
+                egui::Image::new(texture)
                     .sense(egui::Sense::empty())
                     .paint_at(ui, self.profile_bg_rect);
 
                 // 프로필 캐릭터
-                egui::Image::new(self.profile_icon_texture)
+                let texture = self
+                    .profile_icon_textures
+                    .get(&self.profile_icon)
+                    .cloned()
+                    .unwrap();
+                egui::Image::new(texture)
                     .sense(egui::Sense::empty())
                     .paint_at(ui, self.profile_icon_rect);
 

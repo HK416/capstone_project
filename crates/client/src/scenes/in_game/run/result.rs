@@ -526,14 +526,14 @@ impl InGameResultScene {
         ui_renderer: &mut UiRenderer,
         character_kind: CharacterKind,
     ) {
-        // 캐릭터 편성 배경화면 텍스처를 가져옵니다.
+        // 텍스처를 가져옵니다.
         let texture = self
             .texture_pool
             .get(CHARACTER_IMG_URI)
             .expect("Character_Img texture must be preloaded!");
         let texture_size = egui::vec2(texture.width() as f32, texture.height() as f32);
 
-        // 메인 로비 배경화면 텍스처의 텍스처 뷰를 생성합니다.
+        // 텍스처의 텍스처 뷰를 생성합니다.
         let texture = self.texture_view_pool.get_or_init(
             &texture,
             &wgpu::TextureViewDescriptor {
