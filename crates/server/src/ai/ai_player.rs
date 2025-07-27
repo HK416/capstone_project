@@ -23,6 +23,14 @@ lazy_static! {
     static ref GLOBAL_GRID_MAP_CACHE: std::sync::Arc<Mutex<HashMap<StageKind, GridMap2D>>> = std::sync::Arc::new(Mutex::new(HashMap::default()));
 }
 
+// AI 상수들
+const MIN_DISTANCE_THRESHOLD: f32 = 2.0;
+const GRID_SCALE: f32 = 8.0;
+const DETECTION_RANGE: f32 = 30.0;     // 적 탐지 범위 (미터)
+const ATTACK_RANGE: f32 = 25.0;        // 공격 범위 (미터)
+// 참고: CAPTURE_ZONE 관련 상수들은 stage.capture_zone에서 동적으로 가져옴
+
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AIBehaviorState {
     MovingToCapture,  // 점령지역으로 이동 중
@@ -117,11 +125,11 @@ pub fn update_ai_players(world: &mut GameWorld) {
         log::warn!("[AI UPDATE] Grid map not found in cache for stage {:?}, AI may use fallback movement", current_stage);
     }
     
-    // 중앙 집결지 좌표 계산
-    let central_pos = if let Collider::Sphere(sphere) = &stage.capture_zone {
-        glam::Vec3A::from(sphere.center)
+    // 중앙 집결지 좌표 및 반지름 계산
+    let (central_pos, capture_zone_radius) = if let Collider::Sphere(sphere) = &stage.capture_zone {
+        (glam::Vec3A::from(sphere.center), sphere.radius)
     } else {
-        glam::Vec3A::ZERO
+        (glam::Vec3A::ZERO, 10.0) // 기본값
     };
     
     // **적 정보 수집**: borrowing 문제 해결을 위해 먼저 모든 플레이어 정보 수집
@@ -244,26 +252,27 @@ pub fn update_ai_players(world: &mut GameWorld) {
         println!("[AI] {} team AI#{} - Pos: {:?}, Target: {:?}, Dist: {:.2}m, Move count: {}", 
             team_name, index, current_pos, ai_player.current_target, dist_to_target, ai_player.move_counter);
         
-        // **목표: (0,0,0) 지점으로 이동 후 정지**
-        let target_point = Vec3A::ZERO; // (0,0,0) 고정 목표
+        // **목표: 중앙 거점 중심으로 이동 후 정지**
+        let target_point = central_pos; // stage에서 가져온 중앙 거점 위치
         let distance_to_target = (current_pos - target_point).length();
         
-        // 목표 지점에 도착했는지 확인 (3m 이내면 도착으로 간주)
-        let has_reached_target = distance_to_target <= 3.0;
+        // 중앙 거점의 반지름의 절반 내에 있는지 확인 (stage에서 가져온 실제 반지름 사용)
+        let inner_zone_radius = capture_zone_radius / 2.0;
+        let is_in_inner_zone = distance_to_target <= inner_zone_radius;
         
-        if has_reached_target {
-            // 목표에 도착했으면 정지
+        if is_in_inner_zone {
+            // 중앙 거점의 내부 구역에 있으면 정지
             ai_player.current_target = current_pos; // 현재 위치를 목표로 설정하여 정지
             ai_player.behavior_state = AIBehaviorState::InCaptureZone;
-            println!("[AI TARGET] {} team AI#{} REACHED TARGET (0,0,0) - STOPPING (distance: {:.2}m)", 
-                team_name, index, distance_to_target);
+            println!("[AI TARGET] {} team AI#{} REACHED INNER ZONE (radius {:.1}m) - STOPPING (distance: {:.2}m)", 
+                team_name, index, inner_zone_radius, distance_to_target);
         } else {
-            // 아직 목표에 도달하지 못했으면 (0,0,0)으로 이동
+            // 내부 구역 밖에 있으면 중앙 거점으로 이동
             ai_player.current_target = target_point;
             ai_player.behavior_state = AIBehaviorState::MovingToCapture;
             ai_player.move_counter += 1;
             
-            println!("[AI TARGET] {} team AI#{} MOVING TO TARGET (0,0,0) - distance: {:.2}m", 
+            println!("[AI TARGET] {} team AI#{} MOVING TO CAPTURE ZONE CENTER - distance: {:.2}m", 
                 team_name, index, distance_to_target);
             
             // 경로 초기화 - 새 목표 설정 시 기존 경로 무효화
@@ -272,7 +281,7 @@ pub fn update_ai_players(world: &mut GameWorld) {
         
         
         // **기본 이동: 장애물 회피 + 카메라 기반 이동 (목표에 도달하지 않은 경우만)**
-        let mut move_input = if has_reached_target {
+        let mut move_input = if is_in_inner_zone {
             // 목표에 도달했으면 완전히 정지
             mod_network::components::HeldInput::empty()
         } else {
@@ -346,7 +355,7 @@ pub fn update_ai_players(world: &mut GameWorld) {
         );
         
         // **LatLon을 이용한 점진적 카메라 방향 설정 (부드러운 회전)**
-        if !has_reached_target {
+        if !is_in_inner_zone {
             // 목표 방향을 카메라 방향으로 설정
             let target_direction = (ai_player.current_target - current_pos).normalize_or_zero();
             if target_direction.length() > 0.1 {
@@ -1687,10 +1696,6 @@ fn preload_grid_map_for_stage_runtime(stage_kind: StageKind) {
             // 그리드 맵 통계 출력
             grid_map.print_stats();
             
-            // 그리드 맵 시각화 파일 출력
-            let vis_filename = format!("grid_map_{:?}", stage_kind);
-            grid_map.export_visualization(&vis_filename);
-            
             // 전역 캐시에 저장
             if let Ok(mut grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
                 grid_map_cache.insert(stage_kind, grid_map);
@@ -1932,8 +1937,11 @@ fn calculate_smart_movement_advanced(
 ) -> mod_network::components::HeldInput {
     println!("[AI ADVANCED] Starting advanced smart movement calculation (capture zone only)");
     
-    // 집결 구역 내에서만 복잡한 로직 실행
-    if !is_in_capture_zone(current_pos) {
+    // 집결 구역 내에서만 복잡한 로직 실행  
+    // 임시로 하드코딩된 값 사용 (나중에 stage에서 가져오도록 수정 필요)
+    let capture_center = Vec3A::ZERO;
+    let capture_radius = 10.0;
+    if !is_in_capture_zone_with_params(current_pos, capture_center, capture_radius) {
         println!("[AI ADVANCED] Outside capture zone, using direct movement");
         return calculate_direct_movement_to_target(current_pos, target_pos);
     }
@@ -2272,28 +2280,29 @@ fn safe_random_range(min: f32, max: f32) -> f32 {
 }
 
 // 점령지역 내부에 있는지 확인
-fn is_in_capture_zone(position: Vec3A) -> bool {
-    let distance = (position - CAPTURE_ZONE_CENTER).length();
-    distance <= CAPTURE_ZONE_RADIUS
+fn is_in_capture_zone_with_params(position: Vec3A, center: Vec3A, radius: f32) -> bool {
+    let distance = (position - center).length();
+    distance <= radius
 }
 
 // 점령지역 내에서 랜덤 위치 생성 (중앙에서 너무 멀어지지 않도록)
-fn generate_random_position_in_capture_zone() -> Vec3A {
+fn generate_random_position_in_capture_zone_with_params(center: Vec3A, radius: f32) -> Vec3A {
     use rand::Rng;
     let mut rng = rand::rng();
     
     // 중앙에서 적당한 거리 내에서만 이동 (반지름의 60% 이내)
-    let max_radius = CAPTURE_ZONE_RADIUS * 0.6;
+    let max_radius = radius * 0.6;
     let angle = rng.random_range(0.0..2.0 * std::f32::consts::PI);
-    let radius = rng.random_range(5.0..max_radius); // 최소 5m는 떨어져서 움직임
+    let min_radius = (5.0_f32).min(max_radius * 0.3); // 최소 거리는 5m 또는 최대 반지름의 30%
+    let random_radius = rng.random_range(min_radius..max_radius);
     
-    let x = CAPTURE_ZONE_CENTER.x + radius * angle.cos();
-    let z = CAPTURE_ZONE_CENTER.z + radius * angle.sin();
+    let x = center.x + random_radius * angle.cos();
+    let z = center.z + random_radius * angle.sin();
     
-    let target = Vec3A::new(x, CAPTURE_ZONE_CENTER.y, z);
+    let target = Vec3A::new(x, center.y, z);
     
     println!("[AI CAPTURE] Generated random position in capture zone: {:?} (radius: {:.1}m)", 
-             target, radius);
+             target, random_radius);
     
     target
 }

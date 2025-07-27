@@ -398,173 +398,6 @@ impl GridMap2D {
     
     // TXT 파일 출력은 제거됨 - CSV 파일만 사용
     
-    /// 2D 그리드 맵을 CSV 파일로 출력 (데이터 분석용)
-    /// - 0 = 통행 가능, 1 = 장애물
-    /// - Excel이나 Python으로 분석 가능
-    pub fn export_to_csv_file(&self, filename: &str) -> std::io::Result<()> {
-        use std::fs::File;
-        use std::io::Write;
-        
-        let mut file = File::create(filename)?;
-        
-        // CSV 헤더
-        writeln!(file, "# 2D Grid Map Data (0=Walkable, 1=Obstacle)")?;
-        writeln!(file, "# Grid Size: {:.1}m, Bounds: ({:.1},{:.1}) to ({:.1},{:.1})", 
-                self.grid_size, self.bounds.0, self.bounds.1, self.bounds.2, self.bounds.3)?;
-        
-        // 데이터 출력
-        for y in 0..self.dimensions.1 {
-            for x in 0..self.dimensions.0 {
-                let index = y * self.dimensions.0 + x;
-                let value = if self.obstacle_grid[index] { 1 } else { 0 };
-                
-                if x > 0 { write!(file, ",")?; }
-                write!(file, "{}", value)?;
-            }
-            writeln!(file)?;
-        }
-        
-        log::info!("[GRID MAP] CSV data exported to: {}", filename);
-        Ok(())
-    }
-    
-    /// 그리드 맵을 CSV 형식으로만 출력 (분석용)
-    pub fn export_visualization(&self, base_filename: &str) {
-        let csv_filename = format!("{}.csv", base_filename);
-        
-        // CSV 데이터 파일만 생성 (분석용)
-        if let Err(e) = self.export_to_csv_file(&csv_filename) {
-            log::error!("[GRID MAP] Failed to export CSV data: {}", e);
-        } else {
-            log::info!("[GRID MAP] CSV analysis file exported to: {}", csv_filename);
-        }
-    }
-    
-    /// 경로와 함께 그리드 맵을 CSV 형식으로 출력 (분석용)
-    /// - 0 = 통행 가능, 1 = 장애물, 2 = 경로, 3 = 시작점, 4 = 목표점
-    pub fn export_with_path(&self, filename: &str, path: &[Vec3A], start: Vec3A, goal: Vec3A) -> std::io::Result<()> {
-        use std::fs::File;
-        use std::io::Write;
-        
-        let mut file = File::create(filename)?;
-        
-        // 경로를 그리드 좌표로 변환
-        let mut path_grid = std::collections::HashSet::new();
-        for &pos in path {
-            if let Some((x, y)) = self.world_to_grid(pos) {
-                path_grid.insert((x, y));
-            }
-        }
-        
-        let start_grid = self.world_to_grid(start);
-        let goal_grid = self.world_to_grid(goal);
-        
-        // CSV 헤더 정보
-        writeln!(file, "# 2D Grid Map with Path Data (CSV Format)")?;
-        writeln!(file, "# Grid Size: {:.1}m", self.grid_size)?;
-        writeln!(file, "# Values: 0=Walkable, 1=Obstacle, 2=Path, 3=Start, 4=Goal")?;
-        writeln!(file, "# Path Length: {} waypoints", path.len())?;
-        
-        // CSV 데이터 출력
-        for y in 0..self.dimensions.1 {
-            for x in 0..self.dimensions.0 {
-                let index = y * self.dimensions.0 + x;
-                let coord = (x, y);
-                
-                let value = if Some(coord) == start_grid {
-                    3  // 시작점
-                } else if Some(coord) == goal_grid {
-                    4  // 목표점
-                } else if path_grid.contains(&coord) {
-                    2  // 경로
-                } else if self.obstacle_grid[index] {
-                    1  // 장애물
-                } else {
-                    0  // 통행 가능
-                };
-                
-                if x > 0 { write!(file, ",")?; }
-                write!(file, "{}", value)?;
-            }
-            writeln!(file)?;
-        }
-        
-        log::info!("[GRID MAP] Path data exported to CSV: {}", filename);
-        Ok(())
-    }
-    
-    /// 경로 정보를 CSV 형식으로 출력 (데이터 분석용)
-    /// - 0 = 통행 가능, 1 = 장애물, 2 = 경로, 3 = 시작점, 4 = 목표점
-    /// - 경로 분석 및 알고리즘 성능 평가에 최적화
-    pub fn export_path_to_csv(&self, filename: &str, path: &[Vec3A], start: Vec3A, goal: Vec3A) -> std::io::Result<()> {
-        use std::fs::File;
-        use std::io::Write;
-        
-        let mut file = File::create(filename)?;
-        
-        // 경로를 그리드 좌표로 변환
-        let mut path_grid = std::collections::HashSet::new();
-        for &pos in path {
-            if let Some((x, y)) = self.world_to_grid(pos) {
-                path_grid.insert((x, y));
-            }
-        }
-        
-        let start_grid = self.world_to_grid(start);
-        let goal_grid = self.world_to_grid(goal);
-        
-        // CSV 헤더 정보
-        writeln!(file, "# A* Path Analysis Data (CSV Format)")?;
-        writeln!(file, "# Grid Size: {:.1}m, Bounds: ({:.1},{:.1}) to ({:.1},{:.1})", 
-                self.grid_size, self.bounds.0, self.bounds.1, self.bounds.2, self.bounds.3)?;
-        writeln!(file, "# Path Length: {} waypoints", path.len())?;
-        writeln!(file, "# Values: 0=Walkable, 1=Obstacle, 2=Path, 3=Start, 4=Goal")?;
-        writeln!(file, "# Start: {:?}, Goal: {:?}", start, goal)?;
-        
-        // CSV 데이터 출력
-        for y in 0..self.dimensions.1 {
-            for x in 0..self.dimensions.0 {
-                let index = y * self.dimensions.0 + x;
-                let coord = (x, y);
-                
-                let value = if Some(coord) == start_grid {
-                    3 // 시작점
-                } else if Some(coord) == goal_grid {
-                    4 // 목표점
-                } else if path_grid.contains(&coord) {
-                    2 // 경로
-                } else if self.obstacle_grid[index] {
-                    1 // 장애물
-                } else {
-                    0 // 통행 가능
-                };
-                
-                if x > 0 { write!(file, ",")?; }
-                write!(file, "{}", value)?;
-            }
-            writeln!(file)?;
-        }
-        
-        // 경로 통계 정보
-        writeln!(file, "# Path Statistics:")?;
-        writeln!(file, "# Total Path Length: {:.1}m", self.calculate_path_distance(path))?;
-        writeln!(file, "# Direct Distance: {:.1}m", (goal - start).length())?;
-        writeln!(file, "# Path Efficiency: {:.1}%", 
-                 (goal - start).length() / self.calculate_path_distance(path).max(0.1) * 100.0)?;
-        
-        log::info!("[GRID MAP] Path analysis CSV exported to: {}", filename);
-        Ok(())
-    }
-    
-    /// 경로의 실제 거리 계산
-    fn calculate_path_distance(&self, path: &[Vec3A]) -> f32 {
-        let mut total_distance = 0.0;
-        for i in 1..path.len() {
-            total_distance += (path[i] - path[i-1]).length();
-        }
-        total_distance
-    }
-    
     /// Bounds 기반 좌표 변환을 사용한 정확한 그리드 변환
     pub fn world_to_grid_with_bounds(&self, world_pos: Vec3A) -> Option<(usize, usize)> {
         let grid_pos = GridPos::from_world_pos_with_bounds(world_pos, self.grid_size, self.bounds);
@@ -962,9 +795,12 @@ pub fn grid_based_astar_pathfind_standard(
                 }
             }
             
-            // 경로 품질 분석 및 CSV 내보내기
+            // 경로 품질 분석
             if world_path.len() >= 2 {
-                let path_length = grid_map.calculate_path_distance(&world_path);
+                let mut path_length = 0.0;
+                for i in 1..world_path.len() {
+                    path_length += (world_path[i] - world_path[i-1]).length();
+                }
                 let direct_distance = (goal - start).length();
                 let detour_ratio = path_length / direct_distance.max(0.1);
                 
@@ -973,20 +809,6 @@ pub fn grid_based_astar_pathfind_standard(
                 
                 if detour_ratio > 1.5 {
                     log::info!("[GRID A*] Significant detour detected - successfully avoiding obstacles");
-                }
-                
-                // 경로 분석용 CSV 파일 생성 (처음 3개 경로만)
-                use std::sync::atomic::{AtomicU32, Ordering};
-                static PATH_EXPORT_COUNT: AtomicU32 = AtomicU32::new(0);
-                
-                let count = PATH_EXPORT_COUNT.fetch_add(1, Ordering::SeqCst);
-                if count < 3 { // 처음 3개 경로만 저장
-                    let path_csv_filename = format!("center_biased_path_{}.csv", count + 1);
-                    if let Err(e) = grid_map.export_path_to_csv(&path_csv_filename, &world_path, start, goal) {
-                        log::warn!("[GRID A*] Failed to export path CSV: {}", e);
-                    } else {
-                        log::info!("[GRID A*] Center-biased path CSV exported: {}", path_csv_filename);
-                    }
                 }
             }
             

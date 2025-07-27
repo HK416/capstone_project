@@ -631,7 +631,9 @@ impl GameWorldState for GameWorldRoomState {
             data.movement_state = MovementState::Idle;
             data.set_character_kind(CharacterKind::default());
             data.set_team_index(0);
-            data.set_ready_to_play(false);
+            // AI 플레이어는 자동으로 준비 상태가 되고, 실제 플레이어는 준비 해제 상태가 됨
+            let is_ai = world.ai_players.values().any(|ai| ai.user_id == uid);
+            data.set_ready_to_play(is_ai);
             data.set_invincible(true);
             data.set_grounded(true);
 
