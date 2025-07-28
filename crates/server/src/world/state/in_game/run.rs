@@ -372,7 +372,6 @@ impl GameWorldInGameRunState {
     fn broadcast_pull_packet(&mut self, world: &mut GameWorld) {
         // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        println!("{:?}", world.players.keys());
         for (&uid, data) in world.players.iter_mut() {
             players.push(InGamePlayerPullData::new(
                 uid,
