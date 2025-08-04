@@ -1223,26 +1223,30 @@ impl InGameRunScene {
 
                 // 최단 거리 보간
                 let new_latlon = data.latlon();
-                let mut delta = new_latlon.lon - latlon.lon;
-                let t = delta.abs() / 2.0 * TAU;
-                if delta > PI {
-                    delta -= TAU;
-                } else if delta < -PI {
-                    delta += TAU;
+                if *action_state == ActionState::Attack 
+                || *action_state == ActionState::Skill {
+                    let mut delta = new_latlon.lon - latlon.lon;
+                    let t = delta.abs() / 2.0 * TAU;
+                    if delta > PI {
+                        delta -= TAU;
+                    } else if delta < -PI {
+                        delta += TAU;
+                    }
+                    latlon.lon = (latlon.lon + delta * t) % TAU;
+                    
+                    let diff = new_latlon.lat - new_latlon.lon;
+                    let t = (diff.abs() / MAX_LATITUDE).min(1.0);
+                    latlon.lat = latlon.lat * (1.0 - t) + new_latlon.lat * t;
+                } else {
+                    
+                    let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
+                    let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
+                    latlon.lat = latlon.lat.clamp(min, max);
+                    
+                    let min = new_latlon.lon - 5f32.to_radians();
+                    let max = new_latlon.lon + 5f32.to_radians();
+                    latlon.lon = latlon.lon.clamp(min, max) % TAU;
                 }
-                latlon.lon = (latlon.lon + delta * t) % TAU;
-
-                let diff = new_latlon.lat - new_latlon.lon;
-                let t = (diff.abs() / MAX_LATITUDE).min(1.0);
-                latlon.lat = latlon.lat * (1.0 - t) + new_latlon.lat * t;
-
-                // let min = (new_latlon.lat - 1f32.to_radians()).max(MIN_LATITUDE);
-                // let max = (new_latlon.lat + 1f32.to_radians()).min(MAX_LATITUDE);
-                // latlon.lat = latlon.lat.clamp(min, max);
-
-                // let min = new_latlon.lon - 1f32.to_radians();
-                // let max = new_latlon.lon + 1f32.to_radians();
-                // latlon.lon = latlon.lon.clamp(min, max) % TAU;
 
                 let rotation = data.rotation();
                 let translation =

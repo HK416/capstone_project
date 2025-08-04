@@ -372,7 +372,6 @@ impl GameWorldInGameRunState {
     fn broadcast_pull_packet(&mut self, world: &mut GameWorld) {
         // 플레이어 데이터를 수집합니다.
         let mut players = Vec::with_capacity(MAX_IN_GAME_PLAYERS);
-        println!("{:?}", world.players.keys());
         for (&uid, data) in world.players.iter_mut() {
             players.push(InGamePlayerPullData::new(
                 uid,
@@ -452,8 +451,12 @@ impl GameWorldInGameRunState {
             InGameStatusPacket::new(self.capture_point.as_ref().clone(), players, vec![], vec![]);
 
         // 패킷을 전송합니다.
+        let mut damage_logs: Vec<_> = self.damage_logs.drain(..).collect();
         let mut removed_bullets: Vec<_> = self.removed_bullets.drain().collect();
         loop {
+            let count = damage_logs.len().min(MAX_IN_GAME_LOGS);
+            packet.damage_logs = damage_logs.drain(..count).collect();
+
             let count = removed_bullets.len().min(MAX_IN_GAME_BULLETS);
             packet.removed_bullets = removed_bullets.drain(..count).collect();
 
@@ -461,7 +464,7 @@ impl GameWorldInGameRunState {
                 session.tcp_write(packet.as_raw());
             }
 
-            if removed_bullets.is_empty() {
+            if damage_logs.is_empty() && removed_bullets.is_empty() {
                 break;
             }
         }

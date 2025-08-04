@@ -143,11 +143,11 @@ pub fn update_ai_players(world: &mut GameWorld) {
         }
     }
 
-    println!(
-        "[AI SYSTEM] Updating {} AI players using mixed movement - Central target: {:?}",
-        world.ai_players.len(),
-        central_pos
-    );
+    // println!(
+    //     "[AI SYSTEM] Updating {} AI players using mixed movement - Central target: {:?}",
+    //     world.ai_players.len(),
+    //     central_pos
+    // );
 
     for (_ai_uuid, ai_player) in world.ai_players.iter_mut() {
         // world.players에서 AI의 Player 객체를 직접 참조
@@ -194,10 +194,10 @@ pub fn update_ai_players(world: &mut GameWorld) {
             ai_player.circle_penalty = 0.0;
             ai_player.last_direction = None;
             ai_player.behavior_state = AIBehaviorState::MovingToCapture; // 리스폰 시 다시 점령지역으로 이동
-            println!(
-                "[AI] {} team AI#{} respawned at {:?} (all histories cleared)",
-                team_name, index, respawn_pos
-            );
+            // println!(
+            //     "[AI] {} team AI#{} respawned at {:?} (all histories cleared)",
+            //     team_name, index, respawn_pos
+            // );
             continue;
         }
 
@@ -233,13 +233,13 @@ pub fn update_ai_players(world: &mut GameWorld) {
                                 ai_player.visited_grids.pop_front();
                             }
 
-                            println!(
-                                "[AI TRACKING] {} team AI#{} visited grid {:?}, history: {} grids",
-                                team_name,
-                                index,
-                                current_grid,
-                                ai_player.visited_grids.len()
-                            );
+                            // println!(
+                            //     "[AI TRACKING] {} team AI#{} visited grid {:?}, history: {} grids",
+                            //     team_name,
+                            //     index,
+                            //     current_grid,
+                            //     ai_player.visited_grids.len()
+                            // );
                         }
                     }
 
@@ -253,24 +253,24 @@ pub fn update_ai_players(world: &mut GameWorld) {
         if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
             if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
                 if !grid_map.is_walkable(current_pos) {
-                    println!(
-                        "[AI SAFETY] {} team AI#{} is in UNSAFE position: {:?}! Emergency action required.",
-                        team_name, index, current_pos
-                    );
+                    // println!(
+                    //     "[AI SAFETY] {} team AI#{} is in UNSAFE position: {:?}! Emergency action required.",
+                    //     team_name, index, current_pos
+                    // );
 
                     // 긴급 안전 이동
                     let emergency_input = find_escape_movement(current_pos, grid_map);
                     player.held_input = emergency_input;
-                    println!(
-                        "[AI SAFETY] Emergency movement applied: {:?}",
-                        emergency_input
-                    );
+                    // println!(
+                    //     "[AI SAFETY] Emergency movement applied: {:?}",
+                    //     emergency_input
+                    // );
                     continue; // 이번 프레임은 안전 이동만 수행
                 } else {
-                    println!(
-                        "[AI SAFETY] {} team AI#{} position is SAFE (5-grid margin maintained)",
-                        team_name, index
-                    );
+                    // println!(
+                    //     "[AI SAFETY] {} team AI#{} position is SAFE (5-grid margin maintained)",
+                    //     team_name, index
+                    // );
                 }
             }
         }
@@ -278,15 +278,15 @@ pub fn update_ai_players(world: &mut GameWorld) {
         // 현재 목표까지의 거리 계산
         let dist_to_target = (current_pos - ai_player.current_target).length();
 
-        println!(
-            "[AI] {} team AI#{} - Pos: {:?}, Target: {:?}, Dist: {:.2}m, Move count: {}",
-            team_name,
-            index,
-            current_pos,
-            ai_player.current_target,
-            dist_to_target,
-            ai_player.move_counter
-        );
+        // println!(
+        //     "[AI] {} team AI#{} - Pos: {:?}, Target: {:?}, Dist: {:.2}m, Move count: {}",
+        //     team_name,
+        //     index,
+        //     current_pos,
+        //     ai_player.current_target,
+        //     dist_to_target,
+        //     ai_player.move_counter
+        // );
 
         // **목표: 중앙 거점 중심으로 이동 후 정지**
         let target_point = central_pos; // stage에서 가져온 중앙 거점 위치
@@ -300,20 +300,20 @@ pub fn update_ai_players(world: &mut GameWorld) {
             // 중앙 거점의 내부 구역에 있으면 정지
             ai_player.current_target = current_pos; // 현재 위치를 목표로 설정하여 정지
             ai_player.behavior_state = AIBehaviorState::InCaptureZone;
-            println!(
-                "[AI TARGET] {} team AI#{} REACHED INNER ZONE (radius {:.1}m) - STOPPING (distance: {:.2}m)",
-                team_name, index, inner_zone_radius, distance_to_target
-            );
+            // println!(
+            //     "[AI TARGET] {} team AI#{} REACHED INNER ZONE (radius {:.1}m) - STOPPING (distance: {:.2}m)",
+            //     team_name, index, inner_zone_radius, distance_to_target
+            // );
         } else {
             // 내부 구역 밖에 있으면 중앙 거점으로 이동
             ai_player.current_target = target_point;
             ai_player.behavior_state = AIBehaviorState::MovingToCapture;
             ai_player.move_counter += 1;
 
-            println!(
-                "[AI TARGET] {} team AI#{} MOVING TO CAPTURE ZONE CENTER - distance: {:.2}m",
-                team_name, index, distance_to_target
-            );
+            // println!(
+            //     "[AI TARGET] {} team AI#{} MOVING TO CAPTURE ZONE CENTER - distance: {:.2}m",
+            //     team_name, index, distance_to_target
+            // );
 
             // 경로 초기화 - 새 목표 설정 시 기존 경로 무효화
             ai_player.fsm.ctx.path = None;
@@ -363,10 +363,10 @@ pub fn update_ai_players(world: &mut GameWorld) {
                 let aim_input = convert_direction_to_aim_input(direction_to_enemy);
                 move_input |= aim_input;
 
-                println!(
-                    "[AI COMBAT] {} team AI#{} opening fire on enemy at {:.1}m!",
-                    team_name, index, closest_enemy_distance
-                );
+                // println!(
+                //     "[AI COMBAT] {} team AI#{} opening fire on enemy at {:.1}m!",
+                //     team_name, index, closest_enemy_distance
+                // );
             }
         }
 
@@ -427,22 +427,22 @@ pub fn update_ai_players(world: &mut GameWorld) {
                 let new_angle = current_angle + rotation_step;
                 player.latlon.lon = new_angle;
 
-                println!(
-                    "[AI CAMERA] {} team AI#{} smooth rotation: current={:.1}° -> target={:.1}° -> new={:.1}° (step={:.1}°)",
-                    team_name,
-                    index,
-                    current_angle.to_degrees(),
-                    target_angle.to_degrees(),
-                    new_angle.to_degrees(),
-                    rotation_step.to_degrees()
-                );
+                // println!(
+                //     "[AI CAMERA] {} team AI#{} smooth rotation: current={:.1}° -> target={:.1}° -> new={:.1}° (step={:.1}°)",
+                //     team_name,
+                //     index,
+                //     current_angle.to_degrees(),
+                //     target_angle.to_degrees(),
+                //     new_angle.to_degrees(),
+                //     rotation_step.to_degrees()
+                // );
             }
         } else {
             // 목표에 도달했으면 카메라 방향도 고정
-            println!(
-                "[AI CAMERA] {} team AI#{} target reached - camera direction locked",
-                team_name, index
-            );
+            // println!(
+            //     "[AI CAMERA] {} team AI#{} target reached - camera direction locked",
+            //     team_name, index
+            // );
         }
 
         // **실제 플레이어와 100% 동일한 MovingDirection 업데이트 로직 적용**
@@ -470,10 +470,10 @@ pub fn update_ai_players(world: &mut GameWorld) {
         let target_rotation = glam::Quat::from_rotation_y(new_look.z.atan2(new_look.x));
         player.rotation = target_rotation;
 
-        println!(
-            "[AI ROTATION] {} team AI#{} rotation updated: look={:?}, quat={:?}",
-            team_name, index, new_look, target_rotation
-        );
+        // println!(
+        //     "[AI ROTATION] {} team AI#{} rotation updated: look={:?}, quat={:?}",
+        //     team_name, index, new_look, target_rotation
+        // );
 
         // FSM 컨텍스트 업데이트
         ai_player.fsm.ctx.target = ai_player.current_target;
@@ -483,10 +483,10 @@ pub fn update_ai_players(world: &mut GameWorld) {
         } else {
             "RANDOM"
         };
-        println!(
-            "[AI] {} team AI#{} moving to {} target with grid-based pathfinding",
-            team_name, index, movement_type
-        );
+        // println!(
+        //     "[AI] {} team AI#{} moving to {} target with grid-based pathfinding",
+        //     team_name, index, movement_type
+        // );
 
         // 실제 이동 처리
         let mut is_grounded = player.is_grounded();
@@ -539,17 +539,17 @@ fn calculate_smart_camera_movement_with_history(
 
     // 목표가 매우 가까우면 정지
     if distance < 1.0 {
-        println!(
-            "[AI SMART HISTORY] Target very close ({:.2}m), stopping movement",
-            distance
-        );
+        // println!(
+        //     "[AI SMART HISTORY] Target very close ({:.2}m), stopping movement",
+        //     distance
+        // );
         return mod_network::components::HeldInput::empty();
     }
 
     // 제자리에 너무 오래 있으면 강제 탈출
     if stuck_counter > 15 {
         // 더 빠른 탈출 (0.25초)
-        println!("[AI SMART HISTORY] Stuck detected early! Forcing escape movement");
+        // println!("[AI SMART HISTORY] Stuck detected early! Forcing escape movement");
         return force_escape_movement_advanced(current_pos, visited_grids);
     }
 
@@ -558,7 +558,7 @@ fn calculate_smart_camera_movement_with_history(
         if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
             // 현재 위치가 안전한지 확인
             if !grid_map.is_walkable(current_pos) {
-                println!("[AI SMART HISTORY] Current position unsafe, escaping");
+                // println!("[AI SMART HISTORY] Current position unsafe, escaping");
                 return find_escape_movement(current_pos, grid_map);
             }
 
@@ -576,10 +576,10 @@ fn calculate_smart_camera_movement_with_history(
                 // 장애물 확인
                 if !grid_map.is_walkable(check_pos) {
                     obstacle_detected = true;
-                    println!(
-                        "[AI SMART HISTORY] Obstacle detected at {:.1}m ahead",
-                        check_dist
-                    );
+                    // println!(
+                    //     "[AI SMART HISTORY] Obstacle detected at {:.1}m ahead",
+                    //     check_dist
+                    // );
                     break;
                 }
 
@@ -593,10 +593,10 @@ fn calculate_smart_camera_movement_with_history(
                         if recency <= 12 {
                             // 더 긴 기간 동안 방문 기록 고려
                             visited_path_detected = true;
-                            println!(
-                                "[AI SMART HISTORY] Recently visited grid detected at {:.1}m ahead (recency: {})",
-                                check_dist, recency
-                            );
+                            // println!(
+                            //     "[AI SMART HISTORY] Recently visited grid detected at {:.1}m ahead (recency: {})",
+                            //     check_dist, recency
+                            // );
                             break;
                         }
                     }
@@ -605,9 +605,9 @@ fn calculate_smart_camera_movement_with_history(
 
             // 장애물이나 방문한 경로가 감지되면 우회 경로 탐색
             if obstacle_detected || visited_path_detected {
-                println!(
-                    "[AI SMART HISTORY] Path blocked or recently visited, finding alternative route"
-                );
+                // println!(
+                //     "[AI SMART HISTORY] Path blocked or recently visited, finding alternative route"
+                // );
 
                 // A* 경로탐색으로 우회 경로 찾기 (방문 기록 고려)
                 if let Some(path) = smart_astar_pathfind_with_penalty(
@@ -620,10 +620,10 @@ fn calculate_smart_camera_movement_with_history(
                         let next_waypoint = path[1];
                         let waypoint_direction = (next_waypoint - current_pos).normalize_or_zero();
 
-                        println!(
-                            "[AI SMART HISTORY] Using A* path with visit penalty - next waypoint: {:?}",
-                            next_waypoint
-                        );
+                        // println!(
+                        //     "[AI SMART HISTORY] Using A* path with visit penalty - next waypoint: {:?}",
+                        //     next_waypoint
+                        // );
                         return calculate_camera_based_movement_with_direction(
                             current_pos,
                             next_waypoint,
@@ -633,7 +633,7 @@ fn calculate_smart_camera_movement_with_history(
                 }
 
                 // A* 실패 시 방문 기록을 고려한 장애물 회피
-                println!("[AI SMART HISTORY] A* failed, using advanced obstacle avoidance");
+                // println!("[AI SMART HISTORY] A* failed, using advanced obstacle avoidance");
                 return calculate_obstacle_avoidance_with_history(
                     current_pos,
                     target_pos,
@@ -645,7 +645,7 @@ fn calculate_smart_camera_movement_with_history(
     }
 
     // 경로가 깨끗하면 기본 카메라 기반 이동
-    println!("[AI SMART HISTORY] Path clear, using basic camera movement");
+    // println!("[AI SMART HISTORY] Path clear, using basic camera movement");
     calculate_camera_based_movement(current_pos, target_pos)
 }
 
@@ -683,14 +683,14 @@ fn smart_astar_pathfind_with_penalty(
 
         // 페널티가 너무 높으면 대안 경로 시도
         if visit_penalty > 20 {
-            println!(
-                "[AI SMART HISTORY] Path has high visit penalty ({}), trying alternatives",
-                visit_penalty
-            );
-            println!(
-                "[AI SMART HISTORY] Problem waypoints: {:?}",
-                problem_waypoints
-            );
+            // println!(
+            //     "[AI SMART HISTORY] Path has high visit penalty ({}), trying alternatives",
+            //     visit_penalty
+            // );
+            // println!(
+            //     "[AI SMART HISTORY] Problem waypoints: {:?}",
+            //     problem_waypoints
+            // );
 
             // 목표를 여러 방향으로 오프셋해서 대안 경로 시도
             let offset_goals = generate_advanced_offset_goals(goal, 3.0, 8); // 3m 오프셋, 8방향
@@ -714,10 +714,10 @@ fn smart_astar_pathfind_with_penalty(
                     }
 
                     if alt_penalty < visit_penalty {
-                        println!(
-                            "[AI SMART HISTORY] Found better alternative path #{} (penalty: {} vs {})",
-                            i, alt_penalty, visit_penalty
-                        );
+                        // println!(
+                        //     "[AI SMART HISTORY] Found better alternative path #{} (penalty: {} vs {})",
+                        //     i, alt_penalty, visit_penalty
+                        // );
                         return Some(alt_path);
                     }
                 }
@@ -737,7 +737,7 @@ fn calculate_obstacle_avoidance_with_history(
     grid_map: &GridMap2D,
     visited_grids: &std::collections::VecDeque<(i32, i32)>,
 ) -> mod_network::components::HeldInput {
-    println!("[AI AVOIDANCE HISTORY] Calculating advanced obstacle avoidance with visit history");
+    // println!("[AI AVOIDANCE HISTORY] Calculating advanced obstacle avoidance with visit history");
 
     let target_direction = (target_pos - current_pos).normalize_or_zero();
 
@@ -796,10 +796,10 @@ fn calculate_obstacle_avoidance_with_history(
         // 최종 점수 계산 (높을수록 좋음)
         let final_score = alignment * 100.0 + distance_score * 50.0 - visit_penalty;
 
-        println!(
-            "[AI AVOIDANCE HISTORY] Direction {:?}: alignment={:.2}, distance_score={:.2}, visit_penalty={:.1}, final_score={:.1}",
-            direction, alignment, distance_score, visit_penalty, final_score
-        );
+        // println!(
+        //     "[AI AVOIDANCE HISTORY] Direction {:?}: alignment={:.2}, distance_score={:.2}, visit_penalty={:.1}, final_score={:.1}",
+        //     direction, alignment, distance_score, visit_penalty, final_score
+        // );
 
         if final_score > best_score {
             best_score = final_score;
@@ -808,15 +808,15 @@ fn calculate_obstacle_avoidance_with_history(
     }
 
     if let Some(chosen_direction) = best_direction {
-        println!(
-            "[AI AVOIDANCE HISTORY] Chose direction: {:?} (score: {:.1})",
-            chosen_direction, best_score
-        );
+        // println!(
+        //     "[AI AVOIDANCE HISTORY] Chose direction: {:?} (score: {:.1})",
+        //     chosen_direction, best_score
+        // );
         return generate_movement_input(chosen_direction);
     }
 
     // 모든 방향이 막혀있으면 후진
-    println!("[AI AVOIDANCE HISTORY] All directions problematic, backing up");
+    // println!("[AI AVOIDANCE HISTORY] All directions problematic, backing up");
     mod_network::components::HeldInput::Backward
 }
 
@@ -828,7 +828,7 @@ fn force_escape_movement_advanced(
     use rand::Rng;
     let mut rng = rand::rng();
 
-    println!("[AI ESCAPE ADVANCED] Forcing advanced escape movement with visit history");
+    // println!("[AI ESCAPE ADVANCED] Forcing advanced escape movement with visit history");
 
     // 12방향으로 확장된 탈출 시도
     let directions = [
@@ -865,16 +865,16 @@ fn force_escape_movement_advanced(
 
     if !safe_directions.is_empty() {
         let chosen_dir = safe_directions[rng.random_range(0..safe_directions.len())];
-        println!(
-            "[AI ESCAPE ADVANCED] Chose unvisited direction: {:?} (from {} options)",
-            chosen_dir,
-            safe_directions.len()
-        );
+        // println!(
+        //     "[AI ESCAPE ADVANCED] Chose unvisited direction: {:?} (from {} options)",
+        //     chosen_dir,
+        //     safe_directions.len()
+        // );
         return generate_movement_input(chosen_dir);
     }
 
     // 모든 방향이 최근 방문했다면 가장 오래된 방문 방향 선택
-    println!("[AI ESCAPE ADVANCED] All directions recently visited, choosing oldest");
+    // println!("[AI ESCAPE ADVANCED] All directions recently visited, choosing oldest");
     let chosen_dir = directions[rng.random_range(0..directions.len())];
     generate_movement_input(chosen_dir)
 }
@@ -927,10 +927,10 @@ fn calculate_smart_camera_movement(
 
     // 목표가 매우 가까우면 정지
     if distance < 1.0 {
-        println!(
-            "[AI SMART] Target very close ({:.2}m), stopping movement",
-            distance
-        );
+        // println!(
+        //     "[AI SMART] Target very close ({:.2}m), stopping movement",
+        //     distance
+        // );
         return mod_network::components::HeldInput::empty();
     }
 
@@ -938,10 +938,10 @@ fn calculate_smart_camera_movement(
     if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
         if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
             // 현재 위치가 안전한지 확인
-            if !grid_map.is_walkable(current_pos) {
-                println!("[AI SMART] Current position unsafe, escaping");
-                return find_escape_movement(current_pos, grid_map);
-            }
+            // if !grid_map.is_walkable(current_pos) {
+            //     println!("[AI SMART] Current position unsafe, escaping");
+            //     return find_escape_movement(current_pos, grid_map);
+            // }
 
             // 목표 방향으로 직진했을 때 장애물이 있는지 확인
             let target_direction = (target_pos - current_pos).normalize_or_zero();
@@ -950,7 +950,7 @@ fn calculate_smart_camera_movement(
 
             // 직진 경로에 장애물이 있으면 우회 경로 탐색
             if !grid_map.is_walkable(check_pos) || !grid_map.is_walkable(target_pos) {
-                println!("[AI SMART] Obstacle detected in direct path, using A* pathfinding");
+                // println!("[AI SMART] Obstacle detected in direct path, using A* pathfinding");
 
                 // A* 경로탐색으로 우회 경로 찾기
                 if let Some(path) = grid_based_astar_pathfind(current_pos, target_pos, grid_map) {
@@ -968,7 +968,7 @@ fn calculate_smart_camera_movement(
                 }
 
                 // A* 실패 시 장애물 회피 이동
-                println!("[AI SMART] A* failed, using obstacle avoidance");
+                // println!("[AI SMART] A* failed, using obstacle avoidance");
                 return calculate_obstacle_avoidance_movement(current_pos, target_pos, grid_map);
             }
         }
@@ -1001,18 +1001,18 @@ fn calculate_camera_based_movement_with_direction(
 
     if direction.x > angle_threshold {
         input |= mod_network::components::HeldInput::Right;
-        println!(
-            "[AI SMART] A* path curve RIGHT (distance: {:.2}m)",
-            distance
-        );
+        // println!(
+        //     "[AI SMART] A* path curve RIGHT (distance: {:.2}m)",
+        //     distance
+        // );
     } else if direction.x < -angle_threshold {
         input |= mod_network::components::HeldInput::Left;
-        println!("[AI SMART] A* path curve LEFT (distance: {:.2}m)", distance);
+        // println!("[AI SMART] A* path curve LEFT (distance: {:.2}m)", distance);
     } else {
-        println!(
-            "[AI SMART] A* path straight FORWARD (distance: {:.2}m)",
-            distance
-        );
+        // println!(
+        //     "[AI SMART] A* path straight FORWARD (distance: {:.2}m)",
+        //     distance
+        // );
     }
 
     // 후진이 필요한 경우
@@ -1026,10 +1026,10 @@ fn calculate_camera_based_movement_with_direction(
             input |= mod_network::components::HeldInput::Right; // 후진 시 반전
         }
 
-        println!(
-            "[AI SMART] A* path backing up with curve (distance: {:.2}m)",
-            distance
-        );
+        // println!(
+        //     "[AI SMART] A* path backing up with curve (distance: {:.2}m)",
+        //     distance
+        // );
     }
 
     input
@@ -1041,7 +1041,7 @@ fn calculate_obstacle_avoidance_movement(
     target_pos: Vec3A,
     grid_map: &GridMap2D,
 ) -> mod_network::components::HeldInput {
-    println!("[AI AVOIDANCE] Calculating obstacle avoidance movement");
+    // println!("[AI AVOIDANCE] Calculating obstacle avoidance movement");
 
     let target_direction = (target_pos - current_pos).normalize_or_zero();
 
@@ -1069,24 +1069,24 @@ fn calculate_obstacle_avoidance_movement(
         if right_to_target < left_to_target {
             input |= mod_network::components::HeldInput::Right;
             input |= mod_network::components::HeldInput::Forward;
-            println!("[AI AVOIDANCE] Both sides safe, choosing right (closer to target)");
+            // println!("[AI AVOIDANCE] Both sides safe, choosing right (closer to target)");
         } else {
             input |= mod_network::components::HeldInput::Left;
             input |= mod_network::components::HeldInput::Forward;
-            println!("[AI AVOIDANCE] Both sides safe, choosing left (closer to target)");
+            // println!("[AI AVOIDANCE] Both sides safe, choosing left (closer to target)");
         }
     } else if right_safe {
         input |= mod_network::components::HeldInput::Right;
         input |= mod_network::components::HeldInput::Forward;
-        println!("[AI AVOIDANCE] Only right side safe, moving right");
+        // println!("[AI AVOIDANCE] Only right side safe, moving right");
     } else if left_safe {
         input |= mod_network::components::HeldInput::Left;
         input |= mod_network::components::HeldInput::Forward;
-        println!("[AI AVOIDANCE] Only left side safe, moving left");
+        // println!("[AI AVOIDANCE] Only left side safe, moving left");
     } else {
         // 양쪽 모두 막혀있으면 후진
         input |= mod_network::components::HeldInput::Backward;
-        println!("[AI AVOIDANCE] Both sides blocked, backing up");
+        // println!("[AI AVOIDANCE] Both sides blocked, backing up");
     }
 
     input
@@ -1101,10 +1101,10 @@ fn calculate_camera_based_movement(
 
     // 목표가 매우 가까우면 정지
     if distance < 1.0 {
-        println!(
-            "[AI CAMERA] Target very close ({:.2}m), stopping movement",
-            distance
-        );
+        // println!(
+        //     "[AI CAMERA] Target very close ({:.2}m), stopping movement",
+        //     distance
+        // );
         return mod_network::components::HeldInput::empty();
     }
 
@@ -1126,23 +1126,23 @@ fn calculate_camera_based_movement(
     if target_direction.x > angle_threshold {
         // 오른쪽으로 부드럽게 커브
         input |= mod_network::components::HeldInput::Right;
-        println!(
-            "[AI CAMERA] Smooth curve RIGHT towards target (angle: {:.1}°)",
-            target_angle.to_degrees()
-        );
+        // println!(
+        //     "[AI CAMERA] Smooth curve RIGHT towards target (angle: {:.1}°)",
+        //     target_angle.to_degrees()
+        // );
     } else if target_direction.x < -angle_threshold {
         // 왼쪽으로 부드럽게 커브
         input |= mod_network::components::HeldInput::Left;
-        println!(
-            "[AI CAMERA] Smooth curve LEFT towards target (angle: {:.1}°)",
-            target_angle.to_degrees()
-        );
+        // println!(
+        //     "[AI CAMERA] Smooth curve LEFT towards target (angle: {:.1}°)",
+        //     target_angle.to_degrees()
+        // );
     } else {
         // 거의 직진
-        println!(
-            "[AI CAMERA] Moving straight FORWARD towards target (angle: {:.1}°)",
-            target_angle.to_degrees()
-        );
+        // println!(
+        //     "[AI CAMERA] Moving straight FORWARD towards target (angle: {:.1}°)",
+        //     target_angle.to_degrees()
+        // );
     }
 
     // 후진이 필요한 경우 (목표가 뒤쪽에 있을 때)
@@ -1158,16 +1158,16 @@ fn calculate_camera_based_movement(
             input |= mod_network::components::HeldInput::Right; // 후진 시 반전
         }
 
-        println!(
-            "[AI CAMERA] Backing up with curve (target behind, angle: {:.1}°)",
-            target_angle.to_degrees()
-        );
+        // println!(
+        //     "[AI CAMERA] Backing up with curve (target behind, angle: {:.1}°)",
+        //     target_angle.to_degrees()
+        // );
     }
 
-    println!(
-        "[AI CAMERA] Smooth movement input: {:?} (distance: {:.2}m)",
-        input, distance
-    );
+    // println!(
+    //     "[AI CAMERA] Smooth movement input: {:?} (distance: {:.2}m)",
+    //     input, distance
+    // );
 
     input
 }
@@ -1182,10 +1182,10 @@ fn calculate_direct_movement_to_target(
 
     // 목표가 매우 가까우면 정지 (랜덤 이동 대신)
     if distance < 1.0 {
-        println!(
-            "[AI DIRECT] Target very close ({:.2}m), stopping movement",
-            distance
-        );
+        // println!(
+        //     "[AI DIRECT] Target very close ({:.2}m), stopping movement",
+        //     distance
+        // );
         return mod_network::components::HeldInput::empty();
     }
 
@@ -1224,10 +1224,10 @@ fn calculate_direct_movement_to_target(
         }
     }
 
-    println!(
-        "[AI DIRECT] Moving directly to target: direction={:?}, distance={:.2}m, input={:?}",
-        normalized, distance, input
-    );
+    // println!(
+    //     "[AI DIRECT] Moving directly to target: direction={:?}, distance={:.2}m, input={:?}",
+    //     normalized, distance, input
+    // );
 
     input
 }
@@ -1245,24 +1245,24 @@ fn calculate_smart_movement(
     // 제자리에 너무 오래 있으면 강제 탈출
     if stuck_counter > 30 {
         // 약 0.5초간 제자리
-        println!("[AI SMART] Stuck detected! Forcing escape movement");
+        // println!("[AI SMART] Stuck detected! Forcing escape movement");
         return force_escape_movement(current_pos, visited_grids);
     }
 
     // 전역 그리드 맵 가져오기
     if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
         if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
-            println!("[AI SMART] Using smart pathfinding with visit avoidance");
+            // println!("[AI SMART] Using smart pathfinding with visit avoidance");
 
             // 현재 위치가 막혀있으면 탈출
             if !grid_map.is_walkable(current_pos) {
-                println!("[AI SMART] Current position blocked, escaping");
+                // println!("[AI SMART] Current position blocked, escaping");
                 return find_escape_movement(current_pos, grid_map);
             }
 
             // 목표가 막혀있으면 대안 찾기
             let effective_target = if !grid_map.is_walkable(target_pos) {
-                println!("[AI SMART] Target blocked, finding alternative");
+                // println!("[AI SMART] Target blocked, finding alternative");
                 find_safe_position_near(target_pos, grid_map).unwrap_or(target_pos)
             } else {
                 target_pos
@@ -1299,11 +1299,11 @@ fn calculate_smart_movement(
                         }
 
                         if !input.is_empty() {
-                            println!(
-                                "[AI SMART] Smart path found: {} waypoints, avoiding {} visited grids",
-                                path.len(),
-                                visited_grids.len()
-                            );
+                            // println!(
+                            //     "[AI SMART] Smart path found: {} waypoints, avoiding {} visited grids",
+                            //     path.len(),
+                            //     visited_grids.len()
+                            // );
                             return input;
                         }
                     }
@@ -1354,10 +1354,10 @@ fn smart_astar_pathfind(
 
         // 페널티가 너무 높으면 다른 경로 시도
         if visit_penalty > 15 {
-            println!(
-                "[AI SMART] Path has too many recently visited grids (penalty: {}), trying alternative",
-                visit_penalty
-            );
+            // println!(
+            //     "[AI SMART] Path has too many recently visited grids (penalty: {}), trying alternative",
+            //     visit_penalty
+            // );
 
             // 목표를 약간 변경해서 다른 경로 시도
             let offset_goals = generate_offset_goals(goal, 5.0); // 5m 오프셋
@@ -1381,10 +1381,10 @@ fn smart_astar_pathfind(
                     }
 
                     if alt_penalty < visit_penalty {
-                        println!(
-                            "[AI SMART] Found better alternative path (penalty: {} vs {})",
-                            alt_penalty, visit_penalty
-                        );
+                        // println!(
+                        //     "[AI SMART] Found better alternative path (penalty: {} vs {})",
+                        //     alt_penalty, visit_penalty
+                        // );
                         return Some(alt_path);
                     }
                 }
@@ -1424,9 +1424,9 @@ fn calculate_avoidance_movement(
             let recency = visited_grids.len() - index;
             if recency <= 5 {
                 // 최근 5개 그리드에 포함되면
-                println!(
-                    "[AI AVOIDANCE] Target direction leads to recently visited grid, finding alternative"
-                );
+                // println!(
+                //     "[AI AVOIDANCE] Target direction leads to recently visited grid, finding alternative"
+                // );
 
                 // 수직 방향으로 회피 시도
                 let perpendicular = Vec3A::new(-normalized.z, 0.0, normalized.x);
@@ -1500,15 +1500,15 @@ fn force_escape_movement(
 
     if !safe_directions.is_empty() {
         let chosen_dir = safe_directions[rng.random_range(0..safe_directions.len())];
-        println!(
-            "[AI ESCAPE] Forcing escape in unvisited direction: {:?}",
-            chosen_dir
-        );
+        // println!(
+        //     "[AI ESCAPE] Forcing escape in unvisited direction: {:?}",
+        //     chosen_dir
+        // );
         return generate_movement_input(chosen_dir);
     }
 
     // 모든 방향이 최근 방문했다면 완전 랜덤
-    println!("[AI ESCAPE] All directions recently visited, using random escape");
+    // println!("[AI ESCAPE] All directions recently visited, using random escape");
     generate_random_movement()
 }
 
@@ -1583,23 +1583,23 @@ fn calculate_grid_based_movement(
     // 전역 그리드 맵 가져오기
     if let Ok(grid_map_cache) = GLOBAL_GRID_MAP_CACHE.lock() {
         if let Some(grid_map) = grid_map_cache.get(&StageKind::City) {
-            println!("[AI MOVEMENT] Grid map available, using flexible pathfinding");
+            // println!("[AI MOVEMENT] Grid map available, using flexible pathfinding");
 
             // **새로운 접근**: 현재 위치가 막혀있어도 근처 안전한 곳으로 이동 시도
             if !grid_map.is_walkable(current_pos) {
-                println!(
-                    "[AI MOVEMENT] Current position blocked, finding escape route: {:?}",
-                    current_pos
-                );
+                // println!(
+                //     "[AI MOVEMENT] Current position blocked, finding escape route: {:?}",
+                //     current_pos
+                // );
                 return find_escape_movement(current_pos, grid_map);
             }
 
             // **유연한 목표 처리**: 목표가 막혀있으면 대안 목표 생성하되, 계속 움직임
             let effective_target = if !grid_map.is_walkable(target_pos) {
-                println!(
-                    "[AI MOVEMENT] Target blocked, finding alternative near: {:?}",
-                    target_pos
-                );
+                // println!(
+                //     "[AI MOVEMENT] Target blocked, finding alternative near: {:?}",
+                //     target_pos
+                // );
                 // 목표 근처에서 안전한 위치 찾기 (실패해도 원래 목표 유지)
                 find_safe_position_near(target_pos, grid_map).unwrap_or(target_pos)
             } else {
@@ -1637,30 +1637,30 @@ fn calculate_grid_based_movement(
 
                         // 입력이 비어있으면 랜덤 이동
                         if input.is_empty() {
-                            println!("[AI A*] No input generated, using random movement");
+                            // println!("[AI A*] No input generated, using random movement");
                             return generate_random_movement();
                         }
 
-                        println!(
-                            "[AI A*] Path found: {} waypoints, moving to {:?}, input: {:?}",
-                            path.len(),
-                            next_waypoint,
-                            input
-                        );
+                        // println!(
+                        //     "[AI A*] Path found: {} waypoints, moving to {:?}, input: {:?}",
+                        //     path.len(),
+                        //     next_waypoint,
+                        //     input
+                        // );
 
                         return input;
                     }
                 } else {
-                    println!("[AI A*] Path too short, using direct movement");
+                    // println!("[AI A*] Path too short, using direct movement");
                 }
             } else {
-                println!("[AI A*] A* failed, using direct movement fallback");
+                // println!("[AI A*] A* failed, using direct movement fallback");
             }
         } else {
-            println!("[AI MOVEMENT] No grid map loaded, using direct movement");
+            // println!("[AI MOVEMENT] No grid map loaded, using direct movement");
         }
     } else {
-        println!("[AI MOVEMENT] Failed to lock grid map, using direct movement");
+        // println!("[AI MOVEMENT] Failed to lock grid map, using direct movement");
     }
 
     // **폴백**: 항상 움직이는 직선 이동 (장애물 무시하고 계속 이동)
@@ -1672,7 +1672,7 @@ fn find_escape_movement(
     current_pos: Vec3A,
     grid_map: &GridMap2D,
 ) -> mod_network::components::HeldInput {
-    println!("[AI ESCAPE] Finding escape route from: {:?}", current_pos);
+    // println!("[AI ESCAPE] Finding escape route from: {:?}", current_pos);
 
     // 주변 8방향으로 안전한 위치 찾기 (더 적극적으로)
     let directions = [
@@ -1691,7 +1691,7 @@ fn find_escape_movement(
     for (dx, dz) in directions.iter() {
         let test_pos = current_pos + Vec3A::new(dx * step_size, 0.0, dz * step_size);
         if grid_map.is_walkable(test_pos) {
-            println!("[AI ESCAPE] Found escape direction: {:?}", (dx, dz));
+            // println!("[AI ESCAPE] Found escape direction: {:?}", (dx, dz));
             let mut input = mod_network::components::HeldInput::empty();
 
             if *dx > 0.0 {
@@ -1711,7 +1711,7 @@ fn find_escape_movement(
     }
 
     // 탈출 방향을 못 찾아도 랜덤하게 계속 움직임 (완전 정지 방지)
-    println!("[AI ESCAPE] No clear escape, moving randomly");
+    // println!("[AI ESCAPE] No clear escape, moving randomly");
     generate_random_movement()
 }
 
@@ -1748,14 +1748,14 @@ fn calculate_aggressive_movement(
 
     // 입력이 비어있으면 랜덤 이동으로 폴백
     if input.is_empty() {
-        println!("[AI AGGRESSIVE] No clear direction, moving randomly");
+        // println!("[AI AGGRESSIVE] No clear direction, moving randomly");
         return generate_random_movement();
     }
 
-    println!(
-        "[AI AGGRESSIVE] Moving aggressively: direction={:?}, input={:?}",
-        normalized, input
-    );
+    // println!(
+    //     "[AI AGGRESSIVE] Moving aggressively: direction={:?}, input={:?}",
+    //     normalized, input
+    // );
     input
 }
 
@@ -1778,7 +1778,7 @@ fn generate_random_movement() -> mod_network::components::HeldInput {
     let random_index = rng.random_range(0..directions.len());
     let input = directions[random_index];
 
-    println!("[AI RANDOM] Generated random movement: {:?}", input);
+    // println!("[AI RANDOM] Generated random movement: {:?}", input);
     input
 }
 
@@ -1797,10 +1797,10 @@ fn find_safe_position_near(target_pos: Vec3A, grid_map: &GridMap2D) -> Option<Ve
                 target_pos + Vec3A::new(angle.cos() * search_dist, 0.0, angle.sin() * search_dist);
 
             if grid_map.is_walkable(test_pos) {
-                println!(
-                    "[SAFE SEARCH] Found safe alternative at radius {}: {:?}",
-                    radius, test_pos
-                );
+                // println!(
+                //     "[SAFE SEARCH] Found safe alternative at radius {}: {:?}",
+                //     radius, test_pos
+                // );
                 return Some(test_pos);
             }
         }
@@ -2019,10 +2019,10 @@ fn generate_diverse_target(
     let bound_x = (stage_attributes.total_width * 0.9).abs().max(10.0); // 최소 10m 보장
     let bound_z = (stage_attributes.total_depth * 0.9).abs().max(10.0); // 최소 10m 보장
 
-    println!(
-        "[AI DIVERSE] Stage bounds: bound_x={:.2}, bound_z={:.2}",
-        bound_x, bound_z
-    );
+    // println!(
+    //     "[AI DIVERSE] Stage bounds: bound_x={:.2}, bound_z={:.2}",
+    //     bound_x, bound_z
+    // );
 
     // AI 성격 분류 (personality_seed 기반)
     let personality_type = personality_seed % 2; // 2가지 성격 유형으로 축소
@@ -2072,10 +2072,10 @@ fn generate_diverse_target(
         target.z.clamp(-bound_z * 0.95, bound_z * 0.95),
     );
 
-    println!(
-        "[AI DIVERSE] Generated target for personality {}, phase {}: {:?}",
-        personality_type, behavior_phase, safe_target
-    );
+    // println!(
+    //     "[AI DIVERSE] Generated target for personality {}, phase {}: {:?}",
+    //     personality_type, behavior_phase, safe_target
+    // );
 
     safe_target
 }
@@ -2213,14 +2213,14 @@ fn calculate_smart_movement_advanced(
     _stage: &mod_network::components::StageAttributes,
     ai_player: &mut AiPlayer,
 ) -> mod_network::components::HeldInput {
-    println!("[AI ADVANCED] Starting advanced smart movement calculation (capture zone only)");
+    // println!("[AI ADVANCED] Starting advanced smart movement calculation (capture zone only)");
 
     // 집결 구역 내에서만 복잡한 로직 실행
     // 임시로 하드코딩된 값 사용 (나중에 stage에서 가져오도록 수정 필요)
     let capture_center = Vec3A::ZERO;
     let capture_radius = 10.0;
     if !is_in_capture_zone_with_params(current_pos, capture_center, capture_radius) {
-        println!("[AI ADVANCED] Outside capture zone, using direct movement");
+        // println!("[AI ADVANCED] Outside capture zone, using direct movement");
         return calculate_direct_movement_to_target(current_pos, target_pos);
     }
 
@@ -2228,27 +2228,27 @@ fn calculate_smart_movement_advanced(
     let circle_penalty = detect_circling_pattern(&ai_player.direction_history);
     ai_player.circle_penalty = (ai_player.circle_penalty * 0.9) + circle_penalty; // 페널티 감쇄
 
-    println!(
-        "[AI ADVANCED] Circle penalty: current={:.1}, accumulated={:.1}",
-        circle_penalty, ai_player.circle_penalty
-    );
+    // println!(
+    //     "[AI ADVANCED] Circle penalty: current={:.1}, accumulated={:.1}",
+    //     circle_penalty, ai_player.circle_penalty
+    // );
 
     // 2. 8방향 사용 빈도 분석
     let direction_usage = calculate_direction_usage(&ai_player.direction_history);
     let least_used_directions = find_least_used_directions(&direction_usage);
 
-    println!("[AI ADVANCED] Direction usage: {:?}", direction_usage);
-    println!(
-        "[AI ADVANCED] Least used directions: {:?}",
-        least_used_directions
-    );
+    // println!("[AI ADVANCED] Direction usage: {:?}", direction_usage);
+    // println!(
+    //     "[AI ADVANCED] Least used directions: {:?}",
+    //     least_used_directions
+    // );
 
     // 3. 제자리에 너무 오래 있거나 큰 맴돌기 페널티가 있으면 강제 탈출 (집결 구역 내에서만)
     if ai_player.stuck_counter > 20 || ai_player.circle_penalty > 100.0 {
-        println!(
-            "[AI ADVANCED] EMERGENCY: Breaking out of stuck/circle pattern! stuck={}, penalty={:.1}",
-            ai_player.stuck_counter, ai_player.circle_penalty
-        );
+        // println!(
+        //     "[AI ADVANCED] EMERGENCY: Breaking out of stuck/circle pattern! stuck={}, penalty={:.1}",
+        //     ai_player.stuck_counter, ai_player.circle_penalty
+        // );
 
         return force_escape_movement_advanced(current_pos, &ai_player.visited_grids);
     }
@@ -2277,10 +2277,10 @@ fn calculate_smart_movement_advanced(
     }
     ai_player.last_direction = Some(chosen_direction);
 
-    println!(
-        "[AI ADVANCED] Chosen direction: {} (vector: {:?}), input: {:?}",
-        chosen_direction, direction_vector, input
-    );
+    // println!(
+    //     "[AI ADVANCED] Chosen direction: {} (vector: {:?}), input: {:?}",
+    //     chosen_direction, direction_vector, input
+    // );
 
     input
 }
@@ -2305,17 +2305,17 @@ fn calculate_safe_zone_penalty(direction: u8) -> f32 {
         if dot_product > 0.7 {
             // 약 45도 이내
             penalty += 30.0; // 큰 페널티
-            println!(
-                "[AI SAFE ZONE] Direction {} leads to Blue safe zone, penalty: +30.0",
-                direction
-            );
+        // println!(
+        //     "[AI SAFE ZONE] Direction {} leads to Blue safe zone, penalty: +30.0",
+        //     direction
+        // );
         } else if dot_product > 0.3 {
             // 약 70도 이내
             penalty += 15.0; // 중간 페널티
-            println!(
-                "[AI SAFE ZONE] Direction {} near Blue safe zone, penalty: +15.0",
-                direction
-            );
+            // println!(
+            //     "[AI SAFE ZONE] Direction {} near Blue safe zone, penalty: +15.0",
+            //     direction
+            // );
         }
     }
 
@@ -2328,17 +2328,17 @@ fn calculate_safe_zone_penalty(direction: u8) -> f32 {
         if dot_product > 0.7 {
             // 약 45도 이내
             penalty += 30.0; // 큰 페널티
-            println!(
-                "[AI SAFE ZONE] Direction {} leads to Red safe zone, penalty: +30.0",
-                direction
-            );
+        // println!(
+        //     "[AI SAFE ZONE] Direction {} leads to Red safe zone, penalty: +30.0",
+        //     direction
+        // );
         } else if dot_product > 0.3 {
             // 약 70도 이내
             penalty += 15.0; // 중간 페널티
-            println!(
-                "[AI SAFE ZONE] Direction {} near Red safe zone, penalty: +15.0",
-                direction
-            );
+            // println!(
+            //     "[AI SAFE ZONE] Direction {} near Red safe zone, penalty: +15.0",
+            //     direction
+            // );
         }
     }
 
@@ -2406,10 +2406,10 @@ fn choose_optimal_direction(
         .map(|(index, _)| index as u8)
         .unwrap_or(ideal_direction);
 
-    println!(
-        "[AI DIRECTION] Scores: {:?}, chosen: {}",
-        scores, best_direction
-    );
+    // println!(
+    //     "[AI DIRECTION] Scores: {:?}, chosen: {}",
+    //     scores, best_direction
+    // );
 
     best_direction
 }
@@ -2423,10 +2423,10 @@ fn convert_direction_to_input(direction: Vec3A) -> mod_network::components::Held
     // 랜덤 임계값 조절 (0.1 ~ 0.7 사이에서 랜덤)
     let threshold = rng.random_range(0.1..0.7);
 
-    println!(
-        "[AI CONVERT] Using random threshold: {:.2} for direction conversion",
-        threshold
-    );
+    // println!(
+    //     "[AI CONVERT] Using random threshold: {:.2} for direction conversion",
+    //     threshold
+    // );
 
     // X축 방향 (동서) - 랜덤 임계값 적용
     if direction.x > threshold {
@@ -2500,10 +2500,10 @@ fn detect_and_attack_enemy(
                 closest_enemy_position = enemy_position;
                 enemy_detected = true;
 
-                println!(
-                    "[AI COMBAT] Enemy detected at distance {:.1}m, position: {:?}",
-                    distance, enemy_position
-                );
+                // println!(
+                //     "[AI COMBAT] Enemy detected at distance {:.1}m, position: {:?}",
+                //     distance, enemy_position
+                // );
             }
         }
     }
@@ -2513,10 +2513,10 @@ fn detect_and_attack_enemy(
         // 공격 입력 추가
         *move_input |= mod_network::components::HeldInput::Attack;
 
-        println!(
-            "[AI COMBAT] Opening fire on enemy at {:.1}m!",
-            closest_enemy_distance
-        );
+        // println!(
+        //     "[AI COMBAT] Opening fire on enemy at {:.1}m!",
+        //     closest_enemy_distance
+        // );
 
         // 적 방향으로 조준 (이동하면서 동시에 공격)
         let direction_to_enemy = (closest_enemy_position - ai_position).normalize_or_zero();
@@ -2557,7 +2557,7 @@ fn check_line_of_sight_with_grid(start: Vec3A, end: Vec3A, grid_map: &GridMap2D)
         let check_pos = start + direction * (i as f32 * step_size);
 
         if !grid_map.is_walkable(check_pos) {
-            println!("[AI SIGHT] Line of sight blocked at {:?}", check_pos);
+            // println!("[AI SIGHT] Line of sight blocked at {:?}", check_pos);
             return false; // 장애물 발견
         }
     }
@@ -2592,10 +2592,10 @@ fn convert_direction_to_aim_input(direction: Vec3A) -> mod_network::components::
 // 안전한 범위 내 랜덤 생성 함수
 fn safe_random_range(min: f32, max: f32) -> f32 {
     if min >= max {
-        println!(
-            "[WARN] Invalid range: min={}, max={} - using min value",
-            min, max
-        );
+        // println!(
+        //     "[WARN] Invalid range: min={}, max={} - using min value",
+        //     min, max
+        // );
         return min;
     }
     rand::random_range(min..=max)
@@ -2623,10 +2623,10 @@ fn generate_random_position_in_capture_zone_with_params(center: Vec3A, radius: f
 
     let target = Vec3A::new(x, center.y, z);
 
-    println!(
-        "[AI CAPTURE] Generated random position in capture zone: {:?} (radius: {:.1}m)",
-        target, random_radius
-    );
+    // println!(
+    //     "[AI CAPTURE] Generated random position in capture zone: {:?} (radius: {:.1}m)",
+    //     target, random_radius
+    // );
 
     target
 }
