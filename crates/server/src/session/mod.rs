@@ -1,15 +1,3 @@
-// Removed duplicate is_ai and addr methods
-impl Session {
-    /// Returns true if this session is an AI session.
-    pub fn is_ai(&self) -> bool {
-        self.is_ai
-    }
-
-    /// Returns the socket address for this session.
-    pub fn addr(&self) -> SocketAddr {
-        self.addr
-    }
-}
 mod pool;
 mod state;
 
@@ -73,7 +61,6 @@ pub struct Session {
 
 impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
-
     pub fn new(addr: SocketAddr, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) -> Self {
         Self {
             addr,
