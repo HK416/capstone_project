@@ -516,7 +516,6 @@ impl AcceptState {
     }
 }
 
-const MAX_CLIENTS: usize = 200;
 const IDLE_DELAY: u32 = 10; // ms
 const STABLE_DELAY: u32 = 50; // ms
 const DELAY_LIMIT1: u32 = 100; // ms
@@ -527,7 +526,7 @@ fn get_next_uid() -> UserId {
     UserId::new(NEXT_UID.fetch_add(1, Ordering::Relaxed))
 }
 
-async fn stress_test(addr: Addr) {
+async fn stress_test(addr: Addr, max_clients: usize) {
     let accept_state = Arc::new(AtomicU32::new(AcceptState::Accept as u32));
     let state = Arc::clone(&accept_state);
 
@@ -546,7 +545,7 @@ async fn stress_test(addr: Addr) {
 
     let mut accept_delay = 100; // ms
 
-    let mut clients = HashMap::with_capacity(MAX_CLIENTS);
+    let mut clients = HashMap::with_capacity(max_clients);
     let mut client_id = 0;
     loop {
         let delay = GLOBAL_DELAY.load(Ordering::Relaxed);
@@ -558,7 +557,7 @@ async fn stress_test(addr: Addr) {
                     accept_state.store(AcceptState::Disconnect as u32, Ordering::Relaxed);
                 } else {
                     // accept
-                    if NUM_CLIENTS.load(Ordering::Relaxed) < MAX_CLIENTS as u16 {
+                    if NUM_CLIENTS.load(Ordering::Relaxed) < max_clients as u16 {
                         let client = Arc::new(Client::new().await.unwrap());
                         clients.insert(client_id, Arc::clone(&client));
                         client_id += 1;
@@ -709,6 +708,7 @@ fn main() {
     let mut args = env::args();
     args.next();
     let mut addr = Addr::default();
+    let mut max_clients = 200;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -724,6 +724,20 @@ fn main() {
                             return;
                         }
                     }
+                }
+            }
+            "--max-clients" => {
+                if let Some(max_clients_str) = args.next() {
+                    max_clients = match max_clients_str.parse::<usize>() {
+                        Ok(n) => n,
+                        Err(e) => {
+                            eprintln!(
+                                "명령줄 인자 형식이 잘못되었습니다.\n  `--max-clients` - 잘못된 숫자 형식입니다.\n{}",
+                                e
+                            );
+                            return;
+                        }
+                    };
                 }
             }
             _ => {
@@ -749,5 +763,5 @@ fn main() {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { stress_test(addr).await });
+        .block_on(async { stress_test(addr, max_clients).await });
 }
