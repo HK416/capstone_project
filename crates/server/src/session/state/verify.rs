@@ -18,10 +18,10 @@ impl SessionState for SessionVerifyState {
     fn on_enter(&mut self, session: &Arc<Session>) {
         // 다음 상태로 전환합니다.
         // TODO: 현재 클라이언트 데이터 무결성 검사를 진행하고 있지 않습니다.
-        println!(
-            "현재 클라이언트 데이터 무결성 검사를 진행하고 있지 않습니다. {}(을)를 다음 세션 상태로 변경합니다.",
-            &session
-        );
+        // println!(
+        //     "현재 클라이언트 데이터 무결성 검사를 진행하고 있지 않습니다. {}(을)를 다음 세션 상태로 변경합니다.",
+        //     &session
+        // );
         let state = Box::new(SessionLoginState::new());
         let flow = SessionStateFlow::Change(state);
         session.flows.push(flow);
