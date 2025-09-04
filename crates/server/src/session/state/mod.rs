@@ -163,11 +163,6 @@ pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
                     };
                 }
 
-                // 세션 상태가 변경된 경우 패킷 처리를 생략합니다.
-                if !session.flows.is_empty() {
-                    break;
-                }
-
                 // 패킷이 취소된 경우 처리를 생략합니다.
                 if session.packet_canceled() {
                     continue;

@@ -22,11 +22,7 @@ use mod_network::{
         InputEvent, InputKind, InputSnapshot, LoginToken, SelectResult, UserId,
     },
     protocol::{
-        CharacterSelectRequestPacket, CharacterSelectResponsePacket, 
-        InGameInputPacket, InGamePullPacket, InGameReadyNotifyPacket, 
-        LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, 
-        MatchRequestPacket, MatchRequestRejectedPacket, 
-        Packet, PacketParser, PacketType,
+        CharacterSelectRequestPacket, CharacterSelectResponsePacket, InGameInputPacket, InGamePullPacket, InGameReadyNotifyPacket, InGameReadyStatusPacket, LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, MatchRequestPacket, MatchRequestRejectedPacket, Packet, PacketParser, PacketType
     },
 };
 
@@ -199,57 +195,59 @@ impl ReadyClient {
     }
 
     async fn select_character(&mut self) -> Result<(), std::io::Error> {
-        let select_packet =
-            CharacterSelectRequestPacket::new(self.uid, self.token, rand::random()).as_raw();
+        let mut select_packet_sent = false;
 
-        'writeloop: loop {
-            // 캐릭터 선택 패킷 전송
-            self.writer.write_all(&select_packet.as_bytes()).await?;
+        // 캐릭터 선택 완료 대기
+        'readloop: loop {
+            self.read().await?;
 
-            // 캐릭터 선택 완료 대기
-            'readloop: loop {
-                self.read().await?;
-
-                while let Some(packet) = self.packet_parser.pop() {
-                    match packet.packet_type() {
-                        // 캐릭터 선택 완료 패킷
-                        PacketType::FormationDataUpdate => {
-                            // let _p = FormationPullPacket::from_raw(packet);
+            while let Some(packet) = self.packet_parser.pop() {
+                match packet.packet_type() {
+                    // 캐릭터 선택 완료 패킷
+                    PacketType::FormationDataUpdate => {
+                        // let _p = FormationPullPacket::from_raw(packet);
+                        if !select_packet_sent {
+                            // 캐릭터 선택 패킷 전송
+                            let select_packet = CharacterSelectRequestPacket::new(
+                                self.uid, self.token, rand::random()
+                            ).as_raw().as_bytes();
+                            self.writer.write_all(&select_packet).await?;
+                            select_packet_sent = true;
+                            continue 'readloop;
                         }
-                        PacketType::CharacterSelectResponse => {
-                            let p = CharacterSelectResponsePacket::from_raw(packet);
-                            if p.result == SelectResult::Success {
-                                // println!("Character selected successfully");
-                                continue 'readloop;
-                            } else {
-                                println!("Character selection failed: {:?}", p.result);
-                                continue 'writeloop;
-                            }
+                    }
+                    PacketType::CharacterSelectResponse => {
+                        let p = CharacterSelectResponsePacket::from_raw(packet);
+                        if p.result == SelectResult::Success {
+                            // println!("Character selected successfully");
+                        } else {
+                            println!("Character selection failed: {:?}", p.result);
+                            select_packet_sent = false;
                         }
-                        PacketType::InGameDataInit => {
-                            // let _p = InitStagePacket::from_raw(packet);
-                            // println!("Stage initialized");
-                            break 'writeloop;
-                        }
-                        PacketType::EnterGameFailed => {
-                            // let _p = CustomGamePullPacket::from_raw(packet);
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::NotFound,
-                                "Game stopped",
-                            ));
-                        }
-                        PacketType::Ping => {
-                            self.writer.write_all(&packet.as_bytes()).await?;
-                        }
-                        _ => {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!(
-                                    "Character selection failed - Invalid packet received: {:?}",
-                                    packet.packet_type()
-                                ),
-                            ));
-                        }
+                    }
+                    PacketType::InGameDataInit => {
+                        // let _p = InitStagePacket::from_raw(packet);
+                        // println!("Stage initialized");
+                        break 'readloop;
+                    }
+                    PacketType::EnterGameFailed => {
+                        // let _p = CustomGamePullPacket::from_raw(packet);
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            "Game stopped",
+                        ));
+                    }
+                    PacketType::Ping => {
+                        self.writer.write_all(&packet.as_bytes()).await?;
+                    }
+                    _ => {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "Character selection failed - Invalid packet received: {:?}",
+                                packet.packet_type()
+                            ),
+                        ));
                     }
                 }
             }
@@ -259,8 +257,7 @@ impl ReadyClient {
     }
 
     async fn sync(&mut self) -> Result<(), std::io::Error> {
-        let packet = InGameReadyNotifyPacket::new(self.uid, self.token).as_raw();
-        self.writer.write_all(&packet.as_bytes()).await?;
+        let mut ready_packet_sent = false;
 
         'readloop: loop {
             self.read().await?;
@@ -280,7 +277,13 @@ impl ReadyClient {
                     PacketType::Ping => {
                         self.writer.write_all(&packet.as_bytes()).await?;
                     }
-                    PacketType::InGameReadyStatus => { }
+                    PacketType::InGameReadyStatus => { 
+                        if !ready_packet_sent {
+                            let packet = InGameReadyNotifyPacket::new(self.uid, self.token).as_raw();
+                            self.writer.write_all(&packet.as_bytes()).await?;
+                            ready_packet_sent = true;
+                        }
+                    }
                     _ => {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidData,
@@ -357,6 +360,9 @@ impl InGameClient {
                 }
                 // 일정 시간마다 이동 패킷 전송
                 _ = interval.tick() => {
+                    if self.game_time == 0 {
+                        continue;
+                    }
                     let snapshot = InputSnapshot::KeyEvent {
                         play_elapsed_time_ms: self.game_time,
                         events: if self.input == InputKind::Forward {
@@ -382,8 +388,6 @@ impl InGameClient {
                     self.writer.write_all(&packet.as_raw().as_bytes()).await?;
                 }
             }
-
-            tokio::task::yield_now().await;
         }
     }
 
@@ -445,7 +449,7 @@ impl InGameClient {
                         std::io::ErrorKind::InvalidData,
                         format!(
                             "InGame - Invalid packet received: {:?}",
-                            packet.packet_type()
+                            packet
                         ),
                     ));
                 }

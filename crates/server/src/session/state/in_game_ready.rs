@@ -79,7 +79,9 @@ impl SessionState for SessionInGameReadyState {
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CharacterSelectRequest | PacketType::CharacterReleaseNotify => { /* empty */ }
+            PacketType::CharacterSelectRequest 
+            | PacketType::CharacterReleaseNotify 
+            | PacketType::InGameInput => { /* empty */ }
             PacketType::InGameReadyNotify => {
                 let packet = match InGameReadyNotifyPacket::try_from_raw(packet){
                     Some(packet) => packet,
