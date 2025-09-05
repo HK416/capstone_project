@@ -207,7 +207,8 @@ impl SessionState for SessionFormationState {
             | PacketType::TeamChangeRequest
             | PacketType::DuplicateOptChangeRequest
             | PacketType::UnBalanceOptChangeRequest
-            | PacketType::RoomPlayerBanRequest => { /* empty */ }
+            | PacketType::RoomPlayerBanRequest
+            | PacketType::InGameReadyNotify => { /* empty */ }
             _ => {
                 log::warn!(
                     "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

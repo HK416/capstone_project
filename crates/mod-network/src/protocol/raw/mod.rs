@@ -39,6 +39,11 @@ impl RawPacket {
         self.header.packet_type
     }
 
+    /// 전체 패킷 크기를 반환합니다. (`PacketHeader::byte_size() + data.len()`)
+    pub fn packet_size(&self) -> u16 {
+        self.header.packet_size
+    }
+
     /// 데이터를 가져옵니다.
     pub fn data(&self) -> &[u8] {
         &self.data

@@ -22,7 +22,11 @@ use mod_network::{
         InputEvent, InputKind, InputSnapshot, LoginToken, SelectResult, UserId,
     },
     protocol::{
-        CharacterSelectRequestPacket, CharacterSelectResponsePacket, InGameInputPacket, InGamePullPacket, InGameReadyNotifyPacket, InGameReadyStatusPacket, LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, MatchRequestPacket, MatchRequestRejectedPacket, Packet, PacketParser, PacketType
+        CharacterSelectRequestPacket, CharacterSelectResponsePacket, 
+        InGameInputPacket, InGamePullPacket, InGameReadyNotifyPacket, 
+        LoginFailedPacket, LoginRequestPacket, LoginSuccessPacket, 
+        MatchRequestPacket, MatchRequestRejectedPacket, 
+        Packet, PacketParser, PacketType, 
     },
 };
 
@@ -310,6 +314,7 @@ struct InGameClient {
     
     reader: tokio::net::tcp::OwnedReadHalf, 
     writer: tokio::net::tcp::OwnedWriteHalf, 
+    parser: PacketParser,
 }
 
 impl InGameClient {
@@ -318,6 +323,7 @@ impl InGameClient {
         token: LoginToken,
         reader: tokio::net::tcp::OwnedReadHalf,
         writer: tokio::net::tcp::OwnedWriteHalf,
+        parser: PacketParser,
     ) -> Self {
         Self { 
             uid, 
@@ -326,11 +332,11 @@ impl InGameClient {
             input: InputKind::Backward,
             reader, 
             writer, 
+            parser, 
         }
     }
 
     async fn run(&mut self) -> Result<(), std::io::Error> {
-        let mut parser = PacketParser::new();
         let mut buf = [0; 1024];
         let mut attack_count = 0;
         let mut interval = tokio::time::interval(Duration::from_millis(200));
@@ -348,7 +354,7 @@ impl InGameClient {
                             ));
                         }
                         Ok(n) => {
-                            parser.push(&buf[..n]);
+                            self.parser.push(&buf[..n]);
                             buf[..].fill(0);
                         }
                         Err(e) => {
@@ -356,7 +362,7 @@ impl InGameClient {
                         }
                     }
 
-                    self.process_packet(&mut parser, &mut attack_count).await?;
+                    self.process_packet(&mut attack_count).await?;
                 }
                 // 일정 시간마다 이동 패킷 전송
                 _ = interval.tick() => {
@@ -391,12 +397,8 @@ impl InGameClient {
         }
     }
 
-    async fn process_packet(
-        &mut self, 
-        parser: &mut PacketParser, 
-        attack_count: &mut u32
-    ) -> Result<(), std::io::Error> {
-        while let Some(packet) = parser.pop() {
+    async fn process_packet(&mut self, attack_count: &mut u32) -> Result<(), std::io::Error> {
+        while let Some(packet) = self.parser.pop() {
             if packet.packet_type() == PacketType::Ping {
                 // println!("Received ping packet");
                 self.writer.write_all(&packet.as_bytes()).await?;
@@ -491,6 +493,7 @@ impl Client {
             ready_client.token,
             ready_client.reader,
             ready_client.writer,
+            ready_client.packet_parser
         );
         match client.run().await {
             Ok(()) => {}
