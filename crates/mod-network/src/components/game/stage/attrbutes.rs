@@ -284,7 +284,7 @@ impl StageAttributes {
         drop(file);
 
         // 충돌체 데이터를 구문 분석합니다.
-        let collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
+        let mut collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
             log::error!(
                 "failed to parse file. (PATH:{}, REASON:{})",
                 path.display(),
@@ -292,6 +292,7 @@ impl StageAttributes {
             );
             StageLoadError::ParsingFailed(e)
         })?;
+        collider.build_bounding_box();
 
         // 블루 팀 안전 지역 충돌체 데이터 파일을 엽니다.
         let mut path = workspace.to_path_buf();
@@ -323,7 +324,7 @@ impl StageAttributes {
         drop(file);
 
         // 충돌체 데이터를 구문 분석합니다.
-        let blue_team_collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
+        let mut blue_team_collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
             log::error!(
                 "failed to parse file. (PATH:{}, REASON:{})",
                 path.display(),
@@ -331,6 +332,7 @@ impl StageAttributes {
             );
             StageLoadError::ParsingFailed(e)
         })?;
+        blue_team_collider.build_bounding_box();
 
         // 레드 팀 안전 지역 충돌체 데이터 파일을 엽니다.
         let mut path = workspace.to_path_buf();
@@ -362,7 +364,7 @@ impl StageAttributes {
         drop(file);
 
         // 충돌체 데이터를 구문 분석합니다.
-        let red_team_collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
+        let mut red_team_collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
             log::error!(
                 "failed to parse file. (PATH:{}, REASON:{})",
                 path.display(),
@@ -370,6 +372,7 @@ impl StageAttributes {
             );
             StageLoadError::ParsingFailed(e)
         })?;
+        red_team_collider.build_bounding_box();
 
         Ok(StageAttributes {
             name: attributes.name,
@@ -535,7 +538,7 @@ impl StageAttributes {
                 Team::Red => ColliderTreeIterator::new(&self.blue_team_collider),
             };
 
-            for collider in iterator {
+            for (collider, _bounding_box) in iterator {
                 if collider.check_point_collision(&glam::vec3a(x, 0.0, z)) {
                     return false;
                 }
@@ -553,7 +556,7 @@ impl StageAttributes {
             Team::Red => ColliderTreeIterator::new(&self.red_team_collider),
         };
 
-        for collider in iterator {
+        for (collider, _bounding_box) in iterator {
             if collider.check_point_collision(&glam::vec3a(x, 0.0, z)) {
                 return true;
             }

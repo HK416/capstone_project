@@ -2,6 +2,8 @@ use glam::Vec3A;
 use pathfinding::prelude::*;
 use std::collections::HashMap;
 
+use mod_physics::collision::StaticCollision;
+
 /// 2D 그리드 지도 시스템 (실제 맵 정보 기반)
 /// - 스테이지의 모든 오브젝트를 2D 그리드로 사전 구축
 /// - 경로탐색 시 빠른 충돌 검사 제공
@@ -108,9 +110,9 @@ impl GridMap2D {
                 // 스테이지의 모든 오브젝트와 충돌 검사
                 let mut is_blocked = false;
 
-                for collider in mod_physics::collision::ColliderTreeIterator::new(&stage.collider) {
+                for (collider, bounding_box) in mod_physics::collision::ColliderTreeIterator::new(&stage.collider) {
                     let aabb_collision = match std::panic::catch_unwind(|| {
-                        collider.check_aabb_collision(&test_aabb)
+                        bounding_box.check_static_collision(&test_aabb)
                     }) {
                         Ok(result) => result,
                         Err(_) => true, // 패닉 시 막힌 것으로 처리

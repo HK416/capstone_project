@@ -22,7 +22,7 @@ use mod_network::{
     },
 };
 use mod_physics::{
-    collision::{Collider, ColliderTreeIterator, DynamicCollision},
+    collision::{Collider, ColliderTreeIterator, DynamicCollision, StaticCollision},
     object3d::{BoundingBox, Frustum, Sphere},
 };
 use rand::{
@@ -1436,16 +1436,18 @@ impl GameWorldInGameRunState {
         velocity: glam::Vec3A,
     ) -> Option<f32> {
         let mut distance = None;
+        
+        // 시작지점과 도착지점을 포함하는 AABB 생성
+        let rad_box = bullet_collider.radius * velocity.signum();
+        let center = glam::Vec3A::from(bullet_collider.center);
+        let start = center - rad_box;
+        let end = center + velocity + rad_box;
+        let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
+        
         let colliders = &stage_attributes.collider;
-        for collider in ColliderTreeIterator::new(colliders) {
-            // 1. broad phase 검사 - 시작지점과 도착지검을 포함하는 AABB 생성
-            let rad_box = bullet_collider.radius * velocity.signum();
-            let center = glam::Vec3A::from(bullet_collider.center);
-            let start = center - rad_box;
-            let end = center + velocity + rad_box;
-            let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
-
-            if collider.check_aabb_collision(&swept_aabb) {
+        for (collider, bounding_box) in ColliderTreeIterator::new(colliders) {
+            // 1. broad phase 검사 - AABB 충돌 검사
+            if bounding_box.check_static_collision(&swept_aabb) {
                 // 2. narrow phase 검사 - 총알과 충돌체의 충돌 검사
                 let details = match collider {
                     Collider::Aabb(collider) => {

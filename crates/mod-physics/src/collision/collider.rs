@@ -22,6 +22,18 @@ pub enum Collider {
 }
 
 impl Collider {
+    pub fn create_bounding_box(&self) -> BoundingBox {
+        match self {
+            Collider::Aabb(b) => b.clone(),
+            Collider::Obb(b) => BoundingBox::from(b),
+            Collider::Capsule(c) => BoundingBox::from(c),
+            Collider::OrientedCapsule(c) => BoundingBox::from(c),
+            Collider::Sphere(s) => BoundingBox::from(s),
+        }
+    }
+}
+
+impl Collider {
     pub fn check_collision(&self, other: &Self) -> bool {
         match other {
             Collider::Aabb(b) => self.check_aabb_collision(b),
