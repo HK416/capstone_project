@@ -51,9 +51,9 @@ pub enum GameWorldStateFlow {
 /// 게임 월드 상태를 실행하는 루프 함수입니다.
 pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
     // tick 초기화
-    const TICK: Duration = Duration::from_millis(10);
+    const TICK: Duration = Duration::from_millis(1);
     let mut interval = tokio::time::interval(TICK);
-    interval.tick().await;
+    let mut previous_time_pt = Instant::now();
 
     // 상태 스텍 초기화
     let mut states: VecDeque<Box<dyn GameWorldState>> = VecDeque::with_capacity(8);
@@ -66,7 +66,9 @@ pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
     world.flows.push(flow);
 
     'running: while world.running {
-        interval.tick().await;
+        let current_time_pt = interval.tick().await;
+        let elapsed = current_time_pt.saturating_duration_since(previous_time_pt);
+        previous_time_pt = current_time_pt;
 
         // 현재 게임 월드 상태에 대한 소유권을 가져옵니다.
         if let Some(mut state) = states.pop_back() {
@@ -88,7 +90,7 @@ pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
 
             if world.running && world.flows.is_empty() {
                 // 현재 상태를 갱신합니다.
-                state.on_advanced(&mut world, TICK);
+                state.on_advanced(&mut world, elapsed);
             }
 
             // 가져온 게임 월드 상태에 대한 소유권을 돌려줍니다.

@@ -164,7 +164,7 @@ impl SessionState for SessionInGameRunState {
     fn on_advanced(&mut self, session: &Arc<Session>, elapsed_time_sec: f32) {
         self.elapsed_time_sec += elapsed_time_sec;
 
-        const TICK: f32 = 1000.0;
+        const TICK: f32 = 1.0;
         if self.elapsed_time_sec >= TICK {
             // 핑 갱신 요청을 보냅니다.
             self.elapsed_time_sec = 0.0;

@@ -33,6 +33,7 @@ pub const MAX_QUEUE_CAPACITY: usize = 64;
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
+    pub(crate) is_ai: bool,
     /// 클라이언트 소켓 주소
     pub(crate) addr: SocketAddr,
     /// AI 세션의 UserId (None for human players)
@@ -71,6 +72,7 @@ impl Session {
             flows: Queue::new(),
             cancel_token: AtomicBool::new(false),
             running: AtomicBool::new(true),
+            is_ai: false,
         }
     }
 
@@ -89,6 +91,7 @@ impl Session {
             flows: mod_parallelism::collections::Queue::new(),
             cancel_token: AtomicBool::new(false),
             running: AtomicBool::new(true),
+            is_ai: true,
         }
     }
 
@@ -201,12 +204,12 @@ pub async fn handle_connection(stream: TcpStream, mut session: Arc<Session>) {
     log::info!("{} start connection.", &session);
 
     // 비동기 네트워크 처리 루프를 실행한다.
-    // let (tcp_reader, tcp_writer) = stream.into_split();
-    // tokio::spawn(tcp_read_loop(tcp_reader, session.clone()));
-    // tokio::spawn(tcp_write_loop(tcp_writer, session.clone()));
+    let (tcp_reader, tcp_writer) = stream.into_split();
+    tokio::spawn(tcp_read_loop(tcp_reader, session.clone()));
+    tokio::spawn(tcp_write_loop(tcp_writer, session.clone()));
 
     // 네트워크 패킷 처리 루프를 실행합니다.
-    session = session_state_loop(stream, session).await;
+    session = session_state_loop(session).await;
 
     log::info!("{} connection closed.", &session);
 }

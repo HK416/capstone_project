@@ -122,12 +122,7 @@ impl ReadyClient {
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
-            self.read().await.map_err(|e| {
-                std::io::Error::new(
-                    e.kind(),
-                    format!("{} - login", e),
-                )
-            })?;
+            self.read().await?;
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
@@ -169,12 +164,7 @@ impl ReadyClient {
         self.writer.write_all(&packet.as_bytes()).await?;
 
         'readloop: loop {
-            self.read().await.map_err(|e| {
-                std::io::Error::new(
-                    e.kind(),
-                    format!("{} - queue", e),
-                )
-            })?;
+            self.read().await?;
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
@@ -213,12 +203,7 @@ impl ReadyClient {
 
         // 캐릭터 선택 완료 대기
         'readloop: loop {
-            self.read().await.map_err(|e| {
-                std::io::Error::new(
-                    e.kind(),
-                    format!("{} - select_character", e),
-                )
-            })?;
+            self.read().await?;
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
@@ -279,12 +264,7 @@ impl ReadyClient {
         let mut ready_packet_sent = false;
 
         'readloop: loop {
-            self.read().await.map_err(|e| {
-                std::io::Error::new(
-                    e.kind(),
-                    format!("{} - sync", e),
-                )
-            })?;
+            self.read().await?;
 
             while let Some(packet) = self.packet_parser.pop() {
                 match packet.packet_type() {
