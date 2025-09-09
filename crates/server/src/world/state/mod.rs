@@ -5,7 +5,7 @@ mod room;
 
 use std::{collections::VecDeque, fmt};
 
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 
 use crate::world::{get_pool, get_retires};
 
@@ -51,9 +51,9 @@ pub enum GameWorldStateFlow {
 /// 게임 월드 상태를 실행하는 루프 함수입니다.
 pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
     // tick 초기화
-    const TICK: Duration = Duration::from_millis(1);
+    const TICK: Duration = Duration::from_millis(10);
     let mut interval = tokio::time::interval(TICK);
-    let mut previous_time_pt = Instant::now();
+    interval.tick().await;
 
     // 상태 스텍 초기화
     let mut states: VecDeque<Box<dyn GameWorldState>> = VecDeque::with_capacity(8);
@@ -66,9 +66,7 @@ pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
     world.flows.push(flow);
 
     'running: while world.running {
-        let current_time_pt = interval.tick().await;
-        let elapsed = current_time_pt.saturating_duration_since(previous_time_pt);
-        previous_time_pt = current_time_pt;
+        interval.tick().await;
 
         // 현재 게임 월드 상태에 대한 소유권을 가져옵니다.
         if let Some(mut state) = states.pop_back() {
@@ -90,7 +88,7 @@ pub async fn world_state_loop(mut world: GameWorld, is_custom: bool) {
 
             if world.running && world.flows.is_empty() {
                 // 현재 상태를 갱신합니다.
-                state.on_advanced(&mut world, elapsed);
+                state.on_advanced(&mut world, TICK);
             }
 
             // 가져온 게임 월드 상태에 대한 소유권을 돌려줍니다.

@@ -286,7 +286,7 @@ impl SessionState for SessionLobbyState {
         // 세션 상태 경과 시간을 갱신합니다.
         self.elapsed_time_sec += elapsed_time_sec;
 
-        const TICK: f32 = 1.0;
+        const TICK: f32 = 1000.0;
         if self.elapsed_time_sec >= TICK {
             self.elapsed_time_sec = 0.0;
 

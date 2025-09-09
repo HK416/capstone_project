@@ -33,7 +33,6 @@ pub const MAX_QUEUE_CAPACITY: usize = 64;
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
-    pub(crate) is_ai: bool,
     /// 클라이언트 소켓 주소
     pub(crate) addr: SocketAddr,
     /// AI 세션의 UserId (None for human players)
@@ -72,7 +71,6 @@ impl Session {
             flows: Queue::new(),
             cancel_token: AtomicBool::new(false),
             running: AtomicBool::new(true),
-            is_ai: false,
         }
     }
 
@@ -91,7 +89,6 @@ impl Session {
             flows: mod_parallelism::collections::Queue::new(),
             cancel_token: AtomicBool::new(false),
             running: AtomicBool::new(true),
-            is_ai: true,
         }
     }
 
