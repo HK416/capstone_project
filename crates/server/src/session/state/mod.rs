@@ -24,13 +24,11 @@ mod room;
 mod verify;
 
 use std::{
-    collections::VecDeque,
-    fmt,
-    sync::{Arc, atomic::Ordering as MemOrdering},
+    collections::VecDeque, fmt, io::ErrorKind, sync::{atomic::Ordering as MemOrdering, Arc}
 };
 
-use mod_network::protocol::{Packet, PacketType, PingTestPacket, RawPacket};
-use tokio::time::{Duration, Instant};
+use mod_network::protocol::{Packet, PacketParser, PacketType, PingTestPacket, RawPacket};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, time::{Duration, Instant}};
 
 pub use self::{
     formation::*, in_game_ready::*, in_game_run::*, lobby::*, login::*, multiplay::*, queued::*,
@@ -38,6 +36,9 @@ pub use self::{
 };
 
 use super::Session;
+
+/// 수신된 패킷 데이터 대기열의 최대 용량입니다.
+pub const MAX_QUEUE_CAPACITY: usize = 64;
 
 /// 세션 상태가 구현해야하는 기능을 모아놓은 trait입니다.
 #[allow(unused_variables)]
@@ -85,7 +86,7 @@ struct PingState {
 
 impl PingState {
     const MAX_SAMPLES: usize = 20;
-    const MAX_PING_TIME: u16 = 250;
+    const MAX_PING_TIME_MS: u16 = 1000;
 
     fn new() -> Self {
         Self {
@@ -111,77 +112,197 @@ impl PingState {
 }
 
 /// 세션 상태를 실행하는 루프 함수입니다.
-pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
+pub async fn session_state_loop(
+    mut stream: TcpStream, 
+    session: Arc<Session>
+) -> Arc<Session> {
     // tick 초기화
     const TICK: Duration = Duration::from_millis(1);
     let mut interval = tokio::time::interval(TICK);
-    let mut previous_time_pt = interval.tick().await;
+    interval.tick().await;
 
     // 상태 스텍 초기화
     let mut states: VecDeque<Box<dyn SessionState>> = VecDeque::with_capacity(8);
-    let state = Box::new(SessionVerifyState::new());
-    let flow = SessionStateFlow::Reset(state);
+    let state = SessionVerifyState::new();
+    let flow = SessionStateFlow::Reset(Box::new(state));
     session.flows.push(flow);
 
     // 핑 측정 초기화
     let mut ping_state = PingState::new();
     let mut elapsed_time_ms = 0;
 
-    while session.is_running() {
-        let current_time_pt = interval.tick().await;
-        let elapsed = current_time_pt.saturating_duration_since(previous_time_pt);
-        previous_time_pt = current_time_pt;
+    let mut read_buf = vec![0; 512];
+    let mut packet_parser = PacketParser::new();
 
-        // 핑 측정 경과 시간을 갱신합니다.
-        elapsed_time_ms += elapsed.as_millis() as u16;
-        // MAX_PING_TIME 이후에도 처리되지 않은 핑 측정 이벤트는 제거합니다.
-        if elapsed_time_ms >= PingState::MAX_PING_TIME {
-            elapsed_time_ms = 0;
-            send_ping_packet(&session, &mut ping_state, current_time_pt);
-        }
+    'session_loop: while session.is_running() {
+        tokio::select! {
+            current_time_pt = interval.tick() => {
+                elapsed_time_ms += TICK.as_millis() as u16;
 
-        // 현재 세션 상태에 대한 소유권을 가져옵니다.
-        if let Some(mut state) = states.pop_back() {
-            // 현재 세션 상태에서 패킷을 처리합니다.
-            while let Some(packet) = session.received_packets.pop() {
-                // 세션이 종료된 경우 반복문을 탈출합니다.
-                if !session.is_running() {
-                    break;
+                // 현재 세션 상태에 대한 소유권을 가져옵니다.
+                if let Some(state) = states.back_mut() {
+                    // 현재 상태를 갱신합니다.
+                    state.on_advanced(&session, interval.period().as_secs_f32());
                 }
 
-                // 핑 측정 패킷을 처리합니다.
-                if packet.packet_type() == PacketType::Ping {
-                    match PingTestPacket::try_from_raw(packet) {
-                        Some(packet) => {
-                            handle_ping_packet(&session, &mut ping_state, packet, current_time_pt);
-                            continue;
+                if elapsed_time_ms >= PingState::MAX_PING_TIME_MS {
+                    elapsed_time_ms = 0;
+                    send_ping_packet(&session, &mut ping_state, current_time_pt);
+                }
+            },
+            read_result = stream.read(&mut read_buf) => {
+                let current_time_pt = Instant::now();
+                match read_result {
+                    Ok(0) => {
+                        log::debug!("{} connection closed.", &session);
+                        session.close();
+                        break;
+                    }
+                    Ok(n) => {
+                        log::trace!("{} data received (SIZE:{}, BYTES:{:?})", &session, n, &read_buf);
+                        if packet_parser.len() >= MAX_QUEUE_CAPACITY {
+                            // 앞쪽 패킷들을 무시합니다.
+                            log::warn!("the number of received packets exceeded the allowed capacity! clearing received packet data.");
+                            packet_parser.clear();
                         }
-                        None => {
-                            session.close();
+                        packet_parser.push(&read_buf[..n]);
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
+                        log::debug!("{} connection closed.", &session);
+                        session.close();
+                        break;
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
+                        log::debug!("{} connection closed.", &session);
+                        session.close();
+                        break;
+                    }
+                    Err(e) => {
+                        log::error!("{} {}", &session, e);
+                        session.close();
+                        break;
+                    }
+                }
+
+                // 현재 세션 상태에 대한 소유권을 가져옵니다.
+                if let Some(state) = states.back_mut() {
+                    while let Some(packet) = packet_parser.pop() {
+                        log::debug!("{} packet received (PACKET:{:?})", &session, &packet);
+                        
+                        // 핑 측정 패킷을 처리합니다.
+                        if packet.packet_type() == PacketType::Ping {
+                            match PingTestPacket::try_from_raw(packet) {
+                                Some(packet) => {
+                                    handle_ping_packet(&session, &mut ping_state, packet, current_time_pt);
+                                    continue;
+                                }
+                                None => {
+                                    session.close();
+                                    break;
+                                }
+                            };
+                        }
+                    
+                        // 현재 세션 상태에서 패킷을 처리합니다.
+                        state.handle_packets(&session, packet);
+
+                        if !session.flows.is_empty() {
+                            // 세션 상태가 변경된 경우 즉시 빠져나옵니다.
                             break;
                         }
-                    };
+                    }
                 }
-
-                // 패킷이 취소된 경우 처리를 생략합니다.
-                if session.packet_canceled() {
-                    continue;
-                }
-
-                state.handle_packets(&session, packet);
             }
+            // _ = session.tcp_write_notify.notified() => { },
+        }
 
-            // 현재 상태를 갱신합니다.
-            state.on_advanced(&session, elapsed.as_secs_f32());
-
-            // 가져온 세션 상태에 대한 소유권을 돌려줍니다.
-            states.push_back(state);
+        // 대기열에서 패킷을 가져온다.
+        while let Some(packet) = session.tcp_sender.pop() {
+            // 소켓에 데이터를 작성한다.
+            let bytes = packet.as_bytes();
+            let result = stream.write_all(&bytes).await;
+            match result {
+                Ok(_) => {
+                    log::debug!("{} packet sent (PACKET:{:?})", &session, &packet);
+                }
+                Err(ref e) if e.kind() == ErrorKind::ConnectionReset => {
+                    log::debug!("{} connection closed.", &session);
+                    session.close();
+                    break 'session_loop;
+                }
+                Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
+                    log::debug!("{} connection closed.", &session);
+                    session.close();
+                    break 'session_loop;
+                }
+                Err(e) => {
+                    log::error!("{} {}", &session, e);
+                    session.close();
+                    break 'session_loop;
+                }
+            };
         }
 
         // 세션 상태 흐름을 처리합니다.
         while let Some(flow) = session.flows.pop() {
             handle_session_state_flow(&mut states, &session, flow);
         }
+
+        // tokio::time::sleep(Duration::from_millis(1)).await;
+
+        // let current_time_pt = interval.tick().await;
+        // let elapsed = current_time_pt.saturating_duration_since(previous_time_pt);
+        // previous_time_pt = current_time_pt;
+
+        // // 핑 측정 경과 시간을 갱신합니다.
+        // elapsed_time_ms += elapsed.as_millis() as u16;
+        // if elapsed_time_ms >= PingState::MAX_PING_TIME {
+        //     elapsed_time_ms = 0;
+        //     send_ping_packet(&session, &mut ping_state, current_time_pt);
+        // }
+
+        // // 현재 세션 상태에 대한 소유권을 가져옵니다.
+        // if let Some(mut state) = states.pop_back() {
+        //     // 현재 세션 상태에서 패킷을 처리합니다.
+        //     while let Some(packet) = session.received_packets.pop() {
+        //         // 세션이 종료된 경우 반복문을 탈출합니다.
+        //         if !session.is_running() {
+        //             break;
+        //         }
+
+        //         // 핑 측정 패킷을 처리합니다.
+        //         if packet.packet_type() == PacketType::Ping {
+        //             match PingTestPacket::try_from_raw(packet) {
+        //                 Some(packet) => {
+        //                     handle_ping_packet(&session, &mut ping_state, packet, current_time_pt);
+        //                     continue;
+        //                 }
+        //                 None => {
+        //                     session.close();
+        //                     break;
+        //                 }
+        //             };
+        //         }
+
+        //         // 패킷이 취소된 경우 처리를 생략합니다.
+        //         if session.packet_canceled() {
+        //             continue;
+        //         }
+
+        //         state.handle_packets(&session, packet);
+        //     }
+
+        //     // 현재 상태를 갱신합니다.
+        //     state.on_advanced(&session, elapsed.as_secs_f32());
+
+        //     // 가져온 세션 상태에 대한 소유권을 돌려줍니다.
+        //     states.push_back(state);
+        // }
+
+        // // 세션 상태 흐름을 처리합니다.
+        // while let Some(flow) = session.flows.pop() {
+        //     handle_session_state_flow(&mut states, &session, flow);
+        // }
     }
 
     handle_clear_session_state_flow(&mut states, &session);
@@ -193,8 +314,9 @@ fn send_ping_packet(
     ping_state: &mut PingState, 
     current_time_pt: Instant
 ) {
+    // MAX_PING_TIME 이후에도 처리되지 않은 핑 측정 이벤트는 제거합니다.
     if ping_state.recent.is_some() {
-        update_ping(&session, ping_state, PingState::MAX_PING_TIME as u32);
+        update_ping(&session, ping_state, PingState::MAX_PING_TIME_MS as u32);
     }
 
     // 핑 측정 이벤트를 전송합니다.
@@ -216,7 +338,7 @@ fn handle_ping_packet(
             let elapsed_time_ms = current_time_pt
                 .saturating_duration_since(time_pt)
                 .as_millis()
-                .min(PingState::MAX_PING_TIME as u128)
+                .min(PingState::MAX_PING_TIME_MS as u128)
                 as u32;
 
             // 핑을 갱신합니다.
