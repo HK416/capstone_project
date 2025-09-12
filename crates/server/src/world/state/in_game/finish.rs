@@ -608,16 +608,18 @@ impl GameWorldState for GameWorldInGameFinishState {
             ));
         }
 
-        // 게임 결과를 DB에 저장합니다.
-        let ps = players.clone();
-        let pt = self.play_time_ms;
-        let winner = self.winner;
-        tokio::spawn(async move {
-            let conn = DbConnection::get_connection();
-            conn.save_game_result(pt, winner, &ps)
-                .await
-                .expect("Failed to save game result");
-        });
+        // 커스텀 게임이 아닌 경우 결과를 DB에 저장합니다.
+        if !self.custom_game {
+            let ps = players.clone();
+            let pt = self.play_time_ms;
+            let winner = self.winner;
+            tokio::spawn(async move {
+                let conn = DbConnection::get_connection();
+                conn.save_game_result(pt, winner, &ps)
+                    .await
+                    .expect("Failed to save game result");
+            });
+        }
 
         // 게임 종료 패킷을 전송합니다.
         let packet = InGameFinishPacket::new(self.play_time_ms, self.winner, players);

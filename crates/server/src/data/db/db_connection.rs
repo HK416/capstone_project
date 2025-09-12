@@ -48,17 +48,7 @@ impl DbConnection {
 }
 
 impl DbConnection {
-    #[deprecated(note = "AOF 백업을 사용하므로 이 함수는 필요하지 않습니다.")]
-    pub async fn save(&self) -> RedisResult<()> {
-        let mut conn = self.manager.clone();
-
-        redis::cmd("BGSAVE").query_async::<()>(&mut conn).await?;
-
-        Ok(())
-    }
-
     /// 다음 uid를 가져옵니다.  
-    /// 고유한 uid를 유지할 수 있도록 save를 자동으로 호출합니다.
     pub async fn get_next_uid(&self) -> RedisResult<UserId> {
         let mut conn = self.manager.clone();
 

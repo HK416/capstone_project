@@ -1,18 +1,3 @@
-use std::net::SocketAddr;
-impl GameWorld {
-    pub fn get_session_by_userid(&self, uid: &UserId) -> Option<Arc<Session>> {
-        if let Some(session) = self.sessions.iter().find_map(|(session, user)| {
-            if user == uid {
-                Some(session.clone())
-            } else {
-                None
-            }
-        }) {
-            return Some(session);
-        }
-        self.ai_sessions.get(uid).cloned()
-    }
-}
 mod event;
 mod pool;
 mod state;
@@ -96,6 +81,19 @@ impl GameWorld {
         self.players.clear();
         while let Some(_) = self.events.pop() {}
         while let Some(_) = self.flows.pop() {}
+    }
+
+    pub fn get_session_by_userid(&self, uid: &UserId) -> Option<Arc<Session>> {
+        if let Some(session) = self.sessions.iter().find_map(|(session, user)| {
+            if user == uid {
+                Some(session.clone())
+            } else {
+                None
+            }
+        }) {
+            return Some(session);
+        }
+        self.ai_sessions.get(uid).cloned()
     }
 }
 
