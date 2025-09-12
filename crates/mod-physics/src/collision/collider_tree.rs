@@ -52,25 +52,33 @@ impl ColliderTree {
 
     /// `bound`와 AABB 충돌하는 모든 Collider를 반환합니다.
     pub fn search_aabb_collision(&self, bound: BoundingBox) -> Vec<&Collider> {
-        let mut result = Vec::with_capacity(16);
-        
+        let bound_min = bound.center - bound.extents();
+        let bound_max = bound.center + bound.extents();
+
+        let mut result = Vec::with_capacity(16);        
         let mut stack = Vec::with_capacity(16);
         stack.push(&*self.root);
 
         while let Some(node) = stack.pop() {
-            if !node.children_bound.check_static_collision(&bound) {
-                continue;
-            }
-
             if node.bound.check_static_collision(&bound) {
                 result.push(&node.collider);
             }
 
+            let axis = node.dim.clone() as usize;
+
             if let Some(left) = &node.left {
-                stack.push(left);
+                let left_bound = left.children_bound;
+                let left_max = left_bound.center[axis] + left_bound.extents()[axis];
+                if bound_min[axis] <= left_max {
+                    stack.push(left);
+                }
             }
             if let Some(right) = &node.right {
-                stack.push(right);
+                let right_bound = right.children_bound;
+                let right_min = right_bound.center[axis] - right_bound.extents()[axis];
+                if bound_max[axis] >= right_min {
+                    stack.push(right);
+                }
             }
         }
 
