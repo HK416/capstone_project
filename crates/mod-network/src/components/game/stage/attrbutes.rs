@@ -11,7 +11,7 @@ use std::{
     path::Path,
 };
 
-use mod_physics::collision::{Collider, ColliderTree, ColliderTreeIterator};
+use mod_physics::collision::{Collider, ColliderTree};
 
 use crate::components::{
     GlobalLightData, HeightData, PropAttributeData, RotationY, StageAttributesData, Team,
@@ -284,7 +284,7 @@ impl StageAttributes {
         drop(file);
 
         // 충돌체 데이터를 구문 분석합니다.
-        let mut collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
+        let collider = ColliderTree::load_from_json(&buf).map_err(|e| {
             log::error!(
                 "failed to parse file. (PATH:{}, REASON:{})",
                 path.display(),
@@ -292,7 +292,6 @@ impl StageAttributes {
             );
             StageLoadError::ParsingFailed(e)
         })?;
-        collider.build_bounding_box();
 
         // 블루 팀 안전 지역 충돌체 데이터 파일을 엽니다.
         let mut path = workspace.to_path_buf();
@@ -324,7 +323,7 @@ impl StageAttributes {
         drop(file);
 
         // 충돌체 데이터를 구문 분석합니다.
-        let mut blue_team_collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
+        let blue_team_collider = ColliderTree::load_from_json(&buf).map_err(|e| {
             log::error!(
                 "failed to parse file. (PATH:{}, REASON:{})",
                 path.display(),
@@ -332,7 +331,6 @@ impl StageAttributes {
             );
             StageLoadError::ParsingFailed(e)
         })?;
-        blue_team_collider.build_bounding_box();
 
         // 레드 팀 안전 지역 충돌체 데이터 파일을 엽니다.
         let mut path = workspace.to_path_buf();
@@ -364,7 +362,7 @@ impl StageAttributes {
         drop(file);
 
         // 충돌체 데이터를 구문 분석합니다.
-        let mut red_team_collider: ColliderTree = serde_json::from_slice(&buf).map_err(|e| {
+        let red_team_collider = ColliderTree::load_from_json(&buf).map_err(|e| {
             log::error!(
                 "failed to parse file. (PATH:{}, REASON:{})",
                 path.display(),
@@ -372,7 +370,6 @@ impl StageAttributes {
             );
             StageLoadError::ParsingFailed(e)
         })?;
-        red_team_collider.build_bounding_box();
 
         Ok(StageAttributes {
             name: attributes.name,
@@ -532,36 +529,22 @@ impl StageAttributes {
         let j = ((z + 0.5 * self.total_depth) / self.area_depth).floor() as usize;
 
         if i < n && j < m {
-            // 다른 팀의 안전구연인 경우 invalid
-            let iterator = match team {
-                Team::Blue => ColliderTreeIterator::new(&self.red_team_collider),
-                Team::Red => ColliderTreeIterator::new(&self.blue_team_collider),
+            // 다른 팀의 안전구역인 경우 invalid
+            let collider_tree = match team {
+                Team::Blue => &self.red_team_collider,
+                Team::Red => &self.blue_team_collider,
             };
-
-            for (collider, _bounding_box) in iterator {
-                if collider.check_point_collision(&glam::vec3a(x, 0.0, z)) {
-                    return false;
-                }
-            }
-
-            true
+            collider_tree.search_point_collision(&glam::vec3(x, 0.0, z)).is_empty()
         } else {
             false
         }
     }
 
     pub fn is_safe_area(&self, team: Team, x: f32, z: f32) -> bool {
-        let iterator = match team {
-            Team::Blue => ColliderTreeIterator::new(&self.blue_team_collider),
-            Team::Red => ColliderTreeIterator::new(&self.red_team_collider),
+        let collider_tree = match team {
+            Team::Blue => &self.blue_team_collider,
+            Team::Red => &self.red_team_collider,
         };
-
-        for (collider, _bounding_box) in iterator {
-            if collider.check_point_collision(&glam::vec3a(x, 0.0, z)) {
-                return true;
-            }
-        }
-
-        false
+        !collider_tree.search_point_collision(&glam::vec3(x, 0.0, z)).is_empty()
     }
 }

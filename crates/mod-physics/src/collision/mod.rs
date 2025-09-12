@@ -8,7 +8,7 @@ mod ray_intersect;
 
 pub use convex_hull::ConvexHull;
 pub use collider::Collider;
-pub use collider_tree::{ColliderTree, ColliderTreeIterator};
+pub use collider_tree::ColliderTree;
 pub use static_collision::{StaticCollision, StaticCollisionDetails};
 pub use dynamic_collision::{DynamicCollision, DynamicCollisionDetails};
 pub use ray_intersect::{Ray, RayIntersect, RayIntersectInfo};

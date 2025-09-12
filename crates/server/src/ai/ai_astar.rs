@@ -110,47 +110,39 @@ impl GridMap2D {
                 // 스테이지의 모든 오브젝트와 충돌 검사
                 let mut is_blocked = false;
 
-                for (collider, bounding_box) in mod_physics::collision::ColliderTreeIterator::new(&stage.collider) {
-                    let aabb_collision = match std::panic::catch_unwind(|| {
-                        bounding_box.check_static_collision(&test_aabb)
+                let collisions = stage.collider.search_aabb_collision(test_aabb);
+                for collider in collisions {
+                    let collision_result = match std::panic::catch_unwind(|| {
+                        test_collider.check_collision(collider)
                     }) {
                         Ok(result) => result,
                         Err(_) => true, // 패닉 시 막힌 것으로 처리
                     };
 
-                    if aabb_collision {
-                        let collision_result = match std::panic::catch_unwind(|| {
-                            test_collider.check_collision(collider)
-                        }) {
-                            Ok(result) => result,
-                            Err(_) => true, // 패닉 시 막힌 것으로 처리
-                        };
-
-                        if collision_result {
-                            is_blocked = true;
-                            // 상세 충돌 정보 로깅 (처음 몇 개만)
-                            if detailed_collision_count < 10 {
-                                let collider_type = match collider {
-                                    mod_physics::collision::Collider::Aabb(_) => "AABB",
-                                    mod_physics::collision::Collider::Obb(_) => "OBB",
-                                    mod_physics::collision::Collider::Capsule(_) => "Capsule",
-                                    mod_physics::collision::Collider::OrientedCapsule(_) => {
-                                        "OrientedCapsule"
-                                    }
-                                    mod_physics::collision::Collider::Sphere(_) => "Sphere",
-                                };
-                                log::debug!(
-                                    "[GRID MAP] Obstacle detected at grid({},{}) world({:.1},{:.1}) - type: {}",
-                                    grid_x,
-                                    grid_y,
-                                    world_x,
-                                    world_z,
-                                    collider_type
-                                );
-                                detailed_collision_count += 1;
-                            }
-                            break;
+                    if collision_result {
+                        is_blocked = true;
+                        // 상세 충돌 정보 로깅 (처음 몇 개만)
+                        if detailed_collision_count < 10 {
+                            let collider_type = match collider {
+                                mod_physics::collision::Collider::Aabb(_) => "AABB",
+                                mod_physics::collision::Collider::Obb(_) => "OBB",
+                                mod_physics::collision::Collider::Capsule(_) => "Capsule",
+                                mod_physics::collision::Collider::OrientedCapsule(_) => {
+                                    "OrientedCapsule"
+                                }
+                                mod_physics::collision::Collider::Sphere(_) => "Sphere",
+                            };
+                            log::debug!(
+                                "[GRID MAP] Obstacle detected at grid({},{}) world({:.1},{:.1}) - type: {}",
+                                grid_x,
+                                grid_y,
+                                world_x,
+                                world_z,
+                                collider_type
+                            );
+                            detailed_collision_count += 1;
                         }
+                        break;
                     }
                 }
 
@@ -180,10 +172,7 @@ impl GridMap2D {
         );
 
         // 콜라이더 트리 통계
-        let mut total_colliders = 0;
-        for _collider in mod_physics::collision::ColliderTreeIterator::new(&stage.collider) {
-            total_colliders += 1;
-        }
+        let total_colliders = stage.collider.count_colliders();
         log::info!(
             "[GRID MAP] Stage has {} total colliders for obstacle detection",
             total_colliders

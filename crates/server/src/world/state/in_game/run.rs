@@ -22,7 +22,7 @@ use mod_network::{
     },
 };
 use mod_physics::{
-    collision::{Collider, ColliderTreeIterator, DynamicCollision, StaticCollision},
+    collision::{Collider, DynamicCollision},
     object3d::{BoundingBox, Frustum, Sphere},
 };
 use rand::{
@@ -1444,39 +1444,37 @@ impl GameWorldInGameRunState {
         let end = center + velocity + rad_box;
         let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
         
-        let colliders = &stage_attributes.collider;
-        for (collider, bounding_box) in ColliderTreeIterator::new(colliders) {
-            // 1. broad phase 검사 - AABB 충돌 검사
-            if bounding_box.check_static_collision(&swept_aabb) {
-                // 2. narrow phase 검사 - 총알과 충돌체의 충돌 검사
-                let details = match collider {
-                    Collider::Aabb(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::Obb(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::Capsule(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::OrientedCapsule(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::Sphere(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                };
+        // 1. broad phase 검사 - AABB KD-Tree 충돌 검사
+        let collisions = stage_attributes.collider.search_aabb_collision(swept_aabb);
+        for collider in collisions {
+            // 2. narrow phase 검사 - 총알과 충돌체의 충돌 검사
+            let details = match collider {
+                Collider::Aabb(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::Obb(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::Capsule(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::OrientedCapsule(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::Sphere(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+            };
 
-                if let Some(details) = details {
-                    match distance.as_mut() {
-                        Some(distance) => {
-                            if *distance > details.distance {
-                                *distance = details.distance;
-                            }
+            if let Some(details) = details {
+                match distance.as_mut() {
+                    Some(distance) => {
+                        if *distance > details.distance {
+                            *distance = details.distance;
                         }
-                        None => {
-                            distance = Some(details.distance);
-                        }
+                    }
+                    None => {
+                        distance = Some(details.distance);
                     }
                 }
             }
