@@ -16,7 +16,7 @@ jobs:
 
       # 2. rclone을 설치하고 실행하는 Action을 사용합니다.
       - name: Upload to OneDrive using rclone
-        uses: rclone/rclone-action@v1.4.0
+        uses: rclone/rclone-action@v1
         with:
           # GitHub Secrets에 저장한 rclone 설정 정보를 가져옵니다.
           rclone_config: ${{ secrets.RCLONE_CONF }}
