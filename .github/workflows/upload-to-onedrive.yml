@@ -25,6 +25,6 @@ jobs:
           echo '${{ secrets.RCLONE_CONF }}' > ~/.config/rclone/rclone.conf
 
       # 4. OneDrive로 업로드
-      - name: Upload to OneDrive
+      - name: Sync to OneDrive
         run: |
-          rclone copy . onedrive:GitHub/${{ github.event.repository.name }} -v
+          rclone sync . onedrive:GitHub/${{ github.event.repository.name }} -v
