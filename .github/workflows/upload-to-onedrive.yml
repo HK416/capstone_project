@@ -1,6 +1,5 @@
 name: Upload to OneDrive
 
-# main 브랜치에 push 이벤트가 발생했을 때 이 워크플로우를 실행합니다.
 on:
   push:
     branches:
@@ -8,20 +7,24 @@ on:
 
 jobs:
   upload:
-    runs-on: ubuntu-latest # 실행 환경
+    runs-on: ubuntu-latest
     steps:
-      # 1. 저장소의 코드를 runner로 가져옵니다.
+      # 1. 저장소 체크아웃
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. rclone을 설치하고 실행하는 Action을 사용합니다.
-      - name: Upload to OneDrive using rclone
-        uses: rclone/rclone-action@v1
-        with:
-          # GitHub Secrets에 저장한 rclone 설정 정보를 가져옵니다.
-          rclone_config: ${{ secrets.RCLONE_CONF }}
-          
-          # 실제 실행할 rclone 명령어
-          # 현재 디렉토리(.)의 모든 파일을 onedrive 원격 저장소의 'GitHub/내프로젝트' 폴더로 복사합니다.
-          # onedrive: 뒤의 경로는 원하는 대로 수정하세요.
-          args: copy . onedrive:GitHub/${{ github.event.repository.name }} -v
+      # 2. GitHub Runner (서버)에 rclone 설치
+      - name: Install rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      # 3. rclone 설정 파일을 GitHub Secrets에서 가져와서 Runner에 저장
+      - name: Configure rclone
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "${{ secrets.RCLONE_CONF }}" > ~/.config/rclone/rclone.conf
+
+      # 4. OneDrive로 업로드
+      - name: Upload to OneDrive
+        run: |
+          rclone copy . onedrive:GitHub/${{ github.event.repository.name }} -v
