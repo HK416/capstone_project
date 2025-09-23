@@ -79,7 +79,9 @@ impl SessionState for SessionInGameReadyState {
     fn handle_packets(&mut self, session: &Arc<Session>, packet: RawPacket) {
         let packet_type = packet.packet_type();
         match packet_type {
-            PacketType::CharacterSelectRequest | PacketType::CharacterReleaseNotify => { /* empty */ }
+            PacketType::CharacterSelectRequest 
+            | PacketType::CharacterReleaseNotify 
+            | PacketType::InGameInput => { /* empty */ }
             PacketType::InGameReadyNotify => {
                 let packet = match InGameReadyNotifyPacket::try_from_raw(packet){
                     Some(packet) => packet,
@@ -114,7 +116,7 @@ impl SessionState for SessionInGameReadyState {
     fn on_advanced(&mut self, session: &Arc<Session>, elapsed_time_sec: f32) {
         self.elapsed_time_sec += elapsed_time_sec;
 
-        const TICK: f32 = 1.0;
+        const TICK: f32 = 1000.0;
         if self.elapsed_time_sec >= TICK {
             // 핑 갱신 요청을 보냅니다.
             self.elapsed_time_sec = 0.0;

@@ -4,7 +4,7 @@
 use std::f32::{consts::PI, EPSILON};
 
 use mod_physics::{
-    collision::{Collider, ColliderTreeIterator},
+    collision::Collider,
     object3d::BoundingBox,
 };
 
@@ -154,11 +154,8 @@ pub fn update_player_translation(
     let player_aabb = BoundingBox::from(&player_capsule);
     let player_collider = Collider::Capsule(player_capsule);
 
-    for collider in ColliderTreeIterator::new(&stage_attributes.collider) {
-        if !collider.check_aabb_collision(&player_aabb) {
-            continue;
-        }
-
+    let collisions = stage_attributes.collider.search_aabb_collision(player_aabb);
+    for collider in collisions {
         if let Some(details) = player_collider.check_collision_details(collider) {
             new_p += details.normal * details.penetration;
 

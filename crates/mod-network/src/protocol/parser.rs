@@ -18,7 +18,7 @@ pub struct PacketParser {
 impl PacketParser {
     pub fn new() -> Self {
         Self {
-            queue: VecDeque::new(),
+            queue: VecDeque::with_capacity(16),
         }
     }
 

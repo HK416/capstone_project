@@ -207,7 +207,8 @@ impl SessionState for SessionFormationState {
             | PacketType::TeamChangeRequest
             | PacketType::DuplicateOptChangeRequest
             | PacketType::UnBalanceOptChangeRequest
-            | PacketType::RoomPlayerBanRequest => { /* empty */ }
+            | PacketType::RoomPlayerBanRequest
+            | PacketType::InGameReadyNotify => { /* empty */ }
             _ => {
                 log::warn!(
                     "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",
@@ -232,7 +233,7 @@ impl SessionState for SessionFormationState {
         self.request_delay_time = (self.request_delay_time - elapsed_time_sec).max(0.0);
         self.elapsed_time_sec += elapsed_time_sec;
 
-        const TICK: f32 = 1.0;
+        const TICK: f32 = 1000.0;
         if self.elapsed_time_sec >= TICK {
             // 핑 갱신 요청을 보냅니다.
             self.elapsed_time_sec = 0.0;

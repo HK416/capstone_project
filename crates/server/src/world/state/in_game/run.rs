@@ -22,7 +22,7 @@ use mod_network::{
     },
 };
 use mod_physics::{
-    collision::{Collider, ColliderTreeIterator, DynamicCollision},
+    collision::{Collider, DynamicCollision},
     object3d::{BoundingBox, Frustum, Sphere},
 };
 use rand::{
@@ -1436,45 +1436,45 @@ impl GameWorldInGameRunState {
         velocity: glam::Vec3A,
     ) -> Option<f32> {
         let mut distance = None;
-        let colliders = &stage_attributes.collider;
-        for collider in ColliderTreeIterator::new(colliders) {
-            // 1. broad phase 검사 - 시작지점과 도착지검을 포함하는 AABB 생성
-            let rad_box = bullet_collider.radius * velocity.signum();
-            let center = glam::Vec3A::from(bullet_collider.center);
-            let start = center - rad_box;
-            let end = center + velocity + rad_box;
-            let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
+        
+        // 시작지점과 도착지점을 포함하는 AABB 생성
+        let rad_box = bullet_collider.radius * velocity.signum();
+        let center = glam::Vec3A::from(bullet_collider.center);
+        let start = center - rad_box;
+        let end = center + velocity + rad_box;
+        let swept_aabb = BoundingBox::from_start_end(start.into(), end.into());
+        
+        // 1. broad phase 검사 - AABB KD-Tree 충돌 검사
+        let collisions = stage_attributes.collider.search_aabb_collision(swept_aabb);
+        for collider in collisions {
+            // 2. narrow phase 검사 - 총알과 충돌체의 충돌 검사
+            let details = match collider {
+                Collider::Aabb(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::Obb(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::Capsule(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::OrientedCapsule(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+                Collider::Sphere(collider) => {
+                    bullet_collider.check_dynamic_collision_details(&velocity, collider)
+                }
+            };
 
-            if collider.check_aabb_collision(&swept_aabb) {
-                // 2. narrow phase 검사 - 총알과 충돌체의 충돌 검사
-                let details = match collider {
-                    Collider::Aabb(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::Obb(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::Capsule(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::OrientedCapsule(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                    Collider::Sphere(collider) => {
-                        bullet_collider.check_dynamic_collision_details(&velocity, collider)
-                    }
-                };
-
-                if let Some(details) = details {
-                    match distance.as_mut() {
-                        Some(distance) => {
-                            if *distance > details.distance {
-                                *distance = details.distance;
-                            }
+            if let Some(details) = details {
+                match distance.as_mut() {
+                    Some(distance) => {
+                        if *distance > details.distance {
+                            *distance = details.distance;
                         }
-                        None => {
-                            distance = Some(details.distance);
-                        }
+                    }
+                    None => {
+                        distance = Some(details.distance);
                     }
                 }
             }

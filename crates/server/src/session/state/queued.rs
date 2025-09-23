@@ -83,6 +83,7 @@ impl SessionState for SessionQueuedState {
             PacketType::MatchRequest => {
                 // ...
             }
+            PacketType::CharacterSelectRequest => { /* empty */ }
             _ => {
                 log::warn!(
                     "{} invalid packet received! (STATE:{:?}, PACKET:{:?})",

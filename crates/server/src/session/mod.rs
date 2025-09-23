@@ -1,15 +1,3 @@
-// Removed duplicate is_ai and addr methods
-impl Session {
-    /// Returns true if this session is an AI session.
-    pub fn is_ai(&self) -> bool {
-        self.is_ai
-    }
-
-    /// Returns the socket address for this session.
-    pub fn addr(&self) -> SocketAddr {
-        self.addr
-    }
-}
 mod pool;
 mod state;
 
@@ -45,7 +33,6 @@ pub const MAX_QUEUE_CAPACITY: usize = 64;
 /// 클라이언트 네트워크 통신 정보를 저장
 #[derive(Debug)]
 pub struct Session {
-    pub(crate) is_ai: bool,
     /// 클라이언트 소켓 주소
     pub(crate) addr: SocketAddr,
     /// AI 세션의 UserId (None for human players)
@@ -73,7 +60,6 @@ pub struct Session {
 
 impl Session {
     /// 새로운 클라이언트 세션을 생성합니다.
-
     pub fn new(addr: SocketAddr, udp_sender: Arc<Queue<(SocketAddr, RawPacket)>>) -> Self {
         Self {
             addr,
@@ -85,7 +71,6 @@ impl Session {
             flows: Queue::new(),
             cancel_token: AtomicBool::new(false),
             running: AtomicBool::new(true),
-            is_ai: false,
         }
     }
 
@@ -104,7 +89,6 @@ impl Session {
             flows: mod_parallelism::collections::Queue::new(),
             cancel_token: AtomicBool::new(false),
             running: AtomicBool::new(true),
-            is_ai: true,
         }
     }
 

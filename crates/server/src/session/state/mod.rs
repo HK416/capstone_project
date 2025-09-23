@@ -77,12 +77,45 @@ pub enum SessionStateFlow {
     Reset(Box<dyn SessionState>),
 }
 
+struct PingState {
+    samples: VecDeque<u32>,
+    recent: Option<(u64, Instant)>,
+    epoch: u64,
+}
+
+impl PingState {
+    const MAX_SAMPLES: usize = 20;
+    const MAX_PING_TIME: u16 = 250;
+
+    fn new() -> Self {
+        Self {
+            samples: VecDeque::with_capacity(Self::MAX_SAMPLES),
+            recent: None,
+            epoch: 0,
+        }
+    }
+
+    fn add_sample(&mut self, sample: u32) {
+        if self.samples.len() >= Self::MAX_SAMPLES {
+            self.samples.pop_back();
+        }
+        self.samples.push_front(sample);
+    }
+
+    /// `samples.len()`이 0인 경우는 고려하지 않습니다.  
+    fn average(&self) -> u32 {
+        let total: u32 = self.samples.iter().sum();
+        let ping = (total as f32 / self.samples.len() as f32).round();
+        ping as u32
+    }
+}
+
 /// 세션 상태를 실행하는 루프 함수입니다.
 pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
     // tick 초기화
     const TICK: Duration = Duration::from_millis(1);
     let mut interval = tokio::time::interval(TICK);
-    let mut previous_time_pt = Instant::now();
+    let mut previous_time_pt = interval.tick().await;
 
     // 상태 스텍 초기화
     let mut states: VecDeque<Box<dyn SessionState>> = VecDeque::with_capacity(8);
@@ -91,13 +124,8 @@ pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
     session.flows.push(flow);
 
     // 핑 측정 초기화
-    const MAX_SAMPLES: usize = 20;
-    const MAX_PING_TIME: u16 = 250;
-    let mut samples = vec![0; MAX_SAMPLES];
-    let mut num_samples = 0;
+    let mut ping_state = PingState::new();
     let mut elapsed_time_ms = 0;
-    let mut epoch = 0;
-    let mut recent = None;
 
     while session.is_running() {
         let current_time_pt = interval.tick().await;
@@ -106,27 +134,10 @@ pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
 
         // 핑 측정 경과 시간을 갱신합니다.
         elapsed_time_ms += elapsed.as_millis() as u16;
-        if elapsed_time_ms >= MAX_PING_TIME {
+        // MAX_PING_TIME 이후에도 처리되지 않은 핑 측정 이벤트는 제거합니다.
+        if elapsed_time_ms >= PingState::MAX_PING_TIME {
             elapsed_time_ms = 0;
-
-            // 250ms 이후에도 처리되지 않은 핑 측정 이벤트는 제거합니다.
-            if recent.is_some() {
-                // 핑 측정 샘플에 최댓값을 추가합니다.
-                samples.copy_within(0..MAX_SAMPLES - 1, 1);
-                samples[0] = 250;
-                num_samples = (num_samples + 1).min(MAX_SAMPLES);
-
-                // 평균 핑 계산합니다.
-                let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
-                let ping = (total as f32 / num_samples as f32).round() as u16;
-                session.ping.store(ping, MemOrdering::Release);
-            }
-
-            // 핑 측정 이벤트를 전송합니다.
-            let packet = PingTestPacket::new(epoch);
-            session.tcp_write(packet.as_raw());
-            recent = Some((epoch, current_time_pt));
-            epoch += 1;
+            send_ping_packet(&session, &mut ping_state, current_time_pt);
         }
 
         // 현재 세션 상태에 대한 소유권을 가져옵니다.
@@ -140,51 +151,16 @@ pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
 
                 // 핑 측정 패킷을 처리합니다.
                 if packet.packet_type() == PacketType::Ping {
-                    if let Some((epoch, time_pt)) = recent.take() {
-                        let packet = match PingTestPacket::try_from_raw(packet) {
-                            Some(packet) => packet,
-                            None => {
-                                session.close();
-                                break;
-                            }
-                        };
-
-                        if packet.value == epoch {
-                            // 경과 시간을 측정합니다.
-                            let elapsed_time_ms = current_time_pt
-                                .saturating_duration_since(time_pt)
-                                .as_millis()
-                                .min(MAX_PING_TIME as u128)
-                                as u32;
-
-                            // 핑 측정 샘플에 추가합니다.
-                            samples.copy_within(0..MAX_SAMPLES - 1, 1);
-                            samples[0] = elapsed_time_ms;
-                            num_samples = (num_samples + 1).min(MAX_SAMPLES);
-
-                            // 평균 핑을 계산합니다.
-                            let total: u32 = (0..num_samples).map(|i| samples[i]).sum();
-                            let ping = (total as f32 / num_samples as f32).round() as u16;
-                            session.ping.store(ping, MemOrdering::Release);
-
-                            log::debug!(
-                                "{} ping:{}ms (num samples:{})",
-                                &session,
-                                &ping,
-                                &num_samples
-                            );
-                        } else {
-                            log::debug!("{} invalid epoch!", &session);
-                            recent = Some((epoch, time_pt));
+                    match PingTestPacket::try_from_raw(packet) {
+                        Some(packet) => {
+                            handle_ping_packet(&session, &mut ping_state, packet, current_time_pt);
+                            continue;
                         }
-                    }
-
-                    continue;
-                }
-
-                // 세션 상태가 변경된 경우 패킷 처리를 생략합니다.
-                if !session.flows.is_empty() {
-                    break;
+                        None => {
+                            session.close();
+                            break;
+                        }
+                    };
                 }
 
                 // 패킷이 취소된 경우 처리를 생략합니다.
@@ -210,6 +186,65 @@ pub async fn session_state_loop(session: Arc<Session>) -> Arc<Session> {
 
     handle_clear_session_state_flow(&mut states, &session);
     session
+}
+
+fn send_ping_packet(
+    session: &Arc<Session>, 
+    ping_state: &mut PingState, 
+    current_time_pt: Instant
+) {
+    if ping_state.recent.is_some() {
+        update_ping(&session, ping_state, PingState::MAX_PING_TIME as u32);
+    }
+
+    // 핑 측정 이벤트를 전송합니다.
+    let packet = PingTestPacket::new(ping_state.epoch);
+    session.tcp_write(packet.as_raw());
+    ping_state.recent = Some((ping_state.epoch, current_time_pt));
+    ping_state.epoch += 1;
+}
+
+fn handle_ping_packet(
+    session: &Arc<Session>, 
+    ping_state: &mut PingState, 
+    packet: PingTestPacket,
+    current_time_pt: Instant
+) {
+    if let Some((epoch, time_pt)) = ping_state.recent.take() {
+        if packet.value == epoch {
+            // 경과 시간을 측정합니다.
+            let elapsed_time_ms = current_time_pt
+                .saturating_duration_since(time_pt)
+                .as_millis()
+                .min(PingState::MAX_PING_TIME as u128)
+                as u32;
+
+            // 핑을 갱신합니다.
+            let ping = update_ping(&session, ping_state, elapsed_time_ms);
+
+            log::debug!(
+                "{} ping:{}ms (num samples:{})",
+                &session,
+                &ping,
+                &ping_state.samples.len()
+            );
+        } else {
+            log::debug!("{} ping: invalid epoch!", &session);
+            ping_state.recent = Some((epoch, time_pt));
+        }
+    }
+}
+
+fn update_ping(session: &Arc<Session>, ping_state: &mut PingState, ping: u32) -> u32 {
+    // 핑 측정 샘플에 추가합니다.
+    ping_state.add_sample(ping);
+
+    // 평균 핑을 계산합니다.
+    let ping = ping_state.average();
+
+    session.ping.store(ping as u16, MemOrdering::Release);
+
+    ping
 }
 
 /// 세션 상태 흐름을 처리합니다.
