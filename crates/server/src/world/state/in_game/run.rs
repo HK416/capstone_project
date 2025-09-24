@@ -271,13 +271,12 @@ impl GameWorldInGameRunState {
                 match snapshot {
                     // 카메라 이동 입력을 처리합니다.
                     InputSnapshot::CameraOrientation {
-                        delta_lat,
-                        delta_lon,
+                        latlon,
                         ..
                     } => {
                         data.latlon.lat =
-                            (data.latlon.lat + delta_lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
-                        data.latlon.lon = (data.latlon.lon + delta_lon) % TAU;
+                            (data.latlon.lat + latlon.lat).clamp(MIN_LATITUDE, MAX_LATITUDE);
+                        data.latlon.lon = (data.latlon.lon + latlon.lon) % TAU;
                     }
                     // 키 입력을 처리합니다.
                     InputSnapshot::KeyEvent { events, .. } => {

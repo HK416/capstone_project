@@ -2,7 +2,7 @@
 //!
 
 use crate::{
-    components::{BigEndian, InputEvent, InputSnapshot, LoginToken, TryFromBigEndian, UserId},
+    components::{BigEndian, InputEvent, InputSnapshot, LatLon, LoginToken, TryFromBigEndian, UserId},
     protocol::{Packet, PacketType, RawPacket},
 };
 
@@ -104,14 +104,12 @@ impl Packet for InGameInputPacket {
             match snapshot {
                 InputSnapshot::CameraOrientation {
                     play_elapsed_time_ms,
-                    delta_lat,
-                    delta_lon,
+                    latlon,
                 } => {
                     let kind = (0 & KIND_BIT_MASK) << KIND_SHIFT;
                     let time = (*play_elapsed_time_ms & TIME_BIT_MASK) << TIME_SHIFT;
                     data.extend_from_slice(&(kind | time).to_big_endian_bytes());
-                    data.extend_from_slice(&delta_lat.to_big_endian_bytes());
-                    data.extend_from_slice(&delta_lon.to_big_endian_bytes());
+                    data.extend_from_slice(&latlon.to_big_endian_bytes());
                 }
                 InputSnapshot::KeyEvent {
                     play_elapsed_time_ms,
@@ -197,22 +195,15 @@ impl Packet for InGameInputPacket {
             let play_elapsed_time_ms = (bits >> TIME_SHIFT) & TIME_BIT_MASK;
             match kind {
                 0 => {
-                    // 위도의 변위를 가져옵니다.
+                    // 카메라 방향을 가져옵니다.
                     offset = offset + size;
-                    size = f32::byte_size();
+                    size = LatLon::byte_size();
                     data = &bytes[offset..offset + size];
-                    let delta_lat = f32::from_big_endian_bytes(data);
-
-                    // 경도의 변위를 가져옵니다.
-                    offset = offset + size;
-                    size = f32::byte_size();
-                    data = &bytes[offset..offset + size];
-                    let delta_lon = f32::from_big_endian_bytes(data);
+                    let latlon = LatLon::from_big_endian_bytes(data);
 
                     snapshots.push(InputSnapshot::CameraOrientation {
                         play_elapsed_time_ms,
-                        delta_lat,
-                        delta_lon,
+                        latlon,
                     })
                 }
                 1 => {
@@ -282,8 +273,10 @@ mod tests {
                 },
                 InputSnapshot::CameraOrientation {
                     play_elapsed_time_ms: 463_211,
-                    delta_lat: -13.12f32.to_radians(),
-                    delta_lon: 5.96f32.to_radians(),
+                    latlon: LatLon {
+                        lat: -13.12f32.to_radians(),
+                        lon: 5.96f32.to_radians(),
+                    },
                 },
                 InputSnapshot::KeyEvent {
                     play_elapsed_time_ms: 464_499,

@@ -82,9 +82,8 @@ pub enum InputSnapshot {
         /// 게임 플레이 경과 시간
         play_elapsed_time_ms: u32,
         /// 위도 (latitude, pitch) - 상하 회전, 라디안 단위
-        delta_lat: f32,
         /// 경도 (longitude, yaw) - 좌위 회전, 라디안 단위
-        delta_lon: f32,
+        latlon: LatLon, 
     },
     KeyEvent {
         /// 게임 플레이 경과 시간

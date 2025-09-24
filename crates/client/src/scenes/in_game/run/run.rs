@@ -1221,32 +1221,32 @@ impl InGameRunScene {
                 *movement_state = data.movement_state();
                 *movement_state_timer = data.movement_state_timer(attribute);
 
-                // 최단 거리 보간
-                let new_latlon = data.latlon();
-                if *action_state == ActionState::Attack 
-                || *action_state == ActionState::Skill {
-                    let mut delta = new_latlon.lon - latlon.lon;
-                    let t = delta.abs() / 2.0 * TAU;
-                    if delta > PI {
-                        delta -= TAU;
-                    } else if delta < -PI {
-                        delta += TAU;
-                    }
-                    latlon.lon = (latlon.lon + delta * t) % TAU;
+                // // 최단 거리 보간
+                // let new_latlon = data.latlon();
+                // if *action_state == ActionState::Attack 
+                // || *action_state == ActionState::Skill {
+                //     let mut delta = new_latlon.lon - latlon.lon;
+                //     let t = delta.abs() / 2.0 * TAU;
+                //     if delta > PI {
+                //         delta -= TAU;
+                //     } else if delta < -PI {
+                //         delta += TAU;
+                //     }
+                //     latlon.lon = (latlon.lon + delta * t) % TAU;
                     
-                    let diff = new_latlon.lat - new_latlon.lon;
-                    let t = (diff.abs() / MAX_LATITUDE).min(1.0);
-                    latlon.lat = latlon.lat * (1.0 - t) + new_latlon.lat * t;
-                } else {
+                //     let diff = new_latlon.lat - new_latlon.lon;
+                //     let t = (diff.abs() / MAX_LATITUDE).min(1.0);
+                //     latlon.lat = latlon.lat * (1.0 - t) + new_latlon.lat * t;
+                // } else {
                     
-                    let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
-                    let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
-                    latlon.lat = latlon.lat.clamp(min, max);
+                //     let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
+                //     let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
+                //     latlon.lat = latlon.lat.clamp(min, max);
                     
-                    let min = new_latlon.lon - 5f32.to_radians();
-                    let max = new_latlon.lon + 5f32.to_radians();
-                    latlon.lon = latlon.lon.clamp(min, max) % TAU;
-                }
+                //     let min = new_latlon.lon - 5f32.to_radians();
+                //     let max = new_latlon.lon + 5f32.to_radians();
+                //     latlon.lon = latlon.lon.clamp(min, max) % TAU;
+                // }
 
                 let rotation = data.rotation();
                 let translation =
@@ -3568,11 +3568,22 @@ impl GameScene for InGameRunScene {
     fn on_post_update(&mut self, _window: &Window, _app: &dyn AppHandle) {
         const TICK: u32 = 22;
         if self.snapshot_elapsed_time_ms >= TICK {
+            let (entity, archetype) = self.player_entity();
+            let world = match self.world.as_mut() {
+                Some(world) => world,
+                None => return,
+            };
+
+            let mut latlon = LatLon { lat: 0.0, lon: 0.0 };
+            type Query<'a> = &'a LatLon;
+            player_execute!(archetype, world, entity, Query, |&ll| {
+                latlon = ll;
+            });
+            
             // 스냅샷 데이터를 생성합니다.
             let snapshot = InputSnapshot::CameraOrientation {
                 play_elapsed_time_ms: self.play_elapsed_time_ms,
-                delta_lat: self.delta_lat,
-                delta_lon: self.delta_lon,
+                latlon,
             };
 
             // 임시 스냅샷 버퍼에 추가합니다.
