@@ -19,7 +19,7 @@ cargo run --bin client --release -- <OPTIONS>
 |:---|:---|
 | --num-threads <숫자> | 사용 가능한 최대 스레드의 갯수를 지정합니다. |
 | --set-addr <주소> | 서버의 주소를 설정합니다. |
-| --with-redis-server | Redis 서버를 함께 실행합니다. |
+| --without-redis-server | Redis 서버를 함께 실행하지 않습니다. |
 
 `--set-addr`의 `<주소>` 부분에는 아래의 모드 중 하나를 입력할 수 있습니다.
 

@@ -172,6 +172,8 @@ fn main() {
     let mut addr = Addr::default();
     let mut num_threads = num_cpus::get();
 
+    let mut with_redis_server = true;
+
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--set-addr" => {
@@ -202,16 +204,20 @@ fn main() {
                     }
                 }
             }
-            "--with-redis-server" => {
-                std::process::Command::new("redis-server")
-                    .spawn()
-                    .expect("Failed to start redis-server");
+            "--without-redis-server" => {
+                with_redis_server = false;
             }
             _ => {
                 eprintln!("Invalid option: {}", arg);
                 return;
             }
         }
+    }
+
+    if with_redis_server {
+        std::process::Command::new("redis-server")
+            .spawn()
+            .expect("Failed to start redis-server");
     }
 
     println!("num_threads: {}", num_threads);
