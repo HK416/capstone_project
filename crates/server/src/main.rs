@@ -202,6 +202,11 @@ fn main() {
                     }
                 }
             }
+            "--with-redis-server" => {
+                std::process::Command::new("redis-server")
+                    .spawn()
+                    .expect("Failed to start redis-server");
+            }
             _ => {
                 eprintln!("Invalid option: {}", arg);
                 return;
