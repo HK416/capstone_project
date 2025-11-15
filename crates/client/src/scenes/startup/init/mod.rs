@@ -5,8 +5,8 @@ mod window;
 use std::{
     path::Path,
     sync::{
-        atomic::{AtomicBool, Ordering as MemOrdering},
         Arc,
+        atomic::{AtomicBool, Ordering as MemOrdering},
     },
 };
 
@@ -20,8 +20,8 @@ use rayon::ThreadPool;
 use winit::window::Window;
 
 use crate::{
-    asset::{SoundDataPool, TexturePool, NOTOSANS_REGULAR, USER_CONFIG},
-    config::{Locale, UserConfig, NUM_LOCALE},
+    asset::{NOTOSANS_REGULAR, SoundDataPool, TexturePool, USER_CONFIG},
+    config::{Locale, NUM_LOCALE, UserConfig},
     scenes::GameIntroNotifyScene,
 };
 

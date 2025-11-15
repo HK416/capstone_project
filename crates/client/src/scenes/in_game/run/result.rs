@@ -10,46 +10,46 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        update_action_state_timer, update_movement_state_timer, ActionState, ActionStateTimer,
-        BulletData, CharacterFlags, CharacterKind, GameTier, HeldInput, InGamePlayerResultData,
-        LatLon, LoginToken, MovementState, MovementStateTimer, ProfileIcon, SkillCostData,
-        StageAttributes, Team, UserId, MAX_IN_GAME_PLAYERS,
+        ActionState, ActionStateTimer, BulletData, CharacterFlags, CharacterKind, GameTier,
+        HeldInput, InGamePlayerResultData, LatLon, LoginToken, MAX_IN_GAME_PLAYERS, MovementState,
+        MovementStateTimer, ProfileIcon, SkillCostData, StageAttributes, Team, UserId,
+        update_action_state_timer, update_movement_state_timer,
     },
     protocol::InGameFinishPacket,
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
-use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{SWAPCHAIN_FORMAT, UiRenderer};
 use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
-        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         CHARACTER_IMG_URI, EMBLEM_BG_URI, IMG_FONT_DRAW, IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI, UI_NOTICE,
+        MeshPool, ModelPool, MotionPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        SamplerPool, SoundDataPool, StageBoundingVolumnHierarchy, TextureDataPool, TexturePool,
+        TextureViewPool, UI_NOTICE, cull_stage_entities,
     },
     component::{
-        animate_character, bake_character, bake_character_eye_mouth, bake_stage,
+        AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, CHARACTER_ATTRIBUTES, Camera, CameraResource, CameraUniform, Child,
+        DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
+        LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer, OpaqueMap,
+        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
+        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
+        WorldTransform, animate_character, bake_character, bake_character_eye_mouth, bake_stage,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
         draw_character, draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline,
         draw_energy_bullet, draw_stage, draw_tree, update_camera_and_skybox_resource,
         update_character_hierarchy, update_character_resource, update_stage_hierarchy,
-        update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
-        BoneCollection, BrightRenderTarget, Camera, CameraResource, CameraUniform, Child,
-        DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
-        LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer, OpaqueMap,
-        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
-        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
-        WorldTransform, CHARACTER_ATTRIBUTES,
+        update_stage_resource,
     },
     config::{Locale, NUM_LOCALE},
     player_execute,
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer,
     },
 };
 
@@ -1068,16 +1068,18 @@ impl GameScene for InGameResultScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_update(&mut self, elapsed_time_sec: f32, _window: &Window, _app: &dyn AppHandle) {

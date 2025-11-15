@@ -12,11 +12,11 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        SoundDataPool, TexturePool, BG_SOUND_THEME_01, CV_SOUND_TITLE, CV_YUUKA_OPTION,
-        NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_TOUCH,
+        BG_SOUND_THEME_01, CV_SOUND_TITLE, CV_YUUKA_OPTION, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        SoundDataPool, TexturePool, UI_BUTTON_TOUCH,
     },
-    config::{Locale, UserConfig, NUM_LOCALE},
-    scenes::{InitFinishScene, BASE_WIDTH},
+    config::{Locale, NUM_LOCALE, UserConfig},
+    scenes::{BASE_WIDTH, InitFinishScene},
 };
 
 /// 애플리케이션 표시 언어에 따른 타이틀 텍스트입니다.
@@ -155,13 +155,15 @@ impl InitSoundScene {
     fn draw_effect_sound_opt(&mut self, ui: &mut egui::Ui, app: &dyn AppHandle) {
         let slider = egui::Slider::new(&mut self.effect_volume, 0..=255).show_value(false);
         let response = ui.add(slider);
-        if response.drag_stopped() {
+        if response.drag_stopped()
+            && let Some(mixer) = app.audio_mixer()
+        {
             let decoded = self
                 .sound_data_pool
                 .get(UI_BUTTON_TOUCH)
                 .expect("UI_Button_Touch sound must be preloaded!");
             let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
+            let sink = Sink::connect_new(mixer);
             sink.set_volume(self.effect_volume as f32 / 255.0);
             sink.append(source);
             sink.play();
@@ -202,7 +204,9 @@ impl InitSoundScene {
     fn draw_voice_sound_opt(&mut self, ui: &mut egui::Ui, app: &dyn AppHandle) {
         let slider = egui::Slider::new(&mut self.voice_volume, 0..=255).show_value(false);
         let response = ui.add(slider);
-        if response.drag_stopped() {
+        if response.drag_stopped()
+            && let Some(mixer) = app.audio_mixer()
+        {
             self.count = (self.count + 1) % 5;
 
             let i = CharacterKind::YuukaOriginal as usize;
@@ -216,7 +220,7 @@ impl InitSoundScene {
                 .get(uri)
                 .expect("UI_Button_Touch sound must be preloaded!");
             let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
+            let sink = Sink::connect_new(mixer);
             sink.set_volume(self.voice_volume as f32 / 255.0);
             sink.append(source);
             sink.play();
@@ -267,19 +271,21 @@ impl GameScene for InitSoundScene {
         window.set_cursor_visible(true);
 
         // 배경 음악을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(BG_SOUND_THEME_01)
-            .expect("Theme_01 sound must be preloaded!");
-        let source = decoded.as_source();
-        let source = source.repeat_infinite();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(BG_SOUND_THEME_01)
+                .expect("Theme_01 sound must be preloaded!");
+            let source = decoded.as_source();
+            let source = source.repeat_infinite();
 
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.background_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.background_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
 
-        self.background_sounds.push_back(sink);
+            self.background_sounds.push_back(sink);
+        }
     }
 
     fn on_exit(

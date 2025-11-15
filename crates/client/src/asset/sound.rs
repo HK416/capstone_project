@@ -12,7 +12,7 @@ use std::{
 
 use ahash::{HashMap, RandomState};
 use parking_lot::{FairMutex, FairMutexGuard};
-use rodio::{decoder::DecoderError, ChannelCount, Decoder, SampleRate, Source};
+use rodio::{ChannelCount, Decoder, SampleRate, Source, decoder::DecoderError};
 
 use crate::asset::AssetError;
 

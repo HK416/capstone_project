@@ -7,7 +7,7 @@ pub trait TaggedComponentQuery<Tag> {
     type QueryType<'a>: Query;
 
     fn extract_component<'a>(item: <Self::QueryType<'_> as Query>::Item<'a>)
-        -> Self::Component<'a>;
+    -> Self::Component<'a>;
 }
 
 // 단일 참조에 대한 구현

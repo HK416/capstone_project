@@ -10,48 +10,48 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        update_view_state, update_view_state_timer, ActionState, ActionStateTimer, BulletData,
-        CapturePoint, CharacterFlags, CharacterKind, HealthData, HeldInput, LatLon, LoginToken,
+        ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags, CharacterKind,
+        HealthData, HeldInput, LatLon, LoginToken, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE,
         MovementState, MovementStateTimer, ObjectId, SkillCostData, StageAttributes, Team, UserId,
-        UserName, ViewState, ViewStateTimer, MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE,
+        UserName, ViewState, ViewStateTimer, update_view_state, update_view_state_timer,
     },
     protocol::{InGameFinishPacket, InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
-use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{SWAPCHAIN_FORMAT, UiRenderer};
 use rodio::{Sink, Source};
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
-        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         BG_SOUND_THEME_23, CHARACTER_IMG_SMALL_URI, HUD_LAYOUT_URI_02, IMG_FONT_DRAW,
-        IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_NOTICE,
-        UI_VICTORY_ST_01, WEAPON_ICON_URI,
+        IMG_FONT_LOSE_URI, IMG_FONT_WIN_URI, MeshPool, ModelPool, MotionPool, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR, SamplerPool, SoundDataPool, StageBoundingVolumnHierarchy,
+        TextureDataPool, TexturePool, TextureViewPool, UI_NOTICE, UI_VICTORY_ST_01,
+        WEAPON_ICON_URI, cull_stage_entities,
     },
     component::{
-        animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
-        clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
-        compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
-        draw_character, draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline,
-        draw_energy_bullet, draw_stage, draw_stage_barrier, draw_tree, update_bullet_hierarchy,
-        update_bullet_resource, update_camera_and_skybox_resource, update_camera_hierarchy,
-        update_camera_param, update_character_hierarchy, update_character_resource,
-        update_stage_hierarchy, update_stage_resource, AccumRenderTarget, AlphaBlendPipeline,
-        BakeList, BloomPipeline, BoneCollection, BrightRenderTarget, Camera, CameraResource, Child,
-        DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource,
-        LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer, OpaqueMap,
-        PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling,
-        SkinnedMeshRenderer, SkinningAnimation, Skybox, ToParentTrans, TransparentMap,
-        WorldTransform, CHARACTER_ATTRIBUTES,
+        AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, CHARACTER_ATTRIBUTES, Camera, CameraResource, Child, DirectionLight,
+        GaussianBlurPipeline, GlobalLightDataLayout, LightSetResource, LightTransformDataLayout,
+        MaterialKind, MaterialResource, MeshRenderer, OpaqueMap, PlayerArchetype, Projection,
+        RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer, SkinningAnimation,
+        Skybox, ToParentTrans, TransparentMap, WorldTransform, animate_character, bake_character,
+        bake_character_eye_mouth, bake_stage, cleanup, clear_render_target_with_skybox,
+        collect_character_resource, collect_stage_resource, compute_frustum_corners_no_inverse,
+        compute_light_view_proj_matrix, draw_bullet, draw_character, draw_character_eye_mouth,
+        draw_character_halo, draw_character_halo_outline, draw_energy_bullet, draw_stage,
+        draw_stage_barrier, draw_tree, update_bullet_hierarchy, update_bullet_resource,
+        update_camera_and_skybox_resource, update_camera_hierarchy, update_camera_param,
+        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
+        update_stage_resource,
     },
     config::Locale,
     player_execute,
     scenes::{
-        FatalErrorSceneLayer, InGameResultScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
-        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, InGameResultScene, TEAM_COLOR,
     },
 };
 
@@ -2052,16 +2052,18 @@ impl GameScene for InGameExitScene {
         self.resize_ui(window, app);
 
         // 배경음을 추가합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(BG_SOUND_THEME_23)
-            .expect("Theme_23 sound must be preloaded!");
-        let source = decoded.as_source().repeat_infinite();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.background_volume as f32 / 255.0);
-        sink.append(source);
-        sink.pause();
-        self.background_sounds.push(sink);
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(BG_SOUND_THEME_23)
+                .expect("Theme_23 sound must be preloaded!");
+            let source = decoded.as_source().repeat_infinite();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.background_volume as f32 / 255.0);
+            sink.append(source);
+            sink.pause();
+            self.background_sounds.push(sink);
+        }
     }
 
     fn on_exit(
@@ -2127,16 +2129,18 @@ impl GameScene for InGameExitScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -2253,7 +2257,10 @@ impl GameScene for InGameExitScene {
             }
         }
 
-        if self.elapsed_time_ms > 2000 && !self.play_effect_sound {
+        if self.elapsed_time_ms > 2000
+            && !self.play_effect_sound
+            && let Some(mixer) = app.audio_mixer()
+        {
             // 효과음을 재생합니다.
             self.play_effect_sound = true;
             let decoded = self
@@ -2261,7 +2268,7 @@ impl GameScene for InGameExitScene {
                 .get(UI_VICTORY_ST_01)
                 .expect("UI_Victory_ST_01 sound must be preloaded!");
             let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
+            let sink = Sink::connect_new(mixer);
             sink.set_volume(self.effect_volume as f32 / 255.0);
             sink.append(source);
             sink.play();

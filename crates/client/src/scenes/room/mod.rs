@@ -14,9 +14,8 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        CustomRoomPlayerData, GameTier, LoginToken, Permission, ProfileIcon, StageKind, Team,
-        UserId, WorldId, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, NUM_PROFILE_ICONS,
-        NUM_TIER,
+        CustomRoomPlayerData, GameTier, LoginToken, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS,
+        NUM_PROFILE_ICONS, NUM_TIER, Permission, ProfileIcon, StageKind, Team, UserId, WorldId,
     },
     protocol::{
         FillEmptySlotOptChangeRequestPacket, FormationDataInitPacket, Packet, PacketType,
@@ -30,26 +29,25 @@ use rodio::{Sink, Source};
 use winit::window::Window;
 
 use crate::{
+    SERVER_TCP_ADDR,
     asset::{
-        SoundDataPool, TexturePool, TextureViewPool, BG_DECO_URI, BG_MAIN_LOBBY_URI,
-        BG_SOUND_THEME_03, BG_SOUND_THEME_14, EMBLEM_BG_URI, HUD_CANCEL_ICON_URI,
-        HUD_CHANGE_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02, IMG_FONT_HOST_URI,
-        IMG_FONT_READY_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, UI_BUTTON_BACK, UI_BUTTON_TOUCH,
-        UI_NOTICE,
+        BG_DECO_URI, BG_MAIN_LOBBY_URI, BG_SOUND_THEME_03, BG_SOUND_THEME_14, EMBLEM_BG_URI,
+        HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_02,
+        IMG_FONT_HOST_URI, IMG_FONT_READY_URI, NOTOSANS_BOLD, PROFILE_ICON_URI, SoundDataPool,
+        TexturePool, TextureViewPool, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_NOTICE,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        CharacterFormationScene, FatalErrorSceneLayer, FormationPlayerData, ERR_CLOSED_MSG_TEXTS,
-        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR,
+        CharacterFormationScene, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FONT_COLOR, FatalErrorSceneLayer, FormationPlayerData, NORM_COLOR, NORM_EXP_COLOR,
         NORM_FOCUS_COLOR,
     },
-    SERVER_TCP_ADDR,
 };
 
 pub use self::ban::*;
 
-use super::{MessageSceneLayer, BASE_WIDTH, TEAM_COLOR};
+use super::{BASE_WIDTH, MessageSceneLayer, TEAM_COLOR};
 
 /// 애플리케이션 표시 언어에 따른 Head 텍스트
 const HEAD_TEXTS: [&'static str; NUM_LOCALE] = ["커스텀 게임"];
@@ -893,28 +891,32 @@ impl CustomGameRoomScene {
                     }
 
                     // 이전 장면 배경 음악을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(BG_SOUND_THEME_14)
-                        .expect("Theme_14 sound must be preloaded!");
-                    let source = decoded.as_source().repeat_infinite();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.background_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink_list.push(sink);
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(BG_SOUND_THEME_14)
+                            .expect("Theme_14 sound must be preloaded!");
+                        let source = decoded.as_source().repeat_infinite();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.background_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink_list.push(sink);
+                    }
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_BUTTON_BACK)
-                        .expect("UI_Button_Back sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_BACK)
+                            .expect("UI_Button_Back sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
 
                     self.cancel_btn_state = ButtonState::Clicked;
                 } else if response.is_pointer_button_down_on() {
@@ -939,16 +941,18 @@ impl CustomGameRoomScene {
                     }
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_BUTTON_TOUCH)
-                        .expect("UI_Button_Touch sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_TOUCH)
+                            .expect("UI_Button_Touch sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
 
                     self.ready_btn_state = ButtonState::Clicked;
                 } else if response.is_pointer_button_down_on() {
@@ -975,16 +979,18 @@ impl CustomGameRoomScene {
                         }
 
                         // 효과음을 재생합니다.
-                        let decoded = self
-                            .sound_data_pool
-                            .get(UI_BUTTON_TOUCH)
-                            .expect("UI_Button_Touch sound must be preloaded!");
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(app.audio_mixer());
-                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                        sink.append(source);
-                        sink.play();
-                        sink.detach();
+                        if let Some(mixer) = app.audio_mixer() {
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_BUTTON_TOUCH)
+                                .expect("UI_Button_Touch sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
 
                         self.team_change_btn_state = ButtonState::Clicked;
                     } else if response.is_pointer_button_down_on() {
@@ -1015,16 +1021,18 @@ impl CustomGameRoomScene {
                             socket.push_packet(packet.as_raw());
 
                             // 효과음을 재생합니다.
-                            let decoded = self
-                                .sound_data_pool
-                                .get(UI_BUTTON_TOUCH)
-                                .expect("UI_Button_Touch sound must be preloaded!");
-                            let source = decoded.as_source();
-                            let sink = Sink::connect_new(app.audio_mixer());
-                            sink.set_volume(self.effect_volume as f32 / 255.0);
-                            sink.append(source);
-                            sink.play();
-                            sink.detach();
+                            if let Some(mixer) = app.audio_mixer() {
+                                let decoded = self
+                                    .sound_data_pool
+                                    .get(UI_BUTTON_TOUCH)
+                                    .expect("UI_Button_Touch sound must be preloaded!");
+                                let source = decoded.as_source();
+                                let sink = Sink::connect_new(mixer);
+                                sink.set_volume(self.effect_volume as f32 / 255.0);
+                                sink.append(source);
+                                sink.play();
+                                sink.detach();
+                            }
                         }
                     }
                 }
@@ -1048,16 +1056,18 @@ impl CustomGameRoomScene {
                             socket.push_packet(packet.as_raw());
 
                             // 효과음을 재생합니다.
-                            let decoded = self
-                                .sound_data_pool
-                                .get(UI_BUTTON_TOUCH)
-                                .expect("UI_Button_Touch sound must be preloaded!");
-                            let source = decoded.as_source();
-                            let sink = Sink::connect_new(app.audio_mixer());
-                            sink.set_volume(self.effect_volume as f32 / 255.0);
-                            sink.append(source);
-                            sink.play();
-                            sink.detach();
+                            if let Some(mixer) = app.audio_mixer() {
+                                let decoded = self
+                                    .sound_data_pool
+                                    .get(UI_BUTTON_TOUCH)
+                                    .expect("UI_Button_Touch sound must be preloaded!");
+                                let source = decoded.as_source();
+                                let sink = Sink::connect_new(mixer);
+                                sink.set_volume(self.effect_volume as f32 / 255.0);
+                                sink.append(source);
+                                sink.play();
+                                sink.detach();
+                            }
                         }
                     }
                 }
@@ -1081,16 +1091,18 @@ impl CustomGameRoomScene {
                             socket.push_packet(packet.as_raw());
 
                             // 효과음을 재생합니다.
-                            let decoded = self
-                                .sound_data_pool
-                                .get(UI_BUTTON_TOUCH)
-                                .expect("UI_Button_Touch sound must be preloaded!");
-                            let source = decoded.as_source();
-                            let sink = Sink::connect_new(app.audio_mixer());
-                            sink.set_volume(self.effect_volume as f32 / 255.0);
-                            sink.append(source);
-                            sink.play();
-                            sink.detach();
+                            if let Some(mixer) = app.audio_mixer() {
+                                let decoded = self
+                                    .sound_data_pool
+                                    .get(UI_BUTTON_TOUCH)
+                                    .expect("UI_Button_Touch sound must be preloaded!");
+                                let source = decoded.as_source();
+                                let sink = Sink::connect_new(mixer);
+                                sink.set_volume(self.effect_volume as f32 / 255.0);
+                                sink.append(source);
+                                sink.play();
+                                sink.detach();
+                            }
                         }
                     }
                 }
@@ -1248,16 +1260,18 @@ impl CustomGameRoomScene {
                                     event_loop_proxy.send_event(event).unwrap();
 
                                     // 효과음을 재생합니다.
-                                    let decoded = self
-                                        .sound_data_pool
-                                        .get(UI_BUTTON_TOUCH)
-                                        .expect("UI_Button_Touch sound must be preloaded!");
-                                    let source = decoded.as_source();
-                                    let sink = Sink::connect_new(app.audio_mixer());
-                                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                                    sink.append(source);
-                                    sink.play();
-                                    sink.detach();
+                                    if let Some(mixer) = app.audio_mixer() {
+                                        let decoded = self
+                                            .sound_data_pool
+                                            .get(UI_BUTTON_TOUCH)
+                                            .expect("UI_Button_Touch sound must be preloaded!");
+                                        let source = decoded.as_source();
+                                        let sink = Sink::connect_new(mixer);
+                                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                                        sink.append(source);
+                                        sink.play();
+                                        sink.detach();
+                                    }
 
                                     ButtonState::Clicked
                                 } else if response.is_pointer_button_down_on() {
@@ -1672,17 +1686,19 @@ impl GameScene for CustomGameRoomScene {
         self.resize_ui(window, app);
 
         // 배경 음악을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(BG_SOUND_THEME_03)
-            .expect("Theme_03 sound must be preloaded!");
-        let source = decoded.as_source().repeat_infinite();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.background_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(BG_SOUND_THEME_03)
+                .expect("Theme_03 sound must be preloaded!");
+            let source = decoded.as_source().repeat_infinite();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.background_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
 
-        app.sink_list().push(sink);
+            app.sink_list().push(sink);
+        }
     }
 
     fn on_exit(
@@ -1710,14 +1726,16 @@ impl GameScene for CustomGameRoomScene {
 
     fn on_resume(&mut self, _window: &Window, app: &dyn AppHandle) {
         let sink_list = app.sink_list();
-        if sink_list.len() == 0 {
+        if sink_list.len() == 0
+            && let Some(mixer) = app.audio_mixer()
+        {
             // 배경 음악을 재생합니다.
             let decoded = self
                 .sound_data_pool
                 .get(BG_SOUND_THEME_03)
                 .expect("Theme_03 sound must be preloaded!");
             let source = decoded.as_source().repeat_infinite();
-            let sink = Sink::connect_new(app.audio_mixer());
+            let sink = Sink::connect_new(mixer);
             sink.set_volume(self.background_volume as f32 / 255.0);
             sink.append(source);
             sink.play();
@@ -1754,16 +1772,18 @@ impl GameScene for CustomGameRoomScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -1789,16 +1809,18 @@ impl GameScene for CustomGameRoomScene {
                 }
 
                 // 이전 장면 배경 음악을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(BG_SOUND_THEME_14)
-                    .expect("Theme_14 sound must be preloaded!");
-                let source = decoded.as_source().repeat_infinite();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.background_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink_list.push(sink);
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(BG_SOUND_THEME_14)
+                        .expect("Theme_14 sound must be preloaded!");
+                    let source = decoded.as_source().repeat_infinite();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.background_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink_list.push(sink);
+                }
 
                 return Some(packet);
             }
@@ -1840,16 +1862,18 @@ impl GameScene for CustomGameRoomScene {
                 event_loop_proxy.send_event(event).unwrap();
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_NOTICE)
-                    .expect("UI_Notice sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_NOTICE)
+                        .expect("UI_Notice sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
             }
             PacketType::FormationDataInit => {
                 let packet = FormationDataInitPacket::from_raw(packet);

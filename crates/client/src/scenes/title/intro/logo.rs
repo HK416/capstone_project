@@ -9,7 +9,7 @@ use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
-    asset::{SoundDataPool, TexturePool, TextureViewPool, CV_SOUND_TITLE, GAME_LOGO_URI},
+    asset::{CV_SOUND_TITLE, GAME_LOGO_URI, SoundDataPool, TexturePool, TextureViewPool},
     config::Locale,
     scenes::BASE_WIDTH,
 };
@@ -94,19 +94,21 @@ impl GameScene for GameIntroLogoScene {
         );
 
         // 무작위 타이틀 보이스를 출력합니다.
-        let character: CharacterKind = rand::random();
-        let i = character as usize;
-        let uri = CV_SOUND_TITLE[i];
-        let decoded = self
-            .sound_data_pool
-            .get(uri)
-            .expect("Character Title sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.voice_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let character: CharacterKind = rand::random();
+            let i = character as usize;
+            let uri = CV_SOUND_TITLE[i];
+            let decoded = self
+                .sound_data_pool
+                .get(uri)
+                .expect("Character Title sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.voice_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
 
         // 등록된 텍스처 정보를 저장합니다.
         self.game_logo_texture_id = egui::load::SizedTexture {

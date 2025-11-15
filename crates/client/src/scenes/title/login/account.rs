@@ -20,18 +20,18 @@ use winit::{
 };
 
 use crate::{
+    SERVER_TCP_ADDR,
     asset::{
-        SoundDataPool, TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SoundDataPool, TexturePool, UI_BUTTON_BACK,
         UI_BUTTON_TOUCH, UI_NOTICE,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, GameLoginModalScene, LoginFailedModalScene, MainLobbyEnterScene,
         BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, GameLoginModalScene, LoginFailedModalScene, MainLobbyEnterScene,
         NEG_COLOR, NEG_FOCUS_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
     },
-    SERVER_TCP_ADDR,
 };
 
 /// 애플리케이션 표시 언어에 따른 타이틀 텍스트
@@ -126,16 +126,18 @@ impl GameScene for GameAccountModalScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -165,16 +167,18 @@ impl GameScene for GameAccountModalScene {
                 event_loop_proxy.send_event(event).unwrap();
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_NOTICE)
-                    .expect("UI_Notice sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_NOTICE)
+                        .expect("UI_Notice sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
             }
             PacketType::LoginSuccess => {
                 // 사용자 정보와 로그인 토큰을 저장합니다.
@@ -238,16 +242,18 @@ impl GameScene for GameAccountModalScene {
                     event_loop_proxy.send_event(event).unwrap();
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_BUTTON_BACK)
-                        .expect("UI_Button_Back sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_BACK)
+                            .expect("UI_Button_Back sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
                 }
                 _ => {}
             }
@@ -383,18 +389,22 @@ impl GameScene for GameAccountModalScene {
 
                                                 socket.push_packet(packet.as_raw());
                                                 // 효과음을 재생합니다.
-                                                let decoded = self
+                                                if let Some(mixer) = app.audio_mixer() {
+                                                    let decoded = self
                                                     .sound_data_pool
                                                     .get(UI_BUTTON_TOUCH)
                                                     .expect(
                                                         "UI_Button_Touch sound must be preloaded!",
                                                     );
-                                                let source = decoded.as_source();
-                                                let sink = Sink::connect_new(app.audio_mixer());
-                                                sink.set_volume(self.effect_volume as f32 / 255.0);
-                                                sink.append(source);
-                                                sink.play();
-                                                sink.detach();
+                                                    let source = decoded.as_source();
+                                                    let sink = Sink::connect_new(mixer);
+                                                    sink.set_volume(
+                                                        self.effect_volume as f32 / 255.0,
+                                                    );
+                                                    sink.append(source);
+                                                    sink.play();
+                                                    sink.detach();
+                                                }
 
                                                 self.requested = true;
                                                 self.delay_time_sec = 0.3;
@@ -436,16 +446,20 @@ impl GameScene for GameAccountModalScene {
                                             event_loop_proxy.send_event(event).unwrap();
 
                                             // 효과음을 재생합니다.
-                                            let decoded = self
-                                                .sound_data_pool
-                                                .get(UI_BUTTON_BACK)
-                                                .expect("UI_Button_Back sound must be preloaded!");
-                                            let source = decoded.as_source();
-                                            let sink = Sink::connect_new(app.audio_mixer());
-                                            sink.set_volume(self.effect_volume as f32 / 255.0);
-                                            sink.append(source);
-                                            sink.play();
-                                            sink.detach();
+                                            if let Some(mixer) = app.audio_mixer() {
+                                                let decoded = self
+                                                    .sound_data_pool
+                                                    .get(UI_BUTTON_BACK)
+                                                    .expect(
+                                                        "UI_Button_Back sound must be preloaded!",
+                                                    );
+                                                let source = decoded.as_source();
+                                                let sink = Sink::connect_new(mixer);
+                                                sink.set_volume(self.effect_volume as f32 / 255.0);
+                                                sink.append(source);
+                                                sink.play();
+                                                sink.detach();
+                                            }
 
                                             self.requested = true;
                                             self.delay_time_sec = 0.3;

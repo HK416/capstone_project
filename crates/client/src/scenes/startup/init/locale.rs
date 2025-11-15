@@ -8,7 +8,7 @@ use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
-    asset::{SoundDataPool, TexturePool, NOTOSANS_REGULAR, UI_BUTTON_TOUCH},
+    asset::{NOTOSANS_REGULAR, SoundDataPool, TexturePool, UI_BUTTON_TOUCH},
     config::{Locale, UserConfig},
     scenes::BASE_WIDTH,
 };
@@ -171,16 +171,18 @@ impl GameScene for InitLocaleScene {
                             self.selected = true;
 
                             // 효과음을 재생합니다.
-                            let decoded = self
-                                .sound_data_pool
-                                .get(UI_BUTTON_TOUCH)
-                                .expect("UI_Button_Touch sound must be preloaded!");
-                            let source = decoded.as_source();
-                            let sink = Sink::connect_new(app.audio_mixer());
-                            sink.set_volume(self.effect_volume as f32 / 255.0);
-                            sink.append(source);
-                            sink.play();
-                            sink.detach();
+                            if let Some(mixer) = app.audio_mixer() {
+                                let decoded = self
+                                    .sound_data_pool
+                                    .get(UI_BUTTON_TOUCH)
+                                    .expect("UI_Button_Touch sound must be preloaded!");
+                                let source = decoded.as_source();
+                                let sink = Sink::connect_new(mixer);
+                                sink.set_volume(self.effect_volume as f32 / 255.0);
+                                sink.append(source);
+                                sink.play();
+                                sink.detach();
+                            }
                         }
                     });
                 });

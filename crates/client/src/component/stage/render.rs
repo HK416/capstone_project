@@ -6,11 +6,10 @@ use mod_parallelism::collections::Queue;
 use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 
 use crate::component::{
-    AttributeKind, CameraResource, Child, LightSetResource, MaterialMap, Mesh, MeshFilter,
-    MeshRenderer, RenderTask, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer, Stage,
-    StageBakePipeline, StageBarrierRenderPipeline, StageRenderPipeline, ToParentTrans,
-    TransformDataLayout, TransformMap, TreeRenderPipeline, WorldTransform, MAX_BONES,
-    SHADOW_FORMAT,
+    AttributeKind, CameraResource, Child, LightSetResource, MAX_BONES, MaterialMap, Mesh,
+    MeshFilter, MeshRenderer, RenderTask, SHADOW_FORMAT, ShadowMap, ShadowResource, Sibling,
+    SkinnedMeshRenderer, Stage, StageBakePipeline, StageBarrierRenderPipeline, StageRenderPipeline,
+    ToParentTrans, TransformDataLayout, TransformMap, TreeRenderPipeline, WorldTransform,
 };
 
 /// 지형 엔터티의 계층 구조를 갱신합니다.

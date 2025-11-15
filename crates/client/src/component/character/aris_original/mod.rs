@@ -10,8 +10,8 @@ use lazy_static::lazy_static;
 use mod_network::components::{ActionState, CharacterAttributes};
 
 use crate::component::{
-    update_entity_hierarchy_with_archetype, Child, Sibling, SkinningAnimation, ToParentTrans,
-    WorldTransform, MODEL_BONE_R_HAND,
+    Child, MODEL_BONE_R_HAND, Sibling, SkinningAnimation, ToParentTrans, WorldTransform,
+    update_entity_hierarchy_with_archetype,
 };
 
 pub use self::{animation::*, camera::*, spawn::*};

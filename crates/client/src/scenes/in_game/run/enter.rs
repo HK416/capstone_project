@@ -10,45 +10,46 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        update_action_state_timer, ActionState, ActionStateTimer, BulletData, CharacterKind,
-        HeldInput, LatLon, LoginToken, MovementState, MovementStateTimer, SkillCostData,
-        StageAttributes, Team, UserId,
+        ActionState, ActionStateTimer, BulletData, CharacterKind, HeldInput, LatLon, LoginToken,
+        MovementState, MovementStateTimer, SkillCostData, StageAttributes, Team, UserId,
+        update_action_state_timer,
     },
     protocol::{InGamePullPacket, Packet, PacketType, RawPacket},
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
-use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{SWAPCHAIN_FORMAT, UiRenderer};
 use rand::seq::SliceRandom;
 use rodio::Sink;
 use winit::{event::MouseButton, window::Window};
 
 use crate::{
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
-        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool, CV_TACTIC_IN,
-        HUD_LAYOUT_URI_03, IMG_FONT_MISSION_URI, NOTOSANS_BOLD, UI_NOTICE,
+        CV_TACTIC_IN, HUD_LAYOUT_URI_03, IMG_FONT_MISSION_URI, MeshPool, ModelPool, MotionPool,
+        NOTOSANS_BOLD, SamplerPool, SoundDataPool, StageBoundingVolumnHierarchy, TextureDataPool,
+        TexturePool, TextureViewPool, UI_NOTICE, cull_stage_entities,
     },
     component::{
-        animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
-        clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
-        compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_character,
-        draw_character_eye_mouth, draw_character_halo, draw_character_halo_outline, draw_stage,
-        draw_tree, update_character_hierarchy, update_character_resource, update_stage_hierarchy,
-        update_stage_resource, AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline,
-        BoneCollection, BrightRenderTarget, Camera, CameraDataLayout, CameraResource,
+        AccumRenderTarget, AlphaBlendPipeline, BakeList, BloomPipeline, BoneCollection,
+        BrightRenderTarget, CHARACTER_ATTRIBUTES, Camera, CameraDataLayout, CameraResource,
         CameraUniform, Child, DirectionLight, GaussianBlurPipeline, GlobalLightDataLayout,
         HaloOutlineMaterialDataLayout, HaloOutlineMaterialResource, HaloOutlineUniform,
         LightSetResource, LightTransformDataLayout, MaterialKind, MaterialResource, MeshRenderer,
         OpaqueMap, PlayerArchetype, Projection, RenderTask, RevealRenderTarget, ShadowMap,
         ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation, Skybox, SkyboxDataLayout,
-        ToParentTrans, TransparentMap, WorldTransform, CHARACTER_ATTRIBUTES,
+        ToParentTrans, TransparentMap, WorldTransform, animate_character, bake_character,
+        bake_character_eye_mouth, bake_stage, cleanup, clear_render_target_with_skybox,
+        collect_character_resource, collect_stage_resource, compute_frustum_corners_no_inverse,
+        compute_light_view_proj_matrix, draw_character, draw_character_eye_mouth,
+        draw_character_halo, draw_character_halo_outline, draw_stage, draw_tree,
+        update_character_hierarchy, update_character_resource, update_stage_hierarchy,
+        update_stage_resource,
     },
     config::{Locale, NUM_LOCALE},
     player_execute,
     scenes::{
-        FatalErrorSceneLayer, InGameRunScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, InGameRunScene, TEAM_COLOR,
     },
 };
 
@@ -925,24 +926,26 @@ impl GameScene for InGameEnterScene {
         }
 
         // 캐릭터 목소리를 재생합니다.
-        let i = self.player_character as usize;
-        let mut decodeds = Vec::with_capacity(CV_TACTIC_IN[i].len());
-        for j in 0..CV_TACTIC_IN[i].len() {
-            let decoded = self
-                .sound_data_pool
-                .remove(CV_TACTIC_IN[i][j])
-                .expect(&format!("{} voice must be preloaded!", CV_TACTIC_IN[i][j]));
-            decodeds.push(decoded);
-        }
-        decodeds.shuffle(&mut rand::rng());
+        if let Some(mixer) = app.audio_mixer() {
+            let i = self.player_character as usize;
+            let mut decodeds = Vec::with_capacity(CV_TACTIC_IN[i].len());
+            for j in 0..CV_TACTIC_IN[i].len() {
+                let decoded = self
+                    .sound_data_pool
+                    .remove(CV_TACTIC_IN[i][j])
+                    .expect(&format!("{} voice must be preloaded!", CV_TACTIC_IN[i][j]));
+                decodeds.push(decoded);
+            }
+            decodeds.shuffle(&mut rand::rng());
 
-        let decoded = decodeds.pop().unwrap();
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.voice_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+            let decoded = decodeds.pop().unwrap();
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.voice_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_exit(
@@ -1013,16 +1016,18 @@ impl GameScene for InGameEnterScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(

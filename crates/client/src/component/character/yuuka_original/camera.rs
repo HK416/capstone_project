@@ -3,7 +3,7 @@
 
 use glam::FloatExt;
 use mod_network::components::{
-    ActionState, ActionStateTimer, ViewState, ViewStateTimer, NUM_VIEW_STATES,
+    ActionState, ActionStateTimer, NUM_VIEW_STATES, ViewState, ViewStateTimer,
 };
 
 use super::*;

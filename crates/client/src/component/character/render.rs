@@ -5,14 +5,13 @@ use mod_parallelism::collections::Queue;
 use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT};
 
 use crate::component::{
-    set_weapon_position, AttributeKind, CameraResource, CharacterBakePipeline,
+    AttributeKind, CHARACTER_ATTRIBUTES, CameraResource, CharacterBakePipeline,
     CharacterRenderPipeline, Child, EyeMouthBakePipeline, EyeMouthRenderPipeline,
-    HaloOutlineRenderPipeline, HaloRenderPipeline, LightSetResource, MaterialKind, MaterialMap,
-    MaterialResource, Mesh, MeshFilter, MeshRenderer, Player0, Player1, Player2, Player3, Player4,
-    Player5, Player6, Player7, Player8, Player9, PlayerArchetype, RenderTask, ShadowMap,
-    ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation, ToParentTrans,
-    TransformDataLayout, TransformMap, WorldTransform, CHARACTER_ATTRIBUTES, MAX_BONES,
-    SHADOW_FORMAT,
+    HaloOutlineRenderPipeline, HaloRenderPipeline, LightSetResource, MAX_BONES, MaterialKind,
+    MaterialMap, MaterialResource, Mesh, MeshFilter, MeshRenderer, Player0, Player1, Player2,
+    Player3, Player4, Player5, Player6, Player7, Player8, Player9, PlayerArchetype, RenderTask,
+    SHADOW_FORMAT, ShadowMap, ShadowResource, Sibling, SkinnedMeshRenderer, SkinningAnimation,
+    ToParentTrans, TransformDataLayout, TransformMap, WorldTransform, set_weapon_position,
 };
 
 /// 캐릭터 엔터티의 계층 구조를 갱신합니다.

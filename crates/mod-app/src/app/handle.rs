@@ -43,7 +43,7 @@ pub trait AppHandle {
     fn timer(&self) -> &GameTimer;
 
     /// 소리 장치 오디오 믹서를 가져옵니다.
-    fn audio_mixer(&self) -> &Mixer;
+    fn audio_mixer(&self) -> Option<&Mixer>;
 
     /// 재생 중인 [`Sink`] 대기열을 가져옵니다.
     fn sink_list(&self) -> &Queue<Sink>;

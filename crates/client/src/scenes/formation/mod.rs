@@ -2,7 +2,7 @@ mod player;
 
 use std::{cmp, time::Instant};
 
-use ahash::{HashMap, HashSet, RandomState};
+use ahash::{HashMap, RandomState};
 use mod_app::{
     app::AppHandle,
     etc::{AppEvent, Viewport},
@@ -11,8 +11,8 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        CharacterKind, GameTier, LoginToken, ProfileIcon, SelectResult, Team, UserId,
-        MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS, NUM_CHARACTERS,
+        CharacterKind, GameTier, LoginToken, MAX_IN_GAME_PLAYERS, MAX_IN_GAME_TEAM_PLAYERS,
+        NUM_CHARACTERS, ProfileIcon, SelectResult, Team, UserId,
     },
     protocol::{
         CharacterReleaseNotifyPacket, CharacterSelectRequestPacket, CharacterSelectResponsePacket,
@@ -25,24 +25,24 @@ use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
+    SERVER_TCP_ADDR,
     asset::{
-        SoundDataPool, TexturePool, TextureViewPool, BG_FORMATION_URI, CHARACTER_IMG_URI,
-        EMBLEM_BG_URI, HUD_LAYOUT_URI_02, NOTOSANS_BOLD, NOTOSANS_REGULAR, PROFILE_ICON_URI,
+        BG_FORMATION_URI, CHARACTER_IMG_URI, EMBLEM_BG_URI, HUD_LAYOUT_URI_02, NOTOSANS_BOLD,
+        NOTOSANS_REGULAR, PROFILE_ICON_URI, SoundDataPool, TexturePool, TextureViewPool,
         UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, InGameLoadScene, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, InGameLoadScene, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
         TEAM_COLOR,
     },
-    SERVER_TCP_ADDR,
 };
 
 pub use self::player::*;
 
-use super::{MessageSceneLayer, BASE_WIDTH};
+use super::{BASE_WIDTH, MessageSceneLayer};
 
 /// 애플리케이션 표시 언어에 따른 오류 타이틀 텍스트
 const ERR_TITLE_TEXTS: [&'static str; NUM_LOCALE] = ["알림"];
@@ -570,16 +570,18 @@ impl CharacterFormationScene {
                         }
 
                         // 효과음을 재생합니다.
-                        let decoded = self
-                            .sound_data_pool
-                            .get(UI_BUTTON_TOUCH)
-                            .expect("UI_Button_Touch sound must be preloaded!");
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(app.audio_mixer());
-                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                        sink.append(source);
-                        sink.play();
-                        sink.detach();
+                        if let Some(mixer) = app.audio_mixer() {
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_BUTTON_TOUCH)
+                                .expect("UI_Button_Touch sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
 
                         self.select_btn_state = ButtonState::Clicked;
                     } else if response.is_pointer_button_down_on() {
@@ -1133,16 +1135,18 @@ impl GameScene for CharacterFormationScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -1202,16 +1206,18 @@ impl GameScene for CharacterFormationScene {
                 event_loop_proxy.send_event(event).unwrap();
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_NOTICE)
-                    .expect("UI_Notice sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_NOTICE)
+                        .expect("UI_Notice sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
             }
             PacketType::InGameDataInit => {
                 let packet = InGameDataInitPacket::from_raw(packet);
@@ -1239,16 +1245,18 @@ impl GameScene for CharacterFormationScene {
                 }
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_LOADING)
-                    .expect("UI_Loading sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_LOADING)
+                        .expect("UI_Loading sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
             }
             _ => {
                 log::warn!(

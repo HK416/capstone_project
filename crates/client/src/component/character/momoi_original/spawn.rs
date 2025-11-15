@@ -12,13 +12,13 @@ use mod_network::components::{
 use parking_lot::Mutex;
 
 use crate::{
-    asset::{ModelNode, ModelPool, ModelRoot, TextureDataPool, CHARACTER_URIS},
+    asset::{CHARACTER_URIS, ModelNode, ModelPool, ModelRoot, TextureDataPool},
     component::{
         BoneCollection, BoneTransformUniform, CharacterMaterialResource, CharacterMaterialUniform,
-        Child, EyeMouthMaterialResource, EyeMouthMaterialUniform, HaloMaterialResource,
-        MaterialData, MaterialResource, MaterialUniform, MeshResource, Parent, Sibling,
-        SkinnedMeshResource, SkinningAnimation, ToParentTrans, TransformUniform, WorldTransform,
-        MAX_BONES, MODEL_BONE_L_THIGH, MODEL_BONE_R_THIGH,
+        Child, EyeMouthMaterialResource, EyeMouthMaterialUniform, HaloMaterialResource, MAX_BONES,
+        MODEL_BONE_L_THIGH, MODEL_BONE_R_THIGH, MaterialData, MaterialResource, MaterialUniform,
+        MeshResource, Parent, Sibling, SkinnedMeshResource, SkinningAnimation, ToParentTrans,
+        TransformUniform, WorldTransform,
     },
 };
 

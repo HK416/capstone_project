@@ -15,19 +15,19 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        SamplerPool, SoundDataPool, TextureDataPool, TexturePool, TextureViewPool, ARONA_SAD_URI,
-        BG_DECO_URI, BG_FORMATION_URI, BG_MAIN_LOBBY_URI, BG_SOUND_THEME_03, BG_SOUND_THEME_14,
-        BG_SOUND_WORKSPACE, CHARACTER_IMG_URI, CV_SOUND_TITLE, CV_YUUKA_OPTION, EMBLEM_BG_URI,
-        GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI, HUD_DETAIL_ICON_URI,
-        HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01, HUD_LAYOUT_URI_02,
-        HUD_LAYOUT_URI_03, HUD_OPTION_ICON_URI, ICON_WORKSPACE, IMG_FONT_HOST_URI,
-        IMG_FONT_READY_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI, RANK_ICON_URI,
+        ARONA_SAD_URI, BG_DECO_URI, BG_FORMATION_URI, BG_MAIN_LOBBY_URI, BG_SOUND_THEME_03,
+        BG_SOUND_THEME_14, BG_SOUND_WORKSPACE, CHARACTER_IMG_URI, CV_SOUND_TITLE, CV_YUUKA_OPTION,
+        EMBLEM_BG_URI, GAME_LOGO_URI, HUD_CANCEL_ICON_URI, HUD_CHANGE_ICON_URI,
+        HUD_DETAIL_ICON_URI, HUD_EXIT_ICON_URI, HUD_LAYOUT_URI_00, HUD_LAYOUT_URI_01,
+        HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, HUD_OPTION_ICON_URI, ICON_WORKSPACE,
+        IMG_FONT_HOST_URI, IMG_FONT_READY_URI, IMG_FONT_WORKSPACE, NOTOSANS_BOLD, PROFILE_ICON_URI,
+        RANK_ICON_URI, SamplerPool, SoundDataPool, TextureDataPool, TexturePool, TextureViewPool,
         UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE, UI_TURN_DOWN, UI_TURN_UP,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FatalErrorSceneLayer,
     },
 };
 
@@ -754,16 +754,18 @@ impl GameScene for MainLobbyEnterScene {
         self.create_theme_14_sound(&root_dir, io_thread_pool);
 
         // 효과음을 출력합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_LOADING)
-            .expect("UI_Loading sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.voice_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_LOADING)
+                .expect("UI_Loading sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.voice_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn handle_network_error(&mut self, error: NetworkError, app: &dyn AppHandle) {
@@ -790,16 +792,18 @@ impl GameScene for MainLobbyEnterScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_update(&mut self, _elapsed_time_sec: f32, _window: &Window, app: &dyn AppHandle) {

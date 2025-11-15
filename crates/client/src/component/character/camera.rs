@@ -1,5 +1,5 @@
 use mod_network::components::{
-    ActionState, ActionStateTimer, CharacterKind, ViewState, ViewStateTimer, NUM_CHARACTERS,
+    ActionState, ActionStateTimer, CharacterKind, NUM_CHARACTERS, ViewState, ViewStateTimer,
 };
 
 use super::*;

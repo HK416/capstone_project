@@ -24,26 +24,25 @@ use winit::window::Window;
 
 use crate::{
     asset::{
-        AssetError, DecodedSound, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
-        TextureDataPool, TexturePool, TextureViewPool, BG_SKY_URI, BG_SKY_WORKSPACE,
-        BG_SOUND_THEME_23, BG_SOUND_WORKSPACE, BULLET_URIS, BULLET_WORKSPACE,
-        CHARACTER_IMG_SMALL_URI, CHARACTER_IMG_URI, CHARACTER_URIS, CHARACTER_WORKSPACES,
-        CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_MOVE, CV_BATTLE_RETIRE, CV_BATTLE_SHOUT,
-        CV_COMMONSKILL, CV_EXSKILL_LEVEL, CV_SOUND_WORKSPACES, CV_TACTIC_IN, EMBLEM_BG_URI,
-        FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01, FX_WORKSPACE, HUD_LAYOUT_URI_02,
-        HUD_LAYOUT_URI_03, ICON_WORKSPACE, IMG_FONT_DRAW, IMG_FONT_LOSE_SMALL_URI,
-        IMG_FONT_LOSE_URI, IMG_FONT_MISSION_URI, IMG_FONT_MISS_URI, IMG_FONT_NUMBER_URI,
-        IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI, IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE,
-        NOTOSANS_BOLD, PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON, SFX_COMMON_RELOAD, SFX_SKILL,
-        SFX_WORKSPACE, STAGE_URI, STAGE_WORKSPACES, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING,
-        UI_NOTICE, UI_PAUSE, UI_SOUND_WORKSPACE, UI_START, UI_TURN_DOWN, UI_TURN_UP,
-        UI_VICTORY_ST_01, WEAPON_ICON_URI,
+        AssetError, BG_SKY_URI, BG_SKY_WORKSPACE, BG_SOUND_THEME_23, BG_SOUND_WORKSPACE,
+        BULLET_URIS, BULLET_WORKSPACE, CHARACTER_IMG_SMALL_URI, CHARACTER_IMG_URI, CHARACTER_URIS,
+        CHARACTER_WORKSPACES, CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_MOVE,
+        CV_BATTLE_RETIRE, CV_BATTLE_SHOUT, CV_COMMONSKILL, CV_EXSKILL_LEVEL, CV_SOUND_WORKSPACES,
+        CV_TACTIC_IN, DecodedSound, EMBLEM_BG_URI, FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00,
+        FX_TEX_MUZZLE_01, FX_WORKSPACE, HUD_LAYOUT_URI_02, HUD_LAYOUT_URI_03, ICON_WORKSPACE,
+        IMG_FONT_DRAW, IMG_FONT_LOSE_SMALL_URI, IMG_FONT_LOSE_URI, IMG_FONT_MISS_URI,
+        IMG_FONT_MISSION_URI, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, IMG_FONT_WIN_SMALL_URI,
+        IMG_FONT_WIN_URI, IMG_FONT_WORKSPACE, MeshPool, ModelPool, MotionPool, NOTOSANS_BOLD,
+        PROFILE_ICON_URI, SCHALE_ICON_URI, SFX_COMMON, SFX_COMMON_RELOAD, SFX_SKILL, SFX_WORKSPACE,
+        STAGE_URI, STAGE_WORKSPACES, SamplerPool, SoundDataPool, TextureDataPool, TexturePool,
+        TextureViewPool, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE, UI_PAUSE,
+        UI_SOUND_WORKSPACE, UI_START, UI_TURN_DOWN, UI_TURN_UP, UI_VICTORY_ST_01, WEAPON_ICON_URI,
     },
     component::{Attributes, MaterialDataPool, Mesh, Vertices},
-    config::{Locale, UserConfig, NUM_LOCALE},
+    config::{Locale, NUM_LOCALE, UserConfig},
     scenes::{
-        FatalErrorSceneLayer, InGameBuildScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FatalErrorSceneLayer, InGameBuildScene,
     },
 };
 
@@ -1043,16 +1042,18 @@ impl GameScene for InGameLoadScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -1085,11 +1086,13 @@ impl GameScene for InGameLoadScene {
                     mut staging_buffers,
                     command,
                 } => {
-                    let source = decoded.as_source().repeat_infinite();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.background_volume as f32 / 255.0);
-                    sink.append(source);
-                    app.sink_list().push(sink);
+                    if let Some(mixer) = app.audio_mixer() {
+                        let source = decoded.as_source().repeat_infinite();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.background_volume as f32 / 255.0);
+                        sink.append(source);
+                        app.sink_list().push(sink);
+                    }
 
                     self.stage_layout_data
                         .set(Arc::new(attributes))
@@ -1122,16 +1125,18 @@ impl GameScene for InGameLoadScene {
                     event_loop_proxy.send_event(event).unwrap();
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_NOTICE)
-                        .expect("UI_Notice sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_NOTICE)
+                            .expect("UI_Notice sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
                 }
             };
         }
@@ -1169,16 +1174,18 @@ impl GameScene for InGameLoadScene {
                 event_loop_proxy.send_event(event).unwrap();
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_LOADING)
-                    .expect("UI_Loading sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_LOADING)
+                        .expect("UI_Loading sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
             }
         }
     }

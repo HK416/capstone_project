@@ -16,15 +16,15 @@ use winit::{
 
 use crate::{
     asset::{
-        SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK, UI_LOADING, UI_NOTICE,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SoundDataPool, UI_BUTTON_BACK, UI_LOADING, UI_NOTICE,
         USER_CONFIG,
     },
     component::ButtonState,
-    config::{Locale, UserConfig, NUM_LOCALE},
+    config::{Locale, NUM_LOCALE, UserConfig},
     scenes::{
-        FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
-        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR,
-        NORM_FOCUS_COLOR, POSI_COLOR, POSI_FOCUS_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, MessageSceneLayer, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        POSI_COLOR, POSI_FOCUS_COLOR,
     },
 };
 
@@ -128,16 +128,18 @@ impl GameScene for LobbyOptionSaveGuardLayer {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_keyboard_released(
@@ -187,16 +189,18 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                         event_loop_proxy.send_event(event).unwrap();
 
                         // 효과음을 재생합니다.
-                        let decoded = self
-                            .sound_data_pool
-                            .get(UI_NOTICE)
-                            .expect("UI_Notice sound must be preloaded!");
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(app.audio_mixer());
-                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                        sink.append(source);
-                        sink.play();
-                        sink.detach();
+                        if let Some(mixer) = app.audio_mixer() {
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_NOTICE)
+                                .expect("UI_Notice sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
                     }
                 };
             }
@@ -351,16 +355,18 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                                         self.num_remaining_tasks += 1;
 
                                         // 효과음을 재생합니다.
-                                        let decoded = self
-                                            .sound_data_pool
-                                            .get(UI_LOADING)
-                                            .expect("UI_Loading sound must be preloaded!");
-                                        let source = decoded.as_source();
-                                        let sink = Sink::connect_new(app.audio_mixer());
-                                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                                        sink.append(source);
-                                        sink.play();
-                                        sink.detach();
+                                        if let Some(mixer) = app.audio_mixer() {
+                                            let decoded = self
+                                                .sound_data_pool
+                                                .get(UI_LOADING)
+                                                .expect("UI_Loading sound must be preloaded!");
+                                            let source = decoded.as_source();
+                                            let sink = Sink::connect_new(mixer);
+                                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                                            sink.append(source);
+                                            sink.play();
+                                            sink.detach();
+                                        }
                                     } else if response.is_pointer_button_down_on() {
                                         self.yes_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {
@@ -384,16 +390,18 @@ impl GameScene for LobbyOptionSaveGuardLayer {
                                         self.num_remaining_tasks += 1;
 
                                         // 효과음을 재생합니다.
-                                        let decoded = self
-                                            .sound_data_pool
-                                            .get(UI_BUTTON_BACK)
-                                            .expect("UI_Button_Back sound must be preloaded!");
-                                        let source = decoded.as_source();
-                                        let sink = Sink::connect_new(app.audio_mixer());
-                                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                                        sink.append(source);
-                                        sink.play();
-                                        sink.detach();
+                                        if let Some(mixer) = app.audio_mixer() {
+                                            let decoded = self
+                                                .sound_data_pool
+                                                .get(UI_BUTTON_BACK)
+                                                .expect("UI_Button_Back sound must be preloaded!");
+                                            let source = decoded.as_source();
+                                            let sink = Sink::connect_new(mixer);
+                                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                                            sink.append(source);
+                                            sink.play();
+                                            sink.detach();
+                                        }
                                     } else if response.is_pointer_button_down_on() {
                                         self.no_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {

@@ -7,7 +7,7 @@ use mod_network::components::{ActionStateTimer, CharacterAttributes, LatLon, Mov
 
 use crate::{
     asset::Motion,
-    component::{BoneCollection, SkinningAnimation, ToParentTrans, MODEL_BONE_ROOT},
+    component::{BoneCollection, MODEL_BONE_ROOT, SkinningAnimation, ToParentTrans},
 };
 
 use super::*;

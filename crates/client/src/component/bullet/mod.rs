@@ -13,13 +13,13 @@ use mod_parallelism::collections::Queue;
 use parking_lot::Mutex;
 
 use crate::{
-    asset::{ModelNode, ModelPool, ModelRoot, TextureDataPool, BULLET_URIS},
+    asset::{BULLET_URIS, ModelNode, ModelPool, ModelRoot, TextureDataPool},
     component::{
         BoneCollection, BoneTransformUniform, Bullet, BulletMaterialResource,
         BulletMaterialUniform, Child, EnergyBulletMaterialResource, EnergyBulletMaterialUniform,
-        MaterialData, MaterialResource, MaterialUniform, MeshFilter, MeshRenderer, MeshResource,
-        Parent, RenderTask, Sibling, SkinnedMeshRenderer, SkinnedMeshResource, ToParentTrans,
-        TransformDataLayout, TransformUniform, WorldTransform, MAX_BONES,
+        MAX_BONES, MaterialData, MaterialResource, MaterialUniform, MeshFilter, MeshRenderer,
+        MeshResource, Parent, RenderTask, Sibling, SkinnedMeshRenderer, SkinnedMeshResource,
+        ToParentTrans, TransformDataLayout, TransformUniform, WorldTransform,
     },
 };
 

@@ -6,7 +6,7 @@ use mod_network::components::{
 };
 
 use crate::{
-    asset::{MotionPool, CHARACTER_URIS},
+    asset::{CHARACTER_URIS, MotionPool},
     component::{
         Player0, Player1, Player2, Player3, Player4, Player5, Player6, Player7, Player8, Player9,
         PlayerArchetype, ToParentTrans,

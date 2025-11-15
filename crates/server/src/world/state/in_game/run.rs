@@ -1531,6 +1531,7 @@ impl GameWorldInGameRunState {
                 h.movement_state = MovementState::Idle;
                 h.movement_state_timer.0 = 0;
                 h.action_notify = ActionNotify::Retreat;
+                h.held_input = HeldInput::empty();
 
                 // 플레이 데이터 갱신
                 h.retreat_count += 1;

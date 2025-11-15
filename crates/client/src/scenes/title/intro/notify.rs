@@ -7,7 +7,7 @@ use mod_render::UiRenderer;
 use winit::window::Window;
 
 use crate::{
-    asset::{SoundDataPool, TexturePool, NOTOSANS_BOLD, NOTOSANS_REGULAR},
+    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR, SoundDataPool, TexturePool},
     config::{Locale, NUM_LOCALE},
     scenes::BASE_WIDTH,
 };

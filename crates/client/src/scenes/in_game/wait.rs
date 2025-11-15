@@ -9,29 +9,29 @@ use mod_app::{
     scene::{GameScene, GameSceneFlow},
 };
 use mod_network::{
-    components::{CharacterKind, LoginToken, StageAttributes, Team, UserId, MAX_IN_GAME_PLAYERS},
+    components::{CharacterKind, LoginToken, MAX_IN_GAME_PLAYERS, StageAttributes, Team, UserId},
     protocol::{InGameEnterNotifyPacket, InGameReadyNotifyPacket, Packet, PacketType, RawPacket},
 };
-use mod_render::{UiRenderer, SWAPCHAIN_FORMAT};
+use mod_render::{SWAPCHAIN_FORMAT, UiRenderer};
 use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
+    SERVER_TCP_ADDR,
     asset::{
-        MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool, StageBoundingVolumnHierarchy,
-        TextureDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD, UI_NOTICE,
+        MeshPool, ModelPool, MotionPool, NOTOSANS_BOLD, SamplerPool, SoundDataPool,
+        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool, UI_NOTICE,
     },
     component::{
         AccumRenderTarget, AlphaBlendPipeline, BloomPipeline, BrightRenderTarget, DirectionLight,
-        GaussianBlurPipeline, LightSetResource, PlayerArchetype, RevealRenderTarget, Skybox,
-        GLOBAL_SHADOW_MAP_SIZE, LOCAL_SHADOW_MAP_SIZE,
+        GLOBAL_SHADOW_MAP_SIZE, GaussianBlurPipeline, LOCAL_SHADOW_MAP_SIZE, LightSetResource,
+        PlayerArchetype, RevealRenderTarget, Skybox,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, InGameEnterScene, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FatalErrorSceneLayer, InGameEnterScene,
     },
-    SERVER_TCP_ADDR,
 };
 
 /// 애플리케이션 표시 언어에 따른 로드 텍스트
@@ -430,16 +430,18 @@ impl GameScene for InGameReadyScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(

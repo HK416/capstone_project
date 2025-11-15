@@ -12,7 +12,7 @@ use std::fmt;
 use mod_app::etc::WindowSize;
 
 use crate::{
-    config::{Locale, UserConfigIOError, NUM_LOCALE},
+    config::{Locale, NUM_LOCALE, UserConfigIOError},
     scenes::BASE_WIDTH,
 };
 

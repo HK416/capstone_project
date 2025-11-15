@@ -5,8 +5,8 @@
 use std::{
     num::NonZeroU32,
     sync::{
-        atomic::{AtomicU32, Ordering as MemOrdering},
         Arc,
+        atomic::{AtomicU32, Ordering as MemOrdering},
     },
 };
 

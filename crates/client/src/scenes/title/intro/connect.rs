@@ -13,13 +13,13 @@ use rodio::Sink;
 use winit::window::Window;
 
 use crate::{
-    asset::{SoundDataPool, TexturePool, TextureViewPool, NOTOSANS_REGULAR, UI_NOTICE},
+    SERVER_TCP_ADDR,
+    asset::{NOTOSANS_REGULAR, SoundDataPool, TexturePool, TextureViewPool, UI_NOTICE},
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS,
+        FatalErrorSceneLayer,
     },
-    SERVER_TCP_ADDR,
 };
 
 use super::GameIntroVerifyScene;
@@ -139,16 +139,18 @@ impl GameScene for GameIntroConnectScene {
             event_loop_proxy.send_event(event).unwrap();
 
             // 효과음을 재생합니다.
-            let decoded = self
-                .sound_data_pool
-                .get(UI_NOTICE)
-                .expect("UI_Notice sound must be preloaded!");
-            let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
-            sink.set_volume(self.effect_volume as f32 / 255.0);
-            sink.append(source);
-            sink.play();
-            sink.detach();
+            if let Some(mixer) = app.audio_mixer() {
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_NOTICE)
+                    .expect("UI_Notice sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(mixer);
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+            }
         }
     }
 
@@ -176,16 +178,18 @@ impl GameScene for GameIntroConnectScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn ui_callback(&mut self, window: &Window, app: &dyn AppHandle) {

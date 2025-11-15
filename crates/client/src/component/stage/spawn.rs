@@ -14,11 +14,11 @@ use crate::{
         TextureDataPool,
     },
     component::{
-        BoneCollection, BoneTransformUniform, Child, MaterialData, MaterialResource,
+        BoneCollection, BoneTransformUniform, Child, MAX_BONES, MaterialData, MaterialResource,
         MaterialUniform, MeshResource, Parent, Sibling, SkinnedMeshResource, Stage,
         StageBarrierMaterialResource, StageBarrierMaterialUniform, StageMaterialResource,
         StageMaterialUniform, ToParentTrans, TransformUniform, TreeMaterialResource,
-        TreeMaterialUniform, WorldTransform, MAX_BONES,
+        TreeMaterialUniform, WorldTransform,
     },
 };
 

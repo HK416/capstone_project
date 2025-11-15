@@ -88,7 +88,7 @@ pub struct Application {
     timer: GameTimer,
 
     /// 소리 출력 디바이스의 핸들입니다.
-    stream_handle: OutputStream,
+    stream_handle: Option<OutputStream>,
 
     /// 재생 중인 [`Sink`]를 저장합니다.
     sink_list: Queue<Sink>,
@@ -151,8 +151,7 @@ impl Application {
         let network = NetManager::new(event_loop_proxy.clone());
 
         // 오디오 장치를 생성합니다.
-        let stream_handle = OutputStreamBuilder::open_default_stream()
-            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
+        let stream_handle = OutputStreamBuilder::open_default_stream().ok();
 
         // 최상위 에셋 디렉토리를 가져옵니다.
         let mut root_dir = unsafe { builder.current_dir.clone().unwrap_unchecked() }; // Safe: 빌더를 생성할 때 존재 유무를 확인함.
@@ -1146,8 +1145,8 @@ impl AppHandle for Application {
         &self.timer
     }
 
-    fn audio_mixer(&self) -> &Mixer {
-        self.stream_handle.mixer()
+    fn audio_mixer(&self) -> Option<&Mixer> {
+        self.stream_handle.as_ref().map(|h| h.mixer())
     }
 
     fn sink_list(&self) -> &Queue<Sink> {

@@ -17,22 +17,22 @@ use mod_app::{
 };
 use mod_network::{
     components::{
-        update_view_state, update_view_state_timer, ActionNotify, ActionState, ActionStateTimer,
-        BulletData, CapturePoint, CharacterFlags, CharacterKind, Damage, DamageLogData, HealthData,
-        HeldInput, InputEvent, InputSnapshot, LatLon, LoginToken, MovementState,
-        MovementStateTimer, NetworkState, ObjectId, Permission, SkillCostData, StageAttributes,
-        Team, UserId, UserName, ViewState, ViewStateTimer, MAX_INPUT_EVENTS, MAX_IN_GAME_BULLETS,
-        MAX_IN_GAME_PLAYERS, MAX_LATITUDE, MIN_LATITUDE, RESPAWN_DELAY,
+        ActionNotify, ActionState, ActionStateTimer, BulletData, CapturePoint, CharacterFlags,
+        CharacterKind, Damage, DamageLogData, HealthData, HeldInput, InputEvent, InputSnapshot,
+        LatLon, LoginToken, MAX_IN_GAME_BULLETS, MAX_IN_GAME_PLAYERS, MAX_INPUT_EVENTS,
+        MAX_LATITUDE, MIN_LATITUDE, MovementState, MovementStateTimer, NetworkState, ObjectId,
+        Permission, RESPAWN_DELAY, SkillCostData, StageAttributes, Team, UserId, UserName,
+        ViewState, ViewStateTimer, update_view_state, update_view_state_timer,
     },
     protocol::{
         InGameControlLosePacket, InGameFinishPacket, InGameInputPacket, InGamePullPacket,
-        InGameStatusPacket, Packet, PacketType, RawPacket, MAX_INPUT_SNAPSHOTS,
+        InGameStatusPacket, MAX_INPUT_SNAPSHOTS, Packet, PacketType, RawPacket,
     },
 };
 use mod_parallelism::collections::Queue;
 use mod_physics::object3d::Frustum;
-use mod_render::{UiRenderer, DEPTH_FORMAT, SWAPCHAIN_FORMAT};
-use rodio::{mixer::Mixer, Sink};
+use mod_render::{DEPTH_FORMAT, SWAPCHAIN_FORMAT, UiRenderer};
+use rodio::{Sink, mixer::Mixer};
 use winit::{
     event::{Modifiers, MouseButton},
     keyboard::{KeyCode, KeyLocation},
@@ -40,16 +40,26 @@ use winit::{
 };
 
 use crate::{
+    SERVER_TCP_ADDR,
     asset::{
-        cull_stage_entities, MeshPool, ModelPool, MotionPool, SamplerPool, SoundDataPool,
-        StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
         CHARACTER_IMG_SMALL_URI, CV_BATTLE_DAMAGE, CV_BATTLE_DEFENSE, CV_BATTLE_RETIRE,
         CV_BATTLE_SHOUT, CV_EXSKILL_LEVEL, FX_MESH_SHIELD_00, FX_TEX_MUZZLE_00, FX_TEX_MUZZLE_01,
-        HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, NOTOSANS_BOLD,
-        NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, UI_NOTICE, UI_PAUSE, UI_START,
-        WEAPON_ICON_URI,
+        HUD_LAYOUT_URI_02, IMG_FONT_NUMBER_URI, IMG_FONT_START_URI, MeshPool, ModelPool,
+        MotionPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, SFX_COMMON, SFX_COMMON_RELOAD, SamplerPool,
+        SoundDataPool, StageBoundingVolumnHierarchy, TextureDataPool, TexturePool, TextureViewPool,
+        UI_NOTICE, UI_PAUSE, UI_START, WEAPON_ICON_URI, cull_stage_entities,
     },
     component::{
+        AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline,
+        BoneCollection, BrightRenderTarget, Bullet, CAMERA_DEF_FOV_Y, CAMERA_DEF_REL_POS,
+        CHARACTER_ATTRIBUTES, Camera, CameraResource, CameraUniform, Child, DamageFontDataLayout,
+        DamageFontRenderPipeline, DamageFontResource, DamageFontUniform, DamageParticle,
+        DirectionLight, FxMuzzleInstance, FxMuzzleResource, FxShieldDataLayout, FxShieldInstance,
+        FxShieldResource, FxShieldUniform, GaussianBlurPipeline, GlobalLightDataLayout,
+        LightSetResource, LightTransformDataLayout, MODEL_BONE_HEAD, MaterialKind,
+        MaterialResource, Mesh, MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype,
+        Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer,
+        SkinningAnimation, Skybox, ToParentTrans, TransparentMap, WorldTransform,
         animate_character, bake_character, bake_character_eye_mouth, bake_stage, cleanup,
         clear_render_target_with_skybox, collect_character_resource, collect_stage_resource,
         compute_frustum_corners_no_inverse, compute_light_view_proj_matrix, draw_bullet,
@@ -61,24 +71,13 @@ use crate::{
         update_camera_param, update_character_hierarchy, update_character_resource,
         update_fx_muzzle_00_particles, update_fx_muzzle_01_particles, update_fx_particle_lifetime,
         update_fx_shield_particle, update_stage_hierarchy, update_stage_resource,
-        AccumRenderTarget, AlphaBlendPipeline, AttributeKind, BakeList, BloomPipeline,
-        BoneCollection, BrightRenderTarget, Bullet, Camera, CameraResource, CameraUniform, Child,
-        DamageFontDataLayout, DamageFontRenderPipeline, DamageFontResource, DamageFontUniform,
-        DamageParticle, DirectionLight, FxMuzzleInstance, FxMuzzleResource, FxShieldDataLayout,
-        FxShieldInstance, FxShieldResource, FxShieldUniform, GaussianBlurPipeline,
-        GlobalLightDataLayout, LightSetResource, LightTransformDataLayout, MaterialKind,
-        MaterialResource, Mesh, MeshRenderer, OpaqueMap, Parent, ParticleResource, PlayerArchetype,
-        Projection, RenderTask, RevealRenderTarget, ShadowMap, Sibling, SkinnedMeshRenderer,
-        SkinningAnimation, Skybox, ToParentTrans, TransparentMap, WorldTransform, CAMERA_DEF_FOV_Y,
-        CAMERA_DEF_REL_POS, CHARACTER_ATTRIBUTES, MODEL_BONE_HEAD,
     },
-    config::{Locale, UserConfig, NUM_LOCALE},
+    config::{Locale, NUM_LOCALE, UserConfig},
     player_execute,
     scenes::{
-        FatalErrorSceneLayer, InGameExitScene, InGamePauseLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
-        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, TEAM_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, InGameExitScene, InGamePauseLayer, TEAM_COLOR,
     },
-    SERVER_TCP_ADDR,
 };
 
 /// 애플리케이션 언어에 따른 리스폰 대기 타이틀 텍스트
@@ -787,7 +786,9 @@ impl InGameRunScene {
                     // 캐릭터 보이스를 재생합니다.
                     if uid == self.uid {
                         let val: f32 = rand::random();
-                        if val > 0.9 {
+                        if val > 0.9
+                            && let Some(mixer) = app.audio_mixer()
+                        {
                             let i = self.player_character as usize;
                             let j = rand::random_range(0..3);
                             let decoded =
@@ -798,7 +799,7 @@ impl InGameRunScene {
                                         CV_BATTLE_DAMAGE[i][j]
                                     ));
                             let source = decoded.as_source();
-                            let sink = Sink::connect_new(app.audio_mixer());
+                            let sink = Sink::connect_new(mixer);
                             sink.set_volume(self.voice_volume as f32 / 255.0);
                             sink.append(source);
                             sink.play();
@@ -869,7 +870,9 @@ impl InGameRunScene {
                     // 캐릭터 보이스를 재생합니다.
                     if uid == self.uid {
                         let val: f32 = rand::random();
-                        if val > 0.9 {
+                        if val > 0.9
+                            && let Some(mixer) = app.audio_mixer()
+                        {
                             let i = self.player_character as usize;
                             let decoded =
                                 self.sound_data_pool
@@ -879,7 +882,7 @@ impl InGameRunScene {
                                         CV_BATTLE_DEFENSE[i]
                                     ));
                             let source = decoded.as_source();
-                            let sink = Sink::connect_new(app.audio_mixer());
+                            let sink = Sink::connect_new(mixer);
                             sink.set_volume(self.voice_volume as f32 / 255.0);
                             sink.append(source);
                             sink.play();
@@ -1023,7 +1026,7 @@ impl InGameRunScene {
     /// 서버로부터 전달받은 데이터로 플레이어를 갱신합니다.
     fn pull_server_data(
         &mut self,
-        mixer: &Mixer,
+        mixer: Option<&Mixer>,
         time_stamp: Instant,
         packet: InGamePullPacket,
         device: &wgpu::Device,
@@ -1081,7 +1084,9 @@ impl InGameRunScene {
             match data.action_notify {
                 ActionNotify::None => {}
                 ActionNotify::Retreat => {
-                    if data.uid == self.uid {
+                    if data.uid == self.uid
+                        && let Some(mixer) = mixer
+                    {
                         let i = character_kind as usize;
                         let decoded = self
                             .sound_data_pool
@@ -1099,7 +1104,9 @@ impl InGameRunScene {
                     }
                 }
                 ActionNotify::Reload => {
-                    if data.uid == self.uid {
+                    if data.uid == self.uid
+                        && let Some(mixer) = mixer
+                    {
                         let i = character_kind as usize;
                         let decoded = self
                             .sound_data_pool
@@ -1117,7 +1124,9 @@ impl InGameRunScene {
                     }
                 }
                 ActionNotify::StartAttack => {
-                    if data.uid == self.uid {
+                    if data.uid == self.uid
+                        && let Some(mixer) = mixer
+                    {
                         let val: f32 = rand::random();
                         if val < 0.1 {
                             let i = character_kind as usize;
@@ -1139,7 +1148,9 @@ impl InGameRunScene {
                     }
                 }
                 ActionNotify::FirstAttack => {
-                    if data.uid == self.uid {
+                    if data.uid == self.uid
+                        && let Some(mixer) = mixer
+                    {
                         let i = character_kind as usize;
                         let decoded = self
                             .sound_data_pool
@@ -1164,21 +1175,23 @@ impl InGameRunScene {
                     spawn_fx_muzzle_effect(world, entity, archetype, &self.mesh_pool);
                 }
                 ActionNotify::StartSkill => {
-                    let i = character_kind as usize;
-                    let j = rand::random_range(0..3);
-                    let decoded = self
-                        .sound_data_pool
-                        .get(CV_EXSKILL_LEVEL[i][j])
-                        .expect("CV_ExSkill_Level sound must be preloaded!");
-                    let time_t = data.action_state_timer(attribute).0;
-                    let duration = Duration::from_millis(time_t as u64);
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(mixer);
-                    sink.set_volume(self.voice_volume as f32 / 255.0);
-                    sink.append(source);
-                    let _ = sink.try_seek(duration);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = mixer {
+                        let i = character_kind as usize;
+                        let j = rand::random_range(0..3);
+                        let decoded = self
+                            .sound_data_pool
+                            .get(CV_EXSKILL_LEVEL[i][j])
+                            .expect("CV_ExSkill_Level sound must be preloaded!");
+                        let time_t = data.action_state_timer(attribute).0;
+                        let duration = Duration::from_millis(time_t as u64);
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.voice_volume as f32 / 255.0);
+                        sink.append(source);
+                        let _ = sink.try_seek(duration);
+                        sink.play();
+                        sink.detach();
+                    }
                 }
                 ActionNotify::FirstSkill => match character_kind {
                     CharacterKind::MidoriOriginal => {
@@ -1223,8 +1236,7 @@ impl InGameRunScene {
 
                 // 최단 거리 보간
                 let new_latlon = data.latlon();
-                if *action_state == ActionState::Attack 
-                || *action_state == ActionState::Skill {
+                if *action_state == ActionState::Attack || *action_state == ActionState::Skill {
                     let mut delta = new_latlon.lon - latlon.lon;
                     let t = delta.abs() / 2.0 * TAU;
                     if delta > PI {
@@ -1233,16 +1245,15 @@ impl InGameRunScene {
                         delta += TAU;
                     }
                     latlon.lon = (latlon.lon + delta * t) % TAU;
-                    
+
                     let diff = new_latlon.lat - new_latlon.lon;
                     let t = (diff.abs() / MAX_LATITUDE).min(1.0);
                     latlon.lat = latlon.lat * (1.0 - t) + new_latlon.lat * t;
                 } else {
-                    
                     let min = (new_latlon.lat - 3f32.to_radians()).max(MIN_LATITUDE);
                     let max = (new_latlon.lat + 3f32.to_radians()).min(MAX_LATITUDE);
                     latlon.lat = latlon.lat.clamp(min, max);
-                    
+
                     let min = new_latlon.lon - 5f32.to_radians();
                     let max = new_latlon.lon + 5f32.to_radians();
                     latlon.lon = latlon.lon.clamp(min, max) % TAU;
@@ -2967,16 +2978,18 @@ impl GameScene for InGameRunScene {
         self.resize_ui(window, app);
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_START)
-            .expect("UI_START sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_START)
+                .expect("UI_START sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_exit(
@@ -3273,16 +3286,18 @@ impl GameScene for InGameRunScene {
                 event_loop_proxy.send_event(event).unwrap();
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_PAUSE)
-                    .expect("UI_Pause sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_PAUSE)
+                        .expect("UI_Pause sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
 
                 return true;
             }
@@ -3347,16 +3362,18 @@ impl GameScene for InGameRunScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(

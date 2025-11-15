@@ -10,11 +10,11 @@ use lazy_static::lazy_static;
 use mod_network::components::{ActionState, CharacterAttributes};
 
 use crate::{
-    asset::{MeshPool, FX_TEX_MUZZLE_00},
+    asset::{FX_TEX_MUZZLE_00, MeshPool},
     component::{
-        update_entity_hierarchy_with_archetype, Child, FxMuzzle00, FxMuzzle01, FxMuzzleTintColor,
-        LifeTime, Parent, PlayerArchetype, Sibling, SkinningAnimation, ToParentTrans,
-        WorldTransform, MODEL_BONE_R_HAND,
+        Child, FxMuzzle00, FxMuzzle01, FxMuzzleTintColor, LifeTime, MODEL_BONE_R_HAND, Parent,
+        PlayerArchetype, Sibling, SkinningAnimation, ToParentTrans, WorldTransform,
+        update_entity_hierarchy_with_archetype,
     },
 };
 

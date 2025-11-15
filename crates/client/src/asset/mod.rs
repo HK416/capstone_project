@@ -7,7 +7,7 @@ mod texture;
 
 use std::io;
 
-use mod_network::components::{StageLoadError, NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES};
+use mod_network::components::{NUM_BULLETS, NUM_CHARACTERS, NUM_STAGES, StageLoadError};
 
 pub use self::{hierarchy::*, mesh::*, motion::*, sound::*, stage::*, texture::*};
 

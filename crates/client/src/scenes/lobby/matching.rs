@@ -22,18 +22,18 @@ use winit::{
 };
 
 use crate::{
+    SERVER_TCP_ADDR,
     asset::{
-        SoundDataPool, TexturePool, TextureViewPool, NOTOSANS_BOLD, NOTOSANS_REGULAR,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SoundDataPool, TexturePool, TextureViewPool,
         UI_BUTTON_BACK, UI_NOTICE,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        CharacterFormationScene, FatalErrorSceneLayer, FormationPlayerData, MessageSceneLayer,
-        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
-        NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        BASE_WIDTH, CharacterFormationScene, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
+        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, FatalErrorSceneLayer, FormationPlayerData,
+        MessageSceneLayer, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
     },
-    SERVER_TCP_ADDR,
 };
 
 /// 애플리케이션 표시 언어에 따른 타이틀 텍스트입니다.
@@ -149,16 +149,18 @@ impl GameScene for MainLobbyWaitForMatching {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -196,16 +198,18 @@ impl GameScene for MainLobbyWaitForMatching {
                         event_loop_proxy.send_event(event).unwrap();
 
                         // 효과음을 재생합니다.
-                        let decoded = self
-                            .sound_data_pool
-                            .get(UI_NOTICE)
-                            .expect("UI_Notice sound must be preloaded!");
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(app.audio_mixer());
-                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                        sink.append(source);
-                        sink.play();
-                        sink.detach();
+                        if let Some(mixer) = app.audio_mixer() {
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_NOTICE)
+                                .expect("UI_Notice sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
                     }
                     MatchRequestRejectedReason::CreationLimited => {
                         // 게임 장면을 변경합니다.
@@ -228,16 +232,18 @@ impl GameScene for MainLobbyWaitForMatching {
                         event_loop_proxy.send_event(event).unwrap();
 
                         // 효과음을 재생합니다.
-                        let decoded = self
-                            .sound_data_pool
-                            .get(UI_NOTICE)
-                            .expect("UI_Notice sound must be preloaded!");
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(app.audio_mixer());
-                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                        sink.append(source);
-                        sink.play();
-                        sink.detach();
+                        if let Some(mixer) = app.audio_mixer() {
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_NOTICE)
+                                .expect("UI_Notice sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
                     }
                     MatchRequestRejectedReason::Canceled => {
                         // 이전 게임 장면으로 전환합니다.
@@ -320,16 +326,18 @@ impl GameScene for MainLobbyWaitForMatching {
                 socket.push_packet(packet.as_raw());
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_BUTTON_BACK)
-                    .expect("UI_Button_Back sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_BACK)
+                        .expect("UI_Button_Back sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
 
                 self.wait_for_response = true;
             }
@@ -416,16 +424,18 @@ impl GameScene for MainLobbyWaitForMatching {
                     socket.push_packet(packet.as_raw());
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_BUTTON_BACK)
-                        .expect("UI_Button_Back sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_BACK)
+                            .expect("UI_Button_Back sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
 
                     self.cancel_btn_state = ButtonState::Clicked;
                     self.wait_for_response = true;

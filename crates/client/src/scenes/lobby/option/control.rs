@@ -17,15 +17,15 @@ use winit::{
 
 use crate::{
     asset::{
-        SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SoundDataPool, UI_BUTTON_TOUCH, UI_LOADING, UI_NOTICE,
         UI_TURN_DOWN, USER_CONFIG,
     },
     component::ButtonState,
     config::{Locale, UserConfig},
     scenes::{
-        FatalErrorSceneLayer, MessageSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS,
-        ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR,
-        NORM_FOCUS_COLOR, POSI_COLOR, POSI_FOCUS_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, MessageSceneLayer, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        POSI_COLOR, POSI_FOCUS_COLOR,
     },
 };
 
@@ -157,16 +157,18 @@ impl LobbyControlOptionModalLayer {
             event_loop_proxy.send_event(event).unwrap();
 
             // 효과음을 재생합니다.
-            let decoded = self
-                .sound_data_pool
-                .get(UI_BUTTON_TOUCH)
-                .expect("UI_Button_Touch sound must be preloaded!");
-            let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
-            sink.set_volume(self.effect_volume as f32 / 255.0);
-            sink.append(source);
-            sink.play();
-            sink.detach();
+            if let Some(mixer) = app.audio_mixer() {
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_BUTTON_TOUCH)
+                    .expect("UI_Button_Touch sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(mixer);
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+            }
 
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
@@ -232,16 +234,18 @@ impl LobbyControlOptionModalLayer {
             event_loop_proxy.send_event(event).unwrap();
 
             // 효과음을 재생합니다.
-            let decoded = self
-                .sound_data_pool
-                .get(UI_BUTTON_TOUCH)
-                .expect("UI_Button_Touch sound must be preloaded!");
-            let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
-            sink.set_volume(self.effect_volume as f32 / 255.0);
-            sink.append(source);
-            sink.play();
-            sink.detach();
+            if let Some(mixer) = app.audio_mixer() {
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_BUTTON_TOUCH)
+                    .expect("UI_Button_Touch sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(mixer);
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+            }
 
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
@@ -330,16 +334,18 @@ impl LobbyControlOptionModalLayer {
             event_loop_proxy.send_event(event).unwrap();
 
             // 효과음을 재생합니다.
-            let decoded = self
-                .sound_data_pool
-                .get(UI_BUTTON_TOUCH)
-                .expect("UI_Button_Touch sound must be preloaded!");
-            let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
-            sink.set_volume(self.effect_volume as f32 / 255.0);
-            sink.append(source);
-            sink.play();
-            sink.detach();
+            if let Some(mixer) = app.audio_mixer() {
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_BUTTON_TOUCH)
+                    .expect("UI_Button_Touch sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(mixer);
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+            }
 
             POSI_FOCUS_COLOR
         } else if response.is_pointer_button_down_on() {
@@ -634,16 +640,18 @@ impl LobbyControlOptionModalLayer {
             });
 
             // 효과음을 재생합니다.
-            let decoded = self
-                .sound_data_pool
-                .get(UI_LOADING)
-                .expect("UI_Loading sound must be preloaded!");
-            let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
-            sink.set_volume(self.effect_volume as f32 / 255.0);
-            sink.append(source);
-            sink.play();
-            sink.detach();
+            if let Some(mixer) = app.audio_mixer() {
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_LOADING)
+                    .expect("UI_Loading sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(mixer);
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+            }
 
             self.num_remaining_tasks += 1;
         } else if response.is_pointer_button_down_on() {
@@ -703,16 +711,18 @@ impl LobbyControlOptionModalLayer {
             };
 
             // 효과음을 재생합니다.
-            let decoded = self
-                .sound_data_pool
-                .get(UI_TURN_DOWN)
-                .expect("UI_Turn_Down sound must be preloaded!");
-            let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
-            sink.set_volume(self.effect_volume as f32 / 255.0);
-            sink.append(source);
-            sink.play();
-            sink.detach();
+            if let Some(mixer) = app.audio_mixer() {
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_TURN_DOWN)
+                    .expect("UI_Turn_Down sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(mixer);
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+            }
 
             event_loop_proxy.send_event(event).unwrap();
         } else if response.is_pointer_button_down_on() {
@@ -754,16 +764,18 @@ impl GameScene for LobbyControlOptionModalLayer {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -813,16 +825,18 @@ impl GameScene for LobbyControlOptionModalLayer {
                     event_loop_proxy.send_event(event).unwrap();
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_TURN_DOWN)
-                        .expect("UI_Turn_Down sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_TURN_DOWN)
+                            .expect("UI_Turn_Down sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
                 }
                 _ => {}
             }
@@ -857,16 +871,18 @@ impl GameScene for LobbyControlOptionModalLayer {
                 event_loop_proxy.send_event(event).unwrap();
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_NOTICE)
-                    .expect("UI_Notice sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_NOTICE)
+                        .expect("UI_Notice sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
             };
         }
     }

@@ -16,15 +16,15 @@ use winit::{
 
 use crate::{
     asset::{
-        SoundDataPool, TexturePool, TextureViewPool, BG_GROWTH_EFFECT_LABEL_URI,
-        BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_URI, BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI,
-        BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_URI, BG_SOUND_THEME_31, NOTOSANS_BOLD,
+        BG_GROWTH_EFFECT_LABEL_URI, BG_LOGIN_TITLE_0_URI, BG_LOGIN_TITLE_1_URI,
+        BG_LOGIN_TITLE_2_URI, BG_LOGIN_TITLE_3_URI, BG_LOGIN_TITLE_4_URI, BG_LOGIN_TITLE_5_URI,
+        BG_SOUND_THEME_31, NOTOSANS_BOLD, SoundDataPool, TexturePool, TextureViewPool,
         UI_BUTTON_TOUCH, UI_NOTICE,
     },
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer,
     },
 };
 
@@ -178,19 +178,21 @@ impl GameScene for GameLoginTitleScene {
         }
 
         // 배경 음악을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(BG_SOUND_THEME_31)
-            .expect("Theme_31 sound must be preloaded!");
-        let source = decoded.as_source();
-        let source = source.repeat_infinite();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(BG_SOUND_THEME_31)
+                .expect("Theme_31 sound must be preloaded!");
+            let source = decoded.as_source();
+            let source = source.repeat_infinite();
 
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.background_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.background_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
 
-        self.background_sounds.push_back(sink);
+            self.background_sounds.push_back(sink);
+        }
     }
 
     fn on_exit(
@@ -239,16 +241,18 @@ impl GameScene for GameLoginTitleScene {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_keyboard_pressed(
@@ -287,16 +291,18 @@ impl GameScene for GameLoginTitleScene {
             event_loop_proxy.send_event(event).unwrap();
 
             // 효과음을 재생합니다.
-            let decoded = self
-                .sound_data_pool
-                .get(UI_BUTTON_TOUCH)
-                .expect("UI_Button_Touch sound must be preloaded!");
-            let source = decoded.as_source();
-            let sink = Sink::connect_new(app.audio_mixer());
-            sink.set_volume(self.effect_volume as f32 / 255.0);
-            sink.append(source);
-            sink.play();
-            sink.detach();
+            if let Some(mixer) = app.audio_mixer() {
+                let decoded = self
+                    .sound_data_pool
+                    .get(UI_BUTTON_TOUCH)
+                    .expect("UI_Button_Touch sound must be preloaded!");
+                let source = decoded.as_source();
+                let sink = Sink::connect_new(mixer);
+                sink.set_volume(self.effect_volume as f32 / 255.0);
+                sink.append(source);
+                sink.play();
+                sink.detach();
+            }
         }
     }
 

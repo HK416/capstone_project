@@ -18,17 +18,17 @@ use winit::{
 };
 
 use crate::{
+    SERVER_TCP_ADDR,
     asset::{
-        SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_NOTICE,
+        NOTOSANS_BOLD, NOTOSANS_REGULAR, SoundDataPool, UI_BUTTON_BACK, UI_BUTTON_TOUCH, UI_NOTICE,
     },
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NEG_COLOR, NEG_FOCUS_COLOR, NORM_COLOR,
-        NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, NEG_COLOR, NEG_FOCUS_COLOR, NORM_COLOR, NORM_EXP_COLOR,
+        NORM_FOCUS_COLOR,
     },
-    SERVER_TCP_ADDR,
 };
 
 /// 애플리케이션 표시 언어에 따른 타이틀 텍스트입니다.
@@ -128,16 +128,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_received_packet(
@@ -172,16 +174,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                     event_loop_proxy.send_event(event).unwrap();
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_BUTTON_BACK)
-                        .expect("UI_Button_Back sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_BACK)
+                            .expect("UI_Button_Back sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
                 }
                 KeyCode::Enter => {
                     // 패킷을 전송합니다.
@@ -197,16 +201,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                     event_loop_proxy.send_event(event).unwrap();
 
                     // 효과음을 재생합니다.
-                    let decoded = self
-                        .sound_data_pool
-                        .get(UI_BUTTON_TOUCH)
-                        .expect("UI_Button_Touch sound must be preloaded!");
-                    let source = decoded.as_source();
-                    let sink = Sink::connect_new(app.audio_mixer());
-                    sink.set_volume(self.effect_volume as f32 / 255.0);
-                    sink.append(source);
-                    sink.play();
-                    sink.detach();
+                    if let Some(mixer) = app.audio_mixer() {
+                        let decoded = self
+                            .sound_data_pool
+                            .get(UI_BUTTON_TOUCH)
+                            .expect("UI_Button_Touch sound must be preloaded!");
+                        let source = decoded.as_source();
+                        let sink = Sink::connect_new(mixer);
+                        sink.set_volume(self.effect_volume as f32 / 255.0);
+                        sink.append(source);
+                        sink.play();
+                        sink.detach();
+                    }
                 }
                 _ => {}
             }
@@ -342,16 +348,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                                         event_loop_proxy.send_event(event).unwrap();
 
                                         // 효과음을 재생합니다.
-                                        let decoded = self
-                                            .sound_data_pool
-                                            .get(UI_BUTTON_TOUCH)
-                                            .expect("UI_Button_Touch sound must be preloaded!");
-                                        let source = decoded.as_source();
-                                        let sink = Sink::connect_new(app.audio_mixer());
-                                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                                        sink.append(source);
-                                        sink.play();
-                                        sink.detach();
+                                        if let Some(mixer) = app.audio_mixer() {
+                                            let decoded = self
+                                                .sound_data_pool
+                                                .get(UI_BUTTON_TOUCH)
+                                                .expect("UI_Button_Touch sound must be preloaded!");
+                                            let source = decoded.as_source();
+                                            let sink = Sink::connect_new(mixer);
+                                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                                            sink.append(source);
+                                            sink.play();
+                                            sink.detach();
+                                        }
                                     } else if response.is_pointer_button_down_on() {
                                         self.okay_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {
@@ -377,16 +385,18 @@ impl GameScene for RoomPlayerBanOnemoreLayer {
                                         event_loop_proxy.send_event(event).unwrap();
 
                                         // 효과음을 재생합니다.
-                                        let decoded = self
-                                            .sound_data_pool
-                                            .get(UI_BUTTON_BACK)
-                                            .expect("UI_Button_Back sound must be preloaded!");
-                                        let source = decoded.as_source();
-                                        let sink = Sink::connect_new(app.audio_mixer());
-                                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                                        sink.append(source);
-                                        sink.play();
-                                        sink.detach();
+                                        if let Some(mixer) = app.audio_mixer() {
+                                            let decoded = self
+                                                .sound_data_pool
+                                                .get(UI_BUTTON_BACK)
+                                                .expect("UI_Button_Back sound must be preloaded!");
+                                            let source = decoded.as_source();
+                                            let sink = Sink::connect_new(mixer);
+                                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                                            sink.append(source);
+                                            sink.play();
+                                            sink.detach();
+                                        }
                                     } else if response.is_pointer_button_down_on() {
                                         self.cancel_btn_state = ButtonState::Pressed;
                                     } else if response.hovered() | response.has_focus() {

@@ -16,12 +16,12 @@ use winit::{
 };
 
 use crate::{
-    asset::{SoundDataPool, NOTOSANS_BOLD, NOTOSANS_REGULAR, UI_BUTTON_TOUCH, UI_NOTICE},
+    asset::{NOTOSANS_BOLD, NOTOSANS_REGULAR, SoundDataPool, UI_BUTTON_TOUCH, UI_NOTICE},
     component::ButtonState,
     config::{Locale, NUM_LOCALE},
     scenes::{
-        FatalErrorSceneLayer, BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS,
-        ERR_NETWORK_TITLE_TEXTS, FONT_COLOR, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
+        BASE_WIDTH, ERR_CLOSED_MSG_TEXTS, ERR_IO_MSG_TEXTS, ERR_NETWORK_TITLE_TEXTS, FONT_COLOR,
+        FatalErrorSceneLayer, NORM_COLOR, NORM_EXP_COLOR, NORM_FOCUS_COLOR,
     },
 };
 
@@ -137,16 +137,18 @@ impl GameScene for MessageSceneLayer {
         event_loop_proxy.send_event(event).unwrap();
 
         // 효과음을 재생합니다.
-        let decoded = self
-            .sound_data_pool
-            .get(UI_NOTICE)
-            .expect("UI_Notice sound must be preloaded!");
-        let source = decoded.as_source();
-        let sink = Sink::connect_new(app.audio_mixer());
-        sink.set_volume(self.effect_volume as f32 / 255.0);
-        sink.append(source);
-        sink.play();
-        sink.detach();
+        if let Some(mixer) = app.audio_mixer() {
+            let decoded = self
+                .sound_data_pool
+                .get(UI_NOTICE)
+                .expect("UI_Notice sound must be preloaded!");
+            let source = decoded.as_source();
+            let sink = Sink::connect_new(mixer);
+            sink.set_volume(self.effect_volume as f32 / 255.0);
+            sink.append(source);
+            sink.play();
+            sink.detach();
+        }
     }
 
     fn on_keyboard_released(
@@ -169,16 +171,18 @@ impl GameScene for MessageSceneLayer {
                 event_loop_proxy.send_event(event).unwrap();
 
                 // 효과음을 재생합니다.
-                let decoded = self
-                    .sound_data_pool
-                    .get(UI_BUTTON_TOUCH)
-                    .expect("UI_Button_Touch sound must be preloaded!");
-                let source = decoded.as_source();
-                let sink = Sink::connect_new(app.audio_mixer());
-                sink.set_volume(self.effect_volume as f32 / 255.0);
-                sink.append(source);
-                sink.play();
-                sink.detach();
+                if let Some(mixer) = app.audio_mixer() {
+                    let decoded = self
+                        .sound_data_pool
+                        .get(UI_BUTTON_TOUCH)
+                        .expect("UI_Button_Touch sound must be preloaded!");
+                    let source = decoded.as_source();
+                    let sink = Sink::connect_new(mixer);
+                    sink.set_volume(self.effect_volume as f32 / 255.0);
+                    sink.append(source);
+                    sink.play();
+                    sink.detach();
+                }
             }
         }
 
@@ -282,16 +286,18 @@ impl GameScene for MessageSceneLayer {
                         }
 
                         // 효과음을 재생합니다.
-                        let decoded = self
-                            .sound_data_pool
-                            .get(UI_BUTTON_TOUCH)
-                            .expect("UI_Button_Touch sound must be preloaded!");
-                        let source = decoded.as_source();
-                        let sink = Sink::connect_new(app.audio_mixer());
-                        sink.set_volume(self.effect_volume as f32 / 255.0);
-                        sink.append(source);
-                        sink.play();
-                        sink.detach();
+                        if let Some(mixer) = app.audio_mixer() {
+                            let decoded = self
+                                .sound_data_pool
+                                .get(UI_BUTTON_TOUCH)
+                                .expect("UI_Button_Touch sound must be preloaded!");
+                            let source = decoded.as_source();
+                            let sink = Sink::connect_new(mixer);
+                            sink.set_volume(self.effect_volume as f32 / 255.0);
+                            sink.append(source);
+                            sink.play();
+                            sink.detach();
+                        }
                     } else if response.is_pointer_button_down_on() {
                         self.okay_button_state = ButtonState::Pressed;
                     } else if response.hovered() || response.has_focus() {
